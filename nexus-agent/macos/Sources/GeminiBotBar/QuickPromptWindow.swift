@@ -168,7 +168,7 @@ class QuickPromptWindowController {
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let windowWidth: CGFloat = 680
-            let windowHeight: CGFloat = 400
+            let windowHeight: CGFloat = 72   // compact: input bar only
             let x = screenFrame.midX - windowWidth / 2
             let y = screenFrame.maxY - windowHeight - (screenFrame.height * 0.18)
             window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
@@ -239,7 +239,7 @@ class QuickPromptWindowController {
         
         // Spotlight-style panel: no title bar, no chrome
         let panel = QuickPromptPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 72),
             styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -338,7 +338,8 @@ struct QuickPromptView: View {
     let onDismiss: () -> Void
     @State private var prompt: String = ""
     @State private var sessions: [SessionInfo] = []
-    @State private var loadingSessions = true
+    @State private var loadingSessions = false
+    @State private var showSessions = false
     @State private var hoveredSessionId: Int? = nil
     @State private var selectedSessionIndex: Int? = nil
     @FocusState private var isFocused: Bool
@@ -370,121 +371,120 @@ struct QuickPromptView: View {
                     }
                 
                 Button(action: {
-                    guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    onSubmit(prompt)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showSessions.toggle()
+                    }
+                    selectedSessionIndex = nil
+                    resizePanel(expanded: showSessions)
+                    if showSessions && sessions.isEmpty {
+                        loadingSessions = true
+                        loadSessions()
+                    }
                 }) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(prompt.trimmingCharacters(in: .whitespaces).isEmpty ? Color.primary.opacity(0.15) : .blue)
+                    Image(systemName: showSessions ? "clock.fill" : "clock")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(showSessions ? Color.blue : Color.primary.opacity(0.4))
                 }
                 .buttonStyle(.plain)
-                .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty)
-                
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(Color.primary.opacity(0.3))
-                }
-                .buttonStyle(.plain)
+                .help("Recent sessions")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             
-            // ── Results Divider ──
-            if !loadingSessions {
+            // ── Sessions Panel (animated, shown only when toggled) ──
+            if showSessions {
                 Rectangle()
                     .fill(Color.primary.opacity(0.08))
                     .frame(height: 1)
                     .padding(.horizontal, 12)
-            }
-            
-            // ── Sessions List ──
-            if loadingSessions {
-                Spacer()
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Loading…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else if sessions.isEmpty {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.quaternary)
-                    Text("No recent sessions")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Recent")
-                            .font(.system(size: 11, weight: .semibold))
+                    .transition(.opacity)
+
+                if loadingSessions {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading…")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 10)
-                            .padding(.bottom, 4)
-                        
-                        ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
-                            Button(action: {
-                                onResume(session.id, session.uuid)
-                            }) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "text.bubble")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(.blue)
-                                        .frame(width: 28, height: 28)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(Color.blue.opacity(0.1))
-                                        )
-                                    
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(session.title)
-                                            .font(.system(size: 13))
-                                            .lineLimit(1)
-                                            .foregroundStyle(.primary)
-                                        Text(session.timeAgo)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(
-                                            selectedSessionIndex == idx
-                                                ? Color.blue.opacity(0.2)
-                                                : (hoveredSessionId == session.id
-                                                   ? Color.primary.opacity(0.06)
-                                                   : Color.clear)
-                                        )
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .onHover { isHovering in
-                                hoveredSessionId = isHovering ? session.id : nil
-                                if isHovering { selectedSessionIndex = nil }
-                            }
-                            .padding(.horizontal, 8)
-                        }
                     }
-                    .padding(.bottom, 8)
+                    Spacer()
+                } else if sessions.isEmpty {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.quaternary)
+                        Text("No recent sessions")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Recent")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 10)
+                                .padding(.bottom, 4)
+
+                            ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
+                                Button(action: {
+                                    onResume(session.id, session.uuid)
+                                }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "text.bubble")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(.blue)
+                                            .frame(width: 28, height: 28)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .fill(Color.blue.opacity(0.1))
+                                            )
+
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(session.title)
+                                                .font(.system(size: 13))
+                                                .lineLimit(1)
+                                                .foregroundStyle(.primary)
+                                            Text(session.timeAgo)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(
+                                                selectedSessionIndex == idx
+                                                    ? Color.blue.opacity(0.2)
+                                                    : (hoveredSessionId == session.id
+                                                       ? Color.primary.opacity(0.06)
+                                                       : Color.clear)
+                                            )
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .onHover { isHovering in
+                                    hoveredSessionId = isHovering ? session.id : nil
+                                    if isHovering { selectedSessionIndex = nil }
+                                }
+                                .padding(.horizontal, 8)
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
                 }
             }
         }
         .onAppear {
             isFocused = true
-            loadSessions()
             setupKeyboardMonitor()
         }
         .onDisappear {
@@ -550,7 +550,29 @@ struct QuickPromptView: View {
             }
         }
     }
-    
+
+    /// Animate the underlying NSPanel between compact (input-only) and expanded (sessions) heights.
+    private func resizePanel(expanded: Bool) {
+        guard let window = QuickPromptWindowController.shared.window else { return }
+        let compactHeight: CGFloat = 72
+        let expandedHeight: CGFloat = 340
+        let targetHeight = expanded ? expandedHeight : compactHeight
+        let currentFrame = window.frame
+        // Anchor resize to the top of the panel
+        let newOriginY = currentFrame.origin.y + currentFrame.height - targetHeight
+        let newFrame = NSRect(
+            x: currentFrame.origin.x,
+            y: newOriginY,
+            width: currentFrame.width,
+            height: targetHeight
+        )
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.28
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(newFrame, display: true)
+        }
+    }
+
     /// Resolve the working directory — must be called from main thread.
     @MainActor static func resolveWorkingDirectory() -> URL {
         if let config = ConfigManager.shared {
@@ -989,7 +1011,15 @@ struct QuickPromptChatView: View {
         process.standardError = errPipe
         process.environment = ProcessInfo.processInfo.environment
         process.environment?["NO_COLOR"] = "1"
-        process.currentDirectoryURL = QuickPromptView.resolveWorkingDirectory()
+        let workDir = QuickPromptView.resolveWorkingDirectory()
+        // Validate the directory exists — if not, fall back to home to avoid a cryptic crash
+        let resolvedWorkDir: URL
+        if FileManager.default.fileExists(atPath: workDir.path) {
+            resolvedWorkDir = workDir
+        } else {
+            resolvedWorkDir = URL(fileURLWithPath: NSHomeDirectory())
+        }
+        process.currentDirectoryURL = resolvedWorkDir
         currentProcess = process
         
         do {

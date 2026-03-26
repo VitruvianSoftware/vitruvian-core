@@ -14,6 +14,9 @@ class ConfigManager: ObservableObject {
     @Published var thinking: Bool = false
     @Published var autoStart: Bool = false
 
+    // Bot directory (stored in UserDefaults so it survives .app bundle launches)
+    @Published var botDirectoryOverride: String = ""
+
     // Hotkey config (stored in UserDefaults, not .env)
     @Published var hotkeyKey: String = "g"
     @Published var hotkeyModifiers: Int = 0  // NSEvent.ModifierFlags raw value
@@ -35,7 +38,7 @@ class ConfigManager: ObservableObject {
     init(botDirectory: String) {
         self.botDirectory = botDirectory
 
-        // Load auto-start preference from UserDefaults
+        // Load preferences from UserDefaults
         autoStart = UserDefaults.standard.bool(forKey: "autoStart")
         hotkeyKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
         hotkeyModifiers = UserDefaults.standard.integer(forKey: "hotkeyModifiers")
@@ -43,6 +46,7 @@ class ConfigManager: ObservableObject {
             // Default: ⌘+Shift
             hotkeyModifiers = Int(NSEvent.ModifierFlags([.command, .shift]).rawValue)
         }
+        botDirectoryOverride = UserDefaults.standard.string(forKey: "botDirectory") ?? botDirectory
 
         load()
     }
@@ -125,10 +129,14 @@ class ConfigManager: ObservableObject {
             print("Failed to save .env: \(error)")
         }
 
-        // Save auto-start preference
+        // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")
         UserDefaults.standard.set(hotkeyKey, forKey: "hotkeyKey")
         UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers")
+        if !botDirectoryOverride.isEmpty {
+            UserDefaults.standard.set(botDirectoryOverride, forKey: "botDirectory")
+        }
+        UserDefaults.standard.synchronize()
 
         // Notify hotkey controller to re-register
         QuickPromptWindowController.shared.updateHotkey(

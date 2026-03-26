@@ -18,34 +18,48 @@ class BotManager: ObservableObject {
     let pidFilePath: String
 
     init() {
-        // Discover bot directory relative to the macOS binary
-        // The binary lives in macos/.build/debug/ — the bot is at ../../
-        let executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
-        let macosDir = executableURL
-            .deletingLastPathComponent() // debug/
-            .deletingLastPathComponent() // .build/
-            .deletingLastPathComponent() // Sources/ or macos/
-
-        // Check if we're running from the macos/ subdirectory
-        let candidateBotDir = macosDir.path
-        let parentBotDir = macosDir.deletingLastPathComponent().path
-
-        if FileManager.default.fileExists(atPath: "\(candidateBotDir)/src/bot.js") {
-            botDirectory = candidateBotDir
-        } else if FileManager.default.fileExists(atPath: "\(parentBotDir)/src/bot.js") {
-            botDirectory = parentBotDir
-        } else {
-            // Fallback: use environment or hardcoded
-            botDirectory = ProcessInfo.processInfo.environment["GEMINI_BOT_DIR"]
-                ?? "\(NSHomeDirectory())/Workspace/gh/application/bluecentre/gemini-bot"
+        // 1. Prefer a user-saved directory from a previous Settings save.
+        if let saved = UserDefaults.standard.string(forKey: "botDirectory"), !saved.isEmpty,
+           FileManager.default.fileExists(atPath: "\(saved)/src/bot.js") {
+            botDirectory = saved
+        }
+        // 2. Walk up from the executable — works for `swift run` / debug builds.
+        else if let discovered = BotManager.discoverBotDirectory() {
+            botDirectory = discovered
+        }
+        // 3. Honour an explicit env-var override (e.g. launchd plist).
+        else if let env = ProcessInfo.processInfo.environment["GEMINI_BOT_DIR"],
+                FileManager.default.fileExists(atPath: "\(env)/src/bot.js") {
+            botDirectory = env
+        }
+        // 4. Fallback: ~/Workspace/gemini-bot (the checked-out location on this machine).
+        else {
+            botDirectory = "\(NSHomeDirectory())/Workspace/gemini-bot"
         }
 
         logFilePath = "\(botDirectory)/bot.log"
         pidFilePath = "\(botDirectory)/.bot.pid"
 
+        // Persist so future launches (including .app bundle) remember the path.
+        UserDefaults.standard.set(botDirectory, forKey: "botDirectory")
+
         // Check if bot is already running from a previous session
         checkExistingProcess()
         startLogMonitor()
+    }
+
+    /// Walk up from the running binary to find the gemini-bot checkout.
+    private static func discoverBotDirectory() -> String? {
+        let exec = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
+        var dir = exec.deletingLastPathComponent()
+        // Try up to 6 levels up so we handle both debug builds and the .app bundle.
+        for _ in 0..<6 {
+            if FileManager.default.fileExists(atPath: dir.appendingPathComponent("src/bot.js").path) {
+                return dir.path
+            }
+            dir = dir.deletingLastPathComponent()
+        }
+        return nil
     }
 
     // MARK: - Process Control

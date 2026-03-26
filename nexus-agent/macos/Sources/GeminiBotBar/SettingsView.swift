@@ -56,6 +56,17 @@ struct SettingsView: View {
 
             Section(header: Text("App")) {
                 HStack {
+                    Text("Bot Directory")
+                        .frame(width: 120, alignment: .trailing)
+                    TextField("/path/to/gemini-bot", text: $configManager.botDirectoryOverride)
+                        .textFieldStyle(.roundedBorder)
+                        .help("Path to the gemini-bot checkout containing src/bot.js and .env")
+                    Button("Browse") {
+                        selectBotDirectory()
+                    }
+                }
+
+                HStack {
                     Text("")
                         .frame(width: 120, alignment: .trailing)
                     Toggle("Thinking mode (deep reasoning)", isOn: $configManager.thinking)
@@ -137,6 +148,18 @@ struct SettingsView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             configManager.workingDirectory = url.path
+        }
+    }
+
+    private func selectBotDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select the gemini-bot checkout folder (containing src/bot.js)"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            configManager.botDirectoryOverride = url.path
         }
     }
 }
