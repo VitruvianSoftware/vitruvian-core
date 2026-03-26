@@ -33,6 +33,10 @@ class QuickPromptWindowController {
     // Configurable hotkey (defaults to ⌘+Shift+G)
     private var expectedKey: String = "g"
     private var expectedModifiers: NSEvent.ModifierFlags = [.command, .shift]
+
+    // Spring-animated panel resize state
+    private var resizeTimer: Timer?
+    private var resizeVelocity: CGFloat = 0
     
     private init() {
         let savedKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
@@ -148,6 +152,55 @@ class QuickPromptWindowController {
         return UInt32(code)
     }
     
+    /// Spring-physics panel resize — grows/shrinks downward from the top edge.
+    /// Uses a 120 Hz Euler integrator so the height follows true Hooke's law
+    /// with overshoot, giving the same elastic feel as the open/close animation.
+    func animateResize(expanded: Bool) {
+        resizeTimer?.invalidate()
+        resizeTimer = nil
+        guard let window = window else { return }
+
+        let compactHeight: CGFloat  = 72
+        let expandedHeight: CGFloat = 340
+        let targetHeight = expanded ? expandedHeight : compactHeight
+
+        // Spring constants — snappy with a subtle overshoot
+        let stiffness: CGFloat = 440
+        let damping:   CGFloat = 26
+        let dt:        CGFloat = 1.0 / 120.0
+
+        var currentHeight = window.frame.height
+        resizeVelocity = 0
+
+        resizeTimer = Timer.scheduledTimer(withTimeInterval: dt, repeats: true) { [weak self, weak window] t in
+            guard let self, let window else { t.invalidate(); return }
+
+            // Hooke's law: F = -k·x  minus  damping: F -= c·v
+            let displacement = targetHeight - currentHeight
+            let springForce  = stiffness * displacement
+            let dampForce    = damping   * self.resizeVelocity
+            self.resizeVelocity += (springForce - dampForce) * dt
+            currentHeight       += self.resizeVelocity * dt
+
+            // Anchor the TOP edge — grow/shrink downward only
+            let f = window.frame
+            let newY = f.origin.y + f.height - currentHeight
+            window.setFrame(
+                NSRect(x: f.origin.x, y: newY, width: f.width, height: currentHeight),
+                display: true, animate: false
+            )
+
+            // Settle: snap to target when close enough
+            if abs(displacement) < 0.4 && abs(self.resizeVelocity) < 0.4 {
+                let ff = window.frame
+                let finalY = ff.origin.y + ff.height - targetHeight
+                window.setFrame(NSRect(x: ff.origin.x, y: finalY, width: ff.width, height: targetHeight), display: true)
+                t.invalidate()
+                self.resizeTimer = nil
+            }
+        }
+    }
+
     /// Toggle the quick prompt window.
     func toggle() {
         if let window = window, window.isVisible {
@@ -171,13 +224,16 @@ class QuickPromptWindowController {
             let windowHeight: CGFloat = 72   // compact: input bar only
             let x = screenFrame.midX - windowWidth / 2
             let y = screenFrame.maxY - windowHeight - (screenFrame.height * 0.18)
-            window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+            window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: false)
         }
-        
+
+        // Start invisible; animateIn() will fade + spring it in
+        window.alphaValue = 0
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        animateIn()
         
-        // Force focus on the text field
+        // Force focus on the text field after spring settles
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let window = self?.window else { return }
             window.makeKey()
@@ -188,6 +244,36 @@ class QuickPromptWindowController {
         
         // Click-outside-to-dismiss (Spotlight behavior)
         addClickOutsideMonitor()
+    }
+
+    /// Spotlight Tahoe-style spring entrance: fade in + elastic scale bounce.
+    private func animateIn() {
+        guard let window = window, let layer = window.contentView?.layer else { return }
+
+        // Pin anchor to center so the scale radiates from the middle of the panel.
+        // Re-applying the frame after changing anchorPoint keeps the view in place.
+        let savedFrame = layer.frame
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.frame = savedFrame
+
+        // 1. Fade the window in quickly
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.08
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().alphaValue = 1.0
+        }
+
+        // 2. Spring scale: 0.90 → slight overshoot → 1.0  (center outward)
+        let spring = CASpringAnimation(keyPath: "transform.scale")
+        spring.fromValue = 0.90
+        spring.toValue   = 1.0
+        spring.stiffness = 500
+        spring.damping   = 24
+        spring.mass      = 1.0
+        spring.initialVelocity = 0
+        spring.duration  = spring.settlingDuration  // ~0.36s
+        spring.isRemovedOnCompletion = true
+        layer.add(spring, forKey: "spotlightBounce")
     }
     
     private var clickOutsideMonitor: Any?
@@ -220,8 +306,42 @@ class QuickPromptWindowController {
     }
     
     func dismiss() {
-        window?.orderOut(nil)
+        guard let window = window else { return }
         removeClickOutsideMonitor()
+
+        // Quick scale-down + fade-out, then hide
+        guard let layer = window.contentView?.layer else {
+            window.orderOut(nil)
+            return
+        }
+
+        // Ensure collapse scales inward from center
+        let savedFrame = layer.frame
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.frame = savedFrame
+
+        let fadeOut = CABasicAnimation(keyPath: "opacity")
+        fadeOut.fromValue = 1.0
+        fadeOut.toValue   = 0.0
+        fadeOut.duration  = 0.16
+        fadeOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fadeOut.fillMode = .forwards
+        fadeOut.isRemovedOnCompletion = false
+
+        let scaleOut = CABasicAnimation(keyPath: "transform.scale")
+        scaleOut.fromValue = 1.0
+        scaleOut.toValue   = 0.94
+        scaleOut.duration  = 0.16
+        scaleOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        scaleOut.fillMode = .forwards
+        scaleOut.isRemovedOnCompletion = false
+
+        layer.add(fadeOut,  forKey: "dismissFade")
+        layer.add(scaleOut, forKey: "dismissScale")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+            self?.window?.orderOut(nil)
+        }
     }
     
     private func createWindow() {
@@ -375,7 +495,7 @@ struct QuickPromptView: View {
                         showSessions.toggle()
                     }
                     selectedSessionIndex = nil
-                    resizePanel(expanded: showSessions)
+                    QuickPromptWindowController.shared.animateResize(expanded: showSessions)
                     if showSessions && sessions.isEmpty {
                         loadingSessions = true
                         loadSessions()
@@ -552,26 +672,7 @@ struct QuickPromptView: View {
     }
 
     /// Animate the underlying NSPanel between compact (input-only) and expanded (sessions) heights.
-    private func resizePanel(expanded: Bool) {
-        guard let window = QuickPromptWindowController.shared.window else { return }
-        let compactHeight: CGFloat = 72
-        let expandedHeight: CGFloat = 340
-        let targetHeight = expanded ? expandedHeight : compactHeight
-        let currentFrame = window.frame
-        // Anchor resize to the top of the panel
-        let newOriginY = currentFrame.origin.y + currentFrame.height - targetHeight
-        let newFrame = NSRect(
-            x: currentFrame.origin.x,
-            y: newOriginY,
-            width: currentFrame.width,
-            height: targetHeight
-        )
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.28
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().setFrame(newFrame, display: true)
-        }
-    }
+    // Resize is now handled by QuickPromptWindowController.animateResize(expanded:)
 
     /// Resolve the working directory — must be called from main thread.
     @MainActor static func resolveWorkingDirectory() -> URL {
