@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+.bot.pid
+.DS_Store
+macos/.build/

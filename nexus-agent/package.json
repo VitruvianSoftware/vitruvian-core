@@ -1,0 +1,17 @@
+{
+  "name": "gemini-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot bridging messages to Gemini CLI for remote coding agent access",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "keywords": ["gemini", "telegram", "bot", "cli", "ai"],
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "telegraf": "^4.16.0",
+    "dotenv": "^16.4.0"
+  }
+}
