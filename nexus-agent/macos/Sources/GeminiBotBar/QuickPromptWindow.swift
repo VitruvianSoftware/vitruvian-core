@@ -353,14 +353,10 @@ class QuickPromptWindowController {
             self?.dismiss()
         })
         
-        let hosting = NSHostingView(rootView: promptView)
-        hosting.wantsLayer = true
-        hosting.layer?.backgroundColor = .clear
-        
         // Spotlight-style panel: no title bar, no chrome
         let panel = QuickPromptPanel(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 72),
-            styleMask: [.nonactivatingPanel, .fullSizeContentView],
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -373,23 +369,41 @@ class QuickPromptWindowController {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.hasShadow = true
-        
-        // Spotlight-style vibrancy material  
+
+        // Use a plain transparent container as contentView. macOS draws its
+        // NSThemeFrame border around whatever is set as contentView directly;
+        // by making it a clear passthrough NSView, we avoid any rectangular
+        // ghost outline being painted around the panel edges.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: 72))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = CGColor.clear
+        container.autoresizingMask = [.width, .height]
+
+        // Spotlight-style vibrancy material — rounded, clipped
         let visualEffect = NSVisualEffectView()
         visualEffect.material = .popover
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.autoresizingMask = [.width, .height]
+        visualEffect.frame = container.bounds
         visualEffect.wantsLayer = true
         visualEffect.layer?.cornerRadius = 22
         visualEffect.layer?.masksToBounds = true
-        
+
+        let hosting = NSHostingView(rootView: promptView)
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = CGColor.clear
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = visualEffect.bounds
-        
+
         visualEffect.addSubview(hosting)
-        panel.contentView = visualEffect
-        
+        container.addSubview(visualEffect)
+        panel.contentView = container
+
+        // Invalidate shadow so it redraws shaped to the rounded content
+        // rather than the rectangular window frame.
+        panel.invalidateShadow()
+
         self.window = panel
         self.hostingView = hosting
     }
@@ -417,25 +431,34 @@ class QuickPromptWindowController {
             height: targetSize.height
         )
         window.setFrame(newFrame, display: false)
-        
-        let hosting = NSHostingView(rootView: chatView)
-        hosting.wantsLayer = true
-        hosting.layer?.backgroundColor = .clear
-        
+
+        // Same transparent container pattern as createWindow to avoid
+        // ghost rectangle borders from macOS NSThemeFrame rendering.
+        let container = NSView(frame: NSRect(origin: .zero, size: targetSize))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = CGColor.clear
+        container.autoresizingMask = [.width, .height]
+
         let visualEffect = NSVisualEffectView()
         visualEffect.material = .popover
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.autoresizingMask = [.width, .height]
+        visualEffect.frame = container.bounds
         visualEffect.wantsLayer = true
         visualEffect.layer?.cornerRadius = 22
         visualEffect.layer?.masksToBounds = true
-        
+
+        let hosting = NSHostingView(rootView: chatView)
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = CGColor.clear
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = visualEffect.bounds
         visualEffect.addSubview(hosting)
-        
-        window.contentView = visualEffect
+        container.addSubview(visualEffect)
+
+        window.contentView = container
+        window.invalidateShadow()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -687,6 +710,23 @@ struct QuickPromptView: View {
         }
         return URL(fileURLWithPath: NSHomeDirectory())
     }
+    
+    /// Finds the active NVM node version directory (e.g. "v22.14.0") by reading ~/.nvm/alias/default.
+    static func findNVMNodeVersion() -> String {
+        let nvmAlias = "\(NSHomeDirectory())/.nvm/alias/default"
+        if let version = try? String(contentsOfFile: nvmAlias, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines) {
+            // Resolve the alias recursively (e.g. "lts/iron" → actual version)
+            let versionsDir = "\(NSHomeDirectory())/.nvm/versions/node"
+            if let versions = try? FileManager.default.contentsOfDirectory(atPath: versionsDir) {
+                // Find a version matching the alias prefix
+                let match = versions.first { $0.hasPrefix(version) || version.hasPrefix($0) }
+                return match ?? version
+            }
+            return version
+        }
+        return ""
+    }
 }
 
 // MARK: - Session File Reading
@@ -863,12 +903,131 @@ enum SessionFileReader {
     }
 }
 
+// MARK: - Stream File Watcher
+
+// TODO_GEMINI_HOOKS: The following StreamFileWatcher and GEMINI_STREAM_FILE integration relies on
+// Gemini CLI hooks (AfterModel, BeforeTool, AfterTool, AfterAgent) which are NOT available in
+// any published release as of gemini v0.35.1. Hooks exist only in the upstream main branch.
+// When a new gemini release includes hooks support, verify:
+//   1. GEMINI_STREAM_FILE env var is passed through to hook scripts
+//   2. ~/.gemini/settings.json hooks config is loaded (see TODO.md in project root)
+//   3. AfterModel fires per-chunk with llm_response.candidates[].content.parts[]
+//   4. AfterAgent fires with prompt_response string
+// See also: hooks/stream-hook.py and TODO.md
+
+/// Watches a JSONL file for new events written by the Gemini CLI hook.
+/// Uses DispatchSource to detect file writes and reads new lines incrementally.
+class StreamFileWatcher {
+    private var source: DispatchSourceFileSystemObject?
+    private var fileHandle: FileHandle?
+    private var offset: UInt64 = 0
+    private let filePath: String
+    private let onEvent: (StreamEvent) -> Void
+    
+    enum StreamEvent {
+        case chunk(String)          // Model text token
+        case thinking(String)       // Model thinking/reasoning
+        case toolStart(String, String)  // Tool name, summary
+        case toolDone(String)       // Tool name
+        case done(String)           // Final full response
+    }
+    
+    init(filePath: String, onEvent: @escaping (StreamEvent) -> Void) {
+        self.filePath = filePath
+        self.onEvent = onEvent
+    }
+    
+    func start() {
+        // Create the file if it doesn't exist
+        FileManager.default.createFile(atPath: filePath, contents: nil)
+        
+        guard let fh = FileHandle(forReadingAtPath: filePath) else { return }
+        self.fileHandle = fh
+        self.offset = 0
+        
+        let fd = fh.fileDescriptor
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write],
+            queue: DispatchQueue.global(qos: .userInitiated)
+        )
+        
+        source.setEventHandler { [weak self] in
+            self?.readNewLines()
+        }
+        
+        source.setCancelHandler { [weak self] in
+            self?.fileHandle?.closeFile()
+            self?.fileHandle = nil
+        }
+        
+        self.source = source
+        source.resume()
+    }
+    
+    func stop() {
+        source?.cancel()
+        source = nil
+        // Clean up the stream file
+        try? FileManager.default.removeItem(atPath: filePath)
+    }
+    
+    private func readNewLines() {
+        guard let fh = fileHandle else { return }
+        
+        fh.seek(toFileOffset: offset)
+        let data = fh.readDataToEndOfFile()
+        guard !data.isEmpty else { return }
+        offset = fh.offsetInFile
+        
+        guard let text = String(data: data, encoding: .utf8) else { return }
+        let lines = text.components(separatedBy: "\n")
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let lineData = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let type = json["type"] as? String else {
+                continue
+            }
+            
+            switch type {
+            case "chunk":
+                if let text = json["text"] as? String {
+                    onEvent(.chunk(text))
+                }
+            case "thinking":
+                if let text = json["text"] as? String {
+                    onEvent(.thinking(text))
+                }
+            case "tool_start":
+                let tool = json["tool"] as? String ?? "unknown"
+                let summary = json["summary"] as? String ?? ""
+                onEvent(.toolStart(tool, summary))
+            case "tool_done":
+                let tool = json["tool"] as? String ?? "unknown"
+                onEvent(.toolDone(tool))
+            case "done":
+                let response = json["response"] as? String ?? ""
+                onEvent(.done(response))
+            default:
+                break
+            }
+        }
+    }
+    
+    deinit {
+        stop()
+    }
+}
+
 // MARK: - Chat Conversation View
 
 struct ChatMessage: Identifiable {
     let id = UUID()
     let role: String
-    let content: String
+    var content: String
 }
 
 struct QuickPromptChatView: View {
@@ -883,6 +1042,8 @@ struct QuickPromptChatView: View {
     @State private var currentProcess: Process?
     @State private var promptHistory: [String] = []
     @State private var historyIndex: Int = -1
+    @State private var streamingStatus: String = "Thinking…"
+    @State private var streamWatcher: StreamFileWatcher?
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
@@ -943,9 +1104,11 @@ struct QuickPromptChatView: View {
                                     .foregroundStyle(.blue)
                                 ProgressView()
                                     .controlSize(.small)
-                                Text("Thinking…")
+                                Text(streamingStatus)
                                     .foregroundStyle(.secondary)
                                     .font(.caption)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                 Spacer()
                                 Button(action: stopGeneration) {
                                     HStack(spacing: 4) {
@@ -1072,7 +1235,10 @@ struct QuickPromptChatView: View {
     private func stopGeneration() {
         currentProcess?.terminate()
         currentProcess = nil
+        streamWatcher?.stop()
+        streamWatcher = nil
         isLoading = false
+        streamingStatus = "Thinking…"
     }
     
     /// Load an existing session's conversation history from disk.
@@ -1096,6 +1262,61 @@ struct QuickPromptChatView: View {
         messages.append(ChatMessage(role: "user", content: prompt))
         isLoading = true
         error = nil
+        streamingStatus = "Thinking…"
+        
+        // Create a unique stream file for this request
+        let streamId = UUID().uuidString.prefix(8)
+        let streamFilePath = "/tmp/gemini-stream-\(streamId).jsonl"
+        FileManager.default.createFile(atPath: streamFilePath, contents: nil)
+        
+        // Track whether we received any streaming events
+        var receivedStreamEvents = false
+        // Index of the assistant message we're streaming into
+        var streamingMessageIndex: Int? = nil
+        
+        // Start watching the stream file
+        let watcher = StreamFileWatcher(filePath: streamFilePath) { [self] event in
+            DispatchQueue.main.async {
+                receivedStreamEvents = true
+                switch event {
+                case .chunk(let text):
+                    if let idx = streamingMessageIndex {
+                        // Append to existing streaming message
+                        messages[idx].content += text
+                    } else {
+                        // Create new assistant message
+                        messages.append(ChatMessage(role: "assistant", content: text))
+                        streamingMessageIndex = messages.count - 1
+                    }
+                    streamingStatus = "Generating…"
+                    
+                case .thinking(let text):
+                    _ = text  // Could display in UI later
+                    streamingStatus = "Reasoning…"
+                    
+                case .toolStart(let tool, let summary):
+                    let displayName = tool
+                        .replacingOccurrences(of: "_", with: " ")
+                        .prefix(1).uppercased() + tool
+                        .replacingOccurrences(of: "_", with: " ")
+                        .dropFirst()
+                    if summary.isEmpty {
+                        streamingStatus = "Running \(displayName)…"
+                    } else {
+                        streamingStatus = "\(displayName): \(summary.prefix(60))"
+                    }
+                    
+                case .toolDone(_):
+                    streamingStatus = "Thinking…"
+                    
+                case .done(_):
+                    // Agent completed — streaming is done
+                    streamingStatus = "Done"
+                }
+            }
+        }
+        watcher.start()
+        self.streamWatcher = watcher
         
         let process = Process()
         let pipe = Pipe()
@@ -1112,8 +1333,27 @@ struct QuickPromptChatView: View {
         process.standardError = errPipe
         process.environment = ProcessInfo.processInfo.environment
         process.environment?["NO_COLOR"] = "1"
+        // Augment PATH — macOS apps launched from /Applications get a stripped PATH
+        // that may not include Homebrew or NVM. Prepend common node/gemini locations.
+        let nmvNodeBin: String = {
+            let alias = (try? String(contentsOfFile: "\(NSHomeDirectory())/.nvm/alias/default", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let versionsDir = "\(NSHomeDirectory())/.nvm/versions/node"
+            let versions = (try? FileManager.default.contentsOfDirectory(atPath: versionsDir)) ?? []
+            let match = versions.first { $0.hasPrefix(alias) || alias.hasPrefix($0) } ?? alias
+            return "\(versionsDir)/\(match)/bin"
+        }()
+        let extraPaths = [
+            "/opt/homebrew/bin",          // Apple Silicon Homebrew
+            "/usr/local/bin",             // Intel Homebrew
+            nmvNodeBin,                   // NVM active node version
+            "\(NSHomeDirectory())/.volta/bin",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        let currentPath = process.environment?["PATH"] ?? "/usr/bin:/bin"
+        process.environment?["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
+        // TODO_GEMINI_HOOKS: GEMINI_STREAM_FILE is passed to the CLI so the stream-hook.py
+        // can write events to it. This will only work once hooks are in a published gemini release.
+        process.environment?["GEMINI_STREAM_FILE"] = streamFilePath
         let workDir = QuickPromptView.resolveWorkingDirectory()
-        // Validate the directory exists — if not, fall back to home to avoid a cryptic crash
         let resolvedWorkDir: URL
         if FileManager.default.fileExists(atPath: workDir.path) {
             resolvedWorkDir = workDir
@@ -1126,7 +1366,6 @@ struct QuickPromptChatView: View {
         do {
             try process.run()
             
-            // Run blocking I/O on a background thread to avoid beach ball
             let (output, stderr, status) = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -1142,25 +1381,39 @@ struct QuickPromptChatView: View {
                 }
             }
             
+            // Give the watcher a moment to process any remaining events
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            
             currentProcess = nil
+            watcher.stop()
+            self.streamWatcher = nil
+            
             if status == 15 || status == 9 {
                 error = "Generation stopped"
             } else if status != 0 && output.isEmpty {
                 error = stderr.isEmpty
                     ? "CLI exited with code \(status)"
                     : String(stderr.prefix(300))
-            } else if output.isEmpty {
-                error = "Empty response from Gemini"
-            } else {
-                let parsed = parseGeminiJSON(output)
-                messages.append(ChatMessage(role: "assistant", content: parsed.text ?? output))
-                    hasActiveSession = true
+            } else if !receivedStreamEvents {
+                // Fallback: hooks didn't fire, use the full JSON output
+                if output.isEmpty {
+                    error = "Empty response from Gemini"
+                } else {
+                    let parsed = parseGeminiJSON(output)
+                    messages.append(ChatMessage(role: "assistant", content: parsed.text ?? output))
+                }
             }
+            // If we received stream events, the message is already built
+            hasActiveSession = true
             isLoading = false
+            streamingStatus = "Thinking…"
         } catch {
             currentProcess = nil
+            watcher.stop()
+            self.streamWatcher = nil
             self.error = error.localizedDescription
             isLoading = false
+            streamingStatus = "Thinking…"
         }
     }
     
