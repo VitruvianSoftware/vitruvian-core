@@ -14,6 +14,13 @@ private func carbonHotkeyHandler(
     return noErr
 }
 
+// MARK: - Custom Panel
+/// An NSPanel subclass that overrides `canBecomeKey` to allow text input without a title bar.
+class QuickPromptPanel: NSPanel {
+    override var canBecomeKey: Bool { return true }
+    override var canBecomeMain: Bool { return true }
+}
+
 /// A Spotlight-style floating panel for quickly sending prompts to Gemini CLI.
 class QuickPromptWindowController {
     static let shared = QuickPromptWindowController()
@@ -157,26 +164,48 @@ class QuickPromptWindowController {
         
         guard let window = window else { return }
         
+        // Position: centered horizontally, upper-third of screen (like Spotlight)
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let windowWidth: CGFloat = 600
-            let windowHeight: CGFloat = 350
+            let windowWidth: CGFloat = 680
+            let windowHeight: CGFloat = 400
             let x = screenFrame.midX - windowWidth / 2
-            let y = screenFrame.maxY - windowHeight - 120
+            let y = screenFrame.maxY - windowHeight - (screenFrame.height * 0.18)
             window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
         }
         
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         
-        // Force focus on the text field after the window is fully key
+        // Force focus on the text field
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let window = self?.window else { return }
             window.makeKey()
-            // Find and focus the first NSTextField in the view hierarchy
             if let textField = self?.findTextField(in: window.contentView) {
                 window.makeFirstResponder(textField)
             }
+        }
+        
+        // Click-outside-to-dismiss (Spotlight behavior)
+        addClickOutsideMonitor()
+    }
+    
+    private var clickOutsideMonitor: Any?
+    
+    private func addClickOutsideMonitor() {
+        removeClickOutsideMonitor()
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let window = self?.window, window.isVisible else { return }
+            DispatchQueue.main.async {
+                self?.dismiss()
+            }
+        }
+    }
+    
+    private func removeClickOutsideMonitor() {
+        if let monitor = clickOutsideMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickOutsideMonitor = nil
         }
     }
     
@@ -192,13 +221,17 @@ class QuickPromptWindowController {
     
     func dismiss() {
         window?.orderOut(nil)
+        removeClickOutsideMonitor()
         // Pre-fetch fresh sessions in background so they're ready next time
-        DispatchQueue.global(qos: .utility).async {
-            let output = QuickPromptView.runListSessions()
-            let parsed = QuickPromptView.parseSessions(output)
-            DispatchQueue.main.async {
-                SessionCache.shared.sessions = parsed
-                SessionCache.shared.hasLoaded = true
+        DispatchQueue.main.async {
+            let workDir = QuickPromptView.resolveWorkingDirectory()
+            DispatchQueue.global(qos: .utility).async {
+                let output = QuickPromptView.runListSessions(workingDirectory: workDir)
+                let parsed = QuickPromptView.parseSessions(output)
+                DispatchQueue.main.async {
+                    SessionCache.shared.sessions = parsed
+                    SessionCache.shared.hasLoaded = true
+                }
             }
         }
     }
@@ -216,9 +249,10 @@ class QuickPromptWindowController {
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = .clear
         
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 350),
-            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .resizable],
+        // Spotlight-style panel: no title bar, no chrome
+        let panel = QuickPromptPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
+            styleMask: [.nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -230,14 +264,16 @@ class QuickPromptWindowController {
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
+        panel.hasShadow = true
         
+        // Spotlight-style vibrancy material  
         let visualEffect = NSVisualEffectView()
-        visualEffect.material = .hudWindow
+        visualEffect.material = .popover
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.autoresizingMask = [.width, .height]
         visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 12
+        visualEffect.layer?.cornerRadius = 22
         visualEffect.layer?.masksToBounds = true
         
         hosting.autoresizingMask = [.width, .height]
@@ -261,9 +297,9 @@ class QuickPromptWindowController {
     private func expandAndShowChat(_ chatView: QuickPromptChatView) {
         guard let window = window else { return }
         
-        window.minSize = NSSize(width: 600, height: 400)
+        window.minSize = NSSize(width: 680, height: 400)
         
-        let targetSize = NSSize(width: 600, height: 450)
+        let targetSize = NSSize(width: 680, height: 500)
         let currentFrame = window.frame
         let newOriginY = currentFrame.origin.y + currentFrame.height - targetSize.height
         let newFrame = NSRect(
@@ -279,12 +315,12 @@ class QuickPromptWindowController {
         hosting.layer?.backgroundColor = .clear
         
         let visualEffect = NSVisualEffectView()
-        visualEffect.material = .hudWindow
+        visualEffect.material = .popover
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.autoresizingMask = [.width, .height]
         visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 12
+        visualEffect.layer?.cornerRadius = 22
         visualEffect.layer?.masksToBounds = true
         
         hosting.autoresizingMask = [.width, .height]
@@ -322,11 +358,13 @@ struct QuickPromptView: View {
     @State private var prompt: String = ""
     @State private var sessions: [SessionInfo] = SessionCache.shared.sessions
     @State private var loadingSessions = !SessionCache.shared.hasLoaded
+    @State private var hoveredSessionId: Int? = nil
+    @State private var selectedSessionIndex: Int? = nil
     @FocusState private var isFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
-            // Prompt input row
+            // ── Original Quick Prompt Input Row ──
             HStack(spacing: 12) {
                 Image(systemName: "sparkles")
                     .font(.title2)
@@ -341,8 +379,13 @@ struct QuickPromptView: View {
                     .font(.title3)
                     .focused($isFocused)
                     .onSubmit {
-                        guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                        onSubmit(prompt)
+                        if let selIdx = selectedSessionIndex,
+                           let session = displayedSessions[safe: selIdx] {
+                            onResume(session.id)
+                        } else {
+                            guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                            onSubmit(prompt)
+                        }
                     }
                 
                 Button(action: {
@@ -351,7 +394,7 @@ struct QuickPromptView: View {
                 }) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(prompt.trimmingCharacters(in: .whitespaces).isEmpty ? .white.opacity(0.3) : .blue)
+                        .foregroundStyle(prompt.trimmingCharacters(in: .whitespaces).isEmpty ? Color.primary.opacity(0.15) : .blue)
                 }
                 .buttonStyle(.plain)
                 .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -359,94 +402,161 @@ struct QuickPromptView: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(Color.primary.opacity(0.3))
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             
-            Divider()
+            // ── Results Divider ──
+            if !loadingSessions {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+            }
             
-            // Recent sessions (always visible)
+            // ── Sessions List ──
             if loadingSessions {
+                Spacer()
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Loading sessions…")
-                        .font(.caption)
+                    Text("Loading…")
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spacer()
             } else if sessions.isEmpty {
-                VStack(spacing: 6) {
+                Spacer()
+                VStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.title2)
-                        .foregroundStyle(.secondary.opacity(0.5))
+                        .font(.system(size: 28))
+                        .foregroundStyle(.quaternary)
                     Text("No recent sessions")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spacer()
             } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("RECENT SESSIONS")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
-                    
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(sessions.prefix(8)) { session in
-                                Button(action: {
-                                    onResume(session.id)
-                                }) {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: "bubble.left.and.bubble.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.blue)
-                                            .frame(width: 16)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(session.title)
-                                                .font(.caption)
-                                                .lineLimit(1)
-                                                .foregroundStyle(.primary)
-                                            Text(session.timeAgo)
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "arrow.forward.circle")
-                                            .font(.caption)
-                                            .foregroundStyle(.blue.opacity(0.6))
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Recent")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
+                        
+                        ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
+                            Button(action: {
+                                onResume(session.id)
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "text.bubble")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(.blue)
+                                        .frame(width: 28, height: 28)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color.blue.opacity(0.1))
+                                        )
+                                    
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(session.title)
+                                            .font(.system(size: 13))
+                                            .lineLimit(1)
+                                            .foregroundStyle(.primary)
+                                        Text(session.timeAgo)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
                                     }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 7)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.white.opacity(0.05))
-                                    )
-                                    .contentShape(Rectangle())
+                                    
+                                    Spacer()
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(
+                                            selectedSessionIndex == idx
+                                                ? Color.blue.opacity(0.2)
+                                                : (hoveredSessionId == session.id
+                                                   ? Color.primary.opacity(0.06)
+                                                   : Color.clear)
+                                        )
+                                )
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .onHover { isHovering in
+                                hoveredSessionId = isHovering ? session.id : nil
+                                if isHovering { selectedSessionIndex = nil }
+                            }
+                            .padding(.horizontal, 8)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 6)
                     }
+                    .padding(.bottom, 8)
                 }
             }
         }
         .onAppear {
             isFocused = true
             loadSessions()
+            setupKeyboardMonitor()
+        }
+        .onDisappear {
+            removeKeyboardMonitor()
         }
         .onExitCommand { onDismiss() }
+    }
+    
+    // Keyboard Event Monitor
+    @State private var eventMonitor: Any?
+    
+    private func setupKeyboardMonitor() {
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // 125 = Down arrow, 126 = Up arrow, 36 = Return
+            if event.keyCode == 125 {
+                moveSelection(down: true)
+                return nil // consume event
+            } else if event.keyCode == 126 {
+                moveSelection(down: false)
+                return nil // consume event
+            }
+            return event
+        }
+    }
+    
+    private func removeKeyboardMonitor() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
+    
+    private func moveSelection(down: Bool) {
+        let count = displayedSessions.count
+        guard count > 0 else { return }
+        
+        if down {
+            if let current = selectedSessionIndex {
+                selectedSessionIndex = min(current + 1, count - 1)
+            } else {
+                selectedSessionIndex = 0
+            }
+        } else {
+            if let current = selectedSessionIndex {
+                selectedSessionIndex = max(current - 1, 0)
+            } else {
+                selectedSessionIndex = count - 1
+            }
+        }
+    }
+    
+    private var displayedSessions: [SessionInfo] {
+        Array(sessions.prefix(10))
     }
     
     private func loadSessions() {
@@ -454,8 +564,10 @@ struct QuickPromptView: View {
         if SessionCache.shared.hasLoaded {
             loadingSessions = false
         }
+        // Capture working directory on main thread before background dispatch
+        let workDir = Self.resolveWorkingDirectory()
         DispatchQueue.global(qos: .userInitiated).async {
-            let output = Self.runListSessions()
+            let output = Self.runListSessions(workingDirectory: workDir)
             let parsed = Self.parseSessions(output)
             DispatchQueue.main.async {
                 sessions = parsed
@@ -466,12 +578,13 @@ struct QuickPromptView: View {
         }
     }
     
-    /// Resolve the working directory for Gemini CLI (project-specific sessions).
-    /// Reads from ConfigManager (Settings UI), falls back to env var, then home.
-    @MainActor static var geminiWorkingDirectory: URL {
-        let configDir = ConfigManager.shared.workingDirectory
-        if !configDir.isEmpty {
-            return URL(fileURLWithPath: configDir)
+    /// Resolve the working directory — must be called from main thread.
+    @MainActor static func resolveWorkingDirectory() -> URL {
+        if let config = ConfigManager.shared {
+            let configDir = config.workingDirectory
+            if !configDir.isEmpty {
+                return URL(fileURLWithPath: configDir)
+            }
         }
         if let dir = ProcessInfo.processInfo.environment["GEMINI_WORKING_DIR"] {
             return URL(fileURLWithPath: dir)
@@ -479,13 +592,13 @@ struct QuickPromptView: View {
         return URL(fileURLWithPath: NSHomeDirectory())
     }
     
-    static func runListSessions() -> String {
+    static func runListSessions(workingDirectory: URL? = nil) -> String {
         let process = Process()
         let pipe = Pipe()
         let geminiBin = ProcessInfo.processInfo.environment["GEMINI_BIN"]
             ?? "/opt/homebrew/bin/gemini"
         process.executableURL = URL(fileURLWithPath: geminiBin)
-        process.currentDirectoryURL = geminiWorkingDirectory
+        process.currentDirectoryURL = workingDirectory ?? URL(fileURLWithPath: NSHomeDirectory())
         process.arguments = ["--list-sessions"]
         process.standardOutput = pipe
         process.standardError = pipe
@@ -546,16 +659,12 @@ struct QuickPromptChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.headline)
-                    .foregroundStyle(.linearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(.secondary)
                 Text("Gemini Chat")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .medium))
                 Spacer()
                 
                 Button(action: {
@@ -566,7 +675,7 @@ struct QuickPromptChatView: View {
                     isInputFocused = true
                 }) {
                     Image(systemName: "plus.circle")
-                        .font(.title3)
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -576,15 +685,18 @@ struct QuickPromptChatView: View {
                     QuickPromptWindowController.shared.dismiss()
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 16))
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
             
-            Divider()
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
             
             // Messages
             ScrollViewReader { proxy in
@@ -755,7 +867,7 @@ struct QuickPromptChatView: View {
         process.standardError = errPipe
         process.environment = ProcessInfo.processInfo.environment
         process.environment?["NO_COLOR"] = "1"
-        process.currentDirectoryURL = QuickPromptView.geminiWorkingDirectory
+        process.currentDirectoryURL = QuickPromptView.resolveWorkingDirectory()
         currentProcess = process
         
         do {
@@ -815,7 +927,7 @@ struct QuickPromptChatView: View {
         process.standardError = errPipe
         process.environment = ProcessInfo.processInfo.environment
         process.environment?["NO_COLOR"] = "1"
-        process.currentDirectoryURL = QuickPromptView.geminiWorkingDirectory
+        process.currentDirectoryURL = QuickPromptView.resolveWorkingDirectory()
         currentProcess = process
         
         do {
@@ -1097,5 +1209,16 @@ struct CodeBlockView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.black.opacity(0.35))
         )
+    }
+}
+
+// MARK: - Keyboard Navigation Helper
+
+/// An invisible NSView that captures ↑↓ arrow key events for session list navigation.
+// MARK: - Safe Collection Subscript
+
+extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
