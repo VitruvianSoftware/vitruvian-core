@@ -4,3 +4,4 @@ node_modules/
 .bot.pid
 .DS_Store
 macos/.build/
+.bot-sessions.json

@@ -222,25 +222,13 @@ class QuickPromptWindowController {
     func dismiss() {
         window?.orderOut(nil)
         removeClickOutsideMonitor()
-        // Pre-fetch fresh sessions in background so they're ready next time
-        DispatchQueue.main.async {
-            let workDir = QuickPromptView.resolveWorkingDirectory()
-            DispatchQueue.global(qos: .utility).async {
-                let output = QuickPromptView.runListSessions(workingDirectory: workDir)
-                let parsed = QuickPromptView.parseSessions(output)
-                DispatchQueue.main.async {
-                    SessionCache.shared.sessions = parsed
-                    SessionCache.shared.hasLoaded = true
-                }
-            }
-        }
     }
     
     private func createWindow() {
         let promptView = QuickPromptView(onSubmit: { [weak self] prompt in
             self?.runPrompt(prompt)
-        }, onResume: { [weak self] sessionIndex in
-            self?.resumeSession(sessionIndex)
+        }, onResume: { [weak self] sessionIndex, sessionUUID in
+            self?.resumeSession(sessionIndex, uuid: sessionUUID)
         }, onDismiss: { [weak self] in
             self?.dismiss()
         })
@@ -287,11 +275,11 @@ class QuickPromptWindowController {
     }
     
     private func runPrompt(_ prompt: String) {
-        expandAndShowChat(QuickPromptChatView(initialPrompt: prompt, resumeIndex: nil))
+        expandAndShowChat(QuickPromptChatView(initialPrompt: prompt, resumeIndex: nil, resumeUUID: nil))
     }
     
-    private func resumeSession(_ index: Int) {
-        expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index))
+    private func resumeSession(_ index: Int, uuid: String) {
+        expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid))
     }
     
     private func expandAndShowChat(_ chatView: QuickPromptChatView) {
@@ -335,13 +323,6 @@ class QuickPromptWindowController {
 
 // MARK: - Session Info Model
 
-/// Simple in-memory cache for sessions across Quick Prompt opens.
-class SessionCache {
-    static let shared = SessionCache()
-    var sessions: [SessionInfo] = []
-    var hasLoaded = false
-}
-
 struct SessionInfo: Identifiable {
     let id: Int  // session index (1-based)
     let title: String
@@ -353,11 +334,11 @@ struct SessionInfo: Identifiable {
 
 struct QuickPromptView: View {
     let onSubmit: (String) -> Void
-    let onResume: (Int) -> Void
+    let onResume: (Int, String) -> Void
     let onDismiss: () -> Void
     @State private var prompt: String = ""
-    @State private var sessions: [SessionInfo] = SessionCache.shared.sessions
-    @State private var loadingSessions = !SessionCache.shared.hasLoaded
+    @State private var sessions: [SessionInfo] = []
+    @State private var loadingSessions = true
     @State private var hoveredSessionId: Int? = nil
     @State private var selectedSessionIndex: Int? = nil
     @FocusState private var isFocused: Bool
@@ -381,7 +362,7 @@ struct QuickPromptView: View {
                     .onSubmit {
                         if let selIdx = selectedSessionIndex,
                            let session = displayedSessions[safe: selIdx] {
-                            onResume(session.id)
+                            onResume(session.id, session.uuid)
                         } else {
                             guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                             onSubmit(prompt)
@@ -451,7 +432,7 @@ struct QuickPromptView: View {
                         
                         ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
                             Button(action: {
-                                onResume(session.id)
+                                onResume(session.id, session.uuid)
                             }) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "text.bubble")
@@ -560,20 +541,12 @@ struct QuickPromptView: View {
     }
     
     private func loadSessions() {
-        // If we have cached sessions, show them immediately and refresh in background
-        if SessionCache.shared.hasLoaded {
-            loadingSessions = false
-        }
-        // Capture working directory on main thread before background dispatch
         let workDir = Self.resolveWorkingDirectory()
         DispatchQueue.global(qos: .userInitiated).async {
-            let output = Self.runListSessions(workingDirectory: workDir)
-            let parsed = Self.parseSessions(output)
+            let parsed = SessionFileReader.listSessions(workingDirectory: workDir)
             DispatchQueue.main.async {
                 sessions = parsed
                 loadingSessions = false
-                SessionCache.shared.sessions = parsed
-                SessionCache.shared.hasLoaded = true
             }
         }
     }
@@ -591,47 +564,179 @@ struct QuickPromptView: View {
         }
         return URL(fileURLWithPath: NSHomeDirectory())
     }
-    
-    static func runListSessions(workingDirectory: URL? = nil) -> String {
-        let process = Process()
-        let pipe = Pipe()
-        let geminiBin = ProcessInfo.processInfo.environment["GEMINI_BIN"]
-            ?? "/opt/homebrew/bin/gemini"
-        process.executableURL = URL(fileURLWithPath: geminiBin)
-        process.currentDirectoryURL = workingDirectory ?? URL(fileURLWithPath: NSHomeDirectory())
-        process.arguments = ["--list-sessions"]
-        process.standardOutput = pipe
-        process.standardError = pipe
-        process.environment = ProcessInfo.processInfo.environment
-        process.environment?["NO_COLOR"] = "1"
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            return ""
+}
+
+// MARK: - Session File Reading
+
+/// Utilities for reading Gemini CLI session files directly from disk.
+enum SessionFileReader {
+    /// Resolve the chats directory for the current working directory.
+    /// Reads ~/.gemini/projects.json to map working dir → project slug,
+    /// then returns ~/.gemini/tmp/{slug}/chats/
+    static func resolveChatsDirectory(workingDirectory: URL) -> URL? {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let registryPath = homeDir.appendingPathComponent(".gemini/projects.json")
+        
+        guard let data = try? Data(contentsOf: registryPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let projects = json["projects"] as? [String: String] else {
+            return nil
         }
+        
+        let workDir = workingDirectory.path
+        guard let slug = projects[workDir] else { return nil }
+        
+        return homeDir.appendingPathComponent(".gemini/tmp/\(slug)/chats")
     }
     
-    /// Parse `gemini --list-sessions` output into SessionInfo array.
-    /// Format: "  1. Title text (time ago) [uuid]"
-    static func parseSessions(_ output: String) -> [SessionInfo] {
+    /// List all sessions by reading JSON files from the chats directory.
+    /// Returns SessionInfo array sorted newest-first.
+    static func listSessions(workingDirectory: URL) -> [SessionInfo] {
+        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else {
+            return []
+        }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDir.path) else {
+            return []
+        }
+        
+        let sessionFiles = files.filter { $0.hasPrefix("session-") && $0.hasSuffix(".json") }.sorted()
+        
         var sessions: [SessionInfo] = []
-        let pattern = #"^\s*(\d+)\.\s+(.+?)\s+\(([^)]+)\)\s+\[([^\]]+)\]"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines) else {
-            return sessions
+        for (index, fileName) in sessionFiles.enumerated() {
+            let filePath = chatsDir.appendingPathComponent(fileName)
+            guard let data = try? Data(contentsOf: filePath),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let sessionId = json["sessionId"] as? String,
+                  let messages = json["messages"] as? [[String: Any]],
+                  let lastUpdated = json["lastUpdated"] as? String else {
+                continue
+            }
+            
+            // Skip subagent sessions
+            if let kind = json["kind"] as? String, kind == "subagent" { continue }
+            
+            // Skip sessions with no user or assistant messages
+            let hasContent = messages.contains { msg in
+                let type = msg["type"] as? String
+                return type == "user" || type == "gemini"
+            }
+            guard hasContent else { continue }
+            
+            // Use summary if available, otherwise extract first user message
+            let title: String
+            if let summary = json["summary"] as? String, !summary.isEmpty {
+                title = String(summary.prefix(100))
+            } else {
+                title = extractFirstUserMessage(from: messages)
+            }
+            
+            let timeAgo = formatRelativeTime(lastUpdated)
+            sessions.append(SessionInfo(id: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId))
         }
-        let nsOutput = output as NSString
-        for match in regex.matches(in: output, range: NSRange(location: 0, length: nsOutput.length)) {
-            guard match.numberOfRanges >= 5 else { continue }
-            let index = Int(nsOutput.substring(with: match.range(at: 1))) ?? 0
-            let title = nsOutput.substring(with: match.range(at: 2)) as String
-            let timeAgo = nsOutput.substring(with: match.range(at: 3)) as String
-            let uuid = nsOutput.substring(with: match.range(at: 4)) as String
-            sessions.append(SessionInfo(id: index, title: title, timeAgo: timeAgo, uuid: uuid))
-        }
+        
+        // Return newest first
         return sessions.reversed()
+    }
+    
+    /// Load messages from a session file identified by UUID.
+    /// Returns an array of ChatMessage if successful, nil otherwise.
+    static func loadSessionMessages(uuid: String, chatsDirectory: URL) -> [ChatMessage]? {
+        // Find the session file by UUID prefix match (filename contains first 8 chars of UUID)
+        let uuidPrefix = String(uuid.prefix(8))
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDirectory.path) else {
+            return nil
+        }
+        
+        let sessionFile = files.first { $0.hasPrefix("session-") && $0.contains(uuidPrefix) && $0.hasSuffix(".json") }
+        guard let fileName = sessionFile else { return nil }
+        
+        let filePath = chatsDirectory.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: filePath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawMessages = json["messages"] as? [[String: Any]] else {
+            return nil
+        }
+        
+        var chatMessages: [ChatMessage] = []
+        for msg in rawMessages {
+            guard let type = msg["type"] as? String else { continue }
+            // Only show user and gemini (assistant) messages
+            guard type == "user" || type == "gemini" else { continue }
+            
+            let content = extractContent(from: msg)
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            
+            let role = type == "user" ? "user" : "assistant"
+            chatMessages.append(ChatMessage(role: role, content: content))
+        }
+        
+        return chatMessages.isEmpty ? nil : chatMessages
+    }
+    
+    /// Extract text content from a message's "content" field.
+    /// Content can be a plain string or an array of {"text": "..."} parts.
+    private static func extractContent(from message: [String: Any]) -> String {
+        // Try displayContent first (cleaned-up version), then fall back to content
+        if let display = extractContentValue(message["displayContent"]) {
+            return display
+        }
+        return extractContentValue(message["content"]) ?? ""
+    }
+    
+    private static func extractContentValue(_ value: Any?) -> String? {
+        guard let value = value else { return nil }
+        
+        // Plain string
+        if let str = value as? String, !str.isEmpty {
+            return str
+        }
+        
+        // Array of parts: [{"text": "..."}]
+        if let parts = value as? [[String: Any]] {
+            let texts = parts.compactMap { $0["text"] as? String }
+            let joined = texts.joined()
+            return joined.isEmpty ? nil : joined
+        }
+        
+        return nil
+    }
+    
+    /// Extract the first user message text for display as a session title.
+    private static func extractFirstUserMessage(from messages: [[String: Any]]) -> String {
+        guard let firstUser = messages.first(where: { ($0["type"] as? String) == "user" }) else {
+            return "Empty conversation"
+        }
+        let content = extractContent(from: firstUser)
+        let cleaned = content
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return String(cleaned.prefix(100))
+    }
+    
+    /// Format an ISO timestamp as a relative time string (e.g., "2 hours ago").
+    private static func formatRelativeTime(_ isoTimestamp: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: isoTimestamp) else {
+            // Try without fractional seconds
+            formatter.formatOptions = [.withInternetDateTime]
+            guard let date = formatter.date(from: isoTimestamp) else { return "" }
+            return relativeString(from: date)
+        }
+        return relativeString(from: date)
+    }
+    
+    private static func relativeString(from date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        let minutes = seconds / 60
+        let hours = minutes / 60
+        let days = hours / 24
+        
+        if days > 0 { return "\(days) day\(days == 1 ? "" : "s") ago" }
+        if hours > 0 { return "\(hours) hour\(hours == 1 ? "" : "s") ago" }
+        if minutes > 0 { return "\(minutes) minute\(minutes == 1 ? "" : "s") ago" }
+        return "Just now"
     }
 }
 
@@ -646,6 +751,7 @@ struct ChatMessage: Identifiable {
 struct QuickPromptChatView: View {
     let initialPrompt: String?
     let resumeIndex: Int?
+    let resumeUUID: String?
     @State private var messages: [ChatMessage] = []
     @State private var followUp: String = ""
     @State private var isLoading = false
@@ -823,7 +929,7 @@ struct QuickPromptChatView: View {
         }
         .task {
             if let resumeIdx = resumeIndex {
-                await resumeToCLI(resumeIdx)
+                loadSessionFromDisk(resumeIdx)
             } else if let prompt = initialPrompt {
                 await sendToCLI(prompt)
             }
@@ -846,64 +952,20 @@ struct QuickPromptChatView: View {
         isLoading = false
     }
     
-    /// Resume an existing session by index using interactive mode.
-    private func resumeToCLI(_ index: Int) async {
-        messages.append(ChatMessage(role: "assistant", content: "Resuming session #\(index)…"))
-        isLoading = true
-        error = nil
-        hasActiveSession = true
+    /// Load an existing session's conversation history from disk.
+    private func loadSessionFromDisk(_ index: Int) {
+        let workDir = QuickPromptView.resolveWorkingDirectory()
         
-        let process = Process()
-        let pipe = Pipe()
-        let errPipe = Pipe()
-        
-        let geminiBin = ProcessInfo.processInfo.environment["GEMINI_BIN"]
-            ?? "/opt/homebrew/bin/gemini"
-        
-        process.executableURL = URL(fileURLWithPath: geminiBin)
-        // Use -p with a greeting + --resume to get the session context
-        process.arguments = ["-p", "Briefly summarize what we discussed previously in 1-2 sentences.", "--resume", String(index), "--output-format", "json", "--approval-mode", "yolo"]
-        process.standardOutput = pipe
-        process.standardError = errPipe
-        process.environment = ProcessInfo.processInfo.environment
-        process.environment?["NO_COLOR"] = "1"
-        process.currentDirectoryURL = QuickPromptView.resolveWorkingDirectory()
-        currentProcess = process
-        
-        do {
-            try process.run()
-            let (output, stderr, status) = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    let out = String(data: outputData, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let err = String(data: errorData, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    continuation.resume(returning: (out, err, process.terminationStatus))
-                }
-            }
-            currentProcess = nil
-            // Remove the "Resuming…" placeholder
-            if let lastIdx = messages.indices.last, messages[lastIdx].content.starts(with: "Resuming") {
-                messages.remove(at: lastIdx)
-            }
-            if status == 15 || status == 9 {
-                error = "Generation stopped"
-            } else if status != 0 && output.isEmpty {
-                error = stderr.isEmpty ? "CLI exited with code \(status)" : String(stderr.prefix(300))
-            } else if output.isEmpty {
-                error = "Empty response"
-            } else {
-                let parsed = parseGeminiJSON(output)
-                messages.append(ChatMessage(role: "assistant", content: parsed.text ?? output))
-            }
-            isLoading = false
-        } catch {
-            currentProcess = nil
-            self.error = error.localizedDescription
-            isLoading = false
+        // Try to load messages from the session JSON file
+        if let uuid = resumeUUID,
+           let chatsDir = SessionFileReader.resolveChatsDirectory(workingDirectory: workDir),
+           let loaded = SessionFileReader.loadSessionMessages(uuid: uuid, chatsDirectory: chatsDir) {
+            messages = loaded
+            hasActiveSession = true
+        } else {
+            // Fallback: show a message indicating we couldn't load history
+            messages = [ChatMessage(role: "assistant", content: "Session resumed. Send a message to continue.")]
+            hasActiveSession = true
         }
     }
     
