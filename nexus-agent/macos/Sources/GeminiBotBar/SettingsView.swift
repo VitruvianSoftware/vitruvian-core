@@ -10,9 +10,101 @@ struct SettingsView: View {
     @State private var newProviderTemplate = ""
     @State private var editingProviderId: UUID? = nil
 
-    var body: some View {
-        Form {
-            // ── AI Backend ──
+        var body: some View {
+        VStack(spacing: 0) {
+            TabView {
+                // Tab 1: General (App & Telegram)
+                Form {
+                    Section(header: Text("App")) {
+                HStack {
+                    Text("Bot Directory")
+                        .frame(width: 120, alignment: .trailing)
+                    TextField("/path/to/gemini-bot", text: $configManager.botDirectoryOverride)
+                        .textFieldStyle(.roundedBorder)
+                        .help("Path to the gemini-bot checkout containing src/bot.js and .env")
+                    Button("Browse") {
+                        selectBotDirectory()
+                    }
+                }
+
+                HStack {
+                    Text("")
+                        .frame(width: 120, alignment: .trailing)
+                    Toggle("Thinking mode (deep reasoning)", isOn: $configManager.thinking)
+                }
+                HStack {
+                    Text("")
+                        .frame(width: 120, alignment: .trailing)
+                    Toggle("Auto-start bot when app launches", isOn: $configManager.autoStart)
+                }
+
+                HStack {
+                    Text("Quick Prompt Hotkey")
+                        .frame(width: 120, alignment: .trailing)
+                    HotkeyRecorderView(
+                        key: $configManager.hotkeyKey,
+                        modifiers: $configManager.hotkeyModifiers
+                    )
+                }
+            }
+                    
+                    Section(header: Text("Telegram")) {
+                HStack {
+                    Text("Bot Token")
+                        .frame(width: 120, alignment: .trailing)
+                    SecureField("From @BotFather", text: $configManager.botToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                HStack {
+                    Text("Allowed User IDs")
+                        .frame(width: 120, alignment: .trailing)
+                    TextField("Comma-separated IDs", text: $configManager.allowedUserIds)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+                }
+                .formStyle(.grouped)
+                .tabItem { Label("General", systemImage: "gearshape") }
+                
+                // Tab 2: Gemini CLI
+                Form {
+                    Section(header: Text("Gemini CLI")) {
+                HStack {
+                    Text("Working Directory")
+                        .frame(width: 120, alignment: .trailing)
+                    TextField("/path/to/project", text: $configManager.workingDirectory)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Browse") {
+                        selectDirectory()
+                    }
+                }
+
+                HStack {
+                    Text("Approval Mode")
+                        .frame(width: 120, alignment: .trailing)
+                    Picker("", selection: $configManager.approvalMode) {
+                        Text("YOLO (auto-approve all)").tag("yolo")
+                        Text("Auto Edit (auto-approve edits)").tag("auto_edit")
+                        Text("Default (prompt for each)").tag("default")
+                    }
+                    .labelsHidden()
+                }
+
+                HStack {
+                    Text("Model")
+                        .frame(width: 120, alignment: .trailing)
+                    TextField("Leave empty for default", text: $configManager.model)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+                }
+                .formStyle(.grouped)
+                .tabItem { Label("Gemini CLI", systemImage: "terminal") }
+
+                // Tab 3: Providers (AI Backend)
+                Form {
+                    // ── AI Backend ──
             Section(header: Text("AI Backend")) {
                 HStack {
                     Text("Active Provider")
@@ -100,86 +192,11 @@ struct SettingsView: View {
                     .foregroundStyle(.blue)
                 }
             }
-
-            Section(header: Text("Telegram")) {
-                HStack {
-                    Text("Bot Token")
-                        .frame(width: 120, alignment: .trailing)
-                    SecureField("From @BotFather", text: $configManager.botToken)
-                        .textFieldStyle(.roundedBorder)
                 }
-
-                HStack {
-                    Text("Allowed User IDs")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("Comma-separated IDs", text: $configManager.allowedUserIds)
-                        .textFieldStyle(.roundedBorder)
-                }
+                .formStyle(.grouped)
+                .tabItem { Label("Providers", systemImage: "network") }
             }
-
-            Section(header: Text("Gemini CLI")) {
-                HStack {
-                    Text("Working Directory")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("/path/to/project", text: $configManager.workingDirectory)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Browse") {
-                        selectDirectory()
-                    }
-                }
-
-                HStack {
-                    Text("Approval Mode")
-                        .frame(width: 120, alignment: .trailing)
-                    Picker("", selection: $configManager.approvalMode) {
-                        Text("YOLO (auto-approve all)").tag("yolo")
-                        Text("Auto Edit (auto-approve edits)").tag("auto_edit")
-                        Text("Default (prompt for each)").tag("default")
-                    }
-                    .labelsHidden()
-                }
-
-                HStack {
-                    Text("Model")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("Leave empty for default", text: $configManager.model)
-                        .textFieldStyle(.roundedBorder)
-                }
-            }
-
-            Section(header: Text("App")) {
-                HStack {
-                    Text("Bot Directory")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("/path/to/gemini-bot", text: $configManager.botDirectoryOverride)
-                        .textFieldStyle(.roundedBorder)
-                        .help("Path to the gemini-bot checkout containing src/bot.js and .env")
-                    Button("Browse") {
-                        selectBotDirectory()
-                    }
-                }
-
-                HStack {
-                    Text("")
-                        .frame(width: 120, alignment: .trailing)
-                    Toggle("Thinking mode (deep reasoning)", isOn: $configManager.thinking)
-                }
-                HStack {
-                    Text("")
-                        .frame(width: 120, alignment: .trailing)
-                    Toggle("Auto-start bot when app launches", isOn: $configManager.autoStart)
-                }
-
-                HStack {
-                    Text("Quick Prompt Hotkey")
-                        .frame(width: 120, alignment: .trailing)
-                    HotkeyRecorderView(
-                        key: $configManager.hotkeyKey,
-                        modifiers: $configManager.hotkeyModifiers
-                    )
-                }
-            }
-
+            
             // ── Status ──
             HStack {
                 Text(configManager.configStatus)
@@ -226,10 +243,11 @@ struct SettingsView: View {
                     .buttonStyle(.bordered)
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
         }
-        .formStyle(.grouped)
         .padding()
-        .frame(minWidth: 480, minHeight: 520)
+        .frame(minWidth: 520, maxWidth: .infinity, minHeight: 460, maxHeight: .infinity)
     }
 
     private func selectDirectory() {
