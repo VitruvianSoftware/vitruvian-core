@@ -15,6 +15,45 @@ const TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '300000', 10);
 const APPROVAL_MODE = process.env.GEMINI_APPROVAL_MODE || 'yolo';
 const MODEL = process.env.GEMINI_MODEL || '';
 const THINKING = process.env.GEMINI_THINKING === 'true';
+const CLI_PROVIDER = process.env.CLI_PROVIDER || 'gemini';
+const CLI_COMMAND_TEMPLATE = process.env.CLI_COMMAND_TEMPLATE || '';
+
+/**
+ * Parse a provider command template into [executable, ...args] by tokenising
+ * the string and substituting {prompt} and {model} as verbatim literal values.
+ * Supports single and double-quoted tokens. Never passes through a shell.
+ * @param {string} template - Command template string
+ * @param {string} prompt - User's prompt to substitute
+ * @param {string} model - Active model name to substitute
+ * @returns {{ bin: string, args: string[] } | null}
+ */
+function buildProviderArgs(template, prompt, model) {
+  const tokens = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (const c of template) {
+    if (c === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (c === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (c === ' ' && !inSingle && !inDouble) {
+      if (current) { tokens.push(current); current = ''; }
+    } else {
+      current += c;
+    }
+  }
+  if (current) tokens.push(current);
+  if (!tokens.length) return null;
+
+  const activeModel = model || 'gemma4:31b-cloud';
+  const resolved = tokens.map((t) => t
+    .replaceAll('{prompt}', prompt)
+    .replaceAll('{model}', activeModel),
+  );
+  return { bin: resolved[0], args: resolved.slice(1) };
+}
 
 /**
  * Get effective settings for a chat (merges defaults with per-chat overrides).
@@ -65,6 +104,48 @@ export async function executePrompt(prompt, { chatId } = {}) {
     workingDir: WORKING_DIR, model: MODEL, approvalMode: APPROVAL_MODE, sandbox: false, thinking: THINKING,
   };
 
+  // ── Custom provider path ──────────────────────────────────────────────────
+  if (CLI_PROVIDER !== 'gemini' && CLI_COMMAND_TEMPLATE) {
+    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
+    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      const errChunks = [];
+      const timeout = TIMEOUT_MS;
+
+      const proc = spawn(parsed.bin, parsed.args, {
+        cwd: settings.workingDir,
+        timeout,
+        shell: false,
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+
+      if (chatId) runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+
+      proc.stdout.on('data', (data) => chunks.push(data));
+      proc.stderr.on('data', (data) => errChunks.push(data));
+
+      proc.on('close', (code) => {
+        if (chatId) runningProcesses.delete(chatId);
+        const stdout = Buffer.concat(chunks).toString('utf-8').trim();
+        const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+        if (code !== 0 && !stdout) {
+          reject(new Error(`Provider exited with code ${code}: ${stderr || 'unknown error'}`));
+          return;
+        }
+        // Plain text — no session tracking for custom providers
+        resolve({ text: stdout || stderr || 'No response from provider.' });
+      });
+
+      proc.on('error', (err) => {
+        if (chatId) runningProcesses.delete(chatId);
+        reject(new Error(`Failed to start provider: ${err.message}`));
+      });
+    });
+  }
+
+  // ── Gemini CLI path (unchanged) ───────────────────────────────────────────
   const args = [
     '-p', prompt,
     '--output-format', 'json',
@@ -155,6 +236,50 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
     workingDir: WORKING_DIR, model: MODEL, approvalMode: APPROVAL_MODE, sandbox: false, thinking: THINKING,
   };
 
+  // ── Custom provider path ──────────────────────────────────────────────────
+  if (CLI_PROVIDER !== 'gemini' && CLI_COMMAND_TEMPLATE) {
+    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
+    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+
+    return new Promise((resolve, reject) => {
+      let accumulatedText = '';
+      const errChunks = [];
+
+      const proc = spawn(parsed.bin, parsed.args, {
+        cwd: settings.workingDir,
+        timeout: TIMEOUT_MS,
+        shell: false,
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+
+      if (chatId) runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+
+      proc.stdout.on('data', (data) => {
+        const chunk = data.toString('utf-8');
+        accumulatedText += chunk;
+        if (onChunk) onChunk(accumulatedText);
+      });
+
+      proc.stderr.on('data', (data) => errChunks.push(data));
+
+      proc.on('close', (code) => {
+        if (chatId) runningProcesses.delete(chatId);
+        const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+        if (code !== 0 && !accumulatedText) {
+          reject(new Error(`Provider exited with code ${code}: ${stderr || 'unknown error'}`));
+          return;
+        }
+        resolve({ text: accumulatedText || 'No response from provider.' });
+      });
+
+      proc.on('error', (err) => {
+        if (chatId) runningProcesses.delete(chatId);
+        reject(new Error(`Failed to start provider: ${err.message}`));
+      });
+    });
+  }
+
+  // ── Gemini CLI path (unchanged) ───────────────────────────────────────────
   const args = [
     '-p', prompt,
     '--output-format', 'stream-json',
@@ -166,6 +291,7 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
   const existingSession = chatId ? getPersistedSession(chatId) : null;
   if (existingSession) args.push('-r', existingSession);
+
 
   return new Promise((resolve, reject) => {
     let accumulatedText = '';

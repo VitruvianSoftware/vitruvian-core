@@ -73,3 +73,68 @@ CLI hooks support which is **not yet available** in any published release.
 - `AfterModel` fires per-chunk — the `llm_response.candidates[0].content.parts` structure should be validated against the actual hook payload
 - `thought` parts (reasoning tokens) may or may not appear; currently written as `{"type":"thinking","text":"..."}`
 - If hooks don't fire, `sendToCLI()` falls back to full JSON output via `readDataToEndOfFile` — this fallback path should still work
+
+---
+
+# TODO: Gemini CLI Git Worktrees — Quick Prompt Integration
+
+**Tag for search:** `TODO_GEMINI_WORKTREES`
+
+```
+git grep TODO_GEMINI_WORKTREES
+```
+
+## Background
+
+Gemini CLI supports git worktrees as an experimental feature (`--worktree` flag,
+`experimental.worktrees: true` in settings). This allows Gemini to work in an
+isolated worktree + branch, keeping the main working tree clean.
+
+We want to add a feature to the macOS Quick Prompt so that when the working
+directory is a git repo, the user can optionally start a worktree session for
+the current prompt — useful for agentic tasks that touch files.
+
+- **Available in:** upstream `main` branch only — **not in gemini v0.35.1**
+- **Setting:** `{"experimental": {"worktrees": true}}` in `settings.json`
+- **Flag:** `gemini --worktree <name>` or `gemini -w`
+
+## Planned Feature: Quick Prompt Worktree Support
+
+When a user opens the Quick Prompt in a git repo directory, offer a "Use
+worktree" toggle that passes `--worktree <name>` to the CLI. This ensures
+agentic file edits happen on an isolated branch.
+
+### Planned UX
+- Detect if the working directory is a git repo (`git rev-parse --git-dir`)
+- Show a branch/worktree icon toggle in the Quick Prompt header
+- When enabled, pass `--worktree <auto-name>` to `gemini -p`
+- Show the worktree branch name as a status badge during generation
+
+### Files to Modify
+- `macos/Sources/GeminiBotBar/QuickPromptWindow.swift` — add git repo detection,
+  worktree toggle UI, and `--worktree` arg in `sendToCLI()`
+
+## Verification Steps (Once New Release Is Out)
+
+1. **Upgrade gemini:** `brew upgrade gemini` → confirm version > `0.35.1`
+
+2. **Check `--worktree` flag is available:**
+   ```bash
+   gemini --help | grep worktree
+   ```
+
+3. **Enable via settings:**
+   ```json
+   { "experimental": { "worktrees": true } }
+   ```
+
+4. **Test manually:**
+   ```bash
+   cd /some/git/repo
+   gemini --worktree test-branch -p "list files" --output-format json --approval-mode yolo
+   # Should create .gemini/worktrees/test-branch/ and a branch worktree-test-branch
+   git worktree list
+   ```
+
+5. **Implement Quick Prompt integration** using `TODO_GEMINI_WORKTREES` tag as a
+   breadcrumb to find the right place to add `--worktree` arg in `sendToCLI()`.

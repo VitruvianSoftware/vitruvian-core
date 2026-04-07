@@ -1053,8 +1053,23 @@ struct QuickPromptChatView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .light))
                     .foregroundStyle(.secondary)
-                Text("Gemini Chat")
+                Text("Chat")
                     .font(.system(size: 16, weight: .medium))
+
+                // Subtle active provider badge
+                if let config = ConfigManager.shared {
+                    let providerName = config.activeProvider.name
+                    Text(providerName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                }
+
                 Spacer()
                 
                 Button(action: {
@@ -1263,7 +1278,20 @@ struct QuickPromptChatView: View {
         isLoading = true
         error = nil
         streamingStatus = "Thinking…"
-        
+
+        // Determine which provider is active
+        let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.gemini
+        let isGemini = provider.id == CLIProvider.gemini.id
+
+        if isGemini {
+            await runGeminiProvider(prompt: prompt)
+        } else {
+            await runCustomProvider(prompt: prompt, provider: provider)
+        }
+    }
+
+    /// Existing Gemini CLI path — unchanged, keeps JSON parsing + stream hooks + session resume.
+    private func runGeminiProvider(prompt: String) async {
         // Create a unique stream file for this request
         let streamId = UUID().uuidString.prefix(8)
         let streamFilePath = "/tmp/gemini-stream-\(streamId).jsonl"
@@ -1416,7 +1444,197 @@ struct QuickPromptChatView: View {
             streamingStatus = "Thinking…"
         }
     }
-    
+
+    // MARK: - Custom Provider Runner
+
+    /// Run any non-Gemini provider by parsing its command template into an argv array
+    /// and spawning directly via Process (never via shell). Streams stdout to the UI in real-time.
+    private func runCustomProvider(prompt: String, provider: CLIProvider) async {
+        let model = ConfigManager.shared?.model ?? ""
+        guard let (executable, args) = parseProviderTemplate(provider.commandTemplate, prompt: prompt, model: model) else {
+            error = "Invalid command template: \(provider.commandTemplate)"
+            isLoading = false
+            return
+        }
+
+        // Resolve the executable to a full path — Process requires an absolute path,
+        // it does NOT search PATH automatically unlike a shell invocation.
+        guard let resolvedExecutable = resolveExecutablePath(executable) else {
+            error = "Could not find '\(executable)' in PATH. Is it installed?"
+            isLoading = false
+            return
+        }
+
+        let process = Process()
+        let pipe = Pipe()
+        let errPipe = Pipe()
+
+        let extraPaths = [
+            "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        let currentPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        let augmentedPath = (extraPaths + [currentPath]).joined(separator: ":")
+
+        process.executableURL = URL(fileURLWithPath: resolvedExecutable)
+        process.arguments = args
+        process.standardOutput = pipe
+        process.standardError = errPipe
+        process.environment = ProcessInfo.processInfo.environment
+        process.environment?["NO_COLOR"] = "1"
+        process.environment?["PATH"] = augmentedPath
+
+        let workDir = QuickPromptView.resolveWorkingDirectory()
+        process.currentDirectoryURL = FileManager.default.fileExists(atPath: workDir.path)
+            ? workDir : URL(fileURLWithPath: NSHomeDirectory())
+
+        currentProcess = process
+
+        // QuickPromptChatView is a SwiftUI struct — [weak self] is invalid in struct closures.
+        // We accumulate stdout chunks via readabilityHandler and resolve the full text
+        // via withCheckedContinuation, then update @State on the main actor after exit.
+        do {
+            try process.run()
+
+            let (output, stderr, status) = await withCheckedContinuation { continuation in
+                var chunks: [Data] = []
+                var errChunks: [Data] = []
+                let group = DispatchGroup()
+                group.enter()
+
+                pipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if data.isEmpty {
+                        // EOF — stop handler before signalling done
+                        handle.readabilityHandler = nil
+                        group.leave()
+                    } else {
+                        chunks.append(data)
+                        // Update streaming status on main
+                        if let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty {
+                            DispatchQueue.main.async {
+                                // Post a notification so the view's .onReceive can pick it up
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("ProviderChunk"),
+                                    object: chunk
+                                )
+                            }
+                        }
+                    }
+                }
+
+                errPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if !data.isEmpty { errChunks.append(data) }
+                }
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    process.waitUntilExit()
+                    // Drain any remaining data
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    errPipe.fileHandleForReading.readabilityHandler = nil
+                    let remaining = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if !remaining.isEmpty { chunks.append(remaining) }
+
+                    let out = String(data: Data(chunks.joined()), encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let err = String(data: Data(errChunks.joined()), encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    continuation.resume(returning: (out, err, process.terminationStatus))
+                }
+            }
+
+            currentProcess = nil
+
+            if status == 15 || status == 9 {
+                error = "Generation stopped"
+            } else if status != 0 && output.isEmpty {
+                error = stderr.isEmpty ? "Process exited with code \(status)" : String(stderr.prefix(300))
+            } else if !output.isEmpty {
+                messages.append(ChatMessage(role: "assistant", content: output))
+            } else {
+                error = "No output from provider"
+            }
+
+            isLoading = false
+            streamingStatus = "Thinking…"
+        } catch {
+            pipe.fileHandleForReading.readabilityHandler = nil
+            currentProcess = nil
+            self.error = error.localizedDescription
+            isLoading = false
+            streamingStatus = "Thinking…"
+        }
+    }
+
+
+    // MARK: - Template Parser
+
+    /// Parse a provider command template into (executable, [args]) by tokenising
+    /// the string and substituting {prompt} and {model} as verbatim literal values.
+    /// Supports single and double quoted tokens. Returns nil if the template is empty.
+    private func parseProviderTemplate(_ template: String, prompt: String, model: String) -> (String, [String])? {
+        var tokens: [String] = []
+        var current = ""
+        var inSingle = false
+        var inDouble = false
+        let chars = Array(template)
+        var i = 0
+
+        while i < chars.count {
+            let c = chars[i]
+            if c == "'" && !inDouble {
+                inSingle.toggle()
+            } else if c == "\"" && !inSingle {
+                inDouble.toggle()
+            } else if c == " " && !inSingle && !inDouble {
+                if !current.isEmpty { tokens.append(current); current = "" }
+            } else {
+                current.append(c)
+            }
+            i += 1
+        }
+        if !current.isEmpty { tokens.append(current) }
+
+        guard !tokens.isEmpty else { return nil }
+
+        let activeModel = model.isEmpty ? "gemma4:31b-cloud" : model
+        let resolved = tokens.map { token in
+            token
+                .replacingOccurrences(of: "{prompt}", with: prompt)
+                .replacingOccurrences(of: "{model}", with: activeModel)
+        }
+
+        return (resolved[0], Array(resolved.dropFirst()))
+    }
+
+    // MARK: - Executable Resolution
+
+    /// Resolve a bare command name (e.g. "ollama") to its full absolute path
+    /// by searching the augmented PATH. Process requires an absolute path —
+    /// it does NOT search PATH automatically unlike a shell invocation.
+    private func resolveExecutablePath(_ name: String) -> String? {
+        // Already absolute — verify it exists
+        if name.hasPrefix("/") {
+            return FileManager.default.fileExists(atPath: name) ? name : nil
+        }
+        let extraDirs = [
+            "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ]
+        let envPath = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        var seen = Set<String>()
+        let searchDirs = (extraDirs + envPath.split(separator: ":").map(String.init))
+            .filter { seen.insert($0).inserted }
+        for dir in searchDirs {
+            let candidate = (dir as NSString).appendingPathComponent(name)
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
     // MARK: - JSON Parsing
     
     private struct ParsedResponse { var text: String?; var sessionId: String? }

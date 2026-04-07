@@ -5,9 +5,102 @@ struct SettingsView: View {
     @ObservedObject var configManager: ConfigManager
     @ObservedObject var botManager: BotManager
     @State private var showSaveConfirmation = false
+    @State private var showAddProviderForm = false
+    @State private var newProviderName = ""
+    @State private var newProviderTemplate = ""
+    @State private var editingProviderId: UUID? = nil
 
     var body: some View {
         Form {
+            // ── AI Backend ──
+            Section(header: Text("AI Backend")) {
+                HStack {
+                    Text("Active Provider")
+                        .frame(width: 120, alignment: .trailing)
+                    Picker("", selection: $configManager.activeProviderId) {
+                        ForEach(configManager.providers) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                // Provider list
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach($configManager.providers) { $provider in
+                        ProviderRow(
+                            provider: $provider,
+                            isActive: configManager.activeProviderId == provider.id,
+                            isEditing: editingProviderId == provider.id,
+                            onEdit: { editingProviderId = editingProviderId == provider.id ? nil : provider.id },
+                            onDelete: provider.isBuiltIn ? nil : {
+                                configManager.providers.removeAll { $0.id == provider.id }
+                                if configManager.activeProviderId == provider.id {
+                                    configManager.activeProviderId = CLIProvider.gemini.id
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // Add custom provider
+                if showAddProviderForm {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Name")
+                                .frame(width: 80, alignment: .trailing)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("e.g. Aider", text: $newProviderName)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                        }
+                        HStack(alignment: .top) {
+                            Text("Command")
+                                .frame(width: 80, alignment: .trailing)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("/usr/local/bin/aider --message \"{prompt}\"", text: $newProviderTemplate)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                        }
+                        Text("Use {prompt} for the user's message, {model} for the active model.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 84)
+                        HStack {
+                            Spacer()
+                            Button("Cancel") {
+                                showAddProviderForm = false
+                                newProviderName = ""
+                                newProviderTemplate = ""
+                            }
+                            .controlSize(.small)
+                            Button("Add") {
+                                guard !newProviderName.isEmpty, !newProviderTemplate.isEmpty else { return }
+                                let p = CLIProvider(id: UUID(), name: newProviderName,
+                                                   commandTemplate: newProviderTemplate, isBuiltIn: false)
+                                configManager.providers.append(p)
+                                showAddProviderForm = false
+                                newProviderName = ""
+                                newProviderTemplate = ""
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newProviderName.isEmpty || newProviderTemplate.isEmpty)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    Button("+ Add Custom Provider") {
+                        showAddProviderForm = true
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+                }
+            }
+
             Section(header: Text("Telegram")) {
                 HStack {
                     Text("Bot Token")
@@ -161,6 +254,75 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             configManager.botDirectoryOverride = url.path
         }
+    }
+}
+
+// MARK: - Provider Row
+
+/// A single row in the provider list — shows name, truncated template, edit/delete controls.
+struct ProviderRow: View {
+    @Binding var provider: CLIProvider
+    let isActive: Bool
+    let isEditing: Bool
+    let onEdit: () -> Void
+    let onDelete: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                // Active indicator dot
+                Circle()
+                    .fill(isActive ? Color.green : Color.clear)
+                    .frame(width: 6, height: 6)
+                    .overlay(Circle().stroke(Color.secondary.opacity(0.4), lineWidth: 1))
+
+                Text(provider.name)
+                    .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                    .foregroundStyle(isActive ? .primary : .secondary)
+
+                if provider.isBuiltIn {
+                    Text("built-in")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.12)))
+                }
+
+                Spacer()
+
+                Button(isEditing ? "Done" : "Edit") {
+                    onEdit()
+                }
+                .controlSize(.mini)
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+
+                if let onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if isEditing {
+                TextField("Command template", text: $provider.commandTemplate)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .padding(.leading, 14)
+            } else {
+                Text(provider.commandTemplate)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.leading, 14)
+            }
+        }
+        .padding(.vertical, 3)
     }
 }
 

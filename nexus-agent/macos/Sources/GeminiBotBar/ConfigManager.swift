@@ -1,6 +1,33 @@
 import SwiftUI
 import Foundation
 
+// MARK: - CLI Provider Model
+
+/// Represents a CLI backend that can handle prompts.
+/// Use `{prompt}` and optionally `{model}` as placeholders in commandTemplate.
+struct CLIProvider: Codable, Identifiable, Equatable {
+    var id: UUID
+    var name: String
+    var commandTemplate: String
+    var isBuiltIn: Bool
+
+    static let gemini = CLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        name: "Gemini CLI",
+        commandTemplate: "/opt/homebrew/bin/gemini -p \"{prompt}\" --output-format json --approval-mode yolo",
+        isBuiltIn: true
+    )
+
+    static let ollama = CLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+        name: "Ollama (claude)",
+        commandTemplate: "ollama launch claude --model {model} -- -p \"{prompt}\"",
+        isBuiltIn: true
+    )
+
+    static let builtIns: [CLIProvider] = [.gemini, .ollama]
+}
+
 /// Reads and writes the bot's .env configuration file.
 @MainActor
 class ConfigManager: ObservableObject {
@@ -20,6 +47,15 @@ class ConfigManager: ObservableObject {
     // Hotkey config (stored in UserDefaults, not .env)
     @Published var hotkeyKey: String = "g"
     @Published var hotkeyModifiers: Int = 0  // NSEvent.ModifierFlags raw value
+
+    // AI Backend providers (stored in UserDefaults)
+    @Published var providers: [CLIProvider] = CLIProvider.builtIns
+    @Published var activeProviderId: UUID = CLIProvider.gemini.id
+
+    /// The currently selected provider.
+    var activeProvider: CLIProvider {
+        providers.first { $0.id == activeProviderId } ?? CLIProvider.gemini
+    }
     
     var hotkeyDisplayString: String {
         var parts: [String] = []
@@ -48,7 +84,53 @@ class ConfigManager: ObservableObject {
         }
         botDirectoryOverride = UserDefaults.standard.string(forKey: "botDirectory") ?? botDirectory
 
+        // Load providers from UserDefaults
+        loadProviders()
+
         load()
+    }
+
+    // MARK: - Provider Persistence
+
+    private func loadProviders() {
+        // Load user-defined (non-built-in) providers
+        if let data = UserDefaults.standard.data(forKey: "customProviders"),
+           let custom = try? JSONDecoder().decode([CLIProvider].self, from: data) {
+            // Merge built-ins (always fresh) + user custom providers
+            providers = CLIProvider.builtIns + custom.filter { !$0.isBuiltIn }
+        } else {
+            providers = CLIProvider.builtIns
+        }
+
+        // Load saved built-in templates (user may have edited them)
+        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v2"),
+           let saved = try? JSONDecoder().decode([CLIProvider].self, from: data) {
+            for saved in saved {
+                if let idx = providers.firstIndex(where: { $0.id == saved.id }) {
+                    providers[idx].commandTemplate = saved.commandTemplate
+                }
+            }
+        }
+
+        // Load active provider
+        if let uuidString = UserDefaults.standard.string(forKey: "activeProviderId"),
+           let uuid = UUID(uuidString: uuidString) {
+            activeProviderId = uuid
+        } else {
+            activeProviderId = CLIProvider.gemini.id
+        }
+    }
+
+    func saveProviders() {
+        let custom = providers.filter { !$0.isBuiltIn }
+        let builtIn = providers.filter { $0.isBuiltIn }
+        if let data = try? JSONEncoder().encode(custom) {
+            UserDefaults.standard.set(data, forKey: "customProviders")
+        }
+        if let data = try? JSONEncoder().encode(builtIn) {
+            UserDefaults.standard.set(data, forKey: "builtInProviders_v2")
+        }
+        UserDefaults.standard.set(activeProviderId.uuidString, forKey: "activeProviderId")
     }
 
     // MARK: - Load .env
@@ -100,6 +182,11 @@ class ConfigManager: ObservableObject {
     // MARK: - Save .env
 
     func save() {
+        let provider = activeProvider
+        let isGemini = provider.id == CLIProvider.gemini.id
+        let cliProvider = isGemini ? "gemini" : "custom"
+        let cliTemplate = isGemini ? "" : provider.commandTemplate
+
         let content = """
         # Telegram Bot Token (get from @BotFather on Telegram)
         TELEGRAM_BOT_TOKEN=\(botToken)
@@ -121,6 +208,12 @@ class ConfigManager: ObservableObject {
 
         # Enable thinking mode (deep reasoning with gemini-2.5-flash)
         GEMINI_THINKING=\(thinking ? "true" : "false")
+
+        # AI backend provider: gemini or custom
+        CLI_PROVIDER=\(cliProvider)
+
+        # Command template for custom provider ({prompt} and {model} are substituted at runtime)
+        CLI_COMMAND_TEMPLATE=\(cliTemplate)
         """
 
         do {
@@ -136,6 +229,7 @@ class ConfigManager: ObservableObject {
         if !botDirectoryOverride.isEmpty {
             UserDefaults.standard.set(botDirectoryOverride, forKey: "botDirectory")
         }
+        saveProviders()
         UserDefaults.standard.synchronize()
 
         // Notify hotkey controller to re-register
