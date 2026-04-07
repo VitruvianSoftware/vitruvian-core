@@ -147,6 +147,13 @@ struct StatusView: View {
 
 // MARK: - Settings Window
 
+/// Floating panel that accepts keyboard input — standard NSWindow at .floating level
+/// silently refuses to become key, which blocks all text field interaction.
+private class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 /// Holds strong references to managers for the settings window context.
 private var _settingsWindow: NSWindow?
 private var _settingsConfigManager: ConfigManager?
@@ -167,9 +174,9 @@ func openSettingsWindow(configManager: ConfigManager, botManager: BotManager) {
     let settingsView = SettingsView(configManager: configManager, botManager: botManager)
     let hostingView = NSHostingView(rootView: settingsView)
 
-    let window = NSWindow(
+    let window = KeyablePanel(
         contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
-        styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+        styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
         backing: .buffered,
         defer: false
     )
@@ -177,6 +184,8 @@ func openSettingsWindow(configManager: ConfigManager, botManager: BotManager) {
     window.titlebarAppearsTransparent = true
     window.isOpaque = false
     window.backgroundColor = .clear
+    window.isFloatingPanel = true
+    window.becomesKeyOnlyIfNeeded = false
 
     // Frosted glass effect
     let visualEffect = NSVisualEffectView()

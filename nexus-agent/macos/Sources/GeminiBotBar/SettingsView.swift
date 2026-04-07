@@ -8,7 +8,6 @@ struct SettingsView: View {
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
-    @State private var editingProviderId: UUID? = nil
 
         var body: some View {
         VStack(spacing: 0) {
@@ -123,8 +122,6 @@ struct SettingsView: View {
                         ProviderRow(
                             provider: $provider,
                             isActive: configManager.activeProviderId == provider.id,
-                            isEditing: editingProviderId == provider.id,
-                            onEdit: { editingProviderId = editingProviderId == provider.id ? nil : provider.id },
                             onDelete: provider.isBuiltIn ? nil : {
                                 configManager.providers.removeAll { $0.id == provider.id }
                                 if configManager.activeProviderId == provider.id {
@@ -281,9 +278,11 @@ struct SettingsView: View {
 struct ProviderRow: View {
     @Binding var provider: CLIProvider
     let isActive: Bool
-    let isEditing: Bool
-    let onEdit: () -> Void
     let onDelete: (() -> Void)?
+
+    @State private var isEditing: Bool = false
+    @State private var draftTemplate: String = ""
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -310,7 +309,16 @@ struct ProviderRow: View {
                 Spacer()
 
                 Button(isEditing ? "Done" : "Edit") {
-                    onEdit()
+                    if isEditing {
+                        provider.commandTemplate = draftTemplate
+                        isEditing = false
+                    } else {
+                        draftTemplate = provider.commandTemplate
+                        isEditing = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isFieldFocused = true
+                        }
+                    }
                 }
                 .controlSize(.mini)
                 .buttonStyle(.plain)
@@ -327,10 +335,11 @@ struct ProviderRow: View {
             }
 
             if isEditing {
-                TextField("Command template", text: $provider.commandTemplate)
+                TextField("Command template", text: $draftTemplate)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11, design: .monospaced))
                     .padding(.leading, 14)
+                    .focused($isFieldFocused)
             } else {
                 Text(provider.commandTemplate)
                     .font(.system(size: 11, design: .monospaced))
