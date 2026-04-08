@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.1.0...gemini-telegram-bot-v1.1.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **macos:** add ad-hoc signing to bundle and document quarantine removal for gatekeeper ([d7bc248](https://github.com/BlueCentre/gemini-bot/commit/d7bc248a6a01e2f0827bc9518913a817af1aa83e))
+
 ## [1.1.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.0.0...gemini-telegram-bot-v1.1.0) (2026-04-08)
 
 

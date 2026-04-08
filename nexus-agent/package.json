@@ -1,6 +1,6 @@
 {
   "name": "gemini-telegram-bot",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Telegram bot bridging messages to Gemini CLI for remote coding agent access",
   "main": "src/bot.js",
   "scripts": {
