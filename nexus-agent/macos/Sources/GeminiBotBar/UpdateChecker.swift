@@ -16,7 +16,6 @@ class UpdateChecker: ObservableObject {
 
     private var downloadAssetURL: URL?
 
-    /// Check GitHub releases for a newer version.
     func checkForUpdates() async {
         let urlString = "https://api.github.com/repos/\(appRepoOwner)/\(appRepoName)/releases/latest"
         guard let url = URL(string: urlString) else { return }
@@ -27,14 +26,19 @@ class UpdateChecker: ObservableObject {
             request.timeoutInterval = 15
 
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else { return }
+            guard let httpResponse = response as? HTTPURLResponse else { return }
+            
+            if httpResponse.statusCode != 200 {
+                // If it's a 404, the repo might be private or there are no releases yet.
+                throw URLError(.badServerResponse)
+            }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String,
                   let htmlURL = json["html_url"] as? String else { return }
 
-            let remoteVersion = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
+            // Extract just the semantic version from tags like "gemini-telegram-bot-v1.4.0"
+            let remoteVersion = extractVersion(from: tagName)
 
             if isNewerVersion(remote: remoteVersion, current: appVersion) {
                 latestVersion = remoteVersion
@@ -55,11 +59,20 @@ class UpdateChecker: ObservableObject {
                 }
 
                 updateAvailable = true
+            } else {
+                updateAvailable = false
             }
         } catch {
-            // Silently fail — update checks are best-effort
-            print("Update check failed: \(error.localizedDescription)")
+            errorMessage = "Update check failed: \(error.localizedDescription)"
         }
+    }
+    
+    private func extractVersion(from tag: String) -> String {
+        // Find the first occurrence of a digit followed by dots (e.g. "1.4.0")
+        if let range = tag.range(of: "\\d+\\.\\d+\\.\\d+", options: .regularExpression) {
+            return String(tag[range])
+        }
+        return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
     }
 
     /// Download the latest release and replace the current app bundle.
