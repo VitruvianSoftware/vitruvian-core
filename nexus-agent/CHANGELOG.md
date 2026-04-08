@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.2](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.4.1...gemini-telegram-bot-v1.4.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* **macos:** proper auto-scroll anchoring during streams ([6ce8555](https://github.com/BlueCentre/gemini-bot/commit/6ce85556535aab441d935e42582c774ddf3e7912))
+* **macos:** retry asset fetch if CI is still uploading ([7c0e01b](https://github.com/BlueCentre/gemini-bot/commit/7c0e01b1df50836ff3aaf24f2428248375ee1146))
+
 ## [1.4.1](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.4.0...gemini-telegram-bot-v1.4.1) (2026-04-08)
 
 
