@@ -632,7 +632,7 @@ struct AboutTabView: View {
             Spacer()
             
             // Copyright
-            Text("© 2025 BlueCentre. Open source under MIT License.")
+            Text("© 2026 Vitruvian Software. Open source under MIT License.")
                 .font(.caption2)
                 .foregroundStyle(.quaternary)
                 .padding(.bottom, 12)

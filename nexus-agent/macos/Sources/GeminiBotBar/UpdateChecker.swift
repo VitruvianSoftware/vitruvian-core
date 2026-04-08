@@ -77,8 +77,23 @@ class UpdateChecker: ObservableObject {
 
     /// Download the latest release and replace the current app bundle.
     func downloadAndInstall() async {
+        // If assets were still uploading during the initial check, try to fetch them again now
+        if downloadAssetURL == nil {
+            isDownloading = true
+            errorMessage = "Fetching release assets…"
+            await checkForUpdates() // Re-runs the API check
+            
+            // Wait up to 5 seconds for asset processing just in case we need a tiny breather
+            if downloadAssetURL == nil {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await checkForUpdates()
+            }
+        }
+        
         guard let assetURL = downloadAssetURL else {
-            // Fallback: open browser to release page
+            // Fallback: open browser to release page if STILL no assets
+            errorMessage = nil
+            isDownloading = false
             if let url = releaseURL {
                 NSWorkspace.shared.open(url)
             }
