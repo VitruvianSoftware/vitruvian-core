@@ -221,10 +221,10 @@ class QuickPromptWindowController {
         }
     }
     
-    func show() {
+    func show(startExpanded: Bool = false) {
         window?.orderOut(nil)
         window = nil
-        createWindow()
+        createWindow(startExpanded: startExpanded)
         
         guard let window = window else { return }
         
@@ -232,7 +232,7 @@ class QuickPromptWindowController {
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let windowWidth: CGFloat = 680
-            let windowHeight: CGFloat = 72   // compact: input bar only
+            let windowHeight: CGFloat = startExpanded ? 340 : 72   // compact: input bar only
             let x = screenFrame.midX - windowWidth / 2
             let y = screenFrame.maxY - windowHeight - (screenFrame.height * 0.18)
             window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: false)
@@ -357,8 +357,8 @@ class QuickPromptWindowController {
         }
     }
     
-    private func createWindow() {
-        let promptView = QuickPromptView(onSubmit: { [weak self] prompt in
+    private func createWindow(startExpanded: Bool = false) {
+        let promptView = QuickPromptView(startExpanded: startExpanded, onSubmit: { [weak self] prompt in
             self?.runPrompt(prompt)
         }, onResume: { [weak self] sessionIndex, sessionUUID in
             self?.resumeSession(sessionIndex, uuid: sessionUUID)
@@ -368,7 +368,7 @@ class QuickPromptWindowController {
         
         // Spotlight-style panel: no title bar, no chrome
         let panel = QuickPromptPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 72),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: startExpanded ? 340 : 72),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -502,6 +502,13 @@ struct SessionInfo: Identifiable {
 // MARK: - Quick Prompt Input View
 
 struct QuickPromptView: View {
+    init(startExpanded: Bool = false, onSubmit: @escaping (String) -> Void, onResume: @escaping (Int, String) -> Void, onDismiss: @escaping () -> Void) {
+        self.onSubmit = onSubmit
+        self.onResume = onResume
+        self.onDismiss = onDismiss
+        self._showSessions = State(initialValue: startExpanded)
+    }
+
     let onSubmit: (String) -> Void
     let onResume: (Int, String) -> Void
     let onDismiss: () -> Void
@@ -697,6 +704,10 @@ struct QuickPromptView: View {
         .onAppear {
             isFocused = true
             setupKeyboardMonitor()
+            if showSessions && sessions.isEmpty {
+                loadingSessions = true
+                loadSessions()
+            }
         }
         .onDisappear {
             removeKeyboardMonitor()
@@ -1161,6 +1172,16 @@ struct QuickPromptChatView: View {
                 }
                 .buttonStyle(.plain)
                 .help("New Chat")
+                
+                Button(action: {
+                    QuickPromptWindowController.shared.show(startExpanded: true)
+                }) {
+                    Image(systemName: "clock") // or "list.bullet"
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Recent sessions")
                 
                 Button(action: {
                     isPinned.toggle()
