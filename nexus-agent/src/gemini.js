@@ -197,7 +197,13 @@ export async function executePrompt(prompt, { chatId } = {}) {
       const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
 
       if (code !== 0 && !stdout) {
-        reject(new Error(`Gemini CLI exited with code ${code}: ${stderr || 'unknown error'}`));
+        const cleanErr = cleanCliOutput(stderr);
+        if (stderr.includes('Invalid session identifier')) {
+          if (chatId) deletePersistedSession(chatId);
+          reject(new Error(`Session expired or was manually deleted. Please try sending your message again to start a new session.`));
+          return;
+        }
+        reject(new Error(`Gemini CLI exited with code ${code}: ${cleanErr || 'unknown error'}`));
         return;
       }
 
@@ -368,7 +374,13 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
       if (!accumulatedText && code !== 0 && !timedOut) {
         const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
-        reject(new Error(`Gemini CLI exited with code ${code}: ${stderr || 'unknown error'}`));
+        const cleanErr = cleanCliOutput(stderr);
+        if (stderr.includes('Invalid session identifier')) {
+          if (chatId) deletePersistedSession(chatId);
+          reject(new Error(`Session expired or was manually deleted. Please try sending your message again to start a new session.`));
+          return;
+        }
+        reject(new Error(`Gemini CLI exited with code ${code}: ${cleanErr || 'unknown error'}`));
         return;
       }
 
@@ -470,6 +482,10 @@ function cleanCliOutput(raw) {
     /^- \/.+\/keytar\.js$/,
     /^Using FileKeychain fallback/,
     /^Loaded cached credentials/,
+    /^YOLO mode is enabled/,
+    /^Error resuming session:/,
+    /^  Searched for sessions in/,
+    /^  Use --list-sessions to see available sessions/,
     /^Telemetry reinit/,
     /^Creating GCP exporters/,
     /^The 'metricReader' option/,
