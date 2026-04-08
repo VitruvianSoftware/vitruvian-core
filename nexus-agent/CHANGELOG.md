@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.2...nexus-agent-v1.6.0) (2026-04-08)
+
+
+### Features
+
+* standardise directory layout to ~/.config/nexus-agent ([503c782](https://github.com/VitruvianSoftware/nexus-agent/commit/503c7827d970ce6a68065d050b0932ce7528797d))
+
 ## [1.5.2](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.1...nexus-agent-v1.5.2) (2026-04-08)
 
 
