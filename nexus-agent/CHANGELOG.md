@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.3.0...gemini-telegram-bot-v1.4.0) (2026-04-08)
+
+
+### Features
+
+* **macos:** add provider quick-picker to Quick Prompt input bar ([5692587](https://github.com/BlueCentre/gemini-bot/commit/5692587f5bb73fe89717d40e7fff6726cee1d2a9))
+
 ## [1.3.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.2.0...gemini-telegram-bot-v1.3.0) (2026-04-08)
 
 
