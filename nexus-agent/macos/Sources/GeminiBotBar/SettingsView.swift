@@ -45,6 +45,24 @@ struct SettingsView: View {
                         modifiers: $configManager.hotkeyModifiers
                     )
                 }
+
+                HStack {
+                    Text("Version")
+                        .frame(width: 120, alignment: .trailing)
+                    Text("v\(appVersion)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check for Updates") {
+                        // Access the shared UpdateChecker — best-effort
+                    }
+                    .controlSize(.small)
+                }
+
+                HStack {
+                    Text("")
+                        .frame(width: 120, alignment: .trailing)
+                    Toggle("Automatically check for updates", isOn: $configManager.autoCheckUpdates)
+                }
             }
                     
                     Section(header: Text("Telegram")) {

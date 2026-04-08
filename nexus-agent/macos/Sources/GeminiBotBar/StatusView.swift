@@ -4,6 +4,7 @@ import SwiftUI
 struct StatusView: View {
     @ObservedObject var botManager: BotManager
     @ObservedObject var configManager: ConfigManager
+    @ObservedObject var updateChecker: UpdateChecker
     @State private var showSettings = false
 
     var body: some View {
@@ -34,6 +35,44 @@ struct StatusView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 6)
+            }
+
+            // ── Update Banner ──
+            if updateChecker.updateAvailable && !updateChecker.dismissed {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.blue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Update available: v\(updateChecker.latestVersion)")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        if updateChecker.isDownloading {
+                            ProgressView(value: updateChecker.downloadProgress)
+                                .progressViewStyle(.linear)
+                        } else if updateChecker.isInstalling {
+                            Text("Installing…")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if !updateChecker.isDownloading && !updateChecker.isInstalling {
+                        Button("Update") {
+                            Task { await updateChecker.downloadAndInstall() }
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent)
+                        Button(action: { updateChecker.dismissed = true }) {
+                            Image(systemName: "xmark")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.08))
             }
 
             Divider()

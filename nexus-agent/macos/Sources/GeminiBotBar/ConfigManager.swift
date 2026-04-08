@@ -52,6 +52,9 @@ class ConfigManager: ObservableObject {
     @Published var providers: [CLIProvider] = CLIProvider.builtIns
     @Published var activeProviderId: UUID = CLIProvider.gemini.id
 
+    // Update preferences
+    @Published var autoCheckUpdates: Bool = true
+
     /// The currently selected provider.
     var activeProvider: CLIProvider {
         providers.first { $0.id == activeProviderId } ?? CLIProvider.gemini
@@ -83,6 +86,11 @@ class ConfigManager: ObservableObject {
             hotkeyModifiers = Int(NSEvent.ModifierFlags([.command, .shift]).rawValue)
         }
         botDirectoryOverride = UserDefaults.standard.string(forKey: "botDirectory") ?? botDirectory
+
+        // Update preferences
+        if UserDefaults.standard.object(forKey: "autoCheckUpdates") != nil {
+            autoCheckUpdates = UserDefaults.standard.bool(forKey: "autoCheckUpdates")
+        }
 
         // Load providers from UserDefaults
         loadProviders()
@@ -224,6 +232,7 @@ class ConfigManager: ObservableObject {
 
         // Save all UserDefaults preferences
         UserDefaults.standard.set(autoStart, forKey: "autoStart")
+        UserDefaults.standard.set(autoCheckUpdates, forKey: "autoCheckUpdates")
         UserDefaults.standard.set(hotkeyKey, forKey: "hotkeyKey")
         UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers")
         if !botDirectoryOverride.isEmpty {

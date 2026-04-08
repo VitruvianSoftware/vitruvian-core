@@ -6,7 +6,8 @@ struct GeminiBotBarApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            StatusView(botManager: appState.botManager, configManager: appState.configManager)
+            StatusView(botManager: appState.botManager, configManager: appState.configManager,
+                       updateChecker: appState.updateChecker)
         } label: {
             Image(systemName: appState.botManager.isRunning ? "paperplane.fill" : "paperplane")
         }
@@ -19,13 +20,16 @@ struct GeminiBotBarApp: App {
 class AppState: ObservableObject {
     let botManager: BotManager
     let configManager: ConfigManager
+    let updateChecker: UpdateChecker
 
     init() {
         let bot = BotManager()
         let config = ConfigManager(botDirectory: bot.botDirectory)
+        let updater = UpdateChecker()
         ConfigManager.shared = config
         self.botManager = bot
         self.configManager = config
+        self.updateChecker = updater
 
         // Register global hotkey for Quick Prompt (⌘+Shift+G)
         QuickPromptWindowController.shared.registerHotkey()
@@ -36,6 +40,15 @@ class AppState: ObservableObject {
                 if !bot.isRunning {
                     bot.start()
                 }
+            }
+        }
+
+        // Check for updates on launch (if enabled)
+        if config.autoCheckUpdates {
+            Task {
+                // Slight delay so the app fully initializes first
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await updater.checkForUpdates()
             }
         }
     }
