@@ -1,6 +1,6 @@
-# Gemini CLI Telegram Bot
+# NexusAgent
 
-A Telegram bot that bridges your messages to the locally-installed [Gemini CLI](https://github.com/google-gemini/gemini-cli), giving you remote access to its full coding agent capabilities — file editing, terminal commands, MCP tools — from any device with Telegram.
+A macOS menu bar app and Telegram bot that bridges your messages to locally-installed AI coding CLI tools, giving you remote access to full coding agent capabilities (file editing, terminal commands, MCP tools, multi-provider support) from any device with Telegram or directly from your Mac's Quick Prompt.
 
 ---
 
@@ -273,16 +273,16 @@ Runs in the background with PID tracking and orphan process cleanup. Logs are wr
 
 #### Option C: macOS Menu Bar App
 
-Download the latest DMG from the [Releases page](https://github.com/BlueCentre/gemini-bot/releases). Open it and drag the app to your Applications folder.
+Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/nexus-agent/releases). Open it and drag the app to your Applications folder.
 
 A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS App Setup](#macos-menu-bar-app) below for Gatekeeper instructions.
 
 #### Option D: Gemini CLI Extension
 
 ```bash
-gemini extensions install https://github.com/<your-repo>/gemini-bot
+gemini extensions install https://github.com/<your-repo>/nexus-agent
 # or link locally:
-gemini extensions link /path/to/gemini-bot
+gemini extensions link /path/to/nexus-agent
 ```
 
 Installs the bot as a Gemini CLI extension. Ask Gemini *"help me set up the Telegram bot"* and it will walk you through configuration using the bundled playbook.
@@ -308,9 +308,9 @@ A native SwiftUI companion app that manages the bot daemon from the menu bar.
 
 The application is distributed as a universal DMG. Because it is currently **unsigned**, macOS Gatekeeper will block the first launch. Follow these steps to install and open it:
 
-1. **Download** the latest `GeminiBotBar-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/BlueCentre/gemini-bot/releases).
+1. **Download** the latest `NexusAgent-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/VitruvianSoftware/nexus-agent/releases).
 2. **Mount the DMG** by double-clicking it.
-3. **Install** by dragging the `GeminiBotBar` app into the `Applications` folder shortcut.
+3. **Install** by dragging the `NexusAgent` app into the `Applications` folder shortcut.
 4. **First Launch (Important):**
    - Open your `Applications` folder in Finder.
    - You **cannot** double-click the app directly (macOS will warn you about an unidentified developer).
@@ -319,7 +319,7 @@ The application is distributed as a universal DMG. Because it is currently **uns
      - **Option A (System Settings):** Double click the app and click **Done** on the warning. Open **System Settings > Privacy & Security**, scroll down to the Security section, and click **Open Anyway**.
      - **Option B (Terminal):** Open your **Terminal** and run the following command to clear the browser download quarantine flag, then open the app normally:
        ```bash
-       find /Applications/GeminiBotBar.app -print0 | xargs -0 xattr -c
+       find /Applications/NexusAgent.app -print0 | xargs -0 xattr -c
        ```
 
 *You only need to do this exact process once. For subsequent launches, or when the app auto-updates, it will open normally.*

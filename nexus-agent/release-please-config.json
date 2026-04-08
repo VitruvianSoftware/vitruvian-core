@@ -9,7 +9,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "macos/Sources/GeminiBotBar/Version.swift"
+          "path": "macos/Sources/NexusAgent/Version.swift"
         }
       ]
     }

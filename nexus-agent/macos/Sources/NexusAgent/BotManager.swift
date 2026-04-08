@@ -32,9 +32,9 @@ class BotManager: ObservableObject {
                 FileManager.default.fileExists(atPath: "\(env)/src/bot.js") {
             botDirectory = env
         }
-        // 4. Fallback: ~/Workspace/gemini-bot (the checked-out location on this machine).
+        // 4. Fallback: ~/Workspace/nexus-agent (the checked-out location on this machine).
         else {
-            botDirectory = "\(NSHomeDirectory())/Workspace/gemini-bot"
+            botDirectory = "\(NSHomeDirectory())/Workspace/nexus-agent"
         }
 
         logFilePath = "\(botDirectory)/bot.log"
@@ -48,7 +48,7 @@ class BotManager: ObservableObject {
         startLogMonitor()
     }
 
-    /// Walk up from the running binary to find the gemini-bot checkout.
+    /// Walk up from the running binary to find the nexus-agent checkout.
     private static func discoverBotDirectory() -> String? {
         let exec = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
         var dir = exec.deletingLastPathComponent()

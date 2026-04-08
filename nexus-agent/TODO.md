@@ -23,7 +23,7 @@ CLI hooks support which is **not yet available** in any published release.
 | `hooks/stream-hook.py` | Hook script — writes JSONL events to `GEMINI_STREAM_FILE` |
 | `~/.gemini/settings.json` | Hook registration for `AfterModel`, `BeforeTool`, `AfterTool`, `AfterAgent` |
 | `~/.gemini/hooks/stream-hook.py` | Installed copy of the hook script |
-| `macos/Sources/GeminiBotBar/QuickPromptWindow.swift` | `StreamFileWatcher` class + streaming `sendToCLI()` |
+| `macos/Sources/NexusAgent/QuickPromptWindow.swift` | `StreamFileWatcher` class + streaming `sendToCLI()` |
 
 ## How It Works (When Hooks Are Available)
 
@@ -111,7 +111,7 @@ agentic file edits happen on an isolated branch.
 - Show the worktree branch name as a status badge during generation
 
 ### Files to Modify
-- `macos/Sources/GeminiBotBar/QuickPromptWindow.swift` — add git repo detection,
+- `macos/Sources/NexusAgent/QuickPromptWindow.swift` — add git repo detection,
   worktree toggle UI, and `--worktree` arg in `sendToCLI()`
 
 ## Verification Steps (Once New Release Is Out)

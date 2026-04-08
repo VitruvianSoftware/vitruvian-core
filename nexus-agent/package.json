@@ -1,5 +1,5 @@
 {
-  "name": "gemini-telegram-bot",
+  "name": "nexus-agent",
   "version": "1.4.3",
   "description": "Telegram bot bridging messages to Gemini CLI for remote coding agent access",
   "main": "src/bot.js",

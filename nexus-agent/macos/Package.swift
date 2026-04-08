@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "GeminiBotBar",
+    name: "NexusAgent",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "GeminiBotBar",
-            path: "Sources/GeminiBotBar"
+            name: "NexusAgent",
+            path: "Sources/NexusAgent"
         ),
     ]
 )

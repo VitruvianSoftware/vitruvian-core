@@ -16,7 +16,7 @@ import {
 import { splitMessage, formatResponse } from './formatter.js';
 
 // Temp directory for downloaded Telegram files
-const TEMP_DIR = path.join(os.tmpdir(), 'gemini-bot-files');
+const TEMP_DIR = path.join(os.tmpdir(), 'nexus-agent-files');
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // Rate limiting (#9)

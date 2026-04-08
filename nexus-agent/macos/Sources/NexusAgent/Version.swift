@@ -4,5 +4,5 @@ import Foundation
 let appVersion = "1.4.3" // x-release-please-version
 
 /// GitHub repository for update checks
-let appRepoOwner = "BlueCentre"
-let appRepoName = "gemini-bot"
+let appRepoOwner = "VitruvianSoftware"
+let appRepoName = "nexus-agent"

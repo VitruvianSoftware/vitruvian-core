@@ -10,7 +10,7 @@ TODO_GEMINI_HOOKS: This hook requires Gemini CLI hooks support (AfterModel,
 BeforeTool, AfterTool, AfterAgent), which is NOT available in gemini v0.35.1.
 Hooks exist only in the upstream main branch. Check for a new release and
 verify by running: GEMINI_STREAM_FILE=/tmp/test.jsonl gemini -p "say hi"
-See also: macos/Sources/GeminiBotBar/QuickPromptWindow.swift and TODO.md
+See also: macos/Sources/NexusAgent/QuickPromptWindow.swift and TODO.md
 """
 
 import json

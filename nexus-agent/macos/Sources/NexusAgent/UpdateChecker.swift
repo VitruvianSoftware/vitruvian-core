@@ -37,7 +37,7 @@ class UpdateChecker: ObservableObject {
                   let tagName = json["tag_name"] as? String,
                   let htmlURL = json["html_url"] as? String else { return }
 
-            // Extract just the semantic version from tags like "gemini-telegram-bot-v1.4.0"
+            // Extract just the semantic version from tags like "nexus-agent-v1.4.0"
             let remoteVersion = extractVersion(from: tagName)
 
             if isNewerVersion(remote: remoteVersion, current: appVersion) {
@@ -113,7 +113,7 @@ class UpdateChecker: ObservableObject {
 
             // Unzip
             let extractDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("GeminiBotBar-update-\(UUID().uuidString)")
+                .appendingPathComponent("NexusAgent-update-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
 
             let unzipProcess = Process()
@@ -129,7 +129,7 @@ class UpdateChecker: ObservableObject {
             }
 
             // Find the .app in extracted contents
-            let newAppURL = extractDir.appendingPathComponent("GeminiBotBar.app")
+            let newAppURL = extractDir.appendingPathComponent("NexusAgent.app")
             guard FileManager.default.fileExists(atPath: newAppURL.path) else {
                 throw UpdateError.appNotFound
             }
@@ -143,12 +143,12 @@ class UpdateChecker: ObservableObject {
                 targetURL = currentBundle
             } else {
                 // Running from swift build — install to /Applications
-                targetURL = URL(fileURLWithPath: "/Applications/GeminiBotBar.app")
+                targetURL = URL(fileURLWithPath: "/Applications/NexusAgent.app")
             }
 
             // Backup current if it exists
             let backupURL = targetURL.deletingLastPathComponent()
-                .appendingPathComponent("GeminiBotBar.app.bak")
+                .appendingPathComponent("NexusAgent.app.bak")
             if FileManager.default.fileExists(atPath: backupURL.path) {
                 try? FileManager.default.removeItem(at: backupURL)
             }
@@ -195,7 +195,7 @@ class UpdateChecker: ObservableObject {
         downloadProgress = 1.0
 
         let tempFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("GeminiBotBar-\(latestVersion).zip")
+            .appendingPathComponent("NexusAgent-\(latestVersion).zip")
         try data.write(to: tempFile)
         return (tempFile, response)
     }

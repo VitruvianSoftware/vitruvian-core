@@ -4,7 +4,7 @@ set -euo pipefail
 # bundle.sh — Assembles a proper .app bundle from a Swift PM executable
 # Usage: ./bundle.sh <executable_path> <version> <output_dir>
 #
-# Example: ./bundle.sh .build/release/GeminiBotBar 1.2.0 ./dist
+# Example: ./bundle.sh .build/release/NexusAgent 1.2.0 ./dist
 
 EXECUTABLE="${1:?Usage: bundle.sh <executable> <version> <output_dir>}"
 VERSION="${2:?Missing version argument}"
@@ -12,7 +12,7 @@ OUTPUT_DIR="${3:?Missing output directory}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESOURCES_DIR="${SCRIPT_DIR}/../Resources"
-APP_NAME="GeminiBotBar"
+APP_NAME="NexusAgent"
 APP_BUNDLE="${OUTPUT_DIR}/${APP_NAME}.app"
 
 echo "==> Assembling ${APP_NAME}.app v${VERSION}"
@@ -45,7 +45,7 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.bluecentre.gemini-bot</string>
+    <string>com.vitruviansoftware.nexusagent</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

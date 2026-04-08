@@ -19,9 +19,9 @@ struct SettingsView: View {
                 HStack {
                     Text("Bot Directory")
                         .frame(width: 120, alignment: .trailing)
-                    TextField("/path/to/gemini-bot", text: $configManager.botDirectoryOverride)
+                    TextField("/path/to/nexus-agent", text: $configManager.botDirectoryOverride)
                         .textFieldStyle(.roundedBorder)
-                        .help("Path to the gemini-bot checkout containing src/bot.js and .env")
+                        .help("Path to the nexus-agent checkout containing src/bot.js and .env")
                     Button("Browse") {
                         selectBotDirectory()
                     }
@@ -269,7 +269,7 @@ struct SettingsView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select the gemini-bot checkout folder (containing src/bot.js)"
+        panel.message = "Select the nexus-agent checkout folder (containing src/bot.js)"
 
         if panel.runModal() == .OK, let url = panel.url {
             configManager.botDirectoryOverride = url.path
