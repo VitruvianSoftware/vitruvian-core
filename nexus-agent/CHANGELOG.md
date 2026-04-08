@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.4.0...gemini-telegram-bot-v1.4.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **macos:** update checker parsing and error surfacing ([62b031c](https://github.com/BlueCentre/gemini-bot/commit/62b031cefd37352f01c77307e479205488a613e9))
+
 ## [1.4.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.3.0...gemini-telegram-bot-v1.4.0) (2026-04-08)
 
 
