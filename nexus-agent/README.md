@@ -273,14 +273,9 @@ Runs in the background with PID tracking and orphan process cleanup. Logs are wr
 
 #### Option C: macOS Menu Bar App
 
-```bash
-cd macos
-swift build -c release
-cp .build/release/GeminiBotBar "/Applications/Gemini Bot.app/Contents/MacOS/"
-open "/Applications/Gemini Bot.app"
-```
+Download the latest DMG from the [Releases page](https://github.com/BlueCentre/gemini-bot/releases). Open it and drag the app to your Applications folder.
 
-A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, and configure settings. See [macOS App Setup](#macos-menu-bar-app) below.
+A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS App Setup](#macos-menu-bar-app) below for Gatekeeper instructions.
 
 #### Option D: Gemini CLI Extension
 
@@ -309,30 +304,27 @@ A native SwiftUI companion app that manages the bot daemon from the menu bar.
 | **Auto-start** | Optionally start the bot when the app launches |
 | **No dock icon** | `LSUIElement=true` — menu bar only |
 
-### Build from Source
+### Installation
 
-```bash
-cd macos
-swift build -c release
-```
+The application is distributed as a universal DMG. Because it is currently **unsigned**, macOS Gatekeeper will block the first launch. Follow these steps to install and open it:
 
-### Install to Applications
+1. **Download** the latest `GeminiBotBar-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/BlueCentre/gemini-bot/releases).
+2. **Mount the DMG** by double-clicking it.
+3. **Install** by dragging the `GeminiBotBar` app into the `Applications` folder shortcut.
+4. **First Launch (Important):**
+   - Open your `Applications` folder in Finder.
+   - You **cannot** double-click the app (macOS will say it's damaged or from an unidentified developer).
+   - Instead, **Right-click (or Control-click)** the app and select **Open**.
+   - A dialog will appear asking if you are sure you want to open it. Click **Open**.
 
-```bash
-# Create the .app bundle (first time only)
-mkdir -p "/Applications/Gemini Bot.app/Contents/MacOS"
-mkdir -p "/Applications/Gemini Bot.app/Contents/Resources"
+*You only need to do this exact "Right-click -> Open" process once. For subsequent launches, or when the app auto-updates, it will open normally.*
 
-# Copy the binary
-cp macos/.build/release/GeminiBotBar "/Applications/Gemini Bot.app/Contents/MacOS/"
+### Auto-Update
 
-# Launch
-open "/Applications/Gemini Bot.app"
-```
-
-The Info.plist is created during the first install. The app auto-detects the bot directory.
-
-Then message your bot on Telegram!
+The app includes a built-in auto-updater. It will periodically check the GitHub Releases page for new versions. When an update is available:
+1. An "Update available" banner will appear in the menu bar dropdown.
+2. Click the **Update** button.
+3. The app will download the new version, replace itself in the `Applications` folder, and automatically relaunch.
 
 ---
 
