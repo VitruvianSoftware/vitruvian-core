@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.1.1...gemini-telegram-bot-v1.2.0) (2026-04-08)
+
+
+### Features
+
+* **macos:** implement 16 quick prompt UI/UX improvements ([41673fe](https://github.com/BlueCentre/gemini-bot/commit/41673fe830d500d34997170a106ec2bc622b0108))
+
 ## [1.1.1](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.1.0...gemini-telegram-bot-v1.1.1) (2026-04-08)
 
 
