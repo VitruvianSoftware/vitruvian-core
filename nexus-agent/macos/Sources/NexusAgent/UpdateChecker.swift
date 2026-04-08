@@ -28,9 +28,12 @@ class UpdateChecker: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else { return }
             
-            if httpResponse.statusCode != 200 {
-                // If it's a 404, the repo might be private or there are no releases yet.
-                throw URLError(.badServerResponse)
+            if httpResponse.statusCode == 403 {
+                throw URLError(.userAuthenticationRequired, userInfo: [NSLocalizedDescriptionKey: "GitHub API rate limit exceeded. Please try again later."])
+            } else if httpResponse.statusCode == 404 {
+                throw URLError(.fileDoesNotExist, userInfo: [NSLocalizedDescriptionKey: "No latest release found yet. Check back soon!"])
+            } else if httpResponse.statusCode != 200 {
+                throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "Server returned HTTP \(httpResponse.statusCode)."])
             }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
