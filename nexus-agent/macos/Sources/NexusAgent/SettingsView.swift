@@ -493,14 +493,14 @@ struct AboutTabView: View {
                     )
                 
                 VStack(spacing: 4) {
-                    Text("Gemini Bot Bar")
+                    Text("NexusAgent")
                         .font(.title2.weight(.semibold))
                     Text("Version \(appVersion)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 
-                Text("A native macOS menu bar companion for Gemini CLI and Telegram Bot with a Spotlight-style quick prompt interface.")
+                Text("A native macOS menu bar companion for AI CLI tools with a Spotlight-style quick prompt interface.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

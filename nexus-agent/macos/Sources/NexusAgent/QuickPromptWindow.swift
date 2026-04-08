@@ -530,7 +530,7 @@ struct QuickPromptView: View {
                     .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: sparklePulse)
                     .onAppear { sparklePulse = true }
                 
-                TextField("Ask Gemini anything…", text: $prompt)
+                TextField("Ask NexusAgent anything…", text: $prompt)
                     .textFieldStyle(.plain)
                     .font(.title3)
                     .focused($isFocused)

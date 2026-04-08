@@ -219,7 +219,7 @@ func openSettingsWindow(configManager: ConfigManager, botManager: BotManager, up
         backing: .buffered,
         defer: false
     )
-    window.title = "Gemini Bot Settings"
+    window.title = "NexusAgent Settings"
     window.titlebarAppearsTransparent = true
     window.isOpaque = false
     window.backgroundColor = .clear
