@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.0...nexus-agent-v1.5.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **ui:** update missed UI text and window titles ([96cf7d7](https://github.com/VitruvianSoftware/nexus-agent/commit/96cf7d7981ce392d5324a78b759f73142f314b25))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.4.3...nexus-agent-v1.5.0) (2026-04-08)
 
 
