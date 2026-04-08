@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.4.2...gemini-telegram-bot-v1.4.3) (2026-04-08)
+
+
+### Bug Fixes
+
+* **telegram:** neatly parse and filter upstream CLI errors ([c42f953](https://github.com/BlueCentre/gemini-bot/commit/c42f953f7abbc3d6cf0668310de93ecac90c1629))
+
 ## [1.4.2](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.4.1...gemini-telegram-bot-v1.4.2) (2026-04-08)
 
 
