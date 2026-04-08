@@ -1092,7 +1092,7 @@ class StreamFileWatcher {
 
 // MARK: - Chat Conversation View
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: String
     var content: String
@@ -1289,10 +1289,17 @@ struct QuickPromptChatView: View {
                     .onPreferenceChange(ScrollOffsetPreferenceKey.self) { maxY in
                         isNearBottom = maxY < 600
                     }
-                    .onChange(of: messages.count) { _ in
-                        if isNearBottom, let last = messages.last {
+                    .onChange(of: messages) { _ in
+                        if isNearBottom {
                             withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo(last.id, anchor: .bottom)
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: isLoading) { loading in
+                        if loading && isNearBottom {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("bottom", anchor: .bottom)
                             }
                         }
                     }
