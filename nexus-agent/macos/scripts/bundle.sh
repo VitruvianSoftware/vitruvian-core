@@ -73,4 +73,8 @@ echo "    ✓ Info.plist generated"
 # Create PkgInfo
 echo -n "APPL????" > "${APP_BUNDLE}/Contents/PkgInfo"
 
+# Ad-hoc sign the bundle to prevent "App is damaged" errors
+echo "==> Signing ${APP_BUNDLE} with ad-hoc signature"
+codesign --force --deep --sign - "${APP_BUNDLE}"
+
 echo "==> ${APP_BUNDLE} ready"

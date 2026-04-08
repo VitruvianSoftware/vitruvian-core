@@ -313,9 +313,17 @@ The application is distributed as a universal DMG. Because it is currently **uns
 3. **Install** by dragging the `GeminiBotBar` app into the `Applications` folder shortcut.
 4. **First Launch (Important):**
    - Open your `Applications` folder in Finder.
-   - You **cannot** double-click the app (macOS will say it's damaged or from an unidentified developer).
+   - You **cannot** double-click the app directly (macOS will warn you about an unidentified developer).
    - Instead, **Right-click (or Control-click)** the app and select **Open**.
    - A dialog will appear asking if you are sure you want to open it. Click **Open**.
+
+> [!WARNING]
+> **"App is damaged and can't be opened" Error**
+> If macOS says the app is damaged and offers to move it to the Trash, this is a misleading macOS error caused by the `quarantine` flag on downloaded unsigned apps. Do not move it to the Trash. Click Cancel, then open your **Terminal** and run:
+> ```bash
+> find /Applications/GeminiBotBar.app -print0 | xargs -0 xattr -c
+> ```
+> After running this, try right-clicking and opening it again.
 
 *You only need to do this exact "Right-click -> Open" process once. For subsequent launches, or when the app auto-updates, it will open normally.*
 
