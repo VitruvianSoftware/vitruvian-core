@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.2.0...gemini-telegram-bot-v1.3.0) (2026-04-08)
+
+
+### Features
+
+* **macos:** add About tab with app info, repo links, and in-place update ([ca84735](https://github.com/BlueCentre/gemini-bot/commit/ca84735f8d25c10b671b7f4bc09b0e24b8793192))
+
 ## [1.2.0](https://github.com/BlueCentre/gemini-bot/compare/gemini-telegram-bot-v1.1.1...gemini-telegram-bot-v1.2.0) (2026-04-08)
 
 
