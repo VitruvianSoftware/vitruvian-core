@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.1...nexus-agent-v1.5.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* resolve bot path resolution issues ([93f45c8](https://github.com/VitruvianSoftware/nexus-agent/commit/93f45c84159ef6ad179bfac1a1f2ea0b1f34fe33))
+
 ## [1.5.1](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.0...nexus-agent-v1.5.1) (2026-04-08)
 
 
