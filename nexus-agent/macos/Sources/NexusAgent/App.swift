@@ -24,7 +24,7 @@ class AppState: ObservableObject {
 
     init() {
         let bot = BotManager()
-        let config = ConfigManager(botDirectory: bot.botDirectory)
+        let config = ConfigManager()
         let updater = UpdateChecker()
         ConfigManager.shared = config
         self.botManager = bot

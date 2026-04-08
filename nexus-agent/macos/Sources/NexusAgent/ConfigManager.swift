@@ -41,8 +41,7 @@ class ConfigManager: ObservableObject {
     @Published var thinking: Bool = false
     @Published var autoStart: Bool = false
 
-    // Bot directory (stored in UserDefaults so it survives .app bundle launches)
-    @Published var botDirectoryOverride: String = ""
+
 
     // Hotkey config (stored in UserDefaults, not .env)
     @Published var hotkeyKey: String = "g"
@@ -71,14 +70,11 @@ class ConfigManager: ObservableObject {
         return parts.joined()
     }
 
-    let botDirectory: String
     private var envFilePath: String {
-        guard !botDirectory.isEmpty else { return "" }
-        return "\(botDirectory)/.env"
+        NSHomeDirectory() + "/.config/nexus-agent/.env"
     }
 
-    init(botDirectory: String) {
-        self.botDirectory = botDirectory
+    init() {
 
         // Load preferences from UserDefaults
         autoStart = UserDefaults.standard.bool(forKey: "autoStart")
@@ -88,7 +84,7 @@ class ConfigManager: ObservableObject {
             // Default: ⌘+Shift
             hotkeyModifiers = Int(NSEvent.ModifierFlags([.command, .shift]).rawValue)
         }
-        botDirectoryOverride = UserDefaults.standard.string(forKey: "botDirectory") ?? botDirectory
+
 
         // Update preferences
         if UserDefaults.standard.object(forKey: "autoCheckUpdates") != nil {
@@ -147,11 +143,10 @@ class ConfigManager: ObservableObject {
     // MARK: - Load .env
 
     func load() {
-        guard !botDirectory.isEmpty else { return }
         guard FileManager.default.fileExists(atPath: envFilePath),
               let content = try? String(contentsOfFile: envFilePath, encoding: .utf8) else {
             // Try .env.example as a template
-            let examplePath = "\(botDirectory)/.env.example"
+            let examplePath = NSHomeDirectory() + "/.config/nexus-agent/.env.example"
             if let example = try? String(contentsOfFile: examplePath, encoding: .utf8) {
                 parseEnv(example)
             }
@@ -194,7 +189,6 @@ class ConfigManager: ObservableObject {
     // MARK: - Save .env
 
     func save() {
-        guard !botDirectory.isEmpty else { return }
         let provider = activeProvider
         let isGemini = provider.id == CLIProvider.gemini.id
         let cliProvider = isGemini ? "gemini" : "custom"
@@ -240,9 +234,7 @@ class ConfigManager: ObservableObject {
         UserDefaults.standard.set(autoCheckUpdates, forKey: "autoCheckUpdates")
         UserDefaults.standard.set(hotkeyKey, forKey: "hotkeyKey")
         UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers")
-        if !botDirectoryOverride.isEmpty {
-            UserDefaults.standard.set(botDirectoryOverride, forKey: "botDirectory")
-        }
+
         saveProviders()
         UserDefaults.standard.synchronize()
 

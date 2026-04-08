@@ -13,29 +13,13 @@ class BotManager: ObservableObject {
     private var logFileHandle: FileHandle?
     private var logMonitorTimer: Timer?
 
-    let botDirectory: String
+    var botDirectory: String {
+        NSHomeDirectory() + "/.config/nexus-agent"
+    }
     let logFilePath: String
     let pidFilePath: String
 
     init() {
-        // 1. Prefer a user-saved directory from a previous Settings save.
-        if let saved = UserDefaults.standard.string(forKey: "botDirectory"), !saved.isEmpty,
-           FileManager.default.fileExists(atPath: "\(saved)/src/bot.js") {
-            botDirectory = saved
-        }
-        // 2. Walk up from the executable — works for `swift run` / debug builds.
-        else if let discovered = BotManager.discoverBotDirectory() {
-            botDirectory = discovered
-        }
-        // 3. Honour an explicit env-var override (e.g. launchd plist).
-        else if let env = ProcessInfo.processInfo.environment["GEMINI_BOT_DIR"],
-                FileManager.default.fileExists(atPath: "\(env)/src/bot.js") {
-            botDirectory = env
-        }
-        // 4. Fallback: none. We require the user to configure it if we can't find it.
-        else {
-            botDirectory = ""
-        }
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("NexusAgent")
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -43,29 +27,12 @@ class BotManager: ObservableObject {
         logFilePath = appSupport.appendingPathComponent("bot.log").path
         pidFilePath = appSupport.appendingPathComponent(".bot.pid").path
 
-        // Persist only if valid
-        if !botDirectory.isEmpty {
-            UserDefaults.standard.set(botDirectory, forKey: "botDirectory")
-        }
-
         // Check if bot is already running from a previous session
         checkExistingProcess()
         startLogMonitor()
     }
 
-    /// Walk up from the running binary to find the nexus-agent checkout.
-    private static func discoverBotDirectory() -> String? {
-        let exec = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
-        var dir = exec.deletingLastPathComponent()
-        // Try up to 6 levels up so we handle both debug builds and the .app bundle.
-        for _ in 0..<6 {
-            if FileManager.default.fileExists(atPath: dir.appendingPathComponent("src/bot.js").path) {
-                return dir.path
-            }
-            dir = dir.deletingLastPathComponent()
-        }
-        return nil
-    }
+
 
     // MARK: - Process Control
 

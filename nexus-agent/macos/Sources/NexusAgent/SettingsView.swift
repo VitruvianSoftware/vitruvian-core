@@ -16,16 +16,7 @@ struct SettingsView: View {
                 // Tab 1: General (App & Telegram)
                 Form {
                     Section(header: Text("App")) {
-                HStack {
-                    Text("Bot Directory")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("/path/to/nexus-agent", text: $configManager.botDirectoryOverride)
-                        .textFieldStyle(.roundedBorder)
-                        .help("Path to the nexus-agent checkout containing src/bot.js and .env")
-                    Button("Browse") {
-                        selectBotDirectory()
-                    }
-                }
+
 
                 HStack {
                     Text("")
@@ -264,17 +255,7 @@ struct SettingsView: View {
         }
     }
 
-    private func selectBotDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Select the nexus-agent checkout folder (containing src/bot.js)"
 
-        if panel.runModal() == .OK, let url = panel.url {
-            configManager.botDirectoryOverride = url.path
-        }
-    }
 }
 
 // MARK: - Provider Row
