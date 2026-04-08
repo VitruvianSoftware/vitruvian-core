@@ -34,6 +34,17 @@ class QuickPromptWindowController {
     private var expectedKey: String = "g"
     private var expectedModifiers: NSEvent.ModifierFlags = [.command, .shift]
 
+    // Pin state — when pinned, clicks outside don't dismiss the window
+    var isPinned: Bool = false {
+        didSet {
+            if isPinned {
+                removeClickOutsideMonitor()
+            } else {
+                addClickOutsideMonitor()
+            }
+        }
+    }
+
     // Spring-animated panel resize state
     private var resizeTimer: Timer?
     private var resizeVelocity: CGFloat = 0
@@ -242,8 +253,10 @@ class QuickPromptWindowController {
             }
         }
         
-        // Click-outside-to-dismiss (Spotlight behavior)
-        addClickOutsideMonitor()
+        // Click-outside-to-dismiss (Spotlight behavior) — only when not pinned
+        if !isPinned {
+            addClickOutsideMonitor()
+        }
     }
 
     /// Spotlight Tahoe-style spring entrance: fade in + elastic scale bounce.
@@ -1044,6 +1057,7 @@ struct QuickPromptChatView: View {
     @State private var historyIndex: Int = -1
     @State private var streamingStatus: String = "Thinking…"
     @State private var streamWatcher: StreamFileWatcher?
+    @State private var isPinned: Bool = false
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
@@ -1087,13 +1101,18 @@ struct QuickPromptChatView: View {
                 .help("New Chat")
                 
                 Button(action: {
-                    QuickPromptWindowController.shared.dismiss()
+                    isPinned.toggle()
+                    QuickPromptWindowController.shared.isPinned = isPinned
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: isPinned
+                          ? "pin.circle.fill" : "pin.circle")
                         .font(.system(size: 16))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(isPinned ? Color.blue : Color.secondary.opacity(0.5))
+                        .rotationEffect(.degrees(isPinned ? 0 : 45))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPinned)
                 }
                 .buttonStyle(.plain)
+                .help(isPinned ? "Unpin window" : "Pin window")
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
