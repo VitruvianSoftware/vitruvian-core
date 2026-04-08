@@ -419,6 +419,16 @@ class QuickPromptWindowController {
 
         self.window = panel
         self.hostingView = hosting
+
+        // #10: ⌘W dismisses the window (standard macOS convention)
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == .command, event.charactersIgnoringModifiers == "w" {
+                self?.dismiss()
+                return nil
+            }
+            return event
+        }
     }
     
     private func runPrompt(_ prompt: String) {
@@ -432,7 +442,10 @@ class QuickPromptWindowController {
     private func expandAndShowChat(_ chatView: QuickPromptChatView) {
         guard let window = window else { return }
         
-        window.minSize = NSSize(width: 680, height: 400)
+        // #11: Allow resizing in chat mode
+        window.minSize = NSSize(width: 480, height: 300)
+        window.maxSize = NSSize(width: 900, height: 800)
+        window.styleMask.insert(.resizable)
         
         let targetSize = NSSize(width: 680, height: 500)
         let currentFrame = window.frame
@@ -498,12 +511,14 @@ struct QuickPromptView: View {
     @State private var showSessions = false
     @State private var hoveredSessionId: Int? = nil
     @State private var selectedSessionIndex: Int? = nil
+    @State private var sparklePulse = false
     @FocusState private var isFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
-            // ── Original Quick Prompt Input Row ──
+            // ── Quick Prompt Input Row ──
             HStack(spacing: 12) {
+                // #2: Gentle pulse on sparkle icon when idle
                 Image(systemName: "sparkles")
                     .font(.title2)
                     .foregroundStyle(.linearGradient(
@@ -511,6 +526,9 @@ struct QuickPromptView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
+                    .opacity(prompt.isEmpty && sparklePulse ? 0.5 : 1.0)
+                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: sparklePulse)
+                    .onAppear { sparklePulse = true }
                 
                 TextField("Ask Gemini anything…", text: $prompt)
                     .textFieldStyle(.plain)
@@ -546,6 +564,12 @@ struct QuickPromptView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            // #1: Subtle capsule border to ground the input bar
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    .padding(.horizontal, 6)
+            )
             
             // ── Sessions Panel (animated, shown only when toggled) ──
             if showSessions {
@@ -1053,20 +1077,27 @@ struct QuickPromptChatView: View {
     @State private var error: String?
     @State private var hasActiveSession = false
     @State private var currentProcess: Process?
-    @State private var promptHistory: [String] = []
+    @State private var promptHistory: [String] = UserDefaults.standard.stringArray(forKey: "promptHistory") ?? []
     @State private var historyIndex: Int = -1
     @State private var streamingStatus: String = "Thinking…"
     @State private var streamWatcher: StreamFileWatcher?
     @State private var isPinned: Bool = false
+    @State private var isNearBottom: Bool = true
+    @State private var typingDotPhase: Int = 0
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .light))
-                    .foregroundStyle(.secondary)
+                // #8: Sparkles icon matches the prompt bar branding
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.linearGradient(
+                        colors: [.blue, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
                 Text("Chat")
                     .font(.system(size: 16, weight: .medium))
 
@@ -1123,60 +1154,139 @@ struct QuickPromptChatView: View {
                 .padding(.horizontal, 12)
             
             // Messages
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        ForEach(messages) { msg in
-                            MessageBubble(message: msg)
-                                .id(msg.id)
-                        }
-                        
-                        if isLoading {
-                            HStack(spacing: 10) {
-                                Image(systemName: "sparkles")
-                                    .font(.caption)
-                                    .foregroundStyle(.blue)
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text(streamingStatus)
-                                    .foregroundStyle(.secondary)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                Spacer()
-                                Button(action: stopGeneration) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "stop.circle.fill")
-                                        Text("Stop")
+            ZStack(alignment: .bottom) {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 16) {
+                            // #4: Empty state when no messages yet and loading
+                            if messages.isEmpty && isLoading {
+                                VStack(spacing: 12) {
+                                    ForEach(0..<3, id: \.self) { i in
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Color.primary.opacity(0.05))
+                                            .frame(height: i == 1 ? 40 : 20)
+                                            .frame(maxWidth: i == 2 ? 200 : .infinity)
+                                            .shimmer()
                                     }
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 20)
                             }
-                            .padding(.horizontal, 16)
-                            .id("loading")
+
+                            ForEach(messages) { msg in
+                                MessageBubble(message: msg)
+                                    .id(msg.id)
+                            }
+                            
+                            // #7: Typing indicator dots
+                            if isLoading {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .font(.caption2)
+                                        .foregroundStyle(.blue)
+                                        .frame(width: 22, height: 22)
+                                        .background(Circle().fill(Color.blue.opacity(0.15)))
+
+                                    HStack(spacing: 4) {
+                                        ForEach(0..<3, id: \.self) { i in
+                                            Circle()
+                                                .fill(Color.blue.opacity(0.6))
+                                                .frame(width: 6, height: 6)
+                                                .scaleEffect(typingDotPhase == i ? 1.3 : 0.7)
+                                                .animation(
+                                                    .easeInOut(duration: 0.4)
+                                                        .repeatForever(autoreverses: true)
+                                                        .delay(Double(i) * 0.15),
+                                                    value: typingDotPhase
+                                                )
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .fill(Color.secondary.opacity(0.1))
+                                    )
+
+                                    Text(streamingStatus)
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    Spacer()
+                                    Button(action: stopGeneration) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "stop.circle.fill")
+                                            Text("Stop")
+                                        }
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 16)
+                                .id("loading")
+                                .onAppear { typingDotPhase = 1 }
+                            }
+                            
+                            if let error = error {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                    Text(error)
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                                .padding(.horizontal, 16)
+                            }
+
+                            // Invisible anchor for scroll-to-bottom
+                            Color.clear.frame(height: 1).id("bottom")
                         }
-                        
-                        if let error = error {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                                Text(error)
-                                    .foregroundStyle(.secondary)
-                                    .font(.caption)
+                        .padding(.vertical, 12)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: ScrollOffsetPreferenceKey.self,
+                                    value: geo.frame(in: .named("chatScroll")).maxY
+                                )
                             }
-                            .padding(.horizontal, 16)
+                        )
+                    }
+                    .coordinateSpace(name: "chatScroll")
+                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { maxY in
+                        isNearBottom = maxY < 600
+                    }
+                    .onChange(of: messages.count) { _ in
+                        if isNearBottom, let last = messages.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
                         }
                     }
-                    .padding(.vertical, 12)
-                }
-                .onChange(of: messages.count) { _ in
-                    if let last = messages.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+
+                    // #15: Scroll-to-bottom floating button
+                    if !isNearBottom {
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down")
+                                    .font(.caption2.weight(.bold))
+                                Text("New messages")
+                                    .font(.caption2)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                         }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
             }
@@ -1184,15 +1294,15 @@ struct QuickPromptChatView: View {
             
             Divider()
             
-            // Follow-up input (polished capsule)
+            // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
-                Image(systemName: "text.cursor")
-                    .font(.caption)
+                Image(systemName: "arrow.up.message")
+                    .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                 
                 TextField("Follow up…", text: $followUp)
                     .textFieldStyle(.plain)
-                    .font(.body)
+                    .font(.callout)
                     .focused($isInputFocused)
                     .onSubmit { sendMessage() }
                     .disabled(isLoading)
@@ -1241,12 +1351,18 @@ struct QuickPromptChatView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.3))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
+        // #9: Esc dismisses the chat view
+        .onExitCommand { QuickPromptWindowController.shared.dismiss() }
         .task {
             if let resumeIdx = resumeIndex {
                 loadSessionFromDisk(resumeIdx)
@@ -1261,6 +1377,9 @@ struct QuickPromptChatView: View {
         let text = followUp.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty, !isLoading else { return }
         promptHistory.append(text)
+        // #13: Persist prompt history (capped at 20 entries)
+        let capped = Array(promptHistory.suffix(20))
+        UserDefaults.standard.set(capped, forKey: "promptHistory")
         historyIndex = -1
         followUp = ""
         Task { await sendToCLI(text) }
@@ -1454,6 +1573,8 @@ struct QuickPromptChatView: View {
             hasActiveSession = true
             isLoading = false
             streamingStatus = "Thinking…"
+            // #16: Subtle sound on completion
+            if error == nil { NSSound(named: "Tink")?.play() }
         } catch {
             currentProcess = nil
             watcher.stop()
@@ -1577,6 +1698,8 @@ struct QuickPromptChatView: View {
 
             isLoading = false
             streamingStatus = "Thinking…"
+            // #16: Subtle sound on completion
+            if error == nil { NSSound(named: "Tink")?.play() }
         } catch {
             pipe.fileHandleForReading.readabilityHandler = nil
             currentProcess = nil
@@ -1706,8 +1829,16 @@ struct QuickPromptChatView: View {
 struct MessageBubble: View {
     let message: ChatMessage
     @State private var copied = false
+    @State private var hovering = false
     
     var isUser: Bool { message.role == "user" }
+    
+    private func copyContent() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message.content, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -1730,6 +1861,7 @@ struct MessageBubble: View {
                 let parts = splitCodeBlocks(message.content)
                 let hasCode = !isUser && parts.contains(where: { $0.isCode })
                 
+                // #5: Enhanced visual hierarchy
                 if hasCode {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
@@ -1744,33 +1876,48 @@ struct MessageBubble: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.secondary.opacity(0.1))
+                            .fill(Color.secondary.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(Color.blue.opacity(0.12), lineWidth: 1)
+                            )
                     )
                 } else {
                     markdownText(message.content)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(isUser ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.1))
+                            RoundedRectangle(cornerRadius: isUser ? 18 : 14)
+                                .fill(
+                                    isUser
+                                        ? AnyShapeStyle(.linearGradient(
+                                            colors: [Color.blue.opacity(0.22), Color.indigo.opacity(0.18)],
+                                            startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        : AnyShapeStyle(Color.secondary.opacity(0.08))
+                                )
+                                .overlay(
+                                    !isUser
+                                        ? AnyView(RoundedRectangle(cornerRadius: 14)
+                                            .strokeBorder(Color.blue.opacity(0.08), lineWidth: 0.5))
+                                        : AnyView(EmptyView())
+                                )
                         )
                 }
                 
+                // #14: Copy button — visible on hover for assistant messages
                 if !isUser {
-                    Button(action: {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.content, forType: .string)
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-                    }) {
+                    Button(action: copyContent) {
                         Label(copied ? "Copied!" : "Copy",
                               systemImage: copied ? "checkmark" : "doc.on.doc")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .opacity(hovering || copied ? 1 : 0)
                 }
             }
+            // #14: Double-click to copy any message
+            .onTapGesture(count: 2) { copyContent() }
             
             // User avatar
             if isUser {
@@ -1783,6 +1930,7 @@ struct MessageBubble: View {
             if !isUser { Spacer(minLength: 40) }
         }
         .padding(.horizontal, 12)
+        .onHover { hovering = $0 }
     }
     
     @ViewBuilder
@@ -1880,17 +2028,23 @@ struct CodeBlockView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
-            }
+            // #12: Fixed-width monospaced text — wraps instead of horizontal scroll
+            // to avoid text selection conflicts
+            Text(code)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // #6: Adaptive background that works in both light and dark mode
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.35))
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.primary.opacity(0.06))
+                )
         )
     }
 }
@@ -1903,5 +2057,48 @@ struct CodeBlockView: View {
 extension Collection {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+// MARK: - Scroll Offset Preference Key (#15)
+
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Shimmer Effect (#4)
+
+struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = 0
+    
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.primary.opacity(0.06),
+                        Color.clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: phase)
+                .mask(content)
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    phase = 400
+                }
+            }
+    }
+}
+
+extension View {
+    func shimmer() -> some View {
+        modifier(ShimmerModifier())
     }
 }
