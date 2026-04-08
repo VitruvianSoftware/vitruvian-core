@@ -561,6 +561,37 @@ struct QuickPromptView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Recent sessions")
+                
+                // Provider quick-picker
+                if let config = ConfigManager.shared {
+                    Menu {
+                        ForEach(config.providers) { provider in
+                            Button(action: {
+                                config.activeProviderId = provider.id
+                                config.saveProviders()
+                            }) {
+                                HStack {
+                                    Text(provider.name)
+                                    if config.activeProviderId == provider.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(config.activeProvider.name.components(separatedBy: " ").first ?? "")
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(Color.primary.opacity(0.4))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Switch AI provider")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
