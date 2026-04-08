@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.6.0...nexus-agent-v1.7.0) (2026-04-08)
+
+
+### Features
+
+* add session list switcher to active chat window header ([296dd98](https://github.com/VitruvianSoftware/nexus-agent/commit/296dd985bf34065499574fb2c25e54cabcbbcca0))
+
+
+### Bug Fixes
+
+* translate GitHub rate limit and 404 HTTP errors to human readable messages ([b4269db](https://github.com/VitruvianSoftware/nexus-agent/commit/b4269dbd9955be8077cecc3ec469ec64be932401))
+
 ## [1.6.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.5.2...nexus-agent-v1.6.0) (2026-04-08)
 
 
