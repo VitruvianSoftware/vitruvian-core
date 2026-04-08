@@ -72,7 +72,10 @@ class ConfigManager: ObservableObject {
     }
 
     let botDirectory: String
-    private var envFilePath: String { "\(botDirectory)/.env" }
+    private var envFilePath: String {
+        guard !botDirectory.isEmpty else { return "" }
+        return "\(botDirectory)/.env"
+    }
 
     init(botDirectory: String) {
         self.botDirectory = botDirectory
@@ -144,6 +147,7 @@ class ConfigManager: ObservableObject {
     // MARK: - Load .env
 
     func load() {
+        guard !botDirectory.isEmpty else { return }
         guard FileManager.default.fileExists(atPath: envFilePath),
               let content = try? String(contentsOfFile: envFilePath, encoding: .utf8) else {
             // Try .env.example as a template
@@ -190,6 +194,7 @@ class ConfigManager: ObservableObject {
     // MARK: - Save .env
 
     func save() {
+        guard !botDirectory.isEmpty else { return }
         let provider = activeProvider
         let isGemini = provider.id == CLIProvider.gemini.id
         let cliProvider = isGemini ? "gemini" : "custom"

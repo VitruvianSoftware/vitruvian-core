@@ -32,16 +32,21 @@ class BotManager: ObservableObject {
                 FileManager.default.fileExists(atPath: "\(env)/src/bot.js") {
             botDirectory = env
         }
-        // 4. Fallback: ~/Workspace/nexus-agent (the checked-out location on this machine).
+        // 4. Fallback: none. We require the user to configure it if we can't find it.
         else {
-            botDirectory = "\(NSHomeDirectory())/Workspace/nexus-agent"
+            botDirectory = ""
         }
 
-        logFilePath = "\(botDirectory)/bot.log"
-        pidFilePath = "\(botDirectory)/.bot.pid"
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("NexusAgent")
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
 
-        // Persist so future launches (including .app bundle) remember the path.
-        UserDefaults.standard.set(botDirectory, forKey: "botDirectory")
+        logFilePath = appSupport.appendingPathComponent("bot.log").path
+        pidFilePath = appSupport.appendingPathComponent(".bot.pid").path
+
+        // Persist only if valid
+        if !botDirectory.isEmpty {
+            UserDefaults.standard.set(botDirectory, forKey: "botDirectory")
+        }
 
         // Check if bot is already running from a previous session
         checkExistingProcess()
@@ -66,6 +71,11 @@ class BotManager: ObservableObject {
 
     func start() {
         guard !isRunning else { return }
+
+        if botDirectory.isEmpty || !FileManager.default.fileExists(atPath: "\(botDirectory)/src/bot.js") {
+            appendLog("Bot source directory not configured. Please set the 'Bot Source' path in Settings.")
+            return
+        }
 
         let proc = Process()
 
