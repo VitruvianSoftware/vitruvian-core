@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var configManager: ConfigManager
     @ObservedObject var botManager: BotManager
+    @ObservedObject var updateChecker: UpdateChecker
     @State private var showSaveConfirmation = false
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
@@ -44,24 +45,6 @@ struct SettingsView: View {
                         key: $configManager.hotkeyKey,
                         modifiers: $configManager.hotkeyModifiers
                     )
-                }
-
-                HStack {
-                    Text("Version")
-                        .frame(width: 120, alignment: .trailing)
-                    Text("v\(appVersion)")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Check for Updates") {
-                        // Access the shared UpdateChecker — best-effort
-                    }
-                    .controlSize(.small)
-                }
-
-                HStack {
-                    Text("")
-                        .frame(width: 120, alignment: .trailing)
-                    Toggle("Automatically check for updates", isOn: $configManager.autoCheckUpdates)
                 }
             }
                     
@@ -210,6 +193,10 @@ struct SettingsView: View {
                 }
                 .formStyle(.grouped)
                 .tabItem { Label("Providers", systemImage: "network") }
+
+                // Tab 4: About
+                AboutTabView(updateChecker: updateChecker, autoCheckUpdates: $configManager.autoCheckUpdates)
+                    .tabItem { Label("About", systemImage: "info.circle") }
             }
             
             // ── Status ──
@@ -474,5 +461,182 @@ class KeyCatcherView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+    }
+}
+
+// MARK: - About Tab
+
+struct AboutTabView: View {
+    @ObservedObject var updateChecker: UpdateChecker
+    @Binding var autoCheckUpdates: Bool
+    @State private var isCheckingForUpdate = false
+    @State private var checkComplete = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // App Icon
+            VStack(spacing: 16) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.linearGradient(
+                        colors: [.blue, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 96, height: 96)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+                    )
+                
+                VStack(spacing: 4) {
+                    Text("Gemini Bot Bar")
+                        .font(.title2.weight(.semibold))
+                    Text("Version \(appVersion)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Text("A native macOS menu bar companion for Gemini CLI and Telegram Bot with a Spotlight-style quick prompt interface.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
+                    .padding(.top, 4)
+            }
+            
+            Spacer().frame(height: 24)
+            
+            // Links
+            HStack(spacing: 20) {
+                Link(destination: URL(string: "https://github.com/\(appRepoOwner)/\(appRepoName)")!) {
+                    Label("GitHub", systemImage: "link")
+                        .font(.callout)
+                }
+                
+                Link(destination: URL(string: "https://github.com/\(appRepoOwner)/\(appRepoName)/releases")!) {
+                    Label("Releases", systemImage: "arrow.down.circle")
+                        .font(.callout)
+                }
+                
+                Link(destination: URL(string: "https://github.com/\(appRepoOwner)/\(appRepoName)/issues")!) {
+                    Label("Issues", systemImage: "exclamationmark.bubble")
+                        .font(.callout)
+                }
+            }
+            
+            Spacer().frame(height: 28)
+            
+            // Update Section
+            VStack(spacing: 12) {
+                Divider().padding(.horizontal, 40)
+                
+                if updateChecker.updateAvailable {
+                    // Update available state
+                    VStack(spacing: 10) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundStyle(.blue)
+                            Text("v\(updateChecker.latestVersion) is available!")
+                                .font(.callout.weight(.medium))
+                        }
+                        
+                        if updateChecker.isDownloading {
+                            VStack(spacing: 6) {
+                                ProgressView(value: updateChecker.downloadProgress)
+                                    .progressViewStyle(.linear)
+                                    .frame(width: 220)
+                                Text("Downloading… \(Int(updateChecker.downloadProgress * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if updateChecker.isInstalling {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Installing update…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Button(action: {
+                                Task { await updateChecker.downloadAndInstall() }
+                            }) {
+                                Label("Update & Restart", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.regular)
+                        }
+                    }
+                } else if isCheckingForUpdate {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Checking for updates…")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if checkComplete && !updateChecker.updateAvailable {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("You're up to date!")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button(action: {
+                        isCheckingForUpdate = true
+                        checkComplete = false
+                        Task {
+                            await updateChecker.checkForUpdates()
+                            isCheckingForUpdate = false
+                            checkComplete = true
+                            // Reset "up to date" message after a few seconds
+                            if !updateChecker.updateAvailable {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                                    checkComplete = false
+                                }
+                            }
+                        }
+                    }) {
+                        Label("Check for Updates", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                }
+                
+                if let errorMsg = updateChecker.errorMessage {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        Text(errorMsg)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+                
+                Toggle("Automatically check for updates on launch", isOn: $autoCheckUpdates)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .padding(.top, 4)
+            }
+            
+            Spacer()
+            
+            // Copyright
+            Text("© 2025 BlueCentre. Open source under MIT License.")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

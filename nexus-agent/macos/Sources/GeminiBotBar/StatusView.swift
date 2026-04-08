@@ -158,7 +158,7 @@ struct StatusView: View {
 
             Button(action: {
                 showSettings = true
-                openSettingsWindow(configManager: configManager, botManager: botManager)
+                openSettingsWindow(configManager: configManager, botManager: botManager, updateChecker: updateChecker)
             }) {
                 Label("Settings…", systemImage: "gearshape")
             }
@@ -198,7 +198,7 @@ private var _settingsWindow: NSWindow?
 private var _settingsConfigManager: ConfigManager?
 private var _settingsBotManager: BotManager?
 
-func openSettingsWindow(configManager: ConfigManager, botManager: BotManager) {
+func openSettingsWindow(configManager: ConfigManager, botManager: BotManager, updateChecker: UpdateChecker) {
     // Reuse existing window if open
     if let existing = _settingsWindow, existing.isVisible {
         existing.makeKeyAndOrderFront(nil)
@@ -210,7 +210,7 @@ func openSettingsWindow(configManager: ConfigManager, botManager: BotManager) {
     _settingsConfigManager = configManager
     _settingsBotManager = botManager
 
-    let settingsView = SettingsView(configManager: configManager, botManager: botManager)
+    let settingsView = SettingsView(configManager: configManager, botManager: botManager, updateChecker: updateChecker)
     let hostingView = NSHostingView(rootView: settingsView)
 
     let window = KeyablePanel(
