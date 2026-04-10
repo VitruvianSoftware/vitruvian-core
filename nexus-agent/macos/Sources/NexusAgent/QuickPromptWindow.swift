@@ -530,11 +530,13 @@ class QuickPromptWindowController {
 
 // MARK: - Session Info Model
 
-struct SessionInfo: Identifiable {
-    let id: Int  // session index (1-based)
+struct SessionInfo: Identifiable, Equatable {
+    let id: String  // session UUID — stable unique identifier
+    let index: Int   // session index for resume (1-based, position in sorted file list)
     let title: String
     let timeAgo: String
     let uuid: String
+    let fileName: String  // on-disk filename for deletion
 }
 
 // MARK: - Quick Prompt Input View
@@ -554,7 +556,7 @@ struct QuickPromptView: View {
     @State private var sessions: [SessionInfo] = []
     @State private var loadingSessions = false
     @State private var showSessions = false
-    @State private var hoveredSessionId: Int? = nil
+    @State private var hoveredSessionId: String? = nil
     @State private var selectedSessionIndex: Int? = nil
     @State private var sparklePulse = false
     @FocusState private var isFocused: Bool
@@ -617,7 +619,7 @@ struct QuickPromptView: View {
                         .onSubmit {
                             if let selIdx = selectedSessionIndex,
                                let session = displayedSessions[safe: selIdx] {
-                                onResume(session.id, session.uuid, session.title)
+                                onResume(session.index, session.uuid, session.title)
                             } else {
                                 guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                                 onSubmit(prompt)
@@ -730,17 +732,31 @@ struct QuickPromptView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(filterActive ? "\(displayedSessions.count) result\(displayedSessions.count == 1 ? "" : "s")" : "Recent")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 10)
-                                .padding(.bottom, 4)
+                            HStack {
+                                Text(filterActive ? "\(displayedSessions.count) result\(displayedSessions.count == 1 ? "" : "s")" : "Recent")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                
+                                if !filterActive && !sessions.isEmpty {
+                                    Spacer()
+                                    Button(action: {
+                                        deleteAllSessions()
+                                    }) {
+                                        Text("Clear All")
+                                            .font(.caption)
+                                            .foregroundStyle(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 10)
+                            .padding(.bottom, 4)
 
                             ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
                                 Button(action: {
-                                    onResume(session.id, session.uuid, session.title)
+                                    onResume(session.index, session.uuid, session.title)
                                 }) {
                                     HStack(spacing: 12) {
                                         Image(systemName: "text.bubble")
@@ -764,8 +780,19 @@ struct QuickPromptView: View {
 
                                         Spacer()
 
-                                        // Show return icon on keyboard-selected row
-                                        if selectedSessionIndex == idx {
+                                        // Show delete button on hover, return icon on keyboard selection
+                                        if hoveredSessionId == session.id {
+                                            Button(action: {
+                                                deleteSession(session)
+                                            }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 14))
+                                                    .foregroundStyle(.secondary.opacity(0.6))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .transition(.opacity)
+                                            .help("Delete session")
+                                        } else if selectedSessionIndex == idx {
                                             Image(systemName: "return")
                                                 .font(.system(size: 11, weight: .medium))
                                                 .foregroundStyle(.secondary)
@@ -880,6 +907,31 @@ struct QuickPromptView: View {
             DispatchQueue.main.async {
                 sessions = parsed
                 loadingSessions = false
+            }
+        }
+    }
+    
+    private func deleteSession(_ session: SessionInfo) {
+        let workDir = Self.resolveWorkingDirectory()
+        let fileName = session.fileName
+        DispatchQueue.global(qos: .userInitiated).async {
+            let _ = SessionFileReader.deleteSession(fileName: fileName, workingDirectory: workDir)
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    sessions.removeAll { $0.id == session.id }
+                }
+            }
+        }
+    }
+    
+    private func deleteAllSessions() {
+        let workDir = Self.resolveWorkingDirectory()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let _ = SessionFileReader.deleteAllSessions(workingDirectory: workDir)
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    sessions.removeAll()
+                }
             }
         }
     }
@@ -1165,7 +1217,7 @@ enum SessionFileReader {
             }
             
             let timeAgo = formatRelativeTime(lastUpdated)
-            sessions.append(SessionInfo(id: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId))
+            sessions.append(SessionInfo(id: sessionId, index: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId, fileName: fileName))
         }
         
         // Return newest first
@@ -1175,36 +1227,63 @@ enum SessionFileReader {
     /// Load messages from a session file identified by UUID.
     /// Returns an array of ChatMessage if successful, nil otherwise.
     static func loadSessionMessages(uuid: String, chatsDirectory: URL) -> [ChatMessage]? {
-        // Find the session file by UUID prefix match (filename contains first 8 chars of UUID)
-        let uuidPrefix = String(uuid.prefix(8))
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDirectory.path) else {
             return nil
         }
         
-        let sessionFile = files.first { $0.hasPrefix("session-") && $0.contains(uuidPrefix) && $0.hasSuffix(".json") }
-        guard let fileName = sessionFile else { return nil }
-        
-        let filePath = chatsDirectory.appendingPathComponent(fileName)
-        guard let data = try? Data(contentsOf: filePath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawMessages = json["messages"] as? [[String: Any]] else {
-            return nil
-        }
-        
-        var chatMessages: [ChatMessage] = []
-        for msg in rawMessages {
-            guard let type = msg["type"] as? String else { continue }
-            // Only show user and gemini (assistant) messages
-            guard type == "user" || type == "gemini" else { continue }
+        // Find the session file by matching sessionId inside the JSON content
+        // (more reliable than filename prefix which can have collisions)
+        for file in files where file.hasPrefix("session-") && file.hasSuffix(".json") {
+            let filePath = chatsDirectory.appendingPathComponent(file)
+            guard let data = try? Data(contentsOf: filePath),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let fileSessionId = json["sessionId"] as? String,
+                  fileSessionId == uuid,
+                  let rawMessages = json["messages"] as? [[String: Any]] else { continue }
             
-            let content = extractContent(from: msg)
-            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            var chatMessages: [ChatMessage] = []
+            for msg in rawMessages {
+                guard let type = msg["type"] as? String else { continue }
+                guard type == "user" || type == "gemini" else { continue }
+                
+                let content = extractContent(from: msg)
+                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                
+                let role = type == "user" ? "user" : "assistant"
+                chatMessages.append(ChatMessage(role: role, content: content))
+            }
             
-            let role = type == "user" ? "user" : "assistant"
-            chatMessages.append(ChatMessage(role: role, content: content))
+            return chatMessages.isEmpty ? nil : chatMessages
         }
+        return nil  // No matching session file found
+    }
+    
+    /// Delete a single session file.
+    static func deleteSession(fileName: String, workingDirectory: URL) -> Bool {
+        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else { return false }
+        let filePath = chatsDir.appendingPathComponent(fileName)
+        do {
+            try FileManager.default.removeItem(at: filePath)
+            return true
+        } catch {
+            print("⚠️ Failed to delete session: \(error)")
+            return false
+        }
+    }
+    
+    /// Delete all session files.
+    static func deleteAllSessions(workingDirectory: URL) -> Int {
+        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else { return 0 }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDir.path) else { return 0 }
         
-        return chatMessages.isEmpty ? nil : chatMessages
+        var deleted = 0
+        for file in files where file.hasPrefix("session-") && file.hasSuffix(".json") {
+            let filePath = chatsDir.appendingPathComponent(file)
+            if (try? FileManager.default.removeItem(at: filePath)) != nil {
+                deleted += 1
+            }
+        }
+        return deleted
     }
     
     /// Extract text content from a message's "content" field.
