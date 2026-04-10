@@ -31,8 +31,19 @@ class QuickPromptWindowController {
     private var eventHandler: EventHandlerRef?
     
     // Configurable hotkey (defaults to ⌘+Shift+G)
-    private var expectedKey: String = "g"
-    private var expectedModifiers: NSEvent.ModifierFlags = [.command, .shift]
+    private(set) var expectedKey: String = "g"
+    private(set) var expectedModifiers: NSEvent.ModifierFlags = [.command, .shift]
+
+    /// Human-readable shortcut string for display (e.g. "⌘⇧G")
+    var hotkeyDisplayString: String {
+        var parts = ""
+        if expectedModifiers.contains(.control) { parts += "⌃" }
+        if expectedModifiers.contains(.option)  { parts += "⌥" }
+        if expectedModifiers.contains(.shift)   { parts += "⇧" }
+        if expectedModifiers.contains(.command)  { parts += "⌘" }
+        parts += expectedKey.uppercased()
+        return parts
+    }
 
     // Pin state — when pinned, clicks outside don't dismiss the window
     var isPinned: Bool = false {
@@ -521,93 +532,119 @@ struct QuickPromptView: View {
     @State private var sparklePulse = false
     @FocusState private var isFocused: Bool
     
+    @State private var isHoveringInput = false
+    @State private var showingCommandHints = false
+    @State private var commandKeyMonitor: Any?
+    
+    private var showActionButtons: Bool {
+        return isHoveringInput || showSessions
+    }
+    
+    private var contextualPlaceholder: String {
+        if showSessions {
+            return "Filter sessions…"
+        }
+        if let config = ConfigManager.shared {
+            let providerName = config.activeProvider.name.components(separatedBy: " ").first ?? "NexusAgent"
+            return "Ask \(providerName) anything…"
+        }
+        return "Ask NexusAgent anything…"
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // ── Quick Prompt Input Row ──
-            HStack(spacing: 12) {
-                // #2: Gentle pulse on sparkle icon when idle
-                Image(systemName: "sparkles")
-                    .font(.title2)
-                    .foregroundStyle(.linearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
-                    .opacity(prompt.isEmpty && sparklePulse ? 0.5 : 1.0)
-                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: sparklePulse)
-                    .onAppear { sparklePulse = true }
-                
-                TextField("Ask NexusAgent anything…", text: $prompt)
-                    .textFieldStyle(.plain)
-                    .font(.title3)
-                    .focused($isFocused)
-                    .onSubmit {
-                        if let selIdx = selectedSessionIndex,
-                           let session = displayedSessions[safe: selIdx] {
-                            onResume(session.id, session.uuid)
-                        } else {
-                            guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                            onSubmit(prompt)
-                        }
-                    }
-                
-                Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showSessions.toggle()
-                    }
-                    selectedSessionIndex = nil
-                    QuickPromptWindowController.shared.animateResize(expanded: showSessions)
-                    if showSessions && sessions.isEmpty {
-                        loadingSessions = true
-                        loadSessions()
-                    }
-                }) {
-                    Image(systemName: showSessions ? "clock.fill" : "clock")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(showSessions ? Color.blue : Color.primary.opacity(0.4))
-                }
-                .buttonStyle(.plain)
-                .help("Recent sessions")
-                
-                // Provider quick-picker
-                if let config = ConfigManager.shared {
-                    Menu {
-                        ForEach(config.providers) { provider in
-                            Button(action: {
-                                config.activeProviderId = provider.id
-                                config.saveProviders()
-                            }) {
-                                HStack {
-                                    Text(provider.name)
-                                    if config.activeProviderId == provider.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
+            HStack(spacing: 8) {
+                // ── Text Input Bar (clean, pure text zone) ──
+                HStack(spacing: 12) {
+                    // #2: Gentle pulse on sparkle icon when idle
+                    Image(systemName: "sparkles")
+                        .font(.title2)
+                        .foregroundStyle(.linearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .opacity(prompt.isEmpty && sparklePulse ? 0.5 : 1.0)
+                        .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: sparklePulse)
+                        .onAppear { sparklePulse = true }
+                    
+                    TextField(contextualPlaceholder, text: $prompt)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 18, weight: .regular))
+                        .focused($isFocused)
+                        .onSubmit {
+                            if let selIdx = selectedSessionIndex,
+                               let session = displayedSessions[safe: selIdx] {
+                                onResume(session.id, session.uuid)
+                            } else {
+                                guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                                onSubmit(prompt)
                             }
                         }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "cpu")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(config.activeProvider.name.components(separatedBy: " ").first ?? "")
-                                .font(.system(size: 11, weight: .medium))
-                                .lineLimit(1)
+                        .overlay(alignment: .trailing) {
+                            if showingCommandHints {
+                                Text(QuickPromptWindowController.shared.hotkeyDisplayString)
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.secondary.opacity(0.12))
+                                    )
+                                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                            }
                         }
-                        .foregroundStyle(Color.primary.opacity(0.4))
+                        .animation(.easeInOut(duration: 0.15), value: showingCommandHints)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+                
+                // ── Modular Action Buttons (Animate in/out) ──
+                if showActionButtons {
+                    HStack(spacing: 8) {
+                        modularActionButton(
+                            icon: showSessions ? "clock.fill" : "clock",
+                            isActive: showSessions,
+                            help: "Recent sessions"
+                        ) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                showSessions.toggle()
+                            }
+                            selectedSessionIndex = nil
+                            // Clear filter text when closing sessions panel
+                            if !showSessions {
+                                prompt = ""
+                            }
+                            QuickPromptWindowController.shared.animateResize(expanded: showSessions)
+                            if showSessions && sessions.isEmpty {
+                                loadingSessions = true
+                                loadSessions()
+                            }
+                        }
+                        
+                        if let config = ConfigManager.shared {
+                             modularProviderButton(config: config)
+                        }
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("Switch AI provider")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.8)),
+                        removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.8))
+                    ))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            // #1: Subtle capsule border to ground the input bar
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                    .padding(.horizontal, 6)
-            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .clipped()
+            .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showActionButtons)
+            .onHover { hovering in
+                isHoveringInput = hovering
+            }
             
             // ── Sessions Panel (animated, shown only when toggled) ──
             if showSessions {
@@ -637,10 +674,22 @@ struct QuickPromptView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                } else if displayedSessions.isEmpty {
+                    // Filter produced no results
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.quaternary)
+                        Text("No matching sessions")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("Recent")
+                            Text(filterActive ? "\(displayedSessions.count) result\(displayedSessions.count == 1 ? "" : "s")" : "Recent")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .textCase(.uppercase)
@@ -704,6 +753,7 @@ struct QuickPromptView: View {
         .onAppear {
             isFocused = true
             setupKeyboardMonitor()
+            setupCommandKeyMonitor()
             if showSessions && sessions.isEmpty {
                 loadingSessions = true
                 loadSessions()
@@ -711,6 +761,7 @@ struct QuickPromptView: View {
         }
         .onDisappear {
             removeKeyboardMonitor()
+            removeCommandKeyMonitor()
         }
         .onExitCommand { onDismiss() }
     }
@@ -759,7 +810,13 @@ struct QuickPromptView: View {
     }
     
     private var displayedSessions: [SessionInfo] {
-        Array(sessions.prefix(10))
+        let base = Array(sessions.prefix(10))
+        // Filter sessions by prompt text when the sessions panel is open
+        if showSessions && !prompt.trimmingCharacters(in: .whitespaces).isEmpty {
+            let query = prompt.lowercased()
+            return base.filter { $0.title.lowercased().contains(query) }
+        }
+        return base
     }
     
     private func loadSessions() {
@@ -771,6 +828,46 @@ struct QuickPromptView: View {
                 loadingSessions = false
             }
         }
+    }
+    
+    // MARK: - Command Key Monitor & Helpers
+    
+    private func setupCommandKeyMonitor() {
+        commandKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { event in
+            let isCommand = event.modifierFlags.contains(.command)
+            if showingCommandHints != isCommand {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showingCommandHints = isCommand
+                }
+            }
+            return event
+        }
+    }
+
+    private func removeCommandKeyMonitor() {
+        if let monitor = commandKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            commandKeyMonitor = nil
+        }
+    }
+    
+    // MARK: - Modular Action Buttons
+
+    private func modularActionButton(
+        icon: String,
+        isActive: Bool,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        ModularButtonView(icon: icon, isActive: isActive, help: help, action: action)
+    }
+
+    private func modularProviderButton(config: ConfigManager) -> some View {
+        ModularProviderButtonView(config: config)
+    }
+
+    private var filterActive: Bool {
+        showSessions && !prompt.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     /// Animate the underlying NSPanel between compact (input-only) and expanded (sessions) heights.
@@ -805,6 +902,88 @@ struct QuickPromptView: View {
             return version
         }
         return ""
+    }
+}
+
+// MARK: - Modular Button Views (with hover feedback)
+
+/// A circular action button with hover highlight, used outside the input bar.
+struct ModularButtonView: View {
+    let icon: String
+    let isActive: Bool
+    let help: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(isActive ? Color.blue : Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                )
+                .background(
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(isHovered ? 0.18 : 0.1), lineWidth: 0.5)
+                )
+                .scaleEffect(isHovered ? 1.08 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .contentShape(Circle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+/// A circular provider-picker button with hover highlight.
+struct ModularProviderButtonView: View {
+    @ObservedObject var config: ConfigManager
+    @State private var isHovered = false
+
+    var body: some View {
+        Menu {
+            ForEach(config.providers) { provider in
+                Button(action: {
+                    config.activeProviderId = provider.id
+                    config.saveProviders()
+                }) {
+                    HStack {
+                        Text(provider.name)
+                        if config.activeProviderId == provider.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "cpu")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .frame(width: 34, height: 34)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                )
+                .background(
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(isHovered ? 0.18 : 0.1), lineWidth: 0.5)
+                )
+                .scaleEffect(isHovered ? 1.08 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch provider: \(config.activeProvider.name)")
+        .contentShape(Circle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
