@@ -462,7 +462,11 @@ class QuickPromptWindowController {
         expandAndShowChat(QuickPromptChatView(initialPrompt: prompt, resumeIndex: nil, resumeUUID: nil, resumeTitle: nil))
     }
     
-    private func resumeSession(_ index: Int, uuid: String, title: String) {
+    /// Resume a specific session by UUID. Can be called externally (e.g. from notification click).
+    func resumeSession(_ index: Int, uuid: String, title: String) {
+        if window == nil { createWindow() }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid, resumeTitle: title))
     }
     
@@ -1552,6 +1556,7 @@ struct QuickPromptChatView: View {
     @State private var isLoading = false
     @State private var error: String?
     @State private var hasActiveSession = false
+    @State private var activeSessionUUID: String?  // session UUID discovered from CLI response
     @State private var currentProcess: Process?
     @State private var promptHistory: [String] = UserDefaults.standard.stringArray(forKey: "promptHistory") ?? []
     @State private var historyIndex: Int = -1
@@ -1592,12 +1597,13 @@ struct QuickPromptChatView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
-                    .opacity(isLoading ? 1.0 : (sparklePulse ? 0.5 : 1.0))
+                    .opacity(sparklePulse ? (isLoading ? 0.6 : 0.5) : 1.0)
                     .onAppear {
                         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                             sparklePulse = true
                         }
                     }
+                    .animation(.easeInOut(duration: isLoading ? 0.6 : 1.8), value: isLoading)
                 Text(chatTitle ?? "Chat")
                     .font(.system(size: 16, weight: .medium))
                     .lineLimit(1)
@@ -2043,14 +2049,19 @@ struct QuickPromptChatView: View {
         let windowVisible = QuickPromptWindowController.shared.window?.isVisible ?? false
         guard !windowVisible else { return }
         
+        let providerName = ConfigManager.shared?.activeProvider.name ?? "NexusAgent"
+        // Pass session UUID so the notification click can resume the exact session
+        let sessionUUID = activeSessionUUID ?? resumeUUID
+        let title = chatTitle
+        
         if let error = error {
-            BackgroundNotificationManager.shared.notifyCompletion(preview: error, isError: true)
+            BackgroundNotificationManager.shared.notifyCompletion(preview: error, isError: true, providerName: providerName, sessionUUID: sessionUUID, sessionTitle: title)
         } else if let response = response, !response.isEmpty {
             // Use first meaningful line as preview
             let preview = response
                 .components(separatedBy: .newlines)
                 .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? response
-            BackgroundNotificationManager.shared.notifyCompletion(preview: preview)
+            BackgroundNotificationManager.shared.notifyCompletion(preview: preview, providerName: providerName, sessionUUID: sessionUUID, sessionTitle: title)
         }
     }
     
@@ -2234,9 +2245,20 @@ struct QuickPromptChatView: View {
                 } else {
                     let parsed = parseGeminiJSON(output)
                     messages.append(ChatMessage(role: "assistant", content: parsed.text ?? output))
+                    // Capture session UUID for background notification deep-link
+                    if let sid = parsed.sessionId {
+                        activeSessionUUID = sid
+                    }
                 }
             }
             // If we received stream events, the message is already built
+            // Always try to capture session UUID from CLI output for deep-linking
+            if activeSessionUUID == nil, !output.isEmpty {
+                let parsed = parseGeminiJSON(output)
+                if let sid = parsed.sessionId {
+                    activeSessionUUID = sid
+                }
+            }
             hasActiveSession = true
             withAnimation(.easeOut(duration: 0.2)) {
                 isLoading = false
@@ -2846,12 +2868,17 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
     /// - Parameters:
     ///   - preview: A short preview of the response text
     ///   - isError: Whether the generation failed
-    func notifyCompletion(preview: String, isError: Bool = false) {
+    func notifyCompletion(preview: String, isError: Bool = false, providerName: String = "NexusAgent", sessionUUID: String? = nil, sessionTitle: String? = nil) {
         let content = UNMutableNotificationContent()
-        content.title = isError ? "Generation Failed" : "Generation Complete"
+        content.title = isError ? "\(providerName) — Failed" : "\(providerName) — Done"
         content.body = String(preview.prefix(200))
         content.sound = .default
         content.categoryIdentifier = "GENERATION_COMPLETE"
+        // Embed session info so click-to-reopen lands on the right session
+        var info: [String: String] = [:]
+        if let uuid = sessionUUID { info["sessionUUID"] = uuid }
+        if let title = sessionTitle { info["sessionTitle"] = title }
+        content.userInfo = info
         
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
@@ -2869,8 +2896,18 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         if response.notification.request.content.categoryIdentifier == "GENERATION_COMPLETE" {
+            let userInfo = response.notification.request.content.userInfo
+            let uuid = userInfo["sessionUUID"] as? String
+            let title = userInfo["sessionTitle"] as? String
+            
             DispatchQueue.main.async {
-                QuickPromptWindowController.shared.show(startExpanded: true)
+                if let uuid = uuid {
+                    // Resume the specific session that completed
+                    QuickPromptWindowController.shared.resumeSession(0, uuid: uuid, title: title ?? "Chat")
+                } else {
+                    // Fallback: open sessions view
+                    QuickPromptWindowController.shared.show(startExpanded: true)
+                }
             }
         }
         completionHandler()
@@ -2882,7 +2919,6 @@ class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate 
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        print("🔔 willPresent delegate called — showing banner")
         completionHandler([.banner, .sound, .list])
     }
 }
