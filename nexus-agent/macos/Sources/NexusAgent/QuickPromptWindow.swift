@@ -538,6 +538,7 @@ struct SessionInfo: Identifiable, Equatable {
     let timeAgo: String
     let uuid: String
     let fileName: String  // on-disk filename for deletion
+    let messageCount: Int  // number of user+assistant messages
 }
 
 // MARK: - Quick Prompt Input View
@@ -642,6 +643,25 @@ struct QuickPromptView: View {
                             }
                         }
                         .animation(.easeInOut(duration: 0.15), value: showingCommandHints)
+                    
+                    // Clear button when there's text
+                    if !prompt.isEmpty {
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.15)) { prompt = "" }
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.quaternary)
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    }
+                    
+                    // Send button
+                    SendButtonView(isEnabled: !prompt.trimmingCharacters(in: .whitespaces).isEmpty) {
+                        guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        onSubmit(prompt)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -787,9 +807,19 @@ struct QuickPromptView: View {
                                                 .font(.system(size: 13))
                                                 .lineLimit(1)
                                                 .foregroundStyle(.primary)
-                                            Text(session.timeAgo)
-                                                .font(.system(size: 11))
-                                                .foregroundStyle(.secondary)
+                                            HStack(spacing: 6) {
+                                                Text(session.timeAgo)
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(.secondary)
+                                                if session.messageCount > 0 {
+                                                    Text("·")
+                                                        .font(.system(size: 11))
+                                                        .foregroundStyle(.quaternary)
+                                                    Text("\(session.messageCount) msgs")
+                                                        .font(.system(size: 11))
+                                                        .foregroundStyle(.tertiary)
+                                                }
+                                            }
                                         }
 
                                         Spacer()
@@ -1244,7 +1274,11 @@ enum SessionFileReader {
             }
             
             let timeAgo = formatRelativeTime(lastUpdated)
-            sessions.append(SessionInfo(id: sessionId, index: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId, fileName: fileName))
+            let msgCount = messages.filter { msg in
+                let t = msg["type"] as? String
+                return t == "user" || t == "gemini"
+            }.count
+            sessions.append(SessionInfo(id: sessionId, index: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId, fileName: fileName, messageCount: msgCount))
         }
         
         // Return newest first
@@ -1708,8 +1742,8 @@ struct QuickPromptChatView: View {
                                         .font(.caption)
                                         .lineLimit(1)
                                         .truncationMode(.tail)
-                                        .contentTransition(.numericText())
-                                        .animation(.easeInOut(duration: 0.2), value: streamingStatus)
+                                        .contentTransition(.interpolate)
+                                        .animation(.easeInOut(duration: 0.3), value: streamingStatus)
                                     Spacer()
                                     Button(action: stopGeneration) {
                                         HStack(spacing: 4) {
