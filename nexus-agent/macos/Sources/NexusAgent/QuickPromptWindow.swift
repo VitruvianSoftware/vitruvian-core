@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Carbon.HIToolbox
 import Combine
+import UserNotifications
 
 // Global C callback for the Carbon hotkey event handler
 private func carbonHotkeyHandler(
@@ -1731,6 +1732,7 @@ struct QuickPromptChatView: View {
                                         }
                                     }
                                 }
+                                .transition(.opacity.combined(with: .offset(y: 6)))
                             }
 
                             // Invisible anchor for scroll-to-bottom
@@ -1934,6 +1936,23 @@ struct QuickPromptChatView: View {
         streamingStatus = "Thinking…"
     }
     
+    /// If the Quick Prompt window was dismissed while generation was running,
+    /// send a macOS system notification with a preview of the result.
+    private func notifyIfBackgrounded(response: String?, error: String?) {
+        let windowVisible = QuickPromptWindowController.shared.window?.isVisible ?? false
+        guard !windowVisible else { return }
+        
+        if let error = error {
+            BackgroundNotificationManager.shared.notifyCompletion(preview: error, isError: true)
+        } else if let response = response, !response.isEmpty {
+            // Use first meaningful line as preview
+            let preview = response
+                .components(separatedBy: .newlines)
+                .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? response
+            BackgroundNotificationManager.shared.notifyCompletion(preview: preview)
+        }
+    }
+    
     /// Load an existing session's conversation history from disk.
     private func loadSessionFromDisk(_ index: Int) {
         let workDir = QuickPromptView.resolveWorkingDirectory()
@@ -2124,6 +2143,8 @@ struct QuickPromptChatView: View {
             streamingStatus = "Thinking…"
             // #16: Subtle sound on completion
             if error == nil { NSSound(named: "Tink")?.play() }
+            // Notify if window was dismissed during generation
+            notifyIfBackgrounded(response: messages.last?.content, error: error)
             // Clean up temp stream file
             try? FileManager.default.removeItem(atPath: streamFilePath)
         } catch {
@@ -2135,6 +2156,7 @@ struct QuickPromptChatView: View {
                 isLoading = false
             }
             streamingStatus = "Thinking…"
+            notifyIfBackgrounded(response: nil, error: error.localizedDescription)
             try? FileManager.default.removeItem(atPath: streamFilePath)
         }
     }
@@ -2260,6 +2282,8 @@ struct QuickPromptChatView: View {
             streamingStatus = "Thinking…"
             // #16: Subtle sound on completion
             if error == nil { NSSound(named: "Tink")?.play() }
+            // Notify if window was dismissed during generation
+            notifyIfBackgrounded(response: messages.last?.content, error: error)
         } catch {
             pipe.fileHandleForReading.readabilityHandler = nil
             currentProcess = nil
@@ -2268,6 +2292,7 @@ struct QuickPromptChatView: View {
                 isLoading = false
             }
             streamingStatus = "Thinking…"
+            notifyIfBackgrounded(response: nil, error: error.localizedDescription)
         }
     }
 
@@ -2508,7 +2533,7 @@ struct MessageBubble: View {
     
     @ViewBuilder
     private func markdownText(_ text: String) -> some View {
-        if !isUser, let attr = try? AttributedString(
+        if let attr = try? AttributedString(
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
@@ -2579,12 +2604,10 @@ struct CodeBlockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                if !language.isEmpty {
-                    Text(language)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                }
+                Text(language.isEmpty ? "Code" : language)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
                 Spacer()
                 Button(action: {
                     NSPasteboard.general.clearContents()
@@ -2684,5 +2707,68 @@ struct ShimmerModifier: ViewModifier {
 extension View {
     func shimmer() -> some View {
         modifier(ShimmerModifier())
+    }
+}
+
+// MARK: - Background Completion Notifications
+
+/// Manages macOS system notifications for background generation completions.
+/// When the user dismisses the Quick Prompt window while a generation is running,
+/// this sends a notification with a preview of the result so they know it's done.
+class BackgroundNotificationManager: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = BackgroundNotificationManager()
+    
+    private override init() {
+        super.init()
+        UNUserNotificationCenter.current().delegate = self
+    }
+    
+    /// Request notification permission. Call once on app launch.
+    func requestPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+    
+    /// Send a notification that a background generation completed.
+    /// - Parameters:
+    ///   - preview: A short preview of the response text
+    ///   - isError: Whether the generation failed
+    func notifyCompletion(preview: String, isError: Bool = false) {
+        let content = UNMutableNotificationContent()
+        content.title = isError ? "Generation Failed" : "Generation Complete"
+        content.body = String(preview.prefix(200))
+        content.sound = .default
+        content.categoryIdentifier = "GENERATION_COMPLETE"
+        
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil  // deliver immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request)
+    }
+    
+    /// Called when the user clicks a notification — reopen the Quick Prompt window.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.notification.request.content.categoryIdentifier == "GENERATION_COMPLETE" {
+            DispatchQueue.main.async {
+                QuickPromptWindowController.shared.show(startExpanded: true)
+            }
+        }
+        completionHandler()
+    }
+    
+    /// Show notifications even when app is in foreground (user might be in the menu bar view).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        print("🔔 willPresent delegate called — showing banner")
+        completionHandler([.banner, .sound, .list])
     }
 }

@@ -34,6 +34,9 @@ class AppState: ObservableObject {
         // Register global hotkey for Quick Prompt (⌘+Shift+G)
         QuickPromptWindowController.shared.registerHotkey()
 
+        // Request notification permission for background generation alerts
+        BackgroundNotificationManager.shared.requestPermission()
+
         // Auto-start if configured
         if config.autoStart && config.isConfigured {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
