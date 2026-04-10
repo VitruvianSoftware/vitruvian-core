@@ -1849,7 +1849,7 @@ struct QuickPromptChatView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.down")
                                     .font(.caption2.weight(.bold))
-                                Text("New messages")
+                                Text(isLoading ? "New messages" : "Scroll to bottom")
                                     .font(.caption2)
                             }
                             .padding(.horizontal, 12)
@@ -1865,6 +1865,15 @@ struct QuickPromptChatView: View {
                 .animation(.easeInOut(duration: 0.25), value: isNearBottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // ⌘N for New Chat
+            .onKeyPress(phases: .down) { press in
+                let flags = press.modifiers.intersection([.command])
+                if flags == .command && press.characters.lowercased() == "n" {
+                    QuickPromptWindowController.shared.show()
+                    return .handled
+                }
+                return .ignored
+            }
             
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
@@ -2576,8 +2585,8 @@ struct MessageBubble: View {
             
             // User avatar
             if isUser {
-                Image(systemName: "person.fill")
-                    .font(.caption2)
+                Text(String(NSFullUserName().prefix(1)).uppercased())
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.linearGradient(
                         colors: [.indigo, .purple],
                         startPoint: .top, endPoint: .bottom
@@ -2693,13 +2702,28 @@ struct CodeBlockView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
             
-            // Fixed-width monospaced text — wraps instead of horizontal scroll
-            Text(code)
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // Fixed-width monospaced text with line numbers
+            HStack(alignment: .top, spacing: 0) {
+                // Line numbers
+                let lines = code.components(separatedBy: "\n")
+                VStack(alignment: .trailing, spacing: 0) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { idx, _ in
+                        Text("\(idx + 1)")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.quaternary)
+                            .frame(height: 15)
+                    }
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 6)
+                
+                Text(code)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         // Adaptive background that works in both light and dark mode
         .background(
