@@ -1407,9 +1407,9 @@ enum SessionFileReader {
         let hours = minutes / 60
         let days = hours / 24
         
-        if days > 0 { return "\(days) day\(days == 1 ? "" : "s") ago" }
-        if hours > 0 { return "\(hours) hour\(hours == 1 ? "" : "s") ago" }
-        if minutes > 0 { return "\(minutes) minute\(minutes == 1 ? "" : "s") ago" }
+        if days > 0 { return days == 1 ? "Yesterday" : "\(days)d ago" }
+        if hours > 0 { return "\(hours)h ago" }
+        if minutes > 0 { return "\(minutes)m ago" }
         return "Just now"
     }
 }
@@ -1907,6 +1907,17 @@ struct QuickPromptChatView: View {
                             stopGeneration()
                         }
                     }
+                    // Character count for longer prompts
+                    .overlay(alignment: .bottomTrailing) {
+                        if followUp.count > 20 {
+                            Text("\(followUp.count)")
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
+                                .foregroundStyle(.quaternary)
+                                .padding(.trailing, 2)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.15), value: followUp.count > 20)
                     .onKeyPress(.upArrow) {
                         if followUp.isEmpty && !promptHistory.isEmpty {
                             if historyIndex < 0 { historyIndex = promptHistory.count }
@@ -2527,8 +2538,8 @@ struct MessageBubble: View {
             
             // Assistant avatar
             if !isUser {
-                Image(systemName: "sparkles")
-                    .font(.caption2)
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: 10))
                     .foregroundStyle(.linearGradient(
                         colors: [.blue, .purple],
                         startPoint: .top, endPoint: .bottom
@@ -2585,19 +2596,17 @@ struct MessageBubble: View {
                         )
                 }
                 
-                // #14: Copy button — visible on hover for assistant messages
-                if !isUser {
-                    Button(action: copyContent) {
-                        Label(copied ? "Copied!" : "Copy",
-                              systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .font(.caption2)
-                            .foregroundStyle(copied ? .blue : .secondary)
-                            .scaleEffect(copyBounce ? 1.25 : 1.0)
-                            .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
-                    }
-                    .buttonStyle(.plain)
-                    .opacity(hovering || copied ? 1 : 0)
+                // #14: Copy button — visible on hover for any message
+                Button(action: copyContent) {
+                    Label(copied ? "Copied!" : "Copy",
+                          systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption2)
+                        .foregroundStyle(copied ? .blue : .secondary)
+                        .scaleEffect(copyBounce ? 1.25 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                 }
+                .buttonStyle(.plain)
+                .opacity(hovering || copied ? 1 : 0)
             }
             // #14: Double-click to copy any message
             .onTapGesture(count: 2) { copyContent() }
