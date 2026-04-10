@@ -218,8 +218,12 @@ class QuickPromptWindowController {
                 let ff = window.frame
                 let finalY = ff.origin.y + ff.height - targetHeight
                 window.setFrame(NSRect(x: ff.origin.x, y: finalY, width: ff.width, height: targetHeight), display: true)
+                window.invalidateShadow()
                 t.invalidate()
                 self.resizeTimer = nil
+            } else {
+                // Periodically refresh shadow during animation
+                window.invalidateShadow()
             }
         }
     }
@@ -1544,6 +1548,8 @@ struct QuickPromptChatView: View {
                                         .font(.caption)
                                         .lineLimit(1)
                                         .truncationMode(.tail)
+                                        .contentTransition(.numericText())
+                                        .animation(.easeInOut(duration: 0.2), value: streamingStatus)
                                     Spacer()
                                     Button(action: stopGeneration) {
                                         HStack(spacing: 4) {
@@ -1558,6 +1564,7 @@ struct QuickPromptChatView: View {
                                 .padding(.horizontal, 16)
                                 .id("loading")
                                 .onAppear { typingDotPhase = 1 }
+                                .transition(.opacity.combined(with: .offset(y: 8)))
                             }
                             
                             if let error = error {
@@ -1671,9 +1678,11 @@ struct QuickPromptChatView: View {
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
-                Image(systemName: "arrow.up.message")
+                Image(systemName: isLoading ? "ellipsis" : "arrow.up.message")
                     .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isLoading ? .quaternary : .tertiary)
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(.easeInOut(duration: 0.2), value: isLoading)
                 
                 TextField(followUpPlaceholder, text: $followUp)
                     .textFieldStyle(.plain)
