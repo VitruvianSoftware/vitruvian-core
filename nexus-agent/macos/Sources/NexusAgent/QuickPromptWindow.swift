@@ -901,6 +901,7 @@ struct QuickPromptView: View {
                         .animation(.easeInOut(duration: 0.2), value: displayedSessions.map(\.id))
                         .padding(.bottom, 8)
                     }
+                    .transition(.opacity)
                 }
             }
         }
@@ -1612,6 +1613,7 @@ struct QuickPromptChatView: View {
     @State private var hoveringNewChat = false
     @State private var hoveringSessions = false
     @State private var hoveringPin = false
+    @State private var hoveringInlineStop = false
     
     private var followUpPlaceholder: String {
         // providerVersion dependency ensures this re-evaluates on provider switch
@@ -1694,7 +1696,7 @@ struct QuickPromptChatView: View {
                         .animation(.easeInOut(duration: 0.15), value: hoveringNewChat)
                 }
                 .buttonStyle(.plain)
-                .help("New Chat")
+                .help("New Chat (⌘N)")
                 .onHover { hoveringNewChat = $0 }
                 
                 Button(action: {
@@ -1821,9 +1823,11 @@ struct QuickPromptChatView: View {
                                             Text("Stop")
                                         }
                                         .font(.caption)
-                                        .foregroundStyle(.red)
+                                        .foregroundStyle(.red.opacity(hoveringInlineStop ? 0.6 : 1.0))
+                                        .animation(.easeInOut(duration: 0.12), value: hoveringInlineStop)
                                     }
                                     .buttonStyle(.plain)
+                                    .onHover { hoveringInlineStop = $0 }
                                 }
                                 .padding(.horizontal, 16)
                                 .id("loading")
@@ -1848,6 +1852,12 @@ struct QuickPromptChatView: View {
                                     .buttonStyle(.plain)
                                 }
                                 .padding(.horizontal, 16)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color.red.opacity(0.06))
+                                )
+                                .padding(.horizontal, 4)
                                 .contentShape(Rectangle())
                                 .onTapGesture { self.error = nil }
                                 .onAppear {
