@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Carbon.HIToolbox
+import Combine
 
 // Global C callback for the Carbon hotkey event handler
 private func carbonHotkeyHandler(
@@ -1060,6 +1061,45 @@ struct SendButtonView: View {
     }
 }
 
+/// A compact provider picker badge for the chat header.
+struct ChatProviderBadge: View {
+    @ObservedObject var config: ConfigManager
+    @State private var isHovered = false
+
+    var body: some View {
+        Menu {
+            ForEach(config.providers) { provider in
+                Button(action: {
+                    config.activeProviderId = provider.id
+                    config.saveProviders()
+                }) {
+                    HStack {
+                        Text(provider.name)
+                        if config.activeProviderId == provider.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(config.activeProvider.name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isHovered ? .secondary : .tertiary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.1))
+                )
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Switch provider")
+        .onHover { isHovered = $0 }
+    }
+}
+
 // MARK: - Session File Reading
 
 /// Utilities for reading Gemini CLI session files directly from disk.
@@ -1366,6 +1406,7 @@ struct QuickPromptChatView: View {
     let resumeIndex: Int?
     let resumeUUID: String?
     let resumeTitle: String?
+    @State private var chatTitle: String?
     @State private var messages: [ChatMessage] = []
     @State private var followUp: String = ""
     @State private var isLoading = false
@@ -1381,6 +1422,7 @@ struct QuickPromptChatView: View {
     @State private var typingDotPhase: Int = 0
     @State private var scrollViewHeight: CGFloat = 500
     @FocusState private var isInputFocused: Bool
+    @State private var providerVersion: Int = 0  // bumped on provider change to trigger placeholder re-eval
     
     // Header button hover states
     @State private var hoveringNewChat = false
@@ -1388,6 +1430,8 @@ struct QuickPromptChatView: View {
     @State private var hoveringPin = false
     
     private var followUpPlaceholder: String {
+        // providerVersion dependency ensures this re-evaluates on provider switch
+        _ = providerVersion
         if let config = ConfigManager.shared {
             let name = config.activeProvider.name.components(separatedBy: " ").first ?? "NexusAgent"
             return "Follow up with \(name)…"
@@ -1407,23 +1451,14 @@ struct QuickPromptChatView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
-                Text(resumeTitle ?? "Chat")
+                Text(chatTitle ?? "Chat")
                     .font(.system(size: 16, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                // Subtle active provider badge
+                // Interactive provider picker badge
                 if let config = ConfigManager.shared {
-                    let providerName = config.activeProvider.name
-                    Text(providerName)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.1))
-                        )
+                    ChatProviderBadge(config: config)
                 }
 
                 Spacer()
@@ -1433,6 +1468,7 @@ struct QuickPromptChatView: View {
                     hasActiveSession = false
                     error = nil
                     followUp = ""
+                    chatTitle = nil
                     isInputFocused = true
                 }) {
                     Image(systemName: "plus.circle")
@@ -1730,7 +1766,11 @@ struct QuickPromptChatView: View {
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.3))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                            .strokeBorder(
+                                isInputFocused ? Color.blue.opacity(0.3) : Color.primary.opacity(0.06),
+                                lineWidth: isInputFocused ? 1.0 : 0.5
+                            )
+                            .animation(.easeInOut(duration: 0.2), value: isInputFocused)
                     )
             )
             .padding(.horizontal, 10)
@@ -1738,7 +1778,11 @@ struct QuickPromptChatView: View {
         }
         // #9: Esc dismisses the chat view
         .onExitCommand { QuickPromptWindowController.shared.dismiss() }
+        .onReceive(Self.configChangePublisher) { _ in
+            providerVersion += 1
+        }
         .task {
+            chatTitle = resumeTitle
             if let resumeIdx = resumeIndex {
                 loadSessionFromDisk(resumeIdx)
             } else if let prompt = initialPrompt {
@@ -1746,6 +1790,18 @@ struct QuickPromptChatView: View {
             }
             isInputFocused = true
         }
+    }
+    
+    /// Publisher that fires when ConfigManager's active provider changes.
+    /// Extracted as a static to avoid complex type expressions in the body.
+    static var configChangePublisher: AnyPublisher<Void, Never> {
+        if let config = ConfigManager.shared {
+            return config.objectWillChange
+                .receive(on: RunLoop.main)
+                .map { _ in () }
+                .eraseToAnyPublisher()
+        }
+        return Empty<Void, Never>().eraseToAnyPublisher()
     }
     
     private func sendMessage() {
@@ -1765,7 +1821,9 @@ struct QuickPromptChatView: View {
         currentProcess = nil
         streamWatcher?.stop()
         streamWatcher = nil
-        isLoading = false
+        withAnimation(.easeOut(duration: 0.2)) {
+            isLoading = false
+        }
         streamingStatus = "Thinking…"
     }
     
