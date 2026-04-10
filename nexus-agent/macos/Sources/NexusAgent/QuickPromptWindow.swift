@@ -817,8 +817,10 @@ struct QuickPromptView: View {
     @State private var eventMonitor: Any?
     
     private func setupKeyboardMonitor() {
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // 125 = Down arrow, 126 = Up arrow, 36 = Return
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            // Only intercept arrow keys when the sessions panel is open
+            guard showSessions else { return event }
+            // 125 = Down arrow, 126 = Up arrow
             if event.keyCode == 125 {
                 moveSelection(down: true)
                 return nil // consume event
@@ -1500,7 +1502,12 @@ struct QuickPromptChatView: View {
                             ForEach(messages) { msg in
                                 MessageBubble(message: msg)
                                     .id(msg.id)
+                                    .transition(.asymmetric(
+                                        insertion: .opacity.combined(with: .offset(y: 12)),
+                                        removal: .opacity
+                                    ))
                             }
+                            .animation(.easeOut(duration: 0.25), value: messages.count)
                             
                             // #7: Typing indicator dots
                             if isLoading {
@@ -1657,7 +1664,10 @@ struct QuickPromptChatView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            Divider()
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
@@ -2283,9 +2293,14 @@ struct MessageBubble: View {
             
             // User avatar
             if isUser {
-                Image(systemName: "person.circle.fill")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "person.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.linearGradient(
+                        colors: [.indigo, .purple],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.indigo.opacity(0.15)))
                     .padding(.top, 4)
             }
             
