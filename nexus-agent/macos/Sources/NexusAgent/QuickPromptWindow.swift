@@ -1031,6 +1031,26 @@ struct ModularProviderButtonView: View {
     }
 }
 
+/// A send button with hover scale feedback for the chat follow-up input.
+struct SendButtonView: View {
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.title2)
+                .foregroundStyle(isEnabled ? (isHovered ? Color.blue.opacity(0.8) : Color.blue) : Color.gray)
+                .scaleEffect(isHovered && isEnabled ? 1.15 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .onHover { isHovered = $0 }
+    }
+}
+
 // MARK: - Session File Reading
 
 /// Utilities for reading Gemini CLI session files directly from disk.
@@ -1534,8 +1554,29 @@ struct QuickPromptChatView: View {
                                     Text(error)
                                         .foregroundStyle(.secondary)
                                         .font(.caption)
+                                    Spacer()
+                                    Button(action: { self.error = nil }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.quaternary)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                                 .padding(.horizontal, 16)
+                                .contentShape(Rectangle())
+                                .onTapGesture { self.error = nil }
+                                .onAppear {
+                                    // Auto-dismiss "Generation stopped" after 3 seconds
+                                    if error == "Generation stopped" {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                            if self.error == "Generation stopped" {
+                                                withAnimation(.easeOut(duration: 0.2)) {
+                                                    self.error = nil
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             // Invisible anchor for scroll-to-bottom
@@ -1641,16 +1682,7 @@ struct QuickPromptChatView: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Button(action: sendMessage) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(
-                                followUp.trimmingCharacters(in: .whitespaces).isEmpty
-                                    ? .gray : .blue
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(followUp.trimmingCharacters(in: .whitespaces).isEmpty)
+                    SendButtonView(isEnabled: !followUp.trimmingCharacters(in: .whitespaces).isEmpty, action: sendMessage)
                 }
             }
             .padding(.horizontal, 14)
@@ -2311,6 +2343,8 @@ struct CodeBlockView: View {
     let code: String
     let language: String
     @State private var copied = false
+    @State private var copyBounce = false
+    @State private var hovering = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -2326,21 +2360,25 @@ struct CodeBlockView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
                     copied = true
+                    copyBounce = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { copyBounce = false }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
                 }) {
                     Label(copied ? "Copied" : "Copy",
                           systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(copied ? .blue : .secondary)
+                        .scaleEffect(copyBounce ? 1.25 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                 }
                 .buttonStyle(.plain)
+                .opacity(hovering || copied ? 1 : 0.4)
             }
             .padding(.horizontal, 10)
             .padding(.top, 6)
             .padding(.bottom, 4)
             
-            // #12: Fixed-width monospaced text — wraps instead of horizontal scroll
-            // to avoid text selection conflicts
+            // Fixed-width monospaced text — wraps instead of horizontal scroll
             Text(code)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
@@ -2348,7 +2386,7 @@ struct CodeBlockView: View {
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // #6: Adaptive background that works in both light and dark mode
+        // Adaptive background that works in both light and dark mode
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
@@ -2357,12 +2395,10 @@ struct CodeBlockView: View {
                         .fill(Color.primary.opacity(0.06))
                 )
         )
+        .onHover { hovering = $0 }
     }
 }
 
-// MARK: - Keyboard Navigation Helper
-
-/// An invisible NSView that captures ↑↓ arrow key events for session list navigation.
 // MARK: - Safe Collection Subscript
 
 extension Collection {
