@@ -464,10 +464,12 @@ class QuickPromptWindowController {
     
     /// Resume a specific session by UUID. Can be called externally (e.g. from notification click).
     func resumeSession(_ index: Int, uuid: String, title: String) {
-        if window == nil { createWindow() }
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid, resumeTitle: title))
+        // Use the full show() setup so all behaviors (click-dismiss, ⌘W, Esc, animation) are active
+        show()
+        // Immediately expand into the chat view after the window is set up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid, resumeTitle: title))
+        }
     }
     
     private func expandAndShowChat(_ chatView: QuickPromptChatView) {
