@@ -59,6 +59,7 @@ class QuickPromptWindowController {
     // Spring-animated panel resize state
     private var resizeTimer: Timer?
     private var resizeVelocity: CGFloat = 0
+    private var cmdWMonitor: Any?
     
     private init() {
         let savedKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
@@ -332,6 +333,7 @@ class QuickPromptWindowController {
     func dismiss() {
         guard let window = window else { return }
         removeClickOutsideMonitor()
+        removeCmdWMonitor()
 
         // Quick scale-down + fade-out, then hide
         guard let layer = window.contentView?.layer else {
@@ -432,13 +434,21 @@ class QuickPromptWindowController {
         self.hostingView = hosting
 
         // #10: ⌘W dismisses the window (standard macOS convention)
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        removeCmdWMonitor()
+        cmdWMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags == .command, event.charactersIgnoringModifiers == "w" {
                 self?.dismiss()
                 return nil
             }
             return event
+        }
+    }
+
+    private func removeCmdWMonitor() {
+        if let monitor = cmdWMonitor {
+            NSEvent.removeMonitor(monitor)
+            cmdWMonitor = nil
         }
     }
     
@@ -467,7 +477,6 @@ class QuickPromptWindowController {
             width: targetSize.width,
             height: targetSize.height
         )
-        window.setFrame(newFrame, display: false)
 
         // Same transparent container pattern as createWindow to avoid
         // ghost rectangle borders from macOS NSThemeFrame rendering.
@@ -494,10 +503,23 @@ class QuickPromptWindowController {
         visualEffect.addSubview(hosting)
         container.addSubview(visualEffect)
 
-        window.contentView = container
-        window.invalidateShadow()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Crossfade transition: fade out prompt, swap to chat, fade in
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            window.animator().alphaValue = 0.0
+        } completionHandler: { [weak self] in
+            window.contentView = container
+            window.setFrame(newFrame, display: true)
+            window.invalidateShadow()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                window.animator().alphaValue = 1.0
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -557,7 +579,7 @@ struct QuickPromptView: View {
             HStack(spacing: 8) {
                 // ── Text Input Bar (clean, pure text zone) ──
                 HStack(spacing: 12) {
-                    // #2: Gentle pulse on sparkle icon when idle
+                    // Gentle pulse on sparkle icon when idle
                     Image(systemName: "sparkles")
                         .font(.title2)
                         .foregroundStyle(.linearGradient(
@@ -565,9 +587,23 @@ struct QuickPromptView: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ))
-                        .opacity(prompt.isEmpty && sparklePulse ? 0.5 : 1.0)
-                        .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: sparklePulse)
-                        .onAppear { sparklePulse = true }
+                        .opacity(sparklePulse ? 0.5 : 1.0)
+                        .onAppear {
+                            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                                sparklePulse = true
+                            }
+                        }
+                        .onChange(of: prompt.isEmpty) { isEmpty in
+                            if isEmpty {
+                                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                                    sparklePulse = true
+                                }
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    sparklePulse = false
+                                }
+                            }
+                        }
                     
                     TextField(contextualPlaceholder, text: $prompt)
                         .textFieldStyle(.plain)
@@ -722,6 +758,14 @@ struct QuickPromptView: View {
                                         }
 
                                         Spacer()
+
+                                        // Show return icon on keyboard-selected row
+                                        if selectedSessionIndex == idx {
+                                            Image(systemName: "return")
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                                .transition(.opacity)
+                                        }
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
@@ -1307,6 +1351,19 @@ struct QuickPromptChatView: View {
     @State private var typingDotPhase: Int = 0
     @FocusState private var isInputFocused: Bool
     
+    // Header button hover states
+    @State private var hoveringNewChat = false
+    @State private var hoveringSessions = false
+    @State private var hoveringPin = false
+    
+    private var followUpPlaceholder: String {
+        if let config = ConfigManager.shared {
+            let name = config.activeProvider.name.components(separatedBy: " ").first ?? "NexusAgent"
+            return "Follow up with \(name)…"
+        }
+        return "Follow up…"
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -1347,20 +1404,26 @@ struct QuickPromptChatView: View {
                 }) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(hoveringNewChat ? .primary : .secondary)
+                        .scaleEffect(hoveringNewChat ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringNewChat)
                 }
                 .buttonStyle(.plain)
                 .help("New Chat")
+                .onHover { hoveringNewChat = $0 }
                 
                 Button(action: {
                     QuickPromptWindowController.shared.show(startExpanded: true)
                 }) {
-                    Image(systemName: "clock") // or "list.bullet"
+                    Image(systemName: "clock")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary.opacity(0.8))
+                        .foregroundStyle(hoveringSessions ? Color.primary : Color.secondary.opacity(0.8))
+                        .scaleEffect(hoveringSessions ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringSessions)
                 }
                 .buttonStyle(.plain)
                 .help("Recent sessions")
+                .onHover { hoveringSessions = $0 }
                 
                 Button(action: {
                     isPinned.toggle()
@@ -1369,12 +1432,15 @@ struct QuickPromptChatView: View {
                     Image(systemName: isPinned
                           ? "pin.circle.fill" : "pin.circle")
                         .font(.system(size: 16))
-                        .foregroundStyle(isPinned ? Color.blue : Color.secondary.opacity(0.5))
+                        .foregroundStyle(isPinned ? Color.blue : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
                         .rotationEffect(.degrees(isPinned ? 0 : 45))
+                        .scaleEffect(hoveringPin ? 1.1 : 1.0)
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPinned)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringPin)
                 }
                 .buttonStyle(.plain)
                 .help(isPinned ? "Unpin window" : "Pin window")
+                .onHover { hoveringPin = $0 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -1527,6 +1593,7 @@ struct QuickPromptChatView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
+                .animation(.easeInOut(duration: 0.25), value: isNearBottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
@@ -1538,7 +1605,7 @@ struct QuickPromptChatView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                 
-                TextField("Follow up…", text: $followUp)
+                TextField(followUpPlaceholder, text: $followUp)
                     .textFieldStyle(.plain)
                     .font(.callout)
                     .focused($isInputFocused)
@@ -2068,6 +2135,7 @@ struct MessageBubble: View {
     let message: ChatMessage
     @State private var copied = false
     @State private var hovering = false
+    @State private var copyBounce = false
     
     var isUser: Bool { message.role == "user" }
     
@@ -2075,6 +2143,9 @@ struct MessageBubble: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(message.content, forType: .string)
         copied = true
+        // Trigger bounce
+        copyBounce = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { copyBounce = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
     }
     
@@ -2148,7 +2219,9 @@ struct MessageBubble: View {
                         Label(copied ? "Copied!" : "Copy",
                               systemImage: copied ? "checkmark" : "doc.on.doc")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(copied ? .blue : .secondary)
+                            .scaleEffect(copyBounce ? 1.25 : 1.0)
+                            .animation(.spring(response: 0.25, dampingFraction: 0.5), value: copyBounce)
                     }
                     .buttonStyle(.plain)
                     .opacity(hovering || copied ? 1 : 0)
