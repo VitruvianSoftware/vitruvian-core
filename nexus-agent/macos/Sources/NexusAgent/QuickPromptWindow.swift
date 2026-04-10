@@ -1569,6 +1569,9 @@ struct QuickPromptChatView: View {
     @State private var typingDotPhase: Int = 0
     @State private var scrollViewHeight: CGFloat = 500
     @State private var sparklePulse = false
+    @State private var generationStartTime: Date?
+    @State private var elapsedSeconds: Int = 0
+    @State private var elapsedTimer: Timer?
     @FocusState private var isInputFocused: Bool
     @State private var providerVersion: Int = 0  // bumped on provider change to trigger placeholder re-eval
     
@@ -1610,6 +1613,16 @@ struct QuickPromptChatView: View {
                     .font(.system(size: 16, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                
+                // Resumed session indicator
+                if resumeUUID != nil && !isLoading {
+                    Text("Resumed")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.blue.opacity(0.7))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.blue.opacity(0.1)))
+                }
                 
                 // Message count badge
                 if !messages.isEmpty {
@@ -1759,6 +1772,15 @@ struct QuickPromptChatView: View {
                                         .truncationMode(.tail)
                                         .contentTransition(.interpolate)
                                         .animation(.easeInOut(duration: 0.3), value: streamingStatus)
+                                    
+                                    // Elapsed time counter
+                                    if elapsedSeconds > 0 {
+                                        Text("\(elapsedSeconds)s")
+                                            .font(.system(.caption2, design: .rounded))
+                                            .foregroundStyle(.tertiary)
+                                            .contentTransition(.numericText())
+                                            .animation(.easeInOut(duration: 0.2), value: elapsedSeconds)
+                                    }
                                     Spacer()
                                     Button(action: stopGeneration) {
                                         HStack(spacing: 4) {
@@ -2008,6 +2030,13 @@ struct QuickPromptChatView: View {
             }
             isInputFocused = true
         }
+        .onChange(of: isLoading) { loading in
+            if !loading {
+                elapsedTimer?.invalidate()
+                elapsedTimer = nil
+                generationStartTime = nil
+            }
+        }
     }
     
     /// Publisher that fires when ConfigManager's active provider changes.
@@ -2039,6 +2068,9 @@ struct QuickPromptChatView: View {
         currentProcess = nil
         streamWatcher?.stop()
         streamWatcher = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        generationStartTime = nil
         withAnimation(.easeOut(duration: 0.2)) {
             isLoading = false
         }
@@ -2088,7 +2120,20 @@ struct QuickPromptChatView: View {
         messages.append(ChatMessage(role: "user", content: prompt))
         isLoading = true
         error = nil
-        streamingStatus = "Thinking…"
+        streamingStatus = "Sending…"
+        // Start elapsed timer
+        elapsedSeconds = 0
+        generationStartTime = Date()
+        elapsedTimer?.invalidate()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            if let start = generationStartTime {
+                elapsedSeconds = Int(Date().timeIntervalSince(start))
+            }
+        }
+        // Brief delay then switch to "Thinking…"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if streamingStatus == "Sending…" { streamingStatus = "Thinking…" }
+        }
 
         // Save to prompt history (same as sendMessage)
         if !promptHistory.contains(prompt) {
