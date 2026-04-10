@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.7.0...nexus-agent-v1.8.0) (2026-04-10)
+
+
+### Features
+
+* add confirmation step for clearing sessions and implement real-time streaming updates for assistant messages ([d9749e9](https://github.com/VitruvianSoftware/nexus-agent/commit/d9749e9a75094c9642f89d186587523ca589456c))
+* add contextual command hints and modular, animated action buttons to QuickPromptWindow ([41ad625](https://github.com/VitruvianSoftware/nexus-agent/commit/41ad6254c145cf83052fc45a4f68efa482848ff1))
+* add interactive chat provider switcher and improve input field focus styling ([e54cc88](https://github.com/VitruvianSoftware/nexus-agent/commit/e54cc887f7df6cd011882604d03932e2933511dd))
+* add SendButtonView, implement error auto-dismissal, and enhance code block copy feedback ([d025e8f](https://github.com/VitruvianSoftware/nexus-agent/commit/d025e8f88a29f52a0ae48e0ed8cb400244a164b3))
+* add session deletion support and improve session identification logic in QuickPromptWindow ([035a357](https://github.com/VitruvianSoftware/nexus-agent/commit/035a357fcb3509c6018714b3491d0c936fce9e30))
+* add system notifications for background generation completion and improve UI transitions ([972f164](https://github.com/VitruvianSoftware/nexus-agent/commit/972f164db910e4decc53691f9da25f7b6f43ebf9))
+* add window shadow updates during resize and improve UI animations for streaming status and input state ([c63caed](https://github.com/VitruvianSoftware/nexus-agent/commit/c63caedd5961c5f2dbf1473ecfba7c83239c61bd))
+* improve QuickPromptWindow UI with crossfade transitions, interactive header buttons, and refined input animations. ([eba8ab6](https://github.com/VitruvianSoftware/nexus-agent/commit/eba8ab6a5118fabebccdabd4d5b431bb81183f65))
+* improve QuickPromptWindow UI with message animations, refined styling, and scoped keyboard navigation ([8a2f55f](https://github.com/VitruvianSoftware/nexus-agent/commit/8a2f55f58b2a708f70815336c29a3cd6f84d756c))
+* pass session title to chat view and improve scroll position tracking for auto-scrolling ([9cd8c32](https://github.com/VitruvianSoftware/nexus-agent/commit/9cd8c3208eccd0908320d0845347adb08db2361b))
+* synchronize window pin state, animate message clearing, update sparkles styling, and persist prompt history ([b2657d9](https://github.com/VitruvianSoftware/nexus-agent/commit/b2657d9103caf7852d53358a1cc325bbb56e5436))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.6.0...nexus-agent-v1.7.0) (2026-04-08)
 
 
