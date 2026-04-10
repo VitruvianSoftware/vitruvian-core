@@ -373,8 +373,8 @@ class QuickPromptWindowController {
     private func createWindow(startExpanded: Bool = false) {
         let promptView = QuickPromptView(startExpanded: startExpanded, onSubmit: { [weak self] prompt in
             self?.runPrompt(prompt)
-        }, onResume: { [weak self] sessionIndex, sessionUUID in
-            self?.resumeSession(sessionIndex, uuid: sessionUUID)
+        }, onResume: { [weak self] sessionIndex, sessionUUID, sessionTitle in
+            self?.resumeSession(sessionIndex, uuid: sessionUUID, title: sessionTitle)
         }, onDismiss: { [weak self] in
             self?.dismiss()
         })
@@ -453,11 +453,11 @@ class QuickPromptWindowController {
     }
     
     private func runPrompt(_ prompt: String) {
-        expandAndShowChat(QuickPromptChatView(initialPrompt: prompt, resumeIndex: nil, resumeUUID: nil))
+        expandAndShowChat(QuickPromptChatView(initialPrompt: prompt, resumeIndex: nil, resumeUUID: nil, resumeTitle: nil))
     }
     
-    private func resumeSession(_ index: Int, uuid: String) {
-        expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid))
+    private func resumeSession(_ index: Int, uuid: String, title: String) {
+        expandAndShowChat(QuickPromptChatView(initialPrompt: nil, resumeIndex: index, resumeUUID: uuid, resumeTitle: title))
     }
     
     private func expandAndShowChat(_ chatView: QuickPromptChatView) {
@@ -535,7 +535,7 @@ struct SessionInfo: Identifiable {
 // MARK: - Quick Prompt Input View
 
 struct QuickPromptView: View {
-    init(startExpanded: Bool = false, onSubmit: @escaping (String) -> Void, onResume: @escaping (Int, String) -> Void, onDismiss: @escaping () -> Void) {
+    init(startExpanded: Bool = false, onSubmit: @escaping (String) -> Void, onResume: @escaping (Int, String, String) -> Void, onDismiss: @escaping () -> Void) {
         self.onSubmit = onSubmit
         self.onResume = onResume
         self.onDismiss = onDismiss
@@ -543,7 +543,7 @@ struct QuickPromptView: View {
     }
 
     let onSubmit: (String) -> Void
-    let onResume: (Int, String) -> Void
+    let onResume: (Int, String, String) -> Void
     let onDismiss: () -> Void
     @State private var prompt: String = ""
     @State private var sessions: [SessionInfo] = []
@@ -612,7 +612,7 @@ struct QuickPromptView: View {
                         .onSubmit {
                             if let selIdx = selectedSessionIndex,
                                let session = displayedSessions[safe: selIdx] {
-                                onResume(session.id, session.uuid)
+                                onResume(session.id, session.uuid, session.title)
                             } else {
                                 guard !prompt.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                                 onSubmit(prompt)
@@ -735,7 +735,7 @@ struct QuickPromptView: View {
 
                             ForEach(Array(displayedSessions.enumerated()), id: \.element.id) { idx, session in
                                 Button(action: {
-                                    onResume(session.id, session.uuid)
+                                    onResume(session.id, session.uuid, session.title)
                                 }) {
                                     HStack(spacing: 12) {
                                         Image(systemName: "text.bubble")
@@ -778,6 +778,8 @@ struct QuickPromptView: View {
                                                        ? Color.primary.opacity(0.06)
                                                        : Color.clear)
                                             )
+                                            .animation(.easeInOut(duration: 0.15), value: selectedSessionIndex)
+                                            .animation(.easeInOut(duration: 0.12), value: hoveredSessionId)
                                     )
                                     .contentShape(Rectangle())
                                 }
@@ -789,6 +791,7 @@ struct QuickPromptView: View {
                                 .padding(.horizontal, 8)
                             }
                         }
+                        .animation(.easeInOut(duration: 0.2), value: displayedSessions.map(\.id))
                         .padding(.bottom, 8)
                     }
                 }
@@ -1356,6 +1359,7 @@ struct QuickPromptChatView: View {
     let initialPrompt: String?
     let resumeIndex: Int?
     let resumeUUID: String?
+    let resumeTitle: String?
     @State private var messages: [ChatMessage] = []
     @State private var followUp: String = ""
     @State private var isLoading = false
@@ -1369,6 +1373,7 @@ struct QuickPromptChatView: View {
     @State private var isPinned: Bool = false
     @State private var isNearBottom: Bool = true
     @State private var typingDotPhase: Int = 0
+    @State private var scrollViewHeight: CGFloat = 500
     @FocusState private var isInputFocused: Bool
     
     // Header button hover states
@@ -1396,8 +1401,10 @@ struct QuickPromptChatView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
-                Text("Chat")
+                Text(resumeTitle ?? "Chat")
                     .font(.system(size: 16, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 // Subtle active provider badge
                 if let config = ConfigManager.shared {
@@ -1592,9 +1599,21 @@ struct QuickPromptChatView: View {
                             }
                         )
                     }
+                    .overlay(
+                        GeometryReader { scrollGeo in
+                            Color.clear.preference(
+                                key: ScrollViewHeightPreferenceKey.self,
+                                value: scrollGeo.size.height
+                            )
+                        }
+                    )
                     .coordinateSpace(name: "chatScroll")
                     .onPreferenceChange(ScrollOffsetPreferenceKey.self) { maxY in
-                        isNearBottom = maxY < 600
+                        // Compare content bottom against a threshold relative to visible height
+                        isNearBottom = maxY < scrollViewHeight + 60
+                    }
+                    .onPreferenceChange(ScrollViewHeightPreferenceKey.self) { height in
+                        scrollViewHeight = height
                     }
                     .onChange(of: messages) { _ in
                         if isNearBottom {
@@ -2410,6 +2429,13 @@ extension Collection {
 // MARK: - Scroll Offset Preference Key (#15)
 
 struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct ScrollViewHeightPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
