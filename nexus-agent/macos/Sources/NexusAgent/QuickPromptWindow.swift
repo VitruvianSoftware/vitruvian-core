@@ -1417,7 +1417,7 @@ struct QuickPromptChatView: View {
     @State private var historyIndex: Int = -1
     @State private var streamingStatus: String = "Thinking…"
     @State private var streamWatcher: StreamFileWatcher?
-    @State private var isPinned: Bool = false
+    @State private var isPinned: Bool = QuickPromptWindowController.shared.isPinned
     @State private var isNearBottom: Bool = true
     @State private var typingDotPhase: Int = 0
     @State private var scrollViewHeight: CGFloat = 500
@@ -1464,7 +1464,9 @@ struct QuickPromptChatView: View {
                 Spacer()
                 
                 Button(action: {
-                    messages.removeAll()
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        messages.removeAll()
+                    }
                     hasActiveSession = false
                     error = nil
                     followUp = ""
@@ -1554,7 +1556,10 @@ struct QuickPromptChatView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "sparkles")
                                         .font(.caption2)
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(.linearGradient(
+                                            colors: [.blue, .purple],
+                                            startPoint: .top, endPoint: .bottom
+                                        ))
                                         .frame(width: 22, height: 22)
                                         .background(Circle().fill(Color.blue.opacity(0.15)))
 
@@ -1849,6 +1854,13 @@ struct QuickPromptChatView: View {
         isLoading = true
         error = nil
         streamingStatus = "Thinking…"
+
+        // Save to prompt history (same as sendMessage)
+        if !promptHistory.contains(prompt) {
+            promptHistory.append(prompt)
+            let capped = Array(promptHistory.suffix(20))
+            UserDefaults.standard.set(capped, forKey: "promptHistory")
+        }
 
         // Determine which provider is active
         let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.gemini
