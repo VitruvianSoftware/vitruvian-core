@@ -1614,6 +1614,13 @@ struct QuickPromptChatView: View {
                         .contentTransition(.numericText())
                         .animation(.easeInOut(duration: 0.2), value: messages.count)
                 }
+                
+                // Thin separator between count and provider badge
+                if !messages.isEmpty {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 3, height: 3)
+                }
 
                 // Interactive provider picker badge
                 if let config = ConfigManager.shared {
@@ -1894,6 +1901,12 @@ struct QuickPromptChatView: View {
                     .focused($isInputFocused)
                     .onSubmit { sendMessage() }
                     .disabled(isLoading)
+                    // Esc in input field: stop generation when loading
+                    .onExitCommand {
+                        if isLoading {
+                            stopGeneration()
+                        }
+                    }
                     .onKeyPress(.upArrow) {
                         if followUp.isEmpty && !promptHistory.isEmpty {
                             if historyIndex < 0 { historyIndex = promptHistory.count }
@@ -1946,8 +1959,14 @@ struct QuickPromptChatView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
-        // #9: Esc dismisses the chat view
-        .onExitCommand { QuickPromptWindowController.shared.dismiss() }
+        // Esc: stop generation if running, dismiss if idle
+        .onExitCommand {
+            if isLoading {
+                stopGeneration()
+            } else {
+                QuickPromptWindowController.shared.dismiss()
+            }
+        }
         .onReceive(Self.configChangePublisher) { _ in
             providerVersion += 1
         }
