@@ -830,6 +830,19 @@ struct QuickPromptView: View {
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("Resume") {
+                                        onResume(session.index, session.uuid, session.title)
+                                    }
+                                    Button("Copy Title") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(session.title, forType: .string)
+                                    }
+                                    Divider()
+                                    Button("Delete", role: .destructive) {
+                                        deleteSession(session)
+                                    }
+                                }
                                 .onHover { isHovering in
                                     hoveredSessionId = isHovering ? session.id : nil
                                     if isHovering { selectedSessionIndex = nil }
@@ -1514,6 +1527,7 @@ struct QuickPromptChatView: View {
     @State private var isNearBottom: Bool = true
     @State private var typingDotPhase: Int = 0
     @State private var scrollViewHeight: CGFloat = 500
+    @State private var sparklePulse = false
     @FocusState private var isInputFocused: Bool
     @State private var providerVersion: Int = 0  // bumped on provider change to trigger placeholder re-eval
     
@@ -1544,10 +1558,28 @@ struct QuickPromptChatView: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ))
+                    .opacity(isLoading ? 1.0 : (sparklePulse ? 0.5 : 1.0))
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                            sparklePulse = true
+                        }
+                    }
                 Text(chatTitle ?? "Chat")
                     .font(.system(size: 16, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                
+                // Message count badge
+                if !messages.isEmpty {
+                    Text("\(messages.count)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.2), value: messages.count)
+                }
 
                 // Interactive provider picker badge
                 if let config = ConfigManager.shared {
@@ -1557,14 +1589,8 @@ struct QuickPromptChatView: View {
                 Spacer()
                 
                 Button(action: {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        messages.removeAll()
-                    }
-                    hasActiveSession = false
-                    error = nil
-                    followUp = ""
-                    chatTitle = nil
-                    isInputFocused = true
+                    // Reset to compact prompt bar via fresh window
+                    QuickPromptWindowController.shared.show()
                 }) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 16))
@@ -1647,7 +1673,7 @@ struct QuickPromptChatView: View {
                             // #7: Typing indicator dots
                             if isLoading {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "sparkles")
+                                    Image(systemName: "ellipsis.bubble")
                                         .font(.caption2)
                                         .foregroundStyle(.linearGradient(
                                             colors: [.blue, .purple],
@@ -1721,13 +1747,13 @@ struct QuickPromptChatView: View {
                                 .contentShape(Rectangle())
                                 .onTapGesture { self.error = nil }
                                 .onAppear {
-                                    // Auto-dismiss "Generation stopped" after 3 seconds
-                                    if error == "Generation stopped" {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                                            if self.error == "Generation stopped" {
-                                                withAnimation(.easeOut(duration: 0.2)) {
-                                                    self.error = nil
-                                                }
+                                    // Auto-dismiss all errors after a delay
+                                    let delay: Double = (error == "Generation stopped") ? 3.0 : 5.0
+                                    let currentError = error
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                        if self.error == currentError {
+                                            withAnimation(.easeOut(duration: 0.2)) {
+                                                self.error = nil
                                             }
                                         }
                                     }
@@ -1854,8 +1880,10 @@ struct QuickPromptChatView: View {
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 } else {
                     SendButtonView(isEnabled: !followUp.trimmingCharacters(in: .whitespaces).isEmpty, action: sendMessage)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
             }
             .padding(.horizontal, 14)
