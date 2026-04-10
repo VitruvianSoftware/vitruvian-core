@@ -559,6 +559,7 @@ struct QuickPromptView: View {
     @State private var hoveredSessionId: String? = nil
     @State private var selectedSessionIndex: Int? = nil
     @State private var sparklePulse = false
+    @State private var clearAllConfirming = false
     @FocusState private var isFocused: Bool
     
     @State private var isHoveringInput = false
@@ -741,11 +742,23 @@ struct QuickPromptView: View {
                                 if !filterActive && !sessions.isEmpty {
                                     Spacer()
                                     Button(action: {
-                                        deleteAllSessions()
+                                        if clearAllConfirming {
+                                            deleteAllSessions()
+                                            clearAllConfirming = false
+                                        } else {
+                                            clearAllConfirming = true
+                                            // Auto-reset after 2 seconds
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                                clearAllConfirming = false
+                                            }
+                                        }
                                     }) {
-                                        Text("Clear All")
+                                        Text(clearAllConfirming ? "Confirm?" : "Clear All")
                                             .font(.caption)
-                                            .foregroundStyle(.red.opacity(0.8))
+                                            .foregroundStyle(clearAllConfirming ? .red : .red.opacity(0.6))
+                                            .fontWeight(clearAllConfirming ? .semibold : .regular)
+                                            .contentTransition(.numericText())
+                                            .animation(.easeInOut(duration: 0.15), value: clearAllConfirming)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1865,6 +1878,16 @@ struct QuickPromptChatView: View {
         .onReceive(Self.configChangePublisher) { _ in
             providerVersion += 1
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ProviderChunk"))) { notification in
+            guard isLoading, let chunk = notification.object as? String else { return }
+            streamingStatus = "Streaming…"
+            // Append chunk to existing assistant message or create a new one
+            if let lastIdx = messages.indices.last, messages[lastIdx].role == "assistant" {
+                messages[lastIdx].content += chunk
+            } else {
+                messages.append(ChatMessage(role: "assistant", content: chunk))
+            }
+        }
         .task {
             chatTitle = resumeTitle
             if let resumeIdx = resumeIndex {
@@ -2095,17 +2118,24 @@ struct QuickPromptChatView: View {
             }
             // If we received stream events, the message is already built
             hasActiveSession = true
-            isLoading = false
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
             streamingStatus = "Thinking…"
             // #16: Subtle sound on completion
             if error == nil { NSSound(named: "Tink")?.play() }
+            // Clean up temp stream file
+            try? FileManager.default.removeItem(atPath: streamFilePath)
         } catch {
             currentProcess = nil
             watcher.stop()
             self.streamWatcher = nil
             self.error = error.localizedDescription
-            isLoading = false
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
             streamingStatus = "Thinking…"
+            try? FileManager.default.removeItem(atPath: streamFilePath)
         }
     }
 
@@ -2215,12 +2245,18 @@ struct QuickPromptChatView: View {
             } else if status != 0 && output.isEmpty {
                 error = stderr.isEmpty ? "Process exited with code \(status)" : String(stderr.prefix(300))
             } else if !output.isEmpty {
-                messages.append(ChatMessage(role: "assistant", content: output))
-            } else {
+                // Only append if streaming didn't already build an assistant message
+                let alreadyStreamed = messages.last?.role == "assistant"
+                if !alreadyStreamed {
+                    messages.append(ChatMessage(role: "assistant", content: output))
+                }
+            } else if messages.last?.role != "assistant" {
                 error = "No output from provider"
             }
 
-            isLoading = false
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
             streamingStatus = "Thinking…"
             // #16: Subtle sound on completion
             if error == nil { NSSound(named: "Tink")?.play() }
@@ -2228,7 +2264,9 @@ struct QuickPromptChatView: View {
             pipe.fileHandleForReading.readabilityHandler = nil
             currentProcess = nil
             self.error = error.localizedDescription
-            isLoading = false
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
             streamingStatus = "Thinking…"
         }
     }
