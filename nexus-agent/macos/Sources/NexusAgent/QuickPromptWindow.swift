@@ -698,6 +698,18 @@ struct QuickPromptView: View {
                                 loadSessions()
                             }
                         }
+                        .overlay(alignment: .topTrailing) {
+                            // Session count badge
+                            if !showSessions && !sessions.isEmpty {
+                                Text("\(sessions.count)")
+                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .frame(minWidth: 14, minHeight: 14)
+                                    .background(Circle().fill(Color.blue))
+                                    .offset(x: 4, y: -4)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
                         
                         if let config = ConfigManager.shared {
                              modularProviderButton(config: config)
@@ -1176,6 +1188,25 @@ struct SendButtonView: View {
     }
 }
 
+/// A stop button with hover scale feedback.
+struct StopButtonView: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "stop.circle.fill")
+                .font(.title2)
+                .foregroundStyle(isHovered ? .red.opacity(0.7) : .red)
+                .scaleEffect(isHovered ? 1.15 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .help("Stop generation (Esc)")
+        .onHover { isHovered = $0 }
+    }
+}
+
 /// A compact provider picker badge for the chat header.
 struct ChatProviderBadge: View {
     @ObservedObject var config: ConfigManager
@@ -1206,6 +1237,8 @@ struct ChatProviderBadge: View {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.1))
                 )
+                .contentTransition(.interpolate)
+                .animation(.easeInOut(duration: 0.2), value: config.activeProviderId)
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
         .menuStyle(.borderlessButton)
@@ -1971,13 +2004,8 @@ struct QuickPromptChatView: View {
                     }
                 
                 if isLoading {
-                    Button(action: stopGeneration) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    StopButtonView(action: stopGeneration)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 } else {
                     SendButtonView(isEnabled: !followUp.trimmingCharacters(in: .whitespaces).isEmpty, action: sendMessage)
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
