@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.10.0...nexus-agent-v1.10.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* correct session resumption to use specific UUID ([4c10ca3](https://github.com/VitruvianSoftware/nexus-agent/commit/4c10ca33f24dd8d2e24af12437564d494132d8ce))
+
 ## [1.10.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.9.0...nexus-agent-v1.10.0) (2026-04-11)
 
 
