@@ -1895,6 +1895,7 @@ struct QuickPromptChatView: View {
     @AppStorage("planMode") private var planMode = false
     @AppStorage("worktreeMode") private var worktreeMode = false
     @State private var isGitDir = false
+    @State private var lastFailedPrompt: String? = nil
     
     private var followUpPlaceholder: String {
         // providerVersion dependency ensures this re-evaluates on provider switch
@@ -2134,6 +2135,26 @@ struct QuickPromptChatView: View {
                                         .foregroundStyle(.secondary)
                                         .font(.caption)
                                     Spacer()
+                                    if let failedPrompt = lastFailedPrompt {
+                                        Button(action: {
+                                            let p = failedPrompt
+                                            self.error = nil
+                                            self.lastFailedPrompt = nil
+                                            if let last = messages.last, last.role == "assistant" && last.content.isEmpty {
+                                                messages.removeLast()
+                                            }
+                                            if let lastUser = messages.last, lastUser.role == "user", lastUser.content == p {
+                                                messages.removeLast()
+                                            }
+                                            Task { await sendToCLI(p) }
+                                        }) {
+                                            Image(systemName: "arrow.clockwise")
+                                                .font(.caption)
+                                                .foregroundStyle(.blue)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Retry")
+                                    }
                                     Button(action: { self.error = nil }) {
                                         Image(systemName: "xmark.circle.fill")
                                             .font(.caption)
@@ -2457,7 +2478,12 @@ struct QuickPromptChatView: View {
     }
     
     private func sendToCLI(_ prompt: String) async {
-        messages.append(ChatMessage(role: "user", content: prompt))
+        lastFailedPrompt = prompt
+        
+        // Append user prompt silently if follow-up
+        if messages.isEmpty || messages.last?.role != "user" || messages.last?.content != prompt {
+            messages.append(ChatMessage(role: "user", content: prompt))
+        }
         isLoading = true
         error = nil
         streamingStatus = "Sending…"
@@ -2515,6 +2541,10 @@ struct QuickPromptChatView: View {
             await runClaudeProvider(prompt: effectivePrompt, provider: provider, viaOllama: isOllama)
         } else {
             await runCustomProvider(prompt: effectivePrompt, provider: provider)
+        }
+        
+        if error == nil {
+            lastFailedPrompt = nil
         }
     }
 
