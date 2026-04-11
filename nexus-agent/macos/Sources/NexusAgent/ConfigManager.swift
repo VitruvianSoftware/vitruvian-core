@@ -14,7 +14,7 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     static let gemini = CLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         name: "Gemini CLI",
-        commandTemplate: "/opt/homebrew/bin/gemini -p \"{prompt}\" --output-format json --approval-mode yolo",
+        commandTemplate: "/opt/homebrew/bin/gemini -p \"{prompt}\" --output-format stream-json --approval-mode yolo",
         isBuiltIn: true
     )
 

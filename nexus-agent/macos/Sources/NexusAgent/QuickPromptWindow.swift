@@ -727,7 +727,7 @@ struct QuickPromptView: View {
                         
                         if isGitDir {
                             modularActionButton(
-                                icon: worktreeMode ? "arrow.triangle.branch" : "arrow.triangle.branch",
+                                icon: "arrow.triangle.branch",
                                 isActive: worktreeMode,
                                 help: worktreeMode ? "Worktree mode on (isolated branch)" : "Enable git worktree",
                                 activeColor: .green
@@ -1901,8 +1901,8 @@ struct QuickPromptChatView: View {
     @State private var hoveringSessions = false
     @State private var hoveringPin = false
     @State private var hoveringInlineStop = false
-    @AppStorage("planMode") private var planMode = false
-    @AppStorage("worktreeMode") private var worktreeMode = false
+    @State private var planMode: Bool = UserDefaults.standard.bool(forKey: "planMode")
+    @State private var worktreeMode: Bool = UserDefaults.standard.bool(forKey: "worktreeMode")
     @State private var isGitDir = false
     @State private var lastFailedPrompt: String? = nil
     
@@ -2742,6 +2742,13 @@ struct QuickPromptChatView: View {
                                         if let t = stats["cached"] as? NSNumber {
                                             messages[idx].cachedTokens = t.intValue
                                         }
+                                        if let t = stats["tool_calls"] as? NSNumber {
+                                            messages[idx].toolCalls = t.intValue
+                                        }
+                                    }
+                                    messages[idx].modelName = streamingModelName
+                                    if let reason = json["status"] as? String {
+                                        messages[idx].stopReason = reason
                                     }
                                 }
                             }
@@ -2818,7 +2825,7 @@ struct QuickPromptChatView: View {
             let model = ConfigManager.shared?.model ?? ""
             var args = ["launch", "claude"]
             // --model is required in headless mode; use configured model or first available
-            let effectiveModel = model.isEmpty ? ollamaDefaultModel() : model
+            let effectiveModel = model.isEmpty ? await ollamaDefaultModel() : model
             args += ["--model", effectiveModel]
             // Everything after "--" is passed to Claude Code
             let permMode = planMode ? "plan" : "bypassPermissions"
@@ -2910,6 +2917,8 @@ struct QuickPromptChatView: View {
                                                let text = block["text"] as? String,
                                                !text.isEmpty {
                                                 if let idx = streamingMessageIndex {
+                                                    // Claude sends the full accumulated text on each assistant event
+                                                    // (not deltas like Gemini), so we replace rather than append.
                                                     messages[idx].content = text
                                                 } else {
                                                     messages.append(ChatMessage(role: "assistant", content: text))
@@ -2999,6 +3008,13 @@ struct QuickPromptChatView: View {
                                     if let t = usage["cache_read_input_tokens"] as? NSNumber {
                                         messages[idx].cachedTokens = t.intValue
                                     }
+                                }
+                                messages[idx].modelName = streamingModelName
+                                if let turns = json["num_turns"] as? NSNumber {
+                                    messages[idx].numTurns = turns.intValue
+                                }
+                                if let reason = json["stop_reason"] as? String {
+                                    messages[idx].stopReason = reason
                                 }
                             }
                         }
@@ -3095,15 +3111,12 @@ struct QuickPromptChatView: View {
             let (output, stderr, status) = await withCheckedContinuation { continuation in
                 var chunks: [Data] = []
                 var errChunks: [Data] = []
-                let group = DispatchGroup()
-                group.enter()
 
                 pipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
                     if data.isEmpty {
-                        // EOF — stop handler before signalling done
+                        // EOF — stop handler
                         handle.readabilityHandler = nil
-                        group.leave()
                     } else {
                         chunks.append(data)
                         // Update streaming status on main
@@ -3245,26 +3258,35 @@ struct QuickPromptChatView: View {
     }
 
     /// Returns the name of the first model from `ollama list`, or a sensible fallback.
-    private func ollamaDefaultModel() -> String {
-        let task = Process()
-        let pipe = Pipe()
-        task.executableURL = URL(fileURLWithPath: resolveExecutablePath("ollama") ?? "/opt/homebrew/bin/ollama")
-        task.arguments = ["list"]
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
-            if let output = String(data: data, encoding: .utf8) {
-                let lines = output.components(separatedBy: "\n").dropFirst() // skip header
-                if let firstModel = lines.first(where: { !$0.isEmpty }) {
-                    let name = firstModel.components(separatedBy: .whitespaces).first ?? ""
-                    if !name.isEmpty { return name }
-                }
+    /// Runs the process off the main thread to avoid UI freezes.
+    private func ollamaDefaultModel() async -> String {
+        let ollamaPath = resolveExecutablePath("ollama") ?? "/opt/homebrew/bin/ollama"
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let task = Process()
+                let pipe = Pipe()
+                task.executableURL = URL(fileURLWithPath: ollamaPath)
+                task.arguments = ["list"]
+                task.standardOutput = pipe
+                task.standardError = FileHandle.nullDevice
+                do {
+                    try task.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    task.waitUntilExit()
+                    if let output = String(data: data, encoding: .utf8) {
+                        let lines = output.components(separatedBy: "\n").dropFirst() // skip header
+                        if let firstModel = lines.first(where: { !$0.isEmpty }) {
+                            let name = firstModel.components(separatedBy: .whitespaces).first ?? ""
+                            if !name.isEmpty {
+                                continuation.resume(returning: name)
+                                return
+                            }
+                        }
+                    }
+                } catch {}
+                continuation.resume(returning: "qwen3")
             }
-        } catch {}
-        return "qwen3"
+        }
     }
 
     // MARK: - JSON Parsing
