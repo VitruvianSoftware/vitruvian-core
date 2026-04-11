@@ -2193,59 +2193,8 @@ struct QuickPromptChatView: View {
 
     /// Existing Gemini CLI path — unchanged, keeps JSON parsing + stream hooks + session resume.
     private func runGeminiProvider(prompt: String) async {
-        // Create a unique stream file for this request
-        let streamId = UUID().uuidString.prefix(8)
-        let streamFilePath = "/tmp/gemini-stream-\(streamId).jsonl"
-        FileManager.default.createFile(atPath: streamFilePath, contents: nil)
-        
-        // Track whether we received any streaming events
-        var receivedStreamEvents = false
         // Index of the assistant message we're streaming into
         var streamingMessageIndex: Int? = nil
-        
-        // Start watching the stream file
-        let watcher = StreamFileWatcher(filePath: streamFilePath) { [self] event in
-            DispatchQueue.main.async {
-                receivedStreamEvents = true
-                switch event {
-                case .chunk(let text):
-                    if let idx = streamingMessageIndex {
-                        // Append to existing streaming message
-                        messages[idx].content += text
-                    } else {
-                        // Create new assistant message
-                        messages.append(ChatMessage(role: "assistant", content: text))
-                        streamingMessageIndex = messages.count - 1
-                    }
-                    streamingStatus = "Generating…"
-                    
-                case .thinking(let text):
-                    _ = text  // Could display in UI later
-                    streamingStatus = "Reasoning…"
-                    
-                case .toolStart(let tool, let summary):
-                    let displayName = tool
-                        .replacingOccurrences(of: "_", with: " ")
-                        .prefix(1).uppercased() + tool
-                        .replacingOccurrences(of: "_", with: " ")
-                        .dropFirst()
-                    if summary.isEmpty {
-                        streamingStatus = "Running \(displayName)…"
-                    } else {
-                        streamingStatus = "\(displayName): \(summary.prefix(60))"
-                    }
-                    
-                case .toolDone(_):
-                    streamingStatus = "Thinking…"
-                    
-                case .done(_):
-                    // Agent completed — streaming is done
-                    streamingStatus = "Done"
-                }
-            }
-        }
-        watcher.start()
-        self.streamWatcher = watcher
         
         let process = Process()
         let pipe = Pipe()
@@ -2255,7 +2204,7 @@ struct QuickPromptChatView: View {
             ?? "/opt/homebrew/bin/gemini"
         
         process.executableURL = URL(fileURLWithPath: geminiBin)
-        var args = ["-p", prompt, "--output-format", "json", "--approval-mode", "yolo"]
+        var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", "yolo"]
         if hasActiveSession { args += ["--resume", "latest"] }
         process.arguments = args
         process.standardOutput = pipe
@@ -2279,9 +2228,6 @@ struct QuickPromptChatView: View {
         ].filter { FileManager.default.fileExists(atPath: $0) }
         let currentPath = process.environment?["PATH"] ?? "/usr/bin:/bin"
         process.environment?["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
-        // TODO_GEMINI_HOOKS: GEMINI_STREAM_FILE is passed to the CLI so the stream-hook.py
-        // can write events to it. This will only work once hooks are in a published gemini release.
-        process.environment?["GEMINI_STREAM_FILE"] = streamFilePath
         let workDir = QuickPromptView.resolveWorkingDirectory()
         let resolvedWorkDir: URL
         if FileManager.default.fileExists(atPath: workDir.path) {
@@ -2295,55 +2241,116 @@ struct QuickPromptChatView: View {
         do {
             try process.run()
             
-            let (output, stderr, status) = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let outputData = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    
-                    let out = String(data: outputData, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let err = String(data: errorData, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    
-                    continuation.resume(returning: (out, err, process.terminationStatus))
-                }
+            // Read stdout line-by-line for NDJSON streaming
+            let handle = pipe.fileHandleForReading
+            
+            // Buffer for partial lines
+            var lineBuffer = ""
+            var stderrData = Data()
+            
+            // Read stderr in background
+            let errHandle = errPipe.fileHandleForReading
+            DispatchQueue.global(qos: .utility).async {
+                stderrData = errHandle.readDataToEndOfFile()
             }
             
-            // Give the watcher a moment to process any remaining events
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Stream NDJSON from stdout
+            let (exitStatus, stdErrText) = await withCheckedContinuation { (continuation: CheckedContinuation<(Int32, String), Never>) in
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    while true {
+                        let data = handle.availableData
+                        if data.isEmpty { break }  // EOF
+                        
+                        guard let chunk = String(data: data, encoding: .utf8) else { continue }
+                        lineBuffer += chunk
+                        
+                        // Split by newlines and process complete lines
+                        let lines = lineBuffer.components(separatedBy: "\n")
+                        // Keep the last element (might be incomplete)
+                        lineBuffer = lines.last ?? ""
+                        
+                        for line in lines.dropLast() {
+                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty,
+                                  let jsonData = trimmed.data(using: .utf8),
+                                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                                  let type = json["type"] as? String else { continue }
+                            
+                            DispatchQueue.main.async {
+                                switch type {
+                                case "init":
+                                    // Capture session ID
+                                    if let sid = json["session_id"] as? String {
+                                        activeSessionUUID = sid
+                                    }
+                                    streamingStatus = "Connected…"
+                                    
+                                case "message":
+                                    let role = json["role"] as? String ?? ""
+                                    let content = json["content"] as? String ?? ""
+                                    let isDelta = json["delta"] as? Bool ?? false
+                                    
+                                    if role == "assistant" && isDelta {
+                                        if let idx = streamingMessageIndex {
+                                            messages[idx].content += content
+                                        } else {
+                                            messages.append(ChatMessage(role: "assistant", content: content))
+                                            streamingMessageIndex = messages.count - 1
+                                        }
+                                        streamingStatus = "Generating…"
+                                    }
+                                    
+                                case "result":
+                                    // Generation complete — capture session ID if not already set
+                                    if activeSessionUUID == nil,
+                                       let sid = json["session_id"] as? String {
+                                        activeSessionUUID = sid
+                                    }
+                                    streamingStatus = "Done"
+                                    
+                                default:
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Process any remaining partial line
+                    let remaining = lineBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !remaining.isEmpty,
+                       let jsonData = remaining.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                       let type = json["type"] as? String {
+                        DispatchQueue.main.async {
+                            if type == "result" {
+                                if activeSessionUUID == nil,
+                                   let sid = json["session_id"] as? String {
+                                    activeSessionUUID = sid
+                                }
+                            }
+                        }
+                    }
+                    
+                    process.waitUntilExit()
+                    let errText = String(data: stderrData, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    continuation.resume(returning: (process.terminationStatus, errText))
+                }
+            }
             
             currentProcess = nil
-            watcher.stop()
-            self.streamWatcher = nil
             
-            if status == 15 || status == 9 {
+            if exitStatus == 15 || exitStatus == 9 {
                 error = "Generation stopped"
-            } else if status != 0 && output.isEmpty {
-                error = stderr.isEmpty
-                    ? "CLI exited with code \(status)"
-                    : String(stderr.prefix(300))
-            } else if !receivedStreamEvents {
-                // Fallback: hooks didn't fire, use the full JSON output
-                if output.isEmpty {
-                    error = "Empty response from Gemini"
-                } else {
-                    let parsed = parseGeminiJSON(output)
-                    messages.append(ChatMessage(role: "assistant", content: parsed.text ?? output))
-                    // Capture session UUID for background notification deep-link
-                    if let sid = parsed.sessionId {
-                        activeSessionUUID = sid
-                    }
-                }
+            } else if exitStatus != 0 && streamingMessageIndex == nil {
+                error = stdErrText.isEmpty
+                    ? "CLI exited with code \(exitStatus)"
+                    : String(stdErrText.prefix(300))
+            } else if streamingMessageIndex == nil {
+                // No streaming chunks received — empty response
+                error = "Empty response from Gemini"
             }
-            // If we received stream events, the message is already built
-            // Always try to capture session UUID from CLI output for deep-linking
-            if activeSessionUUID == nil, !output.isEmpty {
-                let parsed = parseGeminiJSON(output)
-                if let sid = parsed.sessionId {
-                    activeSessionUUID = sid
-                }
-            }
+            
             hasActiveSession = true
             withAnimation(.easeOut(duration: 0.2)) {
                 isLoading = false
@@ -2353,19 +2360,14 @@ struct QuickPromptChatView: View {
             if error == nil { NSSound(named: "Tink")?.play() }
             // Notify if window was dismissed during generation
             notifyIfBackgrounded(response: messages.last?.content, error: error)
-            // Clean up temp stream file
-            try? FileManager.default.removeItem(atPath: streamFilePath)
         } catch {
             currentProcess = nil
-            watcher.stop()
-            self.streamWatcher = nil
             self.error = error.localizedDescription
             withAnimation(.easeOut(duration: 0.2)) {
                 isLoading = false
             }
             streamingStatus = "Thinking…"
             notifyIfBackgrounded(response: nil, error: error.localizedDescription)
-            try? FileManager.default.removeItem(atPath: streamFilePath)
         }
     }
 
