@@ -739,7 +739,30 @@ struct QuickPromptView: View {
                         }
                         
                         if let config = ConfigManager.shared {
-                             modularProviderButton(config: config)
+                            modularActionButton(
+                                icon: "folder",
+                                isActive: false,
+                                help: "Change working directory",
+                                activeColor: .blue
+                            ) {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = false
+                                // Resolve the full path so the picker opens in the current set directory
+                                let trimmed = config.workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let fullDirPath = trimmed.isEmpty ? QuickPromptView.resolveWorkingDirectory().path : trimmed
+                                panel.directoryURL = URL(fileURLWithPath: fullDirPath)
+                                panel.prompt = "Set Working Directory"
+
+                                NSApp.activate(ignoringOtherApps: true)
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    config.workingDirectory = url.path
+                                    config.save()
+                                }
+                            }
+                            
+                            modularProviderButton(config: config)
                         }
                     }
                     .transition(.asymmetric(
@@ -941,6 +964,9 @@ struct QuickPromptView: View {
                 loadingSessions = true
                 loadSessions()
             }
+        }
+        .onChange(of: ConfigManager.shared?.workingDirectory ?? "") { _ in
+            isGitDir = QuickPromptView.isGitRepo()
         }
         .onDisappear {
             removeKeyboardMonitor()
@@ -1448,6 +1474,59 @@ struct ChatModelBadge: View {
     }
 }
 
+/// A compact badge showing the current working directory. Clicking opens a folder picker.
+struct ChatWorkingDirectoryBadge: View {
+    @ObservedObject var config: ConfigManager
+    @State private var isHovered = false
+
+    private var fullDirPath: String {
+        QuickPromptView.resolveWorkingDirectory().path
+    }
+
+    private var currentDirName: String {
+        QuickPromptView.resolveWorkingDirectory().lastPathComponent
+    }
+
+    var body: some View {
+        Button(action: selectDirectory) {
+            HStack(spacing: 4) {
+                Image(systemName: "folder")
+                Text(currentDirName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 120, alignment: .leading)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(isHovered ? .secondary : .tertiary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.08))
+            )
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .help("Working Directory: \(fullDirPath)\nClick to change")
+        .onHover { isHovered = $0 }
+    }
+
+    private func selectDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: fullDirPath)
+        panel.prompt = "Set Working Directory"
+
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK, let url = panel.url {
+            config.workingDirectory = url.path
+            config.save()
+        }
+    }
+}
+
 // MARK: - Session File Reading
 
 /// Utilities for reading Gemini CLI session files directly from disk.
@@ -1891,6 +1970,7 @@ struct QuickPromptChatView: View {
                 if let config = ConfigManager.shared {
                     ChatProviderBadge(config: config)
                     ChatModelBadge(config: config)
+                    ChatWorkingDirectoryBadge(config: config)
                 }
 
                 Spacer()
@@ -2293,6 +2373,9 @@ struct QuickPromptChatView: View {
                 elapsedTimer = nil
                 generationStartTime = nil
             }
+        }
+        .onChange(of: ConfigManager.shared?.workingDirectory ?? "") { _ in
+            isGitDir = QuickPromptView.isGitRepo()
         }
     }
     
