@@ -574,6 +574,8 @@ struct QuickPromptView: View {
     @State private var showingCommandHints = false
     @State private var commandKeyMonitor: Any?
     @AppStorage("planMode") private var planMode = false
+    @AppStorage("worktreeMode") private var worktreeMode = false
+    @State private var isGitDir = false
     
     private var showActionButtons: Bool {
         return isHoveringInput || showSessions
@@ -720,6 +722,19 @@ struct QuickPromptView: View {
                         ) {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 planMode.toggle()
+                            }
+                        }
+                        
+                        if isGitDir {
+                            modularActionButton(
+                                icon: worktreeMode ? "arrow.triangle.branch" : "arrow.triangle.branch",
+                                isActive: worktreeMode,
+                                help: worktreeMode ? "Worktree mode on (isolated branch)" : "Enable git worktree",
+                                activeColor: .green
+                            ) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    worktreeMode.toggle()
+                                }
                             }
                         }
                         
@@ -921,6 +936,7 @@ struct QuickPromptView: View {
             isFocused = true
             setupKeyboardMonitor()
             setupCommandKeyMonitor()
+            isGitDir = QuickPromptView.isGitRepo()
             if showSessions && sessions.isEmpty {
                 loadingSessions = true
                 loadSessions()
@@ -1098,6 +1114,23 @@ struct QuickPromptView: View {
         }
         return ""
     }
+
+    /// Check if the configured working directory is inside a git repository.
+    static func isGitRepo() -> Bool {
+        let workDir = resolveWorkingDirectory()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", workDir.path, "rev-parse", "--is-inside-work-tree"]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
 }
 
 // MARK: - Modular Button Views (with hover feedback)
@@ -1222,42 +1255,81 @@ struct StopButtonView: View {
     }
 }
 
-/// A compact plan mode toggle pill for the follow-up input area.
-struct PlanModeToggle: View {
-    @Binding var isEnabled: Bool
+/// A compact mode toggle strip for the follow-up input area (plan + worktree).
+struct ModeToggleStrip: View {
+    @Binding var planEnabled: Bool
+    @Binding var worktreeEnabled: Bool
+    var isGitDir: Bool = true
 
     var body: some View {
         HStack(spacing: 6) {
+            // Plan mode pill
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    isEnabled.toggle()
+                    planEnabled.toggle()
                 }
             }) {
                 HStack(spacing: 3) {
-                    Image(systemName: isEnabled ? "doc.text.fill" : "doc.text")
+                    Image(systemName: planEnabled ? "doc.text.fill" : "doc.text")
                         .font(.system(size: 9))
                     Text("Plan")
                         .font(.system(size: 9, weight: .semibold))
                 }
-                .foregroundStyle(isEnabled ? Color.orange : Color.secondary.opacity(0.4))
+                .foregroundStyle(planEnabled ? Color.orange : Color.secondary.opacity(0.4))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(isEnabled ? Color.orange.opacity(0.12) : Color.clear)
+                        .fill(planEnabled ? Color.orange.opacity(0.12) : Color.clear)
                         .overlay(
                             Capsule()
-                                .strokeBorder(isEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                                .strokeBorder(planEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
                         )
                 )
             }
             .buttonStyle(.plain)
-            .help(isEnabled ? "Plan mode: agent explains without making changes. Click to disable." : "Enable plan mode (read-only)")
+            .help(planEnabled ? "Plan mode: read-only. Click to disable." : "Enable plan mode (read-only)")
 
-            if isEnabled {
+            // Worktree mode pill — only shown in git repos
+            if isGitDir {
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    worktreeEnabled.toggle()
+                }
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 9))
+                    Text("Worktree")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(worktreeEnabled ? Color.green : Color.secondary.opacity(0.4))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(worktreeEnabled ? Color.green.opacity(0.12) : Color.clear)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(worktreeEnabled ? Color.green.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .help(worktreeEnabled ? "Worktree: isolated git branch. Click to disable." : "Enable git worktree (isolated branch)")
+            }
+
+            // Context label for active mode
+            if planEnabled {
                 Text("Read-only — agent will explain without making changes")
                     .font(.system(size: 9))
                     .foregroundStyle(.orange.opacity(0.7))
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else if worktreeEnabled {
+                Text("Isolated git branch — ask the agent to merge when finished")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.green.opacity(0.7))
                     .lineLimit(1)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
@@ -1742,13 +1814,18 @@ struct QuickPromptChatView: View {
     @State private var hoveringPin = false
     @State private var hoveringInlineStop = false
     @AppStorage("planMode") private var planMode = false
+    @AppStorage("worktreeMode") private var worktreeMode = false
+    @State private var isGitDir = false
     
     private var followUpPlaceholder: String {
         // providerVersion dependency ensures this re-evaluates on provider switch
         _ = providerVersion
         if planMode {
             return "Describe what to plan…"
+        } else if worktreeMode {
+            return "Follow up, or say 'merge and clean up'…"
         }
+        
         if let config = ConfigManager.shared {
             let name = config.activeProvider.name.components(separatedBy: " ").first ?? "NexusAgent"
             return "Follow up with \(name)…"
@@ -1773,6 +1850,7 @@ struct QuickPromptChatView: View {
                         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                             sparklePulse = true
                         }
+                        isGitDir = QuickPromptView.isGitRepo()
                     }
                     .animation(.easeInOut(duration: isLoading ? 0.6 : 1.8), value: isLoading)
                 Text(chatTitle ?? "Chat")
@@ -2093,7 +2171,7 @@ struct QuickPromptChatView: View {
                 .padding(.horizontal, 12)
                 .animation(.easeInOut(duration: 0.2), value: planMode)
             
-            PlanModeToggle(isEnabled: $planMode)
+            ModeToggleStrip(planEnabled: $planMode, worktreeEnabled: $worktreeMode, isGitDir: isGitDir)
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
@@ -2372,6 +2450,7 @@ struct QuickPromptChatView: View {
         process.executableURL = URL(fileURLWithPath: geminiBin)
         var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", planMode ? "plan" : "yolo"]
         if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["-m", model] }
+        if worktreeMode { args += ["-w"] }
         if hasActiveSession { args += ["--resume", "latest"] }
         process.arguments = args
         process.standardOutput = pipe
@@ -2576,6 +2655,7 @@ struct QuickPromptChatView: View {
             if planMode {
                 args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
             }
+            if worktreeMode { args += ["-w"] }
             if hasActiveSession { args += ["--continue"] }
             process.arguments = args
         } else {
@@ -2586,6 +2666,7 @@ struct QuickPromptChatView: View {
             if planMode {
                 args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
             }
+            if worktreeMode { args += ["-w"] }
             if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
             if hasActiveSession { args += ["--continue"] }
             process.arguments = args
