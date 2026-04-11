@@ -3524,6 +3524,8 @@ struct MessageBubble: View {
             }
             // #14: Double-click to copy any message
             .onTapGesture(count: 2) { copyContent() }
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
             
             // User avatar
             if isUser {
@@ -3541,7 +3543,6 @@ struct MessageBubble: View {
             if !isUser { Spacer(minLength: 40) }
         }
         .padding(.horizontal, 12)
-        .onHover { hovering = $0 }
     }
     
     @ViewBuilder
