@@ -573,6 +573,7 @@ struct QuickPromptView: View {
     @State private var isHoveringInput = false
     @State private var showingCommandHints = false
     @State private var commandKeyMonitor: Any?
+    @AppStorage("planMode") private var planMode = false
     
     private var showActionButtons: Bool {
         return isHoveringInput || showSessions
@@ -708,6 +709,17 @@ struct QuickPromptView: View {
                                     .background(Circle().fill(Color.blue))
                                     .offset(x: 4, y: -4)
                                     .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        
+                        modularActionButton(
+                            icon: planMode ? "doc.text.fill" : "doc.text",
+                            isActive: planMode,
+                            help: planMode ? "Plan mode on (read-only)" : "Enable plan mode",
+                            activeColor: .orange
+                        ) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                planMode.toggle()
                             }
                         }
                         
@@ -1039,9 +1051,10 @@ struct QuickPromptView: View {
         icon: String,
         isActive: Bool,
         help: String,
+        activeColor: Color = .blue,
         action: @escaping () -> Void
     ) -> some View {
-        ModularButtonView(icon: icon, isActive: isActive, help: help, action: action)
+        ModularButtonView(icon: icon, isActive: isActive, help: help, activeColor: activeColor, action: action)
     }
 
     private func modularProviderButton(config: ConfigManager) -> some View {
@@ -1094,6 +1107,7 @@ struct ModularButtonView: View {
     let icon: String
     let isActive: Bool
     let help: String
+    var activeColor: Color = .blue
     let action: () -> Void
     @State private var isHovered = false
 
@@ -1101,7 +1115,7 @@ struct ModularButtonView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(isActive ? Color.blue : Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .foregroundStyle(isActive ? activeColor : Color.primary.opacity(isHovered ? 0.7 : 0.45))
                 .frame(width: 34, height: 34)
                 .background(
                     Circle()
@@ -1205,6 +1219,53 @@ struct StopButtonView: View {
         .buttonStyle(.plain)
         .help("Stop generation (Esc)")
         .onHover { isHovered = $0 }
+    }
+}
+
+/// A compact plan mode toggle pill for the follow-up input area.
+struct PlanModeToggle: View {
+    @Binding var isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isEnabled.toggle()
+                }
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: isEnabled ? "doc.text.fill" : "doc.text")
+                        .font(.system(size: 9))
+                    Text("Plan")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(isEnabled ? Color.orange : Color.secondary.opacity(0.4))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(isEnabled ? Color.orange.opacity(0.12) : Color.clear)
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(isEnabled ? Color.orange.opacity(0.3) : Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .help(isEnabled ? "Plan mode: agent explains without making changes. Click to disable." : "Enable plan mode (read-only)")
+
+            if isEnabled {
+                Text("Read-only — agent will explain without making changes")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange.opacity(0.7))
+                    .lineLimit(1)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
     }
 }
 
@@ -1680,10 +1741,14 @@ struct QuickPromptChatView: View {
     @State private var hoveringSessions = false
     @State private var hoveringPin = false
     @State private var hoveringInlineStop = false
+    @AppStorage("planMode") private var planMode = false
     
     private var followUpPlaceholder: String {
         // providerVersion dependency ensures this re-evaluates on provider switch
         _ = providerVersion
+        if planMode {
+            return "Describe what to plan…"
+        }
         if let config = ConfigManager.shared {
             let name = config.activeProvider.name.components(separatedBy: " ").first ?? "NexusAgent"
             return "Follow up with \(name)…"
@@ -2023,17 +2088,23 @@ struct QuickPromptChatView: View {
             }
             
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
+                .fill(planMode ? Color.orange.opacity(0.15) : Color.primary.opacity(0.08))
                 .frame(height: 1)
                 .padding(.horizontal, 12)
+                .animation(.easeInOut(duration: 0.2), value: planMode)
+            
+            PlanModeToggle(isEnabled: $planMode)
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
-                Image(systemName: isLoading ? "ellipsis" : "arrow.up.message")
+                let inputIcon: String = planMode ? "doc.text" : (isLoading ? "ellipsis" : "arrow.up.message")
+                let inputColor: Color = planMode ? .orange.opacity(0.6) : (isLoading ? .secondary.opacity(0.3) : .secondary.opacity(0.5))
+                Image(systemName: inputIcon)
                     .font(.system(size: 12))
-                    .foregroundStyle(isLoading ? .quaternary : .tertiary)
+                    .foregroundStyle(inputColor)
                     .contentTransition(.symbolEffect(.replace))
                     .animation(.easeInOut(duration: 0.2), value: isLoading)
+                    .animation(.easeInOut(duration: 0.2), value: planMode)
                 
                 TextField(followUpPlaceholder, text: $followUp)
                     .textFieldStyle(.plain)
@@ -2096,10 +2167,13 @@ struct QuickPromptChatView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .strokeBorder(
-                                isInputFocused ? Color.blue.opacity(0.3) : Color.primary.opacity(0.06),
-                                lineWidth: isInputFocused ? 1.0 : 0.5
+                                planMode
+                                    ? Color.orange.opacity(0.4)
+                                    : (isInputFocused ? Color.blue.opacity(0.3) : Color.primary.opacity(0.06)),
+                                lineWidth: planMode ? 1.2 : (isInputFocused ? 1.0 : 0.5)
                             )
                             .animation(.easeInOut(duration: 0.2), value: isInputFocused)
+                            .animation(.easeInOut(duration: 0.2), value: planMode)
                     )
             )
             .padding(.horizontal, 10)
@@ -2247,6 +2321,24 @@ struct QuickPromptChatView: View {
             UserDefaults.standard.set(capped, forKey: "promptHistory")
         }
 
+        // Enforce plan mode at the prompt level — CLI flags alone are not reliable in headless mode
+        let effectivePrompt: String
+        if planMode {
+            effectivePrompt = """
+            [SYSTEM] You are in PLAN MODE. You MUST follow these rules strictly:
+            - Do NOT create, edit, modify, or delete any files.
+            - Do NOT run any shell commands or scripts.
+            - Do NOT execute any tools that modify the filesystem or environment.
+            - ONLY explain what you WOULD do, step by step, as a detailed plan.
+            - Present your plan as a numbered list of actions you would take.
+            - Wait for explicit user approval before taking any action.
+
+            User request: \(prompt)
+            """
+        } else {
+            effectivePrompt = prompt
+        }
+
         // Determine which provider is active
         let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.gemini
         let isGemini = provider.id == CLIProvider.gemini.id
@@ -2257,11 +2349,11 @@ struct QuickPromptChatView: View {
         let isOllama = !isGemini && (templateExe.hasSuffix("ollama") || provider.id == CLIProvider.ollama.id)
 
         if isGemini {
-            await runGeminiProvider(prompt: prompt)
+            await runGeminiProvider(prompt: effectivePrompt)
         } else if isClaude || isOllama {
-            await runClaudeProvider(prompt: prompt, provider: provider, viaOllama: isOllama)
+            await runClaudeProvider(prompt: effectivePrompt, provider: provider, viaOllama: isOllama)
         } else {
-            await runCustomProvider(prompt: prompt, provider: provider)
+            await runCustomProvider(prompt: effectivePrompt, provider: provider)
         }
     }
 
@@ -2278,7 +2370,7 @@ struct QuickPromptChatView: View {
             ?? "/opt/homebrew/bin/gemini"
         
         process.executableURL = URL(fileURLWithPath: geminiBin)
-        var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", "yolo"]
+        var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", planMode ? "plan" : "yolo"]
         if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["-m", model] }
         if hasActiveSession { args += ["--resume", "latest"] }
         process.arguments = args
@@ -2478,14 +2570,22 @@ struct QuickPromptChatView: View {
             let effectiveModel = model.isEmpty ? ollamaDefaultModel() : model
             args += ["--model", effectiveModel]
             // Everything after "--" is passed to Claude Code
+            let permMode = planMode ? "plan" : "bypassPermissions"
             args += ["--", "-p", prompt, "--output-format", "stream-json", "--verbose",
-                      "--permission-mode", "bypassPermissions"]
+                      "--permission-mode", permMode]
+            if planMode {
+                args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+            }
             if hasActiveSession { args += ["--continue"] }
             process.arguments = args
         } else {
             // Direct Claude Code invocation
+            let permMode = planMode ? "plan" : "bypassPermissions"
             var args = ["-p", prompt, "--output-format", "stream-json", "--verbose",
-                        "--permission-mode", "bypassPermissions"]
+                        "--permission-mode", permMode]
+            if planMode {
+                args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
+            }
             if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
             if hasActiveSession { args += ["--continue"] }
             process.arguments = args
