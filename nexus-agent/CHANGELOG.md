@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.8.0...nexus-agent-v1.9.0) (2026-04-11)
+
+
+### Features
+
+* add ⌘N shortcut, update scroll button label, replace avatar with initials, and add line numbers to code blocks ([6c3faac](https://github.com/VitruvianSoftware/nexus-agent/commit/6c3faac050f8bfa5e434f4e411abdaaba9f308f4))
+* add Claude Code provider support with stream-json integration and unified command execution logic ([583610e](https://github.com/VitruvianSoftware/nexus-agent/commit/583610ef5810c3b7dfbab246584ec19aae6a7ab9))
+* add message count to session list and implement clear button for prompt input ([ef16d9e](https://github.com/VitruvianSoftware/nexus-agent/commit/ef16d9e7f0c1be863161a949af0251deeaff12b0))
+* add opacity transition to session list and improve stop button hover states and styling ([265b07e](https://github.com/VitruvianSoftware/nexus-agent/commit/265b07e314f5f2eabd79d51b871ea6f6fbcc6c85))
+* add resumed session indicator and generation elapsed time counter to QuickPromptWindow ([1065b00](https://github.com/VitruvianSoftware/nexus-agent/commit/1065b00821e7f932802821d67ab42c8594db5d9e))
+* add separator to prompt header and update Esc key behavior to stop generation before dismissing ([849bc30](https://github.com/VitruvianSoftware/nexus-agent/commit/849bc30e39e2327e806974c88f48154d67d4b649))
+* add session context menu, message count badge, and updated UI animations to QuickPromptWindow ([5e1f69f](https://github.com/VitruvianSoftware/nexus-agent/commit/5e1f69fe2c105b9fc3199a0c12317579e9901439))
+* add session count badge to chat header and refactor stop button into reusable view component ([b839f07](https://github.com/VitruvianSoftware/nexus-agent/commit/b839f07555dd2b31cb0db9d0ccbf1586be515086))
+* add session deep-linking to background notifications and update UI animation state ([aaa8840](https://github.com/VitruvianSoftware/nexus-agent/commit/aaa884083332cde143bc074657d05d0339818fe2))
+* update timestamp formatting, add character count to prompt input, and enable copy button for all message types ([a933ed1](https://github.com/VitruvianSoftware/nexus-agent/commit/a933ed112bdb53a207b7c20fc2e9e79b43871941))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.7.0...nexus-agent-v1.8.0) (2026-04-10)
 
 
