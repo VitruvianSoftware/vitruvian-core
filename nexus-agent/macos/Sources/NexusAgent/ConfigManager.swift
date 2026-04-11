@@ -25,7 +25,14 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    static let builtIns: [CLIProvider] = [.gemini, .ollama]
+    static let claude = CLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+        name: "Claude Code",
+        commandTemplate: "claude -p \"{prompt}\"",
+        isBuiltIn: true
+    )
+
+    static let builtIns: [CLIProvider] = [.gemini, .claude, .ollama]
 }
 
 /// Reads and writes the bot's .env configuration file.

@@ -2183,9 +2183,16 @@ struct QuickPromptChatView: View {
         // Determine which provider is active
         let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.gemini
         let isGemini = provider.id == CLIProvider.gemini.id
+        // Detect Claude or Ollama (which wraps Claude) for stream-json routing
+        let templateExe = provider.commandTemplate.trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: .whitespaces).first ?? ""
+        let isClaude = !isGemini && (templateExe.hasSuffix("claude") || provider.id == CLIProvider.claude.id)
+        let isOllama = !isGemini && (templateExe.hasSuffix("ollama") || provider.id == CLIProvider.ollama.id)
 
         if isGemini {
             await runGeminiProvider(prompt: prompt)
+        } else if isClaude || isOllama {
+            await runClaudeProvider(prompt: prompt, provider: provider, viaOllama: isOllama)
         } else {
             await runCustomProvider(prompt: prompt, provider: provider)
         }
@@ -2359,6 +2366,193 @@ struct QuickPromptChatView: View {
             // #16: Subtle sound on completion
             if error == nil { NSSound(named: "Tink")?.play() }
             // Notify if window was dismissed during generation
+            notifyIfBackgrounded(response: messages.last?.content, error: error)
+        } catch {
+            currentProcess = nil
+            self.error = error.localizedDescription
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
+            streamingStatus = "Thinking…"
+            notifyIfBackgrounded(response: nil, error: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Claude Code Provider (stream-json)
+
+    /// Dedicated Claude Code runner using `--output-format stream-json` for real-time streaming.
+    /// Claude's stream-json format:
+    ///   {"type":"system","subtype":"init","session_id":"..."}
+    ///   {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]},"session_id":"..."}
+    ///   {"type":"result","subtype":"success","result":"...","session_id":"...","total_cost_usd":0.02}
+    private func runClaudeProvider(prompt: String, provider: CLIProvider, viaOllama: Bool = false) async {
+        var streamingMessageIndex: Int? = nil
+
+        // Resolve the binary
+        let binaryName = viaOllama ? "ollama" : "claude"
+        guard let resolvedBin = resolveExecutablePath(binaryName) else {
+            error = "Could not find '\(binaryName)' in PATH. Is it installed?"
+            isLoading = false
+            return
+        }
+
+        let process = Process()
+        let pipe = Pipe()
+        let errPipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: resolvedBin)
+
+        if viaOllama {
+            // ollama launch claude --model <model> -- -p <prompt> --output-format stream-json --verbose --permission-mode bypassPermissions
+            let model = ConfigManager.shared?.model ?? ""
+            var args = ["launch", "claude"]
+            // --model is required in headless mode; use configured model or first available
+            let effectiveModel = model.isEmpty ? ollamaDefaultModel() : model
+            args += ["--model", effectiveModel]
+            // Everything after "--" is passed to Claude Code
+            args += ["--", "-p", prompt, "--output-format", "stream-json", "--verbose",
+                      "--permission-mode", "bypassPermissions"]
+            if hasActiveSession { args += ["--continue"] }
+            process.arguments = args
+        } else {
+            // Direct Claude Code invocation
+            var args = ["-p", prompt, "--output-format", "stream-json", "--verbose",
+                        "--permission-mode", "bypassPermissions"]
+            if hasActiveSession { args += ["--continue"] }
+            process.arguments = args
+        }
+
+        process.standardOutput = pipe
+        process.standardError = errPipe
+        process.environment = ProcessInfo.processInfo.environment
+        process.environment?["NO_COLOR"] = "1"
+        let extraPaths = [
+            "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin",
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ].filter { FileManager.default.fileExists(atPath: $0) }
+        let currentPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        process.environment?["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
+        let workDir = QuickPromptView.resolveWorkingDirectory()
+        process.currentDirectoryURL = FileManager.default.fileExists(atPath: workDir.path)
+            ? workDir : URL(fileURLWithPath: NSHomeDirectory())
+        currentProcess = process
+
+        do {
+            try process.run()
+
+            let handle = pipe.fileHandleForReading
+            var lineBuffer = ""
+            var stderrData = Data()
+
+            let errHandle = errPipe.fileHandleForReading
+            DispatchQueue.global(qos: .utility).async {
+                stderrData = errHandle.readDataToEndOfFile()
+            }
+
+            let (exitStatus, stdErrText) = await withCheckedContinuation { (continuation: CheckedContinuation<(Int32, String), Never>) in
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    while true {
+                        let data = handle.availableData
+                        if data.isEmpty { break }
+
+                        guard let chunk = String(data: data, encoding: .utf8) else { continue }
+                        lineBuffer += chunk
+
+                        let lines = lineBuffer.components(separatedBy: "\n")
+                        lineBuffer = lines.last ?? ""
+
+                        for line in lines.dropLast() {
+                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty,
+                                  let jsonData = trimmed.data(using: .utf8),
+                                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                                  let type = json["type"] as? String else { continue }
+
+                            DispatchQueue.main.async {
+                                switch type {
+                                case "system":
+                                    // Init event — capture session ID
+                                    if let sid = json["session_id"] as? String {
+                                        activeSessionUUID = sid
+                                    }
+                                    streamingStatus = "Connected…"
+
+                                case "assistant":
+                                    // Extract text from message.content array
+                                    if let message = json["message"] as? [String: Any],
+                                       let contentArr = message["content"] as? [[String: Any]] {
+                                        for block in contentArr {
+                                            if let blockType = block["type"] as? String,
+                                               blockType == "text",
+                                               let text = block["text"] as? String,
+                                               !text.isEmpty {
+                                                if let idx = streamingMessageIndex {
+                                                    messages[idx].content = text
+                                                } else {
+                                                    messages.append(ChatMessage(role: "assistant", content: text))
+                                                    streamingMessageIndex = messages.count - 1
+                                                }
+                                                streamingStatus = "Generating…"
+                                            }
+                                        }
+                                    }
+                                    // Capture session ID
+                                    if activeSessionUUID == nil,
+                                       let sid = json["session_id"] as? String {
+                                        activeSessionUUID = sid
+                                    }
+
+                                case "result":
+                                    if activeSessionUUID == nil,
+                                       let sid = json["session_id"] as? String {
+                                        activeSessionUUID = sid
+                                    }
+                                    streamingStatus = "Done"
+
+                                default:
+                                    break
+                                }
+                            }
+                        }
+                    }
+
+                    // Process remaining partial line
+                    let remaining = lineBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !remaining.isEmpty,
+                       let jsonData = remaining.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        DispatchQueue.main.async {
+                            if let sid = json["session_id"] as? String {
+                                activeSessionUUID = sid
+                            }
+                        }
+                    }
+
+                    process.waitUntilExit()
+                    let errText = String(data: stderrData, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    continuation.resume(returning: (process.terminationStatus, errText))
+                }
+            }
+
+            currentProcess = nil
+
+            if exitStatus == 15 || exitStatus == 9 {
+                error = "Generation stopped"
+            } else if exitStatus != 0 && streamingMessageIndex == nil {
+                error = stdErrText.isEmpty
+                    ? "CLI exited with code \(exitStatus)"
+                    : String(stdErrText.prefix(300))
+            } else if streamingMessageIndex == nil {
+                error = "Empty response from Claude"
+            }
+
+            hasActiveSession = true
+            withAnimation(.easeOut(duration: 0.2)) {
+                isLoading = false
+            }
+            streamingStatus = "Thinking…"
+            if error == nil { NSSound(named: "Tink")?.play() }
             notifyIfBackgrounded(response: messages.last?.content, error: error)
         } catch {
             currentProcess = nil
@@ -2572,6 +2766,29 @@ struct QuickPromptChatView: View {
             }
         }
         return nil
+    }
+
+    /// Returns the name of the first model from `ollama list`, or a sensible fallback.
+    private func ollamaDefaultModel() -> String {
+        let task = Process()
+        let pipe = Pipe()
+        task.executableURL = URL(fileURLWithPath: resolveExecutablePath("ollama") ?? "/opt/homebrew/bin/ollama")
+        task.arguments = ["list"]
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            if let output = String(data: data, encoding: .utf8) {
+                let lines = output.components(separatedBy: "\n").dropFirst() // skip header
+                if let firstModel = lines.first(where: { !$0.isEmpty }) {
+                    let name = firstModel.components(separatedBy: .whitespaces).first ?? ""
+                    if !name.isEmpty { return name }
+                }
+            }
+        } catch {}
+        return "qwen3"
     }
 
     // MARK: - JSON Parsing

@@ -270,6 +270,18 @@ struct ProviderRow: View {
     @State private var draftTemplate: String = ""
     @FocusState private var isFieldFocused: Bool
 
+    /// The actual command NexusAgent runs for built-in providers (not the stored template).
+    private var actualCommand: String {
+        if provider.id == CLIProvider.gemini.id {
+            return "gemini -p \"{prompt}\" --output-format stream-json --approval-mode yolo"
+        } else if provider.id == CLIProvider.claude.id {
+            return "claude -p \"{prompt}\" --output-format stream-json --verbose --permission-mode bypassPermissions"
+        } else if provider.id == CLIProvider.ollama.id {
+            return "ollama launch claude --model {model} -- -p \"{prompt}\" --output-format stream-json --verbose --permission-mode bypassPermissions"
+        }
+        return provider.commandTemplate
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -294,21 +306,24 @@ struct ProviderRow: View {
 
                 Spacer()
 
-                Button(isEditing ? "Done" : "Edit") {
-                    if isEditing {
-                        provider.commandTemplate = draftTemplate
-                        isEditing = false
-                    } else {
-                        draftTemplate = provider.commandTemplate
-                        isEditing = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            isFieldFocused = true
+                // Only custom providers can be edited
+                if !provider.isBuiltIn {
+                    Button(isEditing ? "Done" : "Edit") {
+                        if isEditing {
+                            provider.commandTemplate = draftTemplate
+                            isEditing = false
+                        } else {
+                            draftTemplate = provider.commandTemplate
+                            isEditing = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isFieldFocused = true
+                            }
                         }
                     }
+                    .controlSize(.mini)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
                 }
-                .controlSize(.mini)
-                .buttonStyle(.plain)
-                .foregroundStyle(.blue)
 
                 if let onDelete {
                     Button(action: onDelete) {
@@ -327,12 +342,13 @@ struct ProviderRow: View {
                     .padding(.leading, 14)
                     .focused($isFieldFocused)
             } else {
-                Text(provider.commandTemplate)
+                Text(actualCommand)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.leading, 14)
+                    .help(actualCommand) // Full command on hover
             }
         }
         .padding(.vertical, 3)
