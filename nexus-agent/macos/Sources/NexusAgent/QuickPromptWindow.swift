@@ -2574,7 +2574,11 @@ struct QuickPromptChatView: View {
         var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", planMode ? "plan" : "yolo"]
         if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["-m", model] }
         if worktreeMode { args += ["-w"] }
-        if hasActiveSession { args += ["--resume", "latest"] }
+        // Resume the specific session by UUID — never use "latest" which could
+        // pick up a different session if the user opened a specific one.
+        if let sessionId = activeSessionUUID ?? resumeUUID {
+            args += ["--resume", sessionId]
+        }
         process.arguments = args
         process.standardOutput = pipe
         process.standardError = errPipe
@@ -2835,7 +2839,9 @@ struct QuickPromptChatView: View {
                 args += ["--system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
             }
             if worktreeMode { args += ["-w"] }
-            if hasActiveSession { args += ["--continue"] }
+            if let sessionId = activeSessionUUID ?? resumeUUID {
+                args += ["--resume", sessionId]
+            }
             process.arguments = args
         } else {
             // Direct Claude Code invocation
@@ -2847,7 +2853,9 @@ struct QuickPromptChatView: View {
             }
             if worktreeMode { args += ["-w"] }
             if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
-            if hasActiveSession { args += ["--continue"] }
+            if let sessionId = activeSessionUUID ?? resumeUUID {
+                args += ["--resume", sessionId]
+            }
             process.arguments = args
         }
 
