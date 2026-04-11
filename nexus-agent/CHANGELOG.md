@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.9.0...nexus-agent-v1.10.0) (2026-04-11)
+
+
+### Features
+
+* add editable model badge to chat header and pass custom model to CLI invocations ([ceadc87](https://github.com/VitruvianSoftware/nexus-agent/commit/ceadc87eb8e9e9466aa76af90e39e28712d87936))
+* add plan mode to restrict agent to read-only explanations with UI toggle and system prompt enforcement ([a087eda](https://github.com/VitruvianSoftware/nexus-agent/commit/a087eda4c290f05c103770681400d40d86f7b066))
+* add retry functionality for failed CLI prompts in QuickPromptWindow ([984f4e5](https://github.com/VitruvianSoftware/nexus-agent/commit/984f4e58f15870b204823c70db65ba7fd7c4a814))
+* add working directory selection UI and status badge to QuickPromptWindow ([4ea7cc9](https://github.com/VitruvianSoftware/nexus-agent/commit/4ea7cc969bd79f6c55dff91783088a716323a888))
+* add worktree mode toggle and git repository detection to QuickPromptWindow ([d480978](https://github.com/VitruvianSoftware/nexus-agent/commit/d4809783bf5452cf33d6253a7fb15e6f81d5b927))
+* track and display LLM usage statistics, model names, and stop reasons in message history ([528e9f8](https://github.com/VitruvianSoftware/nexus-agent/commit/528e9f8e571e18a38def3d268e0e2cb963fadb5f))
+* update Gemini output format, improve streaming message parsing, and refactor Ollama model discovery to be asynchronous ([0fec09e](https://github.com/VitruvianSoftware/nexus-agent/commit/0fec09e470c087d658707d53d4eaa44b21c685f9))
+
 ## [1.9.0](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.8.0...nexus-agent-v1.9.0) (2026-04-11)
 
 
