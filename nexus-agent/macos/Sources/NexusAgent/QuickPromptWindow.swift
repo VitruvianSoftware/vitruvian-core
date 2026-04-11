@@ -1249,6 +1249,72 @@ struct ChatProviderBadge: View {
     }
 }
 
+/// A compact clickable model badge for the chat header — click to edit model name inline.
+struct ChatModelBadge: View {
+    @ObservedObject var config: ConfigManager
+    @State private var isEditing = false
+    @State private var draft = ""
+    @State private var isHovered = false
+    @FocusState private var isFocused: Bool
+
+    private var displayName: String {
+        let m = config.model.trimmingCharacters(in: .whitespaces)
+        return m.isEmpty ? "Auto" : m
+    }
+
+    var body: some View {
+        if isEditing {
+            TextField("model name", text: $draft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .frame(width: 100)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Color.blue.opacity(0.4), lineWidth: 1)
+                        )
+                )
+                .focused($isFocused)
+                .onSubmit {
+                    config.model = draft.trimmingCharacters(in: .whitespaces)
+                    config.save()
+                    isEditing = false
+                }
+                .onExitCommand {
+                    isEditing = false
+                }
+        } else {
+            Button(action: {
+                draft = config.model
+                isEditing = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isFocused = true
+                }
+            }) {
+                Text(displayName)
+                    .font(.system(size: 10, weight: .medium, design: config.model.isEmpty ? .default : .monospaced))
+                    .foregroundStyle(config.model.isEmpty
+                        ? (isHovered ? .secondary : .quaternary)
+                        : (isHovered ? .secondary : .tertiary))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.08))
+                    )
+                    .animation(.easeInOut(duration: 0.15), value: isHovered)
+            }
+            .buttonStyle(.plain)
+            .help(config.model.isEmpty ? "Set model (uses provider default)" : "Model: \(config.model)")
+            .onHover { isHovered = $0 }
+        }
+    }
+}
+
 // MARK: - Session File Reading
 
 /// Utilities for reading Gemini CLI session files directly from disk.
@@ -1681,6 +1747,7 @@ struct QuickPromptChatView: View {
                 // Interactive provider picker badge
                 if let config = ConfigManager.shared {
                     ChatProviderBadge(config: config)
+                    ChatModelBadge(config: config)
                 }
 
                 Spacer()
@@ -2212,6 +2279,7 @@ struct QuickPromptChatView: View {
         
         process.executableURL = URL(fileURLWithPath: geminiBin)
         var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", "yolo"]
+        if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["-m", model] }
         if hasActiveSession { args += ["--resume", "latest"] }
         process.arguments = args
         process.standardOutput = pipe
@@ -2418,6 +2486,7 @@ struct QuickPromptChatView: View {
             // Direct Claude Code invocation
             var args = ["-p", prompt, "--output-format", "stream-json", "--verbose",
                         "--permission-mode", "bypassPermissions"]
+            if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
             if hasActiveSession { args += ["--continue"] }
             process.arguments = args
         }
