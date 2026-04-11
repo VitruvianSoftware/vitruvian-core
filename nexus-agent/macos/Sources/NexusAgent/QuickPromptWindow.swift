@@ -1857,6 +1857,15 @@ struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: String
     var content: String
+    var durationMs: Int? = nil
+    var totalCost: Double? = nil
+    var inputTokens: Int? = nil
+    var outputTokens: Int? = nil
+    var cachedTokens: Int? = nil
+    var modelName: String? = nil
+    var toolCalls: Int? = nil
+    var numTurns: Int? = nil
+    var stopReason: String? = nil
 }
 
 struct QuickPromptChatView: View {
@@ -2552,6 +2561,7 @@ struct QuickPromptChatView: View {
     private func runGeminiProvider(prompt: String) async {
         // Index of the assistant message we're streaming into
         var streamingMessageIndex: Int? = nil
+        var streamingModelName: String? = nil
         
         let process = Process()
         let pipe = Pipe()
@@ -2638,9 +2648,12 @@ struct QuickPromptChatView: View {
                             DispatchQueue.main.async {
                                 switch type {
                                 case "init":
-                                    // Capture session ID
+                                    // Capture session ID and model
                                     if let sid = json["session_id"] as? String {
                                         activeSessionUUID = sid
+                                    }
+                                    if let model = json["model"] as? String {
+                                        streamingModelName = model
                                     }
                                     streamingStatus = "Connected…"
                                     
@@ -2665,6 +2678,32 @@ struct QuickPromptChatView: View {
                                        let sid = json["session_id"] as? String {
                                         activeSessionUUID = sid
                                     }
+                                    if let idx = streamingMessageIndex {
+                                        if let stats = json["stats"] as? [String: Any] {
+                                            if let ms = stats["duration_ms"] as? NSNumber {
+                                                messages[idx].durationMs = ms.intValue
+                                            }
+                                            if let costNum = stats["cost_usd"] as? NSNumber {
+                                                messages[idx].totalCost = costNum.doubleValue
+                                            }
+                                            if let t = stats["input_tokens"] as? NSNumber {
+                                                messages[idx].inputTokens = t.intValue
+                                            }
+                                            if let t = stats["output_tokens"] as? NSNumber {
+                                                messages[idx].outputTokens = t.intValue
+                                            }
+                                            if let t = stats["cached"] as? NSNumber {
+                                                messages[idx].cachedTokens = t.intValue
+                                            }
+                                            if let t = stats["tool_calls"] as? NSNumber {
+                                                messages[idx].toolCalls = t.intValue
+                                            }
+                                        }
+                                        messages[idx].modelName = streamingModelName
+                                        if let reason = json["status"] as? String {
+                                            messages[idx].stopReason = reason
+                                        }
+                                    }
                                     streamingStatus = "Done"
                                     
                                 default:
@@ -2685,6 +2724,25 @@ struct QuickPromptChatView: View {
                                 if activeSessionUUID == nil,
                                    let sid = json["session_id"] as? String {
                                     activeSessionUUID = sid
+                                }
+                                if let idx = streamingMessageIndex {
+                                    if let stats = json["stats"] as? [String: Any] {
+                                        if let ms = stats["duration_ms"] as? NSNumber {
+                                            messages[idx].durationMs = ms.intValue
+                                        }
+                                        if let costNum = stats["cost_usd"] as? NSNumber {
+                                            messages[idx].totalCost = costNum.doubleValue
+                                        }
+                                        if let t = stats["input_tokens"] as? NSNumber {
+                                            messages[idx].inputTokens = t.intValue
+                                        }
+                                        if let t = stats["output_tokens"] as? NSNumber {
+                                            messages[idx].outputTokens = t.intValue
+                                        }
+                                        if let t = stats["cached"] as? NSNumber {
+                                            messages[idx].cachedTokens = t.intValue
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2739,6 +2797,7 @@ struct QuickPromptChatView: View {
     ///   {"type":"result","subtype":"success","result":"...","session_id":"...","total_cost_usd":0.02}
     private func runClaudeProvider(prompt: String, provider: CLIProvider, viaOllama: Bool = false) async {
         var streamingMessageIndex: Int? = nil
+        var streamingModelName: String? = nil
 
         // Resolve the binary
         let binaryName = viaOllama ? "ollama" : "claude"
@@ -2838,6 +2897,7 @@ struct QuickPromptChatView: View {
                                     if let sid = json["session_id"] as? String {
                                         activeSessionUUID = sid
                                     }
+                                    // Claude assistant events carry model in message.model
                                     streamingStatus = "Connected…"
 
                                 case "assistant":
@@ -2859,16 +2919,48 @@ struct QuickPromptChatView: View {
                                             }
                                         }
                                     }
-                                    // Capture session ID
+                                    // Capture session ID and model from assistant event
                                     if activeSessionUUID == nil,
                                        let sid = json["session_id"] as? String {
                                         activeSessionUUID = sid
+                                    }
+                                    if streamingModelName == nil,
+                                       let msg = json["message"] as? [String: Any],
+                                       let model = msg["model"] as? String {
+                                        streamingModelName = model
                                     }
 
                                 case "result":
                                     if activeSessionUUID == nil,
                                        let sid = json["session_id"] as? String {
                                         activeSessionUUID = sid
+                                    }
+                                    // Claude uses root-level duration_ms and total_cost_usd
+                                    if let idx = streamingMessageIndex {
+                                        if let ms = json["duration_ms"] as? NSNumber {
+                                            messages[idx].durationMs = ms.intValue
+                                        }
+                                        if let costNum = json["total_cost_usd"] as? NSNumber {
+                                            messages[idx].totalCost = costNum.doubleValue
+                                        }
+                                        if let usage = json["usage"] as? [String: Any] {
+                                            if let t = usage["input_tokens"] as? NSNumber {
+                                                messages[idx].inputTokens = t.intValue
+                                            }
+                                            if let t = usage["output_tokens"] as? NSNumber {
+                                                messages[idx].outputTokens = t.intValue
+                                            }
+                                            if let t = usage["cache_read_input_tokens"] as? NSNumber {
+                                                messages[idx].cachedTokens = t.intValue
+                                            }
+                                        }
+                                        messages[idx].modelName = streamingModelName
+                                        if let turns = json["num_turns"] as? NSNumber {
+                                            messages[idx].numTurns = turns.intValue
+                                        }
+                                        if let reason = json["stop_reason"] as? String {
+                                            messages[idx].stopReason = reason
+                                        }
                                     }
                                     streamingStatus = "Done"
 
@@ -2887,6 +2979,27 @@ struct QuickPromptChatView: View {
                         DispatchQueue.main.async {
                             if let sid = json["session_id"] as? String {
                                 activeSessionUUID = sid
+                            }
+                            // Claude uses root-level duration_ms and total_cost_usd
+                            if let type = json["type"] as? String, type == "result",
+                               let idx = streamingMessageIndex {
+                                if let ms = json["duration_ms"] as? NSNumber {
+                                    messages[idx].durationMs = ms.intValue
+                                }
+                                if let costNum = json["total_cost_usd"] as? NSNumber {
+                                    messages[idx].totalCost = costNum.doubleValue
+                                }
+                                if let usage = json["usage"] as? [String: Any] {
+                                    if let t = usage["input_tokens"] as? NSNumber {
+                                        messages[idx].inputTokens = t.intValue
+                                    }
+                                    if let t = usage["output_tokens"] as? NSNumber {
+                                        messages[idx].outputTokens = t.intValue
+                                    }
+                                    if let t = usage["cache_read_input_tokens"] as? NSNumber {
+                                        messages[idx].cachedTokens = t.intValue
+                                    }
+                                }
                             }
                         }
                     }
@@ -3208,6 +3321,7 @@ struct MessageBubble: View {
     @State private var copied = false
     @State private var hovering = false
     @State private var copyBounce = false
+    @State private var showingStats = false
     
     var isUser: Bool { message.role == "user" }
     
@@ -3219,6 +3333,45 @@ struct MessageBubble: View {
         copyBounce = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { copyBounce = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+    
+    private func formatTokenCount(_ count: Int) -> String {
+        if count >= 1000 {
+            return String(format: "%.1fK", Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+    
+    private func buildStatsParts() -> [String] {
+        var parts: [String] = []
+        if let ms = message.durationMs {
+            parts.append(String(format: "%.1fs", Double(ms) / 1000.0))
+        }
+        if let input = message.inputTokens {
+            parts.append("\(formatTokenCount(input)) in")
+        }
+        if let output = message.outputTokens {
+            parts.append("\(formatTokenCount(output)) out")
+        }
+        if let cached = message.cachedTokens, cached > 0 {
+            parts.append("\(formatTokenCount(cached)) cached")
+        }
+        if let cost = message.totalCost, cost > 0 {
+            parts.append(String(format: "$%.4f", cost))
+        }
+        return parts
+    }
+    
+    @ViewBuilder
+    private func statsRow(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .foregroundStyle(.quaternary)
+                .frame(width: 65, alignment: .trailing)
+            Text(value)
+                .foregroundStyle(.tertiary)
+        }
+        .font(.system(size: 9, weight: .medium, design: .rounded))
     }
     
     var body: some View {
@@ -3296,6 +3449,78 @@ struct MessageBubble: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(hovering || copied ? 1 : 0)
+                
+                // Stats line — clickable compact summary with expandable detail
+                if !isUser, message.durationMs != nil || message.outputTokens != nil {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Compact summary row — always visible
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingStats.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 0) {
+                                let parts = buildStatsParts()
+                                ForEach(Array(parts.enumerated()), id: \.offset) { i, part in
+                                    if i > 0 {
+                                        Text(" · ")
+                                    }
+                                    Text(part)
+                                }
+                                Text("  ")
+                                Image(systemName: showingStats ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 7, weight: .bold))
+                            }
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Expanded detail card
+                        if showingStats {
+                            VStack(alignment: .leading, spacing: 3) {
+                                if let model = message.modelName {
+                                    statsRow("Model", model)
+                                }
+                                if let ms = message.durationMs {
+                                    statsRow("Duration", String(format: "%.1fs", Double(ms) / 1000.0))
+                                }
+                                if let input = message.inputTokens {
+                                    statsRow("Input", "\(formatTokenCount(input)) tokens")
+                                }
+                                if let output = message.outputTokens {
+                                    statsRow("Output", "\(formatTokenCount(output)) tokens")
+                                }
+                                if let cached = message.cachedTokens, cached > 0 {
+                                    statsRow("Cached", "\(formatTokenCount(cached)) tokens")
+                                }
+                                if let tools = message.toolCalls, tools > 0 {
+                                    statsRow("Tool calls", "\(tools)")
+                                }
+                                if let turns = message.numTurns, turns > 0 {
+                                    statsRow("Turns", "\(turns)")
+                                }
+                                if let reason = message.stopReason {
+                                    statsRow("Status", reason)
+                                }
+                                if let cost = message.totalCost, cost > 0 {
+                                    statsRow("Cost", String(format: "$%.4f", cost))
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.primary.opacity(0.03))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                                    )
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                }
             }
             // #14: Double-click to copy any message
             .onTapGesture(count: 2) { copyContent() }
