@@ -8,30 +8,23 @@ A macOS menu bar app and Telegram bot that bridges your messages to locally-inst
 
 ### Overview
 
-The bot acts as a thin bridge between the Telegram Bot API and a locally-running Gemini CLI process. Every message you send on Telegram is forwarded as a headless prompt to `gemini -p`, and the CLI's JSON response is parsed, formatted, and sent back as a Telegram reply.
+The bot acts as a thin bridge between the Telegram Bot API and a locally-running AI CLI process. Every message you send on Telegram is forwarded as a headless prompt to your configured CLI tool (e.g. `gemini -p`, or a custom provider), and the CLI's JSON response is parsed, formatted, and sent back as a Telegram reply.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        YOUR MACHINE                              │
-│                                                                  │
-│  ┌───────────┐    HTTP    ┌──────────────┐   child    ┌────────┐ │
-│  │ Telegram  │◄──────────►│  Bot Server  │  process   │ Gemini │ │
-│  │   API     │  long-poll │  (Node.js)   │───────────►│  CLI   │ │
-│  └───────────┘            └──────────────┘            └────────┘ │
-│       ▲                        │                        │        │
-│       │                        │                        ▼        │
-│       │                   ┌────┴────┐              ┌─────────┐   │
-│       │                   │ Session │              │  Local  │   │
-│       │                   │  Store  │              │  File   │   │
-│       │                   │ (in-mem)│              │ System  │   │
-│       │                   └─────────┘              └─────────┘   │
-│       │                                                 │        │
-│       ▼                                                 ▼        │
-│  ┌──────────┐                                    ┌────────────┐  │
-│  │   You    │                                    │  Terminal, │  │
-│  │(Telegram)│                                    │  MCP, Git  │  │
-│  └──────────┘                                    └────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A[Telegram API] <-->|long-poll| B[Bot Server\nNode.js]
+    B -->|child process| C[AI CLI\nGemini/Custom]
+    B <--> D[(Session Store\nin-mem)]
+    C <--> E[(Local File System)]
+    C <--> F[Terminal, MCP, Git]
+
+    subgraph "Your Machine"
+        B
+        C
+        D
+        E
+        F
+    end
 ```
 
 ### Key Design Decisions
@@ -39,7 +32,7 @@ The bot acts as a thin bridge between the Telegram Bot API and a locally-running
 | Decision | Rationale |
 |----------|-----------|
 | **Long polling** (not webhooks) | No public URL or TLS certificate required — runs entirely on your local machine |
-| **Child process per prompt** | Gemini CLI is stateless per invocation; session continuity is handled via `--resume` flag |
+| **Child process per prompt** | The CLI is stateless per invocation; session continuity is handled via CLI flags (`--resume`) |
 | **In-memory session store** | Simple `Map<chatId, sessionId>` — no database needed for single-user use |
 | **JSON output format** | Structured parsing of CLI responses instead of fragile text scraping |
 | **`yolo` approval mode** | Auto-approves all tool actions for unattended operation (configurable) |
@@ -50,10 +43,11 @@ The bot acts as a thin bridge between the Telegram Bot API and a locally-running
 
 ### Module Dependency Graph
 
-```
-src/bot.js          ← Entry point, orchestration
-  ├── src/gemini.js     ← Gemini CLI process management
-  └── src/formatter.js  ← Telegram message formatting
+```mermaid
+graph TD
+    A[src/bot.js<br>Entry point, orchestration] --> B[src/gemini.js<br>CLI Process & Provider Logic]
+    A --> C[src/formatter.js<br>Telegram Message Formatting]
+    A --> D[src/sessions.js<br>Session Management]
 ```
 
 ### Module Details
@@ -74,43 +68,34 @@ The main entry point. Initializes the Telegraf bot, registers middleware, comman
 
 **Middleware pipeline:**
 
-```
-Incoming Update
-      │
-      ▼
-┌─────────────┐    Reject
-│   Auth      │──────────────► "Not authorized"
-│  Middleware │
-└──────┬──────┘
-       │ Pass
-       ▼
-┌──────────────┐
-│  Command or  │
-│  Text Handler│
-└──────────────┘
+```mermaid
+flowchart TD
+    A[Incoming Update] --> B{Auth Middleware}
+    B -->|Reject| C["Not authorized message"]
+    B -->|Pass| D[Command or Text Handler]
 ```
 
-#### `src/gemini.js` — Gemini CLI Interface
+#### `src/gemini.js` — AI CLI Interface & Pluggable Provider Management
 
-Manages spawning of Gemini CLI child processes and tracking sessions per chat.
+Manages spawning of AI CLI child processes and tracking sessions per chat.
 
 **Responsibilities:**
-- Spawn `gemini -p "<prompt>" --output-format json --approval-mode <mode>` as a child process
+- Spawn `gemini -p "<prompt>"` or custom provider using `CLI_COMMAND_TEMPLATE`
+- Tokenize and inject `{prompt}` and `{model}` into custom provider arguments
 - Set working directory to `GEMINI_WORKING_DIR`
-- If a session exists for the chat, append `--resume <sessionId>` for context continuity
+- If a session exists for the chat, pass it to context continuity (e.g., via `--resume`)
 - Collect stdout/stderr buffers and parse on process exit
-- Multi-strategy JSON parsing (single object → newline-delimited → raw fallback)
-- Store session IDs returned by CLI in an in-memory `Map`
-- Enforce configurable timeout via `child_process` timeout option
+- Stream support (`executePromptStreaming`) and multi-strategy JSON parsing
+- Track active running processes to allow prompt cancellation
 
 **Exported API:**
 
 | Function | Description |
 |----------|-------------|
-| `executePrompt(prompt, { chatId })` | Run a prompt, return `{ text, sessionId }` |
+| `executePrompt(prompt, options)` | Run a prompt and wait, return `{ text, sessionId }` |
+| `executePromptStreaming(prompt, options)` | Run prompt with callback chunks |
+| `cancelPrompt(chatId)` | Terminate a running process for a chat |
 | `clearSession(chatId)` | Forget session for a chat |
-| `hasSession(chatId)` | Check if a session is tracked |
-| `getSession(chatId)` | Get the session ID for a chat |
 
 **CLI invocation example:**
 ```bash
@@ -136,42 +121,23 @@ Handles Telegram's message constraints and format conversion.
 
 A full request-response cycle for a text message:
 
-```
-1. User sends message on Telegram
-                │
-2. Telegram API delivers update via long-poll
-                │
-3. Telegraf receives update
-                │
-4. Auth middleware checks user ID against whitelist
-                │
-5. Text handler fires:
-   a. Send "typing" chat action
-   b. Start 4-second typing interval
-   c. Call executePrompt(message, { chatId })
-                │
-6. gemini.js spawns child process:
-   ┌──────────────────────────────────────────────────┐
-   │ gemini -p "message" --output-format json         │
-   │         --approval-mode yolo [--resume sessionId]│
-   │ cwd: GEMINI_WORKING_DIR                          │
-   └──────────────────────────────────────────────────┘
-                │
-7. Gemini CLI runs (may take seconds to minutes):
-   - Reads/writes files
-   - Executes shell commands
-   - Calls MCP tools
-   - Returns JSON to stdout
-                │
-8. gemini.js parses JSON output:
-   - Extracts response text
-   - Captures session ID for future --resume
-                │
-9. formatter.js splits response if > 4096 chars
-                │
-10. Bot sends reply message(s) to Telegram
-                │
-11. Clear typing interval
+```mermaid
+sequenceDiagram
+    participant U as User (Telegram)
+    participant T as Telegram API
+    participant B as Bot Server
+    participant C as AI CLI Process
+
+    U->>T: Send message
+    T->>B: Deliver update via long-poll
+    B->>B: Auth middleware check
+    B->>T: Send "typing" action
+    B->>C: Spawn process (e.g. gemini -p "message")
+    Note over C: Executes shell, reads files, runs MCP
+    C-->>B: Return JSON to stdout
+    B->>B: Parse JSON & extract session ID
+    B->>B: Split response via formatter if > 4096 chars
+    B->>T: Send reply message(s)
 ```
 
 ---
@@ -180,29 +146,28 @@ A full request-response cycle for a text message:
 
 Sessions provide conversation continuity so follow-up messages have context.
 
-```
-Chat 1 ──► sessions.get(1) ──► "session-uuid-abc" ──► gemini --resume session-uuid-abc
-Chat 2 ──► sessions.get(2) ──► "session-uuid-xyz" ──► gemini --resume session-uuid-xyz
+```mermaid
+flowchart LR
+    C1[Chat 1] --> S1[sessions.get] --> U1[session-uuid-abc] --> G1[CLI --resume session-uuid-abc]
+    C2[Chat 2] --> S2[sessions.get] --> U2[session-uuid-xyz] --> G2[CLI --resume session-uuid-xyz]
 ```
 
-- **First message** in a chat: no `--resume` flag is sent. Gemini CLI starts a new session and returns a `sessionId` in its JSON output.
-- **Subsequent messages**: the stored `sessionId` is passed via `--resume`, giving the CLI full conversation history.
+- **First message** in a chat: no resume flag is passed. The CLI starts a new session and returns a `sessionId` in its JSON output.
+- **Subsequent messages**: the stored `sessionId` is passed (via `--resume`), giving the CLI full conversation history.
 - **`/new` command**: deletes the stored session ID, so the next message starts fresh.
-- **Storage**: in-memory `Map` — sessions are lost on bot restart (by design; Gemini CLI retains its own session history on disk).
+- **Storage**: persisted across restarts using `.bot-sessions.json`.
 
 ---
 
 ## Security Model
 
-```
-┌─────────────────────────────────────────────┐
-│              Security Layers                │
-├─────────────────────────────────────────────┤
-│ 1. Telegram Bot Token (only you know it)    │
-│ 2. User ID Whitelist (ALLOWED_USER_IDS)     │
-│ 3. Local-only execution (no public server)  │
-│ 4. Process-level sandboxing (optional -s)   │
-└─────────────────────────────────────────────┘
+```mermaid
+block-beta
+    columns 1
+    A("1. Telegram Bot Token (only you know it)"):1
+    B("2. User ID Whitelist (ALLOWED_USER_IDS)"):1
+    C("3. Local-only execution (no public server)"):1
+    D("4. Process-level sandboxing (optional -s)"):1
 ```
 
 | Layer | Protection |
@@ -377,11 +342,14 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 |----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather | *required* |
 | `ALLOWED_USER_IDS` | Comma-separated Telegram user IDs | *empty = all allowed* |
-| `GEMINI_WORKING_DIR` | Working directory for Gemini CLI | Current directory |
+| `GEMINI_WORKING_DIR` | Working directory for AI CLI | Current directory |
 | `GEMINI_TIMEOUT_MS` | Max execution time per prompt (ms) | `300000` (5 min) |
 | `GEMINI_APPROVAL_MODE` | Tool approval mode (`default`, `auto_edit`, `yolo`) | `yolo` |
-| `GEMINI_MODEL` | Gemini model to use | CLI default |
+| `GEMINI_MODEL` | Default model to use | CLI default |
 | `GEMINI_BIN` | Path to the `gemini` binary | `/opt/homebrew/bin/gemini` |
+| `CLI_PROVIDER` | Provider selection (`gemini`, `custom`) | `gemini` |
+| `CLI_COMMAND_TEMPLATE` | Custom CLI template (e.g. `ollama run {model} "{prompt}"`) | *empty* |
+| `GEMINI_THINKING` | Employs extended timeouts to support thinking models | *false* |
 
 ## Requirements
 
