@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.10.1...nexus-agent-v1.10.2) (2026-04-13)
+
+
+### Bug Fixes
+
+* trigger release for homebrew configuration ([a81e121](https://github.com/VitruvianSoftware/nexus-agent/commit/a81e12136eaa724e4011b3bb6bf6e89c4bf305f1))
+
 ## [1.10.1](https://github.com/VitruvianSoftware/nexus-agent/compare/nexus-agent-v1.10.0...nexus-agent-v1.10.1) (2026-04-11)
 
 
