@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.3.1...v0.3.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* add kms and gcs region parity to bootstrap component ([#41](https://github.com/VitruvianSoftware/pulumi-library/issues/41)) ([5d6cb35](https://github.com/VitruvianSoftware/pulumi-library/commit/5d6cb359b7d6970792b5e741a82f4cdc4032cef9))
+* grant kms encrypterDecrypter to gcs service agent before bucket creation ([5543345](https://github.com/VitruvianSoftware/pulumi-library/commit/55433459ca6389cfbf4e06661bf49ce595b898f5))
+
 ## [0.3.1](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.3.0...v0.3.1) (2026-04-23)
 
 
