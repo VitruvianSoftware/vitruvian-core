@@ -48,6 +48,7 @@ export class CbPrivatePool extends pulumi.ComponentResource {
         const pwp = args.privateWorkerPool;
         let networkId: pulumi.Output<string> | undefined;
         let peeredIpRange: pulumi.Output<string> | undefined;
+        let poolDependsOn: pulumi.Resource[] = [];
 
         // Create peered network if requested
         if (pwp.createPeeredNetwork) {
@@ -108,6 +109,8 @@ export class CbPrivatePool extends pulumi.ComponentResource {
                 reservedPeeringRanges: [workerPoolRange.name],
             }, { parent: this });
 
+            poolDependsOn.push(conn);
+
             new gcp.compute.NetworkPeeringRoutesConfig(`${name}-peering-routes`, {
                 project: args.projectId,
                 peering: conn.peering,
@@ -148,7 +151,7 @@ export class CbPrivatePool extends pulumi.ComponentResource {
                 peeredNetwork: networkId,
                 peeredNetworkIpRange: "/29",
             } : undefined,
-        }, { parent: this });
+        }, { parent: this, dependsOn: poolDependsOn });
 
         this.privateWorkerPoolId = pool.id;
 
