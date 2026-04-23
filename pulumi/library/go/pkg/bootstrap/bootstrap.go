@@ -53,8 +53,12 @@ type BootstrapArgs struct {
 	// The seed project ID will be "{ProjectPrefix}-b-seed".
 	ProjectPrefix string
 
-	// DefaultRegion is the region for KMS and GCS resources.
+	// DefaultRegion is the region for compute resources.
 	DefaultRegion string
+	// DefaultRegionKMS is the region for the KMS keyring (e.g. "us").
+	DefaultRegionKMS string
+	// DefaultRegionGCS is the region for the state bucket (e.g. "US").
+	DefaultRegionGCS string
 	// ProjectLabels are labels applied to the seed project.
 	ProjectLabels pulumi.StringMapInput
 	// ActivateApis is the list of APIs to enable on the seed project.
@@ -144,6 +148,14 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	if args.KMSPreventDestroy != nil {
 		kmsPreventDestroy = *args.KMSPreventDestroy
 	}
+	kmsRegion := args.DefaultRegionKMS
+	if kmsRegion == "" {
+		kmsRegion = args.DefaultRegion
+	}
+	gcsRegion := args.DefaultRegionGCS
+	if gcsRegion == "" {
+		gcsRegion = args.DefaultRegion
+	}
 
 	// Ensure cloudkms.googleapis.com is activated if encrypting the bucket
 	activateApis := args.ActivateApis
@@ -200,7 +212,7 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 		keyRing, err := kms.NewKeyRing(ctx, fmt.Sprintf("%s-keyring", name), &kms.KeyRingArgs{
 			Project:  seed.Project.ProjectId,
 			Name:     pulumi.String(fmt.Sprintf("%s-keyring", args.ProjectPrefix)),
-			Location: pulumi.String(args.DefaultRegion),
+			Location: pulumi.String(kmsRegion),
 		}, pulumi.Parent(component), pulumi.Protect(kmsPreventDestroy))
 		if err != nil {
 			return nil, err
@@ -265,7 +277,7 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	bucketArgs := &storage.BucketArgs{
 		Project:                  seed.Project.ProjectId,
 		Name:                     stateBucketName,
-		Location:                 pulumi.String(args.DefaultRegion),
+		Location:                 pulumi.String(gcsRegion),
 		UniformBucketLevelAccess: pulumi.Bool(true),
 		ForceDestroy:             pulumi.Bool(args.BucketForceDestroy),
 		Labels:                   args.BucketLabels,
