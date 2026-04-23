@@ -230,6 +230,30 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	component.KMSKeyRingID = keyRingID
 
 	// ========================================================================
+	// 3b. KMS IAM for Storage Service Account
+	// The GCS service agent needs cryptoKeyEncrypterDecrypter to use the key.
+	// ========================================================================
+	var kmsBinding *kms.CryptoKeyIAMMember
+	if encryptBucket {
+		sa := storage.GetProjectServiceAccountOutput(ctx, storage.GetProjectServiceAccountOutputArgs{
+			Project: seed.Project.ProjectId,
+		}, pulumi.Parent(component))
+
+		storageSA := sa.EmailAddress().ApplyT(func(email string) string {
+			return fmt.Sprintf("serviceAccount:%s", email)
+		}).(pulumi.StringOutput)
+
+		kmsBinding, err = kms.NewCryptoKeyIAMMember(ctx, fmt.Sprintf("%s-kms-sa", name), &kms.CryptoKeyIAMMemberArgs{
+			CryptoKeyId: cryptoKeyID,
+			Role:        pulumi.String("roles/cloudkms.cryptoKeyEncrypterDecrypter"),
+			Member:      storageSA,
+		}, pulumi.Parent(component))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
 	// 4. State Bucket
 	// Matches: google_storage_bucket "org_terraform_state" in TF bootstrap
 	// ========================================================================
@@ -249,13 +273,16 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 			Enabled: pulumi.Bool(true),
 		},
 	}
+	var bucketOpts []pulumi.ResourceOption
+	bucketOpts = append(bucketOpts, pulumi.Parent(component))
 	if encryptBucket {
 		bucketArgs.Encryption = &storage.BucketEncryptionArgs{
 			DefaultKmsKeyName: cryptoKeyID,
 		}
+		bucketOpts = append(bucketOpts, pulumi.DependsOn([]pulumi.Resource{kmsBinding}))
 	}
 
-	stateBucket, err := storage.NewBucket(ctx, fmt.Sprintf("%s-state-bucket", name), bucketArgs, pulumi.Parent(component))
+	stateBucket, err := storage.NewBucket(ctx, fmt.Sprintf("%s-state-bucket", name), bucketArgs, bucketOpts...)
 	if err != nil {
 		return nil, err
 	}
