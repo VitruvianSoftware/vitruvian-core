@@ -1,0 +1,47 @@
+{
+  "name": "@vitruviansoftware/foundation-library",
+  "version": "0.4.0",
+  "description": "Reusable Pulumi TypeScript components for Google Cloud Platform infrastructure",
+  "private": true,
+  "scripts": {
+    "build": "npm run build -w @vitruviansoftware/foundation-network && npm run build --workspaces --if-present",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "pulumi",
+    "gcp",
+    "google-cloud",
+    "infrastructure-as-code",
+    "typescript",
+    "components"
+  ],
+  "author": "Vitruvian Software",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VitruvianSoftware/pulumi-library.git",
+    "directory": "ts"
+  },
+  "dependencies": {
+    "@pulumi/gcp": "^8.0.0",
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/random": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@vitest/coverage-v8": "^4.1.5",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.5"
+  },
+  "peerDependencies": {
+    "@pulumi/gcp": ">=7.0.0",
+    "@pulumi/pulumi": ">=3.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}

@@ -1,0 +1,18 @@
+go 1.25.8
+
+use (
+	.
+	./pkg/app
+	./pkg/bootstrap
+	./pkg/cicd
+	./pkg/data
+	./pkg/group
+	./pkg/iam
+	./pkg/logging
+	./pkg/networking
+	./pkg/policy
+	./pkg/project
+	./pkg/security
+	./pkg/storage
+	./pkg/vpc_sc
+)

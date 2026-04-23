@@ -1,0 +1,12 @@
+Test	Enforce coverage threshold (85%)	﻿2026-04-21T16:49:41.2767814Z ##[group]Run TOTAL=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2768507Z [36;1mTOTAL=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2768960Z [36;1mecho "Total coverage: ${TOTAL}%"[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2769273Z [36;1mif (( $(echo "$TOTAL < 85" | bc -l) )); then[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2769647Z [36;1m  echo "::error::Coverage ${TOTAL}% is below the 85% threshold"[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2769984Z [36;1m  exit 1[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2770179Z [36;1mfi[0m
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2828516Z shell: /usr/bin/bash -e {0}
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.2828779Z ##[endgroup]
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.5119926Z Total coverage: 48.7%
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.5623959Z ##[error]Coverage 48.7% is below the 85% threshold
+Test	Enforce coverage threshold (85%)	2026-04-21T16:49:41.5632854Z ##[error]Process completed with exit code 1.

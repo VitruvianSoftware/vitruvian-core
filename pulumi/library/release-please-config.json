@@ -1,0 +1,97 @@
+{
+  "packages": {
+    "ts": {
+      "release-type": "node"
+    },
+    "go": {
+      "release-type": "go"
+    },
+    "ts/packages/budget": {
+      "release-type": "node"
+    },
+    "ts/packages/cb-private-pool": {
+      "release-type": "node"
+    },
+    "ts/packages/centralized-logging": {
+      "release-type": "node"
+    },
+    "ts/packages/dns-hub": {
+      "release-type": "node"
+    },
+    "ts/packages/google-group": {
+      "release-type": "node"
+    },
+    "ts/packages/hierarchical-firewall-policy": {
+      "release-type": "node"
+    },
+    "ts/packages/instance-template": {
+      "release-type": "node"
+    },
+    "ts/packages/kms": {
+      "release-type": "node"
+    },
+    "ts/packages/network": {
+      "release-type": "node"
+    },
+    "ts/packages/network-peering": {
+      "release-type": "node"
+    },
+    "ts/packages/org-policy": {
+      "release-type": "node"
+    },
+    "ts/packages/parent-iam": {
+      "release-type": "node"
+    },
+    "ts/packages/private-service-connect": {
+      "release-type": "node"
+    },
+    "ts/packages/project-factory": {
+      "release-type": "node"
+    },
+    "ts/packages/simple-bucket": {
+      "release-type": "node"
+    },
+    "ts/packages/vpn-ha": {
+      "release-type": "node"
+    },
+    "go/pkg/app": {
+      "release-type": "go"
+    },
+    "go/pkg/bootstrap": {
+      "release-type": "go"
+    },
+    "go/pkg/cicd": {
+      "release-type": "go"
+    },
+    "go/pkg/data": {
+      "release-type": "go"
+    },
+    "go/pkg/group": {
+      "release-type": "go"
+    },
+    "go/pkg/iam": {
+      "release-type": "go"
+    },
+    "go/pkg/logging": {
+      "release-type": "go"
+    },
+    "go/pkg/networking": {
+      "release-type": "go"
+    },
+    "go/pkg/policy": {
+      "release-type": "go"
+    },
+    "go/pkg/project": {
+      "release-type": "go"
+    },
+    "go/pkg/security": {
+      "release-type": "go"
+    },
+    "go/pkg/storage": {
+      "release-type": "go"
+    },
+    "go/pkg/vpc_sc": {
+      "release-type": "go"
+    }
+  }
+}
