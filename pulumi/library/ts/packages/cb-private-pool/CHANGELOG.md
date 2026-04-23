@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-cb-private-pool-v0.3.0...foundation-cb-private-pool-v0.3.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* add missing network peering dependency to WorkerPool ([#42](https://github.com/VitruvianSoftware/pulumi-library/issues/42)) ([35ae218](https://github.com/VitruvianSoftware/pulumi-library/commit/35ae218151aa9ba344a2c6d5e0803f319de8e7c9))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-cb-private-pool-v0.2.4...foundation-cb-private-pool-v0.3.0) (2026-04-23)
 
 

@@ -2,7 +2,7 @@
   "ts": "0.4.0",
   "go": "0.3.1",
   "ts/packages/budget": "0.3.0",
-  "ts/packages/cb-private-pool": "0.3.0",
+  "ts/packages/cb-private-pool": "0.3.1",
   "ts/packages/centralized-logging": "0.3.0",
   "ts/packages/dns-hub": "0.3.0",
   "ts/packages/google-group": "0.3.0",
