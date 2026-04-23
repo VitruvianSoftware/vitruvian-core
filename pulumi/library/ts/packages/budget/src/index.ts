@@ -47,5 +47,3 @@ export class Budget extends pulumi.ComponentResource {
         this.registerOutputs({});
     }
 }
-
-// Trigger release
