@@ -84,8 +84,8 @@ export class ProjectFactory extends pulumi.ComponentResource {
         const project = new gcp.organizations.Project(`${name}-project`, {
             projectId: projectIdInput,
             name: args.name,
-            orgId: args.orgId,
-            folderId: args.folderId,
+            orgId: args.folderId ? undefined : args.orgId,
+            folderId: args.folderId ? args.folderId : undefined,
             billingAccount: args.billingAccount,
             labels: args.labels,
             deletionPolicy: args.deletionPolicy ?? "PREVENT",
