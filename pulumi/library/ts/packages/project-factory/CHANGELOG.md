@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.3.0...foundation-project-factory-v0.3.1) (2026-04-24)
+
+
+### Bug Fixes
+
+* conditionally set folderId and orgId to prevent GCP project configuration conflicts ([d096742](https://github.com/VitruvianSoftware/pulumi-library/commit/d096742b1dc61cea77b3d78c4a8ba0ae1ed0ea32))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.2.4...foundation-project-factory-v0.3.0) (2026-04-23)
 
 
