@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.4.0...foundation-library-v0.5.0) (2026-04-24)
+
+
+### Features
+
+* add vpc-service-controls and cai-monitoring packages to pulumi-library ([abb6794](https://github.com/VitruvianSoftware/pulumi-library/commit/abb67946030a8a65bea8e2f9349f752f9e5da3a4))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.3.2...foundation-library-v0.4.0) (2026-04-23)
 
 
