@@ -152,7 +152,7 @@ export interface VpcServiceControlsArgs {
     /** Members for the dry-run access level. Defaults to `members` if empty. */
     membersDryRun?: string[];
     /** Project numbers to include in the perimeter (without "projects/" prefix). */
-    projectNumbers: string[];
+    projectNumbers: pulumi.Input<string>[];
     /** GCP services to restrict within the perimeter. Defaults to DEFAULT_RESTRICTED_SERVICES. */
     restrictedServices?: string[];
     /** GCP services to restrict in dry-run mode. Defaults to restrictedServices if empty. */
@@ -240,7 +240,7 @@ export class VpcServiceControls extends pulumi.ComponentResource {
         // ====================================================================
         // 3. Service Perimeter
         // ====================================================================
-        const resources = args.projectNumbers.map(p => `projects/${p}`);
+        const resources = pulumi.all(args.projectNumbers).apply(nums => nums.map(p => `projects/${p}`));
         const restrictedServices = args.restrictedServices && args.restrictedServices.length > 0
             ? args.restrictedServices
             : DEFAULT_RESTRICTED_SERVICES;
