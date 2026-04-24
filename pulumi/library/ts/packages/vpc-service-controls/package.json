@@ -1,0 +1,22 @@
+{
+  "name": "@vitruviansoftware/foundation-vpc-service-controls",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pulumi/gcp": "^8.0.0",
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VitruvianSoftware/pulumi-library.git",
+    "directory": "ts/packages/vpc-service-controls"
+  }
+}
