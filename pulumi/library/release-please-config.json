@@ -54,6 +54,12 @@
     "ts/packages/vpn-ha": {
       "release-type": "node"
     },
+    "ts/packages/vpc-service-controls": {
+      "release-type": "node"
+    },
+    "ts/packages/cai-monitoring": {
+      "release-type": "node"
+    },
     "go/pkg/app": {
       "release-type": "go"
     },
