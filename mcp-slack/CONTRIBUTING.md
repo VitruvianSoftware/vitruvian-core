@@ -11,7 +11,7 @@ We'd love for you to contribute to our source code and to make it even better th
 5. Make sure your code respects the `addlicense` checks. We use Apache 2.0.
    ```bash
    go install github.com/google/addlicense@latest
-   ~/go/bin/addlicense -c "Vitruvian Software" -l apache -ignore "node_modules/**" -ignore "dist/**" .
+   ~/go/bin/addlicense -c "Vitruvian Software" -l apache -ignore "node_modules/**" -ignore "dist/**" -ignore ".github/**" .
    ```
 
 ## Commit Guidelines

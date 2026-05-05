@@ -34,4 +34,4 @@ jobs:
         run: go install github.com/google/addlicense@latest
 
       - name: Check license headers
-        run: ~/go/bin/addlicense -check -ignore "node_modules/**" -ignore "dist/**" .
+        run: ~/go/bin/addlicense -check -ignore "node_modules/**" -ignore "dist/**" -ignore ".github/**" .
