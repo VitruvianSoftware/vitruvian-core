@@ -1,0 +1,25 @@
+{
+  "name": "@vitruviansoftware/mcp-slack",
+  "version": "1.0.0",
+  "description": "Custom Slack MCP server with dual-token support for reading and responding as the authenticated user",
+  "type": "module",
+  "bin": {
+    "mcp-slack": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

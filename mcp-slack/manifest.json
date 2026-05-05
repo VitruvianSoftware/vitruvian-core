@@ -1,0 +1,52 @@
+{
+  "display_information": {
+    "name": "Vitruvian Slack MCP",
+    "description": "MCP bridge for AI agent integration with Slack — read channels, search messages, manage canvases, and respond as the authenticated user.",
+    "background_color": "#1a1a2e",
+    "long_description": "This Slack app provides the bridge layer between the AI agent platform and your Slack workspace. It enables the agent to read channel history, search for messages and files, manage canvases, handle pins and bookmarks, and post messages on behalf of the authenticated user via the Model Context Protocol (MCP)."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Vitruvian Slack MCP",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "bookmarks:read",
+        "channels:history",
+        "channels:read",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "mpim:history",
+        "pins:read",
+        "users:read",
+        "users:read.email"
+      ],
+      "user": [
+        "bookmarks:read",
+        "bookmarks:write",
+        "canvases:read",
+        "canvases:write",
+        "channels:history",
+        "channels:read",
+        "channels:write:topic",
+        "chat:write",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "mpim:history",
+        "pins:write",
+        "search:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
