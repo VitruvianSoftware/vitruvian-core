@@ -564,7 +564,7 @@ class SlackClient {
     }
 
     const channels = [];
-    for (const channelId of predefinedChannelIds.split(",").map((s) => s.trim())) {
+    for (const channelId of predefinedChannelIds.split(",").map((s: string) => s.trim())) {
       const data = (await this.api("conversations.info", {
         channel: channelId,
       })) as { ok: boolean; channel?: { is_archived: boolean } };
