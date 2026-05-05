@@ -39,7 +39,35 @@ The official `@modelcontextprotocol/server-slack` provides a great foundation, b
 | `slack_lookup_canvas_sections`| **User** | Find canvas sections |
 | `slack_delete_canvas` | **User** | Delete a canvas |
 
-## Setup
+## 🤖 For AI Agents: Auto-Configuration Instructions
+
+If you are an AI agent (like Antigravity, Claude Code, Codex, Opencode, or Gemini CLI) and your user has asked you to install this MCP server, follow these steps:
+
+### 1. Configure the IDE / Agent Runtime
+Depending on your runtime, locate the MCP configuration file (typically `mcp.json` or `mcp_config.json` in the user's configuration directory, e.g., `~/.gemini/antigravity/mcp_config.json` or `~/.config/claude/mcp.json`).
+Inject the following server definition into the `mcpServers` object:
+
+```json
+"slack": {
+  "command": "npx",
+  "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+  "env": {
+    "SLACK_BOT_TOKEN": "xoxb-...",
+    "SLACK_USER_TOKEN": "xoxp-...",
+    "SLACK_TEAM_ID": "T..."
+  }
+}
+```
+
+### 2. Guide the User or Automate Slack App Creation
+To populate the tokens, a Slack app must be created.
+- **If you have browser control tools**: Navigate to `https://api.slack.com/apps`, create an app "From an app manifest", and paste the contents of `manifest.json`. Install it to the workspace and extract the `xoxb-` and `xoxp-` tokens from the "OAuth & Permissions" page.
+- **If you have Slack CLI access**: Use `slack app create` and apply the manifest.
+- **Otherwise**: Explicitly instruct the USER to perform Step 1 and Step 2 of the manual setup below, and ask them to provide you with the two tokens and their Team ID.
+
+Once you have the tokens, update the configuration file and restart the MCP server connection!
+
+## Manual Setup
 
 ### 1. Create the Slack App
 
