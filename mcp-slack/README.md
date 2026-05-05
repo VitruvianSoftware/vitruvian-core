@@ -2,6 +2,16 @@
 
 Custom Slack MCP server with **dual-token support** — reads via Bot Token, writes/searches via User Token so messages appear as the authenticated user (not a bot).
 
+## Why is this different from the official Slack MCP server?
+
+The official `@modelcontextprotocol/server-slack` provides a great foundation, but this repository was built to solve two major limitations for advanced AI agents:
+
+1. **User Impersonation (Dual-Token Architecture):** The official server uses only a Bot Token, meaning every message the AI sends appears as a generic "Bot" user. This implementation uses a **Dual-Token** architecture. Read-only and infrastructure tasks use the Bot token, while write operations (posting messages, reacting, pinning, editing) and searches use the User token. This allows the AI agent to truly act *as you*, preserving your identity in threads and direct messages.
+2. **Expanded Capabilities (22 Tools vs 9 Tools):** The official server is limited to basic read/reply functions. This server expands the toolkit to 22 specialized tools, adding native support for:
+   - **Canvas Management:** Full CRUD operations for Slack Canvases (create, read, edit sections, delete).
+   - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
+   - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
+
 ## Tools
 
 | Tool | Token | Description |
