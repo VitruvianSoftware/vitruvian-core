@@ -1,169 +1,224 @@
 {
   "packages": {
     "ts": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-library"
     },
     "go": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-foundation"
     },
     "ts/packages/budget": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-budget"
     },
     "ts/packages/cb-private-pool": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cb-private-pool"
     },
     "ts/packages/centralized-logging": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-centralized-logging"
     },
     "ts/packages/dns-hub": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-dns-hub"
     },
     "ts/packages/google-group": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-google-group"
     },
     "ts/packages/hierarchical-firewall-policy": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-hierarchical-firewall-policy"
     },
     "ts/packages/instance-template": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-instance-template"
     },
     "ts/packages/kms": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-kms"
     },
     "ts/packages/network": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-network"
     },
     "ts/packages/network-peering": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-network-peering"
     },
     "ts/packages/org-policy": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-org-policy"
     },
     "ts/packages/parent-iam": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-parent-iam"
     },
     "ts/packages/private-service-connect": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-private-service-connect"
     },
     "ts/packages/project-factory": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-project-factory"
     },
     "ts/packages/simple-bucket": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-simple-bucket"
     },
     "ts/packages/vpn-ha": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-vpn-ha"
     },
     "ts/packages/vpc-service-controls": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-vpc-service-controls"
     },
     "ts/packages/cai-monitoring": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cai-monitoring"
     },
     "ts/packages/bootstrap": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-bootstrap"
     },
     "ts/packages/cloud-dns": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cloud-dns"
     },
     "ts/packages/cloud-functions": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cloud-functions"
     },
     "ts/packages/cloud-router": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cloud-router"
     },
     "ts/packages/cloud-storage": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-cloud-storage"
     },
     "ts/packages/compute-instance": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-compute-instance"
     },
     "ts/packages/gcloud": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-gcloud"
     },
     "ts/packages/log-export": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-log-export"
     },
     "ts/packages/network-firewall-policy": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-network-firewall-policy"
     },
     "ts/packages/pubsub": {
-      "release-type": "node"
+      "release-type": "node",
+      "component": "foundation-pubsub"
     },
     "go/pkg/app": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-app"
     },
     "go/pkg/bootstrap": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-bootstrap"
     },
     "go/pkg/cicd": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-cicd"
     },
     "go/pkg/data": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-data"
     },
     "go/pkg/group": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-group"
     },
     "go/pkg/iam": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-iam"
     },
     "go/pkg/logging": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-logging"
     },
     "go/pkg/networking": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-networking"
     },
     "go/pkg/policy": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-policy"
     },
     "go/pkg/project": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-project"
     },
     "go/pkg/security": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-security"
     },
     "go/pkg/storage": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-storage"
     },
     "go/pkg/vpc_sc": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-vpc-sc"
     },
     "go/pkg/cloud_dns": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-cloud-dns"
     },
     "go/pkg/cloud_functions": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-cloud-functions"
     },
     "go/pkg/cloud_router": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-cloud-router"
     },
     "go/pkg/compute_instance": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-compute-instance"
     },
     "go/pkg/gcloud": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-gcloud"
     },
     "go/pkg/instance_template": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-instance-template"
     },
     "go/pkg/kms": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-kms"
     },
     "go/pkg/log_export": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-log-export"
     },
     "go/pkg/network_firewall_policy": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-network-firewall-policy"
     },
     "go/pkg/network_peering": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-network-peering"
     },
     "go/pkg/private_service_connect": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-private-service-connect"
     },
     "go/pkg/pubsub": {
-      "release-type": "go"
+      "release-type": "go",
+      "component": "go-pubsub"
     }
   }
 }
