@@ -1,6 +1,6 @@
 {
-  "name": "@vitruviansoftware/foundation-centralized-logging",
-  "version": "0.3.1",
+  "name": "@vitruviansoftware/foundation-cloud-router",
+  "version": "0.1.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -18,6 +18,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VitruvianSoftware/pulumi-library.git",
-    "directory": "ts/packages/centralized-logging"
+    "directory": "ts/packages/cloud-router"
   }
 }

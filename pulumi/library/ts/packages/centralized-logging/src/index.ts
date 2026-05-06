@@ -55,8 +55,12 @@ export interface CentralizedLoggingArgs {
 }
 
 export class CentralizedLogging extends pulumi.ComponentResource {
+    public readonly waitIamMembership!: pulumi.Output<boolean>;
+
     constructor(name: string, args: CentralizedLoggingArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:CentralizedLogging", name, args, opts);
+
+        const iamDependencies: pulumi.CustomResource[] = [];
 
         // Logging bucket sink
         if (args.loggingBucketOptions?.name) {
@@ -67,13 +71,20 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 retentionDays: args.loggingBucketOptions.retentionDays ?? 365,
             }, { parent: this });
 
-            new gcp.logging.OrganizationSink(`${name}-log-bucket-sink`, {
+            const sink = new gcp.logging.OrganizationSink(`${name}-log-bucket-sink`, {
                 orgId: args.orgId,
                 name: args.loggingBucketOptions.loggingSinkName ?? `sk-c-logging-${args.loggingBucketOptions.name}`,
                 destination: pulumi.interpolate`logging.googleapis.com/projects/${args.projectId}/locations/${args.loggingBucketOptions.location ?? "global"}/buckets/${bucket.bucketId}`,
                 filter: args.loggingBucketOptions.loggingSinkFilter ?? "",
                 includeChildren: true,
             }, { parent: this });
+
+            const iam = new gcp.projects.IAMMember(`${name}-log-bucket-iam`, {
+                project: args.projectId,
+                role: "roles/logging.bucketWriter",
+                member: sink.writerIdentity,
+            }, { parent: this });
+            iamDependencies.push(iam);
         }
 
         // BigQuery sink
@@ -87,7 +98,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 deleteContentsOnDestroy: args.bigqueryOptions.deleteContentsOnDestroy ?? false,
             }, { parent: this });
 
-            new gcp.logging.OrganizationSink(`${name}-bq-sink`, {
+            const sink = new gcp.logging.OrganizationSink(`${name}-bq-sink`, {
                 orgId: args.orgId,
                 name: args.bigqueryOptions.loggingSinkName ?? `sk-c-logging-bq-${args.bigqueryOptions.datasetName}`,
                 destination: pulumi.interpolate`bigquery.googleapis.com/projects/${args.projectId}/datasets/${dataset.datasetId}`,
@@ -97,6 +108,14 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                     usePartitionedTables: true,
                 },
             }, { parent: this });
+
+            const iam = new gcp.bigquery.DatasetIamMember(`${name}-bq-iam`, {
+                project: args.projectId,
+                datasetId: dataset.datasetId,
+                role: "roles/bigquery.dataEditor",
+                member: sink.writerIdentity,
+            }, { parent: this });
+            iamDependencies.push(iam);
         }
 
         // Cloud Storage sink
@@ -116,13 +135,20 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 } : undefined,
             }, { parent: this });
 
-            new gcp.logging.OrganizationSink(`${name}-storage-sink`, {
+            const sink = new gcp.logging.OrganizationSink(`${name}-storage-sink`, {
                 orgId: args.orgId,
                 name: args.storageOptions.loggingSinkName ?? `sk-c-logging-bkt-${args.storageOptions.bucketName}`,
                 destination: pulumi.interpolate`storage.googleapis.com/${bucket.name}`,
                 filter: args.storageOptions.loggingSinkFilter ?? "",
                 includeChildren: true,
             }, { parent: this });
+
+            const iam = new gcp.storage.BucketIAMMember(`${name}-storage-iam`, {
+                bucket: bucket.name,
+                role: "roles/storage.objectCreator",
+                member: sink.writerIdentity,
+            }, { parent: this });
+            iamDependencies.push(iam);
         }
 
         // Pub/Sub sink
@@ -132,13 +158,21 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 name: args.pubsubOptions.topicName,
             }, { parent: this });
 
-            new gcp.logging.OrganizationSink(`${name}-pubsub-sink`, {
+            const sink = new gcp.logging.OrganizationSink(`${name}-pubsub-sink`, {
                 orgId: args.orgId,
                 name: args.pubsubOptions.loggingSinkName ?? `sk-c-logging-pub-${args.pubsubOptions.topicName}`,
                 destination: pulumi.interpolate`pubsub.googleapis.com/projects/${args.projectId}/topics/${topic.name}`,
                 filter: args.pubsubOptions.loggingSinkFilter ?? "",
                 includeChildren: true,
             }, { parent: this });
+
+            const iam = new gcp.pubsub.TopicIAMMember(`${name}-pubsub-iam`, {
+                project: args.projectId,
+                topic: topic.name,
+                role: "roles/pubsub.publisher",
+                member: sink.writerIdentity,
+            }, { parent: this });
+            iamDependencies.push(iam);
 
             if (args.pubsubOptions.createSubscriber !== false) {
                 new gcp.pubsub.Subscription(`${name}-pubsub-sub`, {
@@ -149,6 +183,12 @@ export class CentralizedLogging extends pulumi.ComponentResource {
             }
         }
 
-        this.registerOutputs({});
+        // Output an explicit dependency property that resolves when all IAM memberships are ready.
+        // This mirrors TF's `time_sleep.wait_sa_iam_membership` logic.
+        this.waitIamMembership = pulumi.all(iamDependencies.map(iam => iam.id)).apply(() => true);
+
+        this.registerOutputs({
+            waitIamMembership: this.waitIamMembership
+        });
     }
 }

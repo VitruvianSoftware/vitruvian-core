@@ -60,6 +60,36 @@
     "ts/packages/cai-monitoring": {
       "release-type": "node"
     },
+    "ts/packages/bootstrap": {
+      "release-type": "node"
+    },
+    "ts/packages/cloud-dns": {
+      "release-type": "node"
+    },
+    "ts/packages/cloud-functions": {
+      "release-type": "node"
+    },
+    "ts/packages/cloud-router": {
+      "release-type": "node"
+    },
+    "ts/packages/cloud-storage": {
+      "release-type": "node"
+    },
+    "ts/packages/compute-instance": {
+      "release-type": "node"
+    },
+    "ts/packages/gcloud": {
+      "release-type": "node"
+    },
+    "ts/packages/log-export": {
+      "release-type": "node"
+    },
+    "ts/packages/network-firewall-policy": {
+      "release-type": "node"
+    },
+    "ts/packages/pubsub": {
+      "release-type": "node"
+    },
     "go/pkg/app": {
       "release-type": "go"
     },
@@ -97,6 +127,42 @@
       "release-type": "go"
     },
     "go/pkg/vpc_sc": {
+      "release-type": "go"
+    },
+    "go/pkg/cloud_dns": {
+      "release-type": "go"
+    },
+    "go/pkg/cloud_functions": {
+      "release-type": "go"
+    },
+    "go/pkg/cloud_router": {
+      "release-type": "go"
+    },
+    "go/pkg/compute_instance": {
+      "release-type": "go"
+    },
+    "go/pkg/gcloud": {
+      "release-type": "go"
+    },
+    "go/pkg/instance_template": {
+      "release-type": "go"
+    },
+    "go/pkg/kms": {
+      "release-type": "go"
+    },
+    "go/pkg/log_export": {
+      "release-type": "go"
+    },
+    "go/pkg/network_firewall_policy": {
+      "release-type": "go"
+    },
+    "go/pkg/network_peering": {
+      "release-type": "go"
+    },
+    "go/pkg/private_service_connect": {
+      "release-type": "go"
+    },
+    "go/pkg/pubsub": {
       "release-type": "go"
     }
   }

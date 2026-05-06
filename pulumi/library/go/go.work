@@ -5,13 +5,25 @@ use (
 	./pkg/app
 	./pkg/bootstrap
 	./pkg/cicd
+	./pkg/cloud_dns
+	./pkg/cloud_functions
+	./pkg/cloud_router
+	./pkg/compute_instance
 	./pkg/data
+	./pkg/gcloud
 	./pkg/group
 	./pkg/iam
+	./pkg/instance_template
+	./pkg/kms
+	./pkg/log_export
 	./pkg/logging
+	./pkg/network_firewall_policy
+	./pkg/network_peering
 	./pkg/networking
 	./pkg/policy
+	./pkg/private_service_connect
 	./pkg/project
+	./pkg/pubsub
 	./pkg/security
 	./pkg/storage
 	./pkg/vpc_sc
