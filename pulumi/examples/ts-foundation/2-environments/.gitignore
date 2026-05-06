@@ -1,0 +1,32 @@
+# Node.js
+node_modules/
+package-lock.json
+dist/
+
+# TypeScript compiled output
+*.js
+*.js.map
+*.d.ts
+
+# Pulumi stack configs (contain secrets / environment-specific values)
+Pulumi.*.yaml
+!Pulumi.yaml
+!Pulumi.*.yaml.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp_plan/
+*.log
+
+# Credentials
+credentials.json
+.envrc

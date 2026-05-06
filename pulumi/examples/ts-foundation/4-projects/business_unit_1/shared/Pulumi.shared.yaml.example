@@ -1,0 +1,7 @@
+# Pulumi Configuration for 4-projects/business_unit_1/shared
+config:
+  4-projects-bu1-shared:org_id: "YOUR_ORG_ID"
+  4-projects-bu1-shared:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  4-projects-bu1-shared:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 4-projects-bu1-shared:business_code: "bu1"
+  # 4-projects-bu1-shared:project_prefix: "prj"

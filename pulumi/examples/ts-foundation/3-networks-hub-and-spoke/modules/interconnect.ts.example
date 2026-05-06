@@ -1,0 +1,165 @@
+/**
+ * Dedicated Interconnect — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to provision Dedicated Interconnect
+ * attachments for on-prem connectivity. This mirrors the Terraform
+ * foundation's `interconnect.tf.example`.
+ *
+ * To activate:
+ * 1. Rename: interconnect.ts.example → interconnect.ts
+ * 2. Update the configuration values below for your environment
+ * 3. Import this module from the relevant env's index.ts
+ * 4. Run `pulumi up` in each environment stack
+ *
+ * ============================================================================
+ * PREREQUISITES:
+ * - Physical Dedicated Interconnect connections must be provisioned
+ * - Interconnect project ID must be known
+ * - VLAN tag and candidate subnet values must be planned per environment
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+
+export interface InterconnectConfig {
+    /** The project hosting the interconnect connections */
+    interconnectProjectId: pulumi.Input<string>;
+    /** VPC name (e.g., "d-svpc") */
+    vpcName: string;
+    /** Environment code (e.g., "d", "n", "p") */
+    envCode: string;
+
+    // Region 1
+    region1: string;
+    region1Router1Name: pulumi.Input<string>;
+    region1Router2Name: pulumi.Input<string>;
+    region1Interconnect1: string;   // Full URL of the interconnect resource
+    region1Interconnect1Location: string;
+    region1Interconnect1CandidateSubnets: string[];
+    region1Interconnect1VlanTag: number;
+    region1Interconnect2: string;
+    region1Interconnect2Location: string;
+    region1Interconnect2CandidateSubnets: string[];
+    region1Interconnect2VlanTag: number;
+
+    // Region 2
+    region2: string;
+    region2Router1Name: pulumi.Input<string>;
+    region2Router2Name: pulumi.Input<string>;
+    region2Interconnect1: string;
+    region2Interconnect1Location: string;
+    region2Interconnect1CandidateSubnets: string[];
+    region2Interconnect1VlanTag: number;
+    region2Interconnect2: string;
+    region2Interconnect2Location: string;
+    region2Interconnect2CandidateSubnets: string[];
+    region2Interconnect2VlanTag: number;
+
+    // BGP
+    peerAsn: string;
+    peerName: string;
+}
+
+/**
+ * Deploys 4x Dedicated Interconnect attachments (2 per region, for redundancy)
+ * with BGP sessions on existing Cloud Routers.
+ */
+export function deployDedicatedInterconnect(
+    name: string,
+    config: InterconnectConfig,
+    opts?: pulumi.ComponentResourceOptions,
+) {
+    const attachments: gcp.compute.InterconnectAttachment[] = [];
+
+    // Region 1, Router 1
+    const r1a1 = new gcp.compute.InterconnectAttachment(`${name}-r1-attach1`, {
+        project: config.interconnectProjectId,
+        region: config.region1,
+        router: config.region1Router1Name,
+        name: `vl-${config.envCode}-${config.vpcName}-r1-a1`,
+        interconnect: config.region1Interconnect1,
+        candidateSubnets: config.region1Interconnect1CandidateSubnets,
+        vlanTag8021q: config.region1Interconnect1VlanTag,
+        type: "DEDICATED",
+    }, opts);
+    attachments.push(r1a1);
+
+    // Region 1, Router 2
+    const r1a2 = new gcp.compute.InterconnectAttachment(`${name}-r1-attach2`, {
+        project: config.interconnectProjectId,
+        region: config.region1,
+        router: config.region1Router2Name,
+        name: `vl-${config.envCode}-${config.vpcName}-r1-a2`,
+        interconnect: config.region1Interconnect2,
+        candidateSubnets: config.region1Interconnect2CandidateSubnets,
+        vlanTag8021q: config.region1Interconnect2VlanTag,
+        type: "DEDICATED",
+    }, opts);
+    attachments.push(r1a2);
+
+    // Region 2, Router 1
+    const r2a1 = new gcp.compute.InterconnectAttachment(`${name}-r2-attach1`, {
+        project: config.interconnectProjectId,
+        region: config.region2,
+        router: config.region2Router1Name,
+        name: `vl-${config.envCode}-${config.vpcName}-r2-a1`,
+        interconnect: config.region2Interconnect1,
+        candidateSubnets: config.region2Interconnect1CandidateSubnets,
+        vlanTag8021q: config.region2Interconnect1VlanTag,
+        type: "DEDICATED",
+    }, opts);
+    attachments.push(r2a1);
+
+    // Region 2, Router 2
+    const r2a2 = new gcp.compute.InterconnectAttachment(`${name}-r2-attach2`, {
+        project: config.interconnectProjectId,
+        region: config.region2,
+        router: config.region2Router2Name,
+        name: `vl-${config.envCode}-${config.vpcName}-r2-a2`,
+        interconnect: config.region2Interconnect2,
+        candidateSubnets: config.region2Interconnect2CandidateSubnets,
+        vlanTag8021q: config.region2Interconnect2VlanTag,
+        type: "DEDICATED",
+    }, opts);
+    attachments.push(r2a2);
+
+    return { attachments };
+}
+
+// =============================================================================
+// Example usage (uncomment and adapt in your env's index.ts):
+//
+// import { deployDedicatedInterconnect } from "../modules/interconnect";
+//
+// const interconnect = deployDedicatedInterconnect("svpc-interconnect", {
+//     interconnectProjectId: sharedVpcProjectId,
+//     vpcName: "d-svpc",
+//     envCode: "d",
+//     region1: "us-central1",
+//     region1Router1Name: network.region1Router1.name,
+//     region1Router2Name: network.region1Router2.name,
+//     region1Interconnect1: "https://www.googleapis.com/compute/v1/projects/PROJECT/global/interconnects/ic-1",
+//     region1Interconnect1Location: "las-zone1-770",
+//     region1Interconnect1CandidateSubnets: ["169.254.0.0/29"],
+//     region1Interconnect1VlanTag: 3901,
+//     region1Interconnect2: "https://www.googleapis.com/compute/v1/projects/PROJECT/global/interconnects/ic-2",
+//     region1Interconnect2Location: "las-zone1-770",
+//     region1Interconnect2CandidateSubnets: ["169.254.0.8/29"],
+//     region1Interconnect2VlanTag: 3902,
+//     region2: "us-west1",
+//     region2Router1Name: network.region2Router1.name,
+//     region2Router2Name: network.region2Router2.name,
+//     region2Interconnect1: "https://www.googleapis.com/compute/v1/projects/PROJECT/global/interconnects/ic-3",
+//     region2Interconnect1Location: "lax-zone2-19",
+//     region2Interconnect1CandidateSubnets: ["169.254.0.16/29"],
+//     region2Interconnect1VlanTag: 3903,
+//     region2Interconnect2: "https://www.googleapis.com/compute/v1/projects/PROJECT/global/interconnects/ic-4",
+//     region2Interconnect2Location: "lax-zone1-403",
+//     region2Interconnect2CandidateSubnets: ["169.254.0.24/29"],
+//     region2Interconnect2VlanTag: 3904,
+//     peerAsn: "64515",
+//     peerName: "interconnect-peer",
+// });
+// =============================================================================

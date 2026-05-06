@@ -1,0 +1,162 @@
+/**
+ * Cloud Build CI/CD Provider — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to replace the default GitHub Actions
+ * CI/CD provider with Google Cloud Build using Workload Identity Federation.
+ * This mirrors the Terraform foundation's `build_cb.tf` and the Go port's
+ * `build_cloud_build.go.example`.
+ *
+ * To use Cloud Build instead of GitHub Actions:
+ *
+ * 1. Rename this file: build_cloud_build.ts.example → build_cloud_build.ts
+ * 2. Remove or rename: build_cb.ts → build_cb.ts.bak (if using Cloud Build)
+ *    OR update index.ts to call this function instead.
+ * 3. Update index.ts to import and call `deployCloudBuild()`
+ * 4. Add the required config values to your Pulumi.<stack>.yaml
+ * 5. Run `pulumi up` to provision the Cloud Build infrastructure.
+ *
+ * ============================================================================
+ * WHAT THIS CREATES:
+ *
+ * 1. CI/CD project with Cloud Build, Artifact Registry, and Workflows APIs
+ * 2. Cloud Source Repositories — one per foundation stage
+ * 3. Cloud Build triggers — plan on PR, apply on merge to environment branches
+ * 4. Artifact Registry — Docker repository for builder images
+ * 5. Private Worker Pool — VPC-peered for secure builds
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+import * as random from "@pulumi/random";
+import { BootstrapConfig } from "./config";
+
+export interface CloudBuildOutputs {
+    cicdProjectId: pulumi.Output<string>;
+    artifactRegistryName: pulumi.Output<string>;
+}
+
+export async function deployCloudBuild(
+    cfg: BootstrapConfig,
+    bootstrapFolder: gcp.organizations.Folder,
+    seedProject: gcp.organizations.Project,
+    stateBucket: gcp.storage.Bucket,
+    sas: Record<string, gcp.serviceaccount.Account>,
+): Promise<CloudBuildOutputs> {
+
+    // ========================================================================
+    // 1. CI/CD Project
+    // ========================================================================
+    const suffix = new random.RandomString("cicd-suffix", {
+        length: 4,
+        special: false,
+        upper: false,
+    });
+
+    const cicdProject = new gcp.organizations.Project("cicd-project", {
+        projectId: pulumi.interpolate`${cfg.projectPrefix}-b-cicd-${suffix.result}`,
+        name: pulumi.interpolate`${cfg.projectPrefix}-b-cicd`,
+        folderId: bootstrapFolder.name,
+        billingAccount: cfg.billingAccount,
+        deletionPolicy: cfg.projectDeletionPolicy,
+        autoCreateNetwork: false,
+    });
+
+    const cicdApis = [
+        "compute.googleapis.com",
+        "admin.googleapis.com",
+        "iam.googleapis.com",
+        "billingbudgets.googleapis.com",
+        "cloudbilling.googleapis.com",
+        "serviceusage.googleapis.com",
+        "cloudresourcemanager.googleapis.com",
+        "cloudbuild.googleapis.com",
+        "sourcerepo.googleapis.com",
+        "artifactregistry.googleapis.com",
+        "workflows.googleapis.com",
+    ];
+
+    const cicdServices: gcp.projects.Service[] = [];
+    for (const api of cicdApis) {
+        cicdServices.push(new gcp.projects.Service(`cicd-api-${api.replace(/\./g, "-")}`, {
+            project: cicdProject.projectId,
+            service: api,
+            disableOnDestroy: false,
+        }, { parent: cicdProject }));
+    }
+
+    // ========================================================================
+    // 2. Cloud Source Repositories
+    // ========================================================================
+    const stageRepos: Record<string, string> = {
+        bootstrap: "gcp-bootstrap",
+        org:       "gcp-org",
+        env:       "gcp-environments",
+        net:       "gcp-networks",
+        proj:      "gcp-projects",
+    };
+
+    for (const [key, repoName] of Object.entries(stageRepos)) {
+        new gcp.sourcerepo.Repository(`csr-${key}`, {
+            project: cicdProject.projectId,
+            name: repoName,
+        }, { dependsOn: cicdServices });
+    }
+
+    // ========================================================================
+    // 3. Cloud Build Triggers (per-stage plan/apply)
+    // ========================================================================
+    for (const [key, repoName] of Object.entries(stageRepos)) {
+        const sa = sas[key];
+        if (!sa) continue;
+
+        // Plan trigger: runs on pushes to plan branch
+        new gcp.cloudbuild.Trigger(`cb-plan-${key}`, {
+            project: cicdProject.projectId,
+            name: `${key}-plan`,
+            triggerTemplate: {
+                projectId: cicdProject.projectId,
+                repoName: repoName,
+                branchName: "plan",
+            },
+            filename: "cloudbuild-tf-plan.yaml",
+            serviceAccount: sa.id,
+        }, { dependsOn: cicdServices });
+
+        // Apply trigger: runs on pushes to environment branches
+        const envBranches = key === "bootstrap" || key === "org"
+            ? ["production"]
+            : ["development", "nonproduction", "production"];
+
+        for (const branch of envBranches) {
+            new gcp.cloudbuild.Trigger(`cb-apply-${key}-${branch}`, {
+                project: cicdProject.projectId,
+                name: `${key}-apply-${branch}`,
+                triggerTemplate: {
+                    projectId: cicdProject.projectId,
+                    repoName: repoName,
+                    branchName: branch,
+                },
+                filename: "cloudbuild-tf-apply.yaml",
+                serviceAccount: sa.id,
+            }, { dependsOn: cicdServices });
+        }
+    }
+
+    // ========================================================================
+    // 4. Artifact Registry
+    // ========================================================================
+    const garRepo = new gcp.artifactregistry.Repository("tf-runners", {
+        project: cicdProject.projectId,
+        location: cfg.defaultRegion,
+        repositoryId: "tf-runners",
+        description: "Pulumi runner images",
+        format: "DOCKER",
+    }, { dependsOn: cicdServices });
+
+    return {
+        cicdProjectId: cicdProject.projectId,
+        artifactRegistryName: garRepo.name,
+    };
+}

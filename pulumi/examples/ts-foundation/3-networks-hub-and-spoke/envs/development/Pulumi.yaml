@@ -1,0 +1,6 @@
+name: 3-networks-hub-and-spoke-development
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Hub-and-spoke network for development environment"

@@ -1,0 +1,183 @@
+# Vitruvian Software Pulumi Foundation (TypeScript)
+
+This repository provides a production-ready implementation of the [Google Cloud Enterprise Foundations Blueprint](https://cloud.google.com/architecture/security-foundations), built using **Pulumi** and **TypeScript**.
+
+It is a port of Google's [terraform-example-foundation](https://github.com/terraform-google-modules/terraform-example-foundation), providing the same security baseline, organizational structure, and operational patterns using native TypeScript and the Node.js runtime.
+
+## Overview
+
+This repo contains several distinct Pulumi projects, each within their own directory that must be applied separately, but in sequence. Stage `0-bootstrap` is manually executed, and subsequent stages are executed using the included GitHub Actions CI/CD pipeline.
+
+### [0. Bootstrap](./0-bootstrap/)
+
+Bootstraps the GCP organization by creating:
+- **`prj-b-seed`** — Pulumi state storage with KMS-encrypted bucket, and the service accounts used by the pipeline
+- **`prj-b-cicd`** — CI/CD pipeline infrastructure (Artifact Registry, Cloud Build, Workload Identity)
+- **Granular Service Accounts** — One per stage (`bootstrap`, `org`, `env`, `net`, `proj`) with least-privilege IAM at org, folder, project, and billing scopes
+
+### [1. Organization](./1-org/)
+
+Sets up the organizational folder structure and shared projects:
+- **Folders**: `fldr-common`, `fldr-network`, plus environment folders
+- **Common Projects**: `prj-c-logging`, `prj-c-billing-export`, `prj-c-scc`, `prj-c-kms`, `prj-c-secrets`
+- **Network Projects**: `prj-net-dns`, `prj-net-interconnect`, `prj-{d,n,p}-svpc`
+- **Org Policies**: 14+ boolean constraints (serial port, nested virtualization, OS Login, SA key creation, public access prevention, etc.) + list policies (VM external IP deny, domain-restricted sharing, protocol forwarding)
+- **Centralized Logging**: Org sinks to Storage, Pub/Sub, and Logging buckets with BigQuery linked datasets
+- **SCC Notifications**: Pub/Sub pipeline streaming all active Security Command Center findings
+- **Tags**: Org-level environment classification tags
+
+### [2. Environments](./2-environments/)
+
+Creates per-environment KMS and Secrets projects:
+- `prj-{d,n,p}-kms` — Environment-level Cloud KMS
+- `prj-{d,n,p}-secrets` — Environment-level Secret Manager
+
+### [3. Networks (Choose ONE)](./3-networks-svpc/)
+
+**Shared VPC** (`3-networks-svpc/`):
+- Multi-region subnets with GKE secondary ranges (pod + service CIDRs)
+- Shared VPC host project designation
+- Hierarchical firewall policies (IAP, health checks, Windows KMS)
+- DNS policy with logging and inbound forwarding
+- Cloud NAT on all regions with error logging
+- Private Service Access for managed services
+- Restricted Google APIs routing (`199.36.153.4/30`)
+- Default internet routes removed
+
+**Hub-and-Spoke** (`3-networks-hub-and-spoke/`):
+- Hub VPC with central routing
+- Spoke VPC with GKE secondary ranges
+- Bidirectional VPC peering with custom route export/import
+- Same firewall, DNS, NAT, and routing as SVPC
+
+### [4. Projects](./4-projects/)
+
+Creates business unit projects with:
+- BU subfolder under each environment folder
+- Three project types per BU: **SVPC-attached**, **floating**, **peering**
+- SVPC service project attachment to the host network project
+- Infrastructure pipeline project (`prj-c-{bu}-infra-pipeline`) under common folder
+
+### [5. App Infrastructure](./5-app-infra/)
+
+Sample application deployment:
+- Compute Engine instance with instance template
+- Service account with least-privilege roles
+
+## Final View
+
+```
+example-organization
+└── fldr-common
+    ├── prj-c-logging
+    ├── prj-c-billing-export
+    ├── prj-c-scc
+    ├── prj-c-kms
+    ├── prj-c-secrets
+    ├── prj-c-bu1-infra-pipeline
+    └── prj-c-bu2-infra-pipeline
+└── fldr-network
+    ├── prj-net-dns
+    ├── prj-net-interconnect
+    ├── prj-d-svpc
+    ├── prj-n-svpc
+    └── prj-p-svpc
+└── fldr-development
+    ├── prj-d-kms
+    ├── prj-d-secrets
+    └── fldr-development-bu1
+        ├── prj-d-bu1-sample-svpc
+        ├── prj-d-bu1-sample-floating
+        └── prj-d-bu1-sample-peering
+└── fldr-nonproduction
+    ├── prj-n-kms
+    ├── prj-n-secrets
+    └── fldr-nonproduction-bu1
+        ├── prj-n-bu1-sample-svpc
+        ├── prj-n-bu1-sample-floating
+        └── prj-n-bu1-sample-peering
+└── fldr-production
+    ├── prj-p-kms
+    ├── prj-p-secrets
+    └── fldr-production-bu1
+        ├── prj-p-bu1-sample-svpc
+        ├── prj-p-bu1-sample-floating
+        └── prj-p-bu1-sample-peering
+└── fldr-bootstrap
+    ├── prj-b-cicd
+    └── prj-b-seed
+```
+
+## Branching Strategy
+
+The deployment pipeline uses a trunk-based development model. The branching model varies by stage:
+
+| Stage | Branches | Rationale |
+|-------|----------|-----------|
+| `0-bootstrap` | `production` | Shared infrastructure — single environment |
+| `1-org` | `production` | Organization-wide resources — single environment |
+| `2-environments` | `development`, `nonproduction`, `production` | Per-environment resources |
+| `3-networks-*` | `development`, `nonproduction`, `production` | Per-environment networks |
+| `4-projects` | `development`, `nonproduction`, `production` | Per-environment projects |
+| `5-app-infra` | `development`, `nonproduction`, `production` | Per-environment app infra |
+
+| Action | Trigger |
+|--------|---------|
+| Merge to a named branch | `pulumi up` (apply) |
+| Pull Request to a named branch | `pulumi preview` (plan only) |
+
+## Prerequisites
+
+- [Pulumi CLI](https://www.pulumi.com/docs/install/) version 3.0+
+- [Node.js](https://nodejs.org/) version 18+ (LTS recommended)
+- [Google Cloud SDK](https://cloud.google.com/sdk/install) (`gcloud`)
+- [Git](https://git-scm.com/) version 2.28+
+- Access to a Google Cloud Organization
+- A Billing Account ID
+- GitHub repository with `PULUMI_ACCESS_TOKEN` and `GOOGLE_CREDENTIALS` secrets
+
+## Using the Shared Library
+
+All stages use the [Vitruvian Software Pulumi Library](https://github.com/VitruvianSoftware/pulumi-library) for reusable components:
+- `@vitruvian/pulumi-library/project` — Project factory with API activation
+- `@vitruvian/pulumi-library/iam` — Multi-scope IAM member bindings
+- `@vitruvian/pulumi-library/policy` — Organization policy enforcement
+- `@vitruvian/pulumi-library/networking` — VPC and subnet management
+- `@vitruvian/pulumi-library/bootstrap` — Bootstrap component (state bucket, KMS, granular service accounts)
+
+## Intended Usage and Support
+
+This repository is intended as an example to be forked, tweaked, and maintained in the user's own version-control system; the modules within this repository are not intended for use as remote references.
+Though this blueprint can help accelerate your foundation design and build, we assume that you have the engineering skills and teams to deploy and customize your own foundation based on your own requirements.
+
+## Optional Variables
+
+Some configuration values used to deploy the stages have defaults. Check those **before deployment** to ensure they match your requirements. For more information, see the configuration reference tables in each stage's README:
+
+- Step 0-bootstrap: [Configuration Reference](./0-bootstrap/README.md#configuration-reference)
+- Step 1-org: [Configuration Reference](./1-org/README.md#configuration-reference)
+- Step 2-environments: [Configuration Reference](./2-environments/README.md#configuration-reference)
+- Step 3-networks-svpc: [Configuration Reference](./3-networks-svpc/README.md#configuration-reference)
+- Step 3-networks-hub-and-spoke: [Configuration Reference](./3-networks-hub-and-spoke/README.md#configuration-reference)
+- Step 4-projects: [Configuration Reference](./4-projects/README.md#configuration-reference)
+- Step 5-app-infra: [Configuration Reference](./5-app-infra/README.md#configuration-reference)
+
+## Documentation
+
+- [Onboarding Guide](./ONBOARDING.md) — Step-by-step quickstart for deploying your foundation
+- [Troubleshooting Guide](./docs/TROUBLESHOOTING.md) — Solutions for common deployment issues
+- [Glossary](./docs/GLOSSARY.md) — Definitions of key terms used throughout the documentation
+- [FAQ](./docs/FAQ.md) — Frequently asked questions about the foundation
+- [Errata](./docs/ERRATA.md) — Known deviations from the upstream Terraform foundation
+- [Contributing](./CONTRIBUTING.md) — Development workflow and contribution guidelines
+- [Security](./SECURITY.md) — Vulnerability reporting policy
+
+## Companion Repositories
+
+- **Go variant**: [pulumi_go-example-foundation](https://github.com/VitruvianSoftware/pulumi_go-example-foundation) — The same foundation implemented in Go
+- **Shared library**: [pulumi-library](https://github.com/VitruvianSoftware/pulumi-library) — Reusable Pulumi components (Go + TypeScript)
+- **Upstream**: [terraform-example-foundation](https://github.com/terraform-google-modules/terraform-example-foundation) — The original Terraform reference
+
+## Public vs. Private
+- This repo is a **Public Reference**.
+- Real Vitruvian Software implementations are managed in **Private** `gcp-*` repositories that consume this foundation logic.

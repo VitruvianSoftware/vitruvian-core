@@ -1,0 +1,6 @@
+# Pulumi Configuration for 2-environments/nonproduction
+config:
+  2-environments-nonproduction:org_id: "YOUR_ORG_ID"
+  2-environments-nonproduction:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  2-environments-nonproduction:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 2-environments-nonproduction:project_prefix: "prj"

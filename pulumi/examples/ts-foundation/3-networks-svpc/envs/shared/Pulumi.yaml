@@ -1,0 +1,6 @@
+name: 3-networks-svpc-shared
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Shared VPC shared resources — hierarchical firewall"

@@ -1,0 +1,6 @@
+# Pulumi Configuration for 2-environments/development
+config:
+  2-environments-development:org_id: "YOUR_ORG_ID"
+  2-environments-development:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  2-environments-development:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 2-environments-development:project_prefix: "prj"

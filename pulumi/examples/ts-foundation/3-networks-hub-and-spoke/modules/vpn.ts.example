@@ -1,0 +1,208 @@
+/**
+ * HA VPN — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to provision High Availability VPN
+ * tunnels for on-prem connectivity. This mirrors the Terraform foundation's
+ * `vpn.tf.example`.
+ *
+ * To activate:
+ * 1. Rename: vpn.ts.example → vpn.ts
+ * 2. Create a VPN pre-shared key secret (see 0-bootstrap/onprem.md)
+ * 3. Update the configuration values below for your environment
+ * 4. Import this module from the relevant env's index.ts
+ * 5. Run `pulumi up` in each environment stack
+ *
+ * ============================================================================
+ * PREREQUISITES:
+ * - VPN PSK secret must exist in Secret Manager
+ * - On-prem router IP addresses must be known
+ * - BGP peer ASN and IP ranges must be planned
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+
+export interface VpnConfig {
+    /** Shared VPC project ID */
+    projectId: pulumi.Input<string>;
+    /** Secret Manager project ID (from 2-environments) */
+    envSecretProjectId: pulumi.Input<string>;
+    /** VPC name (e.g., "d-svpc") */
+    vpcName: string;
+
+    // Regions and routers
+    defaultRegion1: string;
+    defaultRegion2: string;
+    region1Router1Name: pulumi.Input<string>;
+    region1Router2Name: pulumi.Input<string>;
+    region2Router1Name: pulumi.Input<string>;
+    region2Router2Name: pulumi.Input<string>;
+
+    // VPN PSK
+    vpnPskSecretName: string;
+
+    // On-prem peer
+    onPremRouterIpAddress1: string;
+    onPremRouterIpAddress2: string;
+    bgpPeerAsn: string;
+
+    // BGP session addresses (4 tunnels per region, 2 regions = 8 tunnels)
+    region1Router1Tunnel0BgpPeerAddress: string;
+    region1Router1Tunnel0BgpPeerRange: string;
+    region1Router1Tunnel1BgpPeerAddress: string;
+    region1Router1Tunnel1BgpPeerRange: string;
+    region1Router2Tunnel0BgpPeerAddress: string;
+    region1Router2Tunnel0BgpPeerRange: string;
+    region1Router2Tunnel1BgpPeerAddress: string;
+    region1Router2Tunnel1BgpPeerRange: string;
+    region2Router1Tunnel0BgpPeerAddress: string;
+    region2Router1Tunnel0BgpPeerRange: string;
+    region2Router1Tunnel1BgpPeerAddress: string;
+    region2Router1Tunnel1BgpPeerRange: string;
+    region2Router2Tunnel0BgpPeerAddress: string;
+    region2Router2Tunnel0BgpPeerRange: string;
+    region2Router2Tunnel1BgpPeerAddress: string;
+    region2Router2Tunnel1BgpPeerRange: string;
+}
+
+/**
+ * Deploys HA VPN gateways and tunnels for on-prem connectivity.
+ * Creates 2 HA VPN gateways (one per region) with 2 tunnels each
+ * (4 tunnels per region for full redundancy across 2 routers).
+ */
+export function deployHaVpn(
+    name: string,
+    config: VpnConfig,
+    opts?: pulumi.ComponentResourceOptions,
+) {
+    // Retrieve VPN PSK from Secret Manager
+    const vpnPsk = gcp.secretmanager.getSecretVersionOutput({
+        project: config.envSecretProjectId,
+        secret: config.vpnPskSecretName,
+    });
+
+    // HA VPN Gateway — Region 1
+    const vpnGw1 = new gcp.compute.HaVpnGateway(`${name}-gw-r1`, {
+        project: config.projectId,
+        region: config.defaultRegion1,
+        name: `vpn-${config.vpcName}-r1`,
+        network: pulumi.interpolate`projects/${config.projectId}/global/networks/${config.vpcName}`,
+    }, opts);
+
+    // HA VPN Gateway — Region 2
+    const vpnGw2 = new gcp.compute.HaVpnGateway(`${name}-gw-r2`, {
+        project: config.projectId,
+        region: config.defaultRegion2,
+        name: `vpn-${config.vpcName}-r2`,
+        network: pulumi.interpolate`projects/${config.projectId}/global/networks/${config.vpcName}`,
+    }, opts);
+
+    // External VPN Gateway (on-prem peer)
+    const externalGw = new gcp.compute.ExternalVpnGateway(`${name}-external-gw`, {
+        project: config.projectId,
+        name: `ext-vpn-${config.vpcName}`,
+        redundancyType: "TWO_IPS_REDUNDANCY",
+        interfaces: [
+            { id: 0, ipAddress: config.onPremRouterIpAddress1 },
+            { id: 1, ipAddress: config.onPremRouterIpAddress2 },
+        ],
+    }, opts);
+
+    // Region 1 — Tunnel 0 (Router 1 → External interface 0)
+    new gcp.compute.VPNTunnel(`${name}-r1-t0`, {
+        project: config.projectId,
+        region: config.defaultRegion1,
+        name: `vpn-${config.vpcName}-r1-t0`,
+        vpnGateway: vpnGw1.id,
+        vpnGatewayInterface: 0,
+        peerExternalGateway: externalGw.id,
+        peerExternalGatewayInterface: 0,
+        sharedSecret: vpnPsk.secretData,
+        router: config.region1Router1Name,
+    }, opts);
+
+    // Region 1 — Tunnel 1 (Router 1 → External interface 1)
+    new gcp.compute.VPNTunnel(`${name}-r1-t1`, {
+        project: config.projectId,
+        region: config.defaultRegion1,
+        name: `vpn-${config.vpcName}-r1-t1`,
+        vpnGateway: vpnGw1.id,
+        vpnGatewayInterface: 1,
+        peerExternalGateway: externalGw.id,
+        peerExternalGatewayInterface: 1,
+        sharedSecret: vpnPsk.secretData,
+        router: config.region1Router2Name,
+    }, opts);
+
+    // Region 2 — Tunnel 0 (Router 1 → External interface 0)
+    new gcp.compute.VPNTunnel(`${name}-r2-t0`, {
+        project: config.projectId,
+        region: config.defaultRegion2,
+        name: `vpn-${config.vpcName}-r2-t0`,
+        vpnGateway: vpnGw2.id,
+        vpnGatewayInterface: 0,
+        peerExternalGateway: externalGw.id,
+        peerExternalGatewayInterface: 0,
+        sharedSecret: vpnPsk.secretData,
+        router: config.region2Router1Name,
+    }, opts);
+
+    // Region 2 — Tunnel 1 (Router 2 → External interface 1)
+    new gcp.compute.VPNTunnel(`${name}-r2-t1`, {
+        project: config.projectId,
+        region: config.defaultRegion2,
+        name: `vpn-${config.vpcName}-r2-t1`,
+        vpnGateway: vpnGw2.id,
+        vpnGatewayInterface: 1,
+        peerExternalGateway: externalGw.id,
+        peerExternalGatewayInterface: 1,
+        sharedSecret: vpnPsk.secretData,
+        router: config.region2Router2Name,
+    }, opts);
+
+    return {
+        vpnGatewayRegion1: vpnGw1,
+        vpnGatewayRegion2: vpnGw2,
+        externalGateway: externalGw,
+    };
+}
+
+// =============================================================================
+// Example usage (uncomment and adapt in your env's index.ts):
+//
+// import { deployHaVpn } from "../modules/vpn";
+//
+// const vpn = deployHaVpn("svpc-vpn", {
+//     projectId: sharedVpcProjectId,
+//     envSecretProjectId: envSecretsProjectId,
+//     vpcName: "d-svpc",
+//     defaultRegion1: "us-central1",
+//     defaultRegion2: "us-west1",
+//     region1Router1Name: network.region1Router1.name,
+//     region1Router2Name: network.region1Router2.name,
+//     region2Router1Name: network.region2Router1.name,
+//     region2Router2Name: network.region2Router2.name,
+//     vpnPskSecretName: "<VPN_PSK_SECRET_NAME>",
+//     onPremRouterIpAddress1: "203.0.113.1",
+//     onPremRouterIpAddress2: "203.0.113.2",
+//     bgpPeerAsn: "64515",
+//     region1Router1Tunnel0BgpPeerAddress: "169.254.1.1",
+//     region1Router1Tunnel0BgpPeerRange: "169.254.1.2/30",
+//     region1Router1Tunnel1BgpPeerAddress: "169.254.2.1",
+//     region1Router1Tunnel1BgpPeerRange: "169.254.2.2/30",
+//     region1Router2Tunnel0BgpPeerAddress: "169.254.4.1",
+//     region1Router2Tunnel0BgpPeerRange: "169.254.4.2/30",
+//     region1Router2Tunnel1BgpPeerAddress: "169.254.6.1",
+//     region1Router2Tunnel1BgpPeerRange: "169.254.6.2/30",
+//     region2Router1Tunnel0BgpPeerAddress: "169.254.8.1",
+//     region2Router1Tunnel0BgpPeerRange: "169.254.8.2/30",
+//     region2Router1Tunnel1BgpPeerAddress: "169.254.10.1",
+//     region2Router1Tunnel1BgpPeerRange: "169.254.10.2/30",
+//     region2Router2Tunnel0BgpPeerAddress: "169.254.12.1",
+//     region2Router2Tunnel0BgpPeerRange: "169.254.12.2/30",
+//     region2Router2Tunnel1BgpPeerAddress: "169.254.14.1",
+//     region2Router2Tunnel1BgpPeerRange: "169.254.14.2/30",
+// });
+// =============================================================================

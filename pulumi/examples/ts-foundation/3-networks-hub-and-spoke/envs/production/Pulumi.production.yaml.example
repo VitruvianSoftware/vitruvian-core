@@ -1,0 +1,6 @@
+# Pulumi Configuration for 3-networks-hub-and-spoke/production
+config:
+  3-networks-hub-and-spoke-production:org_id: "YOUR_ORG_ID"
+  3-networks-hub-and-spoke-production:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 3-networks-hub-and-spoke-production:default_region: "us-central1"
+  # 3-networks-hub-and-spoke-production:default_region_2: "us-west1"

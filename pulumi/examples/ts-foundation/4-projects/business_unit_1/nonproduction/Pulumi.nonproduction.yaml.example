@@ -1,0 +1,7 @@
+# Pulumi Configuration for 4-projects/business_unit_1/nonproduction
+config:
+  4-projects-bu1-nonproduction:org_id: "YOUR_ORG_ID"
+  4-projects-bu1-nonproduction:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  4-projects-bu1-nonproduction:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 4-projects-bu1-nonproduction:business_code: "bu1"
+  # 4-projects-bu1-nonproduction:project_prefix: "prj"
