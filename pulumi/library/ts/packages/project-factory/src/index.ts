@@ -55,12 +55,14 @@ export interface ProjectFactoryOutputs {
     projectId: pulumi.Output<string>;
     projectNumber: pulumi.Output<string>;
     projectName: pulumi.Output<string>;
+    serviceAccountEmail: pulumi.Output<string>;
 }
 
 export class ProjectFactory extends pulumi.ComponentResource {
     public readonly projectId: pulumi.Output<string>;
     public readonly projectNumber: pulumi.Output<string>;
     public readonly projectName: pulumi.Output<string>;
+    public readonly serviceAccountEmail: pulumi.Output<string>;
     public readonly project: gcp.organizations.Project;
 
     constructor(name: string, args: ProjectFactoryArgs, opts?: pulumi.ComponentResourceOptions) {
@@ -96,6 +98,7 @@ export class ProjectFactory extends pulumi.ComponentResource {
         this.projectId = project.projectId;
         this.projectNumber = project.number;
         this.projectName = project.name;
+        this.serviceAccountEmail = project.number.apply(n => `${n}-compute@developer.gserviceaccount.com`);
 
         // Enable APIs
         const apiResources: gcp.projects.Service[] = [];
@@ -147,6 +150,7 @@ export class ProjectFactory extends pulumi.ComponentResource {
             projectId: this.projectId,
             projectNumber: this.projectNumber,
             projectName: this.projectName,
+            serviceAccountEmail: this.serviceAccountEmail,
         });
     }
 }

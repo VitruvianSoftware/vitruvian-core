@@ -56,11 +56,19 @@ export interface CentralizedLoggingArgs {
 
 export class CentralizedLogging extends pulumi.ComponentResource {
     public readonly waitIamMembership!: pulumi.Output<boolean>;
+    public readonly storageBucketName: pulumi.Output<string>;
+    public readonly pubsubTopicName: pulumi.Output<string>;
+    public readonly logBucketName: pulumi.Output<string>;
+    public readonly linkedDatasetName: pulumi.Output<string>;
 
     constructor(name: string, args: CentralizedLoggingArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:CentralizedLogging", name, args, opts);
 
         const iamDependencies: pulumi.CustomResource[] = [];
+        let _storageBucketName: pulumi.Output<string> = pulumi.output("");
+        let _pubsubTopicName: pulumi.Output<string> = pulumi.output("");
+        let _logBucketName: pulumi.Output<string> = pulumi.output("");
+        let _linkedDatasetName: pulumi.Output<string> = pulumi.output("");
 
         // Logging bucket sink
         if (args.loggingBucketOptions?.name) {
@@ -85,6 +93,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 member: sink.writerIdentity,
             }, { parent: this });
             iamDependencies.push(iam);
+            _logBucketName = bucket.bucketId;
         }
 
         // BigQuery sink
@@ -116,6 +125,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 member: sink.writerIdentity,
             }, { parent: this });
             iamDependencies.push(iam);
+            _linkedDatasetName = dataset.datasetId;
         }
 
         // Cloud Storage sink
@@ -149,6 +159,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 member: sink.writerIdentity,
             }, { parent: this });
             iamDependencies.push(iam);
+            _storageBucketName = bucket.name;
         }
 
         // Pub/Sub sink
@@ -173,6 +184,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 member: sink.writerIdentity,
             }, { parent: this });
             iamDependencies.push(iam);
+            _pubsubTopicName = topic.name;
 
             if (args.pubsubOptions.createSubscriber !== false) {
                 new gcp.pubsub.Subscription(`${name}-pubsub-sub`, {
@@ -186,9 +198,17 @@ export class CentralizedLogging extends pulumi.ComponentResource {
         // Output an explicit dependency property that resolves when all IAM memberships are ready.
         // This mirrors TF's `time_sleep.wait_sa_iam_membership` logic.
         this.waitIamMembership = pulumi.all(iamDependencies.map(iam => iam.id)).apply(() => true);
+        this.storageBucketName = _storageBucketName;
+        this.pubsubTopicName = _pubsubTopicName;
+        this.logBucketName = _logBucketName;
+        this.linkedDatasetName = _linkedDatasetName;
 
         this.registerOutputs({
-            waitIamMembership: this.waitIamMembership
+            waitIamMembership: this.waitIamMembership,
+            storageBucketName: this.storageBucketName,
+            pubsubTopicName: this.pubsubTopicName,
+            logBucketName: this.logBucketName,
+            linkedDatasetName: this.linkedDatasetName,
         });
     }
 }

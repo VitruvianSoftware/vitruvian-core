@@ -15,6 +15,7 @@ vendor/
 
 # TypeScript
 ts/node_modules/
+ts/packages/*/node_modules/
 ts/dist/
 ts/packages/*/dist/
 ts/coverage/
