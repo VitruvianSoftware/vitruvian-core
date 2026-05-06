@@ -7,7 +7,7 @@
   "ts/packages/dns-hub": "0.3.0",
   "ts/packages/google-group": "0.3.0",
   "ts/packages/hierarchical-firewall-policy": "0.3.0",
-  "ts/packages/instance-template": "0.3.0",
+  "ts/packages/instance-template": "0.4.0",
   "ts/packages/kms": "0.3.0",
   "ts/packages/network": "0.3.0",
   "ts/packages/network-peering": "0.3.0",

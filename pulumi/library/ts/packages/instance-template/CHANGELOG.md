@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-instance-template-v0.3.0...foundation-instance-template-v0.4.0) (2026-05-06)
+
+
+### Features
+
+* add resourceManagerTags to ComputeInstanceArgs ([#53](https://github.com/VitruvianSoftware/pulumi-library/issues/53)) ([16e5980](https://github.com/VitruvianSoftware/pulumi-library/commit/16e5980727e03c2e52cf31e1530bea6f6f939cba))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-instance-template-v0.2.4...foundation-instance-template-v0.3.0) (2026-04-23)
 
 
