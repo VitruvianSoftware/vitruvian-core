@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.4.0...foundation-centralized-logging-v0.5.0) (2026-05-06)
+
+
+### Features
+
+* **ts:** add missing outputs to CentralizedLogging and ProjectFactory ([#52](https://github.com/VitruvianSoftware/pulumi-library/issues/52)) ([adaa126](https://github.com/VitruvianSoftware/pulumi-library/commit/adaa1266ab114f0eede81ca3af84e503fdcf718b))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.3.0...foundation-centralized-logging-v0.4.0) (2026-05-06)
 
 
