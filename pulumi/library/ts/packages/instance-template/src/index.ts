@@ -90,6 +90,7 @@ export interface ComputeInstanceArgs {
     subnetworkProject?: pulumi.Input<string>;
     hostname?: string;
     numInstances?: number;
+    resourceManagerTags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
 }
 
 export class ComputeInstance extends pulumi.ComponentResource {
@@ -112,6 +113,9 @@ export class ComputeInstance extends pulumi.ComponentResource {
                     subnetwork: args.subnetwork,
                     subnetworkProject: args.subnetworkProject,
                 }],
+                params: args.resourceManagerTags ? {
+                    resourceManagerTags: args.resourceManagerTags,
+                } : undefined,
             }, { parent: this });
             this.instances.push(instance);
         }
