@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-vpc-service-controls-v0.2.0...foundation-vpc-service-controls-v0.2.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **vpc-sc:** update projectNumbers type to accept Input&lt;string&gt;[] ([#46](https://github.com/VitruvianSoftware/pulumi-library/issues/46)) ([a7bcd6b](https://github.com/VitruvianSoftware/pulumi-library/commit/a7bcd6b2b9291810e0f2fb57ca31ecca7a135331))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-vpc-service-controls-v0.1.0...foundation-vpc-service-controls-v0.2.0) (2026-04-24)
 
 

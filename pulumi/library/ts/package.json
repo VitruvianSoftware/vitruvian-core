@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/foundation-library",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Reusable Pulumi TypeScript components for Google Cloud Platform infrastructure",
   "private": true,
   "scripts": {

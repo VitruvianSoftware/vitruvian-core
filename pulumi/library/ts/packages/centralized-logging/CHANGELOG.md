@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.3.0...foundation-centralized-logging-v0.4.0) (2026-05-06)
+
+
+### Features
+
+* add 22 fine-grained library packages for foundation modular parity ([#48](https://github.com/VitruvianSoftware/pulumi-library/issues/48)) ([f54c6f2](https://github.com/VitruvianSoftware/pulumi-library/commit/f54c6f2a30ea4429a69e31ad3168aa3f075b0070))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.2.4...foundation-centralized-logging-v0.3.0) (2026-04-23)
 
 
