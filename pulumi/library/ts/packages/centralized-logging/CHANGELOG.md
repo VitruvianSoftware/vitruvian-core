@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.0...foundation-centralized-logging-v0.5.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* achieve 100% architectural parity ([#55](https://github.com/VitruvianSoftware/pulumi-library/issues/55)) ([26036da](https://github.com/VitruvianSoftware/pulumi-library/commit/26036da5f46c1d49cfe9fbace41ea23ed6f51e11))
+
 ## [0.5.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.4.0...foundation-centralized-logging-v0.5.0) (2026-05-06)
 
 
