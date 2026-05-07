@@ -14,6 +14,7 @@ export interface InstanceTemplateArgs {
     sourceImage?: string;
     sourceImageFamily?: string;
     sourceImageProject?: string;
+    minCpuPlatform?: string;
     diskSizeGb?: number;
     diskType?: string;
     subnetwork: pulumi.Input<string>;
@@ -23,6 +24,7 @@ export interface InstanceTemplateArgs {
         scopes: string[];
     };
     enableConfidentialVm?: boolean;
+    confidentialInstanceType?: string;
     metadata?: Record<string, string>;
     tags?: string[];
     labels?: Record<string, string>;
@@ -39,6 +41,7 @@ export class InstanceTemplate extends pulumi.ComponentResource {
             project: args.projectId,
             namePrefix: args.namePrefix,
             machineType: args.machineType,
+            minCpuPlatform: args.minCpuPlatform,
             region: args.region,
             tags: args.tags,
             labels: args.labels,
@@ -60,6 +63,7 @@ export class InstanceTemplate extends pulumi.ComponentResource {
             } : undefined,
             confidentialInstanceConfig: args.enableConfidentialVm ? {
                 enableConfidentialCompute: true,
+                confidentialInstanceType: args.confidentialInstanceType,
             } : undefined,
             shieldedInstanceConfig: {
                 enableSecureBoot: true,
