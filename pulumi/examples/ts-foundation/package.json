@@ -19,6 +19,7 @@
     "@pulumi/gcp": "^8.0.0",
     "@pulumi/pulumi": "^3.113.0",
     "@pulumi/random": "^4.16.0",
+    "@pulumiverse/time": "^0.1.1",
     "@vitruviansoftware/foundation-bootstrap": "^0.2.0",
     "@vitruviansoftware/foundation-budget": "^0.3.0",
     "@vitruviansoftware/foundation-cai-monitoring": "^0.2.0",

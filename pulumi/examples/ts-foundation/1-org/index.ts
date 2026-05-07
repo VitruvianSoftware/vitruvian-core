@@ -540,6 +540,8 @@ export = async () => {
         cai_monitoring_asset_feed: caiMonitoring?.assetFeedName,
         cai_monitoring_bucket: caiMonitoring?.bucketName,
         cai_monitoring_topic: caiMonitoring?.topicName,
-        billing_sink_names: [],
+        // Billing sink names — dynamically resolved from centralized logging
+        // Mirrors TF: module.logs_export.billing_sink_names
+        billing_sink_names: centralizedLogging.billingSinkNames,
     };
 };

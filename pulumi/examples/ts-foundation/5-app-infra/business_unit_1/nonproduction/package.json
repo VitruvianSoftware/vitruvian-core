@@ -6,10 +6,11 @@
         "typescript": "^5.0.0"
     },
     "dependencies": {
-        "@pulumi/pulumi": "^3.113.0",
-        "@pulumi/gcp": "^8.0.0",
-        "@pulumi/random": "^4.16.0",
         "@pulumi/command": "^1.0.0",
-        "@pulumiverse/time": "^0.1.0"
+        "@pulumi/gcp": "^8.0.0",
+        "@pulumi/pulumi": "^3.113.0",
+        "@pulumi/random": "^4.16.0",
+        "@pulumiverse/time": "^0.1.0",
+        "@vitruviansoftware/foundation-instance-template": "^0.5.0"
     }
 }

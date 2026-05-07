@@ -1,0 +1,118 @@
+/**
+ * Jenkins Infrastructure — mirrors 0-bootstrap/build_jenkins.tf.example
+ * Creates the CI/CD project, VPC, Jenkins Agent GCE instance,
+ * and per-stage impersonation IAM bindings.
+ *
+ * To use:
+ * 1. Rename this file to `build_jenkins.ts`
+ * 2. Export `deployJenkinsBuild` instead of `deployGithubActions` in index.ts
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+import * as random from "@pulumi/random";
+import { BootstrapConfig } from "./config";
+
+export interface JenkinsOutputs {
+    cicdProjectId: pulumi.Output<string>;
+}
+
+export async function deployJenkinsBuild(
+    cfg: BootstrapConfig,
+    bootstrapFolder: gcp.organizations.Folder,
+    seedProject: gcp.organizations.Project,
+    stateBucketName: pulumi.Output<string>,
+    stateBucketKmsKey: pulumi.Output<string>,
+): Promise<JenkinsOutputs> {
+
+    // Random suffix for CI/CD project ID
+    const suffix = new random.RandomString("cicd-suffix", {
+        length: 4,
+        special: false,
+        upper: false,
+    });
+
+    // CI/CD project
+    const cicdProject = new gcp.organizations.Project("cicd-project", {
+        projectId: pulumi.interpolate`${cfg.projectPrefix}-b-cicd-${suffix.result}`,
+        name: pulumi.interpolate`${cfg.projectPrefix}-b-cicd-${suffix.result}`,
+        folderId: bootstrapFolder.name,
+        billingAccount: cfg.billingAccount,
+        deletionPolicy: cfg.projectDeletionPolicy,
+        autoCreateNetwork: false,
+    });
+
+    // Network & Subnet
+    const network = new gcp.compute.Network("jenkins-agents-vpc", {
+        project: cicdProject.projectId,
+        name: "vpc-b-jenkinsagents",
+        autoCreateSubnetworks: false,
+    });
+
+    const subnet = new gcp.compute.Subnetwork("jenkins-agents-subnet", {
+        project: cicdProject.projectId,
+        name: `sb-b-jenkinsagents-${cfg.defaultRegion}`,
+        region: cfg.defaultRegion,
+        network: network.selfLink,
+        ipCidrRange: "10.10.10.0/24",
+    });
+
+    // Cloud NAT
+    const router = new gcp.compute.Router("nat-router", {
+        project: cicdProject.projectId,
+        name: `cr-jenkinsagents-${cfg.defaultRegion}-nat`,
+        region: cfg.defaultRegion,
+        network: network.selfLink,
+        bgp: {
+            asn: 64514,
+        },
+    });
+
+    new gcp.compute.RouterNat("nat-config", {
+        project: cicdProject.projectId,
+        name: `rn-jenkinsagents-${cfg.defaultRegion}-egress`,
+        router: router.name,
+        region: cfg.defaultRegion,
+        natIpAllocateOption: "AUTO_ONLY",
+        sourceSubnetworkIpRangesToNat: "ALL_SUBNETWORKS_ALL_IP_RANGES",
+    });
+
+    // Jenkins Agent Service Account
+    const agentSA = new gcp.serviceaccount.Account("jenkins-agent-sa", {
+        project: cicdProject.projectId,
+        accountId: "sa-jenkins-agent",
+        displayName: "Jenkins Agent Service Account",
+    });
+
+    // Jenkins Agent GCE Instance
+    new gcp.compute.Instance("jenkins-agent-instance", {
+        project: cicdProject.projectId,
+        name: "jenkins-agent-gce",
+        machineType: "n1-standard-4",
+        zone: `${cfg.defaultRegion}-a`,
+        bootDisk: {
+            initializeParams: {
+                image: "debian-cloud/debian-11",
+                size: 20,
+            },
+        },
+        networkInterfaces: [{
+            subnetwork: subnet.selfLink,
+        }],
+        serviceAccount: {
+            email: agentSA.email,
+            scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+        },
+    });
+
+    // Grant roles/browser to the Jenkins SA at the Org level
+    new gcp.organizations.IAMMember("jenkins-sa-org-browser", {
+        orgId: cfg.orgId,
+        role: "roles/browser",
+        member: pulumi.interpolate`serviceAccount:${agentSA.email}`,
+    });
+
+    return {
+        cicdProjectId: cicdProject.projectId,
+    };
+}

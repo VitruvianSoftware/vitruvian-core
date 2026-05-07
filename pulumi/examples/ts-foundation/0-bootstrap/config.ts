@@ -65,6 +65,15 @@ export interface BootstrapConfig {
 
     initialGroupConfig: string;
 
+    // GitHub Actions CI/CD — default CI/CD provider.
+    // Set githubOwner to enable Workload Identity Federation.
+    githubOwner?: string;
+    githubRepoBootstrap?: string;
+    githubRepoOrg?: string;
+    githubRepoEnv?: string;
+    githubRepoNet?: string;
+    githubRepoProj?: string;
+
     // Workload Identity Federation attribute condition
     attributeCondition?: string;
 }
@@ -126,6 +135,14 @@ export function loadConfig(pulumiConfig: pulumi.Config): BootstrapConfig {
             },
         },
         initialGroupConfig: pulumiConfig.get("initial_group_config") || "WITH_INITIAL_OWNER",
+
+        // GitHub Actions CI/CD
+        githubOwner: pulumiConfig.get("github_owner"),
+        githubRepoBootstrap: pulumiConfig.get("github_repo_bootstrap"),
+        githubRepoOrg: pulumiConfig.get("github_repo_org"),
+        githubRepoEnv: pulumiConfig.get("github_repo_env"),
+        githubRepoNet: pulumiConfig.get("github_repo_net"),
+        githubRepoProj: pulumiConfig.get("github_repo_proj"),
         attributeCondition: pulumiConfig.get("attribute_condition"),
     };
 }

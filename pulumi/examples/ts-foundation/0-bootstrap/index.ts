@@ -25,7 +25,7 @@ import * as random from "@pulumi/random";
 import { loadConfig, BootstrapConfig } from "./config";
 import { deployGroups } from "./groups";
 import { deployServiceAccounts, GranularSAs } from "./sa";
-import { deployCloudbuild } from "./build_cb";
+import { deployGitHubActionsWIF, deployCICDProject } from "./build_github_actions";
 import { Bootstrap } from "@vitruviansoftware/foundation-bootstrap";
 
 export = async () => {
@@ -99,14 +99,14 @@ export = async () => {
     const stateBucketKmsKey = seedBootstrap.kmsKeyId as pulumi.Output<string>;
 
     /*************************************************
-      CI/CD Project and Cloud Build (mirrors build_cb.tf)
+      CI/CD Project (mirrors Go's deployCICDProject)
     *************************************************/
-    const cbOutputs = await deployCloudbuild(cfg, bootstrapFolder, seedProject, seedBootstrap.stateBucketName, stateBucketKmsKey);
+    const cicdOutputs = await deployCICDProject(cfg, bootstrapFolder);
 
     /*************************************************
       Service Accounts and IAM (mirrors sa.tf)
     *************************************************/
-    const saOutputs = await deployServiceAccounts(cfg, seedProject, cbOutputs.cicdProjectId);
+    const saOutputs = await deployServiceAccounts(cfg, seedProject, cicdOutputs.cicdProjectId);
 
     /*************************************************
       Projects state bucket (for 4-projects stage)
@@ -120,6 +120,17 @@ export = async () => {
         versioning: { enabled: true },
         encryption: { defaultKmsKeyName: stateBucketKmsKey },
     }, { dependsOn: [seedBootstrap] });
+
+    /*************************************************
+      GitHub Actions WIF (mirrors Go's deployGitHubActionsBuild)
+    *************************************************/
+    const wifOutputs = await deployGitHubActionsWIF(
+        cfg,
+        cicdOutputs.cicdProjectId,
+        seedBootstrap.stateBucketName,
+        projectsStateBucket.name,
+        saOutputs,
+    );
 
     /*************************************************
       Org admins IAM at org level
@@ -197,9 +208,9 @@ export = async () => {
             ? groupOutputs.optionalGroupIds
             : cfg.groups.optionalGroups,
 
-        cloudbuild_project_id: cbOutputs.cicdProjectId,
-        cloud_build_private_worker_pool_id: cbOutputs.privateWorkerPoolId,
-        wif_pool_name: "",
-        wif_provider_name: "",
+        cloudbuild_project_id: cicdOutputs.cicdProjectId,
+        cloud_build_private_worker_pool_id: cicdOutputs.privateWorkerPoolId,
+        wif_pool_name: wifOutputs.wifPoolName,
+        wif_provider_name: wifOutputs.wifProviderName,
     };
 };

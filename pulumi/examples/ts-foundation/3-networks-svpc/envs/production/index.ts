@@ -73,10 +73,12 @@ export = async () => {
 
     perimeterName = vpcSc.perimeter.name;
 
+    const targetNameServerAddresses = config.getObject<string[]>("target_name_server_addresses") || ["10.0.0.1"];
+
     return {
+        target_name_server_addresses: targetNameServerAddresses,
         access_context_manager_policy_id: policyId,
         shared_vpc_host_project_id: envProjectId,
-        network_id: svpc.networkId,
         network_name: svpc.networkName,
         network_self_link: svpc.networkSelfLink,
         subnets_names: svpc.subnetsNames,
