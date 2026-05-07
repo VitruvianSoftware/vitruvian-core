@@ -155,6 +155,10 @@ type CentralizedLoggingOutputs struct {
 	// LinkedDatasetName is the resource name of the linked BQ dataset (if created).
 	LinkedDatasetName pulumi.StringOutput
 
+	// BillingSinkNames is a map of destination key → billing sink name.
+	// Mirrors TF centralized-logging module's billing_sink_names output.
+	BillingSinkNames map[string]pulumi.StringOutput
+
 	// LastResource is the last resource created, for dependency ordering.
 	LastResource pulumi.Resource
 }
@@ -203,6 +207,7 @@ func NewCentralizedLogging(ctx *pulumi.Context, name string, args *CentralizedLo
 	}
 
 	var lastResource pulumi.Resource
+	billingSinkNames := make(map[string]pulumi.StringOutput)
 
 	// ====================================================================
 	// Project log bucket destination
@@ -400,6 +405,7 @@ func NewCentralizedLogging(ctx *pulumi.Context, name string, args *CentralizedLo
 				return nil, err
 			}
 			lastResource = billingIAM
+			billingSinkNames["storage"] = pulumi.Sprintf("%s-billing-%s", so.LoggingSinkName, suffix.Result)
 		}
 	}
 
@@ -492,6 +498,7 @@ func NewCentralizedLogging(ctx *pulumi.Context, name string, args *CentralizedLo
 				return nil, err
 			}
 			lastResource = billingIAM
+			billingSinkNames["pubsub"] = pulumi.Sprintf("%s-billing-%s", po.LoggingSinkName, suffix.Result)
 		}
 	}
 
@@ -534,9 +541,11 @@ func NewCentralizedLogging(ctx *pulumi.Context, name string, args *CentralizedLo
 			return nil, err
 		}
 		lastResource = billingPrjIAM
+		billingSinkNames["project"] = pulumi.Sprintf("%s-billing-%s", sinkName, suffix.Result)
 	}
 
 	component.LastResource = lastResource
+	component.BillingSinkNames = billingSinkNames
 
 	ctx.RegisterResourceOutputs(component, pulumi.Map{})
 	return component, nil

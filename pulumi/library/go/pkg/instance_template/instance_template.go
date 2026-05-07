@@ -42,6 +42,9 @@ type InstanceTemplateArgs struct {
 	Metadata           map[string]string
 	EnableShieldedVm   bool
 	EnableConfidentialVm bool
+	NamePrefix         string
+	MinCpuPlatform     string
+	ConfidentialInstanceType string
 }
 
 type InstanceTemplate struct {
@@ -93,6 +96,13 @@ func NewInstanceTemplate(ctx *pulumi.Context, name string, args *InstanceTemplat
 		},
 	}
 
+	if args.NamePrefix != "" {
+		tmplArgs.NamePrefix = pulumi.String(args.NamePrefix)
+	}
+	if args.MinCpuPlatform != "" {
+		tmplArgs.MinCpuPlatform = pulumi.String(args.MinCpuPlatform)
+	}
+
 	if args.ServiceAccountEmail != nil {
 		var scopes pulumi.StringArray
 		for _, s := range args.ServiceAccountScopes {
@@ -140,9 +150,13 @@ func NewInstanceTemplate(ctx *pulumi.Context, name string, args *InstanceTemplat
 	}
 
 	if args.EnableConfidentialVm {
-		tmplArgs.ConfidentialInstanceConfig = &compute.InstanceTemplateConfidentialInstanceConfigArgs{
+		confArgs := &compute.InstanceTemplateConfidentialInstanceConfigArgs{
 			EnableConfidentialCompute: pulumi.Bool(true),
 		}
+		if args.ConfidentialInstanceType != "" {
+			confArgs.ConfidentialInstanceType = pulumi.String(args.ConfidentialInstanceType)
+		}
+		tmplArgs.ConfidentialInstanceConfig = confArgs
 	}
 
 	tmpl, err := compute.NewInstanceTemplate(ctx, name, tmplArgs, pulumi.Parent(component))

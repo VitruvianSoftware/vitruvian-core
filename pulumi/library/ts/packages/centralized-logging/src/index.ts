@@ -60,11 +60,14 @@ export class CentralizedLogging extends pulumi.ComponentResource {
     public readonly pubsubTopicName: pulumi.Output<string>;
     public readonly logBucketName: pulumi.Output<string>;
     public readonly linkedDatasetName: pulumi.Output<string>;
+    /** Billing sink names by destination key — mirrors TF billing_sink_names output */
+    public readonly billingSinkNames: Record<string, pulumi.Output<string>>;
 
     constructor(name: string, args: CentralizedLoggingArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:CentralizedLogging", name, args, opts);
 
         const iamDependencies: pulumi.CustomResource[] = [];
+        const billingSinkNames: Record<string, pulumi.Output<string>> = {};
         let _storageBucketName: pulumi.Output<string> = pulumi.output("");
         let _pubsubTopicName: pulumi.Output<string> = pulumi.output("");
         let _logBucketName: pulumi.Output<string> = pulumi.output("");
@@ -160,6 +163,22 @@ export class CentralizedLogging extends pulumi.ComponentResource {
             }, { parent: this });
             iamDependencies.push(iam);
             _storageBucketName = bucket.name;
+
+            // Billing account sink → storage (mirrors Go/TF billing sinks)
+            if (args.billingAccount) {
+                const billSinkName = `${args.storageOptions.loggingSinkName ?? "sk-c-logging-bkt"}-billing`;
+                const billSink = new gcp.logging.BillingAccountSink(`${name}-storage-billing-sink`, {
+                    name: billSinkName,
+                    billingAccount: args.billingAccount,
+                    destination: pulumi.interpolate`storage.googleapis.com/${bucket.name}`,
+                }, { parent: this });
+                new gcp.storage.BucketIAMMember(`${name}-storage-billing-iam`, {
+                    bucket: bucket.name,
+                    role: "roles/storage.objectCreator",
+                    member: billSink.writerIdentity,
+                }, { parent: this });
+                billingSinkNames["storage"] = pulumi.output(billSinkName);
+            }
         }
 
         // Pub/Sub sink
@@ -193,6 +212,23 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                     topic: topic.name,
                 }, { parent: this });
             }
+
+            // Billing account sink → pubsub (mirrors Go/TF billing sinks)
+            if (args.billingAccount) {
+                const billSinkName = `${args.pubsubOptions.loggingSinkName ?? "sk-c-logging-pub"}-billing`;
+                const billSink = new gcp.logging.BillingAccountSink(`${name}-pubsub-billing-sink`, {
+                    name: billSinkName,
+                    billingAccount: args.billingAccount,
+                    destination: pulumi.interpolate`pubsub.googleapis.com/projects/${args.projectId}/topics/${topic.name}`,
+                }, { parent: this });
+                new gcp.pubsub.TopicIAMMember(`${name}-pubsub-billing-iam`, {
+                    project: args.projectId,
+                    topic: topic.name,
+                    role: "roles/pubsub.publisher",
+                    member: billSink.writerIdentity,
+                }, { parent: this });
+                billingSinkNames["pubsub"] = pulumi.output(billSinkName);
+            }
         }
 
         // Output an explicit dependency property that resolves when all IAM memberships are ready.
@@ -202,6 +238,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
         this.pubsubTopicName = _pubsubTopicName;
         this.logBucketName = _logBucketName;
         this.linkedDatasetName = _linkedDatasetName;
+        this.billingSinkNames = billingSinkNames;
 
         this.registerOutputs({
             waitIamMembership: this.waitIamMembership,
@@ -209,6 +246,7 @@ export class CentralizedLogging extends pulumi.ComponentResource {
             pubsubTopicName: this.pubsubTopicName,
             logBucketName: this.logBucketName,
             linkedDatasetName: this.linkedDatasetName,
+            billingSinkNames: this.billingSinkNames,
         });
     }
 }
