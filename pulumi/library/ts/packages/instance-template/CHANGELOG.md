@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-instance-template-v0.4.0...foundation-instance-template-v0.5.0) (2026-05-07)
+
+
+### Features
+
+* add minCpuPlatform and confidentialInstanceType to TS instance-template ([427180c](https://github.com/VitruvianSoftware/pulumi-library/commit/427180c8ee3c7e85a18ea0c6549312d1ebfdeb92))
+* add minCpuPlatform and confidentialInstanceType to TS instance-template ([48420b0](https://github.com/VitruvianSoftware/pulumi-library/commit/48420b00ab94bd111f30efe650f58ae784665e5b))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-instance-template-v0.3.0...foundation-instance-template-v0.4.0) (2026-05-06)
 
 
