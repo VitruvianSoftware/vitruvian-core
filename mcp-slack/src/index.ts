@@ -992,7 +992,9 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("mcp-slack server v2.0.0 running on stdio (22 tools)");
+  
+  // Note: All initialization logs must strictly use stderr to avoid violating the MCP stdio transport protocol.
+  process.stderr.write("mcp-slack server v2.0.0 running on stdio (22 tools)\n");
 }
 
 main().catch((err) => {
