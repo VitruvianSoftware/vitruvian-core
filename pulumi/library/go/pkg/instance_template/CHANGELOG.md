@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-instance-template-v0.2.0...go-instance-template-v0.2.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* achieve 100% architectural parity ([#55](https://github.com/VitruvianSoftware/pulumi-library/issues/55)) ([26036da](https://github.com/VitruvianSoftware/pulumi-library/commit/26036da5f46c1d49cfe9fbace41ea23ed6f51e11))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-instance-template-v0.1.0...go-instance-template-v0.2.0) (2026-05-06)
 
 
