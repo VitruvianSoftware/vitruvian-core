@@ -1,0 +1,115 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package cmd
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+
+	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
+
+	"github.com/VitruvianSoftware/devx/internal/database"
+)
+
+var rmRuntime string
+var rmKeepVolume bool
+var rmProject string
+
+var dbRmCmd = &cobra.Command{
+	Use:   "rm <engine>",
+	Short: "Stop and remove a devx-managed database",
+	Long:  `Removes the database container. Use --keep-volume to preserve data for later.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runDbRm,
+}
+
+func init() {
+	dbRmCmd.Flags().StringVar(&rmRuntime, "runtime", "podman",
+		"Container runtime to use (podman, docker)")
+	dbRmCmd.Flags().BoolVar(&rmKeepVolume, "keep-volume", false,
+		"Keep the persistent data volume (only remove the container)")
+	dbRmCmd.Flags().StringVar(&rmProject, "project", "",
+		"Namespace isolation prefix for containers and volumes (e.g., pr-42)")
+	dbCmd.AddCommand(dbRmCmd)
+}
+
+func runDbRm(_ *cobra.Command, args []string) error {
+	engineName := strings.ToLower(args[0])
+	if _, ok := database.Registry[engineName]; !ok {
+		return fmt.Errorf("unknown engine %q — supported: %s",
+			engineName, strings.Join(database.SupportedEngines(), ", "))
+	}
+
+	runtime := rmRuntime
+	containerName := fmt.Sprintf("devx-db-%s", engineName)
+	volumeName := fmt.Sprintf("devx-data-%s", engineName)
+	if rmProject != "" {
+		containerName = fmt.Sprintf("devx-db-%s-%s", rmProject, engineName)
+		volumeName = fmt.Sprintf("devx-data-%s-%s", rmProject, engineName)
+	}
+
+	if DryRun {
+		fmt.Printf("DRY RUN: Would stop and remove container %s\n", containerName)
+		if !rmKeepVolume {
+			fmt.Printf("DRY RUN: Would permanently delete data volume %s\n", volumeName)
+		} else {
+			fmt.Printf("DRY RUN: Would preserve data volume %s\n", volumeName)
+		}
+		return nil
+	}
+
+	if !rmKeepVolume && !NonInteractive {
+		var confirmed bool
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(fmt.Sprintf("Remove %s and its data?", containerName)).
+					Description(fmt.Sprintf("This will delete the container AND the volume '%s'.\nAll data will be permanently lost.", volumeName)).
+					Affirmative("Yes, delete everything").
+					Negative("Cancel").
+					Value(&confirmed),
+			),
+		).WithTheme(huh.ThemeCatppuccin())
+
+		if err := form.Run(); err != nil || !confirmed {
+			fmt.Println("Removal cancelled.")
+			return nil
+		}
+	}
+
+	fmt.Printf("Stopping %s...\n", containerName)
+	_ = exec.Command(runtime, "stop", containerName).Run()
+
+	fmt.Printf("Removing container %s...\n", containerName)
+	_ = exec.Command(runtime, "rm", "-f", containerName).Run()
+
+	if !rmKeepVolume {
+		fmt.Printf("Removing volume %s...\n", volumeName)
+		_ = exec.Command(runtime, "volume", "rm", "-f", volumeName).Run()
+		fmt.Println("✓ Container and data volume removed.")
+	} else {
+		fmt.Printf("✓ Container removed. Volume '%s' preserved.\n", volumeName)
+	}
+
+	return nil
+}

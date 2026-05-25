@@ -1,0 +1,94 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+version: 2
+
+builds:
+  - id: devx
+    main: .
+    binary: devx
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/VitruvianSoftware/devx/cmd.version={{.Version}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "devx_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - .env.example
+      - dev-machine.template.bu
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: VitruvianSoftware
+    name: devx
+  draft: false
+  prerelease: auto
+  name_template: "devx {{.Version}}"
+  header: |
+    ## What's Changed
+
+    Install with:
+    ```bash
+    # macOS (Apple Silicon)
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_darwin_arm64.tar.gz | tar xz
+    sudo mv devx /usr/local/bin/
+
+    # macOS (Intel)
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_darwin_amd64.tar.gz | tar xz
+    sudo mv devx /usr/local/bin/
+
+    # Linux (amd64)
+    curl -sL https://github.com/VitruvianSoftware/devx/releases/download/v{{.Version}}/devx_linux_amd64.tar.gz | tar xz
+    sudo mv devx /usr/local/bin/
+    ```
+
+brews:
+  - repository:
+      owner: VitruvianSoftware
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/VitruvianSoftware/devx"
+    description: "Supercharged local dev environment — Podman + Cloudflare Tunnels + Tailscale in one CLI"
+    license: "MIT"
+    test: |
+      system "#{bin}/devx", "version"

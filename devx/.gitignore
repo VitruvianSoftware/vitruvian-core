@@ -1,0 +1,39 @@
+# Secrets — real values, never commit
+.env
+.env.keys
+
+# Our local config
+devx.yaml
+homelab.yaml
+cluster.yaml
+
+# Go build output
+/devx
+dist/
+
+# Dependencies
+node_modules/
+
+# Go tooling
+vendor/
+
+# Coverage artifacts
+coverage.out
+
+# Ignition build artifacts
+dev-machine.bu
+config.ign
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+cmd/var/
+
+# Python
+__pycache__/
+*.pyc

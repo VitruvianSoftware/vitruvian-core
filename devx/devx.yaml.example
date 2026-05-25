@@ -1,0 +1,416 @@
+# devx.yaml
+# Example topology configuration for running multiple interconnected services
+# locally and exposing them through a single devx Cloudflare tunnel.
+#
+# Run 'devx up' in the same directory as this file to provision dependencies 
+# and expose services.
+
+# --- Idea 44: Unified Multirepo Orchestration ---
+# Compose multiple sibling repositories into a single orchestrated topology.
+# Each included project's commands execute from its own directory — 'go run ./cmd/api'
+# in payments-api runs from ../payments-api, not from this directory.
+# Fail-fast conflict detection prevents accidental service name/database collisions.
+#
+# Short syntax:
+# include:
+#   - path: ../payments-api/devx.yaml
+#   - path: ../user-service/devx.yaml
+#
+# Long syntax (per-include env override):
+# include:
+#   - path: ../payments-api/devx.yaml
+#   - path: ../user-service/devx.yaml
+#     env_file: ../user-service/.env.local
+
+# Project name determines the base subdomain for all nested services below.
+# E.g. If your dev name is 'james', the base domain is 'james-prj-demo-app'
+name: demo-app
+
+# Optional: Override the fallback `.ipv1337.dev` domain with your own custom domain (BYOD).
+# Ensure you are logged into a Cloudflare account that has permissions over this zone.
+domain: mycompany.dev
+
+# --- Idea 5: Virtualization Provider Abstraction ---
+# Choose which VM backend devx should use. By default, devx will auto-detect
+# what is installed on your system (podman, lima, colima, orbstack, docker) and ask
+# you which to use. You can pin a specific provider here as a project-level default.
+#
+# Resolution order (first wins):
+#   1. --provider CLI flag
+#   2. ~/.devx/config.yaml (machine-local, not committed to git)
+#   3. This field (project-level default)
+#   4. Auto-detect installed backends
+#
+# Supported: auto, podman, lima, colima, orbstack, docker
+provider: auto
+
+# Define remote and local secret vaults to securely inject environment variables 
+# directly into your `devx shell` without writing plaintext .env files to disk.
+env:
+  - 1password://dev/my-app/env
+  - gcp://projects/my-org/secrets/my-prod/versions/latest
+  - bitwarden://my-app-env
+  - file://.env.local
+
+# Define local databases to provision. When running 'devx up', devx will 
+# spin up containers with persistent volumes for each defined database.
+databases:
+  # Supported engines: postgres, redis, mysql, mongo
+  - engine: postgres
+    port: 5432
+    # Optional: configure 'devx db pull postgres' to fetch a nightly scrubbed dump.
+    # The 'command' must write the dump to stdout.
+    pull:
+      # --- Mode 1: Plain SQL (default, all engines) ---
+      # Best for standard pg_dump, mysqldump and smaller databases (<5GB).
+      # Imported sequentially via psql.
+      # command: "gcloud storage cat gs://my-company-scrubbed-dumps/nightly.sql.gz | gunzip"
+
+      # --- Mode 2: PostgreSQL binary format (postgres only, large databases) ---
+      # pg_dump -Fc produces a compressed binary that pg_restore can parallelise.
+      # Use this when import time matters on large datasets (5GB+).
+      format: custom   # triggers pg_restore instead of psql
+      jobs: 4          # parallel workers (default: number of CPU cores)
+      command: "gcloud storage cat gs://my-company-scrubbed-dumps/nightly.dump"
+    # Optional: configure 'devx db seed postgres' to inject dummy test data.
+    # The 'command' executes on your host machine with connection variables injected.
+    seed:
+      # Note: Ensure packages (python, npm) exist on your host or use a container command
+      command: "npm run db:seed"
+  - engine: redis
+
+tunnels:
+  # The 'name' field defines the subdomain for this specific service.
+  # Example output: https://api-demo-app-james.ipv1337.dev
+  - name: api
+    port: 8080
+    
+    # You can instantly secure any application from the public edge by providing
+    # basic authentication credentials. No external premium services necessary.
+    basic_auth: "admin:supersecret"
+
+  # Example output: https://web-demo-app-james.ipv1337.dev
+  - name: web
+    port: 3000
+
+    # You can simulate poor network conditions to test your frontend.
+    # Supported profiles: '3g', 'edge', 'slow'
+    throttle: "3g"
+
+  # Example output: https://webhooks-demo-app-james.ipv1337.dev
+  - name: webhooks
+    port: 8000
+
+# Define local developer applications to orchestrate.
+# Services are started in dependency order via a DAG (Directed Acyclic Graph).
+# This eliminates "Connection Refused" errors by gating startup behind health checks.
+#
+# Supported runtimes: host (default), container, kubernetes, cloud
+services:
+  - name: api
+    runtime: host
+    command: ["go", "run", "./cmd/api"]
+    port: 8080
+    depends_on:
+      - name: postgres
+        condition: service_healthy
+      - name: redis
+        condition: service_healthy
+    healthcheck:
+      http: "http://localhost:8080/health"
+      interval: "2s"
+      timeout: "30s"
+      retries: 3
+    env:
+      LOG_LEVEL: debug
+
+  - name: worker
+    runtime: host
+    command: ["go", "run", "./cmd/worker"]
+    depends_on:
+      - name: postgres
+        condition: service_healthy
+      - name: api
+        condition: service_healthy
+
+  - name: web
+    runtime: host
+    command: ["npm", "run", "dev"]
+    port: 3000
+    depends_on:
+      - name: api
+        condition: service_healthy
+    healthcheck:
+      http: "http://localhost:3000"
+      timeout: "60s"
+
+  # One-shot task (run-to-completion): devx runs the command, waits for it to
+  # exit 0, then unblocks dependents. Use for data seeds, migrations, and init
+  # hooks. Dependents wait with `condition: service_completed_successfully`.
+  # healthcheck.timeout bounds the run (default 10m). The k8s counterpart is a
+  # seed Job in your manifests (runtime: kubernetes).
+  - name: seed
+    runtime: host                 # or container
+    command: ["npm", "run", "seed"]
+    oneshot: true
+    depends_on:
+      - name: postgres
+        condition: service_healthy
+
+  # Container-runtime service with smart file syncing (Idea 43).
+  # Instead of slow VirtioFS volume mounts, 'devx sync up' creates a
+  # high-performance Mutagen session that propagates file changes in milliseconds.
+  - name: sidecar
+    runtime: container
+    command: ["docker", "run", "--name", "devx-sidecar", "-p", "9090:9090", "myorg/sidecar:dev"]
+    port: 9090
+    depends_on:
+      - name: api
+        condition: service_healthy
+    sync:
+      - container: devx-sidecar
+        src: ./sidecar/src
+        dest: /app/src
+        ignore: ["*.test.ts", "coverage/"]
+
+    # --- Idea 45: Predictive Background Pre-Building (opt-in) ---
+    # When enabled, devx silently watches dependency manifests (go.mod, package.json,
+    # Cargo.toml, requirements.txt) during 'devx up'. If a change is detected, it
+    # pre-builds the container image in the background so the next restart is instant.
+    # Recommended for projects where build times exceed 60 seconds.
+    # predictive_build: true
+
+  # --- Kubernetes-deploy service (skaffold-class) ---
+  # With runtime: kubernetes, devx renders your manifests and applies them to the
+  # target cluster, then gates the DAG on the namespace's Deployments becoming
+  # Available (no port-forward needed). Applied resources are pruned on shutdown.
+  # - name: payments-api
+  #   runtime: kubernetes
+  #   depends_on:
+  #     - name: postgres
+  #       condition: service_healthy
+  #   kubernetes:
+  #     manifests: ./deploy/k8s/overlays/local  # kustomize dir (default), raw manifest file/dir, or helm chart
+  #     renderer: kustomize                      # kustomize (default) | raw | helm
+  #     # For renderer: helm, `manifests` is a chart directory; optional helm fields:
+  #     # release: payments-api                  # helm release name (default: service name)
+  #     # values: [values-local.yaml]            # helm values files
+  #     # live-reload: sync local dirs into the running pod for hot reload
+  #     sync:
+  #       - src: ./src                           # local dir (relative to service dir)
+  #         dest: /app/src                       # path inside the pod
+  #         selector: app=payments-api           # pod label selector
+  #     # auto-discover the namespace's Services and port-forward them to localhost
+  #     # (needs socat on the cluster nodes):
+  #     port_forward: true
+  #     namespace: payments-dev                  # target namespace (default: "default"; created if missing)
+  #     context: ""                              # kube context (default: current context)
+  #     kubeconfig: ""                           # kubeconfig path (default: $KUBECONFIG, then ~/.kube/config)
+  #     # images devx builds + loads into an in-cluster registry before apply; reference
+  #     # them in manifests as localhost:30500/<name>:<tag> (with imagePullPolicy: Always):
+  #     images:
+  #       - name: payments-api                   # → localhost:30500/payments-api:dev
+  #         context: ./payments-api              # build context (default ".")
+  #         dockerfile: Dockerfile               # relative to context (default "Dockerfile")
+  #         tag: dev                             # default "dev"
+  #         # platforms: [linux/amd64, linux/arm64]  # multi-arch (default: the builder's arch)
+
+  # --- Cloud Run-deploy service (runtime: cloud) ---
+  # With runtime: cloud, devx deploys the image to Google Cloud Run via `gcloud run
+  # deploy` and removes it on shutdown. project, region, and image are required.
+  # - name: brms-offer
+  #   runtime: cloud
+  #   cloud_run:
+  #     image: us-docker.pkg.dev/my-proj/brms/offer:dev   # required
+  #     region: us-central1                                # required
+  #     project: my-dev-project                            # required (no implicit default)
+  #     service: brms-offer                                # optional (default: service name)
+  #     allow_unauthenticated: false                       # optional (default: private)
+  #     env:                                               # optional
+  #       RULES_MANIFEST: gs://my-bucket/manifest.json
+  #     # flags: ["--memory", "512Mi"]                     # optional extra gcloud flags
+
+# --- Idea 37: Environment Profiles ---
+# Profiles apply additive/merge overlays on top of the base config above.
+# Uses Docker Compose override semantics:
+#   - Matching names: profile fields win (merge)
+#   - New entries: appended to list (additive)
+#   - Unmentioned base entries: preserved as-is
+#
+# Usage:
+#   devx up --profile backend-only
+#   devx up --profile staging
+profiles:
+  # For backend developers who don't need the React frontend
+  backend-only:
+    services:
+      # Override: change API log level to trace for deeper debugging
+      - name: api
+        env:
+          LOG_LEVEL: trace
+      # Add: a Kafka consumer that only backend devs care about
+      - name: kafka-consumer
+        runtime: host
+        command: ["go", "run", "./cmd/consumer"]
+        depends_on:
+          - name: postgres
+            condition: service_healthy
+
+  # Full integration stack against staging images
+  staging:
+    services:
+      - name: api
+        runtime: container
+        command: ["docker", "run", "-p", "8080:8080", "gcr.io/my-org/api:staging"]
+        env:
+          ENVIRONMENT: staging
+    databases:
+      - engine: postgres
+        port: 5433  # Different port to avoid conflicts with local dev DB
+
+# --- Idea 45.2: Declarative Pipeline Stages ---
+# Override auto-detected build/test/lint commands with explicit definitions.
+# If omitted, devx auto-detects commands from marker files (go.mod, package.json, etc.)
+# When present, auto-detection is bypassed entirely ("Explicit Wins").
+#
+# Single command shorthand:
+# pipeline:
+#   test:
+#     command: ["pytest", "-v", "--cov=app"]
+#   lint:
+#     command: ["ruff", "check", "."]
+#   build:
+#     command: ["docker", "build", "-t", "myapp", "."]
+#   verify:
+#     command: ["./scripts/integration-test.sh"]
+#
+# Multi-command (runs sequentially, fails fast):
+# pipeline:
+#   test:
+#     commands:
+#       - ["go", "test", "./..."]
+#       - ["go", "vet", "./..."]
+#   build:
+#     command: ["go", "build", "./..."]
+#
+# Lifecycle hooks (scaffolded — executed in Idea 45.3):
+# pipeline:
+#   build:
+#     before:
+#       - ["echo", "Preparing build..."]
+#     command: ["go", "build", "./..."]
+#     after:
+#       - ["echo", "Build complete!"]
+
+# --- Idea 45.4: Custom Actions ---
+# Named, on-demand tasks triggered via 'devx action <action-name>'.
+# customActions:
+#   seed-db:
+#     command: ["npm", "run", "db:seed"]
+#   generate-mocks:
+#     commands:
+#       - ["mockgen", "-source=./internal/...", "-destination=./internal/mock/..."]
+
+# --- Idea 46.1: Hybrid Edge-to-Local Bridge ---
+# Connect your local environment to remote Kubernetes services via kubectl port-forward.
+# Environment variables (BRIDGE_<SERVICE>_URL, _HOST, _PORT) are auto-injected into devx shell.
+#
+# bridge:
+#   kubeconfig: ~/.kube/config            # Path to kubeconfig (default: ~/.kube/config)
+#   context: gke_my-org_us-central1_staging  # Kube context to use
+#   namespace: default                    # Default namespace for targets
+#   agent_image: ""                       # Override agent container image (for air-gapped clusters)
+#
+#   # Outbound connectivity (Idea 46.1) — connect to remote services
+#   targets:
+#     - service: payments-api              # K8s service name
+#       port: 8080                         # Remote service port
+#     - service: user-service
+#       port: 3000
+#     - service: redis
+#       namespace: cache                   # Override namespace per target
+#       port: 6379
+#       local_port: 16379                  # Pin to specific local port (0 = auto)
+#
+#   # Inbound traffic interception (Idea 46.2) — route cluster traffic to local
+#   intercepts:
+#     - service: payments-api
+#       port: 8080
+#       mode: steal                        # Required: "steal" (full redirect)
+#       local_port: 8080                   # Local port where traffic is routed
+#
+# Future (Idea 46.1.5): DNS proxy for native *.svc.cluster.local resolution.
+#
+# ─── Hybrid Topology (Idea 46.3) ─────────────────────────────────────────────
+# Bridge services can also be declared inline in the services: array using
+# `runtime: bridge`. This integrates them into the devx up DAG orchestrator,
+# enabling dependency ordering with local services and unified lifecycle.
+#
+# The top-level bridge: section above is for standalone `devx bridge connect`
+# and `devx bridge intercept` commands. The services: entries below are for
+# DAG-orchestrated bridge operations via `devx up`.
+#
+# services:
+#   # Outbound bridge: remote K8s service available locally via port-forward
+#   - name: remote-payments
+#     runtime: bridge
+#     bridge_target:
+#       service: payments-api          # K8s service name
+#       namespace: staging             # optional (default: bridge.namespace)
+#       port: 8080                     # remote port
+#       local_port: 8080               # optional: local port (0 = auto)
+#     healthcheck:
+#       tcp: "localhost:8080"           # validates bridge is forwarding
+#       timeout: "15s"
+#
+#   # Inbound intercept: steal traffic from remote → local
+#   - name: user-svc-intercept
+#     runtime: bridge
+#     bridge_intercept:
+#       service: user-service          # K8s service to intercept
+#       namespace: staging
+#       port: 3000
+#       local_port: 3000
+#       mode: steal                    # required: "steal" (mirror: future)
+#     depends_on:
+#       - name: local-user-svc         # local service must be ready first
+#         condition: service_healthy
+#
+#   # Local service that depends on bridged remote services
+#   - name: local-api
+#     runtime: host
+#     command: ["go", "run", "./cmd/api"]
+#     port: 9090
+#     depends_on:
+#       - name: remote-payments         # waits for bridge to be healthy
+#         condition: service_healthy
+#       - name: postgres
+#         condition: service_healthy
+#
+# ─── 8. State Replication (Idea 56) ──────────────────────────────────────────────
+# Configure where devx state share/attach bundles are stored.
+# If omitted, share and attach commands will require the --relay flag.
+# state:
+#   # Use your own S3/GCS bucket for secure team sharing (recommended)
+#   relay: "s3://my-team-devx-state/checkpoints"
+#   # relay: "gs://my-team-devx-state/checkpoints"
+
+# ─── 9. Cron Jobs (Idea 66) ──────────────────────────────────────────────────────
+# Declare named cron jobs so they can be invoked on demand with the project's
+# vault secrets injected: `devx cron list` / `devx cron run <name>`.
+# The schedule is informational in this version — there is no long-running
+# scheduler. Pair the local one-shot with whatever production cron / k8s
+# CronJob fires the same command on its real cadence.
+#
+# cron:
+#   - name: nightly-cleanup
+#     schedule: "0 2 * * *"
+#     description: "Purge sessions older than 30 days"
+#     command: ["node", "scripts/cleanup.js"]
+#     timeout: "5m"
+#     env:
+#       DRY_RUN: "false"
+#
+#   - name: hourly-snapshot
+#     schedule: "0 * * * *"
+#     command: ["pg_dump", "-Fc", "-f", "/backups/snap.dump", "myapp"]

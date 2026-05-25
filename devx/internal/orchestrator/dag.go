@@ -1,0 +1,644 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// Package orchestrator implements a DAG-based service dependency graph for
+// ordered startup of databases, mock servers, and developer applications.
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/VitruvianSoftware/devx/internal/image"
+	"github.com/VitruvianSoftware/devx/internal/logs"
+	"github.com/VitruvianSoftware/devx/internal/network"
+)
+
+// Runtime determines where a service executes.
+type Runtime string
+
+const (
+	RuntimeHost       Runtime = "host"
+	RuntimeContainer  Runtime = "container"
+	RuntimeKubernetes Runtime = "kubernetes"
+	RuntimeCloud      Runtime = "cloud"
+	RuntimeBridge     Runtime = "bridge" // Idea 46.3: hybrid bridge services
+)
+
+// BridgeMode distinguishes between outbound and inbound bridge operations.
+type BridgeMode string
+
+const (
+	BridgeModeConnect   BridgeMode = "connect"   // Outbound: kubectl port-forward
+	BridgeModeIntercept BridgeMode = "intercept" // Inbound: agent + yamux tunnel
+)
+
+// BridgeNodeConfig holds bridge-specific configuration for a DAG node.
+type BridgeNodeConfig struct {
+	Kubeconfig    string
+	Context       string
+	Namespace     string
+	TargetService string
+	RemotePort    int
+	LocalPort     int
+	AgentImage    string
+	Mode          BridgeMode
+	InterceptMode string // "steal" or "mirror"
+}
+
+// KubeNodeConfig holds kubernetes-deploy configuration for a DAG node
+// (runtime: kubernetes): devx renders Manifests and applies them via kubectl.
+type KubeNodeConfig struct {
+	Manifests    string       // kustomize dir | raw manifest file/dir | helm chart
+	Renderer     string       // "kustomize" (default) | "raw" | "helm"
+	Namespace    string       // target namespace (default "default")
+	Context      string       // kube context
+	Kubeconfig   string       // kubeconfig path
+	ProviderName string       // container provider for image builds (e.g. "lima"); resolved by the cmd layer
+	Images       []image.Spec // images devx builds + loads into the cluster registry before apply
+	Release      string       // helm release name (renderer: helm; default: service name)
+	Values       []string     // helm values files (renderer: helm)
+	Sync         []KubeSync   // live-reload: local dirs synced into the deployed pod
+	PortForward  bool         // auto-discover the namespace's Services and forward them to localhost
+}
+
+// CloudRunNodeConfig holds Cloud Run deploy configuration for a DAG node
+// (runtime: cloud): devx deploys Image to Cloud Run via `gcloud run deploy`.
+type CloudRunNodeConfig struct {
+	Image                string            // container image to deploy
+	Service              string            // Cloud Run service name (default: node name)
+	Region               string            // GCP region
+	Project              string            // GCP project ID
+	Env                  map[string]string // env vars set on the service
+	AllowUnauthenticated bool              // expose publicly
+	Flags                []string          // extra `gcloud run deploy` flags
+}
+
+// ContainerNodeConfig holds runtime: container configuration for a DAG node:
+// devx runs a long-lived container in the VM via the provider runtime. Exactly
+// one of Image or Build is set.
+type ContainerNodeConfig struct {
+	Image        string      // pre-built image to run (empty when Build is set)
+	Build        *image.Spec // build-from-context spec (nil when Image is set)
+	Args         []string    // extra flags appended to `<runtime> run`
+	ProviderName string      // container provider to resolve the runtime (e.g. "lima")
+}
+
+// HealthcheckConfig defines how to verify a service is ready.
+type HealthcheckConfig struct {
+	// HTTP endpoint to poll (e.g., "http://localhost:8080/health")
+	HTTP string `yaml:"http"`
+	// TCP address to probe (e.g., "localhost:5432")
+	TCP string `yaml:"tcp"`
+	// Interval between checks
+	Interval time.Duration `yaml:"interval"`
+	// Timeout for each check attempt
+	Timeout time.Duration `yaml:"timeout"`
+	// Number of consecutive successes required
+	Retries int `yaml:"retries"`
+}
+
+// Dependency conditions accepted on DependsOnEntry.Condition. Gating is
+// tier-based: a dependent starts only once every node it depends on has reached
+// readiness for its tier — a normal service when its healthcheck passes (or it
+// has started, if it declares none), and a one-shot task when its process exits
+// successfully (use ConditionServiceCompletedSuccessfully for that case).
+const (
+	ConditionServiceHealthy               = "service_healthy"
+	ConditionServiceStarted               = "service_started"
+	ConditionServiceCompletedSuccessfully = "service_completed_successfully"
+)
+
+// DependsOnEntry references another node and a readiness condition.
+type DependsOnEntry struct {
+	Name      string `yaml:"name"`
+	Condition string `yaml:"condition"` // one of the Condition* constants
+}
+
+// ServiceConfig defines a developer application in devx.yaml.
+type ServiceConfig struct {
+	Name        string            `yaml:"name"`
+	Runtime     Runtime           `yaml:"runtime"`
+	Command     []string          `yaml:"command"`
+	DependsOn   []DependsOnEntry  `yaml:"depends_on"`
+	Healthcheck HealthcheckConfig `yaml:"healthcheck"`
+	Port        int               `yaml:"port"`
+	Env         map[string]string `yaml:"env"`
+	OneShot     bool              `yaml:"oneshot"`
+}
+
+// NodeType categorises a DAG node.
+type NodeType int
+
+const (
+	NodeDatabase NodeType = iota
+	NodeMock
+	NodeService
+)
+
+// Node is a single unit of work in the DAG.
+type Node struct {
+	Name        string
+	Type        NodeType
+	DependsOn   []string // names of nodes this depends on
+	Healthcheck HealthcheckConfig
+	Port        int // resolved port (after conflict resolution)
+	Runtime     Runtime
+	Command     []string
+	Env         map[string]string
+	Dir         string // Working directory for host process execution (set by include resolver for multirepo)
+	OneShot     bool   // run-to-completion task: gate dependents on exit 0 instead of a healthcheck
+
+	// Bridge-specific fields (Idea 46.3)
+	BridgeMode   BridgeMode        // for RuntimeBridge nodes
+	BridgeConfig *BridgeNodeConfig // bridge-specific parameters
+
+	// Kubernetes-deploy field (runtime: kubernetes)
+	Kube *KubeNodeConfig
+
+	// Runtime state for kubernetes cleanup (what was applied, for `devx down`)
+	kubeApplied *KubeNodeConfig
+
+	// Runtime state for kubernetes live-reload (stops pod-sync watchers on shutdown)
+	podSyncCancel context.CancelFunc
+
+	// Cloud Run deploy field (runtime: cloud) + what was deployed, for cleanup
+	CloudRun   *CloudRunNodeConfig
+	crDeployed *CloudRunNodeConfig
+
+	// Container deploy field (runtime: container) + whether we started it, for cleanup
+	Container        *ContainerNodeConfig
+	containerStarted bool
+
+	// Runtime state for kubernetes port-forward discovery (stops forwards on shutdown)
+	pfCancel context.CancelFunc
+	forwards []activeForward // active port-forwards, surfaced in the access summary
+
+	// Runtime state for kubernetes log watcher (stops pod watch + container tails on shutdown)
+	logWatchCancel context.CancelFunc
+
+	// Log mode resolved from flag/config for this node.
+	LogMode LogMode // how this node's logs are surfaced (resolved in the cmd layer)
+
+	// Runtime state
+	process     *exec.Cmd
+	cancel      context.CancelFunc
+	bridgeState *BridgeNodeState // runtime state for bridge cleanup
+	logCloser   func() error     // closes the log sink on cleanup
+}
+
+// DAG is a directed acyclic graph of nodes.
+type DAG struct {
+	Nodes map[string]*Node
+	mu    sync.Mutex
+}
+
+// NewDAG creates an empty DAG.
+func NewDAG() *DAG {
+	return &DAG{Nodes: make(map[string]*Node)}
+}
+
+// AddNode registers a node.
+func (d *DAG) AddNode(n *Node) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, exists := d.Nodes[n.Name]; exists {
+		return fmt.Errorf("duplicate node: %s", n.Name)
+	}
+	d.Nodes[n.Name] = n
+	return nil
+}
+
+// Validate checks for missing dependencies and cycles.
+func (d *DAG) Validate() error {
+	for name, node := range d.Nodes {
+		for _, dep := range node.DependsOn {
+			if _, exists := d.Nodes[dep]; !exists {
+				return fmt.Errorf("node %q depends on unknown node %q", name, dep)
+			}
+		}
+	}
+
+	// Cycle detection via topological sort
+	_, err := d.TopologicalSort()
+	return err
+}
+
+// TopologicalSort returns execution tiers: each tier contains nodes that
+// can be started in parallel once all nodes in previous tiers are healthy.
+func (d *DAG) TopologicalSort() ([][]string, error) {
+	inDegree := make(map[string]int)
+	for name := range d.Nodes {
+		inDegree[name] = 0
+	}
+	for _, node := range d.Nodes {
+		for _, dep := range node.DependsOn {
+			inDegree[node.Name]++
+			_ = dep // edge from dep -> node.Name
+		}
+	}
+
+	// Kahn's algorithm
+	var tiers [][]string
+	remaining := make(map[string]bool)
+	for name := range d.Nodes {
+		remaining[name] = true
+	}
+
+	for len(remaining) > 0 {
+		var tier []string
+		for name := range remaining {
+			if inDegree[name] == 0 {
+				tier = append(tier, name)
+			}
+		}
+
+		if len(tier) == 0 {
+			// All remaining have incoming edges — cycle detected
+			var cycleNodes []string
+			for name := range remaining {
+				cycleNodes = append(cycleNodes, name)
+			}
+			sort.Strings(cycleNodes)
+			return nil, fmt.Errorf("dependency cycle detected among: %s", strings.Join(cycleNodes, ", "))
+		}
+
+		// Deterministic ordering within a tier
+		sort.Strings(tier)
+
+		for _, name := range tier {
+			delete(remaining, name)
+			// Decrement in-degree for dependents
+			for depName, depNode := range d.Nodes {
+				for _, dep := range depNode.DependsOn {
+					if dep == name {
+						inDegree[depName]--
+					}
+				}
+			}
+		}
+
+		tiers = append(tiers, tier)
+	}
+
+	return tiers, nil
+}
+
+// Execute starts all nodes in topological order, waiting for health checks
+// between tiers. It returns a cleanup function to stop all started processes.
+func (d *DAG) Execute(ctx context.Context) (cleanup func(), err error) {
+	tiers, err := d.TopologicalSort()
+	if err != nil {
+		return nil, err
+	}
+
+	var startedNodes []*Node
+
+	cleanupFn := func() {
+		tornDown := false
+		for i := len(startedNodes) - 1; i >= 0; i-- {
+			n := startedNodes[i]
+
+			// Bridge cleanup: restore selectors, remove agents, stop port-forwards
+			if n.bridgeState != nil {
+				n.bridgeState.Cleanup()
+			}
+
+			// Kubernetes cleanup: stop live-reload + port-forward watchers, then delete what was applied
+			if n.podSyncCancel != nil {
+				n.podSyncCancel()
+			}
+			if n.pfCancel != nil {
+				n.pfCancel()
+			}
+			if n.logWatchCancel != nil {
+				n.logWatchCancel()
+			}
+			if n.kubeApplied != nil {
+				// deleteKubernetesNode prints the removed resources (formatTeardown).
+				deleteKubernetesNode(n)
+				if len(n.forwards) > 0 {
+					fmt.Println("     🔌 port-forwards stopped")
+				}
+				tornDown = true
+			}
+			if n.crDeployed != nil {
+				deleteCloudRunNode(n)
+				tornDown = true
+			}
+			if n.containerStarted {
+				_ = removeContainerNode(n)
+			}
+
+			if n.cancel != nil {
+				n.cancel()
+			}
+			if n.process != nil && n.process.Process != nil {
+				_ = n.process.Process.Kill()
+			}
+			if n.logCloser != nil {
+				_ = n.logCloser()
+			}
+		}
+		if tornDown {
+			fmt.Println("✅ Teardown complete.")
+		}
+	}
+
+	for tierIdx, tier := range tiers {
+		fmt.Printf("\n📋 Starting tier %d: %s\n", tierIdx+1, strings.Join(tier, ", "))
+
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(tier))
+
+		for _, name := range tier {
+			node := d.Nodes[name]
+			wg.Add(1)
+
+			go func(n *Node) {
+				defer wg.Done()
+
+				if n.Type == NodeService {
+					switch n.Runtime {
+					case RuntimeBridge:
+						if err := startBridgeNode(ctx, n); err != nil {
+							errCh <- fmt.Errorf("failed to start bridge service %q: %w", n.Name, err)
+							return
+						}
+					case RuntimeKubernetes:
+						if err := startKubernetesNode(ctx, n); err != nil {
+							errCh <- fmt.Errorf("failed to deploy service %q: %w", n.Name, err)
+							return
+						}
+					case RuntimeCloud:
+						if err := startCloudRunNode(ctx, n); err != nil {
+							errCh <- fmt.Errorf("failed to deploy Cloud Run service %q: %w", n.Name, err)
+							return
+						}
+					case RuntimeContainer:
+						if err := startContainerNode(ctx, n); err != nil {
+							errCh <- fmt.Errorf("failed to start container service %q: %w", n.Name, err)
+							return
+						}
+					default:
+						if len(n.Command) > 0 {
+							if n.Port > 0 {
+								actual, shifted, warning := network.ResolvePort(n.Port)
+								if shifted {
+									_, _ = fmt.Fprintf(os.Stderr, "\n%s\n\n", warning)
+									n.Port = actual
+								}
+							}
+
+							if err := startHostProcess(ctx, n); err != nil {
+								errCh <- fmt.Errorf("failed to start service %q: %w", n.Name, err)
+								return
+							}
+						}
+					}
+				}
+
+				startedNodes = append(startedNodes, n)
+			}(node)
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		// Collect errors
+		for e := range errCh {
+			cleanupFn()
+			return nil, e
+		}
+
+		// Wait for health checks on this tier before moving to the next tier
+		for _, name := range tier {
+			node := d.Nodes[name]
+
+			// Bridge-native health path: intercept nodes are already healthy when
+			// startBridgeIntercept returns nil. Connect nodes use pf.State().
+			if node.Runtime == RuntimeBridge && node.bridgeState != nil {
+				if node.BridgeMode == BridgeModeIntercept {
+					// Intercept: returning nil from startBridgeIntercept IS the readiness signal
+					fmt.Printf("  \u2705 %s is healthy (intercept active)\n", name)
+					continue
+				}
+				if node.BridgeMode == BridgeModeConnect && node.bridgeState.PortForward != nil {
+					// Connect: poll pf.State() instead of naive TCP
+					fmt.Printf("  \u23f3 Waiting for %s bridge to become healthy...\n", name)
+					if err := waitForBridgeHealthy(ctx, node); err != nil {
+						cleanupFn()
+						return nil, fmt.Errorf("bridge healthcheck failed for %q: %w", name, err)
+					}
+					fmt.Printf("  \u2705 %s is healthy\n", name)
+					continue
+				}
+			}
+
+			if node.Runtime == RuntimeKubernetes {
+				// Already health-gated inside startKubernetesNode (kubectl wait).
+				fmt.Printf("  \u2705 %s is healthy (deployment available)\n", name)
+				continue
+			}
+			if node.Runtime == RuntimeCloud {
+				// Already deployed + gated inside startCloudRunNode.
+				fmt.Printf("  \u2705 %s is healthy (Cloud Run deployed)\n", name)
+				continue
+			}
+
+			// One-shot task: gate the next tier on the process exiting 0 (e.g. a
+			// data seed that must finish before dependents start), rather than on
+			// a long-running healthcheck.
+			if node.Type == NodeService && node.OneShot {
+				fmt.Printf("  \u23f3 Waiting for %s to complete...\n", name)
+				if err := waitForCompletion(ctx, node); err != nil {
+					logs.TailHostCrashLogs(node.Name, 50)
+					cleanupFn()
+					return nil, fmt.Errorf("one-shot task %q failed: %w", name, err)
+				}
+				fmt.Printf("  \u2705 %s completed\n", name)
+				continue
+			}
+
+			if node.Healthcheck.HTTP != "" || node.Healthcheck.TCP != "" {
+				fmt.Printf("  \u23f3 Waiting for %s to become healthy...\n", name)
+				if err := waitForHealthy(ctx, node); err != nil {
+					// Idea 35: Tail crash logs inline
+					if node.Type == NodeService {
+						logs.TailHostCrashLogs(node.Name, 50)
+					}
+					cleanupFn()
+					return nil, fmt.Errorf("healthcheck failed for %q: %w", name, err)
+				}
+				fmt.Printf("  \u2705 %s is healthy\n", name)
+			}
+		}
+	}
+
+	return cleanupFn, nil
+}
+
+// startHostProcess launches a native host process for a service node.
+func startHostProcess(ctx context.Context, n *Node) error {
+	childCtx, cancel := context.WithCancel(ctx)
+	n.cancel = cancel
+
+	cmd := exec.CommandContext(childCtx, n.Command[0], n.Command[1:]...)
+
+	// Idea 44: Set working directory for services from included (sibling) repositories.
+	// When empty, inherits the parent's CWD (existing single-project behavior).
+	if n.Dir != "" {
+		cmd.Dir = n.Dir
+	}
+	// Setup logging via BuildHostSink: routes output per LogMode (raw → stdout/stderr
+	// + file preserving today's stderr separation, prefixed → unified prefixed view +
+	// file, off → file only). Truncates the log file fresh each run (intentional:
+	// stale content gone, devx logs sees live output).
+	outW, errW, closeFn, err := logs.BuildHostSink(n.Name, sinkMode(n.LogMode), os.Stdout, os.Stderr, logs.ColorEnabled(), nil)
+	if err != nil {
+		cancel()
+		return fmt.Errorf("opening log sink: %w", err)
+	}
+	n.logCloser = closeFn
+	cmd.Stdout = outW
+	cmd.Stderr = errW
+
+	// Inject environment variables
+	cmd.Env = os.Environ()
+	for k, v := range n.Env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+	if n.Port > 0 {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", n.Port))
+	}
+
+	n.process = cmd
+
+	fmt.Printf("  🚀 Starting %s: %s\n", n.Name, strings.Join(n.Command, " "))
+
+	return cmd.Start()
+}
+
+// waitForCompletion blocks until a one-shot task's process exits, returning an
+// error if it exits non-zero or exceeds its timeout. The timeout is the node's
+// healthcheck timeout when set, else a generous default — one-shot tasks like
+// data seeds can legitimately run for a while. Dependents are gated on this via
+// tier ordering: the task's tier is not considered ready until it completes.
+func waitForCompletion(ctx context.Context, n *Node) error {
+	if n.process == nil {
+		return fmt.Errorf("task was not started (no command?)")
+	}
+
+	timeout := n.Healthcheck.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Minute
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- n.process.Wait() }()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out after %s", timeout)
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("exited with error: %w", err)
+		}
+		return nil
+	}
+}
+
+// waitForHealthy polls the healthcheck until it passes or context is cancelled.
+func waitForHealthy(ctx context.Context, n *Node) error {
+	hc := n.Healthcheck
+	interval := hc.Interval
+	if interval == 0 {
+		interval = 1 * time.Second
+	}
+	timeout := hc.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	retries := hc.Retries
+	if retries == 0 {
+		retries = 1
+	}
+
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	consecutiveOK := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline:
+			return fmt.Errorf("timed out after %s", timeout)
+		case <-ticker.C:
+			var ok bool
+			if hc.HTTP != "" {
+				ok = checkHTTP(hc.HTTP)
+			} else if hc.TCP != "" {
+				ok = checkTCP(hc.TCP)
+			}
+
+			if ok {
+				consecutiveOK++
+				if consecutiveOK >= retries {
+					return nil
+				}
+			} else {
+				consecutiveOK = 0
+			}
+		}
+	}
+}
+
+func checkHTTP(url string) bool {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
+}
+
+func checkTCP(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}

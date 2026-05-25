@@ -1,0 +1,250 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/VitruvianSoftware/devx/internal/bridge"
+	"github.com/VitruvianSoftware/devx/internal/image"
+)
+
+// kubectlArgs builds a fresh kubectl arg slice with --kubeconfig/--context flags
+// plus the given subcommand args. Returns a NEW slice each call to avoid
+// append-aliasing across multiple invocations.
+func kubectlArgs(kubeconfig, kctx string, extra ...string) []string {
+	args := []string{"--kubeconfig", kubeconfig}
+	if kctx != "" {
+		args = append(args, "--context", kctx)
+	}
+	return append(args, extra...)
+}
+
+func runKubectl(ctx context.Context, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, "kubectl", args...).CombinedOutput()
+	return string(out), err
+}
+
+// resolveManifestsPath resolves a (possibly relative) manifests path against the
+// node's working dir (set for multirepo includes) or the current directory.
+func resolveManifestsPath(n *Node, manifests string) string {
+	if filepath.IsAbs(manifests) {
+		return manifests
+	}
+	base := n.Dir
+	if base == "" {
+		base, _ = os.Getwd()
+	}
+	return filepath.Join(base, manifests)
+}
+
+// applyFlagForRenderer maps a kubernetes renderer to the kubectl path flag used by
+// both `apply` and `delete`: kustomize → "-k" (kubectl's built-in kustomize), raw →
+// "-f". helm is recognized but not yet implemented; any other value is rejected. It
+// is a pure function so the renderer can be validated up front, before any cluster
+// mutation, and so apply/delete share one source of truth for the mapping.
+func applyFlagForRenderer(renderer string) (string, error) {
+	switch renderer {
+	case "kustomize":
+		return "-k", nil
+	case "raw":
+		return "-f", nil
+	default:
+		// helm is deployed via `helm upgrade` (see helm.go), not `kubectl apply`.
+		return "", fmt.Errorf("renderer %q is not a kubectl-apply renderer", renderer)
+	}
+}
+
+// validateRenderer reports whether renderer is one devx supports (kustomize, raw, helm).
+func validateRenderer(renderer string) error {
+	switch renderer {
+	case "kustomize", "raw", "helm":
+		return nil
+	default:
+		return fmt.Errorf("unknown kubernetes.renderer %q (want kustomize, raw, or helm)", renderer)
+	}
+}
+
+// startKubernetesNode renders a runtime: kubernetes service's manifests and applies
+// them to the target cluster via kubectl (skaffold-class deploy). devx shells out to
+// kubectl — kustomize is built in (`apply -k`) — consistent with the bridge / db /
+// cloudflared subprocess pattern. It blocks until the namespace's Deployments are
+// Available, so the DAG's generic HTTP/TCP healthcheck is skipped for k8s nodes.
+func startKubernetesNode(ctx context.Context, n *Node) error {
+	k := n.Kube
+	if k == nil || k.Manifests == "" {
+		return fmt.Errorf("service %q has runtime: kubernetes but no kubernetes.manifests is set", n.Name)
+	}
+
+	if _, err := bridge.ValidateKubectl(); err != nil {
+		return err
+	}
+	kubeconfig, err := bridge.ResolveKubeconfig(k.Kubeconfig)
+	if err != nil {
+		return err
+	}
+	if err := bridge.ValidateContext(kubeconfig, k.Context); err != nil {
+		return err
+	}
+
+	ns := k.Namespace
+	if ns == "" {
+		ns = "default"
+	}
+	renderer := k.Renderer
+	if renderer == "" {
+		renderer = "kustomize"
+	}
+	manifests := resolveManifestsPath(n, k.Manifests)
+
+	// Validate the renderer up front so a bad config fails fast — before we touch
+	// the cluster (e.g. create a namespace we'd then orphan).
+	if err := validateRenderer(renderer); err != nil {
+		return fmt.Errorf("service %q: %w", n.Name, err)
+	}
+	if renderer == "helm" {
+		if err := validateHelm(); err != nil {
+			return fmt.Errorf("service %q: %w", n.Name, err)
+		}
+	}
+
+	// Build + load any configured images into the cluster's in-cluster registry
+	// before applying, so the manifests' image references (localhost:<port>/...)
+	// resolve on every node.
+	if len(k.Images) > 0 {
+		if err := image.BuildAndLoad(ctx, k.ProviderName, n.Dir, kubeconfig, k.Context, k.Images); err != nil {
+			return fmt.Errorf("service %q: %w", n.Name, err)
+		}
+	}
+
+	// Idempotently ensure the target namespace exists.
+	if out, err := runKubectl(ctx, kubectlArgs(kubeconfig, k.Context, "create", "namespace", ns)...); err != nil &&
+		!strings.Contains(out, "AlreadyExists") {
+		return fmt.Errorf("ensuring namespace %q: %w\n%s", ns, err, strings.TrimSpace(out))
+	}
+
+	// Deploy: helm uses `helm upgrade --install`; kustomize/raw use `kubectl apply`.
+	release := k.Release
+	if release == "" {
+		release = n.Name
+	}
+	fmt.Printf("  ☸️  Deploying %s (%s) %s → ns/%s\n", n.Name, renderer, manifests, ns)
+	if renderer == "helm" {
+		base := n.Dir
+		if base == "" {
+			base, _ = os.Getwd()
+		}
+		if err := helmUpgradeInstall(ctx, kubeconfig, k.Context, ns, release, manifests, resolveValuesPaths(base, k.Values)); err != nil {
+			return fmt.Errorf("helm deploy for %q failed: %w", n.Name, err)
+		}
+	} else {
+		flag, _ := applyFlagForRenderer(renderer) // validated above; kustomize or raw
+		if out, err := runKubectl(ctx, kubectlArgs(kubeconfig, k.Context, "apply", "-n", ns, flag, manifests)...); err != nil {
+			return fmt.Errorf("kubectl apply for %q failed: %w\n%s", n.Name, err, strings.TrimSpace(out))
+		}
+	}
+
+	// Readiness gate: wait for the namespace's Deployments to become Available
+	// (in-cluster, no port-forward needed).
+	fmt.Printf("  ⏳ Waiting for %s deployments to become Available...\n", n.Name)
+	waitArgs := kubectlArgs(kubeconfig, k.Context, "wait", "-n", ns,
+		"--for=condition=Available", "deployment", "--all", "--timeout=120s")
+	if out, err := runKubectl(ctx, waitArgs...); err != nil {
+		return fmt.Errorf("deployments for %q did not become Available: %w\n%s", n.Name, err, strings.TrimSpace(out))
+	}
+
+	// Record the resolved deploy (abs manifests path) so cleanup can delete it.
+	n.kubeApplied = &KubeNodeConfig{
+		Manifests:  manifests,
+		Renderer:   renderer,
+		Namespace:  ns,
+		Context:    k.Context,
+		Kubeconfig: kubeconfig,
+		Release:    release,
+	}
+	fmt.Printf("  ✅ %s deployed\n", n.Name)
+
+	// Start live-reload watchers (sync local dirs into the running pod), if configured.
+	if len(k.Sync) > 0 {
+		cancelSync, err := startPodSync(ctx, n, kubeconfig, k.Context, ns, k.Sync)
+		if err != nil {
+			return fmt.Errorf("service %q: %w", n.Name, err)
+		}
+		n.podSyncCancel = cancelSync
+	}
+
+	// Auto-discover the namespace's Services and port-forward them to localhost.
+	if k.PortForward {
+		forwards, cancelPF, err := startPortForwards(ctx, kubeconfig, k.Context, ns)
+		if err != nil {
+			return fmt.Errorf("service %q: %w", n.Name, err)
+		}
+		n.pfCancel = cancelPF
+		n.forwards = forwards
+	}
+
+	// Stream pod logs (inline + ~/.devx/logs/) when opted in.
+	cancelLogs, err := startKubernetesLogs(ctx, n, kubeconfig, k.Context, ns)
+	if err != nil {
+		return fmt.Errorf("service %q: starting log stream: %w", n.Name, err)
+	}
+	n.logWatchCancel = cancelLogs
+	return nil
+}
+
+// deleteKubernetesNode removes what startKubernetesNode applied (best-effort, on `devx down`).
+func deleteKubernetesNode(n *Node) {
+	k := n.kubeApplied
+	if k == nil {
+		return
+	}
+	if k.Renderer == "helm" {
+		release := k.Release
+		if release == "" {
+			release = n.Name
+		}
+		out, err := helmUninstall(context.Background(), k.Kubeconfig, k.Context, k.Namespace, release)
+		if err != nil {
+			fmt.Printf("  ⚠️  cleanup: helm uninstall for %s failed: %s\n", n.Name, strings.TrimSpace(out))
+			return
+		}
+		fmt.Print(formatTeardown(release, k.Namespace, out))
+		return
+	}
+	// The renderer was validated at apply time (kubeApplied is only set after a
+	// successful apply), so this won't error in practice; default to "-k" if it does.
+	flag, err := applyFlagForRenderer(k.Renderer)
+	if err != nil {
+		flag = "-k"
+	}
+	args := kubectlArgs(k.Kubeconfig, k.Context, "delete", "-n", k.Namespace, flag, k.Manifests, "--ignore-not-found")
+	out, err := runKubectl(context.Background(), args...)
+	if err != nil {
+		fmt.Printf("  ⚠️  cleanup: kubectl delete for %s failed: %s\n", n.Name, strings.TrimSpace(out))
+		return
+	}
+	fmt.Print(formatTeardown(n.Name, k.Namespace, out))
+}
