@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.log
+.bot.pid
+.DS_Store
+macos/.build/
+.bot-sessions.json
+dist/
+*.dmg

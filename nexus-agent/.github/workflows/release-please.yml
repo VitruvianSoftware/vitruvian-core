@@ -1,0 +1,171 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+
+  build-macos:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: macos-15
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for ${{ matrix.arch }}
+        run: |
+          cd macos
+          swift build -c release --arch ${{ matrix.arch }}
+
+      - name: Upload arch binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexusAgent-${{ matrix.arch }}
+          path: macos/.build/release/NexusAgent
+
+  package:
+    needs: [release-please, build-macos]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: NexusAgent-arm64
+          path: /tmp/arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: NexusAgent-x86_64
+          path: /tmp/x86_64
+
+      - name: Create universal binary
+        run: |
+          mkdir -p /tmp/universal
+          lipo -create \
+            /tmp/arm64/NexusAgent \
+            /tmp/x86_64/NexusAgent \
+            -output /tmp/universal/NexusAgent
+          echo "==> Universal binary architectures:"
+          lipo -info /tmp/universal/NexusAgent
+
+      - name: Assemble .app bundles
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          chmod +x macos/scripts/bundle.sh
+
+          # Universal
+          mkdir -p /tmp/dist-universal
+          macos/scripts/bundle.sh /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
+
+          # arm64
+          mkdir -p /tmp/dist-arm64
+          macos/scripts/bundle.sh /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
+
+          # x86_64
+          mkdir -p /tmp/dist-x86_64
+          macos/scripts/bundle.sh /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMGs
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+
+          for arch in universal arm64 x86_64; do
+            create-dmg \
+              --volname "NexusAgent" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "NexusAgent.app" 175 190 \
+              --app-drop-link 425 190 \
+              --no-internet-enable \
+              "NexusAgent-${VERSION}-${arch}.dmg" \
+              "/tmp/dist-${arch}/" || true
+          done
+
+          ls -lh *.dmg
+
+      - name: Create ZIP for auto-updater
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          cd /tmp/dist-universal
+          zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          cd "${GITHUB_WORKSPACE}"
+          ls -lh *.zip
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+
+          for f in *.dmg *.zip; do
+            echo "Uploading $f..."
+            gh release upload "$TAG" "$f" --clobber
+          done
+
+      - name: Update Homebrew Cask
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          DMG_FILE="NexusAgent-${VERSION}-universal.dmg"
+          
+          # Calculate SHA256 of the universal dmg
+          SHA256=$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')
+          
+          # Clone the tap repository
+          git clone https://x-access-token:${GH_TOKEN}@github.com/VitruvianSoftware/homebrew-tap.git tap-repo
+          cd tap-repo
+          
+          # Ensure Casks directory exists
+          mkdir -p Casks
+          
+          # Write the Cask formula
+          cat > Casks/nexus-agent.rb << EOF
+          cask "nexus-agent" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+          
+            url "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v${VERSION}/${DMG_FILE}"
+            name "NexusAgent"
+            desc "Advanced multi-provider agent GUI"
+            homepage "https://github.com/VitruvianSoftware/nexus-agent"
+          
+            app "NexusAgent.app"
+          end
+          EOF
+          
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/nexus-agent.rb
+          git commit -m "chore: update nexus-agent Cask to v${VERSION}" || echo "No changes to commit"
+          git push origin main
