@@ -1,0 +1,53 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+    - go test -race ./...
+
+builds:
+  - main: ./cmd/homelab
+    binary: homelab
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: VitruvianSoftware
+    name: homelab
+  draft: false
+  prerelease: auto
+  mode: append
+  name_template: "v{{.Version}}"
+
+brews:
+  - repository:
+      owner: VitruvianSoftware
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/VitruvianSoftware/homelab"
+    description: "Declaratively provision and manage multi-node K8s homelab clusters on macOS"
+    license: "Apache-2.0"
+    test: |
+      system "#{bin}/homelab", "version"
