@@ -48,7 +48,7 @@ exports_files(
     visibility = ["//:__subpackages__"],
 )
 
-# gazelle:prefix github.com/example/project
+# gazelle:prefix github.com/VitruvianSoftware/vitruvian-core
 
 # It's faster to avoid type-checking in a devserver when using monorepo packages.
 # If you commonly ship your npm packages outside the repo, change this to "npm_package"
