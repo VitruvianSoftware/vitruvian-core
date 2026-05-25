@@ -1,6 +1,14 @@
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
+# This BUILD is hand-authored: a single co-located ts_project whose tsconfig
+# (rootDir ./src, outDir ./dist, include src/**/*) resolves consistently. The
+# aspect JS/TS Gazelle extension would otherwise rewrite this file (leaving a
+# broken empty src glob) and emit a separate src/BUILD, breaking the build.
+# `gazelle:ignore` stops Gazelle from editing this file; `gazelle:exclude src`
+# stops it from generating BUILD files under src/.
+# gazelle:ignore
+# gazelle:exclude src
 npm_link_all_packages(name = "node_modules")
 
 # @vitruviansoftware/mcp-slack is a TypeScript (ESM) project built with `tsc`.

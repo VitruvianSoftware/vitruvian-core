@@ -64,7 +64,13 @@ gazelle(
         "ENABLE_LANGUAGES": ",".join([
             "starlark",
             "go",
-            "kotlin",
+            # NB: "kotlin" is intentionally omitted. The repo contains no Kotlin
+            # sources, and the Kotlin Gazelle extension generates a
+            # kt_jvm_library named after each package directory, which collides
+            # with the existing go_library/go_binary/ts_project targets in the
+            # grafted Go (homelab, devx) and TypeScript (mcp-slack) projects --
+            # aborting `bazel run //:gazelle` repo-wide. Re-add it here if/when
+            # actual Kotlin sources are introduced.
             "python",
             "js",
             "cc",
