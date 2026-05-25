@@ -27,6 +27,7 @@ macos_application(
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
+    target_compatible_with = ["@platforms//os:macos"],
     visibility = ["//visibility:public"],
     deps = [":NexusAgent_lib"],
 )
