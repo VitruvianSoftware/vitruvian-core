@@ -35,11 +35,17 @@ go_sdk.from_file(go_mod = "//:go.mod")
 go_sdk.nogo(nogo = "//tools/lint:nogo")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
-go_deps.from_file(go_mod = "//:go.mod")
+
+# Multi-module monorepo: a single go_deps.from_file(go_work=...) covers every
+# module listed in //:go.work (root + ./homelab). Gazelle 0.47 rejects more than
+# one go_deps.from_file tag per module, so we must NOT add a second
+# from_file(go_mod=...) line per added module -- instead add the module to
+# //:go.work and it is picked up here automatically.
+go_deps.from_file(go_work = "//:go.work")
 
 # All *direct* Go dependencies of the module have to be listed explicitly.
 # Run 'bazel mod tidy' to update this
-use_repo(go_deps, "com_github_hay_kot_scaffold")
+use_repo(go_deps, "com_github_hay_kot_scaffold", "com_github_spf13_cobra", "in_gopkg_yaml_v3", "org_golang_x_sync")
 
 # Bazel 9: Ensure transitives don't depend on rules_nodejs prior to
 # https://github.com/bazel-contrib/rules_nodejs/commit/1fc6b6b763c4f79994edc9edab10399f7446d8be
