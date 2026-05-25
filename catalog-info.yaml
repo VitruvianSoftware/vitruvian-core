@@ -1,0 +1,36 @@
+# catalog-info.yaml
+# See https://backstage.io/docs/features/software-catalog/descriptor-format
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: javascript-generated-blueprint
+  description: Bazel project using Aspect Workflows
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - bazel
+    - aspect-workflows
+    - javascript
+    - typescript
+    - python
+    - go
+    - java
+    - kotlin
+    - cpp
+    - rust
+    - shell
+    - ruby
+    - scala
+  links:
+    - url: https://github.com/VitruvianSoftware/javascript
+      title: Repository
+      icon: github
+    - url: https://docs.aspect.build/
+      title: Aspect Documentation
+      icon: docs
+
+spec:
+  type: service
+  lifecycle: experimental
+  owner: team-platform
+  system: software-foundation

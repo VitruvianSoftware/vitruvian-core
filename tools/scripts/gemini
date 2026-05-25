@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if [ "$#" -eq 0 ]; then
+	npx -y https://github.com/google-gemini/gemini-cli
+else
+	npx -y https://github.com/google-gemini/gemini-cli "$@"
+fi

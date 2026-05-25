@@ -1,0 +1,6 @@
+# Project-local (user) Bazel configuration.
+# Placing Bazel's user root and disk cache under /tmp to avoid filling container workspace.
+# This file is loaded via `try-import %workspace%/user.bazelrc` from the repo's .bazelrc.
+
+startup --output_user_root=/tmp/blueprint-bazel-cache-1000
+common --disk_cache=/tmp/blueprint-bazel-disk-cache-1000

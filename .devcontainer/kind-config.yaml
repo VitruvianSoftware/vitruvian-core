@@ -1,0 +1,27 @@
+# kind cluster configuration optimized for resource-constrained environments
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: local-dev-cluster
+nodes:
+  - role: control-plane
+    # Map localhost ports to the cluster for easy access
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+    # Resource constraints for limited environments
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            "max-requests-inflight": "100"
+        controllerManager:
+          extraArgs:
+            "kube-api-burst": "50"
+        scheduler:
+          extraArgs:
+            "kube-api-burst": "50"

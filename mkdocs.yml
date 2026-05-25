@@ -1,0 +1,10 @@
+site_name: 'generated-docs'
+repo_url: https://github.com/VitruvianSoftware/go/tree/platform
+edit_uri: edit/platform/docs
+
+# nav:
+#   - Home: docs/index.md
+#   - Root: README.bazel.md
+
+plugins:
+  - techdocs-core

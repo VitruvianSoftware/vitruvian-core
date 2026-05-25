@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if [ "$#" -eq 0 ]; then
+	npx copilot
+else
+	npx copilot "$@"
+fi

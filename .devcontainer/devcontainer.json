@@ -1,0 +1,50 @@
+{
+  // https://containers.dev/implementors/json_reference/
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "Dev image with direnv, Bazel, Skaffold, Docker, Kind, Gcloud, Pulumi, Terraform, etc.",
+  "build": {
+    "dockerfile": "Dockerfile.kitchen-sink" // Swap with Dockerfile for minimum Codespace
+  },
+  "containerEnv": {
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GITHUB_USER": "${localEnv:GITHUB_USER}"
+  },
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "privileged": true,
+  // "remoteUser": "vscode",
+  "runArgs": ["--name=blueprint-codespace"],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "BazelBuild.vscode-bazel",
+        "MermaidChart.vscode-mermaid-chart",
+        "charliermarsh.ruff",
+        "GitHub.copilot",
+        "github.vscode-github-actions",
+        "google.gemini-cli-vscode-ide-companion",
+        "googlecloudtools.cloudcode",
+        "ms-azuretools.vscode-containers",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode-remote.remote-containers"
+      ]
+    }
+  },
+  "features": {
+    // "ghcr.io/devcontainers/features/docker-in-docker:2.12.4": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "enableNonRootDocker": "true"
+    },
+    // "ghcr.io/devcontainers-community/features/bazel:1": {}, // Already installed in Dockerfile
+    // "ghcr.io/devcontainers-extra/features/direnv:1": {}, // Already installed in Dockerfile
+    "ghcr.io/devcontainers-extra/features/devcontainers-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/gh-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/kind:1": {},
+    "ghcr.io/devcontainers-extra/features/pre-commit:2": {},
+    "ghcr.io/devcontainers-extra/features/tailscale:1": {}
+  },
+  "postCreateCommand": "direnv allow; bazel run tools:bazel_env || true"
+}
