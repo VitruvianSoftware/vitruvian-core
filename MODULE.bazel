@@ -99,7 +99,17 @@ llvm.toolchain(
     # NB: llvm doesn't release for all platforms on every patch release
     llvm_versions = {
         "": "15.0.6",
-        "darwin-aarch64": "15.0.7",
+        # macOS arm64: LLVM 15's bundled `ld64.lld` cannot parse the text-based
+        # dylib (.tbd) stubs shipped by recent macOS SDKs (e.g. macOS 15/26),
+        # so linking rules_rust's bootstrap `process_wrapper` (and any other
+        # darwin link that pulls in libSystem) fails with errors like
+        # "libSystem.tbd ... is incompatible with arm64 (macOS)" and a cascade
+        # of undefined POSIX symbols (_mmap, _pthread_*, ...). LLVM 17's
+        # `ld64.lld` understands these stubs. Linux stays on 15.0.6 (unaffected).
+        # NB: toolchains_llvm 1.6.0 only ships LLVM 16/17 for arm64-apple-darwin;
+        # x86_64-apple-darwin has no build newer than 15.0.7, so Intel macOS keeps
+        # 15.0.7 (its newest available; same value the template already used).
+        "darwin-aarch64": "17.0.6",
         "darwin-x86_64": "15.0.7",
     },
 )
