@@ -123,6 +123,17 @@ llvm.toolchain(
 )
 use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
 
+# Apple's CC toolchain provides the `objc-executable` action_config that
+# rules_apple's macos_application needs to link the .app. We make the repo
+# available here but deliberately do NOT register it globally: on macOS it would
+# shadow @llvm_toolchain for ALL C++ (the host platform is constraint-identical to
+# the apple `darwin_*` platform rules_apple transitions to), silently making plain
+# C++/Rust/cgo builds non-hermetic. Instead the macOS .app build opts in via
+# `--config=macos-app` (see .bazelrc), so the hermetic LLVM toolchain stays the
+# default everywhere else.
+apple_cc_configure = use_extension("@apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc_configure, "local_config_apple_cc_toolchains")
+
 register_toolchains("@llvm_toolchain//:all")
 
 # bazel run @hedron_compile_commands//:refresh_all

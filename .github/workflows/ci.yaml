@@ -42,4 +42,9 @@ jobs:
             common --show_progress_rate_limit=60 --show_timestamps
 
       - name: Build macOS app
-        run: bazel build //nexus-agent/...
+        # --config=macos-app activates Apple's CC toolchain (needed for the
+        # objc-executable link). NexusAgent (macos_application) carries
+        # tags=["manual"], so the wildcard skips it -- build it explicitly by
+        # label. The wildcard still builds the rest of nexus-agent (Swift lib,
+        # Node bridge, hooks) on macOS.
+        run: bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent

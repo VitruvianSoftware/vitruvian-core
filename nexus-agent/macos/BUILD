@@ -14,6 +14,14 @@ swift_library(
 
 # Produces bazel-bin/nexus-agent/macos/NexusAgent.app.
 #
+# `tags = ["manual"]` keeps this out of wildcard builds (`//...`, `//nexus-agent/...`)
+# so a Linux `bazel build //...` skips it. `target_compatible_with` does NOT work
+# here: macos_application applies an incoming transition to an apple `darwin_*`
+# platform, and target_compatible_with is evaluated AFTER that transition, so the
+# macOS constraint is always satisfied and the target is never skipped on Linux --
+# it instead fails toolchain resolution ("No matching toolchains found"). The macOS
+# CI leg builds this by explicit label, which ignores `manual`.
+#
 # AppIcon.icns is passed as a loose `resources` file (NOT `app_icons`): the
 # Info.plist references the icon via `CFBundleIconFile=AppIcon`, and `app_icons`
 # would require an `*.xcassets/*.appiconset` asset catalog compiled by `actool`,
@@ -27,7 +35,7 @@ macos_application(
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
-    target_compatible_with = ["@platforms//os:macos"],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [":NexusAgent_lib"],
 )

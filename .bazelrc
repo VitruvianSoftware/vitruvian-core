@@ -23,6 +23,16 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
 common:release --stamp --workspace_status_command=./tools/workspace_status.sh
 
 common --workspace_status_command=githooks/check-config.sh
+
+# Building the macOS .app (//nexus-agent/macos:NexusAgent) needs Apple's CC
+# toolchain for the `objc-executable` link action. On macOS that toolchain is
+# otherwise shadowed by the hermetic @llvm_toolchain (the host platform matches
+# the same constraints as the apple darwin platform). Scoping it to this config --
+# instead of registering it globally in MODULE.bazel -- keeps plain C++/Rust/cgo
+# builds on the hermetic LLVM toolchain by default.
+# Usage: bazel build --config=macos-app //nexus-agent/macos:NexusAgent
+build:macos-app --extra_toolchains=@local_config_apple_cc_toolchains//:all
+
 common:lint --aspects=//tools/lint:linters.bzl%shellcheck
 common:lint --aspects=//tools/lint:linters.bzl%eslint
 common:lint --aspects=//tools/lint:linters.bzl%ruff
