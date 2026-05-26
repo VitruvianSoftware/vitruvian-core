@@ -1,36 +1,50 @@
 name: Dependabot auto-merge
 
-# Auto-merge MINOR/PATCH Dependabot PRs once CI passes, using the GitHub App token
-# so the merge is App-attributed and triggers the per-component copybara export
-# (a GITHUB_TOKEN merge would NOT — that's the import-side recursion-prevention).
-# MAJOR bumps are left for manual review. The 30-min drift-check backstops any
-# merge that fails to fan out (see docs/copybara-bidi-sync.md).
+# Auto-merge Dependabot MINOR/PATCH PRs after CI passes, via a DIRECT merge with
+# the GitHub App token. The merge is App-attributed, so it triggers the
+# per-component copybara export (a GITHUB_TOKEN merge would NOT — that's the
+# import-side recursion-prevention). MAJOR bumps are never auto-merged (left for
+# manual review; a normal human merge is still user-attributed and fans out).
+#
+# Why workflow_run + a direct merge (not `gh pr merge --auto`): the org disables
+# repo-level auto-merge, so `--auto` is unavailable. workflow_run fires AFTER CI
+# in the default-branch context (full Actions secrets — hence SYNC_APP_* exists
+# as an Actions secret too, not only a Dependabot secret).
+#
+# MINOR/PATCH detection: our monorepo gomod/github-actions Dependabot groups are
+# named `*-minor-patch`, so qualifying PRs land on branches like
+# `dependabot/go_modules/devx/go-minor-patch-<hash>`. MAJOR bumps arrive on
+# individual branches with no group name, so they never match.
 on:
-    pull_request:
-        branches: [main]
+    workflow_run:
+        workflows: ["CI"]
+        types: [completed]
 
 permissions:
     contents: read
-    pull-requests: read
 
 jobs:
-    auto-merge:
-        if: github.actor == 'dependabot[bot]'
+    merge:
+        if: >-
+            github.event.workflow_run.event == 'pull_request' &&
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+            contains(github.event.workflow_run.head_branch, '-minor-patch')
         runs-on: ubuntu-latest
         steps:
-            - name: Fetch Dependabot metadata
-              id: meta
-              uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
             - name: Mint App token
               id: app-token
-              if: steps.meta.outputs.update-type == 'version-update:semver-minor' || steps.meta.outputs.update-type == 'version-update:semver-patch'
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
                 app-id: ${{ secrets.SYNC_APP_ID }}
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-            - name: Enable auto-merge (minor/patch only)
-              if: steps.meta.outputs.update-type == 'version-update:semver-minor' || steps.meta.outputs.update-type == 'version-update:semver-patch'
+            - name: Merge the Dependabot PR (App-attributed → fans out via export)
               env:
                 GH_TOKEN: ${{ steps.app-token.outputs.token }}
-                PR_URL: ${{ github.event.pull_request.html_url }}
-              run: gh pr merge --squash --auto "$PR_URL"
+                BRANCH: ${{ github.event.workflow_run.head_branch }}
+                REPO: ${{ github.repository }}
+              run: |
+                num="$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+                if [ -z "$num" ]; then echo "No open PR for branch $BRANCH — nothing to merge."; exit 0; fi
+                echo "Merging Dependabot PR #$num (branch $BRANCH) via App token."
+                gh pr merge "$num" -R "$REPO" --squash

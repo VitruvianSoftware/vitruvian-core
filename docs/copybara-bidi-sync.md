@@ -441,8 +441,13 @@ to the standalones via the export. You manage every component's Dependabot confi
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
    reconcile to a **no-op**.
 3. **CI** (`bazel build` / `bazel test`) runs on the PR.
-4. [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml) merges
-   **minor/patch only**, **via the App token** so the merge is **App-attributed**.
+4. After CI succeeds, [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml)
+   (triggered on **`workflow_run`** after `CI`) does a **direct merge** of **minor/patch** PRs **via
+   the App token**, so the merge is **App-attributed**. Minor/patch is detected from the Dependabot
+   **branch name** (our gomod/actions groups are `*-minor-patch`, so qualifying PRs land on
+   `…/go-minor-patch-*` / `…/actions-minor-patch-*` branches); major bumps come on individual
+   branches and never match. *(A direct `workflow_run` merge rather than `gh pr merge --auto` because
+   the VitruvianSoftware org disables repo-level auto-merge.)*
 5. The merge push triggers **`copybara-export-<comp>`**, which **fans the change out** to the
    standalone (same export flow as §3).
 6. The 30-min **`copybara-drift-check`** (§7) is the **backstop** — if a merge ever fails to fan out,
@@ -464,10 +469,18 @@ flowchart TD
     EX -. "if it ever doesn't" .-> DR["drift-check RED ≤30 min"]
 ```
 
+### App permissions (prerequisite for auto-merge)
+The reused `vitruvian-copybara-sync` App (App ID 3863936) needs **Pull requests: write** — to merge —
+in addition to its **Contents: write** (export push + reconcile commit). If auto-merge fails with
+`Resource not accessible by integration (repository.pullRequest)`, the App is missing Pull requests:
+write: grant it in the App's settings and **re-approve** the new permission on the vitruvian-core
+installation. (Auto-merge stays inert until this is granted; the rest of the sync is unaffected.)
+
 ### Secrets
 `SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY` exist on **vitruvian-core** as **both** a **Dependabot secret**
-(so Dependabot-triggered runs can read them to mint the App token) **and** an **Actions secret**. Both
-are provisioned by Pulumi (`pkg/copybara_sync/sync.go`).
+(so Dependabot-triggered runs — e.g. the reconcile — can read them) **and** an **Actions secret** (so
+the `workflow_run` auto-merge, which runs in the default-branch context, can read them). Both are
+provisioned by Pulumi (`pkg/copybara_sync/sync.go`).
 
 ### Invariant that keeps the reconcile safe
 `bazel run //:gazelle` is kept a **no-op on `main`** — the root `BUILD` carries
