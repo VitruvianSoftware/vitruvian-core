@@ -1,0 +1,58 @@
+name: Dependabot Bazel reconcile
+
+# When Dependabot bumps a component go.mod in the monorepo, regenerate the gazelle
+# BUILD files + MODULE.bazel use_repo (bazel mod tidy) so the Bazel build stays
+# consistent, and commit the result to the PR branch. No-op for version-only bumps
+# (versions re-resolve via go_deps; BUILD/use_repo only change when the dep SET does).
+# Pushes via the GitHub App token: Dependabot-triggered runs only see Dependabot
+# secrets, and an App-token push re-triggers CI on the reconciled commit.
+on:
+    pull_request:
+        branches: [main]
+        paths:
+            - "**/go.mod"
+            - "**/go.sum"
+
+permissions:
+    contents: read
+
+concurrency:
+    group: dependabot-reconcile-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
+jobs:
+    reconcile:
+        if: github.actor == 'dependabot[bot]'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Mint App token
+              id: app-token
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                app-id: ${{ secrets.SYNC_APP_ID }}
+                private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+            - uses: actions/checkout@v6
+              with:
+                ref: ${{ github.event.pull_request.head.ref }}
+                token: ${{ steps.app-token.outputs.token }}
+            - name: Set up Bazel
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                bazelisk-cache: true
+                repository-cache: true
+            - name: Reconcile (bazel mod tidy + gazelle)
+              run: |
+                bazel mod tidy
+                bazel run //:gazelle
+            - name: Commit reconcile if anything changed
+              env:
+                HEAD_REF: ${{ github.event.pull_request.head.ref }}
+              run: |
+                if [ -z "$(git status --porcelain)" ]; then
+                  echo "No reconcile needed (version-only bump)."; exit 0
+                fi
+                git config user.name "VitruvianSoftware Sync"
+                git config user.email "sync@vitruviansoftware.com"
+                git add -A
+                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy)"
+                git push origin "HEAD:${HEAD_REF}"
