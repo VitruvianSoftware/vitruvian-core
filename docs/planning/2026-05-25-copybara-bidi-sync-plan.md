@@ -225,9 +225,9 @@ The genuinely uncertain pieces — the exact rev-id-label customization syntax (
 
 ## Deferred (not this plan)
 
-- **Templating to devx / homelab / nexus-agent.** Parameterize `copy.bara.sky` + the workflows per project. For devx/homelab, exclude the monorepo-root `go.work` from `origin_files` so each standalone repo round-trips as a valid multi-module Go repo.
-- **Template the auth to devx/homelab/nexus-agent.** The pilot's auth is already Pulumi-codified (Task 4 — `pkg/copybara_sync/sync.go`); extend its `syncedProjects` slice per repo and create/reuse a GitHub App per project.
-- **Harden the Copybara image pin.** The CI uses `olivr/copybara:latest` (validated digest `sha256:87e2e90…`, 2023-01-29); mirror that exact image to GHCR (e.g. `ghcr.io/vitruviansoftware/copybara`) and point `copybara_image` at it for true immutability.
+- ~~**Templating to devx / homelab / nexus-agent.**~~ — **DONE 2026-05-26** (see Templating outcome below). `copy.bara.sky` is now a `COMPONENTS` loop; CI is two reusable workflows + per-component callers. The `go.work` concern was moot — it sits at the monorepo root, outside every `<comp>/**` glob, so it's monorepo-only for free. The real per-component exclude is `**/BUILD` (gazelle generates many; devx has 57).
+- ~~**Template the auth to devx/homelab/nexus-agent.**~~ — **DONE 2026-05-26.** Appended the three to `syncedProjects`; **reused the single existing App** (App ID 3863936) with its creds placed as per-component config secrets; `pulumi up` created 3 deploy keys + 3 monorepo SSH secrets + 6 standalone App secrets.
+- **Harden the Copybara image pin (GHCR mirror) — PREPARED, pending an operator hand-off.** Still `olivr/copybara@sha256:87e2e90…` from Docker Hub. Mirroring to `ghcr.io/vitruviansoftware/copybara` + repinning needs a token with `write:packages` (the automation token has only `repo`/`workflow`). Exact steps in the runbook §10 ("Pending hardening — mirror the Copybara image to GHCR"). Do not repin before the GHCR image exists.
 - ~~`ITERATIVE` history mode~~ — **adopted during the pilot** (see Outcome): it is *required* for correct bidi loop-prevention, not an optional fidelity upgrade.
 - **The symmetric per-repo architecture** (documented in the spec) if decentralizing later.
 
@@ -248,3 +248,20 @@ The pilot ran live against `main` on both repos. **Result: bidirectional no-boun
 - **Run the `olivr/copybara` image directly** (pinned `@sha256:87e2e90…`), NOT `olivr/copybara-action`: the action reads `ssh_key` via `core.getInput` (trims the trailing newline) and writes it verbatim, yielding an `id_rsa` OpenSSH rejects as "invalid format".
 - **Auth via Pulumi IaC** (`infrastructure/pulumi`, project `vitruvian-core-infra`) + a **GitHub App** (`vitruvian-copybara-sync`, App ID 3863936) for the dispatch — App is a one-time manual operator bootstrap.
 - **`GITHUB_TOKEN` pushes don't trigger workflows** — the import's push to monorepo `main` does not re-trigger the export (extra no-bounce safety).
+
+---
+
+## Templating outcome (devx / homelab / nexus-agent, 2026-05-26)
+
+All three onboarded and validated; the drift check reports **all four components in sync**.
+
+**What was built:**
+- **`copy.bara.sky`** parameterized to a `COMPONENTS` loop. Copybara's Starlark forbids top-level `for`, so a `_define_component()` function is driven by a top-level list comprehension; the closure-based `dynamic_transform` skip-guard works. Validated offline with `docker run --network none` (config evaluates; lists all 8 workflows). Export label `MONOREPO_REV_ID` is shared (each lands on a separate standalone); import labels are unique per component (`DEVX_REV_ID`, …) since they all land in the shared monorepo. Monorepo-only exclude unified to `**/BUILD`.
+- **CI:** two reusable workflows (`_copybara-{export,import}.yaml`) hold the logic + image pin; thin per-component callers own the triggers. `conflict-precheck.sh` and `copybara-drift-check.yaml` generalized to all components. `actionlint` clean.
+
+**New lessons (beyond the pilot):**
+- **Seeding needs a real migration, not just `--force`.** A fresh destination errors unless `--init-history` is passed, and the baseline is anchored by a commit that touches managed paths. When the repos are already byte-identical the seed no-ops and stamps nothing — so seed via a transient marker (add in monorepo → `--force --squash --init-history` export → remove on standalone → `--force --last-rev <export-seed-SHA>` import). **The import seed must NOT use `--squash`**: the squash range includes the export-seed `Project import` commit (carries `MONOREPO_REV_ID`) and the skip-guard drops the whole squash (the SQUASH-over-fire again). Full recipe in runbook §8b.
+- **Imports must not share a concurrency group.** All imports push to the same monorepo `main`; a shared group made GitHub cancel an intermediate pending import (would drop a change). Fix: per-component groups + a **retry** in the import reusable (a "behind destination" push just means another import landed first; re-running re-fetches and replays). Runbook §10.
+- **Pulumi:** reused the one App (creds copied to per-component config keys via `get | set --secret`, never printed); set `github:owner=VitruvianSoftware`; run with `GOWORK=off` (the pulumi program is its own module outside `go.work`).
+
+**Still pending:** the GHCR image mirror (operator hand-off — needs `write:packages`; see Deferred + runbook §10).

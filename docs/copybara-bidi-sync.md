@@ -1,9 +1,10 @@
 # Copybara Bidirectional Sync — Admin Runbook
 
-**Scope:** how the bidirectional sync between `vitruvian-core/mcp-slack/` and the standalone
-`github.com/VitruvianSoftware/mcp-slack` repo works, how to operate and maintain it, and what to
-watch out for. This is the **mcp-slack pilot**; the same pattern templates to devx / homelab /
-nexus-agent later.
+**Scope:** how the bidirectional sync between each `vitruvian-core/<component>/` subtree and its
+standalone `github.com/VitruvianSoftware/<component>` repo works, how to operate and maintain it, and
+what to watch out for. **Live for all four components:** `mcp-slack`, `devx`, `homelab`,
+`nexus-agent`. The mechanism is identical per component; the Copybara config is one parameterized
+loop and the CI workflows are two reusable workflows with thin per-component callers.
 
 > [!WARNING]
 > **Conflict handling is NOT fail-loud.** If the *same line* is edited on **both** repos before a
@@ -15,11 +16,14 @@ nexus-agent later.
 
 ## 1. TL;DR
 
-- **Bidirectional, on-push, near-real-time.** A push under `vitruvian-core/mcp-slack/**` is exported
-  to the standalone repo; a push to the standalone repo is imported back under `mcp-slack/`.
-- **Centralized hub.** All sync logic (the Copybara config + both sync workflows) lives in
-  **vitruvian-core**. The standalone repo carries exactly one tiny workflow that fires a
+- **Bidirectional, on-push, near-real-time.** A push under `vitruvian-core/<component>/**` is
+  exported to that standalone repo; a push to a standalone repo is imported back under
+  `<component>/`.
+- **Centralized hub.** All sync logic (the Copybara config + the reusable sync workflows) lives in
+  **vitruvian-core**. Each standalone repo carries exactly one tiny workflow that fires a
   `repository_dispatch`.
+- **One config, N components.** `copy.bara.sky` generates `export_<comp>`/`import_<comp>` for every
+  component from a `COMPONENTS` list; CI uses two reusable workflows + per-component callers.
 - **No bounce.** Per-direction rev-id labels + a per-commit skip-guard stop an exported change from
   bouncing back as an import (and vice-versa).
 - **Auth is IaC.** A write SSH deploy key + a GitHub App, provisioned by Pulumi.
@@ -28,15 +32,17 @@ nexus-agent later.
 
 ## 2. Architecture at a glance
 
+Per component (`<comp>` ∈ {mcp-slack, devx, homelab, nexus-agent}):
+
 ```mermaid
 flowchart LR
     subgraph VC["VitruvianSoftware/vitruvian-core (monorepo = the hub)"]
-        comp["mcp-slack/ &lpar;component subtree&rpar;"]
-        cfg["tools/copybara/copy.bara.sky<br/>ITERATIVE + rev-id loop-prevention"]
-        exp[".github/workflows/copybara-export.yaml<br/>on push to mcp-slack/**"]
-        imp[".github/workflows/copybara-import.yaml<br/>on repository_dispatch"]
+        comp["&lt;comp&gt;/ &lpar;component subtree&rpar;"]
+        cfg["tools/copybara/copy.bara.sky<br/>COMPONENTS loop · ITERATIVE · rev-id loop-prevention"]
+        exp["copybara-export-&lt;comp&gt;.yaml → _copybara-export.yaml<br/>on push to &lt;comp&gt;/**"]
+        imp["copybara-import-&lt;comp&gt;.yaml → _copybara-import.yaml<br/>on repository_dispatch &lt;comp&gt;-import"]
     end
-    subgraph MS["VitruvianSoftware/mcp-slack (standalone)"]
+    subgraph MS["VitruvianSoftware/&lt;comp&gt; (standalone)"]
         root["repo root &lpar;= the component&rpar;"]
         disp[".github/workflows/sync-to-monorepo.yaml<br/>on push to main"]
     end
@@ -46,15 +52,22 @@ flowchart LR
     imp == "import: push commits (GITHUB_TOKEN)" ==> comp
 ```
 
+> §3–§4 below walk the flow using **mcp-slack** as the worked example; every component behaves
+> identically (substitute `<comp>` and its `<COMP>_*` secrets / `<COMP>_REV_ID` label).
+
 ### Moving parts
 
 | File | Repo | Purpose |
 |---|---|---|
-| `tools/copybara/copy.bara.sky` | vitruvian-core | The Copybara config: `export_mcp_slack` + `import_mcp_slack` workflows, `ITERATIVE` mode, rev-id labels, skip-guards, path `core.move`, context-file excludes. |
-| `.github/workflows/copybara-export.yaml` | vitruvian-core | Runs `export_mcp_slack` on push to `mcp-slack/**`. Also `workflow_dispatch` (manual). |
-| `.github/workflows/copybara-import.yaml` | vitruvian-core | Runs `import_mcp_slack` on `repository_dispatch` (type `mcp-slack-import`). Also `workflow_dispatch`. |
-| `.github/workflows/sync-to-monorepo.yaml` | **mcp-slack** | On push, mints a GitHub App token and fires the `repository_dispatch` into vitruvian-core. The only sync machinery the standalone carries. |
-| `infrastructure/pulumi/pkg/copybara_sync/sync.go` | vitruvian-core | IaC that provisions the deploy key + the three Actions secrets. |
+| `tools/copybara/copy.bara.sky` | vitruvian-core | The Copybara config. A `COMPONENTS` list drives a function (run via a top-level comprehension — Starlark forbids top-level `for`) that generates `export_<comp>`/`import_<comp>` for every component: `ITERATIVE` mode, rev-id labels, skip-guards, path `core.move`, `**/BUILD` + context-file excludes. |
+| `.github/workflows/_copybara-export.yaml` | vitruvian-core | **Reusable** (`workflow_call`). All export logic + the pinned Copybara image, parameterized by `component` / `standalone_only` / `sync_ssh_key`. |
+| `.github/workflows/_copybara-import.yaml` | vitruvian-core | **Reusable.** All import logic (incl. the push-race retry). |
+| `.github/workflows/copybara-export-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `push` path trigger (`<comp>/**`) + per-component concurrency group; calls the export reusable. |
+| `.github/workflows/copybara-import-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `repository_dispatch` trigger (type `<comp>-import`) + per-component concurrency; calls the import reusable. |
+| `.github/workflows/copybara-drift-check.yaml` | vitruvian-core | Loops all 4 components, diffs each subtree against its standalone (gated on whether the component is seeded). |
+| `tools/copybara/conflict-precheck.sh` | vitruvian-core | Component-aware pre-push conflict guard (run by both reusables). |
+| `.github/workflows/sync-to-monorepo.yaml` | **each standalone** | On push, mints a GitHub App token and fires the `repository_dispatch` into vitruvian-core. The only sync machinery a standalone carries. |
+| `infrastructure/pulumi/pkg/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + three Actions secrets. |
 
 ### Versions / identifiers (pinned)
 
@@ -62,10 +75,10 @@ flowchart LR
 |---|---|
 | Copybara image | `olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679` (2023-01 build, reports "Unknown version") |
 | Dispatch token action | `actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1` (v3.2.0) |
-| GitHub App | `vitruvian-copybara-sync`, **App ID 3863936**, installed on `vitruvian-core` only (Contents: Read & write) |
-| Export-push secret | `MCP_SLACK_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on mcp-slack |
-| Dispatch secrets | `MCP_SLACK_DISPATCH_APP_ID`, `MCP_SLACK_DISPATCH_APP_PRIVATE_KEY` (in mcp-slack) |
-| Rev-id labels | export stamps `MONOREPO_REV_ID`; import stamps `MCP_SLACK_REV_ID` |
+| GitHub App | `vitruvian-copybara-sync`, **App ID 3863936**, installed on `vitruvian-core` only (Contents: Read & write). **Reused by all four components** (one App, its id/key placed as per-component secrets). |
+| Export-push secret | `<COMP>_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on the standalone. e.g. `DEVX_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY`. |
+| Dispatch secrets | `<COMP>_DISPATCH_APP_ID`, `<COMP>_DISPATCH_APP_PRIVATE_KEY` (in each standalone) — all hold the same reused App's credentials. |
+| Rev-id labels | export stamps `MONOREPO_REV_ID` (shared — each lands on a *separate* standalone); import stamps a per-component `<COMP>_REV_ID` (unique — they all land in the *shared* monorepo). |
 
 ---
 
@@ -187,10 +200,15 @@ flowchart TD
 - **The dispatch** (mcp-slack → vitruvian-core): the **GitHub App**. The App is installed on
   `vitruvian-core` only (least-privilege; `repository_dispatch` needs Contents: write there). Its
   credentials live as secrets in mcp-slack.
-- **Provisioned by Pulumi** (`pkg/copybara_sync/sync.go`): the deploy key + all three secrets. The
-  App itself is created/installed by hand (GitHub has no headless App-creation API); Pulumi only
-  places its credentials, supplied as stack config secrets `mcpSlackDispatchAppId` /
-  `mcpSlackDispatchAppPrivateKey`.
+- **Provisioned by Pulumi** (`pkg/copybara_sync/sync.go`): per component, the deploy key + all three
+  secrets — it loops `syncedProjects`. The App itself is created/installed by hand (GitHub has no
+  headless App-creation API); Pulumi only places its credentials, supplied as stack config secrets
+  `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` (all set to the one reused App).
+- **Pulumi config gotchas:** the stack sets `github:owner=VitruvianSoftware` (without it the GitHub
+  provider defaults to the token's user and 404s). The pulumi program is its own Go module outside the
+  monorepo `go.work`, so run pulumi with **`GOWORK=off`** (else the build resolves the wrong main
+  module). `Pulumi.dev.yaml` is gitignored; Pulumi Cloud (`ipv1337/vitruvian-core-infra/dev`) is the
+  source of truth.
 
 ---
 
@@ -259,29 +277,41 @@ then re-run the sync.
 ## 8. Routine maintenance (step by step)
 
 ### 8a. Re-run a sync manually
-Both sync workflows expose `workflow_dispatch` with a `copybara_options` input.
+Every caller workflow exposes `workflow_dispatch` with a `copybara_options` input. Use the
+**per-component** file name:
 
 ```bash
-# Export (normal):
-gh workflow run copybara-export.yaml -R VitruvianSoftware/vitruvian-core --ref main
-# Import (normal):
-gh workflow run copybara-import.yaml -R VitruvianSoftware/vitruvian-core --ref main
+# Export (normal), e.g. devx:
+gh workflow run copybara-export-devx.yaml -R VitruvianSoftware/vitruvian-core --ref main
+# Import (normal), e.g. devx:
+gh workflow run copybara-import-devx.yaml -R VitruvianSoftware/vitruvian-core --ref main
 ```
 
-### 8b. Seed a fresh destination baseline (first-ever sync, or after a reset)
-A brand-new destination has no rev-id baseline, so a normal run errors with
-`Cannot find last imported revision … <LABEL> could not be found`. Seed it **once**:
+### 8b. Seed a fresh component baseline (first-ever sync) — the tested recipe
+A brand-new destination has **no rev-id baseline**, so a normal run errors with
+`Previous revision label <LABEL> could not be found … --last-rev or --init-history were not passed`.
+**`--force` alone is NOT enough** — Copybara needs `--init-history`, and the baseline is anchored by a
+**real migration** (a commit that touches managed paths). If the two repos are already byte-identical
+the seed no-ops and stamps nothing, so seeding needs a transient diff. The tested recipe (verified
+for devx/homelab/nexus-agent on 2026-05-26), using a throwaway marker that nets to zero:
 
 ```bash
-# Prefer --last-rev pointing at the commit just BEFORE the change you want to seed,
-# so the range excludes any peer-origin commit (avoids skip-guard surprises):
-gh workflow run copybara-export.yaml -R VitruvianSoftware/vitruvian-core --ref main \
-  -f copybara_options="--last-rev <vitruvian-core-sha> --ignore-noop"
-# Or --force to seed from full history (fine in ITERATIVE — it skips peer commits per-commit):
-gh workflow run copybara-import.yaml -R VitruvianSoftware/vitruvian-core --ref main \
-  -f copybara_options="--force --ignore-noop"
+COMP=devx   # the component
+# 1. Add a transient marker in the monorepo (skip CI so the export doesn't auto-fire un-seeded):
+#    echo seed > $COMP/.copybara-seed ; git commit -m "seed [skip ci]" ; git push
+# 2. Export seed — forces a SQUASH "Project import" commit on the standalone (anchors MONOREPO_REV_ID):
+gh workflow run copybara-export-$COMP.yaml --ref main \
+  -f copybara_options="--force --squash --init-history --ignore-noop"
+# 3. Remove the marker ON THE STANDALONE (git rm + push). Note the export-seed "Project import" SHA.
+# 4. Import seed — ITERATIVE with --last-rev = that "Project import" SHA, so the range is JUST the
+#    genuine removal (do NOT use --squash here: the squash range would include the MONOREPO_REV_ID
+#    "Project import" commit and the skip-guard would drop the whole squash → no baseline):
+gh workflow run copybara-import-$COMP.yaml --ref main \
+  -f copybara_options="--force --last-rev <export-seed-Project-import-SHA> --ignore-noop"
 ```
-After the first successful run, the label is stamped and normal runs work.
+After both seeds, the marker is gone from both repos and a **normal** `--ignore-noop` run finds the
+baseline and no-ops. Confirm with `copybara-drift-check.yaml` (it should report the component "in
+sync"). A `--force` run always skips the conflict pre-check.
 
 ### 8c. Watch / debug a run
 ```bash
@@ -306,13 +336,23 @@ pulumi config set --secret mcpSlackDispatchAppPrivateKey < new-key.pem   # never
 pulumi up --stack dev   # updates MCP_SLACK_DISPATCH_APP_PRIVATE_KEY in mcp-slack
 ```
 
-### 8f. Onboard another component (devx / homelab / nexus-agent)
-1. Add an entry to `syncedProjects` in `pkg/copybara_sync/sync.go`, create/reuse a GitHub App, set
-   its config secrets, `pulumi up`.
-2. Add `export_<proj>` / `import_<proj>` workflows to `copy.bara.sky` (copy the mcp-slack pair;
-   adjust the `core.move` path + excludes). **For devx/homelab, exclude the monorepo-root `go.work`**
-   so each standalone round-trips as a valid Go module.
-3. Add the export/import workflows in vitruvian-core + the dispatch workflow in the standalone.
+### 8f. Onboard another component
+mcp-slack, devx, homelab, nexus-agent are already onboarded. For a **new** one (standalone repo must
+already exist — this setup never creates repos):
+1. **Config:** add a dict to `COMPONENTS` in `copy.bara.sky` — `name`, a unique
+   `standalone_rev_id` (`<COMP>_REV_ID`), and `standalone_only` (always the dispatch workflow; add
+   `package-lock.json` for npm components). The `**/BUILD` exclude is automatic. (No `core.move` or
+   workflow hand-edits — the loop generates `export_<comp>`/`import_<comp>`.)
+2. **CI:** add two thin callers — `copybara-export-<comp>.yaml` (push `paths: <comp>/**`) and
+   `copybara-import-<comp>.yaml` (`repository_dispatch` type `<comp>-import`); copy an existing pair
+   and swap the component name + `<COMP>_SYNC_SSH_KEY` secret. Add the component to the
+   `drift-check` `workflow_run` list + `components` loop.
+3. **Auth:** append the component to `syncedProjects` in `pkg/copybara_sync/sync.go`; set its
+   `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` config to the reused App's creds
+   (`pulumi config get … | pulumi config set --secret …` so the key never prints); `pulumi up`.
+4. **Dispatch workflow:** push `.github/workflows/sync-to-monorepo.yaml` to the standalone (copy an
+   existing one; swap the `<COMP>_DISPATCH_APP_*` secret names + `event_type=<comp>-import`).
+5. **Seed** both baselines per §8b, then confirm with the drift check.
 
 ---
 
@@ -324,7 +364,8 @@ pulumi up --stack dev   # updates MCP_SLACK_DISPATCH_APP_PRIVATE_KEY in mcp-slac
 | `Load key "/root/.ssh/id_rsa": invalid format` → `Permission denied (publickey)` | SSH key lost its trailing newline | We run the image directly and write the key with a guaranteed `\n` — do **not** switch to `olivr/copybara-action` (it trims the newline via `core.getInput`) |
 | A genuine change silently doesn't sync; export "succeeds" as NO_OP | Skip-guard over-fired (only possible in `SQUASH`) | Ensure `mode = "ITERATIVE"` in `copy.bara.sky` (§5) |
 | Repos hold different values for the same line, both runs green | Concurrent conflicting edit (see §7) | Reconcile by hand; consider the fail-loud options in §7 |
-| Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes `mcp-slack/BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
+| Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes a gazelle `BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
+| Import "succeeds" as NO_OP during seeding, no baseline stamped | `--squash` seed range included the export-origin `Project import` commit (skip-guard dropped the whole squash) | Seed the import with `--last-rev <export-seed-SHA>` in ITERATIVE, not `--squash` (§8b) |
 
 **Diff the component across both repos:**
 ```bash
@@ -333,8 +374,9 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
 ```
 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
-- export keeps the standalone's `package-lock.json` and `.github/workflows/sync-to-monorepo.yaml`;
-- both directions keep the monorepo-only `mcp-slack/BUILD`.
+- export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
+  for npm components: mcp-slack, nexus-agent);
+- both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
 
 ---
 
@@ -344,9 +386,34 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
   newline. We pin the image by digest and manage auth ourselves.
 - **`experimental_custom_rev_id` (not `custom_rev_id`)** and `_REV_ID` label format — required by the
   pinned 2023 image. On a newer Copybara you'd rename to `custom_rev_id` (the `_REV_ID` labels still
-  work). To upgrade the image, mirror a known-good build to GHCR and re-validate loop-prevention.
+  work).
 - **`ITERATIVE` mode** — mandatory (see §5).
 - **GitHub App for the dispatch (not a PAT)** — org-managed, rotatable, least-privilege.
+- **Per-component import concurrency groups + a retry (NOT a shared group).** Every import pushes to
+  the same monorepo `main`, so concurrent imports can race ("behind destination"). A *shared*
+  concurrency group looks tempting but GitHub **cancels intermediate pending runs** in a group — that
+  would silently DROP a component's import. So each import keeps its own group (no cancellation) and
+  `_copybara-import.yaml` instead **retries** Copybara a few times: a losing push just means another
+  import landed first, and re-running re-fetches `main` and replays cleanly. (Both learned the hard
+  way during the 2026-05-26 templating: a shared group cancelled a third simultaneous import.)
+
+### Pending hardening — mirror the Copybara image to GHCR
+The sync pulls `olivr/copybara@sha256:…` from Docker Hub on every run. To remove that external
+dependency, mirror the pinned digest to `ghcr.io/vitruviansoftware/copybara` and repin. **This needs
+a token with `write:packages`** (the day-to-day automation token only has `repo`/`workflow`), so it
+is an operator hand-off:
+```bash
+# With a PAT that has write:packages:
+echo "$GHCR_PAT" | docker login ghcr.io -u <user> --password-stdin
+docker pull  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679
+docker tag   olivr/copybara@sha256:87e2e90… ghcr.io/vitruviansoftware/copybara:2023-01-olivr
+docker push  ghcr.io/vitruviansoftware/copybara:2023-01-olivr        # note the resulting GHCR digest
+# Make the package public (simplest — it's a public-image mirror) OR add `packages: read` +
+# `docker login ghcr.io` to the reusables. Then repin BOTH _copybara-{export,import}.yaml to
+# ghcr.io/vitruviansoftware/copybara@sha256:<ghcr-digest> and re-run a sync to validate.
+```
+Do **not** repin the workflows before the GHCR image exists — every sync would fail pulling a
+missing image.
 
 ---
 
