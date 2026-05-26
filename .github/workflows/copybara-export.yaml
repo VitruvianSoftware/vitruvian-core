@@ -17,6 +17,8 @@ on:
     push:
         branches: [main]
         paths: ["mcp-slack/**"]
+    # Manual trigger for pilot validation / re-runs without a mcp-slack/** change.
+    workflow_dispatch: {}
 
 permissions:
     contents: read
