@@ -57,6 +57,7 @@ jobs:
               env:
                 CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
               run: |
+                set +e
                 docker run --rm \
                   -v "$GITHUB_WORKSPACE":/usr/src/app \
                   -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
@@ -69,3 +70,9 @@ jobs:
                   -e COPYBARA_OPTIONS="$CB_OPTS" \
                   olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
                   copybara
+                rc=$?
+                # Copybara exit codes: 0 = success, 4 = NO_OP (nothing to migrate, e.g.
+                # the skip-guard dropped a peer-origin change or the repos are in sync).
+                # Both are success here; fail on anything else.
+                if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
+                echo "Copybara failed (exit $rc)"; exit "$rc"
