@@ -16,8 +16,11 @@ on:
 permissions:
     contents: write
 
+# Shared across ALL components: every import pushes to the same monorepo main,
+# so imports must serialize (per-component groups would let cross-component
+# imports race and one would be rejected as "behind destination").
 concurrency:
-    group: copybara-import-homelab
+    group: copybara-import-monorepo
     cancel-in-progress: false
 
 jobs:
