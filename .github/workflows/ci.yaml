@@ -48,3 +48,21 @@ jobs:
         # label. The wildcard still builds the rest of nexus-agent (Swift lib,
         # Node bridge, hooks) on macOS.
         run: bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+
+  license-check:
+    # Mirror devx's standalone license-header lint (addlicense) on the devx/
+    # subtree, so a missing MIT header is caught HERE on the PR rather than
+    # downstream when the change fans out and reddens devx's own CI. devx is the
+    # only synced component that enforces headers; the monorepo-only gazelle
+    # BUILD files are ignored (the standalone has none). See docs/copybara-bidi-sync.md §9.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install addlicense
+        run: go install github.com/google/addlicense@latest
+      - name: Check devx license headers
+        working-directory: devx
+        run: |
+          addlicense -check -c "VitruvianSoftware" -l mit \
+            -ignore "docs/**" -ignore "internal/scaffold/templates/**" \
+            -ignore "**/BUILD" -ignore "**/BUILD.bazel" .
