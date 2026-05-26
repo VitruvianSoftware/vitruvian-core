@@ -63,6 +63,7 @@ jobs:
       - name: Check devx license headers
         working-directory: devx
         run: |
-          addlicense -check -c "VitruvianSoftware" -l mit \
+          # go install drops the binary in GOPATH/bin, which isn't on PATH on the runner.
+          "$(go env GOPATH)/bin/addlicense" -check -c "VitruvianSoftware" -l mit \
             -ignore "docs/**" -ignore "internal/scaffold/templates/**" \
             -ignore "**/BUILD" -ignore "**/BUILD.bazel" .
