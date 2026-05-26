@@ -10,10 +10,77 @@
 #     SCRATCH branch only.
 # Do NOT change either `push` to `main` until the bidirectional sync is fully
 # validated in later tasks.
+#
+# ---------------------------------------------------------------------------
+# LOOP PREVENTION (bidirectional, on-push peer sync)  -- VERIFIED LOCALLY
+# ---------------------------------------------------------------------------
+# In a peer bidirectional setup an EXPORTed change must not bounce back as an
+# IMPORT (and vice-versa), or the two repos ping-pong forever. We prevent this
+# with two cooperating mechanisms (BOTH required):
+#
+#   1. Distinct per-direction rev-id labels.
+#      By default Copybara stamps every migrated change with `GitOrigin-RevId`.
+#      If BOTH directions used that default label they could not tell their own
+#      footprint apart from the peer's. Instead each direction stamps the
+#      destination with its OWN label (see `experimental_custom_rev_id` below):
+#        - export stamps `MONOREPO_REV_ID`    (change came FROM the monorepo)
+#        - import stamps `MCP_SLACK_REV_ID`   (change came FROM the standalone)
+#
+#   2. A dynamic transform that SKIPs (no-op) any change already carrying the
+#      OTHER direction's label. `ctx.find_label(name)` returns the label value
+#      or None; if the peer's label is present the change originated from the
+#      peer, so we `core.fail_with_noop(...)` to drop it instead of migrating
+#      it back. This NOOP (exit code 4) is what breaks the loop.
+#
+# COPYBARA VERSION NOTE (important for upgrades):
+#   This config was VERIFIED end-to-end against `olivr/copybara:latest`
+#   (build date 2023-01, "Unknown version"). That build:
+#     - exposes the parameter as `experimental_custom_rev_id` (NOT the newer
+#       `custom_rev_id` -- the rename landed in Copybara ~late-2023), and
+#     - enforces the older label format `[A-Z][A-Z_0-9]{1,30}_REV_ID`
+#       (hence `MONOREPO_REV_ID` / `MCP_SLACK_REV_ID`; the modern `Xxx-RevId`
+#       form is NOT accepted by this build).
+#   On a CURRENT Copybara, make exactly these two edits (logic is identical):
+#     - rename `experimental_custom_rev_id` -> `custom_rev_id`, and
+#     - the `_REV_ID` labels keep working (modern format is a superset:
+#       `([A-Z][A-Z_0-9]{1,30}_REV_ID | [A-Z][a-zA-Z0-9-]{1,30}-RevId)`).
+#
+# IMPLEMENTATION NOTE (SQUASH mode): in SQUASH mode the skip guard is evaluated
+# against the labels accumulated over the whole squashed range, not just the
+# tip commit -- so a range that *contains* a peer-origin commit is also
+# correctly skipped. This strengthens loop prevention; it's expected behavior.
 
 MONOREPO = "git@github.com:VitruvianSoftware/vitruvian-core.git"
 STANDALONE = "git@github.com:VitruvianSoftware/mcp-slack.git"
 AUTHOR = "VitruvianSoftware Sync <sync@vitruviansoftware.com>"
+
+# Per-direction rev-id labels (see LOOP PREVENTION note above).
+# Format constrained by the pinned Copybara build to `[A-Z][A-Z_0-9]{1,30}_REV_ID`.
+MONOREPO_REV_ID = "MONOREPO_REV_ID"
+STANDALONE_REV_ID = "MCP_SLACK_REV_ID"
+
+
+def _skip_imported_changes(ctx):
+    """EXPORT guard: skip changes that the import workflow brought into the
+    monorepo FROM the standalone repo. Such changes carry the import label
+    (`MCP_SLACK_REV_ID`); re-exporting them would bounce them back to standalone.
+    """
+    if ctx.find_label(STANDALONE_REV_ID):
+        core.fail_with_noop(
+            "export_mcp_slack: skipping change that originated from the"
+            + " standalone mcp-slack repo (carries " + STANDALONE_REV_ID + ").")
+
+
+def _skip_exported_changes(ctx):
+    """IMPORT guard: skip changes that the export workflow pushed to the
+    standalone repo FROM the monorepo. Such changes carry the export label
+    (`MONOREPO_REV_ID`); re-importing them would bounce them back to the monorepo.
+    """
+    if ctx.find_label(MONOREPO_REV_ID):
+        core.fail_with_noop(
+            "import_mcp_slack: skipping change that originated from the"
+            + " vitruvian-core monorepo (carries " + MONOREPO_REV_ID + ").")
+
 
 # Export: vitruvian-core/mcp-slack/  ->  VitruvianSoftware/mcp-slack (repo root)
 core.workflow(
@@ -31,7 +98,11 @@ core.workflow(
     destination_files = glob(["**"]),
     authoring = authoring.pass_thru(default = AUTHOR),
     mode = "SQUASH",
+    # Stamp the destination with the monorepo's own rev-id label, and drop any
+    # change that the import direction brought in (carries the standalone label).
+    experimental_custom_rev_id = MONOREPO_REV_ID,
     transformations = [
+        core.dynamic_transform(impl = _skip_imported_changes),
         # Strip the `mcp-slack/` prefix so the component lands at the repo root.
         core.move("mcp-slack", ""),
     ],
@@ -53,7 +124,11 @@ core.workflow(
     destination_files = glob(["mcp-slack/**"]),
     authoring = authoring.pass_thru(default = AUTHOR),
     mode = "SQUASH",
+    # Stamp the destination with the standalone's own rev-id label, and drop any
+    # change that the export direction pushed out (carries the monorepo label).
+    experimental_custom_rev_id = STANDALONE_REV_ID,
     transformations = [
+        core.dynamic_transform(impl = _skip_exported_changes),
         # Re-add the `mcp-slack/` prefix so the standalone repo root lands
         # under the component directory in the monorepo.
         core.move("", "mcp-slack"),
