@@ -69,19 +69,30 @@ jobs:
               run: |
                 set +e
                 WF="import_$(printf '%s' "$COMPONENT" | tr '-' '_')"
-                docker run --rm \
-                  -v "$GITHUB_WORKSPACE":/usr/src/app \
-                  -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
-                  -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
-                  -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
-                  -v "$HOME/.git-credentials":/root/.git-credentials \
-                  -v "$HOME/.gitconfig":/root/.gitconfig \
-                  -e COPYBARA_CONFIG=/root/copy.bara.sky \
-                  -e COPYBARA_WORKFLOW="$WF" \
-                  -e COPYBARA_OPTIONS="$CB_OPTS" \
-                  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
-                  copybara
-                rc=$?
-                # 0 = success, 4 = NO_OP (skip-guard dropped an export-origin change, or up-to-date). Both OK.
-                if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
-                echo "Copybara failed (exit $rc)"; exit "$rc"
+                # All component imports push to the SAME monorepo main. If another
+                # component's import lands first, Copybara fails to push ("behind
+                # destination"). Re-running re-fetches main and replays the change
+                # cleanly, so retry a few times before giving up.
+                attempt=1; max=3
+                while : ; do
+                  docker run --rm \
+                    -v "$GITHUB_WORKSPACE":/usr/src/app \
+                    -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
+                    -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+                    -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                    -v "$HOME/.git-credentials":/root/.git-credentials \
+                    -v "$HOME/.gitconfig":/root/.gitconfig \
+                    -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                    -e COPYBARA_WORKFLOW="$WF" \
+                    -e COPYBARA_OPTIONS="$CB_OPTS" \
+                    olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                    copybara
+                  rc=$?
+                  # 0 = success, 4 = NO_OP (skip-guard dropped an export-origin change, or up-to-date). Both OK.
+                  if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
+                  if [ "$attempt" -lt "$max" ]; then
+                    echo "Copybara exit $rc (attempt $attempt/$max) — retrying after re-fetch (likely a concurrent import race)"
+                    attempt=$((attempt + 1)); sleep $((attempt * 5)); continue
+                  fi
+                  echo "Copybara failed (exit $rc after $max attempts)"; exit "$rc"
+                done

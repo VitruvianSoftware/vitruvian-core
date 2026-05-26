@@ -16,11 +16,11 @@ on:
 permissions:
     contents: write
 
-# Shared across ALL components: every import pushes to the same monorepo main,
-# so imports must serialize (per-component groups would let cross-component
-# imports race and one would be rejected as "behind destination").
+# Per-component (NOT a shared group): a shared concurrency group cancels
+# intermediate pending runs, which would DROP a component's import. Cross-component
+# races on the shared monorepo main are handled by the retry in _copybara-import.yaml.
 concurrency:
-    group: copybara-import-monorepo
+    group: copybara-import-nexus-agent
     cancel-in-progress: false
 
 jobs:
