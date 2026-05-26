@@ -33,6 +33,8 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
+              with:
+                fetch-depth: 0 # full history so the conflict pre-check can reach the rev-id baseline
             - name: Set up Copybara auth (SSH deploy key + HTTPS token)
               env:
                 SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
@@ -46,6 +48,15 @@ jobs:
                 printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > ~/.git-credentials
                 chmod 600 ~/.git-credentials
                 printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
+            - name: Conflict pre-check (refuse to overwrite a concurrent edit)
+              env:
+                CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+              run: |
+                # --force is a deliberate override (e.g. baseline seeding) — skip the guard.
+                case "$CB_OPTS" in *--force*) echo "skipping conflict pre-check (--force override)"; exit 0 ;; esac
+                GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_rsa -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+                  git clone --no-tags git@github.com:VitruvianSoftware/mcp-slack.git "$RUNNER_TEMP/mcp-slack-peer"
+                bash tools/copybara/conflict-precheck.sh import "$GITHUB_WORKSPACE" "$RUNNER_TEMP/mcp-slack-peer"
             - name: Copybara import (standalone -> mcp-slack)
               env:
                 CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}

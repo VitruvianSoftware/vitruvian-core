@@ -230,14 +230,29 @@ excludes) and goes **RED** with a CI error annotation if they diverge. It runs *
 longer corrupts silently — you get a failing run pointing you at the diverged files; reconcile by
 hand (see the diff in the run log).
 
-This is *detection*. To also **prevent** the overwrite (future work), add one of:
-1. **Pre-push baseline check** — fail the sync if the destination's current rev-id ≠ the expected
-   baseline. The "right" fix, but hard to get right: telling "one side is legitimately ahead" apart
-   from a true conflict needs a 3-way comparison against the last common baseline, and the per-commit
-   rev-id echoes create false-positive traps — mis-tuned, it blocks normal syncs.
-2. **Serialize syncs** — put both sync workflows in one `concurrency` group so export and import
-   never run at once. Cheap; reduces a conflict from *divergence* to deterministic last-writer-wins
-   (the repos stay consistent, but one side's edit is still silently lost).
+**Conflicts are now also PREVENTED (implemented):** each sync workflow runs
+[`tools/copybara/conflict-precheck.sh`](../tools/copybara/conflict-precheck.sh) **before** Copybara.
+It refuses to sync (exit 1, red, with an error annotation) when the **peer** repo has an un-synced
+*genuine* change — a commit that does **not** carry the other direction's rev-id label, i.e. a real
+edit not yet reflected back. Syncing then would overwrite it. Because **both** directions run the
+check, a true conflict fails **both** runs and **neither overwrites** — the two edits stay intact on
+their own sides, and you reconcile by hand and re-run. (A `--force` dispatch skips the pre-check, for
+deliberate re-seeds.)
+
+```mermaid
+flowchart TD
+    S["sync about to run (export or import)"] --> Q{"does the PEER repo have a genuine<br/>change not yet synced back?"}
+    Q -- "no" --> OK["proceed → Copybara runs"]
+    Q -- "yes (concurrent edit)" --> F["EXIT 1 — refuse, red CI, annotate<br/>(no overwrite; reconcile by hand)"]
+```
+
+> **Why not just serialize the two workflows?** It doesn't help here: in ITERATIVE mode each side's
+> commit is replayed onto the other *regardless of order*, so serializing the runs still diverges.
+> Refusing when the peer is ahead with a genuine change is what actually prevents the overwrite.
+
+So a conflict now **fails both syncs loud** (pre-check, before any write); the **drift check** above
+remains as a backstop for anything that slips through. Recovery = reconcile the two edits by hand,
+then re-run the sync.
 
 ---
 
