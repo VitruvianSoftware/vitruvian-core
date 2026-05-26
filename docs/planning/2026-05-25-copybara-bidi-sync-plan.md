@@ -228,5 +228,23 @@ The genuinely uncertain pieces — the exact rev-id-label customization syntax (
 - **Templating to devx / homelab / nexus-agent.** Parameterize `copy.bara.sky` + the workflows per project. For devx/homelab, exclude the monorepo-root `go.work` from `origin_files` so each standalone repo round-trips as a valid multi-module Go repo.
 - **Template the auth to devx/homelab/nexus-agent.** The pilot's auth is already Pulumi-codified (Task 4 — `pkg/copybara_sync/sync.go`); extend its `syncedProjects` slice per repo and create/reuse a GitHub App per project.
 - **Harden the Copybara image pin.** The CI uses `olivr/copybara:latest` (validated digest `sha256:87e2e90…`, 2023-01-29); mirror that exact image to GHCR (e.g. `ghcr.io/vitruviansoftware/copybara`) and point `copybara_image` at it for true immutability.
-- **`ITERATIVE` history mode** (commit-by-commit) if `SQUASH` loses too much fidelity.
+- ~~`ITERATIVE` history mode~~ — **adopted during the pilot** (see Outcome): it is *required* for correct bidi loop-prevention, not an optional fidelity upgrade.
 - **The symmetric per-repo architecture** (documented in the spec) if decentralizing later.
+
+---
+
+## Outcome (pilot executed end-to-end in CI, 2026-05-26)
+
+The pilot ran live against `main` on both repos. **Result: bidirectional no-bounce sync works; fail-loud conflict handling does not.** Operator runbook: [`docs/copybara-bidi-sync.md`](../copybara-bidi-sync.md).
+
+**Success criteria:**
+- **1 — export round-trip, no bounce: ✅** A monorepo `mcp-slack/` edit reaches the standalone; the dispatch-triggered import skip-guards it (no bounce).
+- **2 — import round-trip, no bounce: ✅** A standalone edit reaches `vitruvian-core/mcp-slack/`; no export bounces it back.
+- **3 — conflict fails loud: ❌** Concurrent edits to the *same line* on both repos **silently diverge** — both syncs run green and the repos end up holding opposite values, with no error. Copybara's `git.destination` state-syncs (overwrites the destination to match the origin); the rev-id labels do loop-prevention, **not** conflict-detection. Before production with concurrent writers, add one of: a pre-push baseline check (fail if the destination's rev-id ≠ expected), serialized syncs (a lock/queue so two never run at once), or an external consistency monitor.
+
+**Key decisions proven out (details + diagrams in the runbook):**
+- **History mode = `ITERATIVE`, not `SQUASH`.** SQUASH evaluates the skip-guard over the whole squashed range, so a range that merely *contains* a peer-origin commit is skipped entirely — including genuine changes batched with it; in CI this left the export direction **stuck** after any import. ITERATIVE runs the skip-guard per commit.
+- **Rev-id syntax = `experimental_custom_rev_id`** with `_REV_ID` labels — required by the pinned 2023 `olivr/copybara` build.
+- **Run the `olivr/copybara` image directly** (pinned `@sha256:87e2e90…`), NOT `olivr/copybara-action`: the action reads `ssh_key` via `core.getInput` (trims the trailing newline) and writes it verbatim, yielding an `id_rsa` OpenSSH rejects as "invalid format".
+- **Auth via Pulumi IaC** (`infrastructure/pulumi`, project `vitruvian-core-infra`) + a **GitHub App** (`vitruvian-copybara-sync`, App ID 3863936) for the dispatch — App is a one-time manual operator bootstrap.
+- **`GITHUB_TOKEN` pushes don't trigger workflows** — the import's push to monorepo `main` does not re-trigger the export (extra no-bounce safety).
