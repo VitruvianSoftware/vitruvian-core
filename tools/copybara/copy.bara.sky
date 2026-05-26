@@ -45,10 +45,17 @@
 #     - the `_REV_ID` labels keep working (modern format is a superset:
 #       `([A-Z][A-Z_0-9]{1,30}_REV_ID | [A-Z][a-zA-Z0-9-]{1,30}-RevId)`).
 #
-# IMPLEMENTATION NOTE (SQUASH mode): in SQUASH mode the skip guard is evaluated
-# against the labels accumulated over the whole squashed range, not just the
-# tip commit -- so a range that *contains* a peer-origin commit is also
-# correctly skipped. This strengthens loop prevention; it's expected behavior.
+# HISTORY MODE (ITERATIVE -- required for correct bidi; do NOT use SQUASH):
+#   We migrate one commit at a time so the skip guard runs PER COMMIT, dropping
+#   only the peer-origin commits while migrating the genuine ones.
+#
+#   SQUASH is WRONG here: it evaluates the skip guard over the labels of the
+#   WHOLE squashed range, so a range that merely *contains* a peer-origin commit
+#   is skipped ENTIRELY -- including genuine changes batched with it. Verified in
+#   CI 2026-05-26: an import lands on monorepo main (carrying MCP_SLACK_REV_ID,
+#   pushed via GITHUB_TOKEN so it does NOT advance the export baseline), then the
+#   next export range includes it and SQUASH skipped the genuine change too --
+#   the export direction got stuck. ITERATIVE fixes this.
 
 # AUTH SPLIT: in CI (olivr/copybara-action) the monorepo is reached over HTTPS
 # authenticated by the workflow's GITHUB_TOKEN (which only has access to
@@ -107,7 +114,7 @@ core.workflow(
     # sync must never delete these.
     destination_files = glob(["**"], exclude = ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"]),
     authoring = authoring.pass_thru(default = AUTHOR),
-    mode = "SQUASH",
+    mode = "ITERATIVE",
     # Stamp the destination with the monorepo's own rev-id label, and drop any
     # change that the import direction brought in (carries the standalone label).
     experimental_custom_rev_id = MONOREPO_REV_ID,
@@ -138,7 +145,7 @@ core.workflow(
     # Bazel file) so the sync never deletes it.
     destination_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
     authoring = authoring.pass_thru(default = AUTHOR),
-    mode = "SQUASH",
+    mode = "ITERATIVE",
     # Stamp the destination with the standalone's own rev-id label, and drop any
     # change that the export direction pushed out (carries the monorepo label).
     experimental_custom_rev_id = STANDALONE_REV_ID,
