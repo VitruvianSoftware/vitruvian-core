@@ -3,9 +3,13 @@
 # Copybara configuration for syncing the mcp-slack component between the
 # vitruvian-core monorepo and the standalone VitruvianSoftware/mcp-slack repo.
 #
-# Task 1 scope: one-way EXPORT (monorepo -> standalone), pushing to the
-# `copybara-pilot` SCRATCH branch only. Do NOT change `push` to `main` until
-# the bidirectional sync is fully validated in later tasks.
+# Scope so far:
+#   - EXPORT (monorepo -> standalone), pushing to the `copybara-pilot`
+#     SCRATCH branch only.
+#   - IMPORT (standalone -> monorepo), pushing to the `copybara-pilot-import`
+#     SCRATCH branch only.
+# Do NOT change either `push` to `main` until the bidirectional sync is fully
+# validated in later tasks.
 
 MONOREPO = "git@github.com:VitruvianSoftware/vitruvian-core.git"
 STANDALONE = "git@github.com:VitruvianSoftware/mcp-slack.git"
@@ -30,5 +34,28 @@ core.workflow(
     transformations = [
         # Strip the `mcp-slack/` prefix so the component lands at the repo root.
         core.move("mcp-slack", ""),
+    ],
+)
+
+# Import: VitruvianSoftware/mcp-slack (repo root)  ->  vitruvian-core/mcp-slack/
+core.workflow(
+    name = "import_mcp_slack",
+    origin = git.origin(
+        url = STANDALONE,
+        ref = "main",
+    ),
+    destination = git.destination(
+        url = MONOREPO,
+        fetch = "main",
+        push = "copybara-pilot-import",  # SCRATCH branch for now
+    ),
+    origin_files = glob(["**"]),
+    destination_files = glob(["mcp-slack/**"]),
+    authoring = authoring.pass_thru(default = AUTHOR),
+    mode = "SQUASH",
+    transformations = [
+        # Re-add the `mcp-slack/` prefix so the standalone repo root lands
+        # under the component directory in the monorepo.
+        core.move("", "mcp-slack"),
     ],
 )
