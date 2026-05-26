@@ -6,7 +6,7 @@
 
 **Architecture:** Centralized hub in vitruvian-core: one `copy.bara.sky` with two workflows (`export_mcp_slack`, `import_mcp_slack`); an export GitHub Actions workflow (on push to `mcp-slack/**`) and an import workflow (on `repository_dispatch`); the standalone repo carries only a tiny dispatch workflow. Local validation precedes CI wiring because the loop-prevention behavior is the riskiest piece.
 
-**Tech Stack:** Copybara (Starlark `copy.bara.sky`), the `copybara-action` GitHub Action (Docker + SSH), GitHub Actions (`repository_dispatch`), SSH deploy key + fine-grained PAT for auth.
+**Tech Stack:** Copybara (Starlark `copy.bara.sky`), the `copybara-action` GitHub Action (Docker + SSH), GitHub Actions (`repository_dispatch`), SSH deploy key + GitHub App (dispatch) for auth — provisioned via Pulumi IaC (`vitruvian-core-infra` stack).
 
 **Spec:** `docs/planning/2026-05-25-copybara-bidi-sync-design.md`
 
@@ -107,15 +107,17 @@ git -C vitruvian-core add tools/copybara/copy.bara.sky
 git -C vitruvian-core commit -m "feat(copybara): distinct per-direction rev-id labels (no-bounce verified locally)"
 ```
 
-### Task 4: Auth — deploy key + dispatch PAT (pilot)
+### Task 4: Auth — deploy key + GitHub App, via Pulumi IaC ✅ DONE (2026-05-25)
 
-**Files:** (no repo files; GitHub settings + secrets. For the pilot these are set up manually; Pulumi-codify when templating — see Notes.)
+**Decision (supersedes the original manual/PAT plan):** auth is **codified in Pulumi**, consistent with the starter-repo deploy-key setup — not configured by hand. The import trigger uses a **GitHub App** (not a fine-grained PAT), so the credential is org-managed and rotatable.
 
-- [ ] **Step 1: Generate an ED25519 deploy key** for syncing: `ssh-keygen -t ed25519 -f /tmp/mcp-slack-sync -N "" -C "copybara-sync"`.
-- [ ] **Step 2:** Add the **public** key as a **write-enabled deploy key** on `VitruvianSoftware/mcp-slack` (Settings → Deploy keys → Allow write access).
-- [ ] **Step 3:** Add the **private** key as the secret `MCP_SLACK_SYNC_SSH_KEY` in `VitruvianSoftware/vitruvian-core` (used by both export and import workflows for SSH push).
-- [ ] **Step 4:** Create a **fine-grained PAT** scoped to `vitruvian-core` with permission to send `repository_dispatch`; add it as the secret `MONOREPO_DISPATCH_TOKEN` in `VitruvianSoftware/mcp-slack`.
-- [ ] **Step 5: Verify** the deploy key can push (test push to the `copybara-pilot` branch over SSH using the new key) and the PAT can dispatch (`curl` a test `repository_dispatch` to vitruvian-core and confirm a 204).
+**Files:**
+- `infrastructure/pulumi/pkg/copybara_sync/sync.go` (+ `Pulumi.yaml`, `main.go`) — project `vitruvian-core-infra`, stack `dev`.
+
+- [x] **Step 1: GitHub App (one-time manual operator bootstrap).** Create App `vitruvian-copybara-sync` (App ID **3863936**) under the VitruvianSoftware org: Contents **Read & write**, webhook off; **install on `vitruvian-core` only** (least-privilege — it only fires `repository_dispatch` *into* the monorepo). Generate a private key (`.pem`). Created by hand because GitHub has no headless App-creation API; Pulumi only places its credentials.
+- [x] **Step 2: Provision the rest via Pulumi** (`pkg/copybara_sync/sync.go`): an ED25519 `tls.PrivateKey` → a **write** `RepositoryDeployKey` on `mcp-slack` → the private half as `MCP_SLACK_SYNC_SSH_KEY` in `vitruvian-core` (export push) → the App id/key as `MCP_SLACK_DISPATCH_APP_ID` + `MCP_SLACK_DISPATCH_APP_PRIVATE_KEY` secrets in `mcp-slack` (import dispatch). App creds supplied as stack config secrets `mcpSlackDispatchAppId` / `mcpSlackDispatchAppPrivateKey`.
+- [x] **Step 3: Apply.** `pulumi config set --secret` the App id + key (key read from the `.pem` via stdin, never printed) → `pulumi preview` → `pulumi up` (6 resources). GitHub provider auth via `GITHUB_TOKEN`/`GITHUB_OWNER=VitruvianSoftware` env.
+- [x] **Step 4: Verify** (`gh api`): the `mcp-slack` write deploy key (`copybara-sync (write)`, read_only=false), the two `mcp-slack` App secrets, and the `vitruvian-core` `MCP_SLACK_SYNC_SSH_KEY` all exist. ✅ all confirmed.
 
 ### Task 5: Export workflow in CI (vitruvian-core)
 
@@ -156,7 +158,7 @@ jobs:
 - Create (in `VitruvianSoftware/mcp-slack`): `.github/workflows/sync-to-monorepo.yaml`
 - Create (in vitruvian-core): `.github/workflows/copybara-import.yaml`
 
-- [ ] **Step 1: Standalone dispatch workflow** (committed to the `mcp-slack` repo):
+- [ ] **Step 1: Standalone dispatch workflow** (committed to the `mcp-slack` repo). Mints a short-lived token from the `vitruvian-copybara-sync` App (secrets provisioned by Pulumi in Task 4) and fires the `repository_dispatch` — no PAT:
 ```yaml
 name: Notify monorepo of changes
 on:
@@ -166,14 +168,20 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
+      - name: Mint dispatch token from GitHub App
+        id: app-token
+        uses: actions/create-github-app-token@<PINNED_SHA>  # pin to a release SHA
+        with:
+          app-id: ${{ secrets.MCP_SLACK_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.MCP_SLACK_DISPATCH_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
       - name: repository_dispatch to vitruvian-core
-        run: |
-          curl -fsS -X POST \
-            -H "Authorization: Bearer ${{ secrets.MONOREPO_DISPATCH_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/VitruvianSoftware/vitruvian-core/dispatches \
-            -d '{"event_type":"mcp-slack-import"}'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: gh api -X POST repos/VitruvianSoftware/vitruvian-core/dispatches -f event_type=mcp-slack-import
 ```
+(The App needs Contents:write on `vitruvian-core` — which `repository_dispatch` requires — and must be installed there; both done in Task 4.)
 
 - [ ] **Step 2: Import workflow** (vitruvian-core):
 ```yaml
@@ -218,6 +226,7 @@ The genuinely uncertain pieces — the exact rev-id-label customization syntax (
 ## Deferred (not this plan)
 
 - **Templating to devx / homelab / nexus-agent.** Parameterize `copy.bara.sky` + the workflows per project. For devx/homelab, exclude the monorepo-root `go.work` from `origin_files` so each standalone repo round-trips as a valid multi-module Go repo.
-- **Pulumi-codify the auth** (deploy keys + dispatch PATs) the way the starter-repo deploy keys are managed, replacing the manual Task-4 setup.
+- **Template the auth to devx/homelab/nexus-agent.** The pilot's auth is already Pulumi-codified (Task 4 — `pkg/copybara_sync/sync.go`); extend its `syncedProjects` slice per repo and create/reuse a GitHub App per project.
+- **Harden the Copybara image pin.** The CI uses `olivr/copybara:latest` (validated digest `sha256:87e2e90…`, 2023-01-29); mirror that exact image to GHCR (e.g. `ghcr.io/vitruviansoftware/copybara`) and point `copybara_image` at it for true immutability.
 - **`ITERATIVE` history mode** (commit-by-commit) if `SQUASH` loses too much fidelity.
 - **The symmetric per-repo architecture** (documented in the spec) if decentralizing later.
