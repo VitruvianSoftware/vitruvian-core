@@ -2,12 +2,17 @@ name: Copybara Export (mcp-slack)
 
 # Exports vitruvian-core/mcp-slack/ to the standalone VitruvianSoftware/mcp-slack
 # repo on every push under mcp-slack/**. Loop prevention (no import bounce-back)
-# lives in tools/copybara/copy.bara.sky via per-direction rev-id labels + skip
-# guards, so an imported change is not re-exported.
+# lives in tools/copybara/copy.bara.sky (per-direction rev-id labels + skip guards).
 #
-# Auth (see copy.bara.sky "AUTH SPLIT" note): the monorepo origin is read over
-# HTTPS via GITHUB_TOKEN (access_token); the standalone destination is pushed
-# over SSH via the mcp-slack write deploy key (ssh_key = MCP_SLACK_SYNC_SSH_KEY).
+# We invoke the olivr/copybara image DIRECTLY rather than via olivr/copybara-action:
+# the action reads ssh_key with core.getInput (which trims the trailing newline)
+# and writes it verbatim, yielding an id_rsa with no trailing newline that OpenSSH
+# rejects as "invalid format" for ED25519 keys. Doing it ourselves lets us
+# guarantee the trailing newline and pin the image by digest.
+#
+# Auth (see copy.bara.sky "AUTH SPLIT"): monorepo origin over HTTPS via the
+# workflow GITHUB_TOKEN (~/.git-credentials); standalone destination over SSH via
+# the mcp-slack write deploy key (~/.ssh/id_rsa = MCP_SLACK_SYNC_SSH_KEY).
 on:
     push:
         branches: [main]
@@ -26,11 +31,32 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
+            - name: Set up Copybara auth (SSH deploy key + HTTPS token)
+              env:
+                SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                mkdir -p ~/.ssh
+                # OpenSSH requires exactly one trailing newline; normalize regardless
+                # of whether the secret/env carries 0 or 1 (this is the copybara-action bug).
+                printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                # credential store so the https:// monorepo origin authenticates via the token
+                printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > ~/.git-credentials
+                chmod 600 ~/.git-credentials
+                printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
             - name: Copybara export (mcp-slack -> standalone)
-              uses: olivr/copybara-action@042b4395839f3a374a6455b541e29e40c949d717 # v1.2.5
-              with:
-                ssh_key: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
-                access_token: ${{ secrets.GITHUB_TOKEN }}
-                custom_config: tools/copybara/copy.bara.sky
-                workflow: export_mcp_slack
-                copybara_options: "--ignore-noop"
+              run: |
+                docker run --rm \
+                  -v "$GITHUB_WORKSPACE":/usr/src/app \
+                  -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
+                  -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+                  -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                  -v "$HOME/.git-credentials":/root/.git-credentials \
+                  -v "$HOME/.gitconfig":/root/.gitconfig \
+                  -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                  -e COPYBARA_WORKFLOW=export_mcp_slack \
+                  -e COPYBARA_OPTIONS=--ignore-noop \
+                  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                  copybara
