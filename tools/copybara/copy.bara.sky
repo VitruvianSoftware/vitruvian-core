@@ -50,7 +50,13 @@
 # tip commit -- so a range that *contains* a peer-origin commit is also
 # correctly skipped. This strengthens loop prevention; it's expected behavior.
 
-MONOREPO = "git@github.com:VitruvianSoftware/vitruvian-core.git"
+# AUTH SPLIT: in CI (olivr/copybara-action) the monorepo is reached over HTTPS
+# authenticated by the workflow's GITHUB_TOKEN (which only has access to
+# vitruvian-core, the repo the workflow runs in); the standalone is reached over
+# SSH using the mcp-slack write deploy key (the action's `ssh_key` input).
+# copybara-action mounts both an HTTPS credential store and an SSH key with no
+# URL rewriting, so the two schemes coexist, selected per URL.
+MONOREPO = "https://github.com/VitruvianSoftware/vitruvian-core.git"
 STANDALONE = "git@github.com:VitruvianSoftware/mcp-slack.git"
 AUTHOR = "VitruvianSoftware Sync <sync@vitruviansoftware.com>"
 
@@ -94,8 +100,11 @@ core.workflow(
         fetch = "main",
         push = "copybara-pilot",  # SCRATCH branch for now
     ),
-    origin_files = glob(["mcp-slack/**"]),
-    destination_files = glob(["**"]),
+    # mcp-slack/BUILD is a monorepo-only Bazel file; never export it.
+    origin_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
+    # Manage all standalone files EXCEPT package-lock.json (standalone-only npm
+    # lockfile) so the sync never deletes it.
+    destination_files = glob(["**"], exclude = ["package-lock.json"]),
     authoring = authoring.pass_thru(default = AUTHOR),
     mode = "SQUASH",
     # Stamp the destination with the monorepo's own rev-id label, and drop any
@@ -120,8 +129,12 @@ core.workflow(
         fetch = "main",
         push = "copybara-pilot-import",  # SCRATCH branch for now
     ),
-    origin_files = glob(["**"]),
-    destination_files = glob(["mcp-slack/**"]),
+    # package-lock.json is standalone-only (npm); never import it into the
+    # Bazel monorepo (which uses the root pnpm-lock.yaml).
+    origin_files = glob(["**"], exclude = ["package-lock.json"]),
+    # Manage the monorepo's mcp-slack/ EXCEPT mcp-slack/BUILD (monorepo-only
+    # Bazel file) so the sync never deletes it.
+    destination_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
     authoring = authoring.pass_thru(default = AUTHOR),
     mode = "SQUASH",
     # Stamp the destination with the standalone's own rev-id label, and drop any

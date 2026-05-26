@@ -1,0 +1,36 @@
+name: Copybara Export (mcp-slack)
+
+# Exports vitruvian-core/mcp-slack/ to the standalone VitruvianSoftware/mcp-slack
+# repo on every push under mcp-slack/**. Loop prevention (no import bounce-back)
+# lives in tools/copybara/copy.bara.sky via per-direction rev-id labels + skip
+# guards, so an imported change is not re-exported.
+#
+# Auth (see copy.bara.sky "AUTH SPLIT" note): the monorepo origin is read over
+# HTTPS via GITHUB_TOKEN (access_token); the standalone destination is pushed
+# over SSH via the mcp-slack write deploy key (ssh_key = MCP_SLACK_SYNC_SSH_KEY).
+on:
+    push:
+        branches: [main]
+        paths: ["mcp-slack/**"]
+
+permissions:
+    contents: read
+
+# Serialize exports so two pushes can't race on the same destination branch.
+concurrency:
+    group: copybara-export-mcp-slack
+    cancel-in-progress: false
+
+jobs:
+    export:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Copybara export (mcp-slack -> standalone)
+              uses: olivr/copybara-action@042b4395839f3a374a6455b541e29e40c949d717 # v1.2.5
+              with:
+                ssh_key: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
+                access_token: ${{ secrets.GITHUB_TOKEN }}
+                custom_config: tools/copybara/copy.bara.sky
+                workflow: export_mcp_slack
+                copybara_options: "--ignore-noop"
