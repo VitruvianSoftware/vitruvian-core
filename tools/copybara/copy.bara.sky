@@ -3,13 +3,13 @@
 # Copybara configuration for syncing the mcp-slack component between the
 # vitruvian-core monorepo and the standalone VitruvianSoftware/mcp-slack repo.
 #
-# Scope so far:
-#   - EXPORT (monorepo -> standalone), pushing to the `copybara-pilot`
-#     SCRATCH branch only.
-#   - IMPORT (standalone -> monorepo), pushing to the `copybara-pilot-import`
-#     SCRATCH branch only.
-# Do NOT change either `push` to `main` until the bidirectional sync is fully
-# validated in later tasks.
+# Scope:
+#   - EXPORT (monorepo mcp-slack/ -> standalone repo root), push to `main`.
+#   - IMPORT (standalone repo root -> monorepo mcp-slack/), push to `main`.
+# The export path was first validated green in CI against a `copybara-pilot`
+# scratch branch; both directions now target `main`. The first run against a
+# fresh destination (no rev-id baseline yet) needs a one-time `--force` to seed
+# the baseline; normal runs use --ignore-noop and rely on the rev-id labels.
 #
 # ---------------------------------------------------------------------------
 # LOOP PREVENTION (bidirectional, on-push peer sync)  -- VERIFIED LOCALLY
@@ -98,13 +98,14 @@ core.workflow(
     destination = git.destination(
         url = STANDALONE,
         fetch = "main",
-        push = "copybara-pilot",  # SCRATCH branch for now
+        push = "main",
     ),
     # mcp-slack/BUILD is a monorepo-only Bazel file; never export it.
     origin_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
-    # Manage all standalone files EXCEPT package-lock.json (standalone-only npm
-    # lockfile) so the sync never deletes it.
-    destination_files = glob(["**"], exclude = ["package-lock.json"]),
+    # Manage all standalone files EXCEPT standalone-only ones: the npm lockfile
+    # and the dispatch workflow (which lives only in the standalone repo). The
+    # sync must never delete these.
+    destination_files = glob(["**"], exclude = ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"]),
     authoring = authoring.pass_thru(default = AUTHOR),
     mode = "SQUASH",
     # Stamp the destination with the monorepo's own rev-id label, and drop any
@@ -127,11 +128,12 @@ core.workflow(
     destination = git.destination(
         url = MONOREPO,
         fetch = "main",
-        push = "copybara-pilot-import",  # SCRATCH branch for now
+        push = "main",
     ),
-    # package-lock.json is standalone-only (npm); never import it into the
-    # Bazel monorepo (which uses the root pnpm-lock.yaml).
-    origin_files = glob(["**"], exclude = ["package-lock.json"]),
+    # Standalone-only files (the npm lockfile and the dispatch workflow) must
+    # never be imported into the Bazel monorepo (which uses the root
+    # pnpm-lock.yaml and has no dispatch workflow).
+    origin_files = glob(["**"], exclude = ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"]),
     # Manage the monorepo's mcp-slack/ EXCEPT mcp-slack/BUILD (monorepo-only
     # Bazel file) so the sync never deletes it.
     destination_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),

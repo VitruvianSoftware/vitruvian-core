@@ -1,0 +1,70 @@
+name: Copybara Import (mcp-slack)
+
+# Imports the standalone VitruvianSoftware/mcp-slack repo into
+# vitruvian-core/mcp-slack/ when the standalone fires a repository_dispatch
+# (type mcp-slack-import) from its sync-to-monorepo workflow. Loop prevention
+# (no export bounce-back) lives in tools/copybara/copy.bara.sky: the
+# _skip_exported_changes guard drops any change carrying MONOREPO_REV_ID.
+#
+# As with export, we invoke the olivr/copybara image directly (pinned by digest)
+# to control the ssh-key trailing newline. Auth: standalone origin over SSH via
+# the mcp-slack deploy key; monorepo destination over HTTPS via GITHUB_TOKEN
+# (contents:write, to push the imported change to vitruvian-core main).
+on:
+    repository_dispatch:
+        types: [mcp-slack-import]
+    # Manual trigger for pilot validation / one-time --force baseline seeding.
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the MCP_SLACK_REV_ID baseline on vitruvian-core; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: write
+
+concurrency:
+    group: copybara-import-mcp-slack
+    cancel-in-progress: false
+
+jobs:
+    import:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Set up Copybara auth (SSH deploy key + HTTPS token)
+              env:
+                SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                mkdir -p ~/.ssh
+                # OpenSSH requires exactly one trailing newline; normalize it.
+                printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > ~/.git-credentials
+                chmod 600 ~/.git-credentials
+                printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
+            - name: Copybara import (standalone -> mcp-slack)
+              env:
+                CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+              run: |
+                set +e
+                docker run --rm \
+                  -v "$GITHUB_WORKSPACE":/usr/src/app \
+                  -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
+                  -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+                  -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                  -v "$HOME/.git-credentials":/root/.git-credentials \
+                  -v "$HOME/.gitconfig":/root/.gitconfig \
+                  -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                  -e COPYBARA_WORKFLOW=import_mcp_slack \
+                  -e COPYBARA_OPTIONS="$CB_OPTS" \
+                  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                  copybara
+                rc=$?
+                # Copybara: 0 = success, 4 = NO_OP (nothing to migrate, e.g. the
+                # skip-guard dropped an export-origin change). Both are success.
+                if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
+                echo "Copybara failed (exit $rc)"; exit "$rc"
