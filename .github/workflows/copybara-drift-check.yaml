@@ -1,0 +1,64 @@
+name: Copybara Drift Check (mcp-slack)
+
+# FAIL-LOUD divergence detector for the bidirectional sync.
+#
+# The sync itself does NOT fail loud on a true conflict: if the same content is
+# edited on both repos within one sync cycle, each direction overwrites the
+# other and the repos silently DIVERGE (see docs/copybara-bidi-sync.md §7).
+# This job closes that gap: it compares vitruvian-core/mcp-slack/ against the
+# standalone repo root (applying the same context-file excludes) and goes RED
+# if they differ — turning silent divergence into a visible failure + annotation.
+#
+# Runs: right after each sync (workflow_run), on a schedule (backstop), and on demand.
+on:
+    workflow_run:
+        workflows: ["Copybara Export (mcp-slack)", "Copybara Import (mcp-slack)"]
+        types: [completed]
+    schedule:
+        - cron: "*/30 * * * *"
+    workflow_dispatch: {}
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-drift-check-mcp-slack
+    cancel-in-progress: true
+
+jobs:
+    drift-check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Read the standalone repo (SSH deploy key)
+              env:
+                SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
+              run: |
+                mkdir -p ~/.ssh
+                printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_rsa -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+                  git clone --depth 1 git@github.com:VitruvianSoftware/mcp-slack.git "$RUNNER_TEMP/mcp-slack"
+            - name: Compare synced content (fail on drift)
+              run: |
+                # Compare the monorepo component subtree against the standalone root.
+                # Exclude the context-specific files that intentionally never cross
+                # the boundary (must match copy.bara.sky's origin/destination excludes):
+                #   - BUILD                  : monorepo-only (Bazel)
+                #   - package-lock.json      : standalone-only (npm)
+                #   - sync-to-monorepo.yaml  : standalone-only (the dispatch workflow)
+                set +e
+                OUT=$(diff -r \
+                  -x '.git' -x 'BUILD' -x 'package-lock.json' -x 'sync-to-monorepo.yaml' \
+                  "$GITHUB_WORKSPACE/mcp-slack" "$RUNNER_TEMP/mcp-slack")
+                rc=$?
+                set -e
+                if [ "$rc" -eq 0 ]; then
+                  echo "✅ In sync — vitruvian-core/mcp-slack/ matches the standalone repo."
+                  exit 0
+                fi
+                echo "::error title=Copybara sync drift::vitruvian-core/mcp-slack and VitruvianSoftware/mcp-slack have DIVERGED. Likely a concurrent conflicting edit (see docs/copybara-bidi-sync.md §7). Reconcile by hand."
+                echo "----- divergence (< monorepo  > standalone) -----"
+                echo "$OUT"
+                exit 1

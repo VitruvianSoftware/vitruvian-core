@@ -221,12 +221,23 @@ edits each overwrite the other; the repos end up inconsistent, silently, with gr
 - After any suspected concurrent edit, **diff the component on both repos** (see §9) and reconcile by
   hand.
 
-**To make it actually fail-loud (future work — pick one):**
+**Divergence is now detected LOUD (implemented):**
+[`.github/workflows/copybara-drift-check.yaml`](../.github/workflows/copybara-drift-check.yaml)
+diffs `vitruvian-core/mcp-slack/` against the standalone root (applying the same context-file
+excludes) and goes **RED** with a CI error annotation if they diverge. It runs **after every sync**
+(`workflow_run`), **every 30 min** (`schedule`), and **on demand**
+(`gh workflow run copybara-drift-check.yaml -R VitruvianSoftware/vitruvian-core`). So a conflict no
+longer corrupts silently — you get a failing run pointing you at the diverged files; reconcile by
+hand (see the diff in the run log).
+
+This is *detection*. To also **prevent** the overwrite (future work), add one of:
 1. **Pre-push baseline check** — fail the sync if the destination's current rev-id ≠ the expected
-   baseline.
-2. **Serialize syncs** — a repository/branch lock or a single-flight queue so export and import never
-   run at once.
-3. **External consistency monitor** — a scheduled job that diffs both sides and alerts on divergence.
+   baseline. The "right" fix, but hard to get right: telling "one side is legitimately ahead" apart
+   from a true conflict needs a 3-way comparison against the last common baseline, and the per-commit
+   rev-id echoes create false-positive traps — mis-tuned, it blocks normal syncs.
+2. **Serialize syncs** — put both sync workflows in one `concurrency` group so export and import
+   never run at once. Cheap; reduces a conflict from *divergence* to deterministic last-writer-wins
+   (the repos stay consistent, but one side's edit is still silently lost).
 
 ---
 
