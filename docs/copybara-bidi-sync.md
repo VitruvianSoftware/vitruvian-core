@@ -351,7 +351,11 @@ already exist — this setup never creates repos):
    `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` config to the reused App's creds
    (`pulumi config get … | pulumi config set --secret …` so the key never prints); `pulumi up`.
 4. **Dispatch workflow:** push `.github/workflows/sync-to-monorepo.yaml` to the standalone (copy an
-   existing one; swap the `<COMP>_DISPATCH_APP_*` secret names + `event_type=<comp>-import`).
+   existing one; swap the `<COMP>_DISPATCH_APP_*` secret names + `event_type=<comp>-import`). **It
+   must pass the standalone's OWN CI** — e.g. devx lints license headers, so run
+   `addlicense -c "VitruvianSoftware" -l mit .github/workflows/sync-to-monorepo.yaml` before pushing.
+   This standalone-only file is invisible to the monorepo CI and the drift check (see §9), so a
+   missing header only shows up as a red run on the *standalone's* `main`.
 5. **Seed** both baselines per §8b, then confirm with the drift check.
 
 ---
@@ -366,6 +370,7 @@ already exist — this setup never creates repos):
 | Repos hold different values for the same line, both runs green | Concurrent conflicting edit (see §7) | Reconcile by hand; consider the fail-loud options in §7 |
 | Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes a gazelle `BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
 | Import "succeeds" as NO_OP during seeding, no baseline stamped | `--squash` seed range included the export-origin `Project import` commit (skip-guard dropped the whole squash) | Seed the import with `--last-rev <export-seed-SHA>` in ITERATIVE, not `--squash` (§8b) |
+| A **standalone's own** `main` CI is red (lint / license header) on a fanned-out commit, while the monorepo + drift check are green | A file the sync added or changed doesn't meet *that standalone's* conventions. The standalone runs its own CI on every fanned-out commit; the monorepo CI and the drift check don't cover it (drift compares **content parity**, not the standalone's CI). | Make the file satisfy the standalone's check. **Standalone-only** files (e.g. `sync-to-monorepo.yaml`) → fix on the standalone directly (they aren't synced). **Synced** files → fix in the monorepo subtree; the export fans the fix out. (Real case: the dispatch workflow lacked devx's MIT header — fixed via `addlicense`.) |
 
 **Diff the component across both repos:**
 ```bash
