@@ -417,5 +417,65 @@ missing image.
 
 ---
 
+## 11. Dependency updates (Dependabot)
+
+Dependabot is **centralized in the monorepo** but split by what it can actually scan, then fanned out
+to the standalones via the export. You manage every component's Dependabot config from here.
+
+### Split model (who owns which ecosystem)
+- **The monorepo owns** `gomod` (devx, homelab) **+** root `github-actions` — these live in
+  `.github/dependabot.yml` and are scanned in-tree.
+- **Each component's OWN workflow action pins** (e.g. its `sync-to-monorepo.yaml`) and **npm** are
+  updated **per-standalone** — Dependabot can't scan a *subtree's* workflows from the monorepo, so
+  those updates have to run where the workflow is the repo root.
+- But the **standalone Dependabot configs still live here:** each is committed at
+  `<comp>/.github/dependabot.yml` in the monorepo and **fans out via the export** to the standalone,
+  where Dependabot then runs against it. **To add or adjust a standalone's Dependabot config, edit
+  `<comp>/.github/dependabot.yml` in the monorepo** — the export does the rest. (See §8f when
+  onboarding a new component.)
+
+### Pipeline (a monorepo Go bump, end to end)
+1. A monorepo Dependabot **Go PR** opens (e.g. a `devx/go.mod` bump).
+2. [`dependabot-bazel-reconcile.yml`](../.github/workflows/dependabot-bazel-reconcile.yml) runs
+   `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
+   token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
+   reconcile to a **no-op**.
+3. **CI** (`bazel build` / `bazel test`) runs on the PR.
+4. [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml) merges
+   **minor/patch only**, **via the App token** so the merge is **App-attributed**.
+5. The merge push triggers **`copybara-export-<comp>`**, which **fans the change out** to the
+   standalone (same export flow as §3).
+6. The 30-min **`copybara-drift-check`** (§7) is the **backstop** — if a merge ever fails to fan out,
+   it goes RED within 30 min.
+
+> **Major bumps are NOT auto-merged.** Review, **reconcile by hand if CI is red**, then merge
+> manually. A normal **user** merge is **user-attributed**, so it **still triggers the export** and
+> fans out — only `GITHUB_TOKEN`-attributed pushes are inert.
+
+```mermaid
+flowchart TD
+    DB["Dependabot PR in monorepo (devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
+    RC --> CI{"CI green?"}
+    CI -- "no" --> H["human review"]
+    CI -- "yes" --> AM{"minor/patch?"}
+    AM -- "major" --> H
+    AM -- "yes" --> M["auto-merge via App token"]
+    M --> EX["copybara-export-&lt;comp&gt; → fan out"]
+    EX -. "if it ever doesn't" .-> DR["drift-check RED ≤30 min"]
+```
+
+### Secrets
+`SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY` exist on **vitruvian-core** as **both** a **Dependabot secret**
+(so Dependabot-triggered runs can read them to mint the App token) **and** an **Actions secret**. Both
+are provisioned by Pulumi (`pkg/copybara_sync/sync.go`).
+
+### Invariant that keeps the reconcile safe
+`bazel run //:gazelle` is kept a **no-op on `main`** — the root `BUILD` carries
+`# gazelle:exclude infrastructure`. That is what makes the reconcile step's `git add -A` safe: gazelle
+never rewrites unrelated `BUILD` files into the PR, so the only thing committed back is the genuine
+dependency reconciliation.
+
+---
+
 *Pilot design + decision history: [`docs/planning/2026-05-25-copybara-bidi-sync-design.md`](planning/2026-05-25-copybara-bidi-sync-design.md)
 and [`…-plan.md`](planning/2026-05-25-copybara-bidi-sync-plan.md) (see its `## Outcome`).*
