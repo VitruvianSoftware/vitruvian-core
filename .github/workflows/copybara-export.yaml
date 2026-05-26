@@ -18,7 +18,12 @@ on:
         branches: [main]
         paths: ["mcp-slack/**"]
     # Manual trigger for pilot validation / re-runs without a mcp-slack/** change.
-    workflow_dispatch: {}
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the MONOREPO_REV_ID baseline on a fresh destination; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
 
 permissions:
     contents: read
@@ -49,6 +54,8 @@ jobs:
                 chmod 600 ~/.git-credentials
                 printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
             - name: Copybara export (mcp-slack -> standalone)
+              env:
+                CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
               run: |
                 docker run --rm \
                   -v "$GITHUB_WORKSPACE":/usr/src/app \
@@ -59,6 +66,6 @@ jobs:
                   -v "$HOME/.gitconfig":/root/.gitconfig \
                   -e COPYBARA_CONFIG=/root/copy.bara.sky \
                   -e COPYBARA_WORKFLOW=export_mcp_slack \
-                  -e COPYBARA_OPTIONS=--ignore-noop \
+                  -e COPYBARA_OPTIONS="$CB_OPTS" \
                   olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
                   copybara
