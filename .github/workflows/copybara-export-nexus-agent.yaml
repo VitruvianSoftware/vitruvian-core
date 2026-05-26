@@ -1,0 +1,31 @@
+name: Copybara Export (nexus-agent)
+
+# Exports vitruvian-core/nexus-agent/ to VitruvianSoftware/nexus-agent on every
+# push under nexus-agent/**. Thin caller — logic lives in _copybara-export.yaml.
+on:
+    push:
+        branches: [main]
+        paths: ["nexus-agent/**"]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-export-nexus-agent
+    cancel-in-progress: false
+
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        with:
+            component: nexus-agent
+            standalone_only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.NEXUS_AGENT_SYNC_SSH_KEY }}

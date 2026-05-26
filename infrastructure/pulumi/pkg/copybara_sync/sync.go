@@ -50,11 +50,25 @@ type syncedProject struct {
 }
 
 // syncedProjects is the source of truth for which components have sync auth
-// managed by Pulumi. Start with a single entry; append more later.
+// managed by Pulumi. All components reuse a single GitHub App for the import
+// dispatch (its id/private-key are supplied per-component as config secrets,
+// pointing at the same App), so onboarding a component is just an entry here.
 var syncedProjects = []syncedProject{
 	{
 		Name:           "mcp-slack",
 		StandaloneRepo: "mcp-slack",
+	},
+	{
+		Name:           "devx",
+		StandaloneRepo: "devx",
+	},
+	{
+		Name:           "homelab",
+		StandaloneRepo: "homelab",
+	},
+	{
+		Name:           "nexus-agent",
+		StandaloneRepo: "nexus-agent",
 	},
 }
 

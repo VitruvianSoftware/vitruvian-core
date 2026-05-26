@@ -3,3 +3,7 @@
 # project file (Pulumi.yaml) is committed.
 Pulumi.*.yaml
 !Pulumi.yaml
+
+# Compiled Pulumi program binary left behind by `go build .` (the binary is
+# named after the module's last path element, i.e. "pulumi").
+/pulumi

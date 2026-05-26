@@ -1,0 +1,31 @@
+name: Copybara Import (devx)
+
+# Imports VitruvianSoftware/devx into vitruvian-core/devx/ when the standalone
+# fires a repository_dispatch (type devx-import). Thin caller — logic lives in
+# _copybara-import.yaml.
+on:
+    repository_dispatch:
+        types: [devx-import]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: write
+
+concurrency:
+    group: copybara-import-devx
+    cancel-in-progress: false
+
+jobs:
+    import:
+        uses: ./.github/workflows/_copybara-import.yaml
+        with:
+            component: devx
+            standalone_only: ".github/workflows/sync-to-monorepo.yaml"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.DEVX_SYNC_SSH_KEY }}

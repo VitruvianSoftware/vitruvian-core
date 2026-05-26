@@ -1,0 +1,31 @@
+name: Copybara Import (nexus-agent)
+
+# Imports VitruvianSoftware/nexus-agent into vitruvian-core/nexus-agent/ when the
+# standalone fires a repository_dispatch (type nexus-agent-import). Thin caller —
+# logic lives in _copybara-import.yaml.
+on:
+    repository_dispatch:
+        types: [nexus-agent-import]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: write
+
+concurrency:
+    group: copybara-import-nexus-agent
+    cancel-in-progress: false
+
+jobs:
+    import:
+        uses: ./.github/workflows/_copybara-import.yaml
+        with:
+            component: nexus-agent
+            standalone_only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.NEXUS_AGENT_SYNC_SSH_KEY }}

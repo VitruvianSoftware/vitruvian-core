@@ -1,0 +1,31 @@
+name: Copybara Export (devx)
+
+# Exports vitruvian-core/devx/ to VitruvianSoftware/devx on every push under
+# devx/**. Thin caller — logic lives in _copybara-export.yaml.
+on:
+    push:
+        branches: [main]
+        paths: ["devx/**"]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-export-devx
+    cancel-in-progress: false
+
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        with:
+            component: devx
+            standalone_only: ".github/workflows/sync-to-monorepo.yaml"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.DEVX_SYNC_SSH_KEY }}

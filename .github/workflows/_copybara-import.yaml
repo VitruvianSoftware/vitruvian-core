@@ -1,32 +1,36 @@
-name: Copybara Import (mcp-slack)
+name: Copybara Import (reusable)
 
-# Imports the standalone VitruvianSoftware/mcp-slack repo into
-# vitruvian-core/mcp-slack/ when the standalone fires a repository_dispatch
-# (type mcp-slack-import) from its sync-to-monorepo workflow. Loop prevention
-# (no export bounce-back) lives in tools/copybara/copy.bara.sky: the
-# _skip_exported_changes guard drops any change carrying MONOREPO_REV_ID.
+# Reusable IMPORT: VitruvianSoftware/<component> (root) -> vitruvian-core/<component>/.
+# Called by the thin per-component `copybara-import-<component>.yaml` workflows,
+# which own the repository_dispatch trigger + the concurrency group.
 #
-# As with export, we invoke the olivr/copybara image directly (pinned by digest)
-# to control the ssh-key trailing newline. Auth: standalone origin over SSH via
-# the mcp-slack deploy key; monorepo destination over HTTPS via GITHUB_TOKEN
-# (contents:write, to push the imported change to vitruvian-core main).
+# Auth: standalone origin over SSH via the component's deploy key; monorepo
+# destination over HTTPS via GITHUB_TOKEN (contents:write, to push the imported
+# change to vitruvian-core main).
 on:
-    repository_dispatch:
-        types: [mcp-slack-import]
-    # Manual trigger for pilot validation / one-time --force baseline seeding.
-    workflow_dispatch:
+    workflow_call:
         inputs:
-            copybara_options:
-                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the MCP_SLACK_REV_ID baseline on vitruvian-core; normal runs use --ignore-noop."
-                default: "--ignore-noop"
+            component:
+                description: "Component / standalone repo name (e.g. devx). Maps to the import_<component> Copybara workflow."
+                required: true
+                type: string
+            standalone_only:
+                description: "Space-separated repo-relative paths that exist ONLY in the standalone (passed through for symmetry; import ignores them)."
                 required: false
+                type: string
+                default: ""
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the <COMPONENT>_REV_ID baseline; normal runs use --ignore-noop."
+                required: false
+                type: string
+                default: "--ignore-noop"
+        secrets:
+            sync_ssh_key:
+                description: "Private half of the standalone repo's write deploy key (used to READ the standalone origin)."
+                required: true
 
 permissions:
     contents: write
-
-concurrency:
-    group: copybara-import-mcp-slack
-    cancel-in-progress: false
 
 jobs:
     import:
@@ -37,11 +41,10 @@ jobs:
                 fetch-depth: 0 # full history so the conflict pre-check can reach the rev-id baseline
             - name: Set up Copybara auth (SSH deploy key + HTTPS token)
               env:
-                SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
+                SSH_KEY: ${{ secrets.sync_ssh_key }}
                 GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 mkdir -p ~/.ssh
-                # OpenSSH requires exactly one trailing newline; normalize it.
                 printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
                 chmod 600 ~/.ssh/id_rsa
                 ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
@@ -50,18 +53,22 @@ jobs:
                 printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
             - name: Conflict pre-check (refuse to overwrite a concurrent edit)
               env:
-                CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+                CB_OPTS: ${{ inputs.copybara_options }}
+                COMPONENT: ${{ inputs.component }}
+                STANDALONE_ONLY: ${{ inputs.standalone_only }}
               run: |
                 # --force is a deliberate override (e.g. baseline seeding) — skip the guard.
                 case "$CB_OPTS" in *--force*) echo "skipping conflict pre-check (--force override)"; exit 0 ;; esac
                 GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_rsa -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
-                  git clone --no-tags git@github.com:VitruvianSoftware/mcp-slack.git "$RUNNER_TEMP/mcp-slack-peer"
-                bash tools/copybara/conflict-precheck.sh import "$GITHUB_WORKSPACE" "$RUNNER_TEMP/mcp-slack-peer"
-            - name: Copybara import (standalone -> mcp-slack)
+                  git clone --no-tags "git@github.com:VitruvianSoftware/${COMPONENT}.git" "$RUNNER_TEMP/${COMPONENT}-peer"
+                bash tools/copybara/conflict-precheck.sh import "$COMPONENT" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/${COMPONENT}-peer" $STANDALONE_ONLY
+            - name: Copybara import (standalone -> monorepo <component>/)
               env:
-                CB_OPTS: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+                CB_OPTS: ${{ inputs.copybara_options }}
+                COMPONENT: ${{ inputs.component }}
               run: |
                 set +e
+                WF="import_$(printf '%s' "$COMPONENT" | tr '-' '_')"
                 docker run --rm \
                   -v "$GITHUB_WORKSPACE":/usr/src/app \
                   -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
@@ -70,12 +77,11 @@ jobs:
                   -v "$HOME/.git-credentials":/root/.git-credentials \
                   -v "$HOME/.gitconfig":/root/.gitconfig \
                   -e COPYBARA_CONFIG=/root/copy.bara.sky \
-                  -e COPYBARA_WORKFLOW=import_mcp_slack \
+                  -e COPYBARA_WORKFLOW="$WF" \
                   -e COPYBARA_OPTIONS="$CB_OPTS" \
                   olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
                   copybara
                 rc=$?
-                # Copybara: 0 = success, 4 = NO_OP (nothing to migrate, e.g. the
-                # skip-guard dropped an export-origin change). Both are success.
+                # 0 = success, 4 = NO_OP (skip-guard dropped an export-origin change, or up-to-date). Both OK.
                 if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
                 echo "Copybara failed (exit $rc)"; exit "$rc"

@@ -1,0 +1,96 @@
+name: Copybara Export (reusable)
+
+# Reusable EXPORT: vitruvian-core/<component>/ -> VitruvianSoftware/<component> (root).
+# Called by the thin per-component `copybara-export-<component>.yaml` workflows,
+# which own the `push` path trigger + the concurrency group. The logic and the
+# pinned Copybara image live HERE, once, for all components.
+#
+# We invoke the olivr/copybara image DIRECTLY (pinned by digest) rather than via
+# olivr/copybara-action: the action reads ssh_key with core.getInput (trimming
+# the trailing newline) and writes it verbatim, yielding an id_rsa OpenSSH rejects
+# as "invalid format" for ED25519 keys. Doing it ourselves guarantees the newline.
+#
+# Auth (see copy.bara.sky "AUTH SPLIT"): monorepo origin over HTTPS via the
+# workflow GITHUB_TOKEN; standalone destination over SSH via the component's write
+# deploy key (sync_ssh_key = <COMPONENT>_SYNC_SSH_KEY, provisioned by Pulumi).
+on:
+    workflow_call:
+        inputs:
+            component:
+                description: "Component / standalone repo name (e.g. devx). Maps to the export_<component> Copybara workflow."
+                required: true
+                type: string
+            standalone_only:
+                description: "Space-separated repo-relative paths that exist ONLY in the standalone (the conflict pre-check excludes them)."
+                required: false
+                type: string
+                default: ""
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the MONOREPO_REV_ID baseline; normal runs use --ignore-noop."
+                required: false
+                type: string
+                default: "--ignore-noop"
+        secrets:
+            sync_ssh_key:
+                description: "Private half of the standalone repo's write deploy key."
+                required: true
+
+permissions:
+    contents: read
+
+jobs:
+    export:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                fetch-depth: 0 # full history so the conflict pre-check can reach the rev-id baseline
+            - name: Set up Copybara auth (SSH deploy key + HTTPS token)
+              env:
+                SSH_KEY: ${{ secrets.sync_ssh_key }}
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                mkdir -p ~/.ssh
+                # OpenSSH requires exactly one trailing newline; normalize it.
+                printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > ~/.git-credentials
+                chmod 600 ~/.git-credentials
+                printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
+            - name: Conflict pre-check (refuse to overwrite a concurrent edit)
+              env:
+                CB_OPTS: ${{ inputs.copybara_options }}
+                COMPONENT: ${{ inputs.component }}
+                STANDALONE_ONLY: ${{ inputs.standalone_only }}
+              run: |
+                # --force is a deliberate override (e.g. baseline seeding) — skip the guard.
+                case "$CB_OPTS" in *--force*) echo "skipping conflict pre-check (--force override)"; exit 0 ;; esac
+                GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_rsa -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+                  git clone --no-tags "git@github.com:VitruvianSoftware/${COMPONENT}.git" "$RUNNER_TEMP/${COMPONENT}-peer"
+                # STANDALONE_ONLY is intentionally unquoted: it word-splits into separate pathspec args.
+                bash tools/copybara/conflict-precheck.sh export "$COMPONENT" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/${COMPONENT}-peer" $STANDALONE_ONLY
+            - name: Copybara export (monorepo <component>/ -> standalone)
+              env:
+                CB_OPTS: ${{ inputs.copybara_options }}
+                COMPONENT: ${{ inputs.component }}
+              run: |
+                set +e
+                # Copybara workflow name uses underscores: nexus-agent -> export_nexus_agent.
+                WF="export_$(printf '%s' "$COMPONENT" | tr '-' '_')"
+                docker run --rm \
+                  -v "$GITHUB_WORKSPACE":/usr/src/app \
+                  -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
+                  -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+                  -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                  -v "$HOME/.git-credentials":/root/.git-credentials \
+                  -v "$HOME/.gitconfig":/root/.gitconfig \
+                  -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                  -e COPYBARA_WORKFLOW="$WF" \
+                  -e COPYBARA_OPTIONS="$CB_OPTS" \
+                  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                  copybara
+                rc=$?
+                # 0 = success, 4 = NO_OP (nothing to migrate / skip-guard dropped a peer change). Both OK.
+                if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc; 4 = no-op/up-to-date)"; exit 0; fi
+                echo "Copybara failed (exit $rc)"; exit "$rc"

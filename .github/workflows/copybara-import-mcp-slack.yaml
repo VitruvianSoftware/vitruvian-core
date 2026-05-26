@@ -1,0 +1,31 @@
+name: Copybara Import (mcp-slack)
+
+# Imports VitruvianSoftware/mcp-slack into vitruvian-core/mcp-slack/ when the
+# standalone fires a repository_dispatch (type mcp-slack-import) from its
+# sync-to-monorepo workflow. Thin caller — logic lives in _copybara-import.yaml.
+on:
+    repository_dispatch:
+        types: [mcp-slack-import]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: write
+
+concurrency:
+    group: copybara-import-mcp-slack
+    cancel-in-progress: false
+
+jobs:
+    import:
+        uses: ./.github/workflows/_copybara-import.yaml
+        with:
+            component: mcp-slack
+            standalone_only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}

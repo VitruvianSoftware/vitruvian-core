@@ -1,18 +1,24 @@
 # tools/copybara/copy.bara.sky
 #
-# Copybara configuration for syncing the mcp-slack component between the
-# vitruvian-core monorepo and the standalone VitruvianSoftware/mcp-slack repo.
+# Copybara configuration for bidirectionally syncing each vitruvian-core
+# component subfolder with its standalone VitruvianSoftware/<component> repo.
 #
-# Scope:
-#   - EXPORT (monorepo mcp-slack/ -> standalone repo root), push to `main`.
-#   - IMPORT (standalone repo root -> monorepo mcp-slack/), push to `main`.
-# The export path was first validated green in CI against a `copybara-pilot`
-# scratch branch; both directions now target `main`. The first run against a
-# fresh destination (no rev-id baseline yet) needs a one-time `--force` to seed
-# the baseline; normal runs use --ignore-noop and rely on the rev-id labels.
+# Components synced (see COMPONENTS below): mcp-slack, devx, homelab, nexus-agent.
+# For each component this file generates TWO workflows by loop:
+#   - export_<comp>  : monorepo <comp>/  -> standalone repo root  (push to `main`)
+#   - import_<comp>  : standalone root   -> monorepo <comp>/      (push to `main`)
+# (`-` in a component name becomes `_` in the workflow name, e.g.
+#  export_nexus_agent.) The first run against a fresh destination (no rev-id
+# baseline yet) needs a one-time `--force` to seed the baseline; normal runs use
+# --ignore-noop and rely on the rev-id labels below.
+#
+# This started as an mcp-slack-only pilot and was generalized once that pilot
+# validated end-to-end in CI. The mcp-slack workflows produced here are
+# behaviourally identical to the hand-written pilot ones (same labels, excludes,
+# transforms), so the mcp-slack live baseline is preserved across this refactor.
 #
 # ---------------------------------------------------------------------------
-# LOOP PREVENTION (bidirectional, on-push peer sync)  -- VERIFIED LOCALLY
+# LOOP PREVENTION (bidirectional, on-push peer sync)  -- VERIFIED IN CI
 # ---------------------------------------------------------------------------
 # In a peer bidirectional setup an EXPORTed change must not bounce back as an
 # IMPORT (and vice-versa), or the two repos ping-pong forever. We prevent this
@@ -23,8 +29,18 @@
 #      If BOTH directions used that default label they could not tell their own
 #      footprint apart from the peer's. Instead each direction stamps the
 #      destination with its OWN label (see `experimental_custom_rev_id` below):
-#        - export stamps `MONOREPO_REV_ID`    (change came FROM the monorepo)
-#        - import stamps `MCP_SLACK_REV_ID`   (change came FROM the standalone)
+#        - export stamps `MONOREPO_REV_ID`     (change came FROM the monorepo)
+#        - import stamps `<COMPONENT>_REV_ID`   (change came FROM the standalone)
+#
+#      LABEL SCOPING (why these names are safe across components):
+#        * The EXPORT label is the same literal `MONOREPO_REV_ID` for every
+#          component because each export stamps a DIFFERENT standalone repo; a
+#          component's import only ever sees its own export's stamps (in its own
+#          standalone), so there is no cross-component collision.
+#        * The IMPORT label MUST be unique per component (`DEVX_REV_ID`,
+#          `HOMELAB_REV_ID`, ...) because every import stamps the SHARED monorepo;
+#          a per-component label lets each export's skip-guard recognise exactly
+#          its own component's imported commits.
 #
 #   2. A dynamic transform that SKIPs (no-op) any change already carrying the
 #      OTHER direction's label. `ctx.find_label(name)` returns the label value
@@ -33,17 +49,16 @@
 #      it back. This NOOP (exit code 4) is what breaks the loop.
 #
 # COPYBARA VERSION NOTE (important for upgrades):
-#   This config was VERIFIED end-to-end against `olivr/copybara:latest`
-#   (build date 2023-01, "Unknown version"). That build:
+#   This config was VERIFIED end-to-end against `olivr/copybara` (build date
+#   2023-01, "Unknown version"). That build:
 #     - exposes the parameter as `experimental_custom_rev_id` (NOT the newer
 #       `custom_rev_id` -- the rename landed in Copybara ~late-2023), and
 #     - enforces the older label format `[A-Z][A-Z_0-9]{1,30}_REV_ID`
-#       (hence `MONOREPO_REV_ID` / `MCP_SLACK_REV_ID`; the modern `Xxx-RevId`
+#       (hence `MONOREPO_REV_ID` / `<COMPONENT>_REV_ID`; the modern `Xxx-RevId`
 #       form is NOT accepted by this build).
 #   On a CURRENT Copybara, make exactly these two edits (logic is identical):
 #     - rename `experimental_custom_rev_id` -> `custom_rev_id`, and
-#     - the `_REV_ID` labels keep working (modern format is a superset:
-#       `([A-Z][A-Z_0-9]{1,30}_REV_ID | [A-Z][a-zA-Z0-9-]{1,30}-RevId)`).
+#     - the `_REV_ID` labels keep working (modern format is a superset).
 #
 # HISTORY MODE (ITERATIVE -- required for correct bidi; do NOT use SQUASH):
 #   We migrate one commit at a time so the skip guard runs PER COMMIT, dropping
@@ -52,107 +67,161 @@
 #   SQUASH is WRONG here: it evaluates the skip guard over the labels of the
 #   WHOLE squashed range, so a range that merely *contains* a peer-origin commit
 #   is skipped ENTIRELY -- including genuine changes batched with it. Verified in
-#   CI 2026-05-26: an import lands on monorepo main (carrying MCP_SLACK_REV_ID,
+#   CI 2026-05-26: an import lands on monorepo main (carrying the component label,
 #   pushed via GITHUB_TOKEN so it does NOT advance the export baseline), then the
 #   next export range includes it and SQUASH skipped the genuine change too --
 #   the export direction got stuck. ITERATIVE fixes this.
+#
+# AUTH SPLIT: in CI the monorepo is reached over HTTPS authenticated by the
+# workflow's GITHUB_TOKEN (which only has access to vitruvian-core, the repo the
+# workflow runs in); each standalone is reached over SSH using that component's
+# write deploy key (<COMPONENT>_SYNC_SSH_KEY, provisioned by Pulumi). Both an
+# HTTPS credential store and an SSH key are mounted with no URL rewriting, so the
+# two schemes coexist, selected per URL.
 
-# AUTH SPLIT: in CI (olivr/copybara-action) the monorepo is reached over HTTPS
-# authenticated by the workflow's GITHUB_TOKEN (which only has access to
-# vitruvian-core, the repo the workflow runs in); the standalone is reached over
-# SSH using the mcp-slack write deploy key (the action's `ssh_key` input).
-# copybara-action mounts both an HTTPS credential store and an SSH key with no
-# URL rewriting, so the two schemes coexist, selected per URL.
 MONOREPO = "https://github.com/VitruvianSoftware/vitruvian-core.git"
-STANDALONE = "git@github.com:VitruvianSoftware/mcp-slack.git"
+STANDALONE_SSH_PREFIX = "git@github.com:VitruvianSoftware/"
 AUTHOR = "VitruvianSoftware Sync <sync@vitruviansoftware.com>"
 
-# Per-direction rev-id labels (see LOOP PREVENTION note above).
-# Format constrained by the pinned Copybara build to `[A-Z][A-Z_0-9]{1,30}_REV_ID`.
+# The EXPORT label, shared across components (stamped on each separate standalone
+# repo -- see LABEL SCOPING above). Format constrained by the pinned Copybara
+# build to `[A-Z][A-Z_0-9]{1,30}_REV_ID`.
 MONOREPO_REV_ID = "MONOREPO_REV_ID"
-STANDALONE_REV_ID = "MCP_SLACK_REV_ID"
+
+# Monorepo-only files: gazelle-generated Bazel BUILD files live throughout each
+# component subtree (devx alone has 57). They exist ONLY in the monorepo; the
+# sync must never export them to the standalone nor delete them on import. The
+# explicit top-level entries belt-and-suspender the `**/` form in case a given
+# Copybara build does not treat `**` as matching zero path segments.
+def _monorepo_only(component):
+    return [
+        component + "/**/BUILD",
+        component + "/**/BUILD.bazel",
+        component + "/BUILD",
+        component + "/BUILD.bazel",
+    ]
+
+# Source of truth for which components are synced and their per-component knobs.
+#   name              : monorepo subfolder name == standalone repo name
+#   standalone_rev_id : the per-component IMPORT label (must be unique; see above)
+#   standalone_only   : files that exist ONLY in the standalone repo and must
+#                       never cross into the monorepo nor be deleted by export.
+#                       The dispatch workflow is standalone-only for every
+#                       component; npm projects also carry a package-lock.json
+#                       (the monorepo uses a single root pnpm-lock.yaml instead).
+COMPONENTS = [
+    {
+        "name": "mcp-slack",
+        "standalone_rev_id": "MCP_SLACK_REV_ID",
+        "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
+    },
+    {
+        "name": "devx",
+        "standalone_rev_id": "DEVX_REV_ID",
+        "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+    },
+    {
+        "name": "homelab",
+        "standalone_rev_id": "HOMELAB_REV_ID",
+        "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+    },
+    {
+        "name": "nexus-agent",
+        "standalone_rev_id": "NEXUS_AGENT_REV_ID",
+        "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
+    },
+]
 
 
-def _skip_imported_changes(ctx):
-    """EXPORT guard: skip changes that the import workflow brought into the
-    monorepo FROM the standalone repo. Such changes carry the import label
-    (`MCP_SLACK_REV_ID`); re-exporting them would bounce them back to standalone.
+def _make_skip_guard(workflow_name, peer_label, origin_desc):
+    """Return a dynamic-transform impl that NO-OPs any change already carrying
+    the peer direction's rev-id label (i.e. a change the peer sync brought in),
+    breaking the export<->import loop. The factory captures `peer_label` per call
+    so each generated workflow checks exactly its own peer's label.
     """
-    if ctx.find_label(STANDALONE_REV_ID):
-        core.fail_with_noop(
-            "export_mcp_slack: skipping change that originated from the"
-            + " standalone mcp-slack repo (carries " + STANDALONE_REV_ID + ").")
+    def _guard(ctx):
+        if ctx.find_label(peer_label):
+            core.fail_with_noop(
+                workflow_name + ": skipping change that originated from "
+                + origin_desc + " (carries " + peer_label + ").")
+
+    return _guard
 
 
-def _skip_exported_changes(ctx):
-    """IMPORT guard: skip changes that the export workflow pushed to the
-    standalone repo FROM the monorepo. Such changes carry the export label
-    (`MONOREPO_REV_ID`); re-importing them would bounce them back to the monorepo.
-    """
-    if ctx.find_label(MONOREPO_REV_ID):
-        core.fail_with_noop(
-            "import_mcp_slack: skipping change that originated from the"
-            + " vitruvian-core monorepo (carries " + MONOREPO_REV_ID + ").")
+# Generate the export+import workflow pair for every component.
+#
+# Copybara's Starlark (like Bazel's) forbids top-level `for` STATEMENTS, so the
+# loop body lives in a function driven by a top-level list comprehension (which
+# IS allowed). core.workflow registers each workflow as a side effect of the call.
+def _define_component(_c):
+    _name = _c["name"]
+    _wf = _name.replace("-", "_")
+    _standalone = STANDALONE_SSH_PREFIX + _name + ".git"
+    _standalone_rev_id = _c["standalone_rev_id"]
+    _standalone_only = _c["standalone_only"]
+    _monorepo_only_files = _monorepo_only(_name)
+
+    # Export: vitruvian-core/<name>/  ->  VitruvianSoftware/<name> (repo root)
+    core.workflow(
+        name = "export_" + _wf,
+        origin = git.origin(
+            url = MONOREPO,
+            ref = "main",
+        ),
+        destination = git.destination(
+            url = _standalone,
+            fetch = "main",
+            push = "main",
+        ),
+        # Component subtree minus the monorepo-only Bazel BUILD files.
+        origin_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+        # Manage all standalone files EXCEPT the standalone-only ones (the sync
+        # must never delete the dispatch workflow or an npm lockfile).
+        destination_files = glob(["**"], exclude = _standalone_only),
+        authoring = authoring.pass_thru(default = AUTHOR),
+        mode = "ITERATIVE",
+        # Stamp the monorepo's own rev-id, and drop any change the import
+        # direction brought in (carries the per-component standalone label).
+        experimental_custom_rev_id = MONOREPO_REV_ID,
+        transformations = [
+            core.dynamic_transform(impl = _make_skip_guard(
+                "export_" + _wf, _standalone_rev_id, "the standalone " + _name + " repo")),
+            # Strip the `<name>/` prefix so the component lands at the repo root.
+            core.move(_name, ""),
+        ],
+    )
+
+    # Import: VitruvianSoftware/<name> (repo root)  ->  vitruvian-core/<name>/
+    core.workflow(
+        name = "import_" + _wf,
+        origin = git.origin(
+            url = _standalone,
+            ref = "main",
+        ),
+        destination = git.destination(
+            url = MONOREPO,
+            fetch = "main",
+            push = "main",
+        ),
+        # Standalone-only files must never be imported into the Bazel monorepo.
+        origin_files = glob(["**"], exclude = _standalone_only),
+        # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+        # files so the sync never deletes them.
+        destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+        authoring = authoring.pass_thru(default = AUTHOR),
+        mode = "ITERATIVE",
+        # Stamp the standalone's own per-component rev-id, and drop any change the
+        # export direction pushed out (carries the monorepo label).
+        experimental_custom_rev_id = _standalone_rev_id,
+        transformations = [
+            core.dynamic_transform(impl = _make_skip_guard(
+                "import_" + _wf, MONOREPO_REV_ID, "the vitruvian-core monorepo")),
+            # Re-add the `<name>/` prefix so the standalone root lands under the
+            # component directory in the monorepo.
+            core.move("", _name),
+        ],
+    )
 
 
-# Export: vitruvian-core/mcp-slack/  ->  VitruvianSoftware/mcp-slack (repo root)
-core.workflow(
-    name = "export_mcp_slack",
-    origin = git.origin(
-        url = MONOREPO,
-        ref = "main",
-    ),
-    destination = git.destination(
-        url = STANDALONE,
-        fetch = "main",
-        push = "main",
-    ),
-    # mcp-slack/BUILD is a monorepo-only Bazel file; never export it.
-    origin_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
-    # Manage all standalone files EXCEPT standalone-only ones: the npm lockfile
-    # and the dispatch workflow (which lives only in the standalone repo). The
-    # sync must never delete these.
-    destination_files = glob(["**"], exclude = ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"]),
-    authoring = authoring.pass_thru(default = AUTHOR),
-    mode = "ITERATIVE",
-    # Stamp the destination with the monorepo's own rev-id label, and drop any
-    # change that the import direction brought in (carries the standalone label).
-    experimental_custom_rev_id = MONOREPO_REV_ID,
-    transformations = [
-        core.dynamic_transform(impl = _skip_imported_changes),
-        # Strip the `mcp-slack/` prefix so the component lands at the repo root.
-        core.move("mcp-slack", ""),
-    ],
-)
-
-# Import: VitruvianSoftware/mcp-slack (repo root)  ->  vitruvian-core/mcp-slack/
-core.workflow(
-    name = "import_mcp_slack",
-    origin = git.origin(
-        url = STANDALONE,
-        ref = "main",
-    ),
-    destination = git.destination(
-        url = MONOREPO,
-        fetch = "main",
-        push = "main",
-    ),
-    # Standalone-only files (the npm lockfile and the dispatch workflow) must
-    # never be imported into the Bazel monorepo (which uses the root
-    # pnpm-lock.yaml and has no dispatch workflow).
-    origin_files = glob(["**"], exclude = ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"]),
-    # Manage the monorepo's mcp-slack/ EXCEPT mcp-slack/BUILD (monorepo-only
-    # Bazel file) so the sync never deletes it.
-    destination_files = glob(["mcp-slack/**"], exclude = ["mcp-slack/BUILD"]),
-    authoring = authoring.pass_thru(default = AUTHOR),
-    mode = "ITERATIVE",
-    # Stamp the destination with the standalone's own rev-id label, and drop any
-    # change that the export direction pushed out (carries the monorepo label).
-    experimental_custom_rev_id = STANDALONE_REV_ID,
-    transformations = [
-        core.dynamic_transform(impl = _skip_exported_changes),
-        # Re-add the `mcp-slack/` prefix so the standalone repo root lands
-        # under the component directory in the monorepo.
-        core.move("", "mcp-slack"),
-    ],
-)
+# Drive the generator for every component (top-level comprehension, not a `for`).
+[_define_component(_c) for _c in COMPONENTS]
