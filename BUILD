@@ -57,6 +57,9 @@ exports_files(
 # We prefer BUILD instead of BUILD.bazel
 # gazelle:build_file_name BUILD
 # gazelle:exclude githooks/*
+# infrastructure/pulumi is a separate Go module (not in //:go.work), deployed
+# via `pulumi up` and never Bazel-built. Keep gazelle out of it entirely.
+# gazelle:exclude infrastructure
 
 gazelle(
     name = "gazelle",

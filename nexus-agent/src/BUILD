@@ -38,8 +38,6 @@ js_library(
 
 js_binary(
     name = "bot",
-    entry_point = "bot.js",
-    visibility = ["//visibility:public"],
     data = [
         ":formatter",
         ":gemini",
@@ -47,4 +45,6 @@ js_binary(
         "//nexus-agent:node_modules/dotenv",
         "//nexus-agent:node_modules/telegraf",
     ],
+    entry_point = "bot.js",
+    visibility = ["//visibility:public"],
 )
