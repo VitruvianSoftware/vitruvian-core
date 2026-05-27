@@ -352,8 +352,9 @@ already exist — this setup never creates repos):
    (`pulumi config get … | pulumi config set --secret …` so the key never prints); `pulumi up`.
 4. **Dispatch workflow:** push `.github/workflows/sync-to-monorepo.yaml` to the standalone (copy an
    existing one; swap the `<COMP>_DISPATCH_APP_*` secret names + `event_type=<comp>-import`). **It
-   must pass the standalone's OWN CI** — e.g. devx lints license headers, so run
-   `addlicense -c "VitruvianSoftware" -l mit .github/workflows/sync-to-monorepo.yaml` before pushing.
+   must pass the standalone's OWN CI.** Every standalone now enforces the MIT header (§12), so header
+   this file before pushing:
+   `addlicense -c "VitruvianSoftware" -l mit .github/workflows/sync-to-monorepo.yaml`.
    This standalone-only file is invisible to the monorepo CI and the drift check (see §9), so a
    missing header only shows up as a red run on the *standalone's* `main`.
 5. **Seed** both baselines per §8b, then confirm with the drift check.
@@ -492,6 +493,46 @@ provisioned by Pulumi (`pkg/copybara_sync/sync.go`).
 `# gazelle:exclude infrastructure`. That is what makes the reconcile step's `git add -A` safe: gazelle
 never rewrites unrelated `BUILD` files into the PR, so the only thing committed back is the genuine
 dependency reconciliation.
+
+---
+
+## 12. License headers (addlicense)
+
+Every hand-authored file in the monorepo (and therefore every standalone, since headers fan out via
+the export) carries the MIT header `Copyright (c) <year> VitruvianSoftware`. It is enforced in **two
+places**, both `addlicense@v1.2.0` with `-c "VitruvianSoftware" -l mit`:
+
+- **Monorepo `CI` → `license-check` (shift-left).** Runs over the **whole repo** so a missing header
+  is caught on the PR, *before* fan-out. The binary lands in `GOPATH/bin` (not on the runner PATH), so
+  it's invoked as `"$(go env GOPATH)/bin/addlicense"`.
+- **Each standalone's OWN CI.** devx checks in its `lint` job; homelab and mcp-slack each have a
+  `license-check` job; nexus-agent (which had no CI) gets a dedicated `license-check.yml`. This is the
+  only check that covers **standalone-only** files (e.g. `sync-to-monorepo.yaml`) the monorepo never sees.
+
+**Generated / tool-managed files are NEVER headered** — addlicense would fight their regeneration
+(e.g. gazelle rewrites a headered `BUILD` back without the header → the check reddens next run). The
+monorepo whole-repo check ignores them:
+
+```
+-ignore "**/BUILD" -ignore "**/BUILD.bazel"
+-ignore "**/docs/**" -ignore "**/internal/scaffold/templates/**"
+-ignore "pnpm-lock.yaml" -ignore "**/package-lock.json" -ignore "**/Cargo.lock" -ignore "MODULE.bazel.lock"
+-ignore "**/gazelle_python.yaml" -ignore "**/*-baseline.xml" -ignore "**/.release-please-manifest.json"
+-ignore "bazel-*/**" -ignore "**/node_modules/**" -ignore "**/*.venv/**" -ignore ".git/**"
+```
+
+Per-standalone ignore sets (no `**/BUILD` — standalones have no Bazel files):
+
+| Component | Ignores |
+|---|---|
+| devx | `docs/**`, `internal/scaffold/templates/**` |
+| homelab | *(none)* |
+| mcp-slack | `package-lock.json`, `node_modules/**` |
+| nexus-agent | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
+
+**Bulk-header many files:** run add-mode (drop `-check`) from the repo root with the monorepo ignore
+list, then confirm `bazel run //:gazelle` is still a no-op and `git status` shows no generated file
+touched **before** committing. Headers fan out like any other content change.
 
 ---
 
