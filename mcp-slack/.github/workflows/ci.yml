@@ -51,7 +51,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install addlicense
-        run: go install github.com/google/addlicense@latest
+        run: go install github.com/google/addlicense@v1.2.0
 
       - name: Check license headers
-        run: ~/go/bin/addlicense -check -ignore "node_modules/**" -ignore "dist/**" -ignore ".github/**" .
+        run: |
+          # go install drops the binary in GOPATH/bin, which isn't on PATH on the runner.
+          "$(go env GOPATH)/bin/addlicense" -check -c "VitruvianSoftware" -l mit \
+            -ignore "package-lock.json" -ignore "node_modules/**" .
