@@ -4,6 +4,10 @@
 # Symlinks created by Bazel into the output tree
 /bazel-*
 
+# User-specific Bazel config — may hold remote-build (RBE) API keys.
+# Loaded via `try-import %workspace%/user.bazelrc` from .bazelrc.
+user.bazelrc
+
 
 node_modules/
 
