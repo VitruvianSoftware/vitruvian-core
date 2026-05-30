@@ -8,8 +8,10 @@ common:remote --bes_results_url=https://app.buildbuddy.io/invocation/
 common:remote --remote_timeout=10m
 common:remote --jobs=50
 common:remote --remote_download_outputs=minimal
-# Default Linux execution platform/container for RBE actions. Adjust the
-# container-image to match your toolchains. NOTE: macOS targets cannot run on
-# Linux RBE — keep them local (e.g. --strategy=...=local). See docs/remote-build.md.
+# Default Linux execution platform/container for RBE actions. The image must ship
+# a modern glibc (>=2.28) for current Node/Python toolchains — BuildBuddy's old
+# default (executor-docker-default, Ubuntu 16.04) is too old and breaks Node.
+# Adjust to match your toolchains. NOTE: macOS targets cannot run on Linux RBE —
+# keep them local (e.g. --strategy=...=local). See docs/remote-build.md.
 common:remote --remote_default_exec_properties=OSFamily=linux
-common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/executor-docker-default:enterprise-v1.6.0
+common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu20-04:latest
