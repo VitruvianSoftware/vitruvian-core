@@ -60,6 +60,9 @@ exports_files(
 # infrastructure/pulumi is a separate Go module (not in //:go.work), deployed
 # via `pulumi up` and never Bazel-built. Keep gazelle out of it entirely.
 # gazelle:exclude infrastructure
+# tools/pulumi holds a hand-authored macro (defs.bzl) + wrapper scripts; gazelle
+# would otherwise generate a bzl_library with an unresolvable rules_shell dep.
+# gazelle:exclude tools/pulumi
 
 gazelle(
     name = "gazelle",
