@@ -1,0 +1,10 @@
+# Per-stack config (Pulumi.<stack>.yaml) holds environment-specific settings and
+# any encrypted secrets; the Pulumi Cloud backend is the source of truth. Only
+# the project file (Pulumi.yaml) is committed.
+Pulumi.*.yaml
+!Pulumi.yaml
+
+# Compiled Pulumi program binary left behind by a manual `go build .` (named
+# after the module's last path element).
+/repo_config
+/pulumi
