@@ -29,6 +29,11 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      # RBE auth for BuildBuddy (remote execution + cache on the Linux runner).
+      # Endpoints come from the committed tools/remote.bazelrc (--config=remote);
+      # the key is the BUILDBUDDY_API_KEY repo secret.
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v6
 
@@ -42,10 +47,10 @@ jobs:
             common --show_progress_rate_limit=60 --show_timestamps
 
       - name: Build
-        run: bazel build //...
+        run: bazel build --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
 
       - name: Test
-        run: bazel test //...
+        run: bazel test --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
 
   build-macos:
     runs-on: macos-latest
