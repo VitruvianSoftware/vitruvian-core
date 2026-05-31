@@ -1,0 +1,77 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+name: Repo Config Preview
+
+# Gated PR preview for the repo_config Pulumi module.
+#
+# When enabled, runs `pulumi preview --diff` against the repo_config stack on
+# pull requests that touch the module, and posts the diff back to the PR as a
+# single updating comment so reviewers can see the proposed GitHub-settings
+# change before it is applied (via the separate apply/up workflow on merge).
+#
+# DISABLED BY DEFAULT — opt in by setting the repository variable
+# REPO_CONFIG_PREVIEW_ENABLED=true (Settings -> Secrets and variables ->
+# Actions -> Variables). The shared GitHub App (created once per org via
+# `bazel run //tools/pulumi:create-app`) supplies the Pulumi GitHub provider
+# credentials; set its app id in the PULUMI_APP_ID variable and its private key
+# in the APP_PRIVATE_KEY secret, plus PULUMI_ACCESS_TOKEN for the Pulumi backend.
+on:
+    pull_request:
+        paths: ["infrastructure/pulumi/repo_config/**"]
+
+permissions:
+    contents: read
+    pull-requests: write
+
+jobs:
+    preview:
+        if: ${{ vars.REPO_CONFIG_PREVIEW_ENABLED == 'true' }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Install Bazel
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                  bazelisk-cache: true
+                  repository-cache: true
+                  bazelrc: |
+                      common --announce_rc --color=yes --curses=yes
+                      common --show_progress_rate_limit=60 --show_timestamps
+
+            - name: Mint a GitHub App token for the Pulumi GitHub provider
+              id: app-token
+              uses: actions/create-github-app-token@v2
+              with:
+                  app-id: ${{ vars.PULUMI_APP_ID }}
+                  private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+            - name: Pulumi preview (repo_config)
+              env:
+                  GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+                  GITHUB_OWNER: ${{ github.repository_owner }}
+                  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+              run: bazel run //infrastructure/pulumi/repo_config:preview -- --stack dev --diff 2>&1 | tee /tmp/repo-config-preview.txt
+
+            - name: Post preview diff as a PR comment
+              uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+              with:
+                  header: repo-config-preview
+                  path: /tmp/repo-config-preview.txt

@@ -71,3 +71,21 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
         args = [dir],
         visibility = visibility,
     )
+
+def pulumi_create_app(name = "create-app", visibility = ["//visibility:public"]):
+    """Declare the one-time GitHub App Manifest-flow bootstrap target.
+
+    Unlike `pulumi_project`, this is NOT per Pulumi project — it is a single
+    repo-level helper run ONCE per GitHub org to create a shared App and set
+    org-level credentials (`bazel run //tools/pulumi:create-app`). Call it from
+    the `//tools/pulumi` package's BUILD file.
+
+    Args:
+      name: target name (the developer-facing label is `create-app`).
+      visibility: visibility for the generated target.
+    """
+    sh_binary(
+        name = name,
+        srcs = ["create_app.sh"],
+        visibility = visibility,
+    )
