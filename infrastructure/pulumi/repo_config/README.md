@@ -86,3 +86,22 @@ pulumi up --stack dev
 - **Change the protected branch:** set `defaultBranch` and `pulumi up`.
 - **Stop managing a repo:** `pulumi destroy` removes the branch protection and
   releases the repository from state (it is **not** deleted on GitHub).
+
+---
+
+## CI/CD automation
+
+Two opt-in GitHub Actions workflows drive this module from CI (off by default;
+enable via `bazel run //infrastructure/pulumi/repo_config:setup`, or by setting
+the repo variables directly):
+
+| Workflow | Trigger | Gate (repo variable) | Action |
+|---|---|---|---|
+| `.github/workflows/_repo-config-preview.yaml` | PR touching `infrastructure/pulumi/repo_config/**` | `REPO_CONFIG_PREVIEW_ENABLED=true` | posts a `pulumi preview` diff comment |
+| `.github/workflows/_repo-config-apply.yaml` | push to the default branch touching the same path | `REPO_CONFIG_AUTO_APPLY=true` | runs `pulumi up` |
+
+Auth uses a shared least-privilege GitHub App (`Administration: write` +
+`Contents: read`) created once via `bazel run //tools/pulumi:create-app`: the
+workflows mint a short-lived installation token from `PULUMI_APP_ID` (variable) +
+`APP_PRIVATE_KEY` (secret), and reach the Pulumi Cloud backend via
+`PULUMI_ACCESS_TOKEN` (secret).
