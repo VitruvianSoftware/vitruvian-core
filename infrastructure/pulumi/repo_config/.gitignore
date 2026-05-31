@@ -1,8 +1,12 @@
-# Per-stack config (Pulumi.<stack>.yaml) holds environment-specific settings and
-# any encrypted secrets; the Pulumi Cloud backend is the source of truth. Only
-# the project file (Pulumi.yaml) is committed.
-Pulumi.*.yaml
+# Pulumi.yaml (project) AND Pulumi.<stack>.yaml (per-stack config) are both
+# committed: this module is driven from CI (the preview/apply workflows), which
+# need the stack config (repoOwner + the policy toggles) at runtime. repo_config
+# uses only NON-secret config; Pulumi stores any secret config encrypted, so the
+# stack config is safe to commit. (The negations below override the parent
+# infrastructure/pulumi/.gitignore, which ignores Pulumi.*.yaml for the
+# secret-bearing copybara stack.)
 !Pulumi.yaml
+!Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by a manual `go build .` (named
 # after the module's last path element).

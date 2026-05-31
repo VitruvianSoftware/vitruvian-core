@@ -1,0 +1,4 @@
+config:
+  vitruvian-core-repo-config:repoOwner: VitruvianSoftware
+  vitruvian-core-repo-config:requirePullRequest: "false"
+  vitruvian-core-repo-config:requireStatusChecks: "false"
