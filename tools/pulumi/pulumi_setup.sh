@@ -95,6 +95,83 @@ case "$PROJECT_DIR" in
     echo "      bazel run //$PROJECT_DIR:up"
     echo "If the import fails, fix repoName/repoOwner (and the token's account) and retry —"
     echo "no resource is created until the import resolves."
+
+    # --- Automation opt-in (CI/CD via the shared org App) ------------------
+    # Flip the two PER-REPO toggle variables the templated workflows gate on:
+    #   REPO_CONFIG_PREVIEW_ENABLED  -> _repo-config-preview.yaml (preview on PRs)
+    #   REPO_CONFIG_AUTO_APPLY       -> _repo-config-apply.yaml    (apply on merge)
+    # The actual Pulumi App credentials are ORG-LEVEL and set once by
+    # `bazel run //tools/pulumi:create-app`; we only check they exist here.
+    # All prompts default to N and use '|| true' so non-interactive runs
+    # (bazel test / CI) never hang.
+    echo
+    if ! command -v gh >/dev/null 2>&1; then
+      echo "! gh CLI not found — skipping CI/CD automation opt-in. Install it"
+      echo "  (https://cli.github.com/, then 'gh auth login') and re-run to enable it."
+    else
+      echo "CI/CD automation (optional): drive repo_config from GitHub Actions via the"
+      echo "shared org Pulumi App. Set the per-repo toggles the workflows gate on."
+
+      read -r -p "Enable Pulumi preview on pull requests? [y/N] " ENABLE_PREVIEW || true
+      case "${ENABLE_PREVIEW:-N}" in
+        [yY] | [yY][eE][sS])
+          if gh variable set REPO_CONFIG_PREVIEW_ENABLED --body true; then
+            echo "✓ REPO_CONFIG_PREVIEW_ENABLED=true (preview will run on pull requests)."
+          else
+            echo "! Failed to set REPO_CONFIG_PREVIEW_ENABLED (gh not authenticated, or insufficient repo perms?) — skipping." >&2
+          fi
+          ;;
+        *)
+          if gh variable set REPO_CONFIG_PREVIEW_ENABLED --body false; then
+            echo "✓ REPO_CONFIG_PREVIEW_ENABLED=false (preview-on-PR disabled)."
+          else
+            echo "! Failed to set REPO_CONFIG_PREVIEW_ENABLED (gh not authenticated, or insufficient repo perms?) — skipping." >&2
+          fi
+          ;;
+      esac
+
+      read -r -p "Enable Pulumi apply on merge (auto-up)? [y/N] " ENABLE_APPLY || true
+      case "${ENABLE_APPLY:-N}" in
+        [yY] | [yY][eE][sS])
+          if gh variable set REPO_CONFIG_AUTO_APPLY --body true; then
+            echo "✓ REPO_CONFIG_AUTO_APPLY=true (merges to the default branch will 'up')."
+          else
+            echo "! Failed to set REPO_CONFIG_AUTO_APPLY (gh not authenticated, or insufficient repo perms?) — skipping." >&2
+          fi
+          ;;
+        *)
+          if gh variable set REPO_CONFIG_AUTO_APPLY --body false; then
+            echo "✓ REPO_CONFIG_AUTO_APPLY=false (apply-on-merge disabled)."
+          else
+            echo "! Failed to set REPO_CONFIG_AUTO_APPLY (gh not authenticated, or insufficient repo perms?) — skipping." >&2
+          fi
+          ;;
+      esac
+
+      # Org-cred check (best-effort): these are set once by ':create-app' and
+      # inherited by every repo. Listing org vars/secrets needs org-admin, so
+      # guard with '|| true' and only print a hint when something looks missing —
+      # never set per-repo creds here.
+      OWNER="$(gh repo view --json owner --jq .owner.login 2>/dev/null || true)"
+      if [ -n "$OWNER" ]; then
+        ORG_VARS="$(gh variable list --org "$OWNER" 2>/dev/null || true)"
+        ORG_SECRETS="$(gh secret list --org "$OWNER" 2>/dev/null || true)"
+        if ! printf '%s' "$ORG_VARS" | grep -q 'PULUMI_APP_ID' ||
+          ! printf '%s' "$ORG_SECRETS" | grep -q 'APP_PRIVATE_KEY' ||
+          ! printf '%s' "$ORG_SECRETS" | grep -q 'PULUMI_ACCESS_TOKEN'; then
+          echo "! Org-level Pulumi App credentials not found — run \`bazel run //tools/pulumi:create-app\` once for the org."
+        else
+          echo "✓ Org-level Pulumi App credentials (PULUMI_APP_ID / APP_PRIVATE_KEY / PULUMI_ACCESS_TOKEN) are present."
+        fi
+      else
+        echo "! Could not determine the repo owner (gh not authenticated?) — skipping the"
+        echo "  org-credential check. Ensure \`bazel run //tools/pulumi:create-app\` has been run for the org."
+      fi
+
+      echo "Reminder: the shared org App must be INSTALLED on this repo for token minting."
+      echo "  Install it (replace <slug>, e.g. <org>-pulumi) at:"
+      echo "      https://github.com/apps/<slug>/installations/new"
+    fi
     ;;
   *)
     echo
