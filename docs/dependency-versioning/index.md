@@ -17,6 +17,22 @@ runtime surprises in production. But it raises the obvious question this guide a
 This page is the language-agnostic model. For the exact mechanics — and the escape hatches — in
 your stack, see the [per-language pages](#per-language-guides) below.
 
+```mermaid
+flowchart LR
+    subgraph ovr["One Version Rule (default)"]
+        direction LR
+        a1["app A"] --> hub[("pip hub — one lock")]
+        a2["app B"] --> hub
+        a3["app C"] --> hub
+        hub --> v(["one version of each package"])
+    end
+    subgraph div["Deliberate divergence (separate closures)"]
+        direction LR
+        b1["app A"] --> h1[("@pip")]
+        b2["app B (needs older dep)"] --> h2[("@pip_legacy")]
+    end
+```
+
 ## The mental model: two kinds of resolver
 
 Every package manager falls into one of two camps, and which camp a language is in decides what
@@ -43,7 +59,36 @@ pins `X@1` because `Y` hasn't cut a release that widens its constraint.
   outright, or silently picks one version and you discover the mismatch as a runtime error. This
   is exactly the pain 1VR makes you feel *early*, at build time, instead of in prod.
 
+```mermaid
+flowchart TB
+    subgraph nest["Nesting resolver (pnpm, Cargo) — diamond dissolves"]
+        direction TB
+        nA["app"] --> nX2["X v2"]
+        nA --> nY["lib Y (laggard)"]
+        nY --> nX1["X v1"]
+    end
+    subgraph flat["Flat resolver (pip, Maven, Bundler, Go) — one winner"]
+        direction TB
+        fA["app"] --> fX["X v2 (single winner)"]
+        fA --> fY["lib Y (laggard)"]
+        fY -. "still needs X v1" .-> fX
+        fX --> boom("Y breaks if incompatible: resolve fails or runtime error")
+    end
+```
+
 ## Decision tree: when versions diverge
+
+```mermaid
+flowchart TD
+    A["Two apps need different versions of the same library"] --> B{"Can you converge? (bump the laggard or pin one version)"}
+    B -->|Yes| C(["Converge — the default, cheapest path"])
+    B -->|No| D{"Nesting ecosystem? (pnpm, Cargo, Go across majors)"}
+    D -->|Yes| E(["Declare both versions — they coexist for free"])
+    D -->|"No, flat"| F{"Must both live in the same binary / process?"}
+    F -->|"No, separate binaries"| G(["Separate closures: 2nd pip hub, named maven install, or a module out of go.work"])
+    F -->|"Yes, same binary"| H(["Shade / relocate, vendor, or split into separate processes"])
+    H -.->|Copybara| I(["Or publish to a standalone repo with its own dependency closure"])
+```
 
 1. **Can you converge?** Prefer it, every time. Bump the lagging consumer, or force the shared
    dependency to one version and run the tests. Convergence is usually possible and always
@@ -84,6 +129,16 @@ This repo syncs components out to standalone repositories with Copybara (see
 [copybara-bidi-sync.md](copybara-bidi-sync.md)). That sync is also your ultimate version-
 isolation boundary: each synced component builds independently in its own repo with its **own**
 dependency closure (its own lockfile), separate from the monorepo's shared hubs.
+
+```mermaid
+flowchart LR
+    subgraph mono["monorepo (One Version Rule)"]
+        direction TB
+        cA["component A"] --> hub[("shared hubs: @pip @maven @npm")]
+        cB["component B"] --> hub
+    end
+    mono -. "Copybara sync" .-> std["standalone repo: component B<br/>its own lockfile and versions"]
+```
 
 So if two apps have irreconcilable version needs and don't share code, the standalone repo gives
 each a clean, isolated set of versions for free — the One Version Rule pressure only applies
