@@ -68,10 +68,53 @@ jobs:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   GITHUB_OWNER: ${{ github.repository_owner }}
                   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-              run: bazel run //infrastructure/pulumi/repo_config:preview -- --stack dev --diff 2>&1 | tee /tmp/repo-config-preview.txt
+              run: |
+                  set -o pipefail
+                  # --color=no --curses=no stops Bazel from emitting ANSI color and
+                  # cursor-control codes (the "^[[32m" / "^[[1A^[[K" noise). The raw
+                  # combined log is kept for the job output; the clean PR comment is
+                  # built from it in the next step.
+                  bazel run --color=no --curses=no \
+                      //infrastructure/pulumi/repo_config:preview -- --stack dev --diff \
+                      2>&1 | tee /tmp/preview-raw.txt
+
+            - name: Build preview comment
+              if: ${{ always() }}
+              run: |
+                  raw=/tmp/preview-raw.txt
+                  # Strip any residual ANSI/curses escape sequences and carriage
+                  # returns so the comment is plain readable text, not escape-code soup.
+                  clean=$(mktemp)
+                  sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g' "$raw" | tr -d '\r' > "$clean"
+                  # Keep only the Pulumi preview section, dropping the Bazel build
+                  # chatter that precedes it (anchored on Pulumi's banner), the
+                  # compile/spinner progress lines, and the trailing upgrade nag.
+                  section=$(mktemp)
+                  awk '/Previewing update/{f=1} f' "$clean" \
+                      | grep -v -E '^@ |^Compiling the program|^Finished compiling' \
+                      | sed '/A new version of Pulumi is available/d' > "$section"
+                  {
+                      echo "## Repo config - Pulumi preview"
+                      echo
+                      if [ -s "$section" ]; then
+                          echo "Proposed changes to this repository's GitHub settings"
+                          echo "(pulumi preview --diff on the repo_config stack):"
+                          echo
+                          echo '```'
+                          cat "$section"
+                          echo '```'
+                      else
+                          echo "WARNING: pulumi preview did not complete. Recent output:"
+                          echo
+                          echo '```'
+                          tail -n 40 "$clean"
+                          echo '```'
+                      fi
+                  } > /tmp/preview-comment.md
 
             - name: Post preview diff as a PR comment
+              if: ${{ always() }}
               uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
               with:
                   header: repo-config-preview
-                  path: /tmp/repo-config-preview.txt
+                  path: /tmp/preview-comment.md

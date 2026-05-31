@@ -97,8 +97,11 @@ the repo variables directly):
 
 | Workflow | Trigger | Gate (repo variable) | Action |
 |---|---|---|---|
-| `.github/workflows/_repo-config-preview.yaml` | PR touching `infrastructure/pulumi/repo_config/**` | `REPO_CONFIG_PREVIEW_ENABLED=true` | posts a `pulumi preview` diff comment |
+| `.github/workflows/_repo-config-preview.yaml` | PR touching `infrastructure/pulumi/repo_config/**` | `REPO_CONFIG_PREVIEW_ENABLED=true` | posts a cleaned-up `pulumi preview --diff` comment |
 | `.github/workflows/_repo-config-apply.yaml` | push to the default branch touching the same path | `REPO_CONFIG_AUTO_APPLY=true` | runs `pulumi up` |
+
+The preview comment shows only the Pulumi diff — Bazel build output and ANSI
+escape codes are stripped so the sticky comment stays readable.
 
 Auth uses a shared least-privilege GitHub App (`Administration: write` +
 `Contents: read`) created once via `bazel run //tools/pulumi:create-app`: the
