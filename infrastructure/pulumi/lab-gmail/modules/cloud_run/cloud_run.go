@@ -274,7 +274,7 @@ func DeployService(ctx *pulumi.Context, name string, args *DeployServiceArgs, op
 				ZoneId:  pulumi.String(zoneIdValue),
 				Name:    pulumi.String(recordName),
 				Type:    pulumi.String("CNAME"),
-				Value:   dnsTarget,
+				Content: dnsTarget,
 				Ttl:     pulumi.Int(3600),
 				Proxied: pulumi.Bool(args.CloudflareProxied),
 			}
