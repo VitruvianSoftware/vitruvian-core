@@ -1,0 +1,21 @@
+# Per-stack config (Pulumi.<stack>.yaml) holds environment-specific settings and
+# encrypted secrets; the Pulumi Cloud backend (+ ESC) is the source of truth.
+# Only the project file and the example template are committed.
+Pulumi.*.yaml
+!Pulumi.yaml
+!Pulumi.example.yaml
+
+# Local secrets / kubeconfig — never commit
+.env
+lima-k8s.yaml
+*.kubeconfig
+kubeconfig
+
+# Compiled Pulumi program binary left behind by `go build .`
+# (named after the module's last path element).
+/dev-local
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/

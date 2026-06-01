@@ -1,0 +1,54 @@
+# Default values for Grafana.
+# See https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
+
+adminPassword: admin
+
+initChownData:
+  enabled: false
+
+persistence:
+  enabled: false
+
+livenessProbe:
+  initialDelaySeconds: 120
+  timeoutSeconds: 30
+
+readinessProbe:
+  initialDelaySeconds: 120
+  timeoutSeconds: 30
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-cloudflare"
+  hosts:
+    - grafana.lab.ipv1337.dev
+  tls:
+    - secretName: grafana-tls
+      hosts:
+        - grafana.lab.ipv1337.dev
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        uid: Tempo
+        url: http://tempo.opentelemetry.svc.cluster.local:3200
+        access: proxy
+        isDefault: false
+      - name: Prometheus-Data
+        type: prometheus
+        uid: Prometheus-Data
+        url: http://prometheus-server.monitoring.svc.cluster.local:80
+        access: proxy
+        isDefault: true
+      - name: Prometheus-Fallback-1
+        type: prometheus
+        uid: Prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local:80
+        access: proxy
+        isDefault: false

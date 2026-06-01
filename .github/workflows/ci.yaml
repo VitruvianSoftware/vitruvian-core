@@ -92,5 +92,6 @@ jobs:
             -ignore "pnpm-lock.yaml" -ignore "**/package-lock.json" -ignore "**/Cargo.lock" -ignore "MODULE.bazel.lock" \
             -ignore "**/gazelle_python.yaml" -ignore "**/*-baseline.xml" -ignore "**/.release-please-manifest.json" \
             -ignore "**/Pulumi.*.yaml" \
+            -ignore "**/dev-local/crds/**" -ignore "**/dev-local/values/**" -ignore "**/dev-local/dashboards/**" \
             -ignore "bazel-*/**" -ignore "**/node_modules/**" -ignore "**/*.venv/**" -ignore ".git/**" \
             .

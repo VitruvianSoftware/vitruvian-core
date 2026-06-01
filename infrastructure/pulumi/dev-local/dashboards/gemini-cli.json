@@ -1,0 +1,302 @@
+{
+  "panels": [
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_token_usage_total)",
+          "instant": true
+        }
+      ],
+      "title": "Total Tokens Used",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_session_count_total)",
+          "instant": true
+        }
+      ],
+      "title": "Total Sessions",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_tool_call_count_total)",
+          "instant": true
+        }
+      ],
+      "title": "Total Tool Calls",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_api_request_count_total)",
+          "instant": true
+        }
+      ],
+      "title": "Total API Requests",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_lines_changed_total)",
+          "instant": true
+        }
+      ],
+      "title": "Total Lines Changed",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(gemini_cli_startup_duration_milliseconds_sum) / sum(gemini_cli_startup_duration_milliseconds_count)",
+          "instant": true
+        }
+      ],
+      "title": "Avg Startup Time (ms)",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (token_type) (rate(gemini_cli_token_usage_total[1m]))",
+          "legendFormat": "{{token_type}}"
+        }
+      ],
+      "title": "Token Usage Rate",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (tool_name) (rate(gemini_cli_tool_call_count_total[1m]))",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "title": "Tool Execution Rate",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "pieType": "donut"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (model) (gemini_cli_api_request_count_total)",
+          "instant": true,
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "title": "Usage by Model",
+      "type": "piechart"
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "pieType": "donut"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (status_code) (gemini_cli_api_request_count_total)",
+          "instant": true,
+          "legendFormat": "HTTP {{status_code}}"
+        }
+      ],
+      "title": "API Response Codes",
+      "type": "piechart"
+    },
+    {
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(gemini_cli_api_request_latency_milliseconds_bucket[5m])))",
+          "legendFormat": "P99 Latency"
+        }
+      ],
+      "title": "P99 API Request Latency (ms)",
+      "type": "timeseries"
+    },
+    {
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "histogram_quantile(0.99, sum by (tool_name, le) (rate(gemini_cli_tool_call_latency_milliseconds_bucket[5m])))",
+          "legendFormat": "{{tool_name}}"
+        }
+      ],
+      "title": "P99 Tool Execution Latency (ms)",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 15,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "query": "{resource.service.name=\"gemini-cli\"}",
+          "queryType": "traceql",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Recent Gemini CLI Traces",
+      "type": "table",
+      "transformations": [],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["gemini", "cli", "telemetry"],
+  "timezone": "browser",
+  "title": "Gemini CLI Telemetry",
+  "uid": "gemini-cli"
+}
