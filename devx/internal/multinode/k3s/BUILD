@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "k3s",
@@ -9,4 +9,10 @@ go_library(
     importpath = "github.com/VitruvianSoftware/devx/internal/multinode/k3s",
     visibility = ["//devx:__subpackages__"],
     deps = ["//devx/internal/multinode/remote"],
+)
+
+go_test(
+    name = "k3s_test",
+    srcs = ["advanced_test.go"],
+    embed = [":k3s"],
 )

@@ -13,6 +13,9 @@ go_library(
 
 go_test(
     name = "ship_test",
-    srcs = ["ship_test.go"],
+    srcs = [
+        "gitpush_test.go",
+        "ship_test.go",
+    ],
     embed = [":ship"],
 )

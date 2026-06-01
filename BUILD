@@ -4,6 +4,7 @@ load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@gazelle//:def.bzl", "gazelle")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@pip//:requirements.bzl", "all_whl_requirements")
+load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
 load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 
@@ -84,8 +85,6 @@ gazelle(
     },
     gazelle = "@multitool//tools/gazelle",
 )
-
-load("@rules_multirun//:defs.bzl", "multirun")
 
 # One-command BUILD/source hygiene: regenerate BUILD files (gazelle), refresh the
 # Python deps manifest, then format everything (//tools/format = buildifier + every
