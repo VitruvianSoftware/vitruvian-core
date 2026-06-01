@@ -23,5 +23,8 @@ go_test(
     name = "cluster_test",
     srcs = ["cluster_reconcile_test.go"],
     embed = [":cluster"],
-    deps = ["//devx/internal/multinode/lima"],
+    deps = [
+        "//devx/internal/multinode/config",
+        "//devx/internal/multinode/lima",
+    ],
 )

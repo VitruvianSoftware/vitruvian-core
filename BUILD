@@ -4,6 +4,7 @@ load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@gazelle//:def.bzl", "gazelle")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@pip//:requirements.bzl", "all_whl_requirements")
+load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
 load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 
@@ -83,6 +84,21 @@ gazelle(
         ]),
     },
     gazelle = "@multitool//tools/gazelle",
+)
+
+# One-command BUILD/source hygiene: regenerate BUILD files (gazelle), refresh the
+# Python deps manifest, then format everything (//tools/format = buildifier + every
+# per-language formatter). Sequential so the formatter sees gazelle's freshly
+# written BUILD files. Run `bazel run //:tidy`; the Tidy Check CI job fails a PR
+# when running this would change anything.
+multirun(
+    name = "tidy",
+    commands = [
+        ":gazelle",
+        ":gazelle_python_manifest.update",
+        "//tools/format",
+    ],
+    jobs = 1,  # sequential: gazelle writes BUILD files, then format formats them
 )
 
 exports_files(

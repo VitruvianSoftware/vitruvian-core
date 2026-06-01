@@ -21,3 +21,18 @@ git diff --cached --diff-filter=AM --name-only -z | xargs --null --no-run-if-emp
     fi
   fi
 ' _
+
+# Regenerate BUILD files and fail if any changed, so stale BUILD files never get
+# committed. Prefer the bazel_env-built gazelle if present (avoids a bazel build),
+# mirroring the formatter step above; otherwise fall back to `bazel run`.
+if [ -e "bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle" ]; then
+  bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle
+else
+  bazel run //:gazelle
+fi
+if [ -n "$(git status --porcelain -- '*BUILD' '*BUILD.bazel')" ]; then
+  echo "❌ gazelle updated BUILD files."
+  echo "Please review and stage the changes before committing again."
+  git status --porcelain -- '*BUILD' '*BUILD.bazel'
+  exit 1
+fi
