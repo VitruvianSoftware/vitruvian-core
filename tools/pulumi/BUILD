@@ -13,6 +13,7 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 """
 
 load("//tools/pulumi:defs.bzl", "pulumi_create_app")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
     "pulumi_cmd.sh",
@@ -22,3 +23,12 @@ exports_files([
 
 # One-time, repo-level App bootstrap: `bazel run //tools/pulumi:create-app`.
 pulumi_create_app()
+
+# Unit tests for the GCP identity resolver. The resolver is passed to the test
+# as an arg via $(location) so it works under `bazel test` without runfiles glue.
+sh_test(
+    name = "resolve_identity_test",
+    srcs = ["resolve_identity_test.sh"],
+    data = ["resolve_identity.sh"],
+    args = ["$(location resolve_identity.sh)"],
+)
