@@ -85,6 +85,23 @@ gazelle(
     gazelle = "@multitool//tools/gazelle",
 )
 
+load("@rules_multirun//:defs.bzl", "multirun")
+
+# One-command BUILD/source hygiene: regenerate BUILD files (gazelle), refresh the
+# Python deps manifest, then format everything (//tools/format = buildifier + every
+# per-language formatter). Sequential so the formatter sees gazelle's freshly
+# written BUILD files. Run `bazel run //:tidy`; the Tidy Check CI job fails a PR
+# when running this would change anything.
+multirun(
+    name = "tidy",
+    commands = [
+        ":gazelle",
+        ":gazelle_python_manifest.update",
+        "//tools/format",
+    ],
+    jobs = 1,  # sequential: gazelle writes BUILD files, then format formats them
+)
+
 exports_files(
     ["pyproject.toml"],
     visibility = ["//:__subpackages__"],

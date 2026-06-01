@@ -2,4 +2,15 @@
 # - prevents GitHub from showing deltas during code review
 # - informs the rules_lint formatter not to apply formatting rules
 maven_install.json     linguist-generated=true
-githooks/pre-commit    rules-lint-ignored=true
+# Template-owned config and tooling: vendored, hand-maintained, and (for several)
+# not cleanly formattable. Exclude them from //tools/format / //:tidy so the tree
+# stays tidy across formatter version bumps (rules-lint-ignored is honored by
+# aspect_rules_lint's formatter).
+*.axl                  rules-lint-ignored=true
+.vscode/*.json         rules-lint-ignored=true
+.devcontainer/*.json   rules-lint-ignored=true
+githooks/*             rules-lint-ignored=true
+tools/scripts/*        rules-lint-ignored=true
+tools/tools.lock.json  rules-lint-ignored=true
+tools/*.sh             rules-lint-ignored=true
+tools/**/*.sh          rules-lint-ignored=true
