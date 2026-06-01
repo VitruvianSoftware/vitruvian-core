@@ -9,9 +9,11 @@ common:remote --remote_timeout=10m
 common:remote --jobs=50
 common:remote --remote_download_outputs=minimal
 # Default Linux execution platform/container for RBE actions. The image must ship
-# a modern glibc (>=2.28) for current Node/Python toolchains — BuildBuddy's old
-# default (executor-docker-default, Ubuntu 16.04) is too old and breaks Node.
-# Adjust to match your toolchains. NOTE: macOS targets cannot run on Linux RBE —
-# keep them local (e.g. --strategy=...=local). See docs/remote-build.md.
+# a modern glibc (>=2.28) for current Node/Python toolchains AND a modern git
+# (>=2.28) for tests/tools that use `git init -b`, `git switch`, etc. Ubuntu
+# 22.04 (rbe-ubuntu22-04) provides git 2.34 / glibc 2.35; the older 20.04 image
+# ships git 2.25 (no `git init -b`). Adjust to match your toolchains. NOTE: macOS
+# targets cannot run on Linux RBE — keep them local (e.g. --strategy=...=local).
+# See docs/remote-build.md.
 common:remote --remote_default_exec_properties=OSFamily=linux
-common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu20-04:latest
+common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu22-04:latest
