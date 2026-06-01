@@ -38,7 +38,6 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
 		Name: namespace,
 	})
-
 	if err != nil {
 		return err
 	}
@@ -120,12 +119,11 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 				},
 			},
 		},
-		Wait:    true,
-		Timeout: 300,
+		Wait:          true,
+		Timeout:       300,
 		CleanupCRDs:   true,
 		CRDsToCleanup: []string{},
 	}, pulumi.DependsOn([]pulumi.Resource{ns}))
-
 	if err != nil {
 		return err
 	}

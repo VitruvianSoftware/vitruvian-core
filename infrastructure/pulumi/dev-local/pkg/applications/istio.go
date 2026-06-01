@@ -71,7 +71,6 @@ func DeployIstio(ctx *pulumi.Context, provider *kubernetes.Provider, redisResour
 		CleanupCRDs:     false,
 		CRDsToCleanup:   istioCRDs,
 	})
-
 	if err != nil {
 		return err
 	}
@@ -91,7 +90,6 @@ func DeployIstio(ctx *pulumi.Context, provider *kubernetes.Provider, redisResour
 		Timeout:     600,
 		CleanupCRDs: false,
 	}, pulumi.DependsOn([]pulumi.Resource{istioBase}))
-
 	if err != nil {
 		return err
 	}
@@ -109,7 +107,6 @@ func DeployIstio(ctx *pulumi.Context, provider *kubernetes.Provider, redisResour
 		Timeout:         600,
 	}, pulumi.DependsOn([]pulumi.Resource{istioBase, istioCNI}))
 	// }, pulumi.DependsOn([]pulumi.Resource{istioBase, istioCNI, cleanupPod}))
-
 	if err != nil {
 		return err
 	}
@@ -126,7 +123,6 @@ func DeployIstio(ctx *pulumi.Context, provider *kubernetes.Provider, redisResour
 		Wait:            true,
 		Timeout:         600,
 	}, pulumi.DependsOn([]pulumi.Resource{istioBase, istiod}))
-
 	if err != nil {
 		return err
 	}

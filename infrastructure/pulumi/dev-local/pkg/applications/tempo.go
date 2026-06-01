@@ -37,7 +37,7 @@ func DeployTempo(ctx *pulumi.Context, provider *kubernetes.Provider, namespace s
 	minioEnabled := conf.GetBool("minio_enabled", false)
 	replicas := 1
 	var affinity map[string]interface{}
-	
+
 	if haEnabled && minioEnabled {
 		replicas = 2
 		affinity = map[string]interface{}{
@@ -130,7 +130,6 @@ func DeployTempo(ctx *pulumi.Context, provider *kubernetes.Provider, namespace s
 		Wait:    false,
 		Timeout: 600,
 	})
-
 	if err != nil {
 		ctx.Log.Error("Failed to deploy Tempo Helm chart.", &pulumi.LogArgs{Resource: release})
 		return nil, fmt.Errorf("failed to deploy tempo: %w", err)

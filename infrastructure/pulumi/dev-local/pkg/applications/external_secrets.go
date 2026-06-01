@@ -71,7 +71,6 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
 		Name: namespace,
 	})
-
 	if err != nil {
 		return err
 	}
@@ -104,7 +103,7 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 		ValuesFile:      "external-secrets",
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
-			"installCRDs": false,
+			"installCRDs":  false,
 			"webhook": map[string]interface{}{
 				"create": false,
 			},
@@ -117,7 +116,6 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 		CleanupCRDs:   false, // CRDs managed by Phase 1
 		CRDsToCleanup: ExternalSecretsCRDs,
 	}, pulumi.DependsOn([]pulumi.Resource{ns, externalSecretsCrds}))
-
 	if err != nil {
 		return err
 	}
@@ -211,7 +209,6 @@ spec:
 			manifest, err := yaml.NewConfigGroup(ctx, "external-secret-cluster-fake-cnpg-secrets", &yaml.ConfigGroupArgs{
 				YAML: []string{cnpgStoreYaml},
 			}, pulumi.Provider(esProvider)) // Pass the dependent provider
-
 			if err != nil {
 				ctx.Log.Error(fmt.Sprintf("Failed to create fake CNPG secret store: %v", err), nil)
 				return nil, fmt.Errorf("failed to create fake CNPG secret store: %w", err)

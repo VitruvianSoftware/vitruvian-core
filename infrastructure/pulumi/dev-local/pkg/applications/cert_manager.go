@@ -95,14 +95,13 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 		CleanupCRDs:   false, // CRDs managed by Phase 1
 		CRDsToCleanup: CertManagerCRDs,
 	}, pulumi.DependsOn([]pulumi.Resource{certManagerCrds}))
-
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a Secret with the Cloudflare API Token for cert-manager
 	cloudflareApiToken := conf.GetString("cloudflare_api_token", "")
-	
+
 	var deps []pulumi.Resource
 	deps = append(deps, certManager)
 
@@ -119,11 +118,10 @@ stringData:
   api-token: ` + cloudflareApiToken + `
 `,
 		}, pulumi.DependsOn(deps))
-
 		if err != nil {
 			return nil, err
 		}
-		
+
 		deps = append(deps, cfSecret)
 
 		// Create Let's Encrypt ClusterIssuer
@@ -147,7 +145,6 @@ spec:
             key: api-token
 `,
 		}, pulumi.DependsOn(deps))
-
 		if err != nil {
 			return nil, err
 		}

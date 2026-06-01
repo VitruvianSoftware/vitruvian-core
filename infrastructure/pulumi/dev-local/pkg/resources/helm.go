@@ -101,7 +101,6 @@ func DeployHelmChart(ctx *pulumi.Context, provider *kubernetes.Provider, config 
 				"cleanup.sh": pulumi.String(cleanupScript),
 			},
 		}, pulumi.Provider(provider))
-
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +137,7 @@ func DeployHelmChart(ctx *pulumi.Context, provider *kubernetes.Provider, config 
 								Name: pulumi.String("cleanup-script"),
 								ConfigMap: &corev1.ConfigMapVolumeSourceArgs{
 									Name:        pulumi.String(cmName),
-									DefaultMode: pulumi.Int(0755),
+									DefaultMode: pulumi.Int(0o755),
 								},
 							},
 						},
@@ -146,7 +145,6 @@ func DeployHelmChart(ctx *pulumi.Context, provider *kubernetes.Provider, config 
 				},
 			},
 		}, pulumi.Provider(provider))
-
 		if err != nil {
 			return nil, err
 		}

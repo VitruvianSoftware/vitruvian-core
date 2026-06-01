@@ -28,20 +28,20 @@ import (
 
 // CreateBucketArgs defines the arguments for creating a storage bucket.
 type CreateBucketArgs struct {
-	ProjectID string
+	ProjectID  string
 	NamePrefix string
-	Location  string
+	Location   string
 }
 
 // CreateBucket creates a new Google Cloud Storage bucket.
 func CreateBucket(ctx *pulumi.Context, name string, args *CreateBucketArgs) (*storage.Bucket, error) {
 	// Generate a random suffix for the bucket name to ensure global uniqueness.
 	bktSuffix, err := random.NewRandomString(ctx, name+"-suffix", &random.RandomStringArgs{
-		Length:  pulumi.Int(4),
-		Special: pulumi.Bool(false),
-		Upper:   pulumi.Bool(false),
-		Numeric: pulumi.Bool(true),
-		Lower:   pulumi.Bool(true),
+		Length:          pulumi.Int(4),
+		Special:         pulumi.Bool(false),
+		Upper:           pulumi.Bool(false),
+		Numeric:         pulumi.Bool(true),
+		Lower:           pulumi.Bool(true),
 		OverrideSpecial: pulumi.String(""), // No special characters for bucket names
 	})
 	if err != nil {

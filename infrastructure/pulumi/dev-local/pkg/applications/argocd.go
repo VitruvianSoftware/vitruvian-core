@@ -110,7 +110,6 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		Wait:    true,
 		Timeout: 300,
 	})
-
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ import (
 // DeployLonghorn installs Longhorn for distributed block storage
 func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Resource, error) {
 	namespace := "longhorn-system"
-	
+
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
 		Name: namespace,
 	})
@@ -50,14 +50,13 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 				"defaultReplicaCount": 3,
 			},
 			"persistence": map[string]interface{}{
-				"defaultClass": true,
+				"defaultClass":             true,
 				"defaultClassReplicaCount": 3,
 			},
 		},
 		Wait:    false,
 		Timeout: 600,
 	}, pulumi.DependsOn([]pulumi.Resource{ns}))
-
 	if err != nil {
 		return nil, err
 	}

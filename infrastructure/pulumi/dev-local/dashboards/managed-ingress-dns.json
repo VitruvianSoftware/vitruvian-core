@@ -57,11 +57,7 @@
   ],
   "refresh": "1m",
   "schemaVersion": 38,
-  "tags": [
-    "ingress",
-    "dns",
-    "networking"
-  ],
+  "tags": ["ingress", "dns", "networking"],
   "timezone": "browser",
   "title": "Managed Ingress & DNS",
   "uid": "managed-ingress-dns"

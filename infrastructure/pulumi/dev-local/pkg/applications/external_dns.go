@@ -48,7 +48,6 @@ func DeployExternalDNS(ctx *pulumi.Context, provider *kubernetes.Provider) error
 			"app": "external-dns",
 		},
 	})
-
 	if err != nil {
 		return err
 	}
@@ -108,7 +107,6 @@ spec:
       version: v1
 `,
 		}, pulumi.DependsOn([]pulumi.Resource{ns}))
-
 		if err != nil {
 			return err
 		}

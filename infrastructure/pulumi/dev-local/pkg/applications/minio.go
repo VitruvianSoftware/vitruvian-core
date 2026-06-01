@@ -90,7 +90,6 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 		Wait:    false,
 		Timeout: 600,
 	}, pulumi.DependsOn([]pulumi.Resource{ns}))
-
 	if err != nil {
 		return nil, err
 	}

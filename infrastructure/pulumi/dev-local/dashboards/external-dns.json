@@ -476,9 +476,7 @@
         "displayMode": "lcd",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -1418,10 +1416,7 @@
   ],
   "schemaVersion": 30,
   "style": "dark",
-  "tags": [
-    "external-dns",
-    "dns"
-  ],
+  "tags": ["external-dns", "dns"],
   "templating": {
     "list": [
       {

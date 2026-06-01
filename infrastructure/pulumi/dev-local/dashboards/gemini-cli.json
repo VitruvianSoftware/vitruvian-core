@@ -168,10 +168,7 @@
         "y": 4
       },
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
+        "displayLabels": ["name", "percent"],
         "pieType": "donut"
       },
       "targets": [
@@ -196,10 +193,7 @@
         "y": 4
       },
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
+        "displayLabels": ["name", "percent"],
         "pieType": "donut"
       },
       "targets": [
@@ -297,14 +291,11 @@
           "show": false
         }
       }
-      }  ],
+    }
+  ],
   "refresh": "5s",
   "schemaVersion": 38,
-  "tags": [
-    "gemini",
-    "cli",
-    "telemetry"
-  ],
+  "tags": ["gemini", "cli", "telemetry"],
   "timezone": "browser",
   "title": "Gemini CLI Telemetry",
   "uid": "gemini-cli"

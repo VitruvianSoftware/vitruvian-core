@@ -37,8 +37,8 @@ func EnableAPIServices(ctx *pulumi.Context, name string, args *EnableAPIServices
 	enabledServices := make(map[string]*projects.Service)
 	for _, service := range args.Services {
 		svc, err := projects.NewService(ctx, name+"-"+service, &projects.ServiceArgs{
-			Project: pulumi.String(args.ProjectID),
-			Service: pulumi.String(service),
+			Project:          pulumi.String(args.ProjectID),
+			Service:          pulumi.String(service),
 			DisableOnDestroy: pulumi.Bool(false), // Keep API enabled even if Pulumi stack is destroyed
 		})
 		if err != nil {

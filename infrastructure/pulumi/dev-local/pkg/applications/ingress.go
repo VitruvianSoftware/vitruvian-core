@@ -44,7 +44,6 @@ func DeployIngressController(ctx *pulumi.Context, provider *kubernetes.Provider)
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
 		Name: namespace,
 	})
-
 	if err != nil {
 		return err
 	}

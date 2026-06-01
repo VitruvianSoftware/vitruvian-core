@@ -21,17 +21,17 @@
 package service_accounts
 
 import (
-	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/projects"
+	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // CreateServiceAccountArgs defines the arguments for creating a service account and granting roles.
 type CreateServiceAccountArgs struct {
-	ProjectID string
-	AccountID string
+	ProjectID   string
+	AccountID   string
 	DisplayName string
-	Roles     []string
+	Roles       []string
 }
 
 // CreateServiceAccount creates a new Google Cloud Service Account and grants specified roles.

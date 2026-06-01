@@ -98,7 +98,6 @@ func DeployTelepresence(ctx *pulumi.Context, provider *kubernetes.Provider) erro
 		Wait:    true,
 		Timeout: 300,
 	})
-
 	if err != nil {
 		return err
 	}

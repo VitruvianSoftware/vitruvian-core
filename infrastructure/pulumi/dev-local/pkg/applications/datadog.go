@@ -71,7 +71,6 @@ func DeployDatadog(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.R
 		Timeout:     600,
 		CleanupCRDs: false,
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +110,6 @@ spec:
       version: v1
 `,
 		}, pulumi.DependsOn([]pulumi.Resource{datadog}))
-
 		if err != nil {
 			return nil, err
 		}

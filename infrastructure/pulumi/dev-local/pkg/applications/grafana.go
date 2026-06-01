@@ -362,7 +362,6 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		Wait:            false,
 		Timeout:         600,
 	}, pulumi.DependsOn(deps))
-
 	if err != nil {
 		ctx.Log.Error("Failed to deploy Grafana Helm chart.", &pulumi.LogArgs{Resource: release})
 		return nil, err

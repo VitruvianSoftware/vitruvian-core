@@ -63,7 +63,7 @@ func DeployRedis(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 		// Only override values that come from configuration
 		Values: map[string]interface{}{
 			"auth": map[string]interface{}{
-				"existingSecret": "redis-password",
+				"existingSecret":            "redis-password",
 				"existingSecretPasswordKey": "redis-password",
 			},
 		},

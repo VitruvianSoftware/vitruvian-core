@@ -68,12 +68,11 @@ func DeployOpenTelemetry(ctx *pulumi.Context, provider *kubernetes.Provider, cer
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
 		},
-		Wait:            true, // Set to true to wait for completion
-		Timeout:         600,
-		CleanupCRDs:     false,
-		CRDsToCleanup:   otelCRDs,
+		Wait:          true, // Set to true to wait for completion
+		Timeout:       600,
+		CleanupCRDs:   false,
+		CRDsToCleanup: otelCRDs,
 	}, pulumi.DependsOn(dependencyResources))
-
 	if err != nil {
 		return err
 	}

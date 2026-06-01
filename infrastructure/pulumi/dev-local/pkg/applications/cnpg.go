@@ -78,19 +78,18 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 		Version:         operatorVersion,                           // Use operator specific version
 		CreateNamespace: true,                                      // Operator needs its namespace
 		SkipCRDs:        true,
-		ValuesFile:      "cnpg-operator",                           // Use the renamed values file
+		ValuesFile:      "cnpg-operator", // Use the renamed values file
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
 			"crds": map[string]interface{}{
 				"create": false,
 			},
 		},
-		Wait:            false,
-		CleanupCRDs:     false,                                     // CRDs managed by Phase 1
-		CRDsToCleanup:   CNPGCRDs,
-		Timeout:         600, // Standard timeout
+		Wait:          false,
+		CleanupCRDs:   false, // CRDs managed by Phase 1
+		CRDsToCleanup: CNPGCRDs,
+		Timeout:       600, // Standard timeout
 	}, pulumi.DependsOn([]pulumi.Resource{cnpgCrds}))
-
 	if err != nil {
 		ctx.Log.Error("Failed to deploy CloudNativePG Operator Helm chart.", &pulumi.LogArgs{Resource: nil})
 		return nil, err
@@ -170,7 +169,6 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 		Wait:    false, // Changed from true based on Terraform (wait = false)
 		Timeout: 600,   // Standard timeout
 	}, pulumi.DependsOn(clusterDependsOn))
-
 	if err != nil {
 		ctx.Log.Error(fmt.Sprintf("Failed to deploy CNPG Cluster Helm chart %s", "cnpg-cluster"), &pulumi.LogArgs{Resource: clusterRelease})
 		return nil, err
