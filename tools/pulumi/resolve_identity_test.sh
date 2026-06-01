@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# SPDX-License-Identifier: MIT
+#
 # Unit tests for resolve_identity.sh. The resolver path is passed as $1 (via the
 # sh_test `args` + `$(location)`); under `bazel test` the CWD is the runfiles
 # root, so that relative path resolves.

@@ -12,8 +12,8 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 `pulumi_create_app` declares it as `//tools/pulumi:create-app` (run once per org).
 """
 
-load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
 exports_files([
     "pulumi_cmd.sh",
@@ -29,6 +29,6 @@ pulumi_create_app()
 sh_test(
     name = "resolve_identity_test",
     srcs = ["resolve_identity_test.sh"],
-    data = ["resolve_identity.sh"],
     args = ["$(location resolve_identity.sh)"],
+    data = ["resolve_identity.sh"],
 )
