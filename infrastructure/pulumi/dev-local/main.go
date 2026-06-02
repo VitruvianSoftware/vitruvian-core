@@ -37,7 +37,7 @@ func main() {
 		pulumiConf := utils.NewConfig(ctx) // Correct way to initialize
 
 		// Create a Kubernetes provider instance
-		k8sContext := pulumiConf.GetString("kubernetes_context", "colima") // Use wrapper method
+		k8sContext := pulumiConf.GetString("kubernetes_context", "default") // Lima/k3s kubeconfig context; override via monorepo:kubernetes_context
 		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s-provider", &kubernetes.ProviderArgs{
 			Context: pulumi.String(k8sContext),
 		})
