@@ -7,39 +7,51 @@ Pulumi program provisioning foundational personal GCP resources: Cloud Run, Clou
 ## Quickstart
 
 Prerequisites:
-* Go 1.25+
-* Pulumi CLI authenticated
-* gcloud CLI authenticated to target project
-* (Optional) Cloudflare API token with DNS edit permissions
+* [Pulumi CLI](https://www.pulumi.com/docs/install/) + Go (Pulumi compiles the program) — `bazel run //infrastructure/pulumi/lab-gmail:setup` verifies both
+* `gcloud` logged in as the pinned account **`james.nguyen@gmail.com`** (`gcloud auth login james.nguyen@gmail.com`)
+* (Optional) a Cloudflare API token with DNS edit permissions
 
-### 1. Clone & init
+Drive everything through the Bazel wrappers — they pin the GCP identity for you
+(see [Identity](#identity)) and set `GOWORK=off` for this standalone module. Any
+bare `pulumi <verb>` shown later in this README is shorthand for
+`bazel run //infrastructure/pulumi/lab-gmail:<verb> -- <args>`.
+
+### 1. Bootstrap (login + stack)
 ```bash
-git clone <repo-url>
-cd vitruvian-core/infrastructure/pulumi/lab-gmail
-pulumi stack init dev   # or choose existing stack
+bazel run //infrastructure/pulumi/lab-gmail:setup
 ```
 
 ### 2. Configure (minimal)
 ```bash
-# Optional custom domain (creates DomainMapping)
-pulumi config set customDomain hello.run.ipv1337.dev
+# Optional custom domain (creates a DomainMapping)
+bazel run //infrastructure/pulumi/lab-gmail:config -- set customDomain hello.run.ipv1337.dev
 
 # Optional Cloudflare automation (choose one)
-pulumi config set cloudflare:zoneId <ZONE_ID>
+bazel run //infrastructure/pulumi/lab-gmail:config -- set cloudflare:zoneId <ZONE_ID>
 # OR
-pulumi config set cloudflare:zoneName ipv1337.dev
+bazel run //infrastructure/pulumi/lab-gmail:config -- set cloudflare:zoneName ipv1337.dev
 
-# Cloudflare token (secret)
-pulumi config set --secret cloudflare:apiToken <TOKEN>
+# Cloudflare token (stored encrypted)
+bazel run //infrastructure/pulumi/lab-gmail:config -- set --secret cloudflare:apiToken <TOKEN>
 
-# Recommended: keep DNS unproxied for issuance
-pulumi config set cloudflare:proxied false
+# Recommended: keep DNS unproxied for certificate issuance
+bazel run //infrastructure/pulumi/lab-gmail:config -- set cloudflare:proxied false
 ```
 
 ### 3. Deploy
 ```bash
-pulumi up
+bazel run //infrastructure/pulumi/lab-gmail:preview -- --diff   # review first
+bazel run //infrastructure/pulumi/lab-gmail:up
 ```
+
+### Identity
+
+The wrapper reads [`infrastructure/gcp-identities.tsv`](../../gcp-identities.tsv)
+and injects an access token for `james.nguyen@gmail.com` (project `personal-llc`)
+at run time, so auth never depends on your ambient `gcloud` account. If that
+account isn't logged in, the wrapper **fails fast** with the exact
+`gcloud auth login` to run. Background: [AGENTS.md](../../../AGENTS.md) and the
+[infrastructure docs](../../../docs/infrastructure/index.md).
 
 Key outputs (prefix = stack resource root):
 * `...cloudrunURL` – Cloud Run service URL
@@ -102,7 +114,7 @@ Update or remove services by editing the JSON and re-running `pulumi up` (Pulumi
 
 ## Removing Resources
 ```bash
-pulumi destroy
+bazel run //infrastructure/pulumi/lab-gmail:destroy
 ```
 
 ## Security Notes
