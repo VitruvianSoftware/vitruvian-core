@@ -2,14 +2,14 @@
 
 [![Pulumi](https://img.shields.io/badge/pulumi-%235C4EE5.svg?style=for-the-badge&logo=pulumi&logoColor=white)](https://www.pulumi.com/)
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![Colima](https://img.shields.io/badge/colima-local_k8s-blue?style=for-the-badge)](https://github.com/abiosoft/colima)
+[![Lima](https://img.shields.io/badge/lima-local_k8s-blue?style=for-the-badge)](https://lima-vm.org/)
 [![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white)](https://golang.org/)
 
 A Pulumi Go-based toolkit for provisioning and managing essential Kubernetes components for local containerized application development.
 
 ## Overview
 
-This directory contains a comprehensive Pulumi implementation written in Go, designed to provision and manage essential Kubernetes components for containerized application development in a local environment (specifically using Colima). This setup provides a consistent, reproducible way to deploy commonly used infrastructure components that support modern application development workflows.
+This directory contains a comprehensive Pulumi implementation written in Go, designed to provision and manage essential Kubernetes components for containerized application development in a local environment (a Lima + k3s cluster). This setup provides a consistent, reproducible way to deploy commonly used infrastructure components that support modern application development workflows.
 
 The Go implementation offers improved type safety, enhanced error handling, and powerful programmatic control over infrastructure deployment compared to the YAML-based approach, while maintaining the same component feature set and configuration flexibility.
 
@@ -30,7 +30,7 @@ The configuration allows developers to selectively enable and deploy:
 | **Datadog** | Application monitoring and analytics platform | ✅ Active | ❌ Disabled |
 | **Monitoring** | Prometheus and Grafana stack for metrics monitoring | ✅ Active | ❌ Disabled |
 
-**Note**: "Active" status means the component is implemented and ready to use. The "Default" column indicates whether the component is enabled by default in the current configuration. Engineers can enable disabled components by setting their respective flags to `"true"` in `Pulumi.dev.yaml`.
+**Note**: "Active" status means the component is implemented and ready to use. The "Default" column indicates whether the component is enabled by default in the current configuration. Engineers can enable disabled components by setting their respective flags to `"true"` in `Pulumi.local.yaml`.
 
 ## Modular Structure
 
@@ -92,7 +92,7 @@ For more details on our Helm best practices, see [Pulumi Helm Best Practices](./
 
 This Pulumi setup allows you to easily enable or disable components through configuration:
 
-1. **Update Pulumi.dev.yaml**:
+1. **Update Pulumi.local.yaml**:
    
    The `Pulumi.local.yaml` file contains the configuration for each component:
 
@@ -169,7 +169,7 @@ To add a new component:
 1. Create a new Go file in the `pkg/applications/` directory
 2. Create a new values YAML file in the `values/` directory if needed
 3. Add the component initialization to `main.go`
-4. Add appropriate configuration options to `Pulumi.dev.yaml`
+4. Add appropriate configuration options to `Pulumi.local.yaml`
 5. Preview and apply the changes
 
 For example, to add a new component called "example-component":
@@ -184,61 +184,59 @@ For example, to add a new component called "example-component":
 
 ### Prerequisites
 
-- [Pulumi CLI](https://www.pulumi.com/docs/install/) (latest version)
-- [Colima](https://github.com/abiosoft/colima) or another local Kubernetes environment
-- [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) configured to work with your local cluster
+- [Bazel](https://bazel.build/) (via the repo's `bazelisk`) — the entry point for every command below.
+- [Pulumi CLI](https://www.pulumi.com/docs/install/) and Go — Pulumi compiles `main.go`; `bazel run //infrastructure/pulumi/dev-local:setup` checks both.
+- A local **Lima + k3s** cluster (provisioned with [devx](https://github.com/VitruvianSoftware/devx)) whose kubeconfig context is named `default` — the program's `kubernetes_context` default (override via `monorepo:kubernetes_context`).
+- [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) pointed at that cluster.
 
 ### Quick Start
 
-1. **Toolchain Setup (Mise)**:
+Drive the project through the repo's Bazel wrappers — they set `GOWORK=off` for this
+standalone module. Any bare `pulumi <verb>` shown elsewhere in this README is shorthand
+for `bazel run //infrastructure/pulumi/dev-local:<verb> -- <args>`. See the
+[infrastructure user guide](../../../docs/infrastructure/user-guide.md) for the full
+workflow. (The committed `mise.toml` is an optional convenience that pins the Go/Pulumi
+versions and sets `KUBECONFIG`.)
 
-   This project uses [Mise](https://mise.jdx.dev/) to guarantee every contributor uses the exact same version of Go and Pulumi, and to automatically load your `.env` secrets.
-
-   ```bash
-   # If you don't have mise installed: curl https://mise.run | sh
-   mise install
-   ```
-
-2. **Initialize Local Config**:
-
-   Run the initialization task to copy the provided templates to your local machine. **Note:** `.env` and `Pulumi.local.yaml` are strictly ignored by git so your secrets remain safe.
+1. **Use the local backend.** dev-local keeps state locally — there's nothing durable
+   to store remotely — so log into the local backend and select the `local` stack once:
 
    ```bash
-   mise run init
+   pulumi login --local
+   pulumi stack select local   # first time: pulumi stack init local
    ```
 
-3. **Configure Components and Secrets**:
+2. **Point at the cluster.** The Kubernetes provider uses the `default` context from
+   your active `KUBECONFIG`. `devx` actions inject this automatically; otherwise export
+   `KUBECONFIG` to the Lima/k3s cluster's kubeconfig before running.
 
-   - Edit `Pulumi.local.yaml` to enable or disable the infrastructure components you need.
-   - Edit your `.env` file and replace the placeholder values with your actual secrets. Mise will automatically load these secrets into the environment for all future commands!
+3. **Choose components.** Copy `Pulumi.example.yaml` to the git-ignored
+   `Pulumi.local.yaml` and toggle `monorepo:<name>_enabled` flags, or set them via the
+   wrapper:
 
-   *(If it's your first time running this stack, initialize it with `pulumi login --local && pulumi stack init local`)*
-
-4. **Deploy**:
-
-   Preview the infrastructure graph:
    ```bash
-   mise run preview
+   bazel run //infrastructure/pulumi/dev-local:config -- set monorepo:istio_enabled true
    ```
 
-   Execute the deployment:
+4. **Preview, then deploy:**
+
    ```bash
-   mise run deploy
+   bazel run //infrastructure/pulumi/dev-local:preview
+   bazel run //infrastructure/pulumi/dev-local:up
    ```
-   *For running deployments non-interactively (e.g., in CI/CD), refer to the guide:* 
-   *- [Non-Interactive Pulumi Deployments](./docs/pulumi_non_interactive_deployments.md)*
 
-7. **Verify Installation**:
+   For non-interactive runs (CI/CD), see [Non-Interactive Pulumi Deployments](./docs/pulumi_non_interactive_deployments.md).
+
+5. **Verify:**
 
    ```bash
    kubectl get pods --all-namespaces
    ```
 
-8. **Clean Up When Done**:
+6. **Clean up when done:**
 
    ```bash
-   # Destroy all resources managed by the stack
-   pulumi destroy -y
+   bazel run //infrastructure/pulumi/dev-local:destroy
    ```
 
 ## Deployed Components Details
@@ -377,7 +375,7 @@ Alternatively, you would use the provided post-deployment script after enabling 
 
 ```bash
 # First update the configuration and deploy with Pulumi
-# Edit Pulumi.dev.yaml to set external_dns_enabled: "true"
+# Edit Pulumi.local.yaml to set external_dns_enabled: "true"
 pulumi up
 
 # Then run the post-deployment script
@@ -388,7 +386,7 @@ The script will create the necessary custom resources for external-secrets and e
 
 ### Enabling Components in Your Configuration
 
-To enable External DNS or Datadog integration with External Secrets, update the `Pulumi.dev.yaml` file:
+To enable External DNS or Datadog integration with External Secrets, update the `Pulumi.local.yaml` file:
 
 ```yaml
 config:
@@ -407,7 +405,7 @@ The Bitnami Redis Helm chart is included to support rate limiting in Istio and p
 
 ### Usage
 
-1. Enable Redis by setting `redis_enabled` to `"true"` in `Pulumi.dev.yaml`
+1. Enable Redis by setting `redis_enabled` to `"true"` in `Pulumi.local.yaml`
 2. Apply the configuration with `pulumi up`
 
 Redis will be deployed in the dedicated `redis` namespace and configured for use with both Istio's rate limiting service and as a general-purpose Redis instance for applications.
