@@ -1,0 +1,24 @@
+# GCP identity map — which Google account manages each piece of infrastructure.
+#
+# WHY: this machine has several gcloud accounts (personal, abrial, vitruvian). GCP auth must
+# NOT depend on whichever account `gcloud` is currently set to. The Pulumi Bazel wrappers
+# (//tools/pulumi) read this file and inject a token for the declared account at run time
+# (GOOGLE_OAUTH_ACCESS_TOKEN), so the correct identity is always used — and using the wrong
+# one fails fast instead of silently succeeding against the wrong project.
+#
+# FORMAT: columns separated by any whitespace (awk default), aligned with spaces for
+# readability (the .tsv extension is nominal). Consumers MUST skip `#` comment and blank
+# lines (the reference parser //tools/pulumi/resolve_identity.sh does). Columns:
+#   infra_dir    workspace-relative Pulumi project dir (resolver key); "-" = reference-only row
+#   account      Google account email to authenticate as
+#   gcp_project  default GCP project (exported as GOOGLE_CLOUD_PROJECT); "-" if N/A
+#   purpose      free text; may contain spaces; MUST be the last column
+#
+# AD-HOC GCP WORK: look up the account here, then:
+#   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
+#
+# infra_dir                        account                              gcp_project   purpose
+infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+# --- reference only: accounts we use, no infrastructure in this repo yet ---
+-                                  james@abrial.ai                      -             abrial.ai projects (future)
+-                                  james@sandbox.vitruviansoftware.dev  -             Vitruvian Software sandbox/company (future)

@@ -34,4 +34,36 @@ cd "${BUILD_WORKSPACE_DIRECTORY:?this target must be invoked via 'bazel run', no
 # that has a go.work, the build fails with "not a known dependency".
 export GOWORK=off
 
+# --- GCP identity injection -------------------------------------------------
+# Pin GCP auth to the account declared for this project in
+# infrastructure/gcp-identities.tsv, so it never depends on the ambient `gcloud`
+# account. The resolver is read from the workspace tree (consistent with how
+# this wrapper already runs the working-tree Go program). Projects not listed in
+# the map are unaffected.
+_id_map="${BUILD_WORKSPACE_DIRECTORY}/infrastructure/gcp-identities.tsv"
+_id_resolver="${BUILD_WORKSPACE_DIRECTORY}/tools/pulumi/resolve_identity.sh"
+if [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
+  IFS=$'\t' read -r _gcp_account _gcp_project < <(bash "$_id_resolver" "$_id_map" "$PROJECT_DIR") || true
+  if [ -n "${_gcp_account:-}" ]; then
+    if ! command -v gcloud >/dev/null 2>&1; then
+      echo "ERROR: $PROJECT_DIR is pinned to GCP identity '$_gcp_account'" >&2
+      echo "(infrastructure/gcp-identities.tsv) but the gcloud CLI is not installed:" >&2
+      echo "    https://cloud.google.com/sdk/docs/install" >&2
+      exit 1
+    fi
+    if ! _gcp_token="$(gcloud auth print-access-token --account="$_gcp_account" 2>/dev/null)"; then
+      echo "ERROR: $PROJECT_DIR is pinned to GCP identity '$_gcp_account'" >&2
+      echo "(infrastructure/gcp-identities.tsv) but no valid credentials were found." >&2
+      echo "Log in with:  gcloud auth login $_gcp_account" >&2
+      exit 1
+    fi
+    export GOOGLE_OAUTH_ACCESS_TOKEN="$_gcp_token"
+    if [ -n "${_gcp_project:-}" ] && [ "$_gcp_project" != "-" ]; then
+      export GOOGLE_CLOUD_PROJECT="$_gcp_project" CLOUDSDK_CORE_PROJECT="$_gcp_project"
+    fi
+    echo "→ GCP identity: $_gcp_account (project ${_gcp_project:-unset}) for $PROJECT_DIR" >&2
+  fi
+fi
+# ---------------------------------------------------------------------------
+
 exec pulumi "$SUBCMD" "$@"
