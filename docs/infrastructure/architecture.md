@@ -87,24 +87,24 @@ the resolver is [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_
 
 ```mermaid
 sequenceDiagram
-    participant U as bazel run …:up
+    participant U as bazel run
     participant W as pulumi_cmd.sh
     participant R as resolve_identity.sh
     participant M as gcp-identities.tsv
     participant G as gcloud
-    participant P as pulumi → GCP
+    participant P as pulumi to GCP
     U->>W: invoke wrapper (project dir, verb)
-    W->>R: resolve_identity.sh &lt;map&gt; &lt;dir&gt;
-    R->>M: look up row for &lt;dir&gt;
-    M-->>R: account + gcp_project (or nothing)
+    W->>R: resolve_identity.sh (map file, infra dir)
+    R->>M: look up row for the infra dir
+    M-->>R: account and gcp_project (or nothing)
     alt directory is mapped
-        W->>G: gcloud auth print-access-token --account=&lt;account&gt;
+        W->>G: gcloud auth print-access-token --account=ACCOUNT
         alt account is logged in
             G-->>W: short-lived token
-            W->>P: pulumi up (GOOGLE_OAUTH_ACCESS_TOKEN + GOOGLE_CLOUD_PROJECT set)
+            W->>P: pulumi up (GOOGLE_OAUTH_ACCESS_TOKEN and GOOGLE_CLOUD_PROJECT set)
         else not logged in
             G-->>W: error
-            W-->>U: FAIL FAST → "gcloud auth login &lt;account&gt;"
+            W-->>U: FAIL FAST: run gcloud auth login ACCOUNT
         end
     else not mapped
         W->>P: pulumi up (ambient credentials)
