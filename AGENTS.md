@@ -24,3 +24,41 @@ The mapping of infrastructure → GCP account is in
 > Adding a new Pulumi project that uses GCP? Add a row to the map **first** — the
 > wrapper silently skips injection (and falls back to the ambient account) for
 > projects not listed.
+
+## Build, test, run
+- Dev environment: `bazel run //tools:bazel_env` (with [direnv](https://direnv.net); `direnv allow`).
+- Build / test everything: `bazel build //...` and `bazel test //...`.
+- Lint / format: `aspect lint //...` and `format`.
+- Watch loop: `ibazel run //<target>`.
+- Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
+- macOS app (nexus-agent): `bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
+
+## Conventions & landmines
+- **Gazelle owns most `BUILD` files** — don't hand-edit generated targets; change the source and
+  re-run gazelle.
+- **One Version Rule** — one resolved version per dependency per ecosystem. To deliberately
+  diverge, add a *separate* hub/module, not a second version to the shared hub. See
+  `docs/dependency-versioning/`.
+- **Dependency changes** = edit the manifest, then re-lock, then gazelle:
+  - Python: `pyproject.toml` → `./tools/repin` → `bazel run //:gazelle`
+  - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
+  - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `homelab`, `devx`)
+  - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml`; Ruby: `Gemfile`
+- The **`infrastructure/pulumi` Go modules are intentionally kept OUT of `go.work`** — don't add them.
+- **License headers are enforced** (`addlicense`; CI `license-check`) — run the add helper before committing.
+- **Build cache:** both a local `--disk_cache` (opt-in; see `user.bazelrc.example`) and remote
+  RBE via `--config=remote` (BuildBuddy, needs a key) are available — no vendor is forced.
+
+## Copybara (component sync)
+Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
+repos. Never delete standalone-only files or import monorepo-only ones — respect `standalone_only`
+(e.g. `package-lock.json`, `.github/workflows/sync-to-monorepo.yaml`) and the gazelle-generated
+`BUILD` files (monorepo-only). See `docs/copybara-bidi-sync.md`.
+
+## How this repo is maintained
+- vitruvian-core was generated from the **kitchen-sink** starter and **does not auto-receive
+  template updates** — platform changes are *manually ported* here (this repo doubles as the test
+  bed that proves starter-template changes actually build).
+- **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:` …).
+- Planning docs live in `docs/` and `docs/planning/`. Ones marked `status: completed` are done —
+  don't treat them as open TODOs.
