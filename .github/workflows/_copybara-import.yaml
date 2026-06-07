@@ -116,3 +116,39 @@ jobs:
                   fi
                   echo "Copybara failed (exit $rc after $max attempts)"; exit "$rc"
                 done
+
+            - name: Install Bazel
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                bazelisk-cache: true
+                repository-cache: true
+
+            - name: Regenerate gazelle BUILD files after import (bazel run //:tidy)
+              env:
+                COMPONENT: ${{ inputs.component }}
+              run: |
+                set -euo pipefail
+                # Copybara excludes the monorepo-only gazelle BUILD files from the sync, so a
+                # component that adds files/packages would otherwise land on main with stale or
+                # missing BUILD (red build-test / tidy-check). Regenerate them and commit so main
+                # stays green. A no-op import leaves a clean tree, so nothing is committed.
+                # main is shared with other component imports: re-sync + retry on a push race.
+                for attempt in 1 2 3 4 5; do
+                  git fetch origin main
+                  git checkout -B main origin/main
+                  bazel run //:tidy
+                  git add -A
+                  if git diff --cached --quiet; then
+                    echo "BUILD already up to date after import — nothing to regenerate."
+                    exit 0
+                  fi
+                  git commit -m "chore(bazel): tidy BUILD after ${COMPONENT} import"
+                  if git push origin main; then
+                    echo "Pushed BUILD regeneration for ${COMPONENT} import."
+                    exit 0
+                  fi
+                  echo "push rejected (attempt ${attempt}/5) — main advanced; re-syncing"
+                  sleep $((attempt * 3))
+                done
+                echo "::error::could not push BUILD regeneration after ${COMPONENT} import"
+                exit 1
