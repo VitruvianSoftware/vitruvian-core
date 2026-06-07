@@ -1,6 +1,24 @@
-# Project-local (user) Bazel configuration.
-# Placing Bazel's user root and disk cache under /tmp to avoid filling container workspace.
-# This file is loaded via `try-import %workspace%/user.bazelrc` from the repo's .bazelrc.
+# Project-local (user) Bazel configuration — git-ignored, personal to you.
+# Loaded last via `try-import %workspace%/user.bazelrc` from the repo's .bazelrc,
+# so anything here overrides committed defaults.
+#
+# Easiest: run `bazel run //tools/remote:setup` to pick a build cache interactively.
+# Or copy this file to `user.bazelrc` and uncomment ONE cache option below.
+# See docs/build-cache.md.
 
-startup --output_user_root=/tmp/blueprint-bazel-cache-1000
-common --disk_cache=/tmp/blueprint-bazel-disk-cache-1000
+# Keep Bazel's user root + cache off the workspace (handy in containers):
+# startup --output_user_root=/tmp/bazel-cache
+
+# --- Build cache (pick at most one; default is none) -----------------------
+
+# 1) local — disk cache on THIS machine only (use an absolute path):
+# common --disk_cache=/tmp/bazel-disk-cache
+
+# 2) shared — your team's self-hosted bazel-remote (read-only; CI writes).
+#    If it is unreachable, builds fall back to local automatically:
+# common --remote_cache=grpcs://cache.example.com
+# common --remote_upload_local_results=false
+
+# 3) buildbuddy — cache + remote execution. Run `bazel run //tools/remote:setup`
+#    first to store the API key, then enable it (only when online):
+# common --config=remote
