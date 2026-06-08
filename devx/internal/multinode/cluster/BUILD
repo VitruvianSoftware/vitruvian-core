@@ -14,6 +14,7 @@ go_library(
         "//devx/internal/multinode/k3s",
         "//devx/internal/multinode/lima",
         "//devx/internal/multinode/prereqs",
+        "//devx/internal/multinode/provider",
         "//devx/internal/multinode/util",
         "@org_golang_x_sync//errgroup",
     ],

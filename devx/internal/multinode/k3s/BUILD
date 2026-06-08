@@ -13,6 +13,10 @@ go_library(
 
 go_test(
     name = "k3s_test",
-    srcs = ["advanced_test.go"],
+    srcs = [
+        "advanced_test.go",
+        "k3s_exec_test.go",
+    ],
     embed = [":k3s"],
+    deps = ["//devx/internal/multinode/remote"],
 )
