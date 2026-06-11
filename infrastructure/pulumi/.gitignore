@@ -3,6 +3,11 @@
 # project file (Pulumi.yaml) is committed.
 Pulumi.*.yaml
 !Pulumi.yaml
+# tabula's stack configs are deliberately committed (config-as-code, like
+# repo_config's Pulumi.dev.yaml): they hold only non-secret identifiers
+# (project id, region, deployer SA email, adoption flags). Runtime secrets
+# stay in GCP Secret Manager.
+!tabula/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
