@@ -117,16 +117,10 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: infrastructure/pulumi/tabula
         run: |
-          # Short suffix for GCP resource names (tabula-api-<code>).
-          case "$DEPLOY_ENV" in
-            development)   ENV_CODE=dev ;;
-            nonproduction) ENV_CODE=nonprod ;;
-            production)    ENV_CODE=prod ;;
-          esac
+          # Stack identity/region/env come from the committed
+          # Pulumi.<stack>.yaml (config-as-code); only the per-deploy image
+          # tag is set here.
           pulumi stack select "$DEPLOY_ENV" --create
-          pulumi config set tabula:project "$GCP_PROJECT_ID"
-          pulumi config set tabula:region "$GCP_REGION"
-          pulumi config set tabula:environment "$ENV_CODE"
           pulumi config set tabula:imageTag "$GITHUB_SHA"
           pulumi up --yes
 

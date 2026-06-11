@@ -68,6 +68,13 @@ func main() {
 		if imageTag == "" {
 			imageTag = "latest"
 		}
+		// adoptExistingSecrets imports pre-existing Secret Manager secrets
+		// (created by the standalone repo's Terraform/tabcli) into this
+		// stack's state instead of attempting a colliding create. One-time
+		// per stack: after the first successful `pulumi up`, flip it back to
+		// false in Pulumi.<stack>.yaml — the resources are then state-managed
+		// and a stale import option would error on later updates.
+		adoptExistingSecrets := cfg.GetBool("adoptExistingSecrets")
 
 		// Artifact Registry repository the Bazel oci_push publishes into:
 		// us-central1-docker.pkg.dev/<project>/tabula/api
@@ -94,13 +101,22 @@ func main() {
 
 		var secretEnvs cloudrunv2.ServiceTemplateContainerEnvArray
 		for _, name := range runtimeSecrets {
+			secretOpts := []pulumi.ResourceOption{
+				// Adopted secrets may carry drift we don't manage (labels,
+				// legacy replication blocks); only secretId/project matter.
+				pulumi.IgnoreChanges([]string{"labels", "replication"}),
+			}
+			if adoptExistingSecrets {
+				secretOpts = append(secretOpts, pulumi.Import(pulumi.ID(
+					fmt.Sprintf("projects/%s/secrets/%s", project, name))))
+			}
 			secret, err := secretmanager.NewSecret(ctx, name, &secretmanager.SecretArgs{
 				Project:  pulumi.String(project),
 				SecretId: pulumi.String(name),
 				Replication: &secretmanager.SecretReplicationArgs{
 					Auto: &secretmanager.SecretReplicationAutoArgs{},
 				},
-			}, pulumi.IgnoreChanges([]string{"labels"}))
+			}, secretOpts...)
 			if err != nil {
 				return err
 			}
