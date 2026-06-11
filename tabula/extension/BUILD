@@ -201,11 +201,58 @@ service_test(
     test = ":pw_suite",
 )
 
-# Release artifact: the production bundle minus sourcemaps/declarations,
+# Release bundle: identical to :dist except API_URL targets the deployed API
+# (the :dist default of localhost:8080 is for local development; the old
+# repo's releases were accidentally localhost-bound for their whole life).
+# The URL is stable: Cloud Run derives it from service name + project number.
+# When nonproduction/production exist this becomes per-channel configuration.
+webpack_cli.webpack_cli(
+    name = "dist_release",
+    srcs = glob(["src/**"]) + [
+        "package.json",
+        "tsconfig.json",
+        "webpack.config.js",
+        ":node_modules/@dnd-kit/core",
+        ":node_modules/@dnd-kit/sortable",
+        ":node_modules/@dnd-kit/utilities",
+        ":node_modules/@tabula/shared",
+        ":node_modules/@types/chrome",
+        ":node_modules/@types/react",
+        ":node_modules/@types/react-dom",
+        ":node_modules/@types/webextension-polyfill",
+        ":node_modules/copy-webpack-plugin",
+        ":node_modules/css-loader",
+        ":node_modules/framer-motion",
+        ":node_modules/html-webpack-plugin",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/style-loader",
+        ":node_modules/ts-loader",
+        ":node_modules/typescript",
+        ":node_modules/webpack",
+        ":node_modules/zustand",
+    ],
+    args = [
+        "--mode",
+        "production",
+        "--config",
+        "webpack.config.js",
+    ],
+    chdir = package_name(),
+    env = {
+        "API_URL": "https://tabula-api-dev-q7dosy3wiq-uc.a.run.app/api/v1",
+        "NODE_ENV": "production",
+        "WEBPACK_OUT_DIR": "dist_release",
+    },
+    mnemonic = "WebpackBundle",
+    out_dirs = ["dist_release"],
+)
+
+# Release artifact: the release bundle minus sourcemaps/declarations,
 # attached to tabula-extension-v* releases by .github/workflows/tabula-release.yml.
 genrule(
     name = "chrome_zip",
-    srcs = [":dist"],
+    srcs = [":dist_release"],
     outs = ["tabula-extension-chrome.zip"],
-    cmd = "cd $(location :dist) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
+    cmd = "cd $(location :dist_release) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
 )

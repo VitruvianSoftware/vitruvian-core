@@ -79,5 +79,5 @@ jobs:
           TAG: ${{ needs.release-please.outputs.extension_tag_name }}
         run: |
           cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
-            "tabula-extension-chrome-${TAG}.zip"
-          gh release upload "$TAG" "tabula-extension-chrome-${TAG}.zip"
+            "${TAG}-chrome.zip"
+          gh release upload "$TAG" "${TAG}-chrome.zip"
