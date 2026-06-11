@@ -140,7 +140,8 @@ The preview comment shows only the Pulumi diff — Bazel build output and ANSI
 escape codes are stripped so the sticky comment stays readable.
 
 Auth uses a shared least-privilege GitHub App (`Administration: write` +
-`Contents: read`) created once via `bazel run //tools/pulumi:create-app`: the
+`Contents: read` + `Variables: write` — environment variables live behind the
+separate fine-grained Variables permission, not Administration) created once via `bazel run //tools/pulumi:create-app`: the
 workflows mint a short-lived installation token from `PULUMI_APP_ID` (variable) +
 `APP_PRIVATE_KEY` (secret), and reach the Pulumi Cloud backend via
 `PULUMI_ACCESS_TOKEN` (secret).

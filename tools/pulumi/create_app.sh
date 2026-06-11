@@ -75,7 +75,8 @@ MANIFEST="$(
   "public": false,
   "default_permissions": {
     "administration": "write",
-    "contents": "read"
+    "contents": "read",
+    "variables": "write"
   },
   "default_events": []
 }
