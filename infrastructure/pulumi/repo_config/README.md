@@ -67,12 +67,15 @@ from protected branches) are scoped to tabula alone.
 Only non-credential identifiers are stored, as environment **variables**
 (keyless Workload Identity Federation needs no key material); runtime secrets
 such as `DATABASE_URL` live in GCP Secret Manager, managed by
-`//infrastructure/pulumi/tabula`. Values are plain identifiers and are
+`//infrastructure/pulumi/tabula`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
+*deployer* identity impersonated via WIF — distinct from the Cloud Run
+*runtime* service account (`tabula-api-<env>`), which the tabula Pulumi
+program creates. Values are plain identifiers and are
 committed in `Pulumi.<stack>.yaml`:
 
 ```bash
 pulumi config set --path 'tabulaVars["development"]["GCP_PROJECT_ID"]' my-project
-pulumi config set --path 'tabulaVars["development"]["GCP_SERVICE_ACCOUNT"]' deployer@my-project.iam.gserviceaccount.com
+pulumi config set --path 'tabulaVars["development"]["GCP_DEPLOY_SERVICE_ACCOUNT"]' deployer@my-project.iam.gserviceaccount.com
 pulumi config set --path 'tabulaVars["development"]["GCP_WORKLOAD_IDENTITY_PROVIDER"]' projects/123/locations/global/workloadIdentityPools/github/providers/github
 # optional: GCP_REGION (the workflow defaults to us-central1)
 ```

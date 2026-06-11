@@ -28,7 +28,7 @@
 # promoted via workflow_dispatch, with tabula-production additionally gated by
 # its environment protection rules (required reviewer, protected branches).
 #
-# Per-environment identifiers (GCP_PROJECT_ID, GCP_SERVICE_ACCOUNT,
+# Per-environment identifiers (GCP_PROJECT_ID, GCP_DEPLOY_SERVICE_ACCOUNT,
 # GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
 # Actions *variables* — keyless WIF means none of them is a credential. The
 # only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; runtime
@@ -85,7 +85,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2

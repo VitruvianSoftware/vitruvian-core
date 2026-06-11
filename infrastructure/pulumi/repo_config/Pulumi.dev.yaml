@@ -4,3 +4,8 @@ config:
   vitruvian-core-repo-config:requireStatusChecks: "false"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
+  vitruvian-core-repo-config:tabulaVars:
+    development:
+      GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
+      GCP_PROJECT_ID: tabula-dev-0001
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
