@@ -90,6 +90,14 @@ module.exports = {
           transform(content) {
             const manifest = JSON.parse(content.toString());
             manifest.host_permissions = apiHostPermission();
+            // Single source of truth for the version: package.json, which
+            // release-please bumps. (The src manifest's own value is a
+            // placeholder; it had drifted three releases behind.) No commit
+            // SHA in the artifact: that would break hermetic action caching,
+            // and the tabula-extension-v* release tag already maps
+            // version -> commit.
+            // eslint-disable-next-line global-require
+            manifest.version = require("./package.json").version;
             return JSON.stringify(manifest, null, 2);
           },
         },

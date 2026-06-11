@@ -40,6 +40,7 @@ npm_link_all_packages(name = "node_modules")
 webpack_cli.webpack_cli(
     name = "dist",
     srcs = glob(["src/**"]) + [
+        "package.json",
         "tsconfig.json",
         "webpack.config.js",
         ":node_modules/@dnd-kit/core",
