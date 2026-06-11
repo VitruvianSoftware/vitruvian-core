@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.4...tabula-extension-v0.1.5) (2026-06-11)
+
+
+### Miscellaneous Chores
+
+* **tabula-extension:** Synchronize tabula versions
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.3...tabula-extension-v0.1.4) (2026-06-11)
 
 
