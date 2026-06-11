@@ -32,6 +32,7 @@ export interface UserMenuProps {
   onCloseUserMenu: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
+  onSignIn: () => void;
 }
 
 export const UserMenu: React.FC<UserMenuProps> = ({
@@ -41,6 +42,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
   onCloseUserMenu,
   onOpenSettings,
   onLogout,
+  onSignIn,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +55,27 @@ export const UserMenu: React.FC<UserMenuProps> = ({
       .substring(0, 2)
       .toUpperCase();
   };
+
+  // Signed-out: a clear call to action instead of a phantom account menu
+  // (the avatar + Account/Settings/Log out used to render even with no
+  // session, leaving users no way to sign in from the dashboard).
+  if (!user) {
+    return (
+      <div
+        style={{ display: "flex", alignItems: "center", gap: "8px" }}
+        ref={menuRef}
+      >
+        <button
+          className="btn btn-primary"
+          style={{ padding: "4px 12px", fontSize: "12px" }}
+          onClick={onSignIn}
+          title="Sign in to sync your spaces across devices"
+        >
+          Sign in
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

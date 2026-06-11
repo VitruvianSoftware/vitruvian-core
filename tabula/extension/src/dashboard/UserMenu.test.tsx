@@ -54,6 +54,7 @@ describe("UserMenu", () => {
     onCloseUserMenu: jest.fn(),
     onOpenSettings: jest.fn(),
     onLogout: jest.fn(),
+    onSignIn: jest.fn(),
   };
 
   beforeEach(() => {
@@ -83,9 +84,15 @@ describe("UserMenu", () => {
       expect(screen.getByText("A")).toBeInTheDocument();
     });
 
-    it("should render U when no user", () => {
+    it("should render a Sign in button when no user", () => {
       render(<UserMenu {...defaultProps} user={null} />);
-      expect(screen.getByText("U")).toBeInTheDocument();
+      expect(screen.getByText("Sign in")).toBeInTheDocument();
+    });
+
+    it("should call onSignIn when Sign in clicked", () => {
+      render(<UserMenu {...defaultProps} user={null} />);
+      fireEvent.click(screen.getByText("Sign in"));
+      expect(defaultProps.onSignIn).toHaveBeenCalled();
     });
 
     it("should call onToggleUserMenu when avatar clicked", () => {
@@ -118,9 +125,10 @@ describe("UserMenu", () => {
       expect(screen.getByText("test@example.com")).toBeInTheDocument();
     });
 
-    it("should show Account when null user", () => {
+    it("should not show the account menu when null user", () => {
       render(<UserMenu {...defaultProps} user={null} showUserMenu={true} />);
-      expect(screen.getByText("Account")).toBeInTheDocument();
+      expect(screen.queryByText("Account")).not.toBeInTheDocument();
+      expect(screen.queryByText("Log out")).not.toBeInTheDocument();
     });
   });
 
@@ -141,7 +149,7 @@ describe("UserMenu", () => {
   describe("null user", () => {
     it("should handle null user gracefully", () => {
       render(<UserMenu {...defaultProps} user={null} />);
-      expect(screen.getByText("U")).toBeInTheDocument();
+      expect(screen.getByText("Sign in")).toBeInTheDocument();
     });
   });
 });
