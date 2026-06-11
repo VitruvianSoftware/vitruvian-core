@@ -60,10 +60,10 @@ func main() {
 		if region == "" {
 			region = "us-central1"
 		}
-		env := cfg.Get("environment")
-		if env == "" {
-			env = "stg"
-		}
+		// Required: every stack's committed Pulumi.<stack>.yaml declares its
+		// env code (dev / nonprod / prod) — a silent default here would let a
+		// misconfigured stack masquerade as another environment.
+		env := cfg.Require("environment")
 		imageTag := cfg.Get("imageTag")
 		if imageTag == "" {
 			imageTag = "latest"
@@ -165,10 +165,24 @@ func main() {
 		}
 
 		image := pulumi.Sprintf("%s-docker.pkg.dev/%s/tabula/api:%s", region, project, imageTag)
+		// NODE_ENV derives from the env code (override with tabula:nodeEnv if
+		// an environment ever needs to diverge).
+		nodeEnv := cfg.Get("nodeEnv")
+		if nodeEnv == "" {
+			switch env {
+			case "prod":
+				nodeEnv = "production"
+			case "dev":
+				nodeEnv = "development"
+			default:
+				nodeEnv = "staging"
+			}
+		}
+
 		envs := cloudrunv2.ServiceTemplateContainerEnvArray{
 			&cloudrunv2.ServiceTemplateContainerEnvArgs{
 				Name:  pulumi.String("NODE_ENV"),
-				Value: pulumi.String("staging"),
+				Value: pulumi.String(nodeEnv),
 			},
 			// Deploy provenance, surfaced by the API's root endpoint.
 			&cloudrunv2.ServiceTemplateContainerEnvArgs{
