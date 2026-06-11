@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.5...tabula-extension-v0.1.6) (2026-06-11)
+
+
+### Bug Fixes
+
+* **tabula:** pin a stable extension ID via manifest key ([#37](https://github.com/VitruvianSoftware/vitruvian-core/issues/37)) ([e3619af](https://github.com/VitruvianSoftware/vitruvian-core/commit/e3619af4a225269d19551abd0b0a5ca308772a09))
+
 ## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.4...tabula-extension-v0.1.5) (2026-06-11)
 
 
