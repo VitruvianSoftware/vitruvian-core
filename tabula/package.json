@@ -1,6 +1,6 @@
 {
   "name": "tabula",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "A lean, privacy-conscious browser tab management extension with cloud sync",
   "license": "MIT"
