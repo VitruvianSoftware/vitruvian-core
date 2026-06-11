@@ -75,6 +75,9 @@ func main() {
 		// false in Pulumi.<stack>.yaml — the resources are then state-managed
 		// and a stale import option would error on later updates.
 		adoptExistingSecrets := cfg.GetBool("adoptExistingSecrets")
+		// The CI deployer (impersonated via WIF) reads DATABASE_URL to run
+		// prisma migrate before each rollout; everything else is runtime-only.
+		deployServiceAccount := cfg.Get("deployServiceAccount")
 
 		// Artifact Registry repository the Bazel oci_push publishes into:
 		// us-central1-docker.pkg.dev/<project>/tabula/api
@@ -138,6 +141,17 @@ func main() {
 			})
 			if err != nil {
 				return err
+			}
+			if name == "DATABASE_URL" && deployServiceAccount != "" {
+				_, err = secretmanager.NewSecretIamMember(ctx, name+"-deployer-access", &secretmanager.SecretIamMemberArgs{
+					Project:  pulumi.String(project),
+					SecretId: secret.SecretId,
+					Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+					Member:   pulumi.Sprintf("serviceAccount:%s", deployServiceAccount),
+				})
+				if err != nil {
+					return err
+				}
 			}
 			secretEnvs = append(secretEnvs, &cloudrunv2.ServiceTemplateContainerEnvArgs{
 				Name: pulumi.String(name),
