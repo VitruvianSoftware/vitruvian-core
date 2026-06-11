@@ -99,6 +99,9 @@ test.beforeAll(async () => {
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,
       "--no-sandbox",
+      // Bazel\'s linux-sandbox mounts a tiny /dev/shm; Chromium crashes at
+      // launch without this.
+      "--disable-dev-shm-usage",
     ],
   });
 

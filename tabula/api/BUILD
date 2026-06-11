@@ -222,6 +222,11 @@ itest_service(
         "$(rootpath //tools/testinfra:pg_isready_bin)",
         "$${PORT}",
     ],
+    tags = [
+        # PostgreSQL refuses to run as root and BuildBuddy RBE containers
+        # execute as root; these run locally on the (non-root) CI runner.
+        "no-remote-exec",
+    ],
     visibility = ["//tabula:__subpackages__"],
 )
 
@@ -258,6 +263,11 @@ itest_task(
         "PRISMA_SCHEMA_ENGINE_BINARY": "$(rootpath :schema_engine)",
     },
     exe = ":migrate_deploy_bin",
+    tags = [
+        # Depends on postgres, which cannot run as root (BuildBuddy RBE
+        # containers are root); runs locally on the (non-root) CI runner.
+        "no-remote-exec",
+    ],
     visibility = ["//tabula:__subpackages__"],
     deps = [":postgres"],
 )
@@ -310,6 +320,11 @@ service_test(
         ":postgres",
         ":redis",
     ],
+    tags = [
+        # PostgreSQL refuses to run as root and BuildBuddy RBE containers
+        # execute as root; runs locally on the (non-root) CI runner.
+        "no-remote-exec",
+    ],
     test = ":jest_suite",
 )
 
@@ -322,6 +337,11 @@ itest_task(
         "JWT_SECRET": "e2e-test-jwt-secret-key",
     },
     exe = ":seed_test_user_bin",
+    tags = [
+        # Depends on postgres, which cannot run as root (BuildBuddy RBE
+        # containers are root); runs locally on the (non-root) CI runner.
+        "no-remote-exec",
+    ],
     visibility = ["//tabula:__subpackages__"],
     deps = [":migrate"],
 )
@@ -350,6 +370,11 @@ itest_service(
     },
     exe = ":api_bin",
     http_health_check_address = "http://127.0.0.1:8080/health",
+    tags = [
+        # Depends on postgres, which cannot run as root (BuildBuddy RBE
+        # containers are root); runs locally on the (non-root) CI runner.
+        "no-remote-exec",
+    ],
     visibility = ["//tabula:__subpackages__"],
     deps = [
         ":migrate",
