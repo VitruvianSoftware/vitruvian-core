@@ -20,12 +20,16 @@
  * SOFTWARE.
  */
 
-/** @type {import('jest').Config} */
+/**
+ * Tests run on the original TypeScript through @swc/jest (Rust transform with
+ * its own jest.mock hoisting; ts-jest would type-check-recompile per
+ * short-lived Bazel action, and tsc-pre-transpiled JSX trips babel's
+ * out-of-scope guard for jsx_runtime in jest.mock factories).
+ * Type-checking is enforced separately by the :tests_lib ts_project.
+ */
 module.exports = {
-  preset: "ts-jest",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
-  roots: ["<rootDir>/tests", "<rootDir>/src"],
   testMatch: [
     "**/__tests__/**/*.ts",
     "**/__tests__/**/*.tsx",
@@ -34,36 +38,36 @@ module.exports = {
   ],
   testPathIgnorePatterns: ["/node_modules/", "/tests/e2e"],
   transform: {
-    "^.+\\.tsx?$": "ts-jest",
+    "^.+\\.(t|j)sx?$": [
+      "@swc/jest",
+      {
+        jsc: {
+          parser: { syntax: "typescript", tsx: true },
+          transform: { react: { runtime: "automatic" } },
+          target: "es2022",
+        },
+        module: { type: "commonjs" },
+      },
+    ],
   },
   collectCoverageFrom: [
-    "src/**/*.ts",
-    "src/**/*.tsx",
+    "src/**/*.{ts,tsx}",
+    "!src/**/*.test.{ts,tsx}",
+    "!src/**/__tests__/**",
     "!src/**/*.d.ts",
-    "!src/**/*.test.ts",
-    "!src/**/*.test.tsx",
-    "!src/**/*.spec.ts",
-    "!src/**/*.spec.tsx",
+    "!src/testUtils/**",
   ],
-  // Coverage thresholds - enforced to prevent regression
   coverageThreshold: {
     global: {
-      branches: 65, // Lower threshold for branches due to UI complexity
+      branches: 65, // Lower for UI complexity
       functions: 80,
       lines: 80,
-      statements: 79, // Slightly lower to account for current coverage
+      statements: 79,
     },
   },
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "json", "json-summary", "html"],
   moduleNameMapper: {
-    "^@/(.*)$": "<rootDir>/src/$1",
-    "^@background/(.*)$": "<rootDir>/src/background/$1",
-    "^@popup/(.*)$": "<rootDir>/src/popup/$1",
-    "^@content/(.*)$": "<rootDir>/src/content/$1",
-    "^@components/(.*)$": "<rootDir>/src/components/$1",
     "\\.(css|less|scss|sass)$": "<rootDir>/tests/styleMock.js",
   },
-  testTimeout: 10000,
-  verbose: true,
 };

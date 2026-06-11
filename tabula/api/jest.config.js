@@ -21,13 +21,24 @@
  */
 
 /** @type {import('jest').Config} */
+/**
+ * Tests run on the original TypeScript through @swc/jest (Rust transform with
+ * its own jest.mock hoisting; ts-jest would type-check-recompile inside each
+ * short-lived Bazel action). Type-checking is enforced separately by the
+ * :tests_lib ts_project.
+ */
 module.exports = {
-  preset: "ts-jest",
   testEnvironment: "node",
   roots: ["<rootDir>/tests", "<rootDir>/src"],
   testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    "^.+\\.(t|j)s$": [
+      "@swc/jest",
+      {
+        jsc: { parser: { syntax: "typescript" }, target: "es2022" },
+        module: { type: "commonjs" },
+      },
+    ],
   },
   collectCoverageFrom: [
     "src/**/*.ts",
@@ -49,14 +60,6 @@ module.exports = {
   },
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "json", "json-summary", "html"],
-  moduleNameMapper: {
-    "^@/(.*)$": "<rootDir>/src/$1",
-    "^@routes/(.*)$": "<rootDir>/src/routes/$1",
-    "^@services/(.*)$": "<rootDir>/src/services/$1",
-    "^@middleware/(.*)$": "<rootDir>/src/middleware/$1",
-    "^@utils/(.*)$": "<rootDir>/src/utils/$1",
-    "^@types/(.*)$": "<rootDir>/src/types/$1",
-  },
   setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
   testTimeout: 10000,
   verbose: true,

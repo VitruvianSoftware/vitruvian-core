@@ -146,3 +146,25 @@ js_binary(
     entry_point = "prisma/seed-test-user.js",
     visibility = ["//tabula:__subpackages__"],
 )
+
+# Type-check gate for the test sources (jest itself runs @swc/jest, which does
+# not type-check).
+ts_project(
+    name = "tests_lib",
+    testonly = True,
+    srcs = glob(["tests/**/*.ts"]),
+    declaration = True,
+    declaration_map = True,
+    resolve_json_module = True,
+    source_map = True,
+    transpiler = "tsc",
+    tsconfig = "tsconfig.json",
+    deps = [
+        ":lib",
+        ":node_modules/@types/jest",
+        ":node_modules/@types/node",
+        ":node_modules/@types/supertest",
+        ":node_modules/fastify",
+        ":node_modules/supertest",
+    ],
+)

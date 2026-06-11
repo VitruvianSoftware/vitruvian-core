@@ -23,8 +23,10 @@
 const nextJest = require("next/jest");
 
 const createJestConfig = nextJest({
-  // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
-  dir: "./",
+  // Path to the Next.js app, to load next.config.ts and .env in the test env.
+  // Under Bazel (rules_jest) the process cwd is the runfiles root, so this is
+  // workspace-relative rather than config-relative.
+  dir: "tabula/web",
 });
 
 // Add any custom config to be passed to Jest
@@ -41,8 +43,20 @@ const customJestConfig = {
   coverageReporters: ["text", "lcov", "json", "json-summary", "html"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
+    "^geist/font/(.*)$": "<rootDir>/__mocks__/geistFont.js",
   },
 };
 
-// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
-module.exports = createJestConfig(customJestConfig);
+// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async.
+// next/jest's generated transformIgnorePatterns only understands npm/pnpm
+// store layouts; rewrite it for the rules_js virtual store
+// (node_modules/.aspect_rules_js/<pkg>@<v>/node_modules/<pkg>) so ESM-only
+// packages in transpilePackages (geist) are actually transformed.
+module.exports = async () => {
+  const config = await createJestConfig(customJestConfig)();
+  config.transformIgnorePatterns = [
+    "node_modules/(?!\\.aspect_rules_js|geist)",
+    "^.+\\.module\\.(css|sass|scss)$",
+  ];
+  return config;
+};

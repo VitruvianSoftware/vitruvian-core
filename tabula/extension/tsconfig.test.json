@@ -6,7 +6,9 @@
       "@types/webextension-polyfill",
       "jest",
       "@testing-library/jest-dom"
-    ]
+    ],
+    "module": "commonjs",
+    "moduleResolution": "node"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]

@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 
@@ -69,4 +71,69 @@ webpack_cli.webpack_cli(
     mnemonic = "WebpackBundle",
     out_dirs = ["dist"],
     visibility = ["//visibility:public"],
+)
+
+ts_project(
+    name = "tests_lib",
+    testonly = True,
+    srcs = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]),
+    declaration = False,
+    extends = "tsconfig.json",
+    resolve_json_module = True,
+    source_map = True,
+    transpiler = "tsc",
+    tsconfig = "tsconfig.test.json",
+    deps = [
+        ":node_modules/@dnd-kit/core",
+        ":node_modules/@dnd-kit/sortable",
+        ":node_modules/@dnd-kit/utilities",
+        ":node_modules/@tabula/shared",
+        ":node_modules/@testing-library/jest-dom",
+        ":node_modules/@testing-library/react",
+        ":node_modules/@types/chrome",
+        ":node_modules/@types/jest",
+        ":node_modules/@types/react",
+        ":node_modules/@types/react-dom",
+        ":node_modules/@types/webextension-polyfill",
+        ":node_modules/framer-motion",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/zustand",
+    ],
+)
+
+jest_test(
+    name = "unit_tests",
+    size = "large",
+    config = "jest.config.js",
+    data = glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.js",
+    ]) + [
+        "jest.setup.js",
+        "tests/styleMock.js",
+        ":node_modules/@dnd-kit/core",
+        ":node_modules/@dnd-kit/sortable",
+        ":node_modules/@dnd-kit/utilities",
+        ":node_modules/@swc/core",
+        ":node_modules/@swc/jest",
+        ":node_modules/@tabula/shared",
+        ":node_modules/@testing-library/jest-dom",
+        ":node_modules/@testing-library/react",
+        ":node_modules/framer-motion",
+        ":node_modules/jest-environment-jsdom",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/zustand",
+    ],
+    node_modules = ":node_modules",
+    # jest 29's requireOrImportModule only catches ERR_REQUIRE_ESM; Node 22.12+
+    # require(esm) support makes the generated .mjs config throw
+    # ERR_REQUIRE_ASYNC_MODULE instead. Force the import() fallback.
+    node_options = ["--no-experimental-require-module"],
+    shard_count = 4,
 )

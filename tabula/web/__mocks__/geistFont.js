@@ -20,13 +20,11 @@
  * SOFTWARE.
  */
 
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // geist ships ESM-only; transpile it for both next build and next/jest
-  // (next/jest derives its jest transformIgnorePatterns from this list).
-  transpilePackages: ["geist"],
-  /* config options here */
+// geist/font stub for jest: the real package calls next/font/local, which
+// only works inside the Next build pipeline, not in jsdom unit tests.
+const font = {
+  className: "geist-mock",
+  variable: "--font-geist-sans",
+  style: { fontFamily: "Geist" },
 };
-
-export default nextConfig;
+module.exports = { GeistSans: font, GeistMono: font };
