@@ -19,6 +19,7 @@
 #
 # infra_dir                        account                              gcp_project   purpose
 infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+infrastructure/pulumi/tabula       james.nguyen@gmail.com               tabula-dev-0001  Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                  james@abrial.ai                      -             abrial.ai projects (future)
 -                                  james@sandbox.vitruviansoftware.dev  -             Vitruvian Software sandbox/company (future)

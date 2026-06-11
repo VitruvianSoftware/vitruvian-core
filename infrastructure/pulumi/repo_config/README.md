@@ -41,6 +41,9 @@ Set with `pulumi config set <key> <value>`.
 | `requireStatusChecks` | bool | `true` | Require status checks (Strict / up-to-date) |
 | `statusCheckContexts` | string list | _(empty)_ | Named checks that must pass; empty → just Strict |
 | `enforceAdmins` | bool | `false` | Apply protection to admins too |
+| `tabulaVars` | object | _(empty)_ | Per-environment Actions variables for the tabula deploy environments (see below) |
+| `tabulaProductionReviewers` | string list | _(see below)_ | GitHub usernames required to approve `tabula-production` deployments (resolved to ids; works with integration tokens) |
+| `tabulaProductionReviewerIds` | int list | _(unset)_ | Numeric GitHub user ids, used verbatim (overrides `tabulaProductionReviewers`) |
 
 Force-pushes and branch deletions are **always** blocked on the protected
 branch.
@@ -51,6 +54,39 @@ branch.
 pulumi config set --path statusCheckContexts[0] "build"
 pulumi config set --path statusCheckContexts[1] "test"
 ```
+
+### Tabula deploy environments
+
+This program also manages the GitHub Environments used by
+`.github/workflows/tabula-deploy.yaml`: `tabula-development`,
+`tabula-nonproduction`, and `tabula-production`. The environment name carries
+the component namespace, so variables inside use bare names and
+`tabula-production`'s protection rules (required reviewer, deployments only
+from protected branches) are scoped to tabula alone.
+
+Only non-credential identifiers are stored, as environment **variables**
+(keyless Workload Identity Federation needs no key material); runtime secrets
+such as `DATABASE_URL` live in GCP Secret Manager, managed by
+`//infrastructure/pulumi/tabula`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
+*deployer* identity impersonated via WIF — distinct from the Cloud Run
+*runtime* service account (`tabula-api-<env>`), which the tabula Pulumi
+program creates. Values are plain identifiers and are
+committed in `Pulumi.<stack>.yaml`:
+
+```bash
+pulumi config set --path 'tabulaVars["development"]["GCP_PROJECT_ID"]' my-project
+pulumi config set --path 'tabulaVars["development"]["GCP_DEPLOY_SERVICE_ACCOUNT"]' deployer@my-project.iam.gserviceaccount.com
+pulumi config set --path 'tabulaVars["development"]["GCP_WORKLOAD_IDENTITY_PROVIDER"]' projects/123/locations/global/workloadIdentityPools/github/providers/github
+# optional: GCP_REGION (the workflow defaults to us-central1)
+```
+
+Environments with no `tabulaVars` entry are still created (empty), so the
+protection rules exist before their first deploy is configured.
+
+`tabulaProductionReviewers` should stay set in the committed stack config: the
+fallback (the token's own user via `GET /user`) only works for human tokens —
+the Actions `GITHUB_TOKEN` is an integration token and gets a 403 from that
+endpoint, which would fail the CI preview/apply runs.
 
 ---
 

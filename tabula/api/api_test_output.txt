@@ -1,0 +1,239 @@
+
+> @tabula/api@0.1.2 test
+> jest --passWithNoTests
+
+PASS tests/unit/user.service.test.ts
+  UserService
+    getUserById
+      ✓ should return user by ID (3 ms)
+      ✓ should return null if user not found
+    updateUser
+      ✓ should update user profile
+    deleteUser
+      ✓ should delete user account
+    getPasswordResetUrl
+      ✓ should return password reset URL (1 ms)
+
+PASS tests/unit/auth.middleware.test.ts
+  Auth Middleware
+    authenticateUser
+      ✓ should set user from valid JWT (2 ms)
+      ✓ should return 401 when authorization header is missing
+      ✓ should return 401 when Bearer prefix is missing (1 ms)
+      ✓ should return 401 when JWT verification fails
+      ✓ should return 401 when token is empty
+
+PASS tests/unit/spacegroup.service.test.ts
+  SpaceGroupService
+    generateId
+      ✓ should generate a unique ID with the given prefix (6 ms)
+      ✓ should generate different IDs on each call (1 ms)
+    getAllSpaceGroups
+      ✓ should return all space groups for a user (3 ms)
+      ✓ should return empty array when user has no groups
+    getSpaceGroupById
+      ✓ should return a space group by ID (1 ms)
+      ✓ should throw error if space group not found (4 ms)
+    createSpaceGroup
+      ✓ should create a new space group
+    updateSpaceGroup
+      ✓ should update an existing space group
+      ✓ should throw error if space group not found (1 ms)
+    deleteSpaceGroup
+      ✓ should delete a space group (3 ms)
+      ✓ should throw error if space group not found
+
+PASS tests/unit/auth.workos.service.test.ts
+  AuthService - WorkOS
+    getAuthorizationUrl
+      ✓ should return WorkOS authorization URL (2 ms)
+    authenticateAndSyncUser
+      ✓ should authenticate and create new user (1 ms)
+      ✓ should use firstName only when lastName is missing
+      ✓ should use email prefix when no name provided
+      ✓ should throw error when email is missing (3 ms)
+
+PASS tests/unit/workspace.service.test.ts
+  WorkspaceService
+    getAllWorkspaces
+      ✓ should return all workspaces for a user (3 ms)
+    getWorkspaceById
+      ✓ should return a workspace by ID (1 ms)
+      ✓ should throw error if workspace not found (8 ms)
+    createWorkspace
+      ✓ should create a workspace for free tier user (1 ms)
+      ✓ should throw error when free tier limit reached
+      ✓ should allow creating workspace for paid tier beyond limit
+    updateWorkspace
+      ✓ should update a workspace
+      ✓ should update workspace with sections and resources (1 ms)
+      ✓ should update workspace with notes
+      ✓ should update workspace with tasks
+      ✓ should update workspace with resources (1 ms)
+      ✓ should update workspace with tabs
+    deleteWorkspace
+      ✓ should delete a workspace
+    saveTabsToWorkspace
+      ✓ should save tabs to workspace
+      ✓ should handle empty tabs array
+    moveTab
+      ✓ should move tab to another workspace (1 ms)
+      ✓ should throw error if tab not found
+    bulkDeleteTabs
+      ✓ should delete multiple tabs
+      ✓ should throw error if tabs do not belong to user
+    bulkUpdateTabs
+      ✓ should pin multiple tabs
+    reorderTab
+      ✓ should reorder a tab within workspace
+      ✓ should throw error if tab not found
+
+PASS tests/integration/app.test.ts
+  App Endpoints
+    GET /health
+      ✓ should return health status (9 ms)
+    GET /
+      ✓ should return API information (1 ms)
+
+PASS tests/integration/auth.routes.test.ts
+  Auth API Endpoints
+    GET /api/v1/auth/login
+      ✓ should redirect to WorkOS authorization URL (7 ms)
+    GET /api/v1/auth/callback
+      ✓ should return 400 when code is missing (1 ms)
+      ✓ should return JWT token on successful authentication (JSON) (1 ms)
+      ✓ should return HTML for browser requests (1 ms)
+      ✓ should return 500 on authentication failure (JSON)
+      ✓ should return HTML error for browser on authentication failure
+
+PASS tests/integration/user.routes.test.ts
+  User API Endpoints
+    GET /api/v1/users/me
+      ✓ should return current user profile (9 ms)
+      ✓ should return 401 without token
+      ✓ should return 404 if user not found (1 ms)
+    PATCH /api/v1/users/me
+      ✓ should update user profile (2 ms)
+      ✓ should return 400 for invalid input (2 ms)
+      ✓ should return 401 without token (1 ms)
+    DELETE /api/v1/users/me
+      ✓ should delete user account
+      ✓ should return 401 without token (1 ms)
+    POST /api/v1/users/password-reset
+      ✓ should return password reset URL
+      ✓ should return 400 for invalid email
+
+FAIL tests/integration/spacegroup.test.ts
+  SpaceGroup API Endpoints
+    GET /api/v1/space-groups
+      ✓ should return 401 without authentication (7 ms)
+      ✓ should return empty array for new user (1 ms)
+      ✓ should return space groups for authenticated user
+    GET /api/v1/space-groups/:id
+      ✓ should return a space group by ID (1 ms)
+      ✓ should return 404 for non-existent space group
+    POST /api/v1/space-groups
+      ✓ should create a new space group (2 ms)
+      ✓ should return 400 for invalid input (2 ms)
+    PUT /api/v1/space-groups/:id
+      ✓ should update a space group (1 ms)
+      ✕ should upsert (create) non-existent space group (2 ms)
+    DELETE /api/v1/space-groups/:id
+      ✓ should delete a space group (1 ms)
+      ✓ should return 404 for non-existent space group (1 ms)
+
+  ● SpaceGroup API Endpoints › PUT /api/v1/space-groups/:id › should upsert (create) non-existent space group
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 400
+
+      225 |       });
+      226 |
+    > 227 |       expect(response.statusCode).toBe(200);
+          |                                   ^
+      228 |       const data = JSON.parse(response.payload);
+      229 |       expect(data.data.title).toBe('Upserted Group');
+      230 |     });
+
+      at Object.<anonymous> (tests/integration/spacegroup.test.ts:227:35)
+
+FAIL tests/integration/workspace.test.ts
+  Workspace API Endpoints
+    GET /api/v1/workspaces
+      ✓ should return 401 without authentication (8 ms)
+      ✓ should return empty array for new user (1 ms)
+      ✓ should return workspaces for authenticated user
+    POST /api/v1/workspaces
+      ✓ should create a new workspace (1 ms)
+      ✓ should validate workspace name is required (1 ms)
+      ✓ should enforce workspace limit for free tier (1 ms)
+    PUT /api/v1/workspaces/:id
+      ✓ should update workspace name (1 ms)
+      ✕ should upsert (create) non-existent workspace (2 ms)
+    DELETE /api/v1/workspaces/:id
+      ✓ should delete a workspace and its tabs
+      ✓ should return 404 for non-existent workspace
+    POST /api/v1/workspaces/:id/tabs
+      ✓ should save tabs to workspace (1 ms)
+    POST /api/v1/workspaces/tabs/bulk
+      ✓ should bulk delete tabs (1 ms)
+      ✓ should bulk pin tabs (1 ms)
+      ✓ should bulk unpin tabs (1 ms)
+      ✓ should return 400 for invalid operation
+      ✓ should return 403 for unauthorized tabs (1 ms)
+      ✓ should return 400 for suspend operation
+    POST /api/v1/workspaces/tabs/move
+      ✓ should move tab to another workspace (1 ms)
+      ✓ should return 404 for non-existent tab (1 ms)
+      ✓ should return 404 for non-existent target workspace
+    POST /api/v1/workspaces/tabs/reorder
+      ✓ should reorder a tab within workspace (1 ms)
+      ✓ should return 404 for non-existent tab
+    GET /api/v1/workspaces/:id
+      ✓ should return workspace with tabs (1 ms)
+      ✓ should return 404 for non-existent workspace
+    POST /api/v1/workspaces/:id/tabs - Error Cases
+      ✓ should return 404 when workspace not found
+      ✓ should return 400 with invalid tab data (2 ms)
+
+  ● Workspace API Endpoints › PUT /api/v1/workspaces/:id › should upsert (create) non-existent workspace
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 400
+
+      266 |       });
+      267 |
+    > 268 |       expect(response.statusCode).toBe(200);
+          |                                   ^
+      269 |       const data = JSON.parse(response.payload);
+      270 |       expect(data.data.name).toBe('Upserted Workspace');
+      271 |     });
+
+      at Object.<anonymous> (tests/integration/workspace.test.ts:268:35)
+
+PASS tests/unit/auth.service.test.ts
+  AuthService - Password Hashing
+    hashPassword
+      ✓ should hash a password successfully (235 ms)
+      ✓ should generate different hashes for the same password (473 ms)
+    verifyPassword
+      ✓ should verify a correct password (486 ms)
+      ✓ should reject an incorrect password (484 ms)
+      ✓ should reject empty password (484 ms)
+
+Test Suites: 2 failed, 9 passed, 11 total
+Tests:       2 failed, 106 passed, 108 total
+Snapshots:   0 total
+Time:        4.367 s, estimated 5 s
+Ran all test suites.
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /Users/james/Workspace/gh/lab/tabula/api
+npm error workspace @tabula/api@0.1.2
+npm error location /Users/james/Workspace/gh/lab/tabula/api
+npm error command failed
+npm error command sh -c jest --passWithNoTests

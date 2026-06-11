@@ -1,0 +1,187 @@
+generator client {
+  provider            = "prisma-client"
+  engineType          = "client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(uuid()) @db.Uuid
+  email        String      @unique @db.VarChar(255)
+  passwordHash String?     @map("password_hash") @db.VarChar(255)
+  name         String      @db.VarChar(255)
+  tier         String      @default("free") @db.VarChar(20)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  lastLoginAt  DateTime?   @map("last_login_at") @db.Timestamp(6)
+  preferences  Json        @default("{}")
+  backups      Backup[]
+  sessions     Session[]
+  workspaces   Workspace[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id                 String    @id @db.VarChar(100)
+  userId             String    @map("user_id") @db.Uuid
+  name               String    @db.VarChar(255)
+  description        String?
+  color              String?   @db.VarChar(7)
+  icon               String?   @db.VarChar(50)
+  position           Int       @default(0)
+  version            Int       @default(0)
+  activeDeviceId     String?   @map("active_device_id") @db.VarChar(100)
+  activeDeviceSeenAt DateTime? @map("active_device_seen_at") @db.Timestamp(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  settings           Json      @default("{}")
+  backups            Backup[]
+  tabs               Tab[]
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sections    Section[]
+  resources   Resource[]
+  notes       Note[]
+  tasks       Task[]
+  groupId     String?  @map("group_id") @db.VarChar(100)
+
+  @@index([userId], map: "idx_workspaces_user")
+  @@index([groupId], map: "idx_workspaces_group")
+  @@map("workspaces")
+}
+
+model Tab {
+  id          String    @id @db.VarChar(100)
+  workspaceId String    @map("workspace_id") @db.VarChar(100)
+  url         String
+  title       String?   @db.VarChar(500)
+  faviconUrl  String?   @map("favicon_url")
+  position    Int       @default(0)
+  isPinned    Boolean   @default(false) @map("is_pinned")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  metadata    Json      @default("{}")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_tabs_workspace")
+  @@map("tabs")
+}
+
+model Backup {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
+  workspaceId String?    @map("workspace_id") @db.VarChar(100)
+  name        String?    @db.VarChar(255)
+  type        String     @default("manual") @db.VarChar(20)
+  snapshot    Json
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+  sizeBytes   Int?       @map("size_bytes")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_backups_user")
+  @@index([createdAt], map: "idx_backups_created")
+  @@map("backups")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String?   @map("refresh_token_hash") @db.VarChar(255)
+  deviceInfo       Json?     @map("device_info")
+  ipAddress        String?   @map("ip_address") @db.Inet
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt        DateTime? @map("expires_at") @db.Timestamp(6)
+  lastActiveAt     DateTime  @default(now()) @map("last_active_at") @db.Timestamp(6)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@map("sessions")
+}
+
+model SpaceGroup {
+  id        String   @id @db.VarChar(100)
+  userId    String   @map("user_id") @db.Uuid
+  title     String   @db.VarChar(255)
+  collapsed Boolean  @default(false)
+  position  Int      @default(0)
+  version   Int      @default(0)
+  color     String?  @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([userId], map: "idx_space_groups_user")
+  @@map("space_groups")
+}
+
+model Section {
+  id          String     @id @db.VarChar(100)
+  workspaceId String     @map("workspace_id") @db.VarChar(100)
+  title       String     @db.VarChar(255)
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  resources   Resource[]
+
+  @@index([workspaceId], map: "idx_sections_workspace")
+  @@map("sections")
+}
+
+model Resource {
+  id          String     @id @db.VarChar(100)
+  workspaceId String?    @map("workspace_id") @db.VarChar(100)
+  sectionId   String?    @map("section_id") @db.VarChar(100)
+  title       String     @db.VarChar(500)
+  url         String
+  faviconUrl  String?    @map("favicon_url")
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  section     Section?   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_resources_workspace")
+  @@index([sectionId], map: "idx_resources_section")
+  @@map("resources")
+}
+
+model Note {
+  id          String     @id @db.VarChar(100)
+  workspaceId String     @map("workspace_id") @db.VarChar(100)
+  title       String     @db.VarChar(255)
+  content     String     @db.Text
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_notes_workspace")
+  @@map("notes")
+}
+
+model Task {
+  id          String     @id @db.VarChar(100)
+  workspaceId String     @map("workspace_id") @db.VarChar(100)
+  title       String     @db.VarChar(500)
+  completed   Boolean    @default(false)
+  dueDate     DateTime?  @map("due_date") @db.Timestamp(6)
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_tasks_workspace")
+  @@map("tasks")
+}

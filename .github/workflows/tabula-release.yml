@@ -1,0 +1,83 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please for the tabula component family. All artifacts are
+# tabula-namespaced: tags tabula-v*, tabula-api-v*, tabula-extension-v*,
+# tabula-cli-v*, tabula-web-v* and the release PR 'chore(tabula): release …'.
+# The config/manifest live under tabula/ (paths inside them are repo-root
+# relative). Other components in this repo release via different mechanisms
+# (GoReleaser, standalone mirrors) and are untouched: release-please assigns
+# commits to packages purely by touched paths.
+
+name: tabula-release
+
+on:
+  push:
+    branches: [main]
+    paths: ["tabula/**"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      extension_release_created: ${{ steps.release.outputs['tabula/extension--release_created'] }}
+      extension_tag_name: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          # NOTE: if main ever gains required status checks, swap GITHUB_TOKEN
+          # for a PAT/App token — PRs created with GITHUB_TOKEN never trigger
+          # the checks and the release PR becomes unmergeable.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: tabula/release-please-config.json
+          manifest-file: tabula/.release-please-manifest.json
+          target-branch: main
+
+  package-extension:
+    needs: release-please
+    if: needs.release-please.outputs.extension_release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Build extension package
+        run: bazel build //tabula/extension:chrome_zip
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.extension_tag_name }}
+        run: |
+          cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
+            "tabula-extension-chrome-${TAG}.zip"
+          gh release upload "$TAG" "tabula-extension-chrome-${TAG}.zip"

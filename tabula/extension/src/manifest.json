@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Tabula",
+  "version": "0.1.0",
+  "description": "A lean, privacy-conscious browser tab management extension with cloud sync",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["tabs", "storage", "alarms", "tabGroups"],
+  "host_permissions": ["http://localhost:8080/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "externally_connectable": {
+    "matches": [
+      "*://tabula.com/*",
+      "*://*.tabula.com/*",
+      "*://tabula-staging.com/*",
+      "*://*.tabula-staging.com/*",
+      "*://localhost/*",
+      "*://127.0.0.1/*"
+    ]
+  }
+}

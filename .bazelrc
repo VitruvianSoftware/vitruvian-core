@@ -50,3 +50,9 @@ common:lint --aspects=//tools/lint:linters.bzl%rubocop
 # should be last statement in this config so the user configuration is able to overwrite flags from
 # this file. See https://bazel.build/configure/best-practices#bazelrc-file.
 try-import %workspace%/user.bazelrc
+
+# Heavyweight end-to-end suites (//tabula: browser + full service stack) are
+# tagged "e2e" and excluded from the default sweep. Run them explicitly with
+# `bazel test --config=e2e //tabula/...` (dedicated CI lane).
+test --test_tag_filters=-e2e
+test:e2e --test_tag_filters=e2e

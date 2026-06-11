@@ -1,0 +1,150 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Tabula deploy: Bazel-built OCI image -> Artifact Registry -> prisma migrate
+# deploy (vendored schema-engine, before traffic shifts) -> Pulumi rollout.
+# Replaces the old buildpack-based `gcloud run deploy --source`.
+#
+# One workflow, parameterized by GitHub Environment (managed as code in
+# //infrastructure/pulumi/repo_config): tabula-development deploys
+# automatically on push to main; tabula-nonproduction / tabula-production are
+# promoted via workflow_dispatch, with tabula-production additionally gated by
+# its environment protection rules (required reviewer, protected branches).
+#
+# Per-environment identifiers (GCP_PROJECT_ID, GCP_DEPLOY_SERVICE_ACCOUNT,
+# GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
+# Actions *variables* — keyless WIF means none of them is a credential. The
+# only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; runtime
+# secrets (DATABASE_URL, ...) live in GCP Secret Manager.
+
+name: tabula-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tabula/api/**"
+      - "tabula/shared/**"
+      - "infrastructure/pulumi/tabula/**"
+      - ".github/workflows/tabula-deploy.yaml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+          - nonproduction
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tabula-deploy-${{ inputs.environment || 'development' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: tabula-${{ inputs.environment || 'development' }}
+    env:
+      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Ensure Artifact Registry repository
+        # Bootstrap ordering: the image push runs before `pulumi up`, but
+        # Pulumi owns the repository resource. Create it idempotently here;
+        # the Pulumi program adopts it (unconditional pulumi.Import — by the
+        # time pulumi runs, this repo always exists).
+        run: |
+          gcloud artifacts repositories describe tabula \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
+          gcloud artifacts repositories create tabula \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
+            --repository-format=docker \
+            --description="Tabula container images (managed by //infrastructure/pulumi/tabula)"
+
+      - name: Build and push API image
+        run: |
+          bazel run //tabula/api:image_push -- \
+            --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api" \
+            --tag "${GITHUB_SHA}" --tag latest
+
+      - name: Run database migrations
+        # Before the new revision takes traffic; vendored schema-engine keeps
+        # this hermetic apart from the database connection itself.
+        run: |
+          bazel build //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
+          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
+          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
+          export DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
+          bazel run //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
+
+      - name: Install Pulumi
+        uses: pulumi/actions@v6
+
+      - name: Deploy Cloud Run via Pulumi
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Pulumi shells out to `go build`; the repo-root go.work does not
+          # include this module (same as tools/pulumi/pulumi_cmd.sh).
+          GOWORK: off
+        working-directory: infrastructure/pulumi/tabula
+        run: |
+          # Stack identity/region/env come from the committed
+          # Pulumi.<stack>.yaml (config-as-code); only the per-deploy image
+          # tag is set here.
+          pulumi stack select "$DEPLOY_ENV" --create
+          pulumi config set tabula:imageTag "$GITHUB_SHA"
+          pulumi up --yes
+
+      - name: Smoke check
+        working-directory: infrastructure/pulumi/tabula
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        run: |
+          URL="$(pulumi stack output serviceUrl)"
+          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "$URL/health"
