@@ -75,3 +75,5 @@ _PG_SELECT = {
 ]
 
 exports_files(["playwright-browsers-1.57.0.json"])
+
+exports_files(["patches/redis-atomic-fnptr-clang15.patch"])

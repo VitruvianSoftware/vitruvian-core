@@ -94,6 +94,14 @@ bazel_dep(name = "rules_playwright", version = "0.5.3")
 # Hermetic redis-server/redis-cli (cc_binary, pairs with rules_itest).
 bazel_dep(name = "redis", version = "8.6.2")
 
+# clang 15 (the Linux default toolchain) rejects redis's static _Atomic
+# function-pointer NULL initializer; see the patch header for details.
+single_version_override(
+    module_name = "redis",
+    patch_strip = 1,
+    patches = ["//tools/testinfra:patches/redis-atomic-fnptr-clang15.patch"],
+)
+
 # Hermetic Playwright browsers, pinned by the vendored browsers.json matching
 # the lockfile's playwright-core version (re-vendor on Playwright bumps).
 # @playwright/test is pinned to 1.57.0: Playwright >= 1.58 serves chromium via
