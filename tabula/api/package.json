@@ -1,6 +1,6 @@
 {
   "name": "@tabula/api",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Tabula API backend service",
   "license": "MIT",
