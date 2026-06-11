@@ -189,6 +189,17 @@ export const Dashboard: React.FC = () => {
     AuthService.getUser().then(setUser);
   }, []);
 
+  const handleSignIn = async () => {
+    try {
+      await AuthService.login();
+      // Reload so every surface (sync engine, workspaces, account UI)
+      // rehydrates with the new session — mirrors the logout path.
+      window.location.reload();
+    } catch (error) {
+      console.error("[Dashboard] Sign-in failed:", error);
+    }
+  };
+
   const handleLogout = async () => {
     // Reset in-memory sync state (static class survives in other open
     // extension pages that won't reload) and close the SSE stream
@@ -659,6 +670,7 @@ export const Dashboard: React.FC = () => {
         <SidebarHeader>
           <UserMenu
             user={user}
+            onSignIn={handleSignIn}
             showUserMenu={showUserMenu}
             onToggleUserMenu={() => setShowUserMenu(!showUserMenu)}
             onCloseUserMenu={() => setShowUserMenu(false)}
