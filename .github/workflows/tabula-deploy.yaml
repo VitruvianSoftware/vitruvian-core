@@ -18,15 +18,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tabula staging deploy: Bazel-built OCI image -> Artifact Registry ->
-# prisma migrate deploy (vendored schema-engine, before traffic shifts) ->
-# Pulumi rollout. Replaces the old buildpack-based `gcloud run deploy --source`.
+# Tabula deploy: Bazel-built OCI image -> Artifact Registry -> prisma migrate
+# deploy (vendored schema-engine, before traffic shifts) -> Pulumi rollout.
+# Replaces the old buildpack-based `gcloud run deploy --source`.
 #
-# Required repo secrets (carried over from BlueCentre/tabula):
-#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_PROJECT_ID
-#   PULUMI_ACCESS_TOKEN (Pulumi Cloud backend)
+# One workflow, parameterized by GitHub Environment (managed as code in
+# //infrastructure/pulumi/repo_config): tabula-development deploys
+# automatically on push to main; tabula-nonproduction / tabula-production are
+# promoted via workflow_dispatch, with tabula-production additionally gated by
+# its environment protection rules (required reviewer, protected branches).
+#
+# Per-environment identifiers (GCP_PROJECT_ID, GCP_SERVICE_ACCOUNT,
+# GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
+# Actions *variables* — keyless WIF means none of them is a credential. The
+# only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; runtime
+# secrets (DATABASE_URL, ...) live in GCP Secret Manager.
 
-name: tabula-deploy-staging
+name: tabula-deploy
 
 on:
   push:
@@ -35,24 +43,35 @@ on:
       - "tabula/api/**"
       - "tabula/shared/**"
       - "infrastructure/pulumi/tabula/**"
-      - ".github/workflows/tabula-deploy-staging.yaml"
+      - ".github/workflows/tabula-deploy.yaml"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+          - nonproduction
+          - production
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: tabula-deploy-staging
+  group: tabula-deploy-${{ inputs.environment || 'development' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: tabula-${{ inputs.environment || 'development' }}
     env:
-      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      GCP_REGION: us-central1
+      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -65,8 +84,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -98,9 +117,16 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: infrastructure/pulumi/tabula
         run: |
-          pulumi stack select staging --create
+          # Short suffix for GCP resource names (tabula-api-<code>).
+          case "$DEPLOY_ENV" in
+            development)   ENV_CODE=dev ;;
+            nonproduction) ENV_CODE=nonprod ;;
+            production)    ENV_CODE=prod ;;
+          esac
+          pulumi stack select "$DEPLOY_ENV" --create
           pulumi config set tabula:project "$GCP_PROJECT_ID"
-          pulumi config set tabula:environment stg
+          pulumi config set tabula:region "$GCP_REGION"
+          pulumi config set tabula:environment "$ENV_CODE"
           pulumi config set tabula:imageTag "$GITHUB_SHA"
           pulumi up --yes
 

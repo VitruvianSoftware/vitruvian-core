@@ -38,6 +38,10 @@
 package main
 
 import (
+	"fmt"
+	"sort"
+	"strconv"
+
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -143,6 +147,10 @@ func main() {
 			return err
 		}
 
+		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+			return err
+		}
+
 		// Surface the resolved owner so `pulumi stack output` records which
 		// account these settings were applied to.
 		ctx.Export("repoOwner", pulumi.String(repoOwner))
@@ -151,6 +159,107 @@ func main() {
 
 		return nil
 	})
+}
+
+// tabulaEnvironments manages the per-component GitHub Environments for the
+// tabula deploy pipeline (.github/workflows/tabula-deploy.yaml). The
+// environment name carries the component namespace (tabula-<env>), so the
+// variables inside use bare names (GCP_PROJECT_ID, ...) and protection rules
+// are scoped to tabula alone — a future component's production gate never
+// shares reviewers with this one.
+//
+// Only non-credential identifiers live here as Actions VARIABLES (project id,
+// service-account email, workload-identity provider path — keyless WIF needs
+// no key material). Runtime secrets such as DATABASE_URL stay in GCP Secret
+// Manager, managed by //infrastructure/pulumi/tabula; the only GitHub-side
+// secret the deploy needs is the repo-level PULUMI_ACCESS_TOKEN.
+//
+// Per-environment variable values come from Pulumi config as JSON objects
+// (committed in Pulumi.<stack>.yaml — they are identifiers, not secrets):
+//
+//	pulumi config set --path 'tabulaVars["development"]' \
+//	  '{"GCP_PROJECT_ID":"...","GCP_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
+//
+// Environments with no config entry are still created (empty), so protection
+// rules exist before the first deploy is wired up.
+func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	var tabulaVars map[string]map[string]string
+	_ = cfg.GetObject("tabulaVars", &tabulaVars)
+
+	for _, env := range []string{"development", "nonproduction", "production"} {
+		name := "tabula-" + env
+
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(name),
+		}
+
+		if env == "production" {
+			// Production deploys only from protected branches (main) and
+			// require an approval from the repo owner (or the configured
+			// reviewer ids). GitHub allows self-approval of deployments, so
+			// this works for a single-maintainer repo as a deliberate
+			// "break glass" pause rather than a four-eyes gate.
+			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+				ProtectedBranches:    pulumi.Bool(true),
+				CustomBranchPolicies: pulumi.Bool(false),
+			}
+			reviewerIds, err := productionReviewerIds(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+				&github.RepositoryEnvironmentReviewerArgs{
+					Users: pulumi.ToIntArray(reviewerIds),
+				},
+			}
+		}
+
+		envRes, err := github.NewRepositoryEnvironment(ctx, name, args)
+		if err != nil {
+			return err
+		}
+
+		// Deterministic resource names: iterate variables in sorted order.
+		vars := tabulaVars[env]
+		keys := make([]string, 0, len(vars))
+		for k := range vars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", name, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// productionReviewerIds returns the numeric GitHub user ids that must approve
+// tabula-production deployments: the `tabulaProductionReviewerIds` config list
+// when set, otherwise the authenticated user (the token owner).
+func productionReviewerIds(ctx *pulumi.Context, cfg *config.Config) ([]int, error) {
+	var ids []int
+	_ = cfg.GetObject("tabulaProductionReviewerIds", &ids)
+	if len(ids) > 0 {
+		return ids, nil
+	}
+	me, err := github.GetUser(ctx, &github.GetUserArgs{Username: ""})
+	if err != nil {
+		return nil, fmt.Errorf("resolving authenticated user for production reviewers: %w", err)
+	}
+	id, err := strconv.Atoi(me.Id)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected non-numeric user id %q: %w", me.Id, err)
+	}
+	return []int{id}, nil
 }
 
 // repoName returns the configured repo name, defaulting to this project's
