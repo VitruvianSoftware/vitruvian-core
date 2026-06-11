@@ -318,7 +318,9 @@ http_file(
 #########################
 # Hermetic PostgreSQL for //tabula integration/E2E tests (real server binaries,
 # initdb'd into $TEST_TMPDIR per test; see //tools/testinfra/postgres).
-# musl builds run on any Linux RBE image. Pinned to PG 16 to match production.
+# gnu-linked builds: the runners/RBE images are glibc (the musl variants are
+# dynamically linked against the musl loader, absent on Ubuntu). Pinned to
+# PG 16 to match production.
 _PG_VERSION = "16.13.0"
 
 _PG_BUILD = """filegroup(
@@ -348,17 +350,17 @@ filegroup(
 http_archive(
     name = "postgresql_linux_amd64",
     build_file_content = _PG_BUILD,
-    sha256 = "7a2cfa7515765933d6b8c112f9dd68890147af6631fbc1dc5cabca7416ecd363",
-    strip_prefix = "postgresql-{}-x86_64-unknown-linux-musl".format(_PG_VERSION),
-    url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-x86_64-unknown-linux-musl.tar.gz".format(v = _PG_VERSION),
+    sha256 = "bb8dba9ca0f04e5cc6e21a13a41a3f111e030ef6c3b41a872e32c6f9e5a39331",
+    strip_prefix = "postgresql-{}-x86_64-unknown-linux-gnu".format(_PG_VERSION),
+    url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-x86_64-unknown-linux-gnu.tar.gz".format(v = _PG_VERSION),
 )
 
 http_archive(
     name = "postgresql_linux_arm64",
     build_file_content = _PG_BUILD,
-    sha256 = "f6348a9bf53b84d5995336f4a9f059fec2ae9cf2dc6ad0e800c8c0d0d20172d9",
-    strip_prefix = "postgresql-{}-aarch64-unknown-linux-musl".format(_PG_VERSION),
-    url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-aarch64-unknown-linux-musl.tar.gz".format(v = _PG_VERSION),
+    sha256 = "d4fe7f1fd8762d837d4091438fb139321ea7cb11abce95f51616ae1434fffd77",
+    strip_prefix = "postgresql-{}-aarch64-unknown-linux-gnu".format(_PG_VERSION),
+    url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-aarch64-unknown-linux-gnu.tar.gz".format(v = _PG_VERSION),
 )
 
 http_archive(
