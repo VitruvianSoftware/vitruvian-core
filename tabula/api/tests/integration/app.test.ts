@@ -47,7 +47,9 @@ describe("App Endpoints", () => {
     // Root endpoint
     app.get("/", async () => ({
       name: "Tabula API",
-      version: "0.1.0",
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+      version: (require("../../package.json") as { version: string }).version,
+      commit: "unknown",
       environment: "test",
     }));
   });
@@ -81,7 +83,11 @@ describe("App Endpoints", () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.name).toBe("Tabula API");
-      expect(body.version).toBe("0.1.0");
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+      expect(body.version).toBe(
+        (require("../../package.json") as { version: string }).version,
+      );
+      expect(body.commit).toBe("unknown");
       expect(body.environment).toBe("test");
     });
   });

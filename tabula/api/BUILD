@@ -131,6 +131,7 @@ ts_project(
 js_binary(
     name = "api_bin",
     data = [
+        "package.json",
         ":lib",
         ":node_modules/@prisma/adapter-pg",
         ":node_modules/@prisma/client",
@@ -281,6 +282,7 @@ jest_test(
         "src/**/*.ts",
         "tests/**/*.ts",
     ]) + [
+        "package.json",
         ":node_modules/@fastify/cors",
         ":node_modules/@fastify/jwt",
         ":node_modules/@fastify/rate-limit",
