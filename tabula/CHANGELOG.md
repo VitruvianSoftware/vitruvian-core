@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.4...tabula-v0.1.5) (2026-06-11)
+
+
+### Bug Fixes
+
+* **tabula:** wire auth-flow envs (API_URL, AUTH_POSTMESSAGE_ORIGIN) ([#35](https://github.com/VitruvianSoftware/vitruvian-core/issues/35)) ([76b24ac](https://github.com/VitruvianSoftware/vitruvian-core/commit/76b24acba1bba6af27a5af5416916e8279c07645))
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.3...tabula-v0.1.4) (2026-06-11)
 
 
