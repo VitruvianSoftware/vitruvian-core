@@ -27,4 +27,4 @@ config:
   tabula:region: us-central1
   tabula:environment: dev
   tabula:deployServiceAccount: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
-  tabula:adoptExistingSecrets: "true"
+  tabula:adoptExistingSecrets: "false"
