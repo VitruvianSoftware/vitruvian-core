@@ -93,6 +93,19 @@ jobs:
       - name: Configure docker for Artifact Registry
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
+      - name: Ensure Artifact Registry repository
+        # Bootstrap ordering: the image push runs before `pulumi up`, but
+        # Pulumi owns the repository resource. Create it idempotently here;
+        # the Pulumi program adopts it (unconditional pulumi.Import — by the
+        # time pulumi runs, this repo always exists).
+        run: |
+          gcloud artifacts repositories describe tabula \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
+          gcloud artifacts repositories create tabula \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
+            --repository-format=docker \
+            --description="Tabula container images (managed by //infrastructure/pulumi/tabula)"
+
       - name: Build and push API image
         run: |
           bazel run //tabula/api:image_push -- \
@@ -115,6 +128,9 @@ jobs:
       - name: Deploy Cloud Run via Pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Pulumi shells out to `go build`; the repo-root go.work does not
+          # include this module (same as tools/pulumi/pulumi_cmd.sh).
+          GOWORK: off
         working-directory: infrastructure/pulumi/tabula
         run: |
           # Stack identity/region/env come from the committed
@@ -128,6 +144,7 @@ jobs:
         working-directory: infrastructure/pulumi/tabula
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
         run: |
           URL="$(pulumi stack output serviceUrl)"
           curl --fail --retry 10 --retry-delay 5 --retry-connrefused "$URL/health"

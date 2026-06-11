@@ -78,13 +78,21 @@ func main() {
 
 		// Artifact Registry repository the Bazel oci_push publishes into:
 		// us-central1-docker.pkg.dev/<project>/tabula/api
+		//
+		// Always adopted via Import: the deploy workflow pre-creates the repo
+		// (the image push happens before pulumi up — bootstrap ordering), so
+		// by the time this program runs the repo exists in every environment.
+		// Pulumi ignores the import option once the resource is in state.
 		repo, err := artifactregistry.NewRepository(ctx, "tabula-images", &artifactregistry.RepositoryArgs{
 			Project:      pulumi.String(project),
 			Location:     pulumi.String(region),
 			RepositoryId: pulumi.String("tabula"),
 			Format:       pulumi.String("DOCKER"),
 			Description:  pulumi.String("Tabula container images (pushed by bazel run //tabula/api:image_push)"),
-		})
+		},
+			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/repositories/tabula", project, region))),
+			pulumi.IgnoreChanges([]string{"description", "labels"}),
+		)
 		if err != nil {
 			return err
 		}
@@ -102,9 +110,11 @@ func main() {
 		var secretEnvs cloudrunv2.ServiceTemplateContainerEnvArray
 		for _, name := range runtimeSecrets {
 			secretOpts := []pulumi.ResourceOption{
-				// Adopted secrets may carry drift we don't manage (labels,
-				// legacy replication blocks); only secretId/project matter.
-				pulumi.IgnoreChanges([]string{"labels", "replication"}),
+				// Adopted secrets may carry label drift we don't manage.
+				// Replication is NOT ignored: it is a required field, and
+				// ignoring it during import leaves the provider with no
+				// replication value to validate.
+				pulumi.IgnoreChanges([]string{"labels"}),
 			}
 			if adoptExistingSecrets {
 				secretOpts = append(secretOpts, pulumi.Import(pulumi.ID(
@@ -159,15 +169,17 @@ func main() {
 					&cloudrunv2.ServiceTemplateContainerArgs{
 						Image: image,
 						Envs:  envs,
-						Ports: cloudrunv2.ServiceTemplateContainerPortArray{
-							&cloudrunv2.ServiceTemplateContainerPortArgs{
-								ContainerPort: pulumi.Int(8080),
-							},
-						},
 					},
 				},
 			},
-		}, pulumi.DependsOn([]pulumi.Resource{repo}))
+		},
+			pulumi.DependsOn([]pulumi.Resource{repo}),
+			// Ports are left at the Cloud Run default (8080, matching the
+			// API server). The imported live state's ports shape trips a
+			// google-beta provider diff bug ("missing expected ["), so keep
+			// them unmanaged.
+			pulumi.IgnoreChanges([]string{"template.containers[0].ports"}),
+		)
 		if err != nil {
 			return err
 		}
