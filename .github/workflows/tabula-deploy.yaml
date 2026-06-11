@@ -119,7 +119,14 @@ jobs:
           bazel build //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
           export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
           export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
-          export DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
+          # Plain assignment (not `export VAR=$(...)`): export would swallow
+          # the gcloud exit status and hand Prisma an empty DATABASE_URL.
+          DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret read returned empty (deployer SA needs secretAccessor on it)"
+            exit 1
+          fi
+          export DATABASE_URL
           bazel run //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
 
       - name: Install Pulumi
