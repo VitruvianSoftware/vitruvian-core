@@ -27,8 +27,8 @@ config:
   tabula:region: us-central1
   tabula:environment: dev
   tabula:apiUrl: https://tabula-api-dev-q7dosy3wiq-uc.a.run.app/api/v1
-  # The development (unpacked) extension install's origin. Becomes stable
-  # once the extension ships with a fixed ID (manifest key / Web Store).
-  tabula:authPostmessageOrigin: chrome-extension://ghlhjkkemckcbckgimildcekkjjkaajf
+  # The extension's origin — stable on every install: the manifest pins a
+  # public "key", from which Chrome derives a fixed extension ID.
+  tabula:authPostmessageOrigin: chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof
   tabula:deployServiceAccount: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
   tabula:adoptExistingSecrets: "false"
