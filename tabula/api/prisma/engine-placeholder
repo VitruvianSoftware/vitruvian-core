@@ -1,0 +1,4 @@
+Placeholder file satisfying the Prisma CLI's engine-existence check
+(fs.existsSync on PRISMA_SCHEMA_ENGINE_BINARY / PRISMA_QUERY_ENGINE_LIBRARY).
+With the engine-free `prisma-client` generator the engines are never executed
+during `prisma generate`; this file is never run. See prisma/prisma#28083.

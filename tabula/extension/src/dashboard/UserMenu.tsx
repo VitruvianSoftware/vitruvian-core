@@ -1,0 +1,163 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import React, { useRef } from "react";
+import { User } from "../services/auth";
+import { Icon } from "../components/icons";
+import { MenuOverlay } from "./MenuOverlay";
+
+export interface UserMenuProps {
+  user: User | null;
+  showUserMenu: boolean;
+  onToggleUserMenu: () => void;
+  onCloseUserMenu: () => void;
+  onOpenSettings: () => void;
+  onLogout: () => void;
+}
+
+export const UserMenu: React.FC<UserMenuProps> = ({
+  user,
+  showUserMenu,
+  onToggleUserMenu,
+  onCloseUserMenu,
+  onOpenSettings,
+  onLogout,
+}) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const getUserInitials = () => {
+    if (!user || !user.name) return "U";
+    return user.name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .substring(0, 2)
+      .toUpperCase();
+  };
+
+  return (
+    <div
+      style={{ display: "flex", alignItems: "center", gap: "8px" }}
+      ref={menuRef}
+    >
+      {/* User Avatar */}
+      <div
+        style={{
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        onClick={onToggleUserMenu}
+        title="Account & Settings"
+      >
+        {user?.picture ? (
+          <img
+            src={user.picture}
+            alt={user.name || "User"}
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "50%",
+              objectFit: "cover",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "50%",
+              backgroundColor: "#6366f1",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "12px",
+              fontWeight: 600,
+            }}
+          >
+            {getUserInitials()}
+          </div>
+        )}
+      </div>
+
+      {/* User Dropdown Menu */}
+      {showUserMenu && <MenuOverlay onClose={onCloseUserMenu} zIndex={999} />}
+      {showUserMenu && (
+        <div
+          className="dropdown-menu"
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: "16px",
+            marginTop: "4px",
+            minWidth: "200px",
+            zIndex: 1000,
+          }}
+        >
+          {/* User Info Header */}
+          <div style={{ padding: "12px 16px 8px 16px" }}>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: "14px",
+                color: "var(--color-text-primary)",
+                marginBottom: "2px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {user?.name || "Account"}
+            </div>
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--color-text-secondary)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {user?.email}
+            </div>
+          </div>
+
+          <div className="dropdown-divider" />
+
+          {/* Settings Option */}
+          <div className="dropdown-item" onClick={onOpenSettings}>
+            <Icon name="settings" size="sm" />
+            Settings
+          </div>
+
+          {/* Logout Option */}
+          <div className="dropdown-item" onClick={onLogout}>
+            <Icon name="logout" size="sm" />
+            Log out
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
