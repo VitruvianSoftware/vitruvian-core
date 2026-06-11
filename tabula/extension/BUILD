@@ -159,6 +159,11 @@ playwright.playwright_test(
     env = {
         "CI": "1",
         "EXTENSION_PATH": "$(rootpath :dist)",
+        # Playwright creates browser profiles under os.tmpdir(). Bazel's
+        # TEST_TMPDIR is deep inside the sandbox; Chrome's SingletonSocket
+        # inside the profile then exceeds the 108-char unix-socket path limit
+        # and the browser CHECK-fails (SIGTRAP) at launch on Linux runners.
+        "TMPDIR": "/tmp",
         "JWT_SECRET": "e2e-test-jwt-secret-key",
         "PLAYWRIGHT_BROWSERS_PATH": "$(rootpath @playwright//:chromium)/../",
     },
