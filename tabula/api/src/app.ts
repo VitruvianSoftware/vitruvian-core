@@ -142,10 +142,15 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
     redis: redis ? "connected" : "disabled",
   }));
 
-  // Root endpoint
+  // Root endpoint: identifies exactly what is deployed. version tracks
+  // package.json (release-please bumps it); GIT_SHA is injected by the
+  // Pulumi deploy (the image tag); K_REVISION is set by Cloud Run.
   app.get("/", async () => ({
     name: "Tabula API",
-    version: "0.1.0",
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    version: (require("../package.json") as { version: string }).version,
+    commit: process.env.GIT_SHA || "unknown",
+    revision: process.env.K_REVISION || null,
     environment: process.env.NODE_ENV || "development",
   }));
 

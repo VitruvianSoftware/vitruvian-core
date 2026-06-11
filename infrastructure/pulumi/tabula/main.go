@@ -170,6 +170,11 @@ func main() {
 				Name:  pulumi.String("NODE_ENV"),
 				Value: pulumi.String("staging"),
 			},
+			// Deploy provenance, surfaced by the API's root endpoint.
+			&cloudrunv2.ServiceTemplateContainerEnvArgs{
+				Name:  pulumi.String("GIT_SHA"),
+				Value: pulumi.String(imageTag),
+			},
 		}
 		envs = append(envs, secretEnvs...)
 
