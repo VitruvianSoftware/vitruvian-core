@@ -184,6 +184,20 @@ func main() {
 				Name:  pulumi.String("NODE_ENV"),
 				Value: pulumi.String(nodeEnv),
 			},
+			// The API's own public base URL: WorkOS redirectUri is built from
+			// it (auth.service.ts). Config rather than derived from the
+			// service output to avoid a self-referential dependency; Cloud Run
+			// URLs are stable (service name + project number).
+			&cloudrunv2.ServiceTemplateContainerEnvArgs{
+				Name:  pulumi.String("API_URL"),
+				Value: pulumi.String(cfg.Require("apiUrl")),
+			},
+			// Exact origin the auth callback page postMessages the token to
+			// (the extension's chrome-extension://<id> origin; never '*').
+			&cloudrunv2.ServiceTemplateContainerEnvArgs{
+				Name:  pulumi.String("AUTH_POSTMESSAGE_ORIGIN"),
+				Value: pulumi.String(cfg.Require("authPostmessageOrigin")),
+			},
 			// Deploy provenance, surfaced by the API's root endpoint.
 			&cloudrunv2.ServiceTemplateContainerEnvArgs{
 				Name:  pulumi.String("GIT_SHA"),
