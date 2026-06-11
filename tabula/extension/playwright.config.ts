@@ -25,6 +25,24 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
+// Under Bazel the E2E auth token is self-signed here: the seed task creates a
+// deterministic user (fixed UUID) and JWT_SECRET is a known test constant, so
+// every Playwright worker process (each loads this config) derives the same
+// token the old CI captured from the seeder's stdout.
+if (!process.env.E2E_TEST_TOKEN && process.env.JWT_SECRET) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const jwt = require("jsonwebtoken");
+  process.env.E2E_TEST_TOKEN = jwt.sign(
+    {
+      id: "00000000-0000-0000-0000-e2e000000000",
+      email: "e2e-test@tabula.dev",
+      tier: "free",
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "24h" },
+  );
+}
+
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.spec.ts",
@@ -33,8 +51,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   // Use single worker to prevent concurrent workspace creation hitting API limits
-  // workers: 1,
-  reporter: "html",
+  // Pin workers explicitly: Playwright's core-count detection overshoots
+  // Bazel's local resource accounting.
+  workers: 2,
+  reporter: "line",
   use: {
     trace: "on-first-retry",
     screenshot: "only-on-failure",

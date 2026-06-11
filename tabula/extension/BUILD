@@ -21,7 +21,9 @@
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//tabula/extension:@playwright/test/package_json.bzl", playwright = "bin")
 load("@npm//tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
+load("@rules_itest//:itest.bzl", "service_test")
 
 # @tabula/extension: Chrome MV3 extension (React), bundled by the package's
 # own webpack.config.js (3 entries: popup, background, dashboard; CopyPlugin
@@ -136,4 +138,66 @@ jest_test(
     # ERR_REQUIRE_ASYNC_MODULE instead. Force the import() fallback.
     node_options = ["--no-experimental-require-module"],
     shard_count = 4,
+)
+
+playwright.playwright_test(
+    name = "pw_suite",
+    data = glob([
+        "tests/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]) + [
+        "playwright.config.ts",
+        ":dist",
+        ":node_modules/@playwright/test",
+        ":node_modules/@types/jsonwebtoken",
+        ":node_modules/jsonwebtoken",
+        "@playwright//:chromium",
+    ],
+    env = {
+        "CI": "1",
+        "EXTENSION_PATH": "$(rootpath :dist)",
+        "JWT_SECRET": "e2e-test-jwt-secret-key",
+        "PLAYWRIGHT_BROWSERS_PATH": "$(rootpath @playwright//:chromium)/../",
+    },
+    # fixed_args (not args): the service manager execs this binary directly,
+    # so Bazel-time test args never reach it.
+    fixed_args = [
+        "test",
+        "--config=tabula/extension/playwright.config.ts",
+    ],
+    tags = ["manual"],
+)
+
+service_test(
+    name = "e2e",
+    size = "enormous",
+    services = [
+        "//tabula/api:api_service",
+        "//tabula/api:migrate",
+        "//tabula/api:postgres",
+        "//tabula/api:redis",
+        "//tabula/api:seed_e2e_user",
+    ],
+    tags = [
+        "e2e",
+        # Chromium needs host system libraries (nss/atk/fonts) that the RBE
+        # image is not guaranteed to provide; the dedicated CI lane installs
+        # them and runs this locally on the runner.
+        "no-remote-exec",
+        # Specs open real pages (https://example.com) as workspace tabs, as
+        # the suite always has. A local fixture server would make this fully
+        # hermetic; until then the e2e lane needs internet.
+        "requires-network",
+    ],
+    test = ":pw_suite",
+)
+
+# Release artifact: the production bundle minus sourcemaps/declarations,
+# attached to tabula-extension-v* releases by .github/workflows/tabula-release.yml.
+genrule(
+    name = "chrome_zip",
+    srcs = [":dist"],
+    outs = ["tabula-extension-chrome.zip"],
+    cmd = "cd $(location :dist) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
 )

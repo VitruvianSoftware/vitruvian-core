@@ -20,9 +20,13 @@
  * SOFTWARE.
  */
 
+import { PrismaPg } from "@prisma/adapter-pg";
+
 import { PrismaClient } from "../src/generated/prisma/client";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 async function main() {
   const modelName = process.argv[2];
@@ -35,7 +39,7 @@ async function main() {
   // Case-insensitive lookup for model name in Prisma Client
   // Prisma models are usually PascalCase (e.g. User, Workspace) on the client instance
   // but accessed via lowercase property in some contexts?
-  // Actually, on new PrismaClient(), it's `prisma.user`, `prisma.workspace`.
+  // Actually, on new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) }), it's `prisma.user`, `prisma.workspace`.
   // The dmmf or simple key iteration can find the correct key.
 
   const lowerModelName = modelName.toLowerCase();

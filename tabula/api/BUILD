@@ -20,9 +20,11 @@
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
-load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
+load("@rules_oci//oci:defs.bzl", "oci_push")
+load("//tools/oci:node_image.bzl", "node_image")
 
 # @tabula/api: Fastify + Prisma (engine-free) + ioredis API server.
 # The Prisma client is generated at build time (never checked in) by the
@@ -257,6 +259,7 @@ itest_task(
     },
     exe = ":migrate_deploy_bin",
     visibility = ["//tabula:__subpackages__"],
+    deps = [":postgres"],
 )
 
 # The full jest suite (tests/unit needs no services; tests/integration uses
@@ -308,4 +311,66 @@ service_test(
         ":redis",
     ],
     test = ":jest_suite",
+)
+
+# Seeds the deterministic E2E test user (the Playwright config self-signs the
+# matching JWT from the shared test secret).
+itest_task(
+    name = "seed_e2e_user",
+    env = {
+        "DATABASE_URL": "postgresql://postgres@127.0.0.1:" + port(":postgres") + "/postgres",
+        "JWT_SECRET": "e2e-test-jwt-secret-key",
+    },
+    exe = ":seed_test_user_bin",
+    visibility = ["//tabula:__subpackages__"],
+    deps = [":migrate"],
+)
+
+# The API server as a test service for the extension E2E suite. The port is
+# fixed (not autoassigned): the extension bundle bakes API_URL in at build
+# time (webpack DefinePlugin, default http://localhost:8080/api/v1) and the
+# spec helpers hardcode the same origin — mirroring the old CI topology.
+# 8080 is reserved for this single test target.
+itest_service(
+    name = "api_service",
+    env = {
+        "DATABASE_URL": "postgresql://postgres@127.0.0.1:" + port(":postgres") + "/postgres",
+        "HOST": "127.0.0.1",
+        "JWT_REFRESH_SECRET": "e2e-test-refresh-secret-key",
+        "JWT_SECRET": "e2e-test-jwt-secret-key",
+        "NODE_ENV": "test",
+        "PORT": "8080",
+        # The whole suite shares one IP and one API; live tab-sync PUTs from
+        # parallel browser instances blow through any realistic per-IP limit.
+        "RATE_LIMIT_MAX": "100000",
+        "REDIS_URL": "redis://127.0.0.1:" + port(":redis"),
+        # WorkOS is validated at import; E2E never exercises the login flow.
+        "WORKOS_API_KEY": "sk_test_e2e_dummy",
+        "WORKOS_CLIENT_ID": "client_e2e_dummy",
+    },
+    exe = ":api_bin",
+    http_health_check_address = "http://127.0.0.1:8080/health",
+    visibility = ["//tabula:__subpackages__"],
+    deps = [
+        ":migrate",
+        ":redis",
+    ],
+)
+
+# --- Container image + push (deployed by //infrastructure/pulumi/tabula) ----
+
+node_image(
+    name = "image",
+    binary = ":api_bin",
+    env = {"NODE_ENV": "production"},
+)
+
+# The repository placeholder is overridden at run time (oci_push accepts
+# --repository/--tag): the deploy workflow passes the project-qualified
+# Artifact Registry path and the git SHA.
+oci_push(
+    name = "image_push",
+    image = ":image",
+    remote_tags = ["latest"],
+    repository = "us-central1-docker.pkg.dev/REPLACED-AT-RUNTIME/tabula/api",
 )

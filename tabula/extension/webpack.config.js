@@ -49,7 +49,9 @@ module.exports = {
     dashboard: "./src/dashboard/index.tsx",
   },
   output: {
-    path: path.resolve(__dirname, "dist"),
+    // WEBPACK_OUT_DIR lets Bazel build variant bundles (e.g. the E2E
+    // bundle with a test API_URL) at distinct output paths.
+    path: path.resolve(__dirname, process.env.WEBPACK_OUT_DIR || "dist"),
     filename: "[name].js",
     clean: true,
   },

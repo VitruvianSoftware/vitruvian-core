@@ -27,26 +27,36 @@
  * PRISMA_SCHEMA_ENGINE_BINARY, resolved here to an absolute path because the
  * Prisma CLI resolves that env var against its own cwd.
  */
-const { spawnSync } = require('child_process');
-const path = require('path');
+const { spawnSync } = require("child_process");
+const path = require("path");
 
-const schemaArgIdx = process.argv.indexOf('--schema');
+const schemaArgIdx = process.argv.indexOf("--schema");
 const schema =
-  schemaArgIdx > 0 ? process.argv[schemaArgIdx + 1] : 'tabula/api/prisma/schema.prisma';
+  schemaArgIdx > 0
+    ? process.argv[schemaArgIdx + 1]
+    : "tabula/api/prisma/schema.prisma";
 
-const env = { ...process.env, PRISMA_HIDE_UPDATE_MESSAGE: '1' };
+const env = { ...process.env, PRISMA_HIDE_UPDATE_MESSAGE: "1" };
 if (env.PRISMA_SCHEMA_ENGINE_BINARY) {
-  env.PRISMA_SCHEMA_ENGINE_BINARY = path.resolve(env.PRISMA_SCHEMA_ENGINE_BINARY);
+  env.PRISMA_SCHEMA_ENGINE_BINARY = path.resolve(
+    env.PRISMA_SCHEMA_ENGINE_BINARY,
+  );
 }
 // The query engine is only existence-checked by `migrate deploy` (never
 // executed); a placeholder defeats the CLI's downloader. prisma/prisma#28083.
 if (env.PRISMA_QUERY_ENGINE_LIBRARY) {
-  env.PRISMA_QUERY_ENGINE_LIBRARY = path.resolve(env.PRISMA_QUERY_ENGINE_LIBRARY);
+  env.PRISMA_QUERY_ENGINE_LIBRARY = path.resolve(
+    env.PRISMA_QUERY_ENGINE_LIBRARY,
+  );
 }
 
-const prismaCli = require.resolve('prisma/build/index.js');
-const res = spawnSync(process.execPath, [prismaCli, 'migrate', 'deploy', `--schema=${schema}`], {
-  stdio: 'inherit',
-  env,
-});
+const prismaCli = require.resolve("prisma/build/index.js");
+const res = spawnSync(
+  process.execPath,
+  [prismaCli, "migrate", "deploy", `--schema=${schema}`],
+  {
+    stdio: "inherit",
+    env,
+  },
+);
 process.exit(res.status === null ? 1 : res.status);

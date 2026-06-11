@@ -24,7 +24,9 @@ import { test, expect, chromium, BrowserContext } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-const EXTENSION_PATH = path.join(__dirname, "../dist");
+const EXTENSION_PATH = process.env.EXTENSION_PATH
+  ? path.resolve(process.env.EXTENSION_PATH)
+  : path.join(__dirname, "../dist");
 
 async function getExtensionId(ctx: BrowserContext) {
   const page = await ctx.newPage();
@@ -62,7 +64,9 @@ test.beforeAll(async () => {
 
   // Launch browser with extension loaded
   context = await chromium.launchPersistentContext("", {
-    headless: false,
+    // Full Chromium in the new headless mode: supports MV3 extensions, no
+    // xvfb needed (Playwright >= 1.49).
+    channel: "chromium",
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,

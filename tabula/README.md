@@ -3,8 +3,6 @@
 > A lean, privacy-conscious browser tab management extension with cloud sync
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![CI](https://github.com/BlueCentre/tabula/actions/workflows/ci.yml/badge.svg)](https://github.com/BlueCentre/tabula/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/BlueCentre/tabula/branch/main/graph/badge.svg)](https://codecov.io/gh/BlueCentre/tabula)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 
@@ -117,83 +115,61 @@ See [Architecture Documentation](./docs/architecture/overview.md) for detailed s
 
 ### For Developers
 
-**Prerequisites:**
+Tabula lives in the vitruvian-core Bazel monorepo; all builds and tests are
+Bazel targets.
 
-- Node.js 18+
-- Docker (for local database)
-- Git
-
-**Quick Setup:**
+**Build everything:**
 
 ```bash
-# Clone the repository
-git clone https://github.com/BlueCentre/tabula.git
-cd tabula
-
-# Install dependencies
-npm install
-
-# Initialize TabCLI configuration
-tabcli init
-
-# Start local database and Redis
-tabcli dev start
-
-# Initialize database (for local development)
-tabcli db init --local
-
-# Run tests to verify setup
-tabcli dev verify
+bazel build //tabula/...
 ```
 
-**Development:**
+**Run the test suites:**
 
 ```bash
-# Start API server (http://localhost:8080)
-npm run dev --workspace=api
+# Unit + hermetic integration tests (Postgres/Redis/migrations are
+# Bazel-managed test services; nothing to install or start)
+bazel test //tabula/...
 
-# Build extension (watch mode)
-npm run dev --workspace=extension
-# For staging/prod builds, see: docs/guides/build-guide.md
+# Extension E2E (Playwright + headless Chromium against the full stack)
+bazel test --config=e2e //tabula/...
 
-# Run all checks (lint, test, build)
-tabcli dev check
+# Coverage with threshold enforcement
+bazel coverage //tabula/...
 ```
 
-**Using TabCLI:**
+**Run the API locally:**
 
 ```bash
-# Manage configuration
-tabcli config list
-
-# Database operations (targets configured environment)
-tabcli db migrate
-tabcli db studio
-
-# Database operations (targets local environment)
-tabcli db migrate --local
-tabcli db studio --local
-
-# Secrets management
-tabcli infra secrets set DATABASE_URL
-tabcli infra secrets pull
+bazel run //tabula/api:api_bin
 ```
 
-# Deploy to staging
+**Build the extension and load it in Chrome:**
 
 ```bash
-tabcli infra deploy staging
+bazel build //tabula/extension:dist
 ```
-
-**Load Extension in Chrome:**
 
 1. Navigate to `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select `extension/dist` directory
+4. Select `bazel-bin/tabula/extension/dist`
 
-See [docs/getting-started/development.md](./docs/getting-started/development.md) for detailed
-development guide.
+**Operations CLI (auth, WorkOS, db, config):**
+
+```bash
+bazel run //tabula/cli:tabcli -- --help
+```
+
+**Deploy to staging** happens automatically on merge to `main`
+(`.github/workflows/tabula-deploy-staging.yaml`: Bazel image -> Artifact
+Registry -> prisma migrate -> Pulumi). Manual rollout:
+
+```bash
+bazel run //infrastructure/pulumi/tabula:up
+```
+
+See [docs/tabula](../docs/tabula) for the full documentation set.
 
 ## Project Structure
 

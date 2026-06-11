@@ -32,7 +32,9 @@ import { test, expect, chromium, BrowserContext } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
-const EXTENSION_PATH = path.join(__dirname, "../dist");
+const EXTENSION_PATH = process.env.EXTENSION_PATH
+  ? path.resolve(process.env.EXTENSION_PATH)
+  : path.join(__dirname, "../dist");
 
 let context: BrowserContext;
 
@@ -53,10 +55,10 @@ test.beforeAll(async () => {
   }
 
   // Launch browser with extension loaded
-  // Note: Extension loading requires non-headless mode, but we can use headless: new for better CI support
+  // Full Chromium in the new headless mode supports MV3 extensions.
   // In CI, we use xvfb-run to provide a virtual display
   context = await chromium.launchPersistentContext("", {
-    headless: false, // Extensions require non-headless mode (xvfb-run used in CI)
+    channel: "chromium",
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,

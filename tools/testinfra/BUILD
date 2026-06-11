@@ -73,3 +73,5 @@ _PG_SELECT = {
         ("pg_isready_bin", "pg_isready_bin"),
     ]
 ]
+
+exports_files(["playwright-browsers-1.57.0.json"])

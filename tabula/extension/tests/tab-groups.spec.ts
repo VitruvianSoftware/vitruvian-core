@@ -40,7 +40,9 @@ import path from "path";
 import fs from "fs";
 import { getOrCreateDashboardPage } from "./e2e-helpers";
 
-const EXTENSION_PATH = path.join(__dirname, "../dist");
+const EXTENSION_PATH = process.env.EXTENSION_PATH
+  ? path.resolve(process.env.EXTENSION_PATH)
+  : path.join(__dirname, "../dist");
 
 let context: BrowserContext;
 let extensionId: string;
@@ -53,7 +55,9 @@ test.beforeAll(async () => {
   }
 
   context = await chromium.launchPersistentContext("", {
-    headless: false,
+    // Full Chromium in the new headless mode: supports MV3 extensions, no
+    // xvfb needed (Playwright >= 1.49).
+    channel: "chromium",
     args: [
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,

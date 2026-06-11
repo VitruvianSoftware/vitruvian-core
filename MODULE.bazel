@@ -94,6 +94,18 @@ bazel_dep(name = "rules_playwright", version = "0.5.3")
 # Hermetic redis-server/redis-cli (cc_binary, pairs with rules_itest).
 bazel_dep(name = "redis", version = "8.6.2")
 
+# Hermetic Playwright browsers, pinned by the vendored browsers.json matching
+# the lockfile's playwright-core version (re-vendor on Playwright bumps).
+# @playwright/test is pinned to 1.57.0: Playwright >= 1.58 serves chromium via
+# Chrome-for-Testing CDN paths (builds/cft/<version>/...) that rules_playwright
+# 0.5.x cannot construct; bump both together once the ruleset supports CfT.
+playwright = use_extension("@rules_playwright//playwright:extensions.bzl", "playwright")
+playwright.repo(
+    name = "playwright",
+    browsers_json = "//tools/testinfra:playwright-browsers-1.57.0.json",
+)
+use_repo(playwright, "playwright")
+
 #########################
 # JavaScript and pnpm package manager
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
@@ -417,18 +429,21 @@ oci.pull(
 )
 use_repo(oci, "python_base", "python_base_linux_amd64", "python_base_linux_arm64_v8")
 
-# Base image for Node.js containers (//tabula/api). The Prisma client is
-# engine-free (prisma-client generator + driver adapter), so distroless works
-# with no OpenSSL/zlib concerns.
+# Base image for Node.js containers (//tabula/api). js_image_layer ships the
+# hermetic Node toolchain in its own layer and the js_binary launcher is a
+# shell script, so the base needs a shell — ubuntu, like the Python images
+# (distroless/nodejs has no /bin/sh and its bundled node would be unused).
+# The engine-free Prisma client (prisma-client generator + driver adapter)
+# needs no OpenSSL/zlib beyond what Node links statically.
 oci.pull(
     name = "nodejs_base",
-    digest = "sha256:8a3e96fe3345b5d83ecec2066e7c498139a02a6d1214e4f6c39f9ce359f3f5bc",
-    image = "gcr.io/distroless/nodejs22-debian12",
+    digest = "sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54",
+    image = "ubuntu",
     platforms = [
+        "linux/arm64/v8",
         "linux/amd64",
-        "linux/arm64",
     ],
 )
-use_repo(oci, "nodejs_base", "nodejs_base_linux_amd64", "nodejs_base_linux_arm64")
+use_repo(oci, "nodejs_base", "nodejs_base_linux_amd64", "nodejs_base_linux_arm64_v8")
 
 register_toolchains("//tools/toolchains:all")
