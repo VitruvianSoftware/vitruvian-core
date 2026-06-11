@@ -243,17 +243,42 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 }
 
 // productionReviewerIds returns the numeric GitHub user ids that must approve
-// tabula-production deployments: the `tabulaProductionReviewerIds` config list
-// when set, otherwise the authenticated user (the token owner).
+// tabula-production deployments. Resolution order:
+//
+//  1. `tabulaProductionReviewerIds` (numeric ids, used verbatim);
+//  2. `tabulaProductionReviewers` (usernames, resolved via GET /users/{login}
+//     — this also works for the Actions GITHUB_TOKEN, which is an integration
+//     token; this is the form committed in Pulumi.<stack>.yaml);
+//  3. the authenticated user — convenient for ad-hoc human runs, but GET
+//     /user returns 403 for integration tokens, hence the config options.
 func productionReviewerIds(ctx *pulumi.Context, cfg *config.Config) ([]int, error) {
 	var ids []int
 	_ = cfg.GetObject("tabulaProductionReviewerIds", &ids)
 	if len(ids) > 0 {
 		return ids, nil
 	}
+
+	var usernames []string
+	_ = cfg.GetObject("tabulaProductionReviewers", &usernames)
+	for _, username := range usernames {
+		user, err := github.GetUser(ctx, &github.GetUserArgs{Username: username})
+		if err != nil {
+			return nil, fmt.Errorf("resolving production reviewer %q: %w", username, err)
+		}
+		id, err := strconv.Atoi(user.Id)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected non-numeric user id %q for %q: %w", user.Id, username, err)
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) > 0 {
+		return ids, nil
+	}
+
 	me, err := github.GetUser(ctx, &github.GetUserArgs{Username: ""})
 	if err != nil {
-		return nil, fmt.Errorf("resolving authenticated user for production reviewers: %w", err)
+		return nil, fmt.Errorf(
+			"resolving authenticated user for production reviewers (integration tokens cannot call GET /user; set tabulaProductionReviewers in the stack config): %w", err)
 	}
 	id, err := strconv.Atoi(me.Id)
 	if err != nil {

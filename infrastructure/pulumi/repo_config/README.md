@@ -42,7 +42,8 @@ Set with `pulumi config set <key> <value>`.
 | `statusCheckContexts` | string list | _(empty)_ | Named checks that must pass; empty → just Strict |
 | `enforceAdmins` | bool | `false` | Apply protection to admins too |
 | `tabulaVars` | object | _(empty)_ | Per-environment Actions variables for the tabula deploy environments (see below) |
-| `tabulaProductionReviewerIds` | int list | _(authenticated user)_ | Numeric GitHub user ids required to approve `tabula-production` deployments |
+| `tabulaProductionReviewers` | string list | _(see below)_ | GitHub usernames required to approve `tabula-production` deployments (resolved to ids; works with integration tokens) |
+| `tabulaProductionReviewerIds` | int list | _(unset)_ | Numeric GitHub user ids, used verbatim (overrides `tabulaProductionReviewers`) |
 
 Force-pushes and branch deletions are **always** blocked on the protected
 branch.
@@ -78,6 +79,11 @@ pulumi config set --path 'tabulaVars["development"]["GCP_WORKLOAD_IDENTITY_PROVI
 
 Environments with no `tabulaVars` entry are still created (empty), so the
 protection rules exist before their first deploy is configured.
+
+`tabulaProductionReviewers` should stay set in the committed stack config: the
+fallback (the token's own user via `GET /user`) only works for human tokens —
+the Actions `GITHUB_TOKEN` is an integration token and gets a 403 from that
+endpoint, which would fail the CI preview/apply runs.
 
 ---
 
