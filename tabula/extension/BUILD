@@ -137,7 +137,9 @@ jest_test(
     # require(esm) support makes the generated .mjs config throw
     # ERR_REQUIRE_ASYNC_MODULE instead. Force the import() fallback.
     node_options = ["--no-experimental-require-module"],
-    shard_count = 4,
+    # No shard_count: each shard would run 1/N of the tests while collecting
+    # coverage over all sources, so the jest coverageThreshold gate would
+    # evaluate against artificially fractional numbers under bazel coverage.
 )
 
 playwright.playwright_test(
