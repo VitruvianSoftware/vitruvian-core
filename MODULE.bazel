@@ -305,6 +305,24 @@ _PG_BUILD = """filegroup(
     name = "dist",
     srcs = glob(["**"]),
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "initdb_bin",
+    srcs = ["bin/initdb"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "postgres_bin",
+    srcs = ["bin/postgres"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "pg_isready_bin",
+    srcs = ["bin/pg_isready"],
+    visibility = ["//visibility:public"],
 )"""
 
 http_archive(

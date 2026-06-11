@@ -24,9 +24,21 @@
  * Global test setup for API tests
  */
 
-// Mock environment variables
+// Test environment. Under Bazel (rules_itest service_test) the hermetic
+// Postgres/Redis ports arrive via ASSIGNED_PORTS; outside Bazel fall back to
+// the legacy local-dev defaults.
 process.env.NODE_ENV = "test";
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/tabula_test";
+const assignedPorts = process.env.ASSIGNED_PORTS
+  ? (JSON.parse(process.env.ASSIGNED_PORTS) as Record<string, number>)
+  : null;
+const pgPort = assignedPorts?.["@@//tabula/api:postgres"];
+const redisPort = assignedPorts?.["@@//tabula/api:redis"];
+process.env.DATABASE_URL = pgPort
+  ? `postgresql://postgres@127.0.0.1:${pgPort}/postgres`
+  : "postgresql://test:test@localhost:5432/tabula_test";
+if (redisPort) {
+  process.env.REDIS_URL = `redis://127.0.0.1:${redisPort}`;
+}
 process.env.JWT_SECRET = "test-secret-key-for-testing-only";
 process.env.JWT_REFRESH_SECRET = "test-refresh-secret-key-for-testing-only";
 

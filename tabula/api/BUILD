@@ -18,7 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
+load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
@@ -167,4 +169,143 @@ ts_project(
         ":node_modules/fastify",
         ":node_modules/supertest",
     ],
+)
+
+# --- Hermetic integration-test stack (rules_itest) -------------------------
+# Real PostgreSQL 16 + redis-server as health-checked test services; prisma
+# migrate runs as a setup task with the vendored schema-engine. The jest
+# suite (unit + integration) executes only once the stack is healthy.
+
+genrule(
+    name = "schema_engine",
+    srcs = select({
+        "//tools/testinfra:darwin_amd64": ["@prisma_schema_engine_darwin_arm64_gz//file"],
+        "//tools/testinfra:darwin_arm64": ["@prisma_schema_engine_darwin_arm64_gz//file"],
+        "//tools/testinfra:linux_amd64": ["@prisma_schema_engine_linux_gz//file"],
+        "//tools/testinfra:linux_arm64": ["@prisma_schema_engine_linux_gz//file"],
+    }),
+    outs = ["schema-engine"],
+    cmd = "gunzip -c $< > $@ && chmod +x $@",
+    executable = True,
+)
+
+js_binary(
+    name = "migrate_deploy_bin",
+    data = [
+        "prisma/engine-placeholder",
+        "prisma/schema.prisma",
+        ":node_modules/prisma",
+    ] + glob(["prisma/migrations/**"]),
+    entry_point = "prisma/migrate-deploy.cjs",
+    visibility = ["//tabula:__subpackages__"],
+)
+
+itest_service(
+    name = "postgres",
+    args = [
+        "$(rootpath //tools/testinfra:pg_initdb_bin)",
+        "$(rootpath //tools/testinfra:pg_postgres_bin)",
+        "$${PORT}",
+        "$${TMPDIR}",
+    ],
+    autoassign_port = True,
+    data = [
+        "//tools/testinfra:pg_initdb_bin",
+        "//tools/testinfra:pg_isready_bin",
+        "//tools/testinfra:pg_postgres_bin",
+    ],
+    exe = "//tools/testinfra/postgres:run_postgres",
+    health_check = "//tools/testinfra/postgres:check_postgres",
+    health_check_args = [
+        "$(rootpath //tools/testinfra:pg_isready_bin)",
+        "$${PORT}",
+    ],
+    visibility = ["//tabula:__subpackages__"],
+)
+
+itest_service(
+    name = "redis",
+    args = [
+        "--port",
+        "$${PORT}",
+        "--dir",
+        "$${TMPDIR}",
+    ],
+    autoassign_port = True,
+    exe = "@redis//:redis-server",
+    health_check = "@redis//:redis-cli",
+    health_check_args = [
+        "-h",
+        "127.0.0.1",
+        "-p",
+        "$${PORT}",
+        "PING",
+    ],
+    visibility = ["//tabula:__subpackages__"],
+)
+
+itest_task(
+    name = "migrate",
+    data = [
+        "prisma/engine-placeholder",
+        ":schema_engine",
+    ],
+    env = {
+        "DATABASE_URL": "postgresql://postgres@127.0.0.1:" + port(":postgres") + "/postgres",
+        "PRISMA_QUERY_ENGINE_LIBRARY": "$(rootpath prisma/engine-placeholder)",
+        "PRISMA_SCHEMA_ENGINE_BINARY": "$(rootpath :schema_engine)",
+    },
+    exe = ":migrate_deploy_bin",
+    visibility = ["//tabula:__subpackages__"],
+)
+
+# The full jest suite (tests/unit needs no services; tests/integration uses
+# the live stack). Tagged manual: only runnable through :tests.
+jest_test(
+    name = "jest_suite",
+    config = "jest.config.js",
+    data = glob([
+        "src/**/*.ts",
+        "tests/**/*.ts",
+    ]) + [
+        ":node_modules/@fastify/cors",
+        ":node_modules/@fastify/jwt",
+        ":node_modules/@fastify/rate-limit",
+        ":node_modules/@prisma/adapter-pg",
+        ":node_modules/@prisma/client",
+        ":node_modules/@swc/core",
+        ":node_modules/@swc/jest",
+        ":node_modules/@workos-inc/node",
+        ":node_modules/bcryptjs",
+        ":node_modules/dotenv",
+        ":node_modules/fastify",
+        ":node_modules/ioredis",
+        ":node_modules/jsonwebtoken",
+        ":node_modules/pg",
+        ":node_modules/supertest",
+        ":node_modules/zod",
+        ":prisma_client",
+    ],
+    node_modules = ":node_modules",
+    node_options = ["--no-experimental-require-module"],
+    tags = ["manual"],
+)
+
+service_test(
+    name = "integration_tests",
+    size = "medium",
+    env = {
+        "JWT_SECRET": "test-secret-key-for-testing-only",
+        "JWT_REFRESH_SECRET": "test-refresh-secret-key-for-testing-only",
+        "NODE_ENV": "test",
+        "RATE_LIMIT_MAX": "100000",
+        "WORKOS_API_KEY": "sk_test_e2e_dummy",
+        "WORKOS_CLIENT_ID": "client_e2e_dummy",
+    },
+    services = [
+        ":migrate",
+        ":postgres",
+        ":redis",
+    ],
+    test = ":jest_suite",
 )
