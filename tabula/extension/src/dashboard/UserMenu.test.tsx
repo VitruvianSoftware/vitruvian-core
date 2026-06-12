@@ -95,6 +95,12 @@ describe("UserMenu", () => {
       expect(defaultProps.onSignIn).toHaveBeenCalled();
     });
 
+    it("should keep Settings reachable when no user", () => {
+      render(<UserMenu {...defaultProps} user={null} />);
+      fireEvent.click(screen.getByTitle("Settings"));
+      expect(defaultProps.onOpenSettings).toHaveBeenCalled();
+    });
+
     it("should call onToggleUserMenu when avatar clicked", () => {
       render(<UserMenu {...defaultProps} />);
       const avatar = screen.getByAltText("Test User");

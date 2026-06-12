@@ -24,7 +24,12 @@
 import { test, expect, chromium, BrowserContext } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { getOrCreateDashboardPage } from "./e2e-helpers";
+import {
+  getOrCreateDashboardPage,
+  getTestToken,
+  loginTestUser,
+  logoutTestUser,
+} from "./e2e-helpers";
 
 const EXTENSION_PATH = process.env.EXTENSION_PATH
   ? path.resolve(process.env.EXTENSION_PATH)
@@ -141,24 +146,60 @@ test.describe("User Journey: User Profile & Settings", () => {
   test("should open user menu and access settings", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
 
-    // Click user avatar to open menu
-    await page.locator('[title="Account & Settings"]').click();
+    // The account dropdown only renders with a session (signed-out shows a
+    // Sign in button instead). Menu interactions are purely client-side, so
+    // a placeholder token is fine when the API token isn't available.
+    await loginTestUser(page, getTestToken() ?? "e2e-ui-only-token");
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
 
-    // Verify dropdown menu appears with user info
-    const dropdownMenu = page.locator(".dropdown-menu");
-    await expect(dropdownMenu).toBeVisible();
+    try {
+      // Click user avatar to open menu
+      await page.locator('[title="Account & Settings"]').click();
 
-    // Verify Settings option is present
-    await expect(dropdownMenu.getByText("Settings")).toBeVisible();
-    await expect(dropdownMenu.getByText("Log out")).toBeVisible();
+      // Verify dropdown menu appears with user info
+      const dropdownMenu = page.locator(".dropdown-menu");
+      await expect(dropdownMenu).toBeVisible();
 
-    // Click Settings
-    await dropdownMenu
-      .locator(".dropdown-item")
-      .filter({ hasText: "Settings" })
-      .click();
+      // Verify Settings option is present
+      await expect(dropdownMenu.getByText("Settings")).toBeVisible();
+      await expect(dropdownMenu.getByText("Log out")).toBeVisible();
 
-    // Verify Settings modal opens (look for modal with "Settings" title)
+      // Click Settings
+      await dropdownMenu
+        .locator(".dropdown-item")
+        .filter({ hasText: "Settings" })
+        .click();
+
+      // Verify Settings modal opens (look for modal with "Settings" title)
+      const settingsModal = page
+        .locator(".modal-header")
+        .filter({ hasText: "Settings" });
+      await expect(settingsModal).toBeVisible({ timeout: 5000 });
+
+      // Close modal by pressing escape
+      await page.keyboard.press("Escape");
+    } finally {
+      // Other tests assume the suite-wide default of no session
+      await logoutTestUser(page);
+      await page.close();
+    }
+  });
+
+  test("should offer Sign in and keep Settings reachable when signed out", async () => {
+    const page = await getOrCreateDashboardPage(context, extensionId);
+
+    // Make the signed-out state explicit rather than relying on test order
+    await logoutTestUser(page);
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+
+    // Signed-out: a Sign in button replaces the account menu
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator('[title="Account & Settings"]')).toHaveCount(0);
+
+    // Settings stays reachable without an account (local-first)
+    await page.locator('button[title="Settings"]').click();
     const settingsModal = page
       .locator(".modal-header")
       .filter({ hasText: "Settings" });
