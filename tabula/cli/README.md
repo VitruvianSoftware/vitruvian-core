@@ -273,7 +273,21 @@ tabcli ext update [options]
 Options:
   --dir <path>        Extension directory (default: ~/.tabula/extension)
   --repo <owner/repo> GitHub repository     (default: VitruvianSoftware/vitruvian-core)
+  --channel <name>    Release channel to track (default: installed channel, else alpha)
 ```
+
+**Channels:**
+
+| Channel | Tracks                                                |
+| ------- | ----------------------------------------------------- |
+| alpha   | every `main` commit (rolling dev-latest)              |
+| beta    | the latest release cut (`tabula-extension-v*`)        |
+| stable  | Web Store listing — prints guidance (arrives with M3) |
+
+Passing `--channel` switches the installed channel permanently; subsequent bare
+`tabcli ext update` calls stay on it. See
+[`tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md) for
+the full channel reference including the dashboard banner behaviour.
 
 Requires `gh` (authenticated via `gh auth login`) and `unzip` on PATH.
 

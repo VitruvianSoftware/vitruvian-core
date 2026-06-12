@@ -25,3 +25,22 @@ check compares this build's commit against the deployed dev API's `GET /`
 provenance and polls every 15 minutes; network failures stay silent.
 
 Requirements: `gh` (authenticated: `gh auth login`) and `unzip` on PATH.
+
+## Channels
+
+The install carries its channel (`channel.json`, written by tabcli); a bare
+`tabcli ext update` stays on it.
+
+| Channel | Tracks                                         | Switch                              |
+| ------- | ---------------------------------------------- | ----------------------------------- |
+| alpha   | every `main` commit (rolling dev-latest)       | `tabcli ext update --channel alpha` |
+| beta    | the latest release cut (`tabula-extension-v*`) | `tabcli ext update --channel beta`  |
+| stable  | the Web Store listing — **arrives with M3**    | —                                   |
+
+The update banner is channel-aware: alpha offers new commits, beta offers new
+release versions (never downgrades; prerelease-style tags are ignored by
+design). Settings → Preferences → Developer shows the current channel/build
+and the exact switch command.
+
+Note: release zips cut before this feature carry a placeholder identity — the
+first post-merge release cut is the first beta-installable build.
