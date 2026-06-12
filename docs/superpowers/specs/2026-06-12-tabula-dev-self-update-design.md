@@ -16,16 +16,16 @@ something outside Chrome must swap the files, and only a reload (or
 
 ## Decision summary
 
-| Decision | Choice |
-|---|---|
-| MVP scope | Dev channel only (M1); staging/production via Web Store deferred to M3 |
-| Update UX | Pull + auto-detect + prompt (extension nudges when a newer build is deployed) |
-| "Latest" signal | The deployed dev API's `GET /` `commit` field (reuses #32 provenance; origin already in `host_permissions`) |
-| Bundle hosting | Rolling `dev-latest` GitHub **prerelease** with a fixed tag, overwritten per `main` commit |
-| Download auth | `tabcli` shells out to the authenticated `gh` CLI |
+| Decision           | Choice                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| MVP scope          | Dev channel only (M1); staging/production via Web Store deferred to M3                                                                 |
+| Update UX          | Pull + auto-detect + prompt (extension nudges when a newer build is deployed)                                                          |
+| "Latest" signal    | The deployed dev API's `GET /` `commit` field (reuses #32 provenance; origin already in `host_permissions`)                            |
+| Bundle hosting     | Rolling `dev-latest` GitHub **prerelease** with a fixed tag, overwritten per `main` commit                                             |
+| Download auth      | `tabcli` shells out to the authenticated `gh` CLI                                                                                      |
 | Load-unpacked path | `~/.tabula/extension` (overridable via `--dir`; the cwd-relative tabcli config is project-scoped, wrong fit for a machine-global path) |
-| Banner surface | Dashboard (dev-facing), not the popup |
-| Bundle flavor | `dist_release` (points at the deployed dev API — what testers exercise) |
+| Banner surface     | Dashboard (dev-facing), not the popup                                                                                                  |
+| Bundle flavor      | `dist_release` (points at the deployed dev API — what testers exercise)                                                                |
 
 ## The loop
 
@@ -61,7 +61,7 @@ channel.
 **Constraint discovered at planning:** the webpack bundle is a hermetic Bazel
 action — baking a commit SHA into it would break action caching (documented in
 `webpack.config.js`; the migration explicitly decided against this). So the
-identity is injected *after* the hermetic build:
+identity is injected _after_ the hermetic build:
 
 - The bundle always ships a `build_info.json`; the source placeholder
   (`src/build_info.json`) is `{"commit": "dev"}`, copied as-is by webpack.
@@ -102,7 +102,7 @@ identity is injected *after* the hermetic build:
 ### 4. Extension update checker (new service + banner)
 
 - Gate: only runs when `chrome.management.getSelf().installType ===
-  "development"` AND own `build_info.json` commit is present and not `"dev"`.
+"development"` AND own `build_info.json` commit is present and not `"dev"`.
   Web Store installs and local ad-hoc builds never poll. (`getSelf()` is
   exempt from the `management` permission — no manifest change needed.)
 - Poll `GET ${API_URL origin}/` on dashboard load and every ~15 minutes;

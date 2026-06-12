@@ -250,6 +250,49 @@ Subcommands:
   gcloud         Authenticate with GCP
 ```
 
+### `ext`
+
+Manage the local load-unpacked dev extension install.
+
+```bash
+tabcli ext <subcommand>
+
+Subcommands:
+  update         Download the latest rolling dev build into the load-unpacked directory
+  path           Print the load-unpacked extension directory
+```
+
+#### `tabcli ext update`
+
+Downloads the rolling `tabula-extension-dev-latest` release from GitHub into
+the load-unpacked directory, replacing any existing install atomically.
+
+```bash
+tabcli ext update [options]
+
+Options:
+  --dir <path>        Extension directory (default: ~/.tabula/extension)
+  --repo <owner/repo> GitHub repository     (default: VitruvianSoftware/vitruvian-core)
+```
+
+Requires `gh` (authenticated via `gh auth login`) and `unzip` on PATH.
+
+#### `tabcli ext path`
+
+Prints the resolved load-unpacked extension directory (useful for the
+`chrome://extensions` → **Load unpacked** dialog).
+
+```bash
+tabcli ext path [options]
+
+Options:
+  --dir <path>  Extension directory (default: ~/.tabula/extension)
+```
+
+For the full tester walkthrough, including the one-time setup and the
+dashboard update banner, see
+[`tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md).
+
 ### `version`
 
 Show TabCLI and component versions.

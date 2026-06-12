@@ -13,6 +13,7 @@
 **Branch:** `feat/tabula-dev-self-update` (already created; spec committed on it).
 
 **Conventions for every task:**
+
 - Every new file starts with the repo's MIT header (copy the exact 21-line comment block from the top of `tabula/cli/src/index.ts` for TS files, `tabula/extension/webpack.config.js` style for JS, or `#`-prefixed like `.github/workflows/tabula-release.yml` for YAML).
 - Run `npx --no-install prettier --write <changed ts/tsx/js files>` before each commit.
 - All bazel/test commands run from the repo root.
@@ -21,29 +22,29 @@
 
 ## File map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `tabula/cli/package.json` | modify | add jest devDeps |
-| `pnpm-lock.yaml` | modify (generated) | lockfile for the above |
-| `tabula/cli/jest.config.js` | create | CLI jest config (node env, swc transform) |
-| `tabula/cli/tsconfig.test.json` | create | type-gate config incl. jest types |
-| `tabula/cli/BUILD` | modify | exclude tests from `:lib`; add `:tests_lib` + `:unit_tests` |
-| `tabula/cli/src/utils/extension.ts` | create | paths, bundle validation, atomic install |
-| `tabula/cli/src/utils/extension.test.ts` | create | tests for the above (real temp dirs) |
-| `tabula/cli/src/commands/ext.ts` | create | `tabcli ext update` / `tabcli ext path` |
-| `tabula/cli/src/commands/ext.test.ts` | create | command wiring + gh-missing error |
-| `tabula/cli/src/index.ts` | modify | register `extCommand` |
-| `tabula/extension/src/build_info.json` | create | placeholder identity `{"commit":"dev"}` |
-| `tabula/extension/webpack.config.js` | modify | copy `build_info.json` into the bundle |
-| `tabula/extension/src/services/updateCheck.ts` | create | eligibility + deployed-commit check |
-| `tabula/extension/src/services/updateCheck.test.ts` | create | service tests |
-| `tabula/extension/src/components/UpdateBanner.tsx` | create | banner UI (reload / dismiss) |
-| `tabula/extension/src/components/UpdateBanner.test.tsx` | create | banner tests |
-| `tabula/extension/src/dashboard/Dashboard.tsx` | modify | mount `<UpdateBanner />` |
-| `tabula/extension/src/styles/components.css` | modify | `.update-banner` styles |
-| `.github/workflows/tabula-dev-latest.yaml` | create | rolling dev-latest publish |
-| `tabula/extension/docs/DEV_UPDATES.md` | create | tester how-to |
-| `tabula/cli/README.md` | modify | document `tabcli ext` |
+| File                                                    | Action             | Responsibility                                              |
+| ------------------------------------------------------- | ------------------ | ----------------------------------------------------------- |
+| `tabula/cli/package.json`                               | modify             | add jest devDeps                                            |
+| `pnpm-lock.yaml`                                        | modify (generated) | lockfile for the above                                      |
+| `tabula/cli/jest.config.js`                             | create             | CLI jest config (node env, swc transform)                   |
+| `tabula/cli/tsconfig.test.json`                         | create             | type-gate config incl. jest types                           |
+| `tabula/cli/BUILD`                                      | modify             | exclude tests from `:lib`; add `:tests_lib` + `:unit_tests` |
+| `tabula/cli/src/utils/extension.ts`                     | create             | paths, bundle validation, atomic install                    |
+| `tabula/cli/src/utils/extension.test.ts`                | create             | tests for the above (real temp dirs)                        |
+| `tabula/cli/src/commands/ext.ts`                        | create             | `tabcli ext update` / `tabcli ext path`                     |
+| `tabula/cli/src/commands/ext.test.ts`                   | create             | command wiring + gh-missing error                           |
+| `tabula/cli/src/index.ts`                               | modify             | register `extCommand`                                       |
+| `tabula/extension/src/build_info.json`                  | create             | placeholder identity `{"commit":"dev"}`                     |
+| `tabula/extension/webpack.config.js`                    | modify             | copy `build_info.json` into the bundle                      |
+| `tabula/extension/src/services/updateCheck.ts`          | create             | eligibility + deployed-commit check                         |
+| `tabula/extension/src/services/updateCheck.test.ts`     | create             | service tests                                               |
+| `tabula/extension/src/components/UpdateBanner.tsx`      | create             | banner UI (reload / dismiss)                                |
+| `tabula/extension/src/components/UpdateBanner.test.tsx` | create             | banner tests                                                |
+| `tabula/extension/src/dashboard/Dashboard.tsx`          | modify             | mount `<UpdateBanner />`                                    |
+| `tabula/extension/src/styles/components.css`            | modify             | `.update-banner` styles                                     |
+| `.github/workflows/tabula-dev-latest.yaml`              | create             | rolling dev-latest publish                                  |
+| `tabula/extension/docs/DEV_UPDATES.md`                  | create             | tester how-to                                               |
+| `tabula/cli/README.md`                                  | modify             | document `tabcli ext`                                       |
 
 ---
 
@@ -52,6 +53,7 @@
 The CLI has no tests at all. Mirror the extension's jest setup (swc transform, Bazel `jest_test`), but with a node environment.
 
 **Files:**
+
 - Modify: `tabula/cli/package.json`
 - Create: `tabula/cli/jest.config.js`
 - Create: `tabula/cli/tsconfig.test.json`
@@ -213,6 +215,7 @@ git commit -m "test(tabula): add a jest harness to tabcli (none existed)"
 Pure filesystem logic, tested against real temp dirs — no mocks.
 
 **Files:**
+
 - Create: `tabula/cli/src/utils/extension.ts`
 - Modify: `tabula/cli/src/utils/extension.test.ts` (replace the smoke test)
 
@@ -231,17 +234,26 @@ import {
   validateBundleDir,
 } from "./extension";
 
-const mkTmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "tabula-ext-test-"));
+const mkTmp = (): string =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "tabula-ext-test-"));
 
 const writeBundle = (dir: string, commit = "abc1234"): void => {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ name: "Tabula" }));
-  fs.writeFileSync(path.join(dir, "build_info.json"), JSON.stringify({ commit }));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    JSON.stringify({ name: "Tabula" }),
+  );
+  fs.writeFileSync(
+    path.join(dir, "build_info.json"),
+    JSON.stringify({ commit }),
+  );
 };
 
 describe("defaultExtensionDir", () => {
   it("is ~/.tabula/extension", () => {
-    expect(defaultExtensionDir()).toBe(path.join(os.homedir(), ".tabula", "extension"));
+    expect(defaultExtensionDir()).toBe(
+      path.join(os.homedir(), ".tabula", "extension"),
+    );
   });
 });
 
@@ -315,7 +327,8 @@ describe("atomicInstall", () => {
     // Force the staging -> target rename to fail after the old dir was moved:
     // 1st call (target -> old) real, 2nd (staging -> target) throws, then real
     // again so the rollback rename succeeds.
-    const realRename = jest.requireActual("fs").renameSync as typeof fs.renameSync;
+    const realRename = jest.requireActual("fs")
+      .renameSync as typeof fs.renameSync;
     const renameSpy = jest
       .spyOn(fs, "renameSync")
       .mockImplementationOnce((a, b) => realRename(a, b))
@@ -324,7 +337,9 @@ describe("atomicInstall", () => {
       })
       .mockImplementation((a, b) => realRename(a, b));
 
-    expect(() => atomicInstall(staging, target)).toThrow(/simulated rename failure/);
+    expect(() => atomicInstall(staging, target)).toThrow(
+      /simulated rename failure/,
+    );
     renameSpy.mockRestore();
 
     expect(readBundleInfo(target)).toEqual({ commit: "oldcommit" });
@@ -425,6 +440,7 @@ git commit -m "feat(tabula): tabcli atomic extension-install utils"
 ### Task 3: `tabcli ext` command
 
 **Files:**
+
 - Create: `tabula/cli/src/commands/ext.ts`
 - Create: `tabula/cli/src/commands/ext.test.ts`
 - Modify: `tabula/cli/src/index.ts`
@@ -474,7 +490,9 @@ describe("runTool", () => {
 
   it("surfaces non-zero exits with the command line", () => {
     (spawnSync as jest.Mock).mockReturnValue({ error: undefined, status: 1 });
-    expect(() => runTool("unzip", ["-o"])).toThrow(/unzip -o failed \(exit 1\)/);
+    expect(() => runTool("unzip", ["-o"])).toThrow(
+      /unzip -o failed \(exit 1\)/,
+    );
   });
 });
 ```
@@ -617,6 +635,7 @@ git commit -m "feat(tabula): tabcli ext update/path — pull dev-latest into the
 ### Task 4: Bundle ships a `build_info.json` placeholder
 
 **Files:**
+
 - Create: `tabula/extension/src/build_info.json`
 - Modify: `tabula/extension/webpack.config.js`
 
@@ -665,6 +684,7 @@ git commit -m "feat(tabula): ship a build_info.json identity placeholder in the 
 ### Task 5: Update-check service (extension)
 
 **Files:**
+
 - Create: `tabula/extension/src/services/updateCheck.ts`
 - Create: `tabula/extension/src/services/updateCheck.test.ts`
 
@@ -919,6 +939,7 @@ git commit -m "feat(tabula): update-check service — own build commit vs deploy
 ### Task 6: UpdateBanner component + Dashboard mount
 
 **Files:**
+
 - Create: `tabula/extension/src/components/UpdateBanner.tsx`
 - Create: `tabula/extension/src/components/UpdateBanner.test.tsx`
 - Modify: `tabula/extension/src/dashboard/Dashboard.tsx` (import + mount next to `<SyncStatusIndicator />`, line ~1043)
@@ -1084,6 +1105,7 @@ Expected: PASS.
 - [ ] **Step 5: Mount in the Dashboard + styles**
 
 In `tabula/extension/src/dashboard/Dashboard.tsx`:
+
 - Add `import { UpdateBanner } from "../components/UpdateBanner";` next to the `SyncStatusIndicator` import (line ~42).
 - Render `<UpdateBanner />` as a **sibling immediately BEFORE** the Sync Status Indicator footer `<div>` (the flex-row div with `justifyContent: "space-between"`), NOT inside it. When visible, the banner is full sidebar-width and does not squeeze `<SyncStatusIndicator />`.
 
@@ -1146,6 +1168,7 @@ git commit -m "feat(tabula): dashboard update banner for dev installs"
 ### Task 7: dev-latest publish workflow
 
 **Files:**
+
 - Create: `.github/workflows/tabula-dev-latest.yaml`
 
 - [ ] **Step 1: Create the workflow**
@@ -1242,6 +1265,7 @@ git commit -m "ci(tabula): rolling dev-latest extension bundle per main commit"
 ### Task 8: Docs + final verification
 
 **Files:**
+
 - Create: `tabula/extension/docs/DEV_UPDATES.md`
 - Modify: `tabula/cli/README.md` (add `ext` to the commands section — read the file and follow its existing command-doc format)
 
@@ -1309,7 +1333,7 @@ git push -u origin feat/tabula-dev-self-update
 gh pr create --base main --title "feat(tabula): dev-channel self-update — dev-latest bundle, tabcli ext, update banner (#45 M1)" --body "<summarize: spec link, the loop, components, verification; note M2/M3 roadmap stays in #45>"
 ```
 
-Expected follow-ups after merge (manual, documented in the PR body): first `tabula-dev-latest` run publishes the release; run `tabcli ext update`; load-unpack once; verify the banner appears after the *next* main commit deploys the API.
+Expected follow-ups after merge (manual, documented in the PR body): first `tabula-dev-latest` run publishes the release; run `tabcli ext update`; load-unpack once; verify the banner appears after the _next_ main commit deploys the API.
 
 ---
 
