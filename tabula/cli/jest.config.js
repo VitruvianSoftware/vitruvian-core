@@ -26,6 +26,7 @@
  * the :tests_lib ts_project.
  */
 module.exports = {
+  restoreMocks: true,
   testEnvironment: "node",
   testMatch: ["**/?(*.)+(test).ts"],
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
