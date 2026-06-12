@@ -141,7 +141,7 @@
 }
 
 /* Dark theme glassmorphic adjustments */
-[data-theme='dark'] .glassmorphic-modal {
+[data-theme="dark"] .glassmorphic-modal {
   background-color: rgba(33, 38, 49, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -224,4 +224,41 @@
   text-align: center;
   padding: 24px;
   color: var(--color-text-muted);
+}
+
+/* Dev-channel update banner (UpdateBanner.tsx). The yellow background is
+   intentionally theme-invariant, so the text color must be pinned dark —
+   the inherited body color is near-white under [data-theme='dark']. */
+.update-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #fff8e1;
+  border: 1px solid #f0c36d;
+  color: rgb(41, 47, 61);
+  font-size: 13px;
+}
+.update-banner code {
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.update-banner button {
+  border: 1px solid #f0c36d;
+  background: transparent;
+  color: rgb(41, 47, 61);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.update-banner button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.update-banner .update-banner-reload {
+  font-weight: 600;
 }
