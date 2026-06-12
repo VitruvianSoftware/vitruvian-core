@@ -23,7 +23,7 @@ something outside Chrome must swap the files, and only a reload (or
 | "Latest" signal | The deployed dev API's `GET /` `commit` field (reuses #32 provenance; origin already in `host_permissions`) |
 | Bundle hosting | Rolling `dev-latest` GitHub **prerelease** with a fixed tag, overwritten per `main` commit |
 | Download auth | `tabcli` shells out to the authenticated `gh` CLI |
-| Load-unpacked path | `~/.tabula/extension` (overridable via tabcli config) |
+| Load-unpacked path | `~/.tabula/extension` (overridable via `--dir`; the cwd-relative tabcli config is project-scoped, wrong fit for a machine-global path) |
 | Banner surface | Dashboard (dev-facing), not the popup |
 | Bundle flavor | `dist_release` (points at the deployed dev API — what testers exercise) |
 
@@ -56,14 +56,21 @@ channel.
 
 ## Components
 
-### 1. Build-time identity (`tabula/extension/webpack.config.js`)
+### 1. Build-time identity (`build_info.json`, CI-injected)
 
-- Inject `GIT_SHA` (env var, same convention as the API deploy) as a
-  compile-time constant `__BUILD_COMMIT__` (webpack `DefinePlugin`).
-- Emit `build_info.json` into the bundle root: `{commit, builtAt, version}`
-  (provenance for humans and tabcli; not used by the runtime checker).
-- No `GIT_SHA` (local builds) → `__BUILD_COMMIT__ = "dev"`, which disables the
-  update checker.
+**Constraint discovered at planning:** the webpack bundle is a hermetic Bazel
+action — baking a commit SHA into it would break action caching (documented in
+`webpack.config.js`; the migration explicitly decided against this). So the
+identity is injected *after* the hermetic build:
+
+- The bundle always ships a `build_info.json`; the source placeholder
+  (`src/build_info.json`) is `{"commit": "dev"}`, copied as-is by webpack.
+- The CI publish workflow overwrites that entry inside the built zip with the
+  real `{commit, builtAt, version}` (zip updates same-name entries). The Bazel
+  build stays hermetic and cacheable.
+- At startup the extension reads its own identity via
+  `fetch(chrome.runtime.getURL("build_info.json"))` — no compile-time
+  constant. `commit === "dev"` (any non-CI build) disables the update checker.
 
 ### 2. CI publish workflow (`.github/workflows/tabula-dev-latest.yaml`, new)
 
@@ -88,21 +95,23 @@ channel.
      chrome://extensions)".
 - `tabcli ext path`: prints the load-unpacked path for the one-time
   `chrome://extensions` → "Load unpacked" setup.
-- Path default `~/.tabula/extension`, overridable through the existing tabcli
-  config mechanism.
+- Path default `~/.tabula/extension`, overridable via `--dir` on both
+  subcommands (the existing tabcli config file is cwd-relative/project-scoped
+  — the wrong fit for a machine-global install path).
 
 ### 4. Extension update checker (new service + banner)
 
 - Gate: only runs when `chrome.management.getSelf().installType ===
-  "development"` AND `__BUILD_COMMIT__ !== "dev"`. Web Store installs and
-  local ad-hoc builds never poll.
+  "development"` AND own `build_info.json` commit is present and not `"dev"`.
+  Web Store installs and local ad-hoc builds never poll. (`getSelf()` is
+  exempt from the `management` permission — no manifest change needed.)
 - Poll `GET ${API_URL origin}/` on dashboard load and every ~15 minutes;
-  compare `commit` to `__BUILD_COMMIT__`.
+  compare its `commit` to the own-build commit.
 - Mismatch → dashboard banner: "New build available (<short-sha>) — run
   `tabcli ext update`, then **Reload**". The Reload button calls
   `chrome.runtime.reload()` and is always functional (it does not depend on
-  detecting the on-disk swap).
-- The `management` permission addition to the manifest is part of this work.
+  detecting the on-disk swap). A Dismiss hides the banner for that deployed
+  commit until a newer one appears.
 
 ## Error handling
 
@@ -110,24 +119,29 @@ channel.
   `dev-latest` release yet; download/unzip failure (live folder untouched);
   load-unpacked dir not yet set up (hint → `tabcli ext path` + one-time
   chrome://extensions step).
-- **Checker:** network/API errors are silent (nudge, not critical); backoff on
-  repeated failures; `commit: "unknown"` from the API disables the check (no
-  false positives).
+- **Checker:** network/API errors are silent (nudge, not critical); the fixed
+  ~15-minute poll interval is the backoff — failed checks simply wait for the
+  next tick; `commit: "unknown"` from the API disables the check (no false
+  positives).
 - **CI:** `--clobber` is idempotent; re-runs converge.
 
 ## Testing
 
-- **Unit (extension):** checker service — mismatch sets banner state; `"dev"`
-  build / `"unknown"` API commit / non-development installType disable it;
-  poll backoff. Banner component — render + reload invocation.
-- **Unit (webpack):** build with `GIT_SHA` set → constant + `build_info.json`
-  present; without → `"dev"`.
-- **Unit (tabcli):** `ext update` with mocked `gh`/fs — happy path, atomic
-  swap, every failure path leaves the existing install intact.
-- **E2E (Playwright):** extension built with a fake commit + stubbed API `/`
-  response → banner appears; Reload button triggers `chrome.runtime.reload()`.
-- CI publish job is validated by its first run on `main` (inspect the
-  `dev-latest` release assets).
+- **Unit (extension):** checker service — mismatch reported; `"dev"` build /
+  `"unknown"` API commit / non-development installType disable it; fetch
+  failures return null. Banner component — render on mismatch, reload
+  invocation, dismiss-per-commit.
+- **Unit (tabcli):** new jest harness for the CLI (none existed). Atomic
+  install utils with real temp dirs — happy path, validation failure, rollback
+  on failed swap; every failure path leaves the existing install intact.
+  Command-level: friendly error when `gh` is missing.
+- **Build check:** `bazel build //tabula/extension:dist` output contains the
+  placeholder `build_info.json`.
+- **No Playwright spec for the banner** (revised): exercising the CI-injected
+  identity would require mutating the read-only e2e runfiles bundle. The
+  banner logic is fully jest-covered; the CI publish path is validated by its
+  first run on `main` (inspect the `dev-latest` release assets, run
+  `tabcli ext update`, observe the banner on the next API deploy).
 
 ## Roadmap (out of scope for M1)
 
