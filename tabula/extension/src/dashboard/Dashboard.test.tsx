@@ -27,11 +27,18 @@ import { Dashboard } from "./Dashboard";
 import { WorkspaceService } from "../services/workspace";
 import { AuthService } from "../services/auth";
 import { useWorkspaceStore } from "../stores/workspace";
+import { UpdateCheckService } from "../services/updateCheck";
 
 // Mock dependencies
 jest.mock("../services/workspace");
 jest.mock("../services/auth");
 jest.mock("../stores/workspace");
+jest.mock("../services/updateCheck", () => ({
+  UpdateCheckService: {
+    getDisplayIdentity: jest.fn().mockResolvedValue(null),
+    checkForUpdate: jest.fn().mockResolvedValue(null),
+  },
+}));
 jest.mock("../components/AccountSettings", () => ({
   AccountSettings: ({ onClose }: any) => (
     <div data-testid="account-settings">
@@ -952,5 +959,22 @@ describe("Dashboard", () => {
     // The color picker toggle should be called (updates state)
     // We just verify the button is clickable and doesn't throw
     expect(toggleColorBtns[0]).toBeInTheDocument();
+  });
+
+  it("footer renders channel and short commit when getDisplayIdentity resolves", async () => {
+    (UpdateCheckService.getDisplayIdentity as jest.Mock).mockResolvedValue({
+      channel: "alpha",
+      commit: "abc1234def",
+      version: "0.1.9",
+    });
+
+    await act(async () => {
+      render(<Dashboard />);
+    });
+
+    // Allow the async getDisplayIdentity effect to settle
+    await act(async () => {});
+
+    expect(screen.getByText(/· alpha · abc1234/)).toBeInTheDocument();
   });
 });

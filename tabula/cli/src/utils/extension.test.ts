@@ -25,9 +25,15 @@ import os from "os";
 import path from "path";
 import {
   atomicInstall,
+  compareSemver,
   defaultExtensionDir,
   readBundleInfo,
+  readInstalledChannel,
+  resolveBetaArtifact,
+  resolveChannel,
+  resolveLatestExtensionTag,
   validateBundleDir,
+  writeInstalledChannel,
 } from "./extension";
 
 const mkTmp = (): string =>
@@ -140,5 +146,107 @@ describe("atomicInstall", () => {
 
     expect(readBundleInfo(target)).toEqual({ commit: "oldcommit" });
     expect(readBundleInfo(staging)).toEqual({ commit: "newcommit" }); // bundle not consumed on failure
+  });
+});
+
+describe("channel helpers", () => {
+  it("readInstalledChannel reads a valid channel.json", () => {
+    const dir = mkTmp();
+    fs.writeFileSync(
+      path.join(dir, "channel.json"),
+      JSON.stringify({ channel: "beta" }),
+    );
+    expect(readInstalledChannel(dir)).toBe("beta");
+  });
+
+  it("readInstalledChannel returns null for absent, corrupt, or unknown values", () => {
+    const dir = mkTmp();
+    expect(readInstalledChannel(dir)).toBeNull();
+    fs.writeFileSync(path.join(dir, "channel.json"), "not json");
+    expect(readInstalledChannel(dir)).toBeNull();
+    fs.writeFileSync(
+      path.join(dir, "channel.json"),
+      JSON.stringify({ channel: "stable" }),
+    );
+    expect(readInstalledChannel(dir)).toBeNull();
+  });
+
+  it("writeInstalledChannel round-trips", () => {
+    const dir = mkTmp();
+    writeInstalledChannel(dir, "alpha");
+    expect(readInstalledChannel(dir)).toBe("alpha");
+  });
+});
+
+describe("resolveChannel", () => {
+  it("explicit flag wins over installed channel", () => {
+    expect(resolveChannel("beta", "alpha")).toBe("beta");
+  });
+
+  it("falls back to the installed channel, then alpha", () => {
+    expect(resolveChannel(undefined, "beta")).toBe("beta");
+    expect(resolveChannel(undefined, null)).toBe("alpha");
+  });
+
+  it("explains that stable arrives with the Web Store listing (M3)", () => {
+    expect(() => resolveChannel("stable", null)).toThrow(/Web Store.*M3/);
+  });
+
+  it("rejects unknown channels listing the valid ones", () => {
+    expect(() => resolveChannel("nightly", null)).toThrow(
+      /alpha, beta, stable/,
+    );
+  });
+});
+
+describe("compareSemver", () => {
+  it("orders numerically per segment", () => {
+    expect(compareSemver("0.10.0", "0.9.9")).toBeGreaterThan(0);
+    expect(compareSemver("1.0.0", "1.0.0")).toBe(0);
+    expect(compareSemver("0.1.9", "0.2.0")).toBeLessThan(0);
+  });
+
+  it("treats missing segments as zero", () => {
+    expect(compareSemver("1.0", "1.0.0")).toBe(0);
+    expect(compareSemver("1.0.1", "1.0")).toBeGreaterThan(0);
+  });
+});
+
+describe("resolveLatestExtensionTag", () => {
+  it("picks the highest tabula-extension-v* among monorepo tag noise", () => {
+    const json = JSON.stringify([
+      { tagName: "tabula-cli-v0.3.0" },
+      { tagName: "tabula-extension-v0.1.9" },
+      { tagName: "tabula-extension-dev-latest" },
+      { tagName: "tabula-extension-v0.1.10" },
+      { tagName: "devx-v1.2.3" },
+      { tagName: "tabula-extension-v0.1.2" },
+    ]);
+    expect(resolveLatestExtensionTag(json)).toBe("tabula-extension-v0.1.10");
+  });
+
+  it("returns null when no extension release exists", () => {
+    expect(
+      resolveLatestExtensionTag(JSON.stringify([{ tagName: "devx-v1.0.0" }])),
+    ).toBeNull();
+    expect(resolveLatestExtensionTag("[]")).toBeNull();
+  });
+
+  it("returns null on unparseable input", () => {
+    expect(resolveLatestExtensionTag("gh exploded")).toBeNull();
+  });
+});
+
+describe("resolveBetaArtifact", () => {
+  it("returns the tag and its -chrome.zip asset name", () => {
+    const json = JSON.stringify([{ tagName: "tabula-extension-v0.1.10" }]);
+    expect(resolveBetaArtifact(json)).toEqual({
+      tag: "tabula-extension-v0.1.10",
+      zipName: "tabula-extension-v0.1.10-chrome.zip",
+    });
+  });
+
+  it("returns null when no extension release exists", () => {
+    expect(resolveBetaArtifact("[]")).toBeNull();
   });
 });

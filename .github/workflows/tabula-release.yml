@@ -73,11 +73,22 @@ jobs:
       - name: Build extension package
         run: bazel build //tabula/extension:chrome_zip
 
-      - name: Attach to release
+      - name: Stamp build identity and attach to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-please.outputs.extension_tag_name }}
         run: |
           cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
-            "${TAG}-chrome.zip"
-          gh release upload "$TAG" "${TAG}-chrome.zip"
+            "$RUNNER_TEMP/${TAG}-chrome.zip"
+          chmod +w "$RUNNER_TEMP/${TAG}-chrome.zip"
+          VERSION="${TAG#tabula-extension-v}"
+          cd "$RUNNER_TEMP"
+          printf '{"commit":"%s","builtAt":"%s","version":"%s"}\n' \
+            "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$VERSION" \
+            > build_info.json
+          # Replace the placeholder entry in place — same post-Bazel stamping
+          # as tabula-dev-latest.yaml; the hermetic build stays untouched.
+          # Without this, beta installs would carry commit "dev" and the
+          # update checker would disable itself.
+          zip -q "${TAG}-chrome.zip" build_info.json
+          gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip" --clobber

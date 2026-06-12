@@ -41,6 +41,7 @@ import { AccountSettings } from "../components/AccountSettings";
 import { AuthService, User } from "../services/auth";
 import { SyncStatusIndicator } from "../components/SyncStatusIndicator";
 import { UpdateBanner } from "../components/UpdateBanner";
+import { UpdateCheckService } from "../services/updateCheck";
 import { DroppableContainer } from "./DroppableContainer";
 import { ResourceSection } from "./ResourceSection";
 import { NotesPanel } from "./NotesPanel";
@@ -185,6 +186,26 @@ export const Dashboard: React.FC = () => {
 
   // Command Palette State
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  const [buildIdentity, setBuildIdentity] = useState<{
+    channel: string;
+    commit: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    UpdateCheckService.getDisplayIdentity().then((identity) => {
+      if (!cancelled && identity) {
+        setBuildIdentity({
+          channel: identity.channel,
+          commit: identity.commit,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     AuthService.getUser().then(setUser);
@@ -1052,6 +1073,9 @@ export const Dashboard: React.FC = () => {
             title="Extension Version"
           >
             v{chrome?.runtime?.getManifest?.()?.version || "dev"}
+            {buildIdentity
+              ? ` · ${buildIdentity.channel} · ${buildIdentity.commit.slice(0, 7)}`
+              : ""}
           </span>
         </div>
       </div>
