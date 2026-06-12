@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "lima",
     srcs = [
+        "keeper.go",
         "lima.go",
         "mounts.go",
     ],
@@ -18,7 +19,10 @@ go_library(
 
 go_test(
     name = "lima_test",
-    srcs = ["mounts_test.go"],
+    srcs = [
+        "keeper_test.go",
+        "mounts_test.go",
+    ],
     embed = [":lima"],
     deps = ["//devx/internal/multinode/config"],
 )
