@@ -92,7 +92,7 @@ test.afterAll(async () => {
   await context.close();
 });
 
-test.describe("Sync Journeys (Serial / Flaky)", () => {
+test.describe("Sync Journeys (Serial)", () => {
   test.describe.configure({ mode: "serial" });
 
   // Clean up test workspaces before each test to prevent hitting the 10 workspace limit
@@ -115,8 +115,13 @@ test.describe("Sync Journeys (Serial / Flaky)", () => {
     await page.close();
   });
 
-  // FIXME: This test is flaky in CI/E2E environment - resources fail to persist multiple additions in loop
-  // Suspect race condition in storage or state sync.
+  // Regression guard for #46. The "resources fail to persist multiple
+  // additions" flake was a state race, not test timing: useTabSync.syncTabs
+  // rebuilt React state by spreading a stale activeWorkspaceRef, so a tab event
+  // (e.g. "Open All" opening tabs) firing shortly after an add overwrote the
+  // section's resource list with a pre-add snapshot. Fixed by basing the sync's
+  // state update on the freshest persisted workspace; see useTabSync.test.ts
+  // "does not clobber concurrently-added data (#46)".
   test("should allow tab reordering after switching workspaces and back", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
 
@@ -385,7 +390,10 @@ test.describe("Sync Journeys (Serial / Flaky)", () => {
     await page.close();
   });
 
-  // FIXME: This test is flaky in CI/E2E environment - Open All sometimes fails to open all tabs
+  // Regression guard for #46 (same root cause as above). "Open All" opens the
+  // section's resources as tabs, so a clobbered resource list manifested here
+  // as "Open All sometimes fails to open all tabs". Fixed by the useTabSync
+  // stale-ref fix.
   test("should have fresh Chrome tab IDs after workspace switch", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
     await page.waitForLoadState("networkidle");

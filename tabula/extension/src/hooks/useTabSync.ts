@@ -37,6 +37,16 @@ import { useLatest } from "./useLatest";
  */
 const ACTIVE_DEVICE_STALE_MS = 2 * 60 * 1000;
 
+/**
+ * Startup readiness poll cadence and bound (replaces the old blind 500ms
+ * delay). We poll Chrome's tab/group consistency every INIT_SYNC_POLL_MS and
+ * give up waiting after INIT_SYNC_MAX_WAIT_MS, after which the initial sync
+ * runs anyway — syncTabs' own "groups detected but no groupIds yet" guard keeps
+ * a still-inconsistent snapshot from being persisted.
+ */
+const INIT_SYNC_POLL_MS = 50;
+const INIT_SYNC_MAX_WAIT_MS = 2000;
+
 interface UseTabSyncOptions {
   /** Ref to current workspace - prevents stale closure issues */
   activeWorkspaceRef: React.RefObject<Workspace | null>;
@@ -77,6 +87,7 @@ export const useTabSync = ({
   activeWorkspaceId,
 }: UseTabSyncOptions) => {
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const initPollRef = useRef<ReturnType<typeof setTimeout>>();
   const isSyncingRef = useRef(false);
   const ownershipLostRef = useRef(false);
   // syncTabs is memoized once (its deps are all referentially stable), so the
@@ -376,9 +387,19 @@ export const useTabSync = ({
         return;
       }
 
-      // Update local state immediately for instant feedback
+      // Update local state immediately for instant feedback.
+      //
+      // Base the update on the freshest PERSISTED workspace, not the
+      // activeWorkspaceRef snapshot: the ref can lag storage by a few ticks
+      // after a granular edit (addResourceToSection/addNote/... persist
+      // synchronously, but the ref only catches up once loadWorkspaces + a
+      // re-render run). Spreading the stale ref here lets a tab event firing in
+      // that window overwrite the UI's resources/notes/tasks with a pre-edit
+      // snapshot (#46 — "resources fail to persist multiple additions"). Only
+      // tabs/tabGroups are authored by this sync, so we override just those.
+      const freshBase = storedWorkspace ?? currentWorkspace;
       setActiveWorkspaceData({
-        ...currentWorkspace,
+        ...freshBase,
         tabs: cleanTabs,
         tabGroups: tabGroupsToSave,
       });
@@ -448,52 +469,56 @@ export const useTabSync = ({
 
   // Set up Chrome tab event listeners
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) return undefined;
 
-    // TODO: WORKAROUND for Chrome tab groups API timing issue (Jan 2026)
-    // =====================================================================
-    // Problem: On soft refresh (Cmd+R), Chrome's tabs.query() returns tabs with
-    // groupId: -1 even when tabs ARE in groups. The tabGroups.query() API returns
-    // groups correctly, but the tabs themselves haven't been assigned their groupIds
-    // yet. This causes a mismatch where we detect groups but tabs have no groupId,
-    // resulting in lost tab group associations.
-    //
-    // Hard refresh (Shift+Cmd+R) works because it gives Chrome more time to
-    // fully initialize its internal state before our extension queries the APIs.
-    //
-    // Current workaround: Delay initial sync by 500ms to simulate hard refresh.
-    // This is not ideal but works.
-    //
-    // Future improvements to investigate:
-    // 1. Poll until tabs have groupIds that match detected groups
-    // 2. Use a "ready" event from Chrome if one exists
-    // 3. Query tabs and groups atomically in a single operation
-    // 4. Skip sync entirely on load and only display stored data
-    // =====================================================================
-    const initDelay = setTimeout(() => {
-      chrome.tabs.onCreated.addListener(debouncedSync);
-      chrome.tabs.onUpdated.addListener(handleTabUpdate);
-      chrome.tabs.onRemoved.addListener(handleTabRemoved);
-      chrome.tabs.onMoved.addListener(debouncedSync);
-      chrome.tabs.onDetached.addListener(debouncedSync);
-      chrome.tabs.onAttached.addListener(debouncedSync);
+    // Register listeners IMMEDIATELY so no early tab/group event is missed.
+    // Any sync triggered during Chrome's transient "groups exist but tabs still
+    // report groupId -1" window after a soft refresh is safely skipped by
+    // syncTabs' own guard, so early registration cannot persist a bad snapshot.
+    chrome.tabs.onCreated.addListener(debouncedSync);
+    chrome.tabs.onUpdated.addListener(handleTabUpdate);
+    chrome.tabs.onRemoved.addListener(handleTabRemoved);
+    chrome.tabs.onMoved.addListener(debouncedSync);
+    chrome.tabs.onDetached.addListener(debouncedSync);
+    chrome.tabs.onAttached.addListener(debouncedSync);
 
-      // Tab group event listeners
-      chrome.tabGroups.onCreated.addListener(debouncedSync);
-      chrome.tabGroups.onUpdated.addListener(debouncedSync);
-      chrome.tabGroups.onRemoved.addListener(debouncedSync);
+    // Tab group event listeners
+    chrome.tabGroups.onCreated.addListener(debouncedSync);
+    chrome.tabGroups.onUpdated.addListener(debouncedSync);
+    chrome.tabGroups.onRemoved.addListener(debouncedSync);
 
-      // eslint-disable-next-line no-console
-      console.log(
-        "[useTabSync] Initialized after delay - Chrome APIs should be stable now",
-      );
-
-      // Trigger initial sync after delay
-      debouncedSync();
-    }, 500); // 500ms delay to allow Chrome to stabilize
+    // Condition-based startup (replaces the old blind 500ms delay). On a soft
+    // refresh Chrome's tabs.query() briefly reports groupId -1 for grouped tabs
+    // while tabGroups.query() already lists the groups; syncing in that window
+    // drops tab/group associations. Poll TabService.areTabGroupsConsistent
+    // until Chrome's two APIs agree, THEN run the initial sync. This resolves
+    // the instant Chrome is ready (no groups -> immediately) instead of always
+    // paying a fixed delay, and waits up to INIT_SYNC_MAX_WAIT_MS under load.
+    let cancelled = false;
+    (async () => {
+      const start = Date.now();
+      while (!cancelled) {
+        let consistent = true;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          consistent = await TabService.areTabGroupsConsistent(
+            currentWindowIdRef.current ?? undefined,
+          );
+        } catch {
+          consistent = true;
+        }
+        if (consistent || Date.now() - start >= INIT_SYNC_MAX_WAIT_MS) break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+          initPollRef.current = setTimeout(resolve, INIT_SYNC_POLL_MS);
+        });
+      }
+      if (!cancelled) debouncedSync();
+    })();
 
     return () => {
-      clearTimeout(initDelay);
+      cancelled = true;
+      clearTimeout(initPollRef.current);
       clearTimeout(timeoutRef.current);
       chrome.tabs.onCreated.removeListener(debouncedSync);
       chrome.tabs.onUpdated.removeListener(handleTabUpdate);

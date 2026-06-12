@@ -565,6 +565,48 @@ export class TabService {
   }
 
   /**
+   * Readiness probe for the initial post-load tab sync.
+   *
+   * On a soft refresh (Cmd+R) Chrome briefly reports `groupId: -1` for tabs
+   * that ARE grouped, while `tabGroups.query()` already lists the groups. A
+   * sync in that window would capture groups with no members and drop the
+   * tab/group associations (the bug useTabSync used to dodge with a blind
+   * 500ms delay). This returns true once the two APIs agree — either there are
+   * no groups, or at least one tab has been assigned a real groupId — so the
+   * caller can wait on the actual condition instead of guessing at timing.
+   *
+   * Query failures resolve to `true` (don't wedge startup): syncTabs has its
+   * own guards against persisting an inconsistent snapshot.
+   */
+  static async areTabGroupsConsistent(
+    windowId: number | undefined = undefined,
+  ): Promise<boolean> {
+    try {
+      let targetWindowId = windowId;
+      if (targetWindowId === undefined) {
+        const currentWindow = await chrome.windows.getCurrent();
+        if (!currentWindow?.id) return true;
+        targetWindowId = currentWindow.id;
+      }
+
+      const [groups, tabs] = await Promise.all([
+        chrome.tabGroups.query({ windowId: targetWindowId }),
+        chrome.tabs.query({ windowId: targetWindowId }),
+      ]);
+
+      // No groups -> nothing to wait for. Chrome never keeps empty groups, so
+      // groups.length > 0 means at least one tab should report a real groupId
+      // once membership has been assigned.
+      if (groups.length === 0) return true;
+      return tabs.some((t) => t.groupId !== undefined && t.groupId !== -1);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to probe tab group consistency:", error);
+      return true;
+    }
+  }
+
+  /**
    * Restore tab groups after opening tabs.
    * This recreates groups based on saved metadata and groups tabs by their stable groupId (UUID).
    *
