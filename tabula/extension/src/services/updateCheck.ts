@@ -33,6 +33,11 @@
  * exempt from the "management" permission.
  */
 
+/**
+ * Models the workflow-stamped build_info.json — keep in sync with BundleInfo
+ * in tabula/cli/src/utils/extension.ts (duplicated deliberately: the CLI must
+ * not depend on extension code).
+ */
 export interface BuildInfo {
   commit: string;
   builtAt?: string;

@@ -35,6 +35,11 @@ export function defaultExtensionDir(): string {
   return path.join(os.homedir(), ".tabula", "extension");
 }
 
+/**
+ * Models the workflow-stamped build_info.json — keep in sync with BuildInfo in
+ * tabula/extension/src/services/updateCheck.ts (duplicated deliberately: the
+ * CLI must not depend on extension code).
+ */
 export interface BundleInfo {
   commit?: string;
   builtAt?: string;

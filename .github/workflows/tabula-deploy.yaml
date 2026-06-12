@@ -40,10 +40,15 @@ on:
   push:
     branches: [main]
     paths:
+      # Union with tabula-dev-latest.yaml's trigger paths: the banner clears
+      # only when the published bundle's commit equals the deployed API's
+      # commit, so BOTH artifacts must re-stamp on any commit that moves either.
       - "tabula/api/**"
       - "tabula/shared/**"
       - "infrastructure/pulumi/tabula/**"
+      - "tabula/extension/**"
       - ".github/workflows/tabula-deploy.yaml"
+      - ".github/workflows/tabula-dev-latest.yaml"
   workflow_dispatch:
     inputs:
       environment:

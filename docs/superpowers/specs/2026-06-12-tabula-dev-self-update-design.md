@@ -30,7 +30,7 @@ something outside Chrome must swap the files, and only a reload (or
 ## The loop
 
 ```
-main commit ──► CI: build chrome_zip (GIT_SHA baked in) ──► overwrite rolling
+main commit ──► CI: build chrome_zip (identity stamped post-build) ──► overwrite rolling
                   "dev-latest" GitHub prerelease (zip + build_info.json)
        │
        └──► dev API auto-redeploys (same commit) ──► GET / reports {commit}
@@ -52,7 +52,7 @@ reload — a chicken-and-egg. The API poll plus an always-available Reload
 button gives the same UX without that fragility. The dev API and the extension
 artifact are built from the same `main` commit, so commit-vs-commit is exact
 in practice; a brief skew window while CI publishes is acceptable for a dev
-channel.
+channel. Both publish workflows trigger on the union of tabula paths, so any commit that moves either artifact re-stamps both at the same head sha — required for the equality check to converge.
 
 ## Components
 
@@ -76,9 +76,7 @@ identity is injected _after_ the hermetic build:
 
 - Trigger: push to `main`, paths `tabula/extension/**` (plus the workflow
   itself).
-- Steps: `GIT_SHA=${{ github.sha }} bazel build //tabula/extension:chrome_zip`
-  → `gh release upload tabula-extension-dev-latest --clobber` (zip +
-  `build_info.json`).
+- Steps: `bazel build //tabula/extension:chrome_zip` (hermetic, no stamping) → inject the real `build_info.json` into the zip → `gh release upload tabula-extension-dev-latest --clobber` (zip + `build_info.json`).
 - The rolling prerelease uses the fixed tag `tabula-extension-dev-latest`,
   marked `prerelease: true`. Release-please assigns releases by its own
   `tabula-extension-v*` tag pattern, so the fixed tag does not interfere.

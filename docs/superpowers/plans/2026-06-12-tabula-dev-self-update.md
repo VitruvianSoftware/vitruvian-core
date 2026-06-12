@@ -1093,8 +1093,6 @@ export const UpdateBanner: React.FC = () => {
     </div>
   );
 };
-
-export default UpdateBanner;
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1193,8 +1191,15 @@ on:
   push:
     branches: [main]
     paths:
+      # Union with tabula-deploy.yaml's trigger paths: the banner clears only
+      # when the published bundle's commit equals the deployed API's commit,
+      # so BOTH artifacts must re-stamp on any commit that moves either.
       - "tabula/extension/**"
+      - "tabula/shared/**"
+      - "tabula/api/**"
+      - "infrastructure/pulumi/tabula/**"
       - ".github/workflows/tabula-dev-latest.yaml"
+      - ".github/workflows/tabula-deploy.yaml"
 
 permissions:
   contents: write
