@@ -41,9 +41,10 @@ describe("UpdateBanner", () => {
 
   it("renders nothing when no update is available", async () => {
     checkForUpdate.mockResolvedValue({
+      channel: "alpha",
       updateAvailable: false,
-      ownCommit: "a",
-      deployedCommit: "a",
+      current: "a",
+      latest: "a",
     });
     render(<UpdateBanner />);
     await act(async () => {
@@ -63,9 +64,10 @@ describe("UpdateBanner", () => {
 
   it("shows the deployed short-sha and reloads on click", async () => {
     checkForUpdate.mockResolvedValue({
+      channel: "alpha",
       updateAvailable: true,
-      ownCommit: "oldsha12",
-      deployedCommit: "newsha9876",
+      current: "oldsha12",
+      latest: "newsha9876",
     });
     render(<UpdateBanner />);
     expect(await screen.findByRole("status")).toBeInTheDocument();
@@ -79,9 +81,10 @@ describe("UpdateBanner", () => {
 
   it("dismiss hides the banner for that deployed commit", async () => {
     checkForUpdate.mockResolvedValue({
+      channel: "alpha",
       updateAvailable: true,
-      ownCommit: "oldsha12",
-      deployedCommit: "newsha9876",
+      current: "oldsha12",
+      latest: "newsha9876",
     });
     render(<UpdateBanner />);
     expect(await screen.findByRole("status")).toBeInTheDocument();
@@ -94,9 +97,10 @@ describe("UpdateBanner", () => {
     jest.useFakeTimers();
     try {
       checkForUpdate.mockResolvedValueOnce({
+        channel: "alpha",
         updateAvailable: true,
-        ownCommit: "oldsha12",
-        deployedCommit: "newsha9876",
+        current: "oldsha12",
+        latest: "newsha9876",
       });
       checkForUpdate.mockResolvedValue(null);
       render(<UpdateBanner />);
@@ -110,5 +114,19 @@ describe("UpdateBanner", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("phrases the beta channel offer as a release version", async () => {
+    checkForUpdate.mockResolvedValue({
+      channel: "beta",
+      updateAvailable: true,
+      current: "0.1.9",
+      latest: "0.2.0",
+    });
+    render(<UpdateBanner />);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "New release v0.2.0 available",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("tabcli ext update");
   });
 });

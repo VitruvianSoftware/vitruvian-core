@@ -21,23 +21,26 @@
  */
 
 /**
- * UpdateBanner — dev-channel "new build available" nudge (issue #45, M1).
+ * UpdateBanner — channel-aware nudge for the offered update (commit or version,
+ * per channel) (issue #45, M2).
  *
- * Polls UpdateCheckService on mount and every 15 minutes. When the deployed
- * commit differs from this build's commit, offers Reload
- * (chrome.runtime.reload()) — the user runs `tabcli ext update` first so the
- * on-disk files are already the new build. Failures stay silent; the fixed
- * interval is the backoff. Dismiss hides the banner for that deployed commit.
+ * Polls UpdateCheckService on mount and every 15 minutes. When an update is
+ * available the copy adapts: alpha shows the short commit SHA, beta shows the
+ * release version number. The user runs `tabcli ext update` first so the
+ * on-disk files are already the new build, then reloads via
+ * chrome.runtime.reload(). Failures stay silent; the fixed interval is the
+ * backoff. Dismiss hides the banner for that deployed commit or version.
  */
 
 import React, { useEffect, useState } from "react";
 import { UpdateCheckService } from "../services/updateCheck";
+import type { UpdateCheckResult } from "../services/updateCheck";
 
 const POLL_INTERVAL_MS = 15 * 60 * 1000;
 
 export const UpdateBanner: React.FC = () => {
-  const [deployedCommit, setDeployedCommit] = useState<string | null>(null);
-  const [dismissedCommit, setDismissedCommit] = useState<string | null>(null);
+  const [offer, setOffer] = useState<UpdateCheckResult | null>(null);
+  const [dismissedLatest, setDismissedLatest] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +50,7 @@ export const UpdateBanner: React.FC = () => {
       // null = ineligible or no reliable answer — keep the current banner
       // state rather than flickering it off on a transient failure.
       if (result === null) return;
-      setDeployedCommit(result.updateAvailable ? result.deployedCommit : null);
+      setOffer(result.updateAvailable ? result : null);
     };
     check();
     const id = setInterval(check, POLL_INTERVAL_MS);
@@ -57,13 +60,15 @@ export const UpdateBanner: React.FC = () => {
     };
   }, []);
 
-  if (!deployedCommit || deployedCommit === dismissedCommit) return null;
+  if (!offer || offer.latest === dismissedLatest) return null;
 
   return (
     <div className="update-banner" role="status">
       <span>
-        New build deployed ({deployedCommit.slice(0, 7)}) — run{" "}
-        <code>tabcli ext update</code>, then reload.
+        {offer.channel === "beta"
+          ? `New release v${offer.latest} available`
+          : `New build deployed (${offer.latest.slice(0, 7)})`}{" "}
+        — run <code>tabcli ext update</code>, then reload.
       </span>
       <button
         type="button"
@@ -75,7 +80,7 @@ export const UpdateBanner: React.FC = () => {
       <button
         type="button"
         className="update-banner-dismiss"
-        onClick={() => setDismissedCommit(deployedCommit)}
+        onClick={() => setDismissedLatest(offer.latest)}
       >
         Dismiss
       </button>
