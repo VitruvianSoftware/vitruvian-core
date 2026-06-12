@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.7...tabula-extension-v0.1.8) (2026-06-12)
+
+
+### Bug Fixes
+
+* **tabula:** complete the signed-out dashboard UX and repair e2e ([#41](https://github.com/VitruvianSoftware/vitruvian-core/issues/41)) ([24af2b7](https://github.com/VitruvianSoftware/vitruvian-core/commit/24af2b76a453abc40bc2284692ba2258174a7dda))
+
 ## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.6...tabula-extension-v0.1.7) (2026-06-11)
 
 
