@@ -962,7 +962,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 flex: 1,
                 minWidth: "120px",
                 padding: "12px",
-                backgroundColor: "var(--color-bg-secondary)",
+                backgroundColor: "var(--color-btn-shaded-bg)",
                 borderRadius: "8px",
               }}
             >
@@ -987,7 +987,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 flex: 1,
                 minWidth: "120px",
                 padding: "12px",
-                backgroundColor: "var(--color-bg-secondary)",
+                backgroundColor: "var(--color-btn-shaded-bg)",
                 borderRadius: "8px",
               }}
             >
@@ -1122,7 +1122,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           <div
             style={{
               padding: "12px",
-              backgroundColor: "var(--color-bg-secondary)",
+              backgroundColor: "var(--color-btn-shaded-bg)",
               borderRadius: "8px",
               fontSize: "12px",
               color: "var(--color-text-secondary)",
@@ -1342,7 +1342,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             width: "200px",
             borderRight: "1px solid var(--color-border)",
             padding: "16px",
-            backgroundColor: "var(--color-bg-secondary)",
+            backgroundColor: "var(--color-btn-shaded-bg)",
           }}
         >
           <nav>

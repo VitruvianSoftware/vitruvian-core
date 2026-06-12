@@ -21,8 +21,8 @@
  */
 
 /* Material Icons */
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons+Outlined');
+@import url("https://fonts.googleapis.com/icon?family=Material+Icons");
+@import url("https://fonts.googleapis.com/icon?family=Material+Icons+Outlined");
 
 :root {
   /* Colors - Light Theme (Workona Design Palette) */
@@ -62,7 +62,7 @@
   --shadow-popover: 0 20px 48px rgba(0, 0, 0, 0.2);
 
   /* Typography - Workona uses Avenir Next */
-  --font-family: 'Avenir Next', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family: "Avenir Next", "Inter", system-ui, -apple-system, sans-serif;
   --font-size-xs: 10px;
   --font-size-sm: 11px;
   --font-size-base: 13px;
@@ -103,12 +103,15 @@
   /* Mappings for components.css */
   --color-primary: var(--color-accent-primary);
   --color-primary-hover: var(--color-accent-primary-hover);
+  /* Accent tint for active/selected surfaces (badges, active nav tabs) —
+     derived from --color-accent-primary #3370ff */
+  --color-primary-light: rgba(51, 112, 255, 0.12);
   --color-danger: var(--color-accent-danger);
   --color-text-main: var(--color-text-primary);
 }
 
 /* Dark Theme */
-[data-theme='dark'] {
+[data-theme="dark"] {
   --color-bg-page: rgb(18, 20, 24);
   --color-bg-sidebar: rgb(28, 31, 38);
   --color-bg-card: rgb(33, 37, 46);
@@ -124,6 +127,8 @@
   --color-btn-shaded-bg-hover: rgba(255, 255, 255, 0.12);
   --color-btn-reveal-hover: rgba(255, 255, 255, 0.08);
 
+  --color-primary-light: rgba(51, 112, 255, 0.22);
+
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-sidebar: rgba(255, 255, 255, 0.08);
 
@@ -135,7 +140,7 @@
 
 /* System theme (uses prefers-color-scheme) */
 @media (prefers-color-scheme: dark) {
-  [data-theme='system'] {
+  [data-theme="system"] {
     --color-bg-page: rgb(18, 20, 24);
     --color-bg-sidebar: rgb(28, 31, 38);
     --color-bg-card: rgb(33, 37, 46);
@@ -151,11 +156,15 @@
     --color-btn-shaded-bg-hover: rgba(255, 255, 255, 0.12);
     --color-btn-reveal-hover: rgba(255, 255, 255, 0.08);
 
+    --color-primary-light: rgba(51, 112, 255, 0.22);
+
     --color-border: rgba(255, 255, 255, 0.08);
     --color-border-sidebar: rgba(255, 255, 255, 0.08);
 
-    --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-card:
+      0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-card-hover:
+      0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 }
