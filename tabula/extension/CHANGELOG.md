@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.9...tabula-extension-v0.1.10) (2026-06-12)
+
+
+### Features
+
+* **tabula:** dev-channel self-update — dev-latest bundle, tabcli ext, update banner ([#45](https://github.com/VitruvianSoftware/vitruvian-core/issues/45) M1) ([#55](https://github.com/VitruvianSoftware/vitruvian-core/issues/55)) ([6fc8bf7](https://github.com/VitruvianSoftware/vitruvian-core/commit/6fc8bf7a4e5258386d9e88c7dd6290ad27f34cc2))
+
 ## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.8...tabula-extension-v0.1.9) (2026-06-12)
 
 
