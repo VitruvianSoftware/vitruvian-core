@@ -314,6 +314,30 @@ export class SyncService {
   }
 
   /**
+   * Entity ids that currently have a pending `save` queued for the given type.
+   *
+   * The pull-merge uses this to protect un-acked local edits: a workspace with
+   * a queued save must NOT be overwritten by a remote copy that only looks
+   * "newer" because the server auto-stamps updated_at on write (Prisma
+   * `@updatedAt`). Its queued PUT is the source of truth and will converge the
+   * server. Reads the authoritative persisted queue under the queue lock —
+   * callers may hold the workspace lock (workspace -> queue ordering is
+   * allowed; never the reverse).
+   */
+  static async getPendingSaveIds(
+    type: SyncOperationType,
+  ): Promise<Set<string>> {
+    return this.withQueueLock(async () => {
+      await this.loadQueue();
+      return new Set(
+        this.queue
+          .filter((op) => op.type === type && op.action === "save")
+          .map((op) => op.entityId),
+      );
+    });
+  }
+
+  /**
    * Drain the sync queue, one operation at a time.
    *
    * The queue lock is held only around queue reads/writes — never across

@@ -245,6 +245,34 @@ describe("SyncService", () => {
     });
   });
 
+  describe("getPendingSaveIds", () => {
+    it("returns entity ids of pending saves for the given type only", async () => {
+      await SyncService.clearQueue();
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "save",
+        entityId: "ws-save",
+        data: createMockWorkspace({ id: "ws-save" }),
+      });
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "delete",
+        entityId: "ws-del",
+      });
+
+      const ids = await SyncService.getPendingSaveIds("workspace");
+      expect(ids.has("ws-save")).toBe(true);
+      // deletes are not saves
+      expect(ids.has("ws-del")).toBe(false);
+    });
+
+    it("is empty when nothing is queued", async () => {
+      await SyncService.clearQueue();
+      const ids = await SyncService.getPendingSaveIds("workspace");
+      expect(ids.size).toBe(0);
+    });
+  });
+
   describe("enqueue", () => {
     it("should add operation to queue", async () => {
       const workspace = createMockWorkspace();
