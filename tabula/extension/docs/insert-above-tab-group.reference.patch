@@ -1,0 +1,457 @@
+diff --git a/extension/src/dashboard/DraggableTabItem.tsx b/extension/src/dashboard/DraggableTabItem.tsx
+index 79de2f7..f6a9a0a 100644
+--- a/extension/src/dashboard/DraggableTabItem.tsx
++++ b/extension/src/dashboard/DraggableTabItem.tsx
+@@ -9,6 +9,10 @@ export interface DraggableTabItemProps {
+   onClose: () => void;
+   onEdit: () => void;
+   onActivate: () => void;
++  /** Optional color for left border (for grouped tabs) */
++  groupColor?: string;
++  /** Whether this is the last tab in a group (adds margin-bottom) */
++  isLastInGroup?: boolean;
+ }
+ 
+ /**
+@@ -20,6 +24,8 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
+   onClose,
+   onEdit,
+   onActivate,
++  groupColor,
++  isLastInGroup,
+ }) => {
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+     id: `tab-${tab.id}`,
+@@ -30,6 +36,8 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
+     transform: CSS.Transform.toString(transform),
+     transition,
+     opacity: isDragging ? 0.5 : 1,
++    borderLeft: groupColor ? `4px solid ${groupColor}` : '4px solid transparent',
++    marginBottom: isLastInGroup ? '12px' : undefined,
+   };
+ 
+   return (
+diff --git a/extension/src/dashboard/OpenTabsPanel.tsx b/extension/src/dashboard/OpenTabsPanel.tsx
+index c4e6d1a..2f18144 100644
+--- a/extension/src/dashboard/OpenTabsPanel.tsx
++++ b/extension/src/dashboard/OpenTabsPanel.tsx
+@@ -34,13 +34,13 @@ export interface OpenTabsPanelProps {
+  */
+ type RenderItem =
+   | {
+-      type: 'group-header';
+-      group: TabGroup;
+-      tabCount: number;
+-      tabIds: number[];
+-      chromeGroupId?: number;
+-      isCollapsed: boolean;
+-    }
++    type: 'group-header';
++    group: TabGroup;
++    tabCount: number;
++    tabIds: number[];
++    chromeGroupId?: number;
++    isCollapsed: boolean;
++  }
+   | { type: 'tab'; tab: Tab; groupId?: string; isGroupCollapsed: boolean };
+ 
+ /**
+@@ -65,9 +65,26 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
+   isFirst,
+   onToggleCollapse,
+ }) => {
+-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
++  const {
++    attributes,
++    listeners,
++    setNodeRef,
++    transform,
++    transition,
++    isDragging,
++    isOver,
++  } = useSortable({
+     id: `group-${group.id}`,
+-    data: { type: 'tab-group', groupId: group.id, tabIds },
++    data: { type: 'tab-group', groupId: group.id, tabIds, chromeGroupId, dropZone: 'header' },
++  });
++
++  // Separate droppable for "insert above" zone
++  const {
++    setNodeRef: setInsertAboveRef,
++    isOver: isOverInsertAbove,
++  } = useSortable({
++    id: `insert-above-${group.id}`,
++    data: { type: 'insert-above-group', groupId: group.id, tabIds, chromeGroupId },
+   });
+ 
+   const style = {
+@@ -77,90 +94,126 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
+   };
+ 
+   return (
+-    <div
+-      ref={setNodeRef}
+-      style={{
+-        ...style,
+-        display: 'flex',
+-        alignItems: 'center',
+-        padding: '8px 12px',
+-        cursor: 'grab',
+-        borderRadius: '6px',
+-        marginBottom: '4px',
+-        marginTop: isFirst ? 0 : '8px',
+-        backgroundColor: 'var(--color-bg-tertiary)',
+-        transition: 'background-color 0.15s ease',
+-      }}
+-      {...attributes}
+-      {...listeners}
+-      onMouseEnter={(e) => {
+-        if (!isDragging) {
+-          e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
+-        }
+-      }}
+-      onMouseLeave={(e) => {
+-        e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)';
+-      }}
+-    >
+-      <button
+-        type="button"
+-        data-testid="collapse-group-button"
+-        onClick={(e) => {
+-          e.stopPropagation();
+-          const newCollapsed = !isCollapsed;
+-          // Sync with Chrome tab group
+-          if (chromeGroupId !== undefined) {
+-            TabService.setTabGroupCollapsed(chromeGroupId, newCollapsed);
+-          }
+-          onToggleCollapse(newCollapsed);
+-        }}
++    <div style={{ position: 'relative' }}>
++      {/* Insert Above Drop Zone - thin strip above the header */}
++      <div
++        ref={setInsertAboveRef}
+         style={{
+-          background: 'none',
+-          border: 'none',
+-          padding: 0,
+-          cursor: 'pointer',
+-          display: 'flex',
+-          alignItems: 'center',
++          position: 'absolute',
++          top: isFirst ? '-4px' : '-8px',
++          left: 0,
++          right: 0,
++          height: '12px',
++          zIndex: 10,
+         }}
+       >
+-        <Icon
+-          name={isCollapsed ? 'keyboard_arrow_right' : 'keyboard_arrow_down'}
+-          size="sm"
+-          style={{ marginRight: '6px', opacity: 0.7, color: 'var(--color-text-muted)' }}
+-        />
+-      </button>
+-      <span
++        {/* Visual indicator when hovering insert-above zone */}
++        {isOverInsertAbove && (
++          <div
++            style={{
++              position: 'absolute',
++              top: '50%',
++              left: '8px',
++              right: '8px',
++              height: '2px',
++              backgroundColor: 'var(--color-accent-primary)',
++              borderRadius: '1px',
++            }}
++          />
++        )}
++      </div>
++
++      {/* Main header - drop here to add to group */}
++      <div
++        ref={setNodeRef}
+         style={{
+-          width: '10px',
+-          height: '10px',
+-          borderRadius: '50%',
+-          backgroundColor: GROUP_COLORS[group.color || 'grey'] || GROUP_COLORS.grey,
+-          marginRight: '8px',
+-          flexShrink: 0,
++          ...style,
++          display: 'flex',
++          alignItems: 'center',
++          padding: '8px 12px',
++          cursor: 'grab',
++          borderRadius: '6px',
++          marginBottom: '4px',
++          marginTop: isFirst ? 0 : '8px',
++          backgroundColor: isOver
++            ? 'var(--color-accent-primary-soft)'
++            : 'var(--color-bg-tertiary)',
++          transition: 'background-color 0.15s ease',
++          border: isOver ? '2px dashed var(--color-accent-primary)' : '2px solid transparent',
+         }}
+-      />
+-      <span
+-        style={{
+-          flex: 1,
+-          fontWeight: 500,
+-          fontSize: 'var(--font-size-sm)',
+-          color: 'var(--color-text-primary)',
+-          overflow: 'hidden',
+-          textOverflow: 'ellipsis',
+-          whiteSpace: 'nowrap',
++        {...attributes}
++        {...listeners}
++        onMouseEnter={(e) => {
++          if (!isDragging && !isOver) {
++            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
++          }
+         }}
+-      >
+-        {group.title || 'Untitled'}
+-      </span>
+-      <span
+-        style={{
+-          fontSize: 'var(--font-size-xs)',
+-          color: 'var(--color-text-muted)',
+-          marginLeft: '8px',
++        onMouseLeave={(e) => {
++          if (!isOver) {
++            e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)';
++          }
+         }}
+       >
+-        {tabCount}
+-      </span>
++        <button
++          type="button"
++          data-testid="collapse-group-button"
++          onClick={(e) => {
++            e.stopPropagation();
++            const newCollapsed = !isCollapsed;
++            // Sync with Chrome tab group
++            if (chromeGroupId !== undefined) {
++              TabService.setTabGroupCollapsed(chromeGroupId, newCollapsed);
++            }
++            onToggleCollapse(newCollapsed);
++          }}
++          style={{
++            background: 'none',
++            border: 'none',
++            padding: 0,
++            cursor: 'pointer',
++            display: 'flex',
++            alignItems: 'center',
++          }}
++        >
++          <Icon
++            name={isCollapsed ? 'keyboard_arrow_right' : 'keyboard_arrow_down'}
++            size="sm"
++            style={{ marginRight: '6px', opacity: 0.7, color: 'var(--color-text-muted)' }}
++          />
++        </button>
++        <span
++          style={{
++            width: '10px',
++            height: '10px',
++            borderRadius: '50%',
++            backgroundColor: GROUP_COLORS[group.color || 'grey'] || GROUP_COLORS.grey,
++            marginRight: '8px',
++            flexShrink: 0,
++          }}
++        />
++        <span
++          style={{
++            flex: 1,
++            fontWeight: 500,
++            fontSize: 'var(--font-size-sm)',
++            color: 'var(--color-text-primary)',
++            overflow: 'hidden',
++            textOverflow: 'ellipsis',
++            whiteSpace: 'nowrap',
++          }}
++        >
++          {group.title || 'Untitled'}
++        </span>
++        <span
++          style={{
++            fontSize: 'var(--font-size-xs)',
++            color: 'var(--color-text-muted)',
++            marginLeft: '8px',
++          }}
++        >
++          {tabCount}
++        </span>
++      </div>
+     </div>
+   );
+ };
+@@ -237,7 +290,7 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
+     return items;
+   }, [activeTabs, groupMap]);
+ 
+-  // Build sortable items list (tab IDs + group IDs)
++  // Build sortable items list (tab IDs + group IDs + insert-above zones)
+   const sortableItems = useMemo(() => {
+     const items: string[] = [];
+     const seenGroups = new Set<string>();
+@@ -246,6 +299,8 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
+       const group = tab.groupId ? groupMap.get(tab.groupId) : undefined;
+       if (group && !seenGroups.has(group.id)) {
+         seenGroups.add(group.id);
++        // Add insert-above zone before the group header
++        items.push(`insert-above-${group.id}`);
+         items.push(`group-${group.id}`);
+       }
+       items.push(`tab-${tab.id}`);
+@@ -302,21 +357,15 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
+               ((nextItem.type === 'tab' && !nextItem.groupId) || nextItem.type === 'group-header');
+ 
+             return (
+-              <div
++              <DraggableTabItem
+                 key={tab.url || tab.id}
+-                style={{
+-                  borderLeft:
+-                    isGrouped && groupColor ? `4px solid ${groupColor}` : '4px solid transparent',
+-                  marginBottom: isLastInGroup ? '12px' : undefined,
+-                }}
+-              >
+-                <DraggableTabItem
+-                  tab={tab}
+-                  onClose={() => tab.id && onCloseTab(tab.id, tab.url)}
+-                  onEdit={() => onEditTab(tab)}
+-                  onActivate={() => tab.id && onActivateTab(tab.id, tab)}
+-                />
+-              </div>
++                tab={tab}
++                groupColor={groupColor}
++                isLastInGroup={isLastInGroup}
++                onClose={() => tab.id && onCloseTab(tab.id, tab.url)}
++                onEdit={() => onEditTab(tab)}
++                onActivate={() => tab.id && onActivateTab(tab.id, tab)}
++              />
+             );
+           })}
+         </SortableContext>
+diff --git a/extension/src/dashboard/hooks/useDragAndDrop.ts b/extension/src/dashboard/hooks/useDragAndDrop.ts
+index 43eb777..1b2bbab 100644
+--- a/extension/src/dashboard/hooks/useDragAndDrop.ts
++++ b/extension/src/dashboard/hooks/useDragAndDrop.ts
+@@ -248,12 +248,30 @@ export const useDragAndDrop = ({
+           setActiveWorkspaceData(updatedWorkspace);
+ 
+           const movingTabId = active.data.current?.tab.id;
++          const movingTab = active.data.current?.tab;
+           const overTabId = over.data.current?.tab.id;
++          const overTab = over.data.current?.tab;
+ 
+           if (movingTabId && overTabId) {
+-            const overTab = await TabService.getTab(overTabId);
+-            if (overTab && typeof overTab.index === 'number') {
+-              await TabService.moveTab(movingTabId, overTab.index);
++            // Check if group membership needs to change
++            const movingWasGrouped =
++              movingTab?.chromeGroupId !== undefined && movingTab.chromeGroupId !== -1;
++            const targetIsGrouped =
++              overTab?.chromeGroupId !== undefined && overTab.chromeGroupId !== -1;
++
++            // If moving from group to ungrouped position, ungroup the tab
++            if (movingWasGrouped && !targetIsGrouped) {
++              await TabService.removeTabFromGroup(movingTabId);
++            }
++            // If moving to a grouped tab, join that group
++            else if (targetIsGrouped && overTab?.chromeGroupId !== movingTab?.chromeGroupId) {
++              await TabService.addTabToGroup(movingTabId, overTab.chromeGroupId);
++            }
++
++            // Move the tab to the new position
++            const targetTab = await TabService.getTab(overTabId);
++            if (targetTab && typeof targetTab.index === 'number') {
++              await TabService.moveTab(movingTabId, targetTab.index);
+             } else {
+               await TabService.moveTab(movingTabId, newIndex);
+             }
+@@ -264,6 +282,45 @@ export const useDragAndDrop = ({
+         return;
+       }
+ 
++      // Handle dropping a single tab on a tab-group header (add to group)
++      if (over.data.current?.type === 'tab-group') {
++        const chromeGroupId = over.data.current?.chromeGroupId as number | undefined;
++        const movingTabId = active.data.current?.tab?.id;
++        const overTabIds = over.data.current?.tabIds as number[] | undefined;
++
++        if (movingTabId && chromeGroupId !== undefined) {
++          // Add the tab to the group
++          await TabService.addTabToGroup(movingTabId, chromeGroupId);
++        } else if (movingTabId && overTabIds?.length) {
++          // Fallback: move to position of first tab in group
++          const firstGroupTab = await TabService.getTab(overTabIds[0]);
++          if (firstGroupTab && typeof firstGroupTab.index === 'number') {
++            await TabService.moveTab(movingTabId, firstGroupTab.index);
++          }
++        }
++        return;
++      }
++
++      // Handle dropping a single tab on insert-above zone (reorder before group, stay ungrouped)
++      if (over.data.current?.type === 'insert-above-group') {
++        const overTabIds = over.data.current?.tabIds as number[] | undefined;
++        const movingTabId = active.data.current?.tab?.id;
++        const movingTab = active.data.current?.tab;
++
++        if (overTabIds?.length && movingTabId) {
++          // If the moving tab was in a group, ungroup it first
++          if (movingTab?.chromeGroupId !== undefined && movingTab.chromeGroupId !== -1) {
++            await TabService.removeTabFromGroup(movingTabId);
++          }
++          // Move the tab to the position before the first tab in the target group
++          const firstGroupTab = await TabService.getTab(overTabIds[0]);
++          if (firstGroupTab && typeof firstGroupTab.index === 'number') {
++            await TabService.moveTab(movingTabId, firstGroupTab.index);
++          }
++        }
++        return;
++      }
++
+       const tabData = active.data.current?.tab;
+       let overContainer: string | undefined;
+ 
+diff --git a/extension/src/services/tabs.ts b/extension/src/services/tabs.ts
+index e750bd7..d5ee971 100644
+--- a/extension/src/services/tabs.ts
++++ b/extension/src/services/tabs.ts
+@@ -317,6 +317,30 @@ export class TabService {
+     }
+   }
+ 
++  /**
++   * Add a tab to an existing Chrome tab group
++   */
++  static async addTabToGroup(tabId: number, chromeGroupId: number): Promise<void> {
++    try {
++      await chrome.tabs.group({ tabIds: [tabId], groupId: chromeGroupId });
++    } catch (error) {
++      // eslint-disable-next-line no-console
++      console.error('Failed to add tab to group:', error);
++    }
++  }
++
++  /**
++   * Remove a tab from its current group (ungroup it)
++   */
++  static async removeTabFromGroup(tabId: number): Promise<void> {
++    try {
++      await chrome.tabs.ungroup(tabId);
++    } catch (error) {
++      // eslint-disable-next-line no-console
++      console.error('Failed to remove tab from group:', error);
++    }
++  }
++
+   /**
+    * Get a specific tab by ID.
+    * Note: Returns chromeGroupId only - use getCurrentTabs with groups for stable groupId mapping.
