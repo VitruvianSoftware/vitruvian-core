@@ -24,7 +24,12 @@
 import { test, expect, chromium, BrowserContext } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { getOrCreateDashboardPage } from "./e2e-helpers";
+import {
+  getOrCreateDashboardPage,
+  getTestToken,
+  loginTestUser,
+  logoutTestUser,
+} from "./e2e-helpers";
 
 const EXTENSION_PATH = process.env.EXTENSION_PATH
   ? path.resolve(process.env.EXTENSION_PATH)
@@ -169,20 +174,31 @@ test.describe("Menu Overlay Regression Tests", () => {
   test("should close User menu when clicking outside", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
 
-    // Click user avatar
-    await page.locator('[title="Account & Settings"]').click();
+    // The account dropdown only renders with a session (signed-out shows a
+    // Sign in button instead). Menu open/close is purely client-side, so a
+    // placeholder token is fine when the API token isn't available.
+    await loginTestUser(page, getTestToken() ?? "e2e-ui-only-token");
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
 
-    // Verify menu open
-    const menu = page.locator(".dropdown-menu");
-    await expect(menu).toBeVisible();
-    await expect(menu.getByText("Settings")).toBeVisible();
+    try {
+      // Click user avatar
+      await page.locator('[title="Account & Settings"]').click();
 
-    // Click outside
-    await page.mouse.click(1, 1);
+      // Verify menu open
+      const menu = page.locator(".dropdown-menu");
+      await expect(menu).toBeVisible();
+      await expect(menu.getByText("Settings")).toBeVisible();
 
-    // Verify menu closed
-    await expect(menu).not.toBeVisible();
+      // Click outside
+      await page.mouse.click(1, 1);
 
-    await page.close();
+      // Verify menu closed
+      await expect(menu).not.toBeVisible();
+    } finally {
+      // Other tests assume the suite-wide default of no session
+      await logoutTestUser(page);
+      await page.close();
+    }
   });
 });

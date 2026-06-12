@@ -58,13 +58,27 @@ export const UserMenu: React.FC<UserMenuProps> = ({
 
   // Signed-out: a clear call to action instead of a phantom account menu
   // (the avatar + Account/Settings/Log out used to render even with no
-  // session, leaving users no way to sign in from the dashboard).
+  // session, leaving users no way to sign in from the dashboard). Settings
+  // must stay reachable here — the dashboard is fully usable without an
+  // account — so it gets its own button rather than living in a dropdown.
   if (!user) {
     return (
       <div
         style={{ display: "flex", alignItems: "center", gap: "8px" }}
         ref={menuRef}
       >
+        <button
+          className="btn btn-secondary"
+          style={{
+            padding: "4px 8px",
+            display: "flex",
+            alignItems: "center",
+          }}
+          onClick={onOpenSettings}
+          title="Settings"
+        >
+          <Icon name="settings" size="sm" />
+        </button>
         <button
           className="btn btn-primary"
           style={{ padding: "4px 12px", fontSize: "12px" }}

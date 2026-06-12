@@ -73,6 +73,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   const loadUserProfile = async () => {
     try {
       setLoading(true);
+      // No session: show the signed-out prompt instead of letting the
+      // request 401 into an "Authentication failed" dead end.
+      if (!(await AuthService.getToken())) {
+        setUser(null);
+        setError(null);
+        return;
+      }
       const profile = await ApiService.getUserProfile();
       setUser(profile);
       setEditedName(profile.name);
@@ -81,6 +88,15 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       setError(err instanceof Error ? err.message : "Failed to load profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    try {
+      await AuthService.login();
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed");
     }
   };
 
@@ -150,9 +166,10 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   // Track if we've already attempted to load backups to prevent infinite retry loop
   const hasAttemptedBackupsLoad = React.useRef(false);
 
-  // Load backups when backups tab is selected (only once per tab visit)
+  // Load backups when backups tab is selected (only once per tab visit).
+  // Signed out the tab shows a sign-in prompt, so there is nothing to load.
   useEffect(() => {
-    if (activeTab === "backups" && !hasAttemptedBackupsLoad.current) {
+    if (activeTab === "backups" && user && !hasAttemptedBackupsLoad.current) {
       hasAttemptedBackupsLoad.current = true;
       loadBackups();
     }
@@ -160,7 +177,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     if (activeTab !== "backups") {
       hasAttemptedBackupsLoad.current = false;
     }
-  }, [activeTab]);
+  }, [activeTab, user]);
 
   const handleCreateBackup = async () => {
     try {
@@ -291,6 +308,8 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   }
 
   if (error && !user) {
+    // A token exists but the profile fetch failed (e.g. expired session) —
+    // offer a fresh sign-in alongside retry so this isn't a dead end.
     return (
       <Wrapper title="Account Settings">
         <div style={{ padding: "24px" }}>
@@ -305,244 +324,308 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           >
             {error}
           </div>
-          <button className="btn btn-primary" onClick={loadUserProfile}>
-            Retry
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button className="btn btn-primary" onClick={handleSignIn}>
+              Sign in again
+            </button>
+            <button className="btn btn-secondary" onClick={loadUserProfile}>
+              Retry
+            </button>
+          </div>
         </div>
       </Wrapper>
     );
   }
 
-  if (!user) return null;
+  // Signed out (no token): the modal still renders — Preferences are local
+  // and must stay usable — while the account-bound tabs show this prompt.
+  const renderSignedOutPrompt = (message: string) => (
+    <section>
+      <p style={{ fontWeight: 600, marginBottom: "8px" }}>
+        You&apos;re not signed in
+      </p>
+      <p
+        style={{
+          color: "var(--color-text-secondary)",
+          marginBottom: "16px",
+        }}
+      >
+        {message}
+      </p>
+      <button className="btn btn-primary" onClick={handleSignIn}>
+        Sign in
+      </button>
+    </section>
+  );
 
   // Shared tab content - Account
-  const renderAccountContent = () => (
-    <div>
-      {variant === "modal" && (
-        <h2
-          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "24px" }}
-        >
-          Account
-        </h2>
-      )}
-
-      {/* User Info Section */}
-      <section style={{ marginBottom: variant === "popup" ? "20px" : "32px" }}>
-        <h3
-          style={{
-            fontSize: variant === "popup" ? "12px" : "14px",
-            fontWeight: "600",
-            marginBottom: variant === "popup" ? "12px" : "16px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          User Information
-        </h3>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: variant === "popup" ? "12px" : "16px",
-            marginBottom: "16px",
-          }}
-        >
-          {/* Avatar Placeholder */}
-          <div
-            style={{
-              width: variant === "popup" ? "48px" : "64px",
-              height: variant === "popup" ? "48px" : "64px",
-              borderRadius: "50%",
-              backgroundColor: "var(--color-primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: variant === "popup" ? "18px" : "24px",
-              fontWeight: "bold",
-              color: "white",
-              flexShrink: 0,
-            }}
-          >
-            {user.name.charAt(0).toUpperCase()}
-          </div>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ marginBottom: "6px" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  color: "var(--color-text-secondary)",
-                  marginBottom: "2px",
-                }}
-              >
-                Name
-              </label>
-              {isEditing ? (
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <input
-                    type="text"
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: "4px 8px",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "4px",
-                      fontSize: "13px",
-                      minWidth: 0,
-                    }}
-                  />
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={handleSaveName}
-                    disabled={loading}
-                  >
-                    Save
-                  </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setEditedName(user.name);
-                    }}
-                    disabled={loading}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <span
-                    className="text-ellipsis"
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "500",
-                      maxWidth: "150px",
-                    }}
-                  >
-                    {user.name}
-                  </span>
-                  <button
-                    className="btn-icon"
-                    onClick={() => setIsEditing(true)}
-                    title="Edit name"
-                  >
-                    <Icon name="edit" size="sm" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  color: "var(--color-text-secondary)",
-                  marginBottom: "2px",
-                }}
-              >
-                Email
-              </label>
-              <span
-                className="text-ellipsis"
-                style={{ fontSize: "13px", display: "block" }}
-              >
-                {user.email}
-              </span>
-            </div>
-          </div>
-        </div>
-
+  const renderAccountContent = () => {
+    if (!user) {
+      return (
         <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: "11px",
-              color: "var(--color-text-secondary)",
-              marginBottom: "4px",
-            }}
-          >
-            Plan
-          </label>
-          <span
-            style={{
-              display: "inline-block",
-              padding: "2px 10px",
-              backgroundColor: "var(--color-primary-light)",
-              color: "var(--color-primary)",
-              borderRadius: "12px",
-              fontSize: "11px",
-              fontWeight: "600",
-              textTransform: "capitalize",
-            }}
-          >
-            {user.tier}
-          </span>
+          {variant === "modal" && (
+            <h2
+              style={{
+                fontSize: "18px",
+                fontWeight: "bold",
+                marginBottom: "24px",
+              }}
+            >
+              Account
+            </h2>
+          )}
+          {renderSignedOutPrompt(
+            "Your spaces work locally without an account. Sign in to sync " +
+              "them across devices and enable backups.",
+          )}
         </div>
-      </section>
+      );
+    }
 
-      {/* Password Section */}
-      <section style={{ marginBottom: variant === "popup" ? "20px" : "32px" }}>
-        <h3
-          style={{
-            fontSize: variant === "popup" ? "12px" : "14px",
-            fontWeight: "600",
-            marginBottom: variant === "popup" ? "8px" : "16px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          Password
-        </h3>
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={handleChangePassword}
-          style={{ fontSize: "12px" }}
-        >
-          Change Password
-        </button>
-      </section>
+    return (
+      <div>
+        {variant === "modal" && (
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: "bold",
+              marginBottom: "24px",
+            }}
+          >
+            Account
+          </h2>
+        )}
 
-      {/* Danger Zone - Hidden in popup for space, only show in modal */}
-      {variant === "modal" && (
+        {/* User Info Section */}
         <section
-          style={{
-            marginTop: "48px",
-            padding: "16px",
-            border: "1px solid #FCA5A5",
-            borderRadius: "8px",
-            backgroundColor: "#FEF2F2",
-          }}
+          style={{ marginBottom: variant === "popup" ? "20px" : "32px" }}
         >
           <h3
             style={{
-              fontSize: "14px",
+              fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
-              marginBottom: "8px",
-              color: "#991B1B",
+              marginBottom: variant === "popup" ? "12px" : "16px",
+              color: "var(--color-text-secondary)",
             }}
           >
-            Danger Zone
+            User Information
           </h3>
-          <p
-            style={{ fontSize: "12px", color: "#991B1B", marginBottom: "12px" }}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: variant === "popup" ? "12px" : "16px",
+              marginBottom: "16px",
+            }}
           >
-            Once you delete your account, there is no going back.
-          </p>
+            {/* Avatar Placeholder */}
+            <div
+              style={{
+                width: variant === "popup" ? "48px" : "64px",
+                height: variant === "popup" ? "48px" : "64px",
+                borderRadius: "50%",
+                backgroundColor: "var(--color-primary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: variant === "popup" ? "18px" : "24px",
+                fontWeight: "bold",
+                color: "white",
+                flexShrink: 0,
+              }}
+            >
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ marginBottom: "6px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "11px",
+                    color: "var(--color-text-secondary)",
+                    marginBottom: "2px",
+                  }}
+                >
+                  Name
+                </label>
+                {isEditing ? (
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      value={editedName}
+                      onChange={(e) => setEditedName(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: "4px 8px",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "4px",
+                        fontSize: "13px",
+                        minWidth: 0,
+                      }}
+                    />
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={handleSaveName}
+                      disabled={loading}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditedName(user.name);
+                      }}
+                      disabled={loading}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      className="text-ellipsis"
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        maxWidth: "150px",
+                      }}
+                    >
+                      {user.name}
+                    </span>
+                    <button
+                      className="btn-icon"
+                      onClick={() => setIsEditing(true)}
+                      title="Edit name"
+                    >
+                      <Icon name="edit" size="sm" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "11px",
+                    color: "var(--color-text-secondary)",
+                    marginBottom: "2px",
+                  }}
+                >
+                  Email
+                </label>
+                <span
+                  className="text-ellipsis"
+                  style={{ fontSize: "13px", display: "block" }}
+                >
+                  {user.email}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "11px",
+                color: "var(--color-text-secondary)",
+                marginBottom: "4px",
+              }}
+            >
+              Plan
+            </label>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "2px 10px",
+                backgroundColor: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+                borderRadius: "12px",
+                fontSize: "11px",
+                fontWeight: "600",
+                textTransform: "capitalize",
+              }}
+            >
+              {user.tier}
+            </span>
+          </div>
+        </section>
+
+        {/* Password Section */}
+        <section
+          style={{ marginBottom: variant === "popup" ? "20px" : "32px" }}
+        >
+          <h3
+            style={{
+              fontSize: variant === "popup" ? "12px" : "14px",
+              fontWeight: "600",
+              marginBottom: variant === "popup" ? "8px" : "16px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Password
+          </h3>
           <button
-            className="btn btn-danger"
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={loading}
+            className="btn btn-secondary btn-sm"
+            onClick={handleChangePassword}
+            style={{ fontSize: "12px" }}
           >
-            Delete Account
+            Change Password
           </button>
         </section>
-      )}
-    </div>
-  );
+
+        {/* Danger Zone - Hidden in popup for space, only show in modal */}
+        {variant === "modal" && (
+          <section
+            style={{
+              marginTop: "48px",
+              padding: "16px",
+              border: "1px solid #FCA5A5",
+              borderRadius: "8px",
+              backgroundColor: "#FEF2F2",
+            }}
+          >
+            <h3
+              style={{
+                fontSize: "14px",
+                fontWeight: "600",
+                marginBottom: "8px",
+                color: "#991B1B",
+              }}
+            >
+              Danger Zone
+            </h3>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#991B1B",
+                marginBottom: "12px",
+              }}
+            >
+              Once you delete your account, there is no going back.
+            </p>
+            <button
+              className="btn btn-danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={loading}
+            >
+              Delete Account
+            </button>
+          </section>
+        )}
+      </div>
+    );
+  };
 
   // Shared tab content - Preferences
   const renderPreferencesContent = () => (
@@ -639,203 +722,239 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   );
 
   // Shared tab content - Backups
-  const renderBackupsContent = () => (
-    <div>
-      {variant === "modal" && (
-        <h2
-          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "24px" }}
-        >
-          Backups
-        </h2>
-      )}
-
-      {/* Backup Stats */}
-      <section style={{ marginBottom: variant === "popup" ? "16px" : "24px" }}>
-        <div
-          style={{
-            display: "flex",
-            gap: "16px",
-            flexWrap: "wrap",
-            marginBottom: "16px",
-          }}
-        >
-          <div
-            data-testid="backup-stats-total"
-            style={{
-              flex: 1,
-              minWidth: "120px",
-              padding: "12px",
-              backgroundColor: "var(--color-bg-secondary)",
-              borderRadius: "8px",
-            }}
-          >
-            <div
-              data-testid="backup-count"
-              style={{ fontSize: "24px", fontWeight: "bold" }}
+  const renderBackupsContent = () => {
+    if (!user) {
+      return (
+        <div>
+          {variant === "modal" && (
+            <h2
+              style={{
+                fontSize: "18px",
+                fontWeight: "bold",
+                marginBottom: "24px",
+              }}
             >
-              {backupStats?.totalBackups || 0}
-            </div>
-            <div
-              style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}
-            >
-              Total Backups
-            </div>
-          </div>
-          <div
-            data-testid="backup-stats-storage"
-            style={{
-              flex: 1,
-              minWidth: "120px",
-              padding: "12px",
-              backgroundColor: "var(--color-bg-secondary)",
-              borderRadius: "8px",
-            }}
-          >
-            <div
-              data-testid="storage-used"
-              style={{ fontSize: "24px", fontWeight: "bold" }}
-            >
-              {backupStats
-                ? `${(backupStats.totalSizeBytes / 1024).toFixed(1)} KB`
-                : "0 KB"}
-            </div>
-            <div
-              style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}
-            >
-              Storage Used
-            </div>
-          </div>
+              Backups
+            </h2>
+          )}
+          {renderSignedOutPrompt(
+            "Backups are stored in your account. Sign in to create and " +
+              "restore them.",
+          )}
         </div>
+      );
+    }
 
-        <button
-          className="btn btn-primary"
-          onClick={handleCreateBackup}
-          disabled={backupsLoading}
-          style={{ marginBottom: "16px" }}
+    return (
+      <div>
+        {variant === "modal" && (
+          <h2
+            style={{
+              fontSize: "18px",
+              fontWeight: "bold",
+              marginBottom: "24px",
+            }}
+          >
+            Backups
+          </h2>
+        )}
+
+        {/* Backup Stats */}
+        <section
+          style={{ marginBottom: variant === "popup" ? "16px" : "24px" }}
         >
-          {backupsLoading ? "Creating..." : "Create Backup Now"}
-        </button>
-      </section>
-
-      {/* Backup List */}
-      <section>
-        <h3
-          style={{
-            fontSize: variant === "popup" ? "12px" : "14px",
-            fontWeight: "600",
-            marginBottom: "12px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          Recent Backups
-        </h3>
-
-        {(() => {
-          if (backupsLoading && backups.length === 0) {
-            return (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "20px",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                Loading backups...
-              </div>
-            );
-          }
-          if (backups.length === 0) {
-            return (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "20px",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                No backups yet. Create your first backup to protect your
-                workspaces.
-              </div>
-            );
-          }
-          return (
+          <div
+            style={{
+              display: "flex",
+              gap: "16px",
+              flexWrap: "wrap",
+              marginBottom: "16px",
+            }}
+          >
             <div
-              style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+              data-testid="backup-stats-total"
+              style={{
+                flex: 1,
+                minWidth: "120px",
+                padding: "12px",
+                backgroundColor: "var(--color-bg-secondary)",
+                borderRadius: "8px",
+              }}
             >
-              {backups.map((backup) => (
+              <div
+                data-testid="backup-count"
+                style={{ fontSize: "24px", fontWeight: "bold" }}
+              >
+                {backupStats?.totalBackups || 0}
+              </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                Total Backups
+              </div>
+            </div>
+            <div
+              data-testid="backup-stats-storage"
+              style={{
+                flex: 1,
+                minWidth: "120px",
+                padding: "12px",
+                backgroundColor: "var(--color-bg-secondary)",
+                borderRadius: "8px",
+              }}
+            >
+              <div
+                data-testid="storage-used"
+                style={{ fontSize: "24px", fontWeight: "bold" }}
+              >
+                {backupStats
+                  ? `${(backupStats.totalSizeBytes / 1024).toFixed(1)} KB`
+                  : "0 KB"}
+              </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                Storage Used
+              </div>
+            </div>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={handleCreateBackup}
+            disabled={backupsLoading}
+            style={{ marginBottom: "16px" }}
+          >
+            {backupsLoading ? "Creating..." : "Create Backup Now"}
+          </button>
+        </section>
+
+        {/* Backup List */}
+        <section>
+          <h3
+            style={{
+              fontSize: variant === "popup" ? "12px" : "14px",
+              fontWeight: "600",
+              marginBottom: "12px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Recent Backups
+          </h3>
+
+          {(() => {
+            if (backupsLoading && backups.length === 0) {
+              return (
                 <div
-                  key={backup.id}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "8px",
-                    gap: "12px",
+                    textAlign: "center",
+                    padding: "20px",
+                    color: "var(--color-text-secondary)",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "13px", fontWeight: "500" }}>
-                      {backup.workspaceName || "All Workspaces"}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      {new Date(backup.createdAt).toLocaleString()} •{" "}
-                      {backup.sizeBytes
-                        ? `${(backup.sizeBytes / 1024).toFixed(1)} KB`
-                        : "N/A"}
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-sm btn-secondary"
-                    onClick={() => handleRestoreBackup(backup.id)}
-                    disabled={backupsLoading}
-                    title="Restore this backup"
-                  >
-                    Restore
-                  </button>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => handleDeleteBackup(backup.id)}
-                    disabled={backupsLoading}
-                    title="Delete this backup"
-                    style={{ padding: "4px 8px" }}
-                  >
-                    <Icon name="delete" size="sm" />
-                  </button>
+                  Loading backups...
                 </div>
-              ))}
-            </div>
-          );
-        })()}
-      </section>
-
-      {/* Tier Info */}
-      <section style={{ marginTop: "24px" }}>
-        <div
-          style={{
-            padding: "12px",
-            backgroundColor: "var(--color-bg-secondary)",
-            borderRadius: "8px",
-            fontSize: "12px",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          <strong>Backup Retention:</strong>{" "}
-          {(() => {
-            if (user?.tier === "free")
-              return "30 days (upgrade to Pro for 90 days)";
-            if (user?.tier === "pro") return "90 days";
-            return "365 days";
+              );
+            }
+            if (backups.length === 0) {
+              return (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "20px",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  No backups yet. Create your first backup to protect your
+                  workspaces.
+                </div>
+              );
+            }
+            return (
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+              >
+                {backups.map((backup) => (
+                  <div
+                    key={backup.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "12px",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "8px",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "13px", fontWeight: "500" }}>
+                        {backup.workspaceName || "All Workspaces"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--color-text-secondary)",
+                        }}
+                      >
+                        {new Date(backup.createdAt).toLocaleString()} •{" "}
+                        {backup.sizeBytes
+                          ? `${(backup.sizeBytes / 1024).toFixed(1)} KB`
+                          : "N/A"}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => handleRestoreBackup(backup.id)}
+                      disabled={backupsLoading}
+                      title="Restore this backup"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleDeleteBackup(backup.id)}
+                      disabled={backupsLoading}
+                      title="Delete this backup"
+                      style={{ padding: "4px 8px" }}
+                    >
+                      <Icon name="delete" size="sm" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
           })()}
-        </div>
-      </section>
-    </div>
-  );
+        </section>
+
+        {/* Tier Info */}
+        <section style={{ marginTop: "24px" }}>
+          <div
+            style={{
+              padding: "12px",
+              backgroundColor: "var(--color-bg-secondary)",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            <strong>Backup Retention:</strong>{" "}
+            {(() => {
+              if (user?.tier === "free")
+                return "30 days (upgrade to Pro for 90 days)";
+              if (user?.tier === "pro") return "90 days";
+              return "365 days";
+            })()}
+          </div>
+        </section>
+      </div>
+    );
+  };
 
   // Popup Layout - Compact with horizontal tabs
   if (variant === "popup") {

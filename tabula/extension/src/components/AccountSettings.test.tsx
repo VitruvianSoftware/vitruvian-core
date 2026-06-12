@@ -27,7 +27,7 @@ import { AccountSettings } from "./AccountSettings";
 import { ApiService } from "../services/api";
 import { StorageService } from "../services/storage";
 import { TabService } from "../services/tabs";
-// import { AuthService } from '../services/auth';
+import { AuthService } from "../services/auth";
 
 // Mock services
 jest.mock("../services/api", () => ({
@@ -48,6 +48,8 @@ jest.mock("../services/api", () => ({
 jest.mock("../services/auth", () => ({
   AuthService: {
     logout: jest.fn(),
+    login: jest.fn(),
+    getToken: jest.fn(),
   },
 }));
 
@@ -110,7 +112,76 @@ describe("AccountSettings", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
     (ApiService.getUserProfile as jest.Mock).mockResolvedValue(mockUser);
+  });
+
+  describe("signed out", () => {
+    beforeEach(() => {
+      (AuthService.getToken as jest.Mock).mockResolvedValue(null);
+    });
+
+    it("should show a sign-in prompt instead of fetching the profile", async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+        />,
+      );
+
+      expect(
+        await screen.findByText("You're not signed in"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Sign in")).toBeInTheDocument();
+      expect(ApiService.getUserProfile).not.toHaveBeenCalled();
+      expect(
+        screen.queryByText("Authentication failed"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("should call AuthService.login when Sign in clicked", async () => {
+      (AuthService.login as jest.Mock).mockImplementation(
+        () => new Promise(() => {}),
+      );
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+        />,
+      );
+
+      fireEvent.click(await screen.findByText("Sign in"));
+      expect(AuthService.login).toHaveBeenCalled();
+    });
+
+    it("should keep Preferences usable without a session", async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+        />,
+      );
+
+      fireEvent.click(await screen.findByText("Preferences"));
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+
+    it("should prompt for sign-in on the Backups tab without loading", async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+        />,
+      );
+
+      fireEvent.click(await screen.findByText("Backups"));
+      expect(screen.getByText("You're not signed in")).toBeInTheDocument();
+      expect(ApiService.getBackups).not.toHaveBeenCalled();
+    });
   });
 
   it("should render loading state initially", () => {
