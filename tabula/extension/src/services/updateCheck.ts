@@ -21,12 +21,15 @@
  */
 
 /**
- * Dev-channel update detection (issue #45, M1).
+ * Channel-aware update detection (issue #45, M2).
  *
- * A load-unpacked CI-built install compares its own baked-in commit
- * (build_info.json, injected by the dev-latest workflow) against the deployed
- * dev API's GET / provenance (#32). A mismatch means a newer bundle is
- * published: the user runs `tabcli ext update`, then reloads.
+ * Alpha channel: a load-unpacked CI-built install compares its own baked-in
+ * commit (build_info.json) against the deployed dev API's GET / provenance
+ * (#32). A commit mismatch means a newer bundle is published.
+ *
+ * Beta channel: tracks release cuts via lockstep versioning. The install's
+ * manifest version is compared against the API's reported version; strictly
+ * newer API version = update available (never triggers on a downgrade).
  *
  * Never active for Web Store installs (installType !== "development") or
  * local ad-hoc builds (commit === "dev"). chrome.management.getSelf() is
@@ -44,10 +47,32 @@ export interface BuildInfo {
   version?: string;
 }
 
+/** Release channel of this install (channel.json, written by tabcli). */
+export type Channel = "alpha" | "beta";
+
+/**
+ * Numeric-segment version compare (missing segments are zero). Mirrors
+ * compareSemver in tabula/cli/src/utils/extension.ts — duplicated
+ * deliberately: the CLI must not depend on extension code.
+ */
+export function compareVersions(a: string, b: string): number {
+  const as = a.split(".").map((s) => parseInt(s, 10) || 0);
+  const bs = b.split(".").map((s) => parseInt(s, 10) || 0);
+  const len = Math.max(as.length, bs.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (as[i] ?? 0) - (bs[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 export interface UpdateCheckResult {
+  channel: Channel;
   updateAvailable: boolean;
-  ownCommit: string;
-  deployedCommit: string;
+  /** Own commit (alpha) or own version (beta). */
+  current: string;
+  /** Deployed commit (alpha) or deployed version (beta). */
+  latest: string;
 }
 
 // The running code's identity is immutable, but the on-disk file is swapped
@@ -57,6 +82,14 @@ let buildInfoPromise: Promise<BuildInfo | null> | undefined;
 
 export function resetBuildInfoCacheForTests(): void {
   buildInfoPromise = undefined;
+}
+
+// Same lifetime rule as the build-info read: the running context's channel
+// is immutable even though tabcli may swap channel.json before the reload.
+let channelPromise: Promise<Channel> | undefined;
+
+export function resetChannelCacheForTests(): void {
+  channelPromise = undefined;
 }
 
 export class UpdateCheckService {
@@ -73,6 +106,22 @@ export class UpdateCheckService {
       }
     })();
     return buildInfoPromise;
+  }
+
+  /** This install's channel (channel.json); absent/unknown → alpha. */
+  static async getOwnChannel(): Promise<Channel> {
+    if (channelPromise !== undefined) return channelPromise;
+    channelPromise = (async () => {
+      try {
+        const res = await fetch(chrome.runtime.getURL("channel.json"));
+        if (!res.ok) return "alpha";
+        const body = (await res.json()) as { channel?: string };
+        return body.channel === "beta" ? "beta" : "alpha";
+      } catch {
+        return "alpha";
+      }
+    })();
+    return channelPromise;
   }
 
   /** Dev installs of CI-built bundles only. */
@@ -96,8 +145,11 @@ export class UpdateCheckService {
     return { eligible: true, ownCommit };
   }
 
-  /** The deployed dev API's commit, from its GET / provenance endpoint. */
-  static async fetchDeployedCommit(): Promise<string | null> {
+  /** The deployed dev API's identity, from its GET / provenance endpoint. */
+  static async fetchDeployedInfo(): Promise<{
+    commit: string;
+    version: string | null;
+  } | null> {
     const apiUrl = process.env.API_URL;
     if (!apiUrl) return null;
     try {
@@ -108,9 +160,9 @@ export class UpdateCheckService {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return null;
-      const body = (await res.json()) as { commit?: string };
+      const body = (await res.json()) as { commit?: string; version?: string };
       if (!body.commit || body.commit === "unknown") return null;
-      return body.commit;
+      return { commit: body.commit, version: body.version ?? null };
     } catch {
       return null;
     }
@@ -120,12 +172,27 @@ export class UpdateCheckService {
   static async checkForUpdate(): Promise<UpdateCheckResult | null> {
     const { eligible, ownCommit } = await this.isEligible();
     if (!eligible || !ownCommit) return null;
-    const deployedCommit = await this.fetchDeployedCommit();
-    if (!deployedCommit) return null;
+    const deployed = await this.fetchDeployedInfo();
+    if (!deployed) return null;
+
+    const channel = await this.getOwnChannel();
+    if (channel === "beta") {
+      // Beta tracks release cuts: lockstep versioning makes the API's
+      // version the latest cut. Strictly-newer only — never a downgrade.
+      if (!deployed.version) return null;
+      const own = chrome.runtime.getManifest().version;
+      return {
+        channel,
+        updateAvailable: compareVersions(deployed.version, own) > 0,
+        current: own,
+        latest: deployed.version,
+      };
+    }
     return {
-      updateAvailable: deployedCommit !== ownCommit,
-      ownCommit,
-      deployedCommit,
+      channel,
+      updateAvailable: deployed.commit !== ownCommit,
+      current: ownCommit,
+      latest: deployed.commit,
     };
   }
 }
