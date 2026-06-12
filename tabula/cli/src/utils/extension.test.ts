@@ -29,6 +29,7 @@ import {
   defaultExtensionDir,
   readBundleInfo,
   readInstalledChannel,
+  resolveBetaArtifact,
   resolveChannel,
   resolveLatestExtensionTag,
   validateBundleDir,
@@ -233,5 +234,19 @@ describe("resolveLatestExtensionTag", () => {
 
   it("returns null on unparseable input", () => {
     expect(resolveLatestExtensionTag("gh exploded")).toBeNull();
+  });
+});
+
+describe("resolveBetaArtifact", () => {
+  it("returns the tag and its -chrome.zip asset name", () => {
+    const json = JSON.stringify([{ tagName: "tabula-extension-v0.1.10" }]);
+    expect(resolveBetaArtifact(json)).toEqual({
+      tag: "tabula-extension-v0.1.10",
+      zipName: "tabula-extension-v0.1.10-chrome.zip",
+    });
+  });
+
+  it("returns null when no extension release exists", () => {
+    expect(resolveBetaArtifact("[]")).toBeNull();
   });
 });

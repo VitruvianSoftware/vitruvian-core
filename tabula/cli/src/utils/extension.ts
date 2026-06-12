@@ -92,6 +92,10 @@ export function atomicInstall(stagingDir: string, targetDir: string): void {
   if (hadPrevious) fs.rmSync(oldDir, { recursive: true, force: true });
 }
 
+/** Shown wherever stable is requested before the M3 Web Store listing exists. */
+export const STABLE_CHANNEL_MESSAGE =
+  "The stable channel arrives with the Chrome Web Store listing (M3) — use --channel alpha or beta for now.";
+
 /**
  * Switchable release channels for the load-unpacked install (M2 of #45).
  * "stable" exists in the UX but is not installable until the Web Store
@@ -127,15 +131,17 @@ export function writeInstalledChannel(
   );
 }
 
-/** Precedence: explicit flag > installed channel.json > alpha. */
+/**
+ * Precedence: explicit flag > installed channel.json > alpha.
+ * The ext update command intercepts "stable" non-fatally before calling this;
+ * the throw remains for programmatic misuse.
+ */
 export function resolveChannel(
   flag: string | undefined,
   installed: InstallChannel | null,
 ): InstallChannel {
   if (flag === "stable") {
-    throw new Error(
-      "The stable channel arrives with the Chrome Web Store listing (M3) — use --channel alpha or beta for now.",
-    );
+    throw new Error(STABLE_CHANNEL_MESSAGE);
   }
   if (flag === "alpha" || flag === "beta") return flag;
   if (flag !== undefined) {
@@ -181,4 +187,17 @@ export function resolveLatestExtensionTag(
   } catch {
     return null;
   }
+}
+
+/**
+ * Beta artifact coordinates from `gh release list --json tagName` output.
+ * The zip name encodes the release workflow's asset naming
+ * (.github/workflows/tabula-release.yml: "${TAG}-chrome.zip").
+ */
+export function resolveBetaArtifact(
+  releaseListJson: string,
+): { tag: string; zipName: string } | null {
+  const tag = resolveLatestExtensionTag(releaseListJson);
+  if (!tag) return null;
+  return { tag, zipName: `${tag}-chrome.zip` };
 }
