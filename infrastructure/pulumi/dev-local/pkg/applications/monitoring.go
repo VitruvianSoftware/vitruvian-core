@@ -64,10 +64,12 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 					"size":         "25Gi",
 					"storageClass": "longhorn",
 				},
-				"retentionSize": "20GB",
+				// retention.size goes via extraFlags: chart 22.6.7 does not render
+				// the server.retentionSize value (verified live — no flag emitted).
 				"extraFlags": []interface{}{
 					"web.enable-lifecycle",
 					"web.enable-remote-write-receiver",
+					"storage.tsdb.retention.size=20GB",
 				},
 			},
 			"serverFiles": map[string]interface{}{
