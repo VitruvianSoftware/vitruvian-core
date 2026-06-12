@@ -113,7 +113,7 @@ Before contributing, ensure you have:
    ```
 3. Add the upstream repository:
    ```bash
-   git remote add upstream https://github.com/BlueCentre/tabula.git
+   git remote add upstream https://github.com/VitruvianSoftware/vitruvian-core.git
    ```
 
 ### Set Up Development Environment
@@ -288,7 +288,7 @@ git push origin feature/your-feature-name
 
 ### Submitting a PR
 
-1. Go to the [Tabula repository](https://github.com/BlueCentre/tabula)
+1. Go to the [Tabula repository](https://github.com/VitruvianSoftware/vitruvian-core)
 2. Click "New Pull Request"
 3. Select your branch
 4. Fill out the PR template:
@@ -699,7 +699,7 @@ When changing functionality:
 - **Documentation**: Check [/docs](./docs) first
 - **GitHub Issues**: Search existing issues
 - **Discussions**: Ask questions in
-  [GitHub Discussions](https://github.com/BlueCentre/tabula/discussions)
+  [GitHub Discussions](https://github.com/VitruvianSoftware/vitruvian-core/discussions)
 
 ### Reporting Bugs
 
@@ -738,7 +738,7 @@ Contributors will be:
 
 If you have questions about contributing, feel free to:
 
-- Open a [Discussion](https://github.com/BlueCentre/tabula/discussions)
+- Open a [Discussion](https://github.com/VitruvianSoftware/vitruvian-core/discussions)
 - Reach out to maintainers
 - Check the [documentation](./docs)
 
