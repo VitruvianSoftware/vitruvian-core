@@ -20,6 +20,7 @@ a standalone `package main` you can `pulumi up` directly.
 | `github.NewBranchProtection` | Protects the default branch per the config below |
 | `github.NewRepositoryEnvironment` + variables | Per-component `tabula-{development,nonproduction,production}` deploy environments |
 | `github.NewDependabotSecret` (`BUILDBUDDY_API_KEY`) | Gives Dependabot PRs the BuildBuddy key so `build-test` (RBE) doesn't fail `UNAUTHENTICATED` — only created when `buildbuddyApiKey` is configured |
+| `github.NewIssueLabel` (`dependencies`, `go`, `ci`) | The labels `.github/dependabot.yml` applies to dependency PRs (Dependabot warns + skips if they don't exist) |
 
 The repository **already exists** (you created it), so this program **adopts**
 it with `pulumi.Import(pulumi.ID(<repoName>))` instead of creating it. It also

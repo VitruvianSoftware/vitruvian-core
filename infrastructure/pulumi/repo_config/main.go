@@ -155,6 +155,10 @@ func main() {
 			return err
 		}
 
+		if err := dependabotLabels(ctx, repo); err != nil {
+			return err
+		}
+
 		// Surface the resolved owner so `pulumi stack output` records which
 		// account these settings were applied to.
 		ctx.Export("repoOwner", pulumi.String(repoOwner))
@@ -274,6 +278,31 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 		PlaintextValue: cfg.RequireSecret("buildbuddyApiKey"),
 	})
 	return err
+}
+
+// dependabotLabels creates the issue labels that .github/dependabot.yml applies
+// to dependency PRs (gomod -> "dependencies","go"; github-actions ->
+// "dependencies","ci"). Dependabot does not create missing labels itself — it
+// posts a "The following labels could not be found" warning and skips them — so
+// they must already exist in the repo. Managed here as code alongside the rest
+// of the repository configuration.
+func dependabotLabels(ctx *pulumi.Context, repo *github.Repository) error {
+	labels := []struct{ name, color, description string }{
+		{"dependencies", "0366d6", "Dependency updates (Dependabot)"},
+		{"go", "00add8", "Go (gomod) ecosystem"},
+		{"ci", "fbca04", "CI / GitHub Actions"},
+	}
+	for _, l := range labels {
+		if _, err := github.NewIssueLabel(ctx, "label-"+l.name, &github.IssueLabelArgs{
+			Repository:  repo.Name,
+			Name:        pulumi.String(l.name),
+			Color:       pulumi.String(l.color),
+			Description: pulumi.String(l.description),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // productionReviewerIds returns the numeric GitHub user ids that must approve
