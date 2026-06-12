@@ -191,7 +191,11 @@ describe("UpdateCheckService", () => {
     });
 
     it("reports no update when commits match", async () => {
-      stubInstall({ commit: "samesha", apiCommit: "samesha" });
+      stubInstall({
+        commit: "samesha",
+        apiCommit: "samesha",
+        apiVersion: "9.9.9", // alpha must ignore versions entirely
+      });
       const result = await UpdateCheckService.checkForUpdate();
       expect(result?.updateAvailable).toBe(false);
     });
