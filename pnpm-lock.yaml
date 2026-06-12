@@ -151,12 +151,30 @@ importers:
         specifier: ^6.8.1
         version: 6.9.0
     devDependencies:
+      '@swc/core':
+        specifier: ^1.13.0
+        version: 1.15.41
+      '@swc/jest':
+        specifier: ^0.2.39
+        version: 0.2.39(@swc/core@1.15.41)
       '@types/inquirer':
         specifier: ^8.2.10
         version: 8.2.12
+      '@types/jest':
+        specifier: ^29.5.12
+        version: 29.5.14
       '@types/node':
         specifier: ^20.11.17
         version: 20.19.43
+      jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@types/node@20.19.43)
+      jest-cli:
+        specifier: ^29.7.0
+        version: 29.7.0(@types/node@20.19.43)
+      jest-junit:
+        specifier: ^16.0.0
+        version: 16.0.0
 
   tabula/extension:
     dependencies:
