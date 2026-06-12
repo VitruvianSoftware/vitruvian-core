@@ -60,7 +60,7 @@ describe("UpdateCheckService", () => {
   });
 
   afterAll(() => {
-    delete process.env.API_URL;
+    Reflect.deleteProperty(process.env, "API_URL");
   });
 
   const stubOwnBuild = (commit: string) => {
