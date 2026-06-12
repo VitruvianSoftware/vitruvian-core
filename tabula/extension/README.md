@@ -281,8 +281,8 @@ MIT - See [LICENSE](../../LICENSE)
 ## Links
 
 - [Documentation](https://bluecentre.github.io/tabula/)
-- [GitHub Repository](https://github.com/BlueCentre/tabula)
-- [Issue Tracker](https://github.com/BlueCentre/tabula/issues)
+- [GitHub Repository](https://github.com/VitruvianSoftware/vitruvian-core)
+- [Issue Tracker](https://github.com/VitruvianSoftware/vitruvian-core/issues)
 
 ## Roadmap
 

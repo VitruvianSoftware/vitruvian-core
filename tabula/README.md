@@ -228,8 +228,8 @@ Tabula is open source software licensed under the [MIT License](./LICENSE).
 ## Support
 
 - **Documentation**: [/docs](./docs)
-- **Issues**: [GitHub Issues](https://github.com/BlueCentre/tabula/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/BlueCentre/tabula/discussions)
+- **Issues**: [GitHub Issues](https://github.com/VitruvianSoftware/vitruvian-core/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/VitruvianSoftware/vitruvian-core/discussions)
 
 ## Roadmap Status
 

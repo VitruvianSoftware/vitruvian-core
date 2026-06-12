@@ -52,7 +52,7 @@ ${chalk.bold("Examples:")}
   $ tabcli ext update              # Pull the latest dev extension build
 
 ${chalk.bold("Documentation:")}
-  For more information, visit: https://github.com/BlueCentre/tabula
+  For more information, visit: https://github.com/VitruvianSoftware/vitruvian-core
 `,
   );
 

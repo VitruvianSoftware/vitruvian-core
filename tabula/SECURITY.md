@@ -149,7 +149,7 @@ We currently do not have a paid bug bounty program, but we:
 ## Security Contacts
 
 - **Email:** security@tabula.app
-- **GitHub:** [Security Advisories](https://github.com/BlueCentre/tabula/security/advisories)
+- **GitHub:** [Security Advisories](https://github.com/VitruvianSoftware/vitruvian-core/security/advisories)
 
 ## Additional Resources
 
