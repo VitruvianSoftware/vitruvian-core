@@ -151,6 +151,14 @@ func main() {
 			return err
 		}
 
+		if err := dependabotSecrets(ctx, cfg, repo); err != nil {
+			return err
+		}
+
+		if err := dependabotLabels(ctx, repo); err != nil {
+			return err
+		}
+
 		// Surface the resolved owner so `pulumi stack output` records which
 		// account these settings were applied to.
 		ctx.Export("repoOwner", pulumi.String(repoOwner))
@@ -237,6 +245,61 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			if err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// dependabotSecrets mirrors the Actions secrets that Dependabot-triggered CI
+// runs need into the repository's *Dependabot* secret store.
+//
+// GitHub deliberately does NOT expose regular Actions secrets to workflows
+// triggered by Dependabot PRs (they run with a restricted token and a separate
+// secrets scope). The build-test job authenticates to BuildBuddy RBE with
+// `--remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY`; on a Dependabot PR
+// that secret is empty, so every remote action fails with UNAUTHENTICATED and
+// build-test goes red even though the dependency bump is fine. Declaring the
+// key as a Dependabot secret lets those runs use RBE like any other PR.
+//
+// The value is a Pulumi config SECRET, never committed in plaintext:
+//
+//	pulumi config set --secret buildbuddyApiKey <key> --stack dev
+//
+// It is intentionally optional: when unset the secret is simply not managed, so
+// the program (and its auto-apply on merge) stays green until the key is wired
+// up — the same defensive pattern as tabulaVars.
+func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	if cfg.Get("buildbuddyApiKey") == "" {
+		return nil
+	}
+	_, err := github.NewDependabotSecret(ctx, "buildbuddy-api-key-dependabot", &github.DependabotSecretArgs{
+		Repository:     repo.Name,
+		SecretName:     pulumi.String("BUILDBUDDY_API_KEY"),
+		PlaintextValue: cfg.RequireSecret("buildbuddyApiKey"),
+	})
+	return err
+}
+
+// dependabotLabels creates the issue labels that .github/dependabot.yml applies
+// to dependency PRs (gomod -> "dependencies","go"; github-actions ->
+// "dependencies","ci"). Dependabot does not create missing labels itself — it
+// posts a "The following labels could not be found" warning and skips them — so
+// they must already exist in the repo. Managed here as code alongside the rest
+// of the repository configuration.
+func dependabotLabels(ctx *pulumi.Context, repo *github.Repository) error {
+	labels := []struct{ name, color, description string }{
+		{"dependencies", "0366d6", "Dependency updates (Dependabot)"},
+		{"go", "00add8", "Go (gomod) ecosystem"},
+		{"ci", "fbca04", "CI / GitHub Actions"},
+	}
+	for _, l := range labels {
+		if _, err := github.NewIssueLabel(ctx, "label-"+l.name, &github.IssueLabelArgs{
+			Repository:  repo.Name,
+			Name:        pulumi.String(l.name),
+			Color:       pulumi.String(l.color),
+			Description: pulumi.String(l.description),
+		}); err != nil {
+			return err
 		}
 	}
 	return nil

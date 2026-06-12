@@ -18,6 +18,9 @@ a standalone `package main` you can `pulumi up` directly.
 |---|---|
 | `github.NewRepository` (adopted via `pulumi.Import`) | Sets `DeleteBranchOnMerge = true` on the existing repo |
 | `github.NewBranchProtection` | Protects the default branch per the config below |
+| `github.NewRepositoryEnvironment` + variables | Per-component `tabula-{development,nonproduction,production}` deploy environments |
+| `github.NewDependabotSecret` (`BUILDBUDDY_API_KEY`) | Gives Dependabot PRs the BuildBuddy key so `build-test` (RBE) doesn't fail `UNAUTHENTICATED` — only created when `buildbuddyApiKey` is configured |
+| `github.NewIssueLabel` (`dependencies`, `go`, `ci`) | The labels `.github/dependabot.yml` applies to dependency PRs (Dependabot warns + skips if they don't exist) |
 
 The repository **already exists** (you created it), so this program **adopts**
 it with `pulumi.Import(pulumi.ID(<repoName>))` instead of creating it. It also
@@ -44,9 +47,24 @@ Set with `pulumi config set <key> <value>`.
 | `tabulaVars` | object | _(empty)_ | Per-environment Actions variables for the tabula deploy environments (see below) |
 | `tabulaProductionReviewers` | string list | _(see below)_ | GitHub usernames required to approve `tabula-production` deployments (resolved to ids; works with integration tokens) |
 | `tabulaProductionReviewerIds` | int list | _(unset)_ | Numeric GitHub user ids, used verbatim (overrides `tabulaProductionReviewers`) |
+| `buildbuddyApiKey` | **secret** | _(unset)_ | BuildBuddy API key mirrored into the repo's **Dependabot** secret store (see below). When unset, no Dependabot secret is managed. |
 
 Force-pushes and branch deletions are **always** blocked on the protected
 branch.
+
+### Dependabot secret (`buildbuddyApiKey`)
+
+GitHub does not pass regular Actions secrets to Dependabot-triggered workflow
+runs, so the `build-test` job's BuildBuddy RBE auth
+(`--remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY`) fails with
+`UNAUTHENTICATED` on every dependency PR — a false-negative unrelated to the
+bump. Setting the key as a **Dependabot** secret fixes it for all Dependabot
+PRs. Store the same value as the existing `BUILDBUDDY_API_KEY` Actions secret,
+as an encrypted Pulumi config secret (never commit it in plaintext):
+
+```bash
+pulumi config set --secret buildbuddyApiKey <buildbuddy-api-key> --stack dev
+```
 
 `statusCheckContexts` is a JSON list, e.g.:
 
@@ -140,8 +158,14 @@ The preview comment shows only the Pulumi diff — Bazel build output and ANSI
 escape codes are stripped so the sticky comment stays readable.
 
 Auth uses a shared least-privilege GitHub App (`Administration: write` +
-`Contents: read` + `Variables: write` — environment variables live behind the
-separate fine-grained Variables permission, not Administration) created once via `bazel run //tools/pulumi:create-app`: the
-workflows mint a short-lived installation token from `PULUMI_APP_ID` (variable) +
-`APP_PRIVATE_KEY` (secret), and reach the Pulumi Cloud backend via
-`PULUMI_ACCESS_TOKEN` (secret).
+`Contents: read` + `Variables: write` + `Issues: write` (dependency-PR labels) +
+`Dependabot secrets: write` (the `BUILDBUDDY_API_KEY` Dependabot secret) — each
+behind its own fine-grained permission) created once via
+`bazel run //tools/pulumi:create-app`: the workflows mint a short-lived
+installation token from `PULUMI_APP_ID` (variable) + `APP_PRIVATE_KEY` (secret),
+and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
+
+> **Note:** if the App was created before these permissions were added, grant
+> `Issues: write` and `Dependabot secrets: write` to the existing App (Developer
+> settings → GitHub Apps → *…-pulumi* → Permissions) and **re-approve** the
+> installation, or the auto-apply will `403` when creating the labels/secret.
