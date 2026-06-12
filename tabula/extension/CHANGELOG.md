@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.8...tabula-extension-v0.1.9) (2026-06-12)
+
+
+### Bug Fixes
+
+* **tabula:** de-flake sync-journeys e2e ([#46](https://github.com/VitruvianSoftware/vitruvian-core/issues/46)) + drop 500ms tab-groups hack ([#47](https://github.com/VitruvianSoftware/vitruvian-core/issues/47)) ([#50](https://github.com/VitruvianSoftware/vitruvian-core/issues/50)) ([b0bf48a](https://github.com/VitruvianSoftware/vitruvian-core/commit/b0bf48a03d63f2af678798624bd311ceb6e0cec9))
+* **tabula:** protect un-acked local edits in the pull-merge ([#51](https://github.com/VitruvianSoftware/vitruvian-core/issues/51)) ([#53](https://github.com/VitruvianSoftware/vitruvian-core/issues/53)) ([fb1789f](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb1789f639f5a98e7bc08b8cc17fb3a2e30d84e0))
+
 ## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.7...tabula-extension-v0.1.8) (2026-06-12)
 
 
