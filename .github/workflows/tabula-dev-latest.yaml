@@ -1,0 +1,90 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Publishes a rolling "dev-latest" extension bundle on every main commit that
+# touches the extension. The fixed prerelease tag tabula-extension-dev-latest
+# hosts two assets, overwritten per run:
+#   tabula-extension-chrome.zip  — the dist_release bundle with build_info.json
+#                                  stamped to the real commit (injected POST
+#                                  Bazel build: the webpack action must stay
+#                                  hermetic, see tabula/extension/webpack.config.js)
+#   build_info.json              — the same identity, downloadable on its own
+# Consumed by `tabcli ext update` and the in-extension update banner (#45).
+# Release-please owns tabula-extension-v* tags; this fixed tag never collides.
+
+name: tabula-dev-latest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tabula/extension/**"
+      - ".github/workflows/tabula-dev-latest.yaml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tabula-dev-latest
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Build extension bundle
+        run: bazel build //tabula/extension:chrome_zip
+
+      - name: Stamp build identity into the bundle
+        run: |
+          cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
+            "$RUNNER_TEMP/tabula-extension-chrome.zip"
+          chmod +w "$RUNNER_TEMP/tabula-extension-chrome.zip"
+          VERSION="$(node -p "require('./tabula/extension/package.json').version")"
+          cd "$RUNNER_TEMP"
+          printf '{"commit":"%s","builtAt":"%s","version":"%s"}\n' \
+            "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$VERSION" \
+            > build_info.json
+          # zip updates the existing (placeholder) entry in place
+          zip -q tabula-extension-chrome.zip build_info.json
+
+      - name: Publish to the rolling dev-latest prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: tabula-extension-dev-latest
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --prerelease \
+              --title "tabula-extension dev-latest (rolling)" \
+              --notes "Rolling dev bundle; assets overwritten on every main commit."
+          gh release upload "$TAG" \
+            "$RUNNER_TEMP/tabula-extension-chrome.zip" \
+            "$RUNNER_TEMP/build_info.json" \
+            --clobber
+          gh release edit "$TAG" \
+            --notes "commit: ${GITHUB_SHA} — built $(date -u +%Y-%m-%dT%H:%M:%SZ)"
