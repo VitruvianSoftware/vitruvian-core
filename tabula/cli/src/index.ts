@@ -29,6 +29,7 @@ import { initCommand } from "./commands/init";
 import { versionCommand } from "./commands/version";
 import { authCommand } from "./commands/auth";
 import { workosCommand } from "./commands/workos";
+import { extCommand } from "./commands/ext";
 
 const program = new Command();
 
@@ -48,6 +49,7 @@ ${chalk.bold("Examples:")}
   $ tabcli auth gcloud             # Authenticate with GCP
   $ tabcli config set project my-project
   $ tabcli db migrate              # Run database migrations
+  $ tabcli ext update              # Pull the latest dev extension build
 
 ${chalk.bold("Documentation:")}
   For more information, visit: https://github.com/BlueCentre/tabula
@@ -61,6 +63,7 @@ program.addCommand(dbCommand);
 program.addCommand(versionCommand);
 program.addCommand(authCommand);
 program.addCommand(workosCommand);
+program.addCommand(extCommand);
 
 // Parse arguments
 program.parse(process.argv);
