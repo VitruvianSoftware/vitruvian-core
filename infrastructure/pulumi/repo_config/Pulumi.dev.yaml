@@ -9,3 +9,5 @@ config:
       GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
       GCP_PROJECT_ID: tabula-dev-0001
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
+  vitruvian-core-repo-config:buildbuddyApiKey:
+    secure: AAABANxGwYCd5LRF4k2asEqPdOZXJzVWZJINz+uxv8YJlQvR6lEt1qvgysWvg1LL73q47A==

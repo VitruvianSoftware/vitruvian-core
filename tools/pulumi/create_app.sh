@@ -7,7 +7,7 @@
 # `bazel run //tools/pulumi:create-app [-- <owner>]`.
 #
 # Run this ONCE PER ORG (e.g. your GitHub organization), NOT per repo. It creates
-# a single shared least-privilege App (Administration: write + Contents: read) and
+# a single shared least-privilege App (see default_permissions below) and
 # sets ORG-LEVEL credentials that every repo in the org inherits:
 #   PULUMI_APP_ID       org variable (App ID is non-sensitive)
 #   APP_PRIVATE_KEY     org secret   (the App's PEM private key)
@@ -63,8 +63,13 @@ else
 fi
 
 # --- Build the App manifest ------------------------------------------------
-# Least privilege: branch protection + repo settings need Administration:write;
-# Pulumi's github provider reads repo state with Contents:read. No webhook events.
+# Least privilege for what repo_config manages:
+#   administration:write     -> branch protection + repo settings
+#   contents:read            -> Pulumi github provider reads repo state
+#   variables:write          -> tabula deploy environment variables
+#   issues:write             -> dependency-PR labels (github.IssueLabel)
+#   dependabot_secrets:write -> BUILDBUDDY_API_KEY Dependabot secret
+# No webhook events.
 REDIRECT_URL="http://localhost:8723/cb"
 MANIFEST="$(
   cat <<EOF
@@ -76,7 +81,9 @@ MANIFEST="$(
   "default_permissions": {
     "administration": "write",
     "contents": "read",
-    "variables": "write"
+    "variables": "write",
+    "issues": "write",
+    "dependabot_secrets": "write"
   },
   "default_events": []
 }

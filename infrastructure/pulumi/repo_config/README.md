@@ -158,8 +158,14 @@ The preview comment shows only the Pulumi diff — Bazel build output and ANSI
 escape codes are stripped so the sticky comment stays readable.
 
 Auth uses a shared least-privilege GitHub App (`Administration: write` +
-`Contents: read` + `Variables: write` — environment variables live behind the
-separate fine-grained Variables permission, not Administration) created once via `bazel run //tools/pulumi:create-app`: the
-workflows mint a short-lived installation token from `PULUMI_APP_ID` (variable) +
-`APP_PRIVATE_KEY` (secret), and reach the Pulumi Cloud backend via
-`PULUMI_ACCESS_TOKEN` (secret).
+`Contents: read` + `Variables: write` + `Issues: write` (dependency-PR labels) +
+`Dependabot secrets: write` (the `BUILDBUDDY_API_KEY` Dependabot secret) — each
+behind its own fine-grained permission) created once via
+`bazel run //tools/pulumi:create-app`: the workflows mint a short-lived
+installation token from `PULUMI_APP_ID` (variable) + `APP_PRIVATE_KEY` (secret),
+and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
+
+> **Note:** if the App was created before these permissions were added, grant
+> `Issues: write` and `Dependabot secrets: write` to the existing App (Developer
+> settings → GitHub Apps → *…-pulumi* → Permissions) and **re-approve** the
+> installation, or the auto-apply will `403` when creating the labels/secret.
