@@ -18,8 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
+load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
