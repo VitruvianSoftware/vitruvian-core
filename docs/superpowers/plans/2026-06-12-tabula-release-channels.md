@@ -1230,9 +1230,7 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
             {(["alpha", "beta", "stable"] as const).map((ch) => (
               <button
                 key={ch}
-                aria-pressed={
-                  (selectedChannel ?? devIdentity.channel) === ch
-                }
+                aria-pressed={(selectedChannel ?? devIdentity.channel) === ch}
                 onClick={() => {
                   setSelectedChannel(ch);
                   setCopiedCommand(false);
