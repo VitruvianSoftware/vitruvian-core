@@ -1034,9 +1034,10 @@ export const UpdateBanner: React.FC = () => {
     const check = async () => {
       const result = await UpdateCheckService.checkForUpdate();
       if (cancelled) return;
-      setDeployedCommit(
-        result?.updateAvailable ? result.deployedCommit : null,
-      );
+      // null = ineligible or no reliable answer — keep the current banner
+      // state rather than flickering it off on a transient failure.
+      if (result === null) return;
+      setDeployedCommit(result.updateAvailable ? result.deployedCommit : null);
     };
     check();
     const id = setInterval(check, POLL_INTERVAL_MS);
@@ -1084,20 +1085,25 @@ Expected: PASS.
 
 In `tabula/extension/src/dashboard/Dashboard.tsx`:
 - Add `import { UpdateBanner } from "../components/UpdateBanner";` next to the `SyncStatusIndicator` import (line ~42).
-- Render `<UpdateBanner />` on the line directly above `<SyncStatusIndicator />` (line ~1043), same container.
+- Render `<UpdateBanner />` as a **sibling immediately BEFORE** the Sync Status Indicator footer `<div>` (the flex-row div with `justifyContent: "space-between"`), NOT inside it. When visible, the banner is full sidebar-width and does not squeeze `<SyncStatusIndicator />`.
 
 Append to `tabula/extension/src/styles/components.css`:
 
 ```css
-/* Dev-channel update banner (UpdateBanner.tsx) */
+/* Dev-channel update banner (UpdateBanner.tsx). The yellow background is
+   intentionally theme-invariant, so the text color must be pinned dark —
+   the inherited body color is near-white under [data-theme='dark']. */
 .update-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  margin: 8px 16px 0;
   padding: 6px 12px;
   border-radius: 6px;
-  background: var(--warning-bg, #fff8e1);
-  border: 1px solid var(--warning-border, #f0c36d);
+  background: #fff8e1;
+  border: 1px solid #f0c36d;
+  color: rgb(41, 47, 61);
   font-size: 13px;
 }
 .update-banner code {
@@ -1107,11 +1113,15 @@ Append to `tabula/extension/src/styles/components.css`:
   border-radius: 3px;
 }
 .update-banner button {
-  border: 1px solid var(--warning-border, #f0c36d);
+  border: 1px solid #f0c36d;
   background: transparent;
+  color: rgb(41, 47, 61);
   border-radius: 4px;
   padding: 2px 8px;
   cursor: pointer;
+}
+.update-banner button:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 .update-banner .update-banner-reload {
   font-weight: 600;

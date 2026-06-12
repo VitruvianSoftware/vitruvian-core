@@ -40,6 +40,7 @@ import { SortableNavItem } from "./SortableNavItem";
 import { AccountSettings } from "../components/AccountSettings";
 import { AuthService, User } from "../services/auth";
 import { SyncStatusIndicator } from "../components/SyncStatusIndicator";
+import { UpdateBanner } from "../components/UpdateBanner";
 import { DroppableContainer } from "./DroppableContainer";
 import { ResourceSection } from "./ResourceSection";
 import { NotesPanel } from "./NotesPanel";
@@ -1029,6 +1030,7 @@ export const Dashboard: React.FC = () => {
           />
         </DndContext>
 
+        <UpdateBanner />
         {/* Sync Status Indicator - Footer */}
         <div
           style={{
