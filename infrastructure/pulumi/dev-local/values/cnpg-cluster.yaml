@@ -11,6 +11,10 @@ cluster:
   instances: 3
   storage:
     size: 1Gi
+    # Longhorn (replicated, relocatable) so instances can reschedule on node
+    # loss; CNPG applies this only to NEW instance PVCs (existing ones keep
+    # their class until the instance is recycled).
+    storageClass: longhorn
 
   inheritedMetadata:
     annotations:

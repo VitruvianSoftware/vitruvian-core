@@ -55,10 +55,16 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 				"statefulSet": map[string]interface{}{
 					"enabled": false,
 				},
+				// 25Gi on Longhorn: at 15d retention the TSDB actually held ~15.7GiB
+				// while the old PVC *declared* 2Gi — local-path never enforced the
+				// quota. Longhorn does, so size for reality with headroom and cap
+				// growth below the quota via retentionSize.
 				"persistentVolume": map[string]interface{}{
-					"enabled": true,
-					"size":    "2Gi",
+					"enabled":      true,
+					"size":         "25Gi",
+					"storageClass": "longhorn",
 				},
+				"retentionSize": "20GB",
 				"extraFlags": []interface{}{
 					"web.enable-lifecycle",
 					"web.enable-remote-write-receiver",
@@ -113,9 +119,16 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
     regex: 'minio'
     action: keep
 `,
+			// The alertmanager subchart's real key is `persistence` — the legacy
+			// `persistentVolume` spelling above it was silently ignored, so the
+			// live StatefulSet carried a default local-path PVC despite
+			// "enabled: false" here. Persist for real, on Longhorn, so
+			// silences/nflog survive pod restarts AND node loss.
 			"alertmanager": map[string]interface{}{
-				"persistentVolume": map[string]interface{}{
-					"enabled": false,
+				"persistence": map[string]interface{}{
+					"enabled":      true,
+					"size":         "2Gi",
+					"storageClass": "longhorn",
 				},
 			},
 		},
