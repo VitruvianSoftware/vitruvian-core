@@ -91,4 +91,8 @@ jobs:
           # Without this, beta installs would carry commit "dev" and the
           # update checker would disable itself.
           zip -q "${TAG}-chrome.zip" build_info.json
-          gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip" --clobber
+          # --repo is required: after the cd above, gh runs outside the
+          # checkout and cannot infer the repository from git (this exact
+          # gap failed the v0.1.11 cut with "not a git repository").
+          gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip" \
+            --repo "$GITHUB_REPOSITORY" --clobber
