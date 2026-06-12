@@ -202,6 +202,13 @@ extCommand
         console.log(
           `  First time? chrome://extensions → Developer mode → "Load unpacked" → ${target}`,
         );
+        if (channel === "beta" && info?.commit === "dev") {
+          console.log(
+            chalk.yellow(
+              "  Note: this release predates identity stamping — the in-extension update banner stays off. Re-run `tabcli ext update` after the next release cut.",
+            ),
+          );
+        }
       } finally {
         fs.rmSync(downloadDir, { recursive: true, force: true });
         fs.rmSync(staging, { recursive: true, force: true });

@@ -91,4 +91,4 @@ jobs:
           # Without this, beta installs would carry commit "dev" and the
           # update checker would disable itself.
           zip -q "${TAG}-chrome.zip" build_info.json
-          gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip"
+          gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip" --clobber
