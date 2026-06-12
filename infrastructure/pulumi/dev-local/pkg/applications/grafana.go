@@ -118,9 +118,14 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 						"memory": "512Mi",
 					},
 				},
-				// Pin the data volume size to the chart default so it can't silently drift on a chart upgrade; most provisioners (incl. local-path) can't shrink a PVC
+				// Pin the data volume size to the chart default so it can't silently drift on a chart upgrade; most provisioners (incl. local-path) can't shrink a PVC.
+				// storageClass pinned to Longhorn (replicated, relocatable): CNPG only
+				// consults it when CREATING an instance PVC, so existing instances keep
+				// their class until recycled — node-pinned local-path stranded a replica
+				// whenever a laptop node slept (docs/infrastructure/resilience-catalog.md).
 				"storage": map[string]interface{}{
-					"size": "8Gi",
+					"size":         "8Gi",
+					"storageClass": "longhorn",
 				},
 				// Default chart key is topology.kubernetes.io/zone, meaningless on a local cluster without zone labels; spread across physical nodes instead
 				"affinity": map[string]interface{}{
