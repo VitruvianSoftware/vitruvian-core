@@ -123,6 +123,9 @@ describe("useTabSync", () => {
       groups: [],
       reliable: true,
     });
+    // Startup readiness probe (replaces the old blind 500ms delay): default to
+    // "consistent" so the initial sync proceeds immediately in most tests.
+    (TabService.areTabGroupsConsistent as jest.Mock).mockResolvedValue(true);
     (WorkspaceService.updateWorkspace as jest.Mock).mockResolvedValue(
       undefined,
     );
@@ -154,7 +157,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       expect(mockChrome.tabs.onCreated.addListener).toHaveBeenCalled();
@@ -197,6 +200,86 @@ describe("useTabSync", () => {
       );
 
       expect(mockChrome.tabs.onCreated.addListener).not.toHaveBeenCalled();
+    });
+  });
+
+  // Issue #47: the old code delayed listener registration AND the first sync by
+  // a blind 500ms to dodge Chrome reporting groupId -1 for grouped tabs right
+  // after a soft refresh. That is replaced by (a) immediate listener
+  // registration and (b) condition-based waiting on TabService until the
+  // tab/group state is consistent before the initial sync.
+  describe("startup readiness (condition-based, replaces 500ms delay)", () => {
+    it("registers Chrome listeners immediately on mount (no startup delay)", () => {
+      renderHook(() =>
+        useTabSync({
+          activeWorkspaceRef,
+          isSwitchingRef,
+          setActiveWorkspaceData,
+          currentWindowId: 123,
+        }),
+      );
+
+      // No timer advance: listeners must already be attached.
+      expect(mockChrome.tabs.onCreated.addListener).toHaveBeenCalled();
+      expect(mockChrome.tabs.onUpdated.addListener).toHaveBeenCalled();
+      expect(mockChrome.tabGroups.onUpdated.addListener).toHaveBeenCalled();
+    });
+
+    it("waits until tab groups are consistent before the initial sync", async () => {
+      (TabService.areTabGroupsConsistent as jest.Mock)
+        .mockResolvedValueOnce(false) // first probe: Chrome not ready yet
+        .mockResolvedValue(true); // subsequent probes: ready
+      (TabService.getCurrentTabs as jest.Mock).mockResolvedValue([
+        createMockTab(),
+      ]);
+
+      renderHook(() =>
+        useTabSync({
+          activeWorkspaceRef,
+          isSwitchingRef,
+          setActiveWorkspaceData,
+          currentWindowId: 123,
+          debounceMs: 50,
+        }),
+      );
+
+      // First probe returned "not consistent" -> no sync yet.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(TabService.getCurrentTabs).not.toHaveBeenCalled();
+
+      // After the next probe reports consistent and the debounce elapses, the
+      // initial sync runs.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(200);
+      });
+      expect(TabService.areTabGroupsConsistent).toHaveBeenCalled();
+      expect(TabService.getCurrentTabs).toHaveBeenCalled();
+    });
+
+    it("still performs the initial sync if readiness never settles (bounded fallback)", async () => {
+      // Probe never reports consistent — the bounded fallback must still fire
+      // the initial sync (syncTabs' own guard protects against a bad write).
+      (TabService.areTabGroupsConsistent as jest.Mock).mockResolvedValue(false);
+      (TabService.getCurrentTabs as jest.Mock).mockResolvedValue([
+        createMockTab(),
+      ]);
+
+      renderHook(() =>
+        useTabSync({
+          activeWorkspaceRef,
+          isSwitchingRef,
+          setActiveWorkspaceData,
+          currentWindowId: 123,
+          debounceMs: 50,
+        }),
+      );
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(2500);
+      });
+      expect(TabService.getCurrentTabs).toHaveBeenCalled();
     });
   });
 
@@ -554,7 +637,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay so listeners are registered
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Get the handleTabUpdate callback that was registered
@@ -597,7 +680,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       const handleTabUpdate =
@@ -634,7 +717,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       const handleTabUpdate =
@@ -668,7 +751,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Clear mock calls from the initial sync triggered by the delay
@@ -710,7 +793,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Clear mock calls from the initial sync triggered by the delay
@@ -751,7 +834,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Clear mock calls from any initial sync
@@ -792,7 +875,7 @@ describe("useTabSync", () => {
 
       // Advance past the 500ms init delay
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Clear mock calls from any initial sync
@@ -878,7 +961,7 @@ describe("useTabSync", () => {
         }),
       );
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // The write must go through (not be blocked by the stale-group guard)...
@@ -925,7 +1008,7 @@ describe("useTabSync", () => {
         }),
       );
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       expect(WorkspaceService.updateWorkspaceTabs).toHaveBeenCalled();
@@ -988,7 +1071,7 @@ describe("useTabSync", () => {
 
       // Advance past the init delay and debounce
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Verify setActiveWorkspaceData was called with the tab having NO groupId
@@ -1057,7 +1140,7 @@ describe("useTabSync", () => {
       );
 
       await act(async () => {
-        jest.advanceTimersByTime(600);
+        await jest.advanceTimersByTimeAsync(600);
       });
 
       // Should have synced - verify the tab has NO groupId (Chrome's state won)
@@ -1072,6 +1155,70 @@ describe("useTabSync", () => {
 
       // Key assertion: the tab should NOT have preserved the old groupId
       expect(updatedTab?.groupId).toBeUndefined();
+    });
+  });
+
+  // Issue #46: the quarantined signed-out sync-journeys e2e tests fail with
+  // "resources fail to persist multiple additions". Hypothesis: syncTabs writes
+  // React state by spreading the activeWorkspaceRef snapshot, which can be stale
+  // relative to storage (a resource added between the ref's capture and a tab
+  // event). A tab event firing mid-add (e.g. "Open All") then overwrites the UI
+  // with the pre-add resource list. syncTabs must base its state update on the
+  // freshest persisted workspace, not the ref it happened to close over.
+  describe("syncTabs - does not clobber concurrently-added data (#46)", () => {
+    it("preserves resources added since the workspace ref was captured", async () => {
+      const staleRef = createMockWorkspace({
+        id: "ws1",
+        // ref still reflects the moment BEFORE "beta" was added
+        sections: [
+          { id: "s1", title: "Links", resources: [{ id: "alpha" }] },
+        ] as unknown as Workspace["sections"],
+      });
+      activeWorkspaceRef = { current: staleRef };
+
+      // Storage (source of truth) already has both — addResourceToSection
+      // persisted "beta" synchronously before this tab-triggered sync ran.
+      const freshFromStorage = createMockWorkspace({
+        id: "ws1",
+        sections: [
+          {
+            id: "s1",
+            title: "Links",
+            resources: [{ id: "alpha" }, { id: "beta" }],
+          },
+        ] as unknown as Workspace["sections"],
+      });
+      (WorkspaceService.getWorkspaceById as jest.Mock).mockResolvedValue(
+        freshFromStorage,
+      );
+      (TabService.getCurrentTabs as jest.Mock).mockResolvedValue([
+        createMockTab(),
+      ]);
+
+      const { result } = renderHook(() =>
+        useTabSync({
+          activeWorkspaceRef,
+          isSwitchingRef,
+          setActiveWorkspaceData,
+          currentWindowId: 123,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.syncTabs();
+      });
+
+      expect(setActiveWorkspaceData).toHaveBeenCalled();
+      const lastArg =
+        setActiveWorkspaceData.mock.calls[
+          setActiveWorkspaceData.mock.calls.length - 1
+        ][0];
+      const resourceIds = (lastArg.sections?.[0]?.resources ?? []).map(
+        (r: { id: string }) => r.id,
+      );
+      // The tab sync must not drop "beta" just because the ref it closed over
+      // was captured before the add.
+      expect(resourceIds).toEqual(["alpha", "beta"]);
     });
   });
 

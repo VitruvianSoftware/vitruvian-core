@@ -638,6 +638,53 @@ describe("TabService", () => {
     });
   });
 
+  // Issue #47: readiness probe used by useTabSync to replace the blind 500ms
+  // startup delay. Ready == Chrome's tabs.query() and tabGroups.query() agree.
+  describe("areTabGroupsConsistent", () => {
+    it("is consistent when there are no groups (nothing to wait for)", async () => {
+      mockChrome.windows.getCurrent.mockResolvedValue({ id: 123 });
+      mockChrome.tabGroups.query.mockResolvedValue([]);
+      mockChrome.tabs.query.mockResolvedValue([
+        { id: 1, url: "https://a.com", groupId: -1 },
+      ]);
+
+      await expect(TabService.areTabGroupsConsistent()).resolves.toBe(true);
+    });
+
+    it("is NOT consistent when groups exist but no tab has a groupId yet", async () => {
+      // The transient post-soft-refresh window: groups reported, tabs still -1.
+      mockChrome.windows.getCurrent.mockResolvedValue({ id: 123 });
+      mockChrome.tabGroups.query.mockResolvedValue([
+        { id: 1, title: "G", color: "blue", collapsed: false },
+      ]);
+      mockChrome.tabs.query.mockResolvedValue([
+        { id: 1, url: "https://a.com", groupId: -1 },
+        { id: 2, url: "https://b.com", groupId: -1 },
+      ]);
+
+      await expect(TabService.areTabGroupsConsistent()).resolves.toBe(false);
+    });
+
+    it("is consistent once a grouped tab reports a real groupId", async () => {
+      mockChrome.windows.getCurrent.mockResolvedValue({ id: 123 });
+      mockChrome.tabGroups.query.mockResolvedValue([
+        { id: 1, title: "G", color: "blue", collapsed: false },
+      ]);
+      mockChrome.tabs.query.mockResolvedValue([
+        { id: 1, url: "https://a.com", groupId: 1 },
+        { id: 2, url: "https://b.com", groupId: -1 },
+      ]);
+
+      await expect(TabService.areTabGroupsConsistent()).resolves.toBe(true);
+    });
+
+    it("fails open (true) on query error so startup never wedges", async () => {
+      mockChrome.windows.getCurrent.mockRejectedValue(new Error("API Error"));
+
+      await expect(TabService.areTabGroupsConsistent()).resolves.toBe(true);
+    });
+  });
+
   describe("restoreTabGroups", () => {
     // Use stable UUIDs instead of numbers for group IDs
     const savedTabs = [
