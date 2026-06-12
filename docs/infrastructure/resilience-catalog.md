@@ -112,16 +112,16 @@ fedora (DB reconnect-gated).
 3. ~~coredns → 2 replicas~~ — **done live + verified** (zero-downtime DNS
    through a replica kill). k3s restart may revert the scale; permanent fix
    (and required anti-affinity) belongs in the k3s server manifest.
-4. **Migrate stateful PVs local-path → Longhorn** (DBs first — CNPG can roll
+4. **Migrate stateful PVs local-path → Longhorn** (#64) (DBs first — CNPG can roll
    replicas onto a new storage class; then prometheus/alertmanager/MinIO).
    Precondition: fix CSI-controller spread (required anti-affinity) first.
-5. **Required anti-affinity + PDBs** for traefik, MinIO (4 drives → 4 nodes),
+5. **Required anti-affinity + PDBs** (#65) for traefik, MinIO (4 drives → 4 nodes),
    cert-manager-webhook/cainjector, external-secrets, cnpg-operator,
    otel-collector/operator.
-6. **Scale leader-elected singletons to 2** (metallb-controller, external-dns).
-7. **etcd 3 → 5 voters** (promote fedora + james-mbp) *only if* they can sit on
+6. **Scale leader-elected singletons to 2** (#66) (metallb-controller, external-dns).
+7. **etcd 3 → 5 voters** (#69) (promote fedora + james-mbp) *only if* they can sit on
    separate power/network domains.
-8. Verify `devx-registry` storage backend; decide whether tempo should be
+8. (#70) Verify `devx-registry` storage backend; decide whether tempo should be
    persistent (today it isn't).
 
 ## Improvements verified (2026-06-12)
@@ -139,6 +139,10 @@ Conclusion: with 3 instances + relocatable storage, the cnpg database now
 **survives a node loss with zero write interruption**. The same migration
 (local-path → Longhorn) remains the fix for grafana-db, prometheus,
 alertmanager, and MinIO.
+
+Remaining work is tracked as GitHub issues **#64–#71** (label
+`infrastructure`): the plan items above, plus making the live fixes permanent
+in devx provisioning (#67, #68) and laptop-sleep node churn (#71).
 
 ## Known operational quirks
 
