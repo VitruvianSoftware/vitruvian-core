@@ -276,4 +276,20 @@ describe("UpdateCheckService", () => {
       expect(compareVersions("1.0", "1.0.0")).toBe(0);
     });
   });
+
+  describe("getDisplayIdentity", () => {
+    it("returns channel + commit + version for an eligible install", async () => {
+      stubInstall({ channel: "beta", commit: "abc1234" });
+      await expect(UpdateCheckService.getDisplayIdentity()).resolves.toEqual({
+        channel: "beta",
+        commit: "abc1234",
+        version: "0.1.9", // from the mocked manifest
+      });
+    });
+
+    it("returns null when ineligible (local/dev or Web Store install)", async () => {
+      stubInstall({ commit: "dev" });
+      await expect(UpdateCheckService.getDisplayIdentity()).resolves.toBeNull();
+    });
+  });
 });

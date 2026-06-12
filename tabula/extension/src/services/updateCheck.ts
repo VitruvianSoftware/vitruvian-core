@@ -168,6 +168,25 @@ export class UpdateCheckService {
     }
   }
 
+  /**
+   * Identity for display surfaces (Settings, dashboard footer). Null unless
+   * this is an eligible dev install of a CI-built bundle — Web Store users
+   * and local ad-hoc builds never see channel/commit chrome.
+   */
+  static async getDisplayIdentity(): Promise<{
+    channel: Channel;
+    commit: string;
+    version: string;
+  } | null> {
+    const { eligible, ownCommit } = await this.isEligible();
+    if (!eligible || !ownCommit) return null;
+    return {
+      channel: await this.getOwnChannel(),
+      commit: ownCommit,
+      version: chrome.runtime.getManifest().version,
+    };
+  }
+
   /** null = ineligible or no reliable answer (failures stay silent). */
   static async checkForUpdate(): Promise<UpdateCheckResult | null> {
     const { eligible, ownCommit } = await this.isEligible();
