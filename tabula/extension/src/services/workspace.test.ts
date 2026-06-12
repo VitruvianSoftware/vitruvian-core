@@ -2747,6 +2747,8 @@ describe("getAllWorkspaces merge semantics", () => {
     ).mockResolvedValue({});
     (SyncService.enqueue as jest.Mock).mockResolvedValue(undefined);
     (StorageService.saveWorkspaces as jest.Mock).mockResolvedValue(undefined);
+    // Default: nothing queued locally (no un-acked edits to protect).
+    (SyncService.getPendingSaveIds as jest.Mock).mockResolvedValue(new Set());
   });
 
   it("should drop a local workspace that was deleted remotely (has a server version)", async () => {
@@ -2812,6 +2814,56 @@ describe("getAllWorkspaces merge semantics", () => {
         action: "save",
         entityId: "ws1",
         data: expect.objectContaining({ name: "Local Newer", version: 5 }),
+      }),
+    );
+  });
+
+  it("must not clobber a local workspace with un-acked queued edits, even when remote has a newer (server-stamped) updatedAt (#51)", async () => {
+    // Race: Beta was added locally and queued for sync; meanwhile Alpha's
+    // earlier PUT landed and the server auto-stamped a LATER updated_at
+    // (Prisma @updatedAt) and bumped the version. A pull-merge now sees a
+    // remote copy that is "newer" by updatedAt but is missing Beta.
+    const t = Date.now();
+    const local = makeWorkspace("ws1", {
+      version: 5,
+      updatedAt: t,
+      sections: [
+        {
+          id: "s1",
+          title: "Links",
+          resources: [{ id: "alpha" }, { id: "beta" }],
+        },
+      ] as unknown as Workspace["sections"],
+    });
+    const remote = makeWorkspace("ws1", {
+      version: 6, // server bumped on Alpha's PUT
+      updatedAt: t + 1000, // server-stamped LATER than the local edit
+      sections: [
+        { id: "s1", title: "Links", resources: [{ id: "alpha" }] },
+      ] as unknown as Workspace["sections"],
+    });
+    (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([local]);
+    (ApiService.getWorkspaces as jest.Mock).mockResolvedValue([remote]);
+    // ws1 has a pending local save (Beta) that the server hasn't acked yet.
+    (SyncService.getPendingSaveIds as jest.Mock).mockResolvedValue(
+      new Set(["ws1"]),
+    );
+
+    const result = await WorkspaceService.getAllWorkspaces();
+
+    // The un-acked local edit must survive the merge.
+    const ids = (result[0].sections?.[0]?.resources ?? []).map(
+      (r: { id: string }) => r.id,
+    );
+    expect(ids).toEqual(["alpha", "beta"]);
+    // ...and it must adopt the server's current version so its queued PUT
+    // lands cleanly (baseVersion 6) instead of 409-ing and re-clobbering.
+    expect(result[0].version).toBe(6);
+    expect(SyncService.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "workspace",
+        entityId: "ws1",
+        data: expect.objectContaining({ version: 6 }),
       }),
     );
   });

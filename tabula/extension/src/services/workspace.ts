@@ -410,27 +410,45 @@ export class WorkspaceService {
           const localWorkspaces = await StorageService.getWorkspaces();
           const localWinners: Workspace[] = [];
 
-          // Conflict Resolution: per-entity Last Write Wins
+          // Workspaces with an un-acked local save queued. They must NOT lose to
+          // a remote copy that only looks "newer" because the server
+          // auto-stamps updated_at on every write (Prisma @updatedAt): a PUT
+          // for an EARLIER edit that lands first can outrank the client clock
+          // for a LATER local edit the server hasn't seen yet, dropping it
+          // (#51). updatedAt/version can't distinguish this from a genuine
+          // remote edit — only the pending-save signal can.
+          const pendingSaves =
+            (await SyncService.getPendingSaveIds("workspace")) ??
+            new Set<string>();
+
+          // Conflict Resolution: per-entity Last Write Wins, except un-acked
+          // local edits always win their own content (the queued PUT converges
+          // the server).
           const mergedWorkspaces = remoteWorkspaces.map((remoteWs) => {
             const localWs = localWorkspaces.find((l) => l.id === remoteWs.id);
 
             // Normalize timestamps to handle potential string/ISO formats from API
             const localTime = new Date(localWs?.updatedAt || 0).getTime();
             const remoteTime = new Date(remoteWs.updatedAt || 0).getTime();
+            const localHasUnsyncedEdits =
+              !!localWs && pendingSaves.has(remoteWs.id);
 
-            // If local exists and is newer or equal, prefer local — but keep
-            // the server's sync metadata so the next PUT carries the right
-            // baseVersion
-            if (localWs && localTime >= remoteTime) {
+            // Prefer local when it is newer/equal OR has un-acked edits queued —
+            // but keep the server's sync metadata so the next PUT carries the
+            // right baseVersion.
+            if (localWs && (localTime >= remoteTime || localHasUnsyncedEdits)) {
               const kept: Workspace = {
                 ...localWs,
                 version: remoteWs.version,
                 activeDeviceId: remoteWs.activeDeviceId,
                 activeDeviceSeenAt: remoteWs.activeDeviceSeenAt,
               };
-              // Strictly-newer local content must be pushed so the server
-              // converges instead of silently diverging
-              if (localTime > remoteTime) {
+              // Push when local content the server hasn't got must converge:
+              // strictly-newer local, or un-acked edits. Re-pushing also
+              // refreshes the queued op's baseVersion to the server's current
+              // version, so it lands cleanly instead of 409-ing and rebasing
+              // back into the same clobber.
+              if (localTime > remoteTime || localHasUnsyncedEdits) {
                 localWinners.push(kept);
               }
               return kept;
