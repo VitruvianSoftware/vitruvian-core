@@ -15,13 +15,15 @@ the same `bazel run` wrappers.
   [Architecture](architecture.md).
 - **Need to run something?** Jump to the [User guide](user-guide.md).
 - **Just want a command or a fact?** See the [Reference](reference.md).
+- **Wondering what survives a node failure?** See the
+  [Resilience catalog](resilience-catalog.md).
 
 ## The estate at a glance
 
 | Project | Directory | Manages | State backend | Identity |
 |---|---|---|---|---|
 | **sync-auth** | [`infrastructure/pulumi`](../../infrastructure/pulumi) | Copybara deploy keys + GitHub App dispatch secrets | Pulumi Cloud | GitHub App / token |
-| **dev-local** | [`infrastructure/pulumi/dev-local`](../../infrastructure/pulumi/dev-local) | Local k3s cluster + platform add-ons | Local (self-managed) | local kubeconfig |
+| **dev-local** | [`infrastructure/pulumi/dev-local`](../../infrastructure/pulumi/dev-local) | Local k3s cluster + platform add-ons | Pulumi Cloud | kubeconfig `~/.kube/cluster.yaml` (context `default`) |
 | **lab-gmail** | [`infrastructure/pulumi/lab-gmail`](../../infrastructure/pulumi/lab-gmail) | Personal GCP: Cloud Run, GCS, IAM, Secret Manager + Cloudflare DNS | Pulumi Cloud | `james.nguyen@gmail.com` (GCP) |
 | **repo_config** | [`infrastructure/pulumi/repo_config`](../../infrastructure/pulumi/repo_config) | This repo's GitHub branch protection + merge policy | Pulumi Cloud | GitHub App / token |
 
@@ -55,7 +57,7 @@ flowchart TB
     pulumi --> repocfg
     pulumi --> syncauth
 
-    pulumi -. "state &amp; secrets" .-> state[("Pulumi Cloud<br/>dev-local uses a local backend")]
+    pulumi -. "state &amp; secrets" .-> state[("Pulumi Cloud")]
 ```
 
 ## Core ideas
@@ -70,10 +72,10 @@ A handful of conventions are shared by every project; the
   [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)
   and injected per-run, so a command can never accidentally run against the wrong
   Google account. Wrong/missing login **fails fast**.
-- **Mixed state backends on purpose.** The three cloud/GitHub-facing projects
-  keep state (and encrypted secrets) in **Pulumi Cloud**; the throwaway local
-  cluster uses a **local** backend — there's nothing durable worth storing
-  remotely.
+- **One state backend.** All four projects keep state (and encrypted secrets)
+  in **Pulumi Cloud** under the `ipv1337` account — dev-local's stack is
+  `monorepo/local`; its config passphrase lives in the project's gitignored
+  `.env`.
 - **Secrets stay out of git.** `Pulumi.<stack>.yaml` files that hold real config
   live locally and are git-ignored; only `*.example` templates and encrypted
   `secure:` values are committed.

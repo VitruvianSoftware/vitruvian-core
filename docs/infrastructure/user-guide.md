@@ -17,8 +17,8 @@ most of them):
 - **Go** — Pulumi compiles each project's Go program with it.
 - **gcloud** — only for GCP projects (lab-gmail), used to mint the pinned
   identity's token.
-- A **Pulumi login** — Pulumi Cloud (`pulumi login`, the default) for the
-  cloud/GitHub projects, or `pulumi login --local` for dev-local.
+- A **Pulumi login** — Pulumi Cloud (`pulumi login`, the default). All four
+  projects keep state in Pulumi Cloud (dev-local's stack is `monorepo/local`).
 
 The guided helper checks all of this for you:
 
@@ -95,7 +95,7 @@ account. (See [Troubleshooting](#troubleshooting) for the 403 case.)
 
 ### dev-local — local cluster
 
-1. `bazel run //infrastructure/pulumi/dev-local:setup` (first time: `pulumi login --local`, stack `local`).
+1. `bazel run //infrastructure/pulumi/dev-local:setup` (stack `local`, Pulumi Cloud backend; source the project's gitignored `.env` for `PULUMI_CONFIG_PASSPHRASE`).
 2. Choose components by setting `monorepo:<name>_enabled` flags (e.g.
    `cert_manager_enabled`, `istio_enabled`, `monitoring_enabled`) in your local
    `Pulumi.local.yaml`, or via `…:config -- set monorepo:istio_enabled true`.
@@ -154,7 +154,7 @@ credentials it places are consumed by the
 | `not a known dependency` during a Pulumi build | `go.work` interfering with the standalone module | use the Bazel wrapper (it sets `GOWORK=off`); don't run raw `pulumi` from inside `go.work` |
 | `pulumi CLI not found` | Pulumi not installed/loaded | `bazel run //<project>:setup`, or install per the message |
 | repo_config first `up` fails to import | wrong `repoName`/`repoOwner` or token account | fix config + `GITHUB_TOKEN` and retry — nothing is created until import resolves |
-| dev-local: `no stack selected` | local stack not initialized | `pulumi login --local && pulumi stack init local`, or run `…:setup` |
+| dev-local: `no stack selected` | stack not selected in this shell | `…:config -- --stack local`, pass `-- --stack local` to any verb, or run `…:setup` |
 
 ## Safety notes
 

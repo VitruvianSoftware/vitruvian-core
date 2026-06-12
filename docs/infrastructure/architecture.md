@@ -34,7 +34,6 @@ flowchart TB
     providers --> gcpp["GCP + Cloudflare<br/>(lab-gmail)"]
     providers --> ghp["GitHub + TLS<br/>(sync-auth · repo_config)"]
     pulumi -. state .-> cloud[("Pulumi Cloud")]
-    pulumi -. state .-> localb[("local backend<br/>(dev-local)")]
 ```
 
 ## The Pulumi-behind-Bazel pattern
@@ -125,11 +124,10 @@ Key properties:
 
 ## State & secrets model
 
-| Concern | Cloud-facing projects (sync-auth, lab-gmail, repo_config) | dev-local |
+| Concern | sync-auth, lab-gmail, repo_config | dev-local |
 |---|---|---|
-| State backend | **Pulumi Cloud** (`app.pulumi.com`) | **Local / self-managed** (`pulumi login --local`) |
-| Why | durable, shared, encrypted-secret storage | a throwaway local cluster has no durable state worth keeping |
-| Secret values | encrypted `secure:` blobs in committed `Pulumi.<stack>.yaml` | local `Pulumi.local.yaml` + `.env`, **git-ignored** |
+| State backend | **Pulumi Cloud** (`app.pulumi.com`) | **Pulumi Cloud** (stack `ipv1337/monorepo/local`) |
+| Secret values | encrypted `secure:` blobs in committed `Pulumi.<stack>.yaml` | local `Pulumi.local.yaml` + `.env` (incl. `PULUMI_CONFIG_PASSPHRASE`), **git-ignored** |
 | Plaintext config | committed (non-secret keys only) | `*.example` templates committed; real values local |
 
 A few rules hold everywhere:
@@ -179,7 +177,7 @@ one-line append to the `syncedProjects` list in
 
 ### dev-local (`infrastructure/pulumi/dev-local`)
 
-Pulumi project `monorepo` (stack `local`, local backend). Brings up a local
+Pulumi project `monorepo` (stack `local`, Pulumi Cloud backend). Brings up a local
 [k3s](https://k3s.io/) HA cluster on a [Lima](https://lima-vm.org/) VM and layers
 on a configurable platform. Every add-on is gated by a `monorepo:<name>_enabled`
 config flag, so you deploy only what you need.
@@ -286,5 +284,5 @@ pages and stack config carry no MIT header.
 | Drive Pulumi through Bazel wrappers | one interface; no per-project CLI knowledge; identity + `GOWORK` handled for you | an extra indirection layer to learn once |
 | Standalone Go modules outside `go.work` | Pulumi's internal `go build` resolves cleanly; isolates dependency closures | each module manages its own `go.mod`/`go.sum` |
 | Pin GCP identity in a committed map | wrong account fails fast instead of mutating the wrong project | new GCP projects must be added to the map first |
-| Pulumi Cloud for cloud projects, local for dev-local | durable encrypted state where it matters; nothing to store for a throwaway cluster | two backends to understand |
+| Pulumi Cloud state for all projects (dev-local included) | one durable, shared backend; no per-machine state files to lose | requires Pulumi Cloud login even for local-only work |
 | Adopt (import) the repo in repo_config | manage settings without recreating a brownfield repo | first apply must import before it can manage |
