@@ -103,13 +103,15 @@ fedora (DB reconnect-gated).
 
 ## Hardening plan (priority order)
 
-1. ~~`cnpg-cluster` → 3 instances~~ — **PR #61**.
-2. **Single default StorageClass** — remove the default annotation from
-   `local-path`, keep `longhorn` (k3s re-asserts its manifest on server
-   restart; if it reappears, fix at the k3s server config level).
-3. **coredns → 2–3 replicas + required anti-affinity** (k3s-owned; live-scaled
-   2026-06-12 — k3s restart may revert; permanent fix belongs in the k3s
-   server manifest).
+1. ~~`cnpg-cluster` → 3 instances~~ — **done** (PR #61, applied + verified, see
+   [verification](#improvements-verified-2026-06-12)).
+2. ~~Single default StorageClass~~ — **done live** (`local-path` un-defaulted;
+   `longhorn` sole default and now carrying real volumes). k3s re-asserts its
+   manifest on server restart; if the annotation reappears, fix at the k3s
+   server config level.
+3. ~~coredns → 2 replicas~~ — **done live + verified** (zero-downtime DNS
+   through a replica kill). k3s restart may revert the scale; permanent fix
+   (and required anti-affinity) belongs in the k3s server manifest.
 4. **Migrate stateful PVs local-path → Longhorn** (DBs first — CNPG can roll
    replicas onto a new storage class; then prometheus/alertmanager/MinIO).
    Precondition: fix CSI-controller spread (required anti-affinity) first.
@@ -122,6 +124,22 @@ fedora (DB reconnect-gated).
 8. Verify `devx-registry` storage backend; decide whether tempo should be
    persistent (today it isn't).
 
+## Improvements verified (2026-06-12)
+
+Second controlled experiment, same day, after applying hardening items 1–3:
+
+| Test | Method | Result |
+|---|---|---|
+| DNS HA (coredns ×2) | 1 s-interval lookup probe; deleted the original mbp32 replica | ✅ **0 failures / 27 probes** — fedora replica served throughout |
+| DB write continuity through node loss | 2 s-interval `INSERT` probe against the cnpg primary while draining `james-mbp` (hosted a Longhorn-backed standby) | ✅ **26/26 writes OK, 0 failures** |
+| Relocatable storage (the A/B) | same drain: `cnpg-cluster-2` (Longhorn PVC) vs `grafana-db-cluster-12` (local-path PVC) | ✅ Longhorn standby **rescheduled to fedora and rejoined 3/3 during the drain**; local-path replica stranded `Pending` until uncordon — exactly the cataloged contrast |
+| Longhorn drain ordering | volume was attached on the drained node | drain briefly blocked on the instance-manager PDB, then cleared after one 5 s retry once the volume detached (~15 s total); post-uncordon replica rebuild returned volumes to `healthy` |
+
+Conclusion: with 3 instances + relocatable storage, the cnpg database now
+**survives a node loss with zero write interruption**. The same migration
+(local-path → Longhorn) remains the fix for grafana-db, prometheus,
+alertmanager, and MinIO.
+
 ## Known operational quirks
 
 - `james-mbp` is a laptop: when it sleeps, expect the [stranding cascade](#the-two-cluster-level-ceilings)
@@ -131,5 +149,11 @@ fedora (DB reconnect-gated).
   broke image pulls, external-dns, package installs) and was missing
   `open-iscsi` (Longhorn prerequisite). Both fixed live 2026-06-12; the
   `nmcli` fix persists, but verify after a reboot.
+- `fedora` host firewalld rejected pod-bridge traffic (`no route to host` on
+  pod-to-pod dials, surfaced as Longhorn volumes stuck `attaching`). Fixed
+  2026-06-12 by trusting the k3s CIDRs/interfaces:
+  `firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+  --add-source=10.43.0.0/16` (+ `cni0`, `flannel.1`), then `--reload`.
+  Persistent (`--permanent`).
 - High lifetime restart counts on `james-mbp`-hosted DaemonSet pods are churn
   from its sleep cycles, not live failures.
