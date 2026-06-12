@@ -91,3 +91,94 @@ export function atomicInstall(stagingDir: string, targetDir: string): void {
   }
   if (hadPrevious) fs.rmSync(oldDir, { recursive: true, force: true });
 }
+
+/**
+ * Switchable release channels for the load-unpacked install (M2 of #45).
+ * "stable" exists in the UX but is not installable until the Web Store
+ * listing ships (M3) — see resolveChannel.
+ */
+export type InstallChannel = "alpha" | "beta";
+
+/** Tag prefix of release-please's extension releases (beta channel source). */
+export const EXTENSION_RELEASE_TAG_PREFIX = "tabula-extension-v";
+
+/** Read the install's channel marker; null when absent/corrupt/unknown. */
+export function readInstalledChannel(dir: string): InstallChannel | null {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(dir, "channel.json"), "utf-8"),
+    ) as { channel?: string };
+    return parsed.channel === "alpha" || parsed.channel === "beta"
+      ? parsed.channel
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Label the install with the channel it was installed from. */
+export function writeInstalledChannel(
+  dir: string,
+  channel: InstallChannel,
+): void {
+  fs.writeFileSync(
+    path.join(dir, "channel.json"),
+    `${JSON.stringify({ channel }, null, 2)}\n`,
+  );
+}
+
+/** Precedence: explicit flag > installed channel.json > alpha. */
+export function resolveChannel(
+  flag: string | undefined,
+  installed: InstallChannel | null,
+): InstallChannel {
+  if (flag === "stable") {
+    throw new Error(
+      "The stable channel arrives with the Chrome Web Store listing (M3) — use --channel alpha or beta for now.",
+    );
+  }
+  if (flag === "alpha" || flag === "beta") return flag;
+  if (flag !== undefined) {
+    throw new Error(`Unknown channel '${flag}' — valid: alpha, beta, stable.`);
+  }
+  return installed ?? "alpha";
+}
+
+/**
+ * Numeric-segment version compare (missing segments are zero).
+ * Mirrors compareVersions in tabula/extension/src/services/updateCheck.ts —
+ * duplicated deliberately: the CLI must not depend on extension code.
+ */
+export function compareSemver(a: string, b: string): number {
+  const as = a.split(".").map((s) => parseInt(s, 10) || 0);
+  const bs = b.split(".").map((s) => parseInt(s, 10) || 0);
+  const len = Math.max(as.length, bs.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (as[i] ?? 0) - (bs[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * Pick the newest tabula-extension-v* tag from `gh release list --json
+ * tagName` output. Pure (takes the JSON text) so it is testable without gh.
+ * Null when no extension release exists or the input is unparseable.
+ */
+export function resolveLatestExtensionTag(
+  releaseListJson: string,
+): string | null {
+  try {
+    const releases = JSON.parse(releaseListJson) as { tagName?: string }[];
+    const versions = releases
+      .map((r) => r.tagName ?? "")
+      .filter((t) => t.startsWith(EXTENSION_RELEASE_TAG_PREFIX))
+      .map((t) => t.slice(EXTENSION_RELEASE_TAG_PREFIX.length))
+      .filter((v) => /^\d+(\.\d+)*$/.test(v));
+    if (versions.length === 0) return null;
+    versions.sort(compareSemver);
+    return `${EXTENSION_RELEASE_TAG_PREFIX}${versions[versions.length - 1]}`;
+  } catch {
+    return null;
+  }
+}
