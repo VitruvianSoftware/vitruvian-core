@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.10...tabula-cli-v0.1.11) (2026-06-12)
+
+
+### Features
+
+* **tabula:** release channels — alpha/beta switching, stable reserved ([#45](https://github.com/VitruvianSoftware/vitruvian-core/issues/45) M2) ([#57](https://github.com/VitruvianSoftware/vitruvian-core/issues/57)) ([4436829](https://github.com/VitruvianSoftware/vitruvian-core/commit/44368292221f87f5817e0d675e1482922ce890ae))
+
 ## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.9...tabula-cli-v0.1.10) (2026-06-12)
 
 

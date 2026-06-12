@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.10...tabula-extension-v0.1.11) (2026-06-12)
+
+
+### Features
+
+* **tabula:** release channels — alpha/beta switching, stable reserved ([#45](https://github.com/VitruvianSoftware/vitruvian-core/issues/45) M2) ([#57](https://github.com/VitruvianSoftware/vitruvian-core/issues/57)) ([4436829](https://github.com/VitruvianSoftware/vitruvian-core/commit/44368292221f87f5817e0d675e1482922ce890ae))
+
+
+### Bug Fixes
+
+* **tabula:** define/replace undefined CSS vars in AccountSettings ([#60](https://github.com/VitruvianSoftware/vitruvian-core/issues/60)) ([e49fc1b](https://github.com/VitruvianSoftware/vitruvian-core/commit/e49fc1ba0f4165d5985d53fa0ced0c94a3896f72))
+
 ## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.9...tabula-extension-v0.1.10) (2026-06-12)
 
 
