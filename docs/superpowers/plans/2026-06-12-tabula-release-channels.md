@@ -1221,7 +1221,7 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
             style={{
               display: "flex",
               gap: "4px",
-              backgroundColor: "var(--color-bg-secondary)",
+              backgroundColor: "var(--color-btn-shaded-bg)",
               padding: "3px",
               borderRadius: "6px",
               flexShrink: 0,
@@ -1230,6 +1230,9 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
             {(["alpha", "beta", "stable"] as const).map((ch) => (
               <button
                 key={ch}
+                aria-pressed={
+                  (selectedChannel ?? devIdentity.channel) === ch
+                }
                 onClick={() => {
                   setSelectedChannel(ch);
                   setCopiedCommand(false);
@@ -1242,9 +1245,18 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
                   cursor: "pointer",
                   backgroundColor:
                     (selectedChannel ?? devIdentity.channel) === ch
-                      ? "var(--color-bg-primary)"
+                      ? "var(--color-bg-card)"
                       : "transparent",
-                  color: "var(--color-text-primary)",
+                  color:
+                    (selectedChannel ?? devIdentity.channel) === ch
+                      ? "var(--color-primary)"
+                      : "var(--color-text-secondary)",
+                  boxShadow:
+                    (selectedChannel ?? devIdentity.channel) === ch
+                      ? "0 1px 2px rgba(0,0,0,0.1)"
+                      : "none",
+                  fontWeight:
+                    (selectedChannel ?? devIdentity.channel) === ch ? 500 : 400,
                 }}
               >
                 {ch}
@@ -1281,7 +1293,7 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
                   flex: 1,
                   fontSize: "12px",
                   padding: "6px 8px",
-                  backgroundColor: "var(--color-bg-secondary)",
+                  backgroundColor: "var(--color-bg-card-hover)",
                   borderRadius: "4px",
                   overflowX: "auto",
                   whiteSpace: "nowrap",
@@ -1297,7 +1309,7 @@ c) Insert the Developer section inside `renderPreferencesContent()`, after the A
                       `tabcli ext update --channel ${selectedChannel}`,
                     )
                     .then(() => setCopiedCommand(true))
-                    .catch(() => {});
+                    .catch(() => undefined);
                 }}
                 style={{
                   padding: "4px 10px",

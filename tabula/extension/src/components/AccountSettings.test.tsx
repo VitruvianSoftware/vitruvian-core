@@ -28,6 +28,13 @@ import { ApiService } from "../services/api";
 import { StorageService } from "../services/storage";
 import { TabService } from "../services/tabs";
 import { AuthService } from "../services/auth";
+import { UpdateCheckService } from "../services/updateCheck";
+
+jest.mock("../services/updateCheck", () => ({
+  UpdateCheckService: {
+    getDisplayIdentity: jest.fn().mockResolvedValue(null),
+  },
+}));
 
 // Mock services
 jest.mock("../services/api", () => ({
@@ -1163,6 +1170,117 @@ describe("AccountSettings", () => {
       await waitFor(() => {
         expect(TabService.openTabs).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("Developer section", () => {
+    const renderAndGoToPreferences = async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+        />,
+      );
+      // Wait for the profile load to settle, then navigate to Preferences
+      await waitFor(() =>
+        expect(screen.getByText("Test User")).toBeInTheDocument(),
+      );
+      fireEvent.click(screen.getByText("Preferences"));
+    };
+
+    beforeEach(() => {
+      (UpdateCheckService.getDisplayIdentity as jest.Mock).mockResolvedValue(
+        null,
+      );
+    });
+
+    afterEach(() => {
+      // Remove any clipboard stub set by individual tests
+      Object.defineProperty(navigator, "clipboard", {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+    });
+
+    it("hidden when getDisplayIdentity resolves null", async () => {
+      await renderAndGoToPreferences();
+      await waitFor(() =>
+        expect(screen.getByText("Appearance")).toBeInTheDocument(),
+      );
+      expect(screen.queryByText("Developer")).not.toBeInTheDocument();
+    });
+
+    it("shows channel/version/sha line for an eligible install", async () => {
+      (UpdateCheckService.getDisplayIdentity as jest.Mock).mockResolvedValue({
+        channel: "alpha",
+        commit: "abc1234def",
+        version: "0.1.9",
+      });
+      await renderAndGoToPreferences();
+      await waitFor(() =>
+        expect(screen.getByText("Developer")).toBeInTheDocument(),
+      );
+      expect(
+        screen.getByText(/alpha · v0\.1\.9 · abc1234/),
+      ).toBeInTheDocument();
+    });
+
+    it("clicking beta picker reveals tabcli command and Copy button", async () => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: jest.fn().mockResolvedValue(undefined) },
+        configurable: true,
+        writable: true,
+      });
+      (UpdateCheckService.getDisplayIdentity as jest.Mock).mockResolvedValue({
+        channel: "alpha",
+        commit: "abc1234def",
+        version: "0.1.9",
+      });
+      await renderAndGoToPreferences();
+      await waitFor(() =>
+        expect(screen.getByText("Developer")).toBeInTheDocument(),
+      );
+
+      // Click the beta channel button
+      fireEvent.click(screen.getByRole("button", { name: "beta" }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(/tabcli ext update --channel beta/),
+        ).toBeInTheDocument(),
+      );
+
+      const copyBtn = screen.getByRole("button", { name: "Copy" });
+      fireEvent.click(copyBtn);
+
+      await waitFor(() =>
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+          "tabcli ext update --channel beta",
+        ),
+      );
+    });
+
+    it("clicking stable shows Web Store listing (M3) text and no --channel flag", async () => {
+      (UpdateCheckService.getDisplayIdentity as jest.Mock).mockResolvedValue({
+        channel: "alpha",
+        commit: "abc1234def",
+        version: "0.1.9",
+      });
+      await renderAndGoToPreferences();
+      await waitFor(() =>
+        expect(screen.getByText("Developer")).toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "stable" }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText(/Web Store listing \(M3\)/),
+        ).toBeInTheDocument(),
+      );
+      expect(screen.queryByText(/--channel stable/)).not.toBeInTheDocument();
     });
   });
 });

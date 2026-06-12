@@ -29,6 +29,8 @@ import { TabService } from "../services/tabs";
 import type { UserProfile, Tab } from "../types";
 import { Icon } from "./icons";
 import { Modal } from "./Modal";
+import { UpdateCheckService } from "../services/updateCheck";
+import type { Channel } from "../services/updateCheck";
 
 interface AccountSettingsProps {
   onClose: () => void;
@@ -53,6 +55,24 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   const [activeTab, setActiveTab] = useState<
     "account" | "preferences" | "backups"
   >("account");
+
+  const [devIdentity, setDevIdentity] = useState<{
+    channel: Channel;
+    commit: string;
+    version: string;
+  } | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [copiedCommand, setCopiedCommand] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    UpdateCheckService.getDisplayIdentity().then((identity) => {
+      if (!cancelled) setDevIdentity(identity);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Backup state
   const [backups, setBackups] = useState<
@@ -686,7 +706,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             style={{
               display: "flex",
               gap: "4px",
-              backgroundColor: "var(--color-bg-secondary)",
+              backgroundColor: "var(--color-btn-shaded-bg)",
               padding: "3px",
               borderRadius: "6px",
               flexShrink: 0,
@@ -702,7 +722,8 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   borderRadius: "4px",
                   fontSize: "12px",
                   cursor: "pointer",
-                  backgroundColor: theme === t ? "white" : "transparent",
+                  backgroundColor:
+                    theme === t ? "var(--color-bg-card)" : "transparent",
                   color:
                     theme === t
                       ? "var(--color-primary)"
@@ -718,6 +739,170 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           </div>
         </div>
       </section>
+
+      {devIdentity && (
+        <section style={{ marginTop: variant === "popup" ? "16px" : "24px" }}>
+          <h3
+            style={{
+              fontSize: variant === "popup" ? "12px" : "14px",
+              fontWeight: "600",
+              marginBottom: variant === "popup" ? "12px" : "16px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Developer
+          </h3>
+
+          <div
+            style={{
+              padding: variant === "popup" ? "10px" : "12px",
+              border: "1px solid var(--color-border)",
+              borderRadius: "8px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: "500",
+                    fontSize: variant === "popup" ? "13px" : "14px",
+                    marginBottom: "2px",
+                  }}
+                >
+                  Release channel
+                </div>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  {devIdentity.channel} · v{devIdentity.version} ·{" "}
+                  {devIdentity.commit.slice(0, 7)}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "4px",
+                  backgroundColor: "var(--color-btn-shaded-bg)",
+                  padding: "3px",
+                  borderRadius: "6px",
+                  flexShrink: 0,
+                }}
+              >
+                {(["alpha", "beta", "stable"] as const).map((ch) => (
+                  <button
+                    key={ch}
+                    aria-pressed={
+                      (selectedChannel ?? devIdentity.channel) === ch
+                    }
+                    onClick={() => {
+                      setSelectedChannel(ch);
+                      setCopiedCommand(false);
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "12px",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      backgroundColor:
+                        (selectedChannel ?? devIdentity.channel) === ch
+                          ? "var(--color-bg-card)"
+                          : "transparent",
+                      color:
+                        (selectedChannel ?? devIdentity.channel) === ch
+                          ? "var(--color-primary)"
+                          : "var(--color-text-secondary)",
+                      boxShadow:
+                        (selectedChannel ?? devIdentity.channel) === ch
+                          ? "0 1px 2px rgba(0,0,0,0.1)"
+                          : "none",
+                      fontWeight:
+                        (selectedChannel ?? devIdentity.channel) === ch
+                          ? 500
+                          : 400,
+                    }}
+                  >
+                    {ch}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedChannel === "stable" && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                The stable channel arrives with the Web Store listing (M3).
+              </div>
+            )}
+
+            {selectedChannel &&
+              selectedChannel !== "stable" &&
+              selectedChannel !== devIdentity.channel && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <code
+                    style={{
+                      flex: 1,
+                      fontSize: "12px",
+                      padding: "6px 8px",
+                      backgroundColor: "var(--color-bg-card-hover)",
+                      borderRadius: "4px",
+                      overflowX: "auto",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    tabcli ext update --channel {selectedChannel}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard
+                        ?.writeText(
+                          `tabcli ext update --channel ${selectedChannel}`,
+                        )
+                        .then(() => setCopiedCommand(true))
+                        .catch(() => undefined);
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: "12px",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      backgroundColor: "transparent",
+                      color: "var(--color-text-primary)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {copiedCommand ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              )}
+          </div>
+        </section>
+      )}
     </div>
   );
 
