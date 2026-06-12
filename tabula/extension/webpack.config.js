@@ -102,6 +102,12 @@ module.exports = {
           },
         },
         { from: "src/icons", to: "icons", noErrorOnMissing: true },
+        // Build identity. The source placeholder is {"commit": "dev"} (update
+        // checker disabled). The dev-latest CI workflow overwrites this entry
+        // INSIDE the built zip with the real {commit, builtAt, version} —
+        // post-Bazel, so the webpack action stays hermetic/cacheable (the
+        // same constraint that keeps the SHA out of manifest.version above).
+        { from: "src/build_info.json", to: "build_info.json" },
       ],
     }),
     new webpack.DefinePlugin({
