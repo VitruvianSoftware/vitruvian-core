@@ -84,9 +84,13 @@ export class ApiService {
     });
 
     if (!response.ok) {
-      // Access tokens expire (~1h); on 401, transparently refresh once and
-      // retry so the user isn't logged out mid-session.
-      if (response.status === 401 && allowRefresh && token) {
+      // On 401, transparently refresh the access token once and retry so the
+      // user isn't logged out mid-session. This must run even when no token was
+      // attached: the access token lives in session storage and is wiped on
+      // browser restart, but the persisted refresh token can still mint a new
+      // one. refreshAccessToken() is a safe no-op (returns null) when there is
+      // no refresh token, so a genuinely signed-out 401 still surfaces.
+      if (response.status === 401 && allowRefresh) {
         const refreshed = await AuthService.refreshAccessToken();
         if (refreshed) {
           return this.request<T>(endpoint, options, false);
@@ -204,8 +208,12 @@ export class ApiService {
     let cached: User | null = null;
     try {
       cached = await AuthService.getUser();
-      // No session -> nothing authoritative to fetch; keep whatever is cached.
-      if (!(await AuthService.getToken())) return cached;
+      // No session at all -> nothing authoritative to fetch; keep the cache.
+      // Use hasSession (access OR refresh token), not getToken alone: after a
+      // browser restart the access token is gone but the refresh token can
+      // still recover the session, and getUserProfile() below triggers that
+      // refresh on its 401.
+      if (!(await AuthService.hasSession())) return cached;
 
       const profile = await this.getUserProfile();
       const merged: User = {

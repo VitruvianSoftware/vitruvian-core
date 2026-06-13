@@ -31,6 +31,7 @@ jest.mock("./auth", () => ({
     refreshAccessToken: jest.fn(),
     getUser: jest.fn(),
     setCachedUser: jest.fn(),
+    hasSession: jest.fn(),
   },
 }));
 // Mock device id (best-effort header)
@@ -106,6 +107,29 @@ describe("ApiService", () => {
           ok: false,
           status: 401,
           json: async () => ({ message: "expired" }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) });
+
+      const result = await ApiService.getWorkspaces();
+
+      expect(AuthService.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(result).toEqual([]);
+    });
+
+    it("refreshes and retries on 401 even with no access token attached (post-restart recovery)", async () => {
+      // After a browser restart the in-memory access token is gone, but the
+      // persisted refresh token can still mint a new one. A 401 must trigger a
+      // refresh even though no Authorization header was sent.
+      (AuthService.getToken as jest.Mock).mockResolvedValue(null);
+      (AuthService.refreshAccessToken as jest.Mock).mockResolvedValue(
+        "fresh-token",
+      );
+      (globalThis.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ message: "missing token" }),
         })
         .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) });
 
@@ -335,6 +359,11 @@ describe("ApiService", () => {
   });
 
   describe("refreshCachedUser", () => {
+    beforeEach(() => {
+      // Default: a session exists (signed-out case overrides this).
+      (AuthService.hasSession as jest.Mock).mockResolvedValue(true);
+    });
+
     it("re-projects the server profile over the cache, preserving the avatar", async () => {
       // Cached name was mojibaked by an older mis-encoded login; the avatar URL
       // is cache-only (the server never returns it).
@@ -379,7 +408,7 @@ describe("ApiService", () => {
         tier: "free",
       };
       (AuthService.getUser as jest.Mock).mockResolvedValue(cached);
-      (AuthService.getToken as jest.Mock).mockResolvedValue(null);
+      (AuthService.hasSession as jest.Mock).mockResolvedValue(false);
 
       const result = await ApiService.refreshCachedUser();
 
