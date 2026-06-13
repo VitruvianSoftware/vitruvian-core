@@ -32,7 +32,18 @@
    ============================================ */
 .sidebar {
   width: var(--sidebar-width);
-  background-color: var(--color-bg-sidebar);
+  /* Lighter chrome translucency — keep the sidebar dark enough for white text
+     (do NOT use the light --glass-bg-panel here). Lower the dark base alpha so
+     the ambient backdrop reads through, then add a modest blur. The strong
+     frost is reserved for floating menus that open over this (no glass-on-glass). */
+  background-color: color-mix(
+    in srgb,
+    var(--color-bg-sidebar) 90%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(var(--glass-blur-light))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturate));
   border-right: 1px solid var(--color-border-sidebar);
   display: flex;
   flex-direction: column;
@@ -144,7 +155,7 @@
 
 /* Workspace color accent bar - uses custom property set by component */
 .nav-item.active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 50%;
@@ -177,11 +188,19 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md) var(--spacing-xl);
-  background-color: var(--color-bg-card);
+  /* Sticky frosted top header — content scrolls under it. Uses --glass-bg-panel
+     (theme-aware), distinct from the sidebar's own darker translucency, with the
+     lighter chrome blur so it never stacks a strong blur over the sidebar. */
+  background-color: var(--glass-bg-panel);
+  -webkit-backdrop-filter: blur(var(--glass-blur-light))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturate));
   border-bottom: 1px solid var(--color-border);
   min-height: 56px;
-  position: relative;
-  /* For absolute centering of search bar */
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  /* sticky remains the positioned ancestor for the absolutely-centered search bar */
 }
 
 .section-title {
@@ -304,8 +323,8 @@
 }
 
 /* Show reveal buttons on parent hover */
-*:hover>.btn-reveal,
-*:hover>*>.btn-reveal,
+*:hover > .btn-reveal,
+*:hover > * > .btn-reveal,
 .item-actions .btn-reveal {
   opacity: 1;
 }
@@ -674,9 +693,16 @@
    ============================================ */
 .dropdown-menu {
   position: absolute;
-  background: var(--color-bg-card);
+  /* glass-menu — the real frost; floats over the lighter chrome (sidebar/header). */
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-dropdown);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
   padding: var(--spacing-xs) 0;
   min-width: 180px;
   z-index: 1000;
@@ -694,7 +720,7 @@
 }
 
 .dropdown-item:hover {
-  background-color: var(--color-btn-shaded-bg);
+  background-color: var(--color-btn-shaded-bg-hover);
 }
 
 .dropdown-item .material-icons {
@@ -711,9 +737,16 @@
 /* Submenu (positioned to the right of parent menu) */
 .dropdown-submenu {
   position: fixed;
-  background: var(--color-bg-card);
+  /* glass-menu — opens beside, not over, the parent menu (no double-blur). */
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-dropdown);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
   padding: var(--spacing-xs) 0;
   min-width: 120px;
   z-index: 1001;
@@ -884,4 +917,27 @@
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin-bottom: var(--spacing-sm);
+}
+
+/* ============================================
+   GLASS DARK-THEME SHEEN OVERRIDES
+   The dropdown menus inline the glass bundle (rather than carrying the
+   .glass-menu class), so the global dark-sheen rule does not reach them.
+   Dim the inset top highlight on dark glass so the hairline reads as a
+   tasteful edge of light, not a glare. Background/border come from the
+   dark --glass-* tokens automatically. Mirror for the 'system' (dark OS) theme.
+   ============================================ */
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .dropdown-submenu {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+    var(--glass-shadow);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] .dropdown-menu,
+  [data-theme="system"] .dropdown-submenu {
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+      var(--glass-shadow);
+  }
 }

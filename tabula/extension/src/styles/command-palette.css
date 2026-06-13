@@ -27,22 +27,30 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(10, 14, 30, 0.32);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
   z-index: 2000;
-  backdrop-filter: blur(4px);
   animation: fadeIn 0.15s ease-out;
 }
 
 .command-palette-container {
   width: 90%;
   max-width: 640px;
-  background-color: var(--color-bg-card);
+  /* Glass HERO — mirrors .glass-strong (inlined here so the palette component
+     needs no markup change). The dark-theme sheen override lives at the bottom
+     of this file because this element does not carry the .glass-strong class. */
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
   border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   animation: slideDown 0.2s ease-out;
   display: flex;
@@ -184,7 +192,7 @@
 }
 
 .command-palette-result.selected {
-  background-color: rgba(51, 112, 255, 0.1);
+  background-color: rgba(51, 112, 255, 0.18);
 }
 
 .command-palette-result .result-icon {
@@ -264,7 +272,7 @@
 .command-palette-footer {
   padding: 12px 20px;
   border-top: 1px solid var(--color-border);
-  background-color: var(--color-bg-card-hover);
+  background-color: transparent;
 }
 
 .command-palette-hint {
@@ -327,4 +335,32 @@
 
 .command-palette-results::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
+}
+
+/* Dark-theme sheen — the glass bundle is inlined on .command-palette-container
+   (it does not carry the .glass-strong class), so the global dark-sheen rule
+   does not reach it. Dim the inset top highlight here to mirror
+   [data-theme="dark"] .glass-strong. The dark --glass-bg-strong / --glass-border
+   / --glass-shadow tokens are picked up automatically. */
+[data-theme="dark"] .command-palette-container {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+    var(--glass-shadow);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] .command-palette-container {
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+      var(--glass-shadow);
+  }
+}
+
+/* Selected-row tint reads stronger over the darker translucent glass. */
+[data-theme="dark"] .command-palette-result.selected {
+  background-color: rgba(51, 112, 255, 0.26);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] .command-palette-result.selected {
+    background-color: rgba(51, 112, 255, 0.26);
+  }
 }

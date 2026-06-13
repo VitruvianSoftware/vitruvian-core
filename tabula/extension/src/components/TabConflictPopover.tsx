@@ -254,7 +254,7 @@ export function TabConflictPopover({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          backgroundColor: "rgba(10, 14, 30, 0.32)",
           backdropFilter: "blur(4px)",
           zIndex: 9999,
           display: "flex",
@@ -264,7 +264,7 @@ export function TabConflictPopover({
         onClick={onIgnore}
       >
         <motion.div
-          className="tab-conflict-popover"
+          className="tab-conflict-popover glass-menu"
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -272,10 +272,12 @@ export function TabConflictPopover({
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
           style={{
             width: "400px",
-            backgroundColor: "#1e1e1e",
+            // Dark-pinned surface so the popover's white text stays legible
+            // regardless of theme (the dashboard is light-themed; .glass-menu's
+            // --glass-bg-strong would otherwise resolve light here). The class
+            // still supplies the blur, border, and tinted shadow.
+            backgroundColor: "rgba(20, 23, 30, 0.62)",
             borderRadius: "18px", // Workona Pill Radius
-            boxShadow: "0 20px 48px rgba(0, 0, 0, 0.5)",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
             overflow: "hidden",
           }}
           role="dialog"
