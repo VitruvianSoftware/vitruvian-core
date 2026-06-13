@@ -1,0 +1,102 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara PR-mode smoke-test (#76)
+
+# Step-0 gate for the devx one-way PR-import cutover (#76). Copybara evaluates
+# the ENTIRE copy.bara.sky for ANY workflow, so before adding import_pr_devx
+# (which uses git.github_pr_origin / git.github_pr_destination) we must confirm
+# the repo's PINNED olivr/copybara image can PARSE those builtins -- otherwise
+# the config would fail to load and break EVERY component's export.
+#
+# This runs the pinned image against a throwaway test config and reports whether
+# the config LOADS. It needs NO secrets: with no credentials mounted, a
+# supported build parses the config and then fails LATER on auth/fetch (fine);
+# an unsupported build fails AT config-load referencing github_pr_origin.
+#
+# Manual only. Read the VERDICT (::notice / ::error) and the raw copybara output
+# in the job log. Safe to delete this workflow once #76 PR-import is validated.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare a minimal git identity (no auth credentials)
+        run: |
+          git config --global user.name "Copybara Smoke Test"
+          git config --global user.email "smoke@example.com"
+          mkdir -p "$HOME/.ssh"
+          ssh-keyscan -t rsa,ed25519 github.com > "$HOME/.ssh/known_hosts" 2>/dev/null || true
+
+      - name: Write a minimal PR-import test config
+        run: |
+          cat > "$HOME/test.bara.sky" <<'SKY'
+          # Throwaway config exercising exactly the builtins import_pr_devx needs.
+          core.workflow(
+              name = "import_pr_test",
+              origin = git.github_pr_origin(
+                  url = "https://github.com/VitruvianSoftware/devx",
+                  use_merge = False,
+                  required_labels = ["import-to-monorepo"],
+              ),
+              destination = git.github_pr_destination(
+                  url = "https://github.com/VitruvianSoftware/vitruvian-core",
+                  destination_ref = "main",
+                  pr_branch = "devx-import-pr-${GITHUB_PR_NUMBER}",
+              ),
+              origin_files = glob(["**"]),
+              destination_files = glob(["devx/**"]),
+              authoring = authoring.pass_thru(default = "Smoke Test <smoke@example.com>"),
+              mode = "ITERATIVE",
+              experimental_custom_rev_id = "DEVX_REV_ID",
+              transformations = [core.move("", "devx")],
+          )
+          SKY
+          echo "----- test config -----"
+          cat "$HOME/test.bara.sky"
+
+      - name: Run the pinned Copybara image (config-load test)
+        run: |
+          set +e
+          out=$(docker run --rm \
+            -v "$HOME/test.bara.sky":/root/copy.bara.sky \
+            -v "$HOME/.gitconfig":/root/.gitconfig \
+            -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+            -e COPYBARA_CONFIG=/root/copy.bara.sky \
+            -e COPYBARA_WORKFLOW=import_pr_test \
+            olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+            copybara 2>&1)
+          rc=$?
+          echo "----- copybara output (exit $rc) -----"
+          printf '%s\n' "$out"
+          echo "--------------------------------------"
+          if printf '%s' "$out" | grep -qiE "github_pr_(origin|destination)" \
+             && printf '%s' "$out" | grep -qiE "not defined|no field|no such|unknown (function|field|method)|error loading config|cannot resolve|did you mean|nosuchmodule|attributeerror|invalid.*function"; then
+            echo "::error::VERDICT = NOT SUPPORTED. The pinned olivr/copybara image cannot parse git.github_pr_origin. Action: pin a NEWER copybara image for the import-pr workflow ONLY (bidi export/import keep the verified 2023-01 image), and on a current copybara rename experimental_custom_rev_id -> custom_rev_id. See docs/copybara-devx-oneway-cutover.md."
+            exit 1
+          fi
+          echo "::notice::VERDICT = SUPPORTED (config-load OK). The pinned image parsed git.github_pr_origin / git.github_pr_destination, so adding import_pr_devx to copy.bara.sky will NOT break other components' export config-loading. Any error above is POST-parse (auth/fetch, expected with no creds). Proceed with section A of docs/copybara-devx-oneway-cutover.md."
+          echo "Confirm by eye: the raw output above should NOT contain a Starlark load error pointing at github_pr_origin."
