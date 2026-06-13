@@ -75,10 +75,14 @@ func main() {
 		repo, err := github.NewRepository(ctx, repoName, &github.RepositoryArgs{
 			Name:                pulumi.String(repoName),
 			DeleteBranchOnMerge: pulumi.Bool(true),
+			// Required by the merge-queue ruleset (#83): GitHub adds PRs to the
+			// merge queue via the auto-merge mechanism, so "Allow auto-merge"
+			// must be enabled for the queue to function.
+			AllowAutoMerge: pulumi.Bool(true),
 		},
 			pulumi.Import(pulumi.ID(repoName)),
 			pulumi.IgnoreChanges([]string{
-				// We manage ONLY DeleteBranchOnMerge; ignore drift on every other
+				// We manage DeleteBranchOnMerge + AllowAutoMerge; ignore drift on every other
 				// attribute so adopting a brownfield repo never clobbers settings
 				// the developer owns (homepage, merge buttons, feature flags, the
 				// generated-from-template marker, topics, etc.).
@@ -97,7 +101,6 @@ func main() {
 				"allowMergeCommit",
 				"allowSquashMerge",
 				"allowRebaseMerge",
-				"allowAutoMerge",
 				"mergeCommitTitle",
 				"mergeCommitMessage",
 				"squashMergeCommitTitle",
