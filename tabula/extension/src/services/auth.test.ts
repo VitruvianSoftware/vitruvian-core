@@ -354,6 +354,30 @@ describe("AuthService", () => {
     });
   });
 
+  describe("hasSession", () => {
+    it("is true when an access token exists", async () => {
+      mockChrome.storage.session.get.mockResolvedValue({
+        tabula_access_token: "tok",
+      });
+      expect(await AuthService.hasSession()).toBe(true);
+    });
+
+    it("is true when only a persisted refresh token exists (post-restart)", async () => {
+      // Access token wiped (session empty) but the refresh token survives.
+      mockChrome.storage.session.get.mockResolvedValue({});
+      mockChrome.storage.local.get.mockResolvedValue({
+        tabula_refresh_token: "refresh",
+      });
+      expect(await AuthService.hasSession()).toBe(true);
+    });
+
+    it("is false when neither token exists", async () => {
+      mockChrome.storage.session.get.mockResolvedValue({});
+      mockChrome.storage.local.get.mockResolvedValue({});
+      expect(await AuthService.hasSession()).toBe(false);
+    });
+  });
+
   describe("refreshAccessToken", () => {
     beforeEach(() => {
       (globalThis as unknown as { fetch: jest.Mock }).fetch = jest.fn();

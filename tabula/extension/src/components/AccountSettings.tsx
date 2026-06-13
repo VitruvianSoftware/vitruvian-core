@@ -93,9 +93,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      // No session: show the signed-out prompt instead of letting the
-      // request 401 into an "Authentication failed" dead end.
-      if (!(await AuthService.getToken())) {
+      // Only show the signed-out prompt when there is NO session at all. Gate on
+      // hasSession (access OR persisted refresh token), not getToken alone — the
+      // access token is wiped on browser restart, so gating on it made Settings
+      // read "not signed in" while the header/popup (backed by the cached user)
+      // still showed the account. getUserProfile() refreshes the access token
+      // from the refresh token on its 401.
+      if (!(await AuthService.hasSession())) {
         setUser(null);
         setError(null);
         return;

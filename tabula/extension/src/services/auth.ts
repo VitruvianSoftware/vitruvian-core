@@ -298,6 +298,23 @@ export class AuthService {
     return local[this.tokenKey] || null;
   }
 
+  /**
+   * Whether a session exists locally — an in-memory access token OR a persisted
+   * refresh token.
+   *
+   * "Signed in" must NOT be judged by the access token alone: it lives in
+   * session storage (in-memory) and is wiped on browser restart, whereas the
+   * server-revocable refresh token persists on disk and is what actually keeps
+   * the user logged in (the API layer trades it for a fresh access token on
+   * demand). Gating UI on getToken() made Settings show "not signed in" after a
+   * restart while the rest of the app — backed by the persisted user cache —
+   * still showed the user logged in.
+   */
+  static async hasSession(): Promise<boolean> {
+    if (await this.getToken()) return true;
+    return Boolean(await this.getRefreshToken());
+  }
+
   private static async setSession(
     token: string,
     user: User,

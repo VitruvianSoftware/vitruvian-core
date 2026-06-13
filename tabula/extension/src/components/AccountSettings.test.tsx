@@ -57,6 +57,7 @@ jest.mock("../services/auth", () => ({
     logout: jest.fn(),
     login: jest.fn(),
     getToken: jest.fn(),
+    hasSession: jest.fn(),
   },
 }));
 
@@ -120,12 +121,15 @@ describe("AccountSettings", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+    (AuthService.hasSession as jest.Mock).mockResolvedValue(true);
     (ApiService.getUserProfile as jest.Mock).mockResolvedValue(mockUser);
   });
 
   describe("signed out", () => {
     beforeEach(() => {
+      // No session at all: neither access token nor refresh token.
       (AuthService.getToken as jest.Mock).mockResolvedValue(null);
+      (AuthService.hasSession as jest.Mock).mockResolvedValue(false);
     });
 
     it("should show a sign-in prompt instead of fetching the profile", async () => {
