@@ -147,6 +147,76 @@ func main() {
 			return err
 		}
 
+		// Merge queue (#83): serialize merges into the default branch through a
+		// GitHub merge queue, configured as a repository RULESET (the modern,
+		// API-managed mechanism; classic branch protection cannot express a
+		// merge queue). For each group GitHub builds the would-be-merged commit,
+		// runs the required CI checks on it, and only fast-forwards the branch
+		// when they pass -- the trunk-based postsubmit gate from the scaling
+		// roadmap. The jobs in .github/workflows/ci.yaml now also run on the
+		// `merge_group` event so the queue has checks to wait on.
+		if mergeQueueEnabled(cfg) {
+			// Required checks default to the CI job names in ci.yaml; override
+			// via the `mergeQueueRequiredChecks` JSON-list config.
+			var checks []string
+			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
+			if len(checks) == 0 {
+				checks = []string{"build-test", "build-macos", "license-check"}
+			}
+			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
+			for _, c := range checks {
+				requiredChecks = append(requiredChecks, &github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArgs{
+					Context: pulumi.String(c),
+				})
+			}
+
+			if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
+				Name:        pulumi.String("merge-queue"),
+				Repository:  repo.Name,
+				Target:      pulumi.String("branch"),
+				Enforcement: pulumi.String("active"),
+				// Let repository admins bypass the queue as a break-glass valve,
+				// so a single maintainer can never be fully locked out of main.
+				// RepositoryRole actor id 5 == "admin".
+				BypassActors: github.RepositoryRulesetBypassActorArray{
+					&github.RepositoryRulesetBypassActorArgs{
+						ActorId:    pulumi.Int(5),
+						ActorType:  pulumi.String("RepositoryRole"),
+						BypassMode: pulumi.String("always"),
+					},
+				},
+				Conditions: &github.RepositoryRulesetConditionsArgs{
+					RefName: &github.RepositoryRulesetConditionsRefNameArgs{
+						// ~DEFAULT_BRANCH tracks the default branch even if it is
+						// renamed later.
+						Includes: pulumi.StringArray{pulumi.String("~DEFAULT_BRANCH")},
+						Excludes: pulumi.StringArray{},
+					},
+				},
+				Rules: &github.RepositoryRulesetRulesArgs{
+					MergeQueue: &github.RepositoryRulesetRulesMergeQueueArgs{
+						MergeMethod:                  pulumi.String("SQUASH"),
+						GroupingStrategy:             pulumi.String("ALLGREEN"),
+						CheckResponseTimeoutMinutes:  pulumi.Int(60),
+						MinEntriesToMerge:            pulumi.Int(1),
+						MinEntriesToMergeWaitMinutes: pulumi.Int(5),
+						MaxEntriesToBuild:            pulumi.Int(5),
+						MaxEntriesToMerge:            pulumi.Int(5),
+					},
+					// Checks the queue must see green before merging a group.
+					// strict_policy=false: the queue rebases each entry onto the
+					// latest base itself, so "require branches up to date" is
+					// both redundant and incompatible with a merge queue.
+					RequiredStatusChecks: &github.RepositoryRulesetRulesRequiredStatusChecksArgs{
+						RequiredChecks:                   requiredChecks,
+						StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
+					},
+				},
+			}); err != nil {
+				return err
+			}
+		}
+
 		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}
@@ -378,6 +448,16 @@ func requirePullRequest(cfg *config.Config) bool {
 // requireStatusChecks defaults to true when unset.
 func requireStatusChecks(cfg *config.Config) bool {
 	if v, err := cfg.TryBool("requireStatusChecks"); err == nil {
+		return v
+	}
+	return true
+}
+
+// mergeQueueEnabled defaults to true: the merge queue is the trunk-based
+// postsubmit gate (#83). Set `mergeQueue: "false"` in the stack config to
+// disable it (e.g. to fall back to direct pushes during a migration).
+func mergeQueueEnabled(cfg *config.Config) bool {
+	if v, err := cfg.TryBool("mergeQueue"); err == nil {
 		return v
 	}
 	return true
