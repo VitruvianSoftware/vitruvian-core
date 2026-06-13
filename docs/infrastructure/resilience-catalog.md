@@ -53,7 +53,7 @@ flowchart LR
 | App | Why it dies | Fix |
 |---|---|---|
 | `cnpg-cluster` Postgres (`cnpg-cluster`) | 1 instance, PV pinned to mbp32 → total DB outage, unrecoverable until that node returns | **3 instances** (PR #61) + Longhorn storage |
-| coredns (`kube-system`) | single replica (on mbp32) → cluster-wide DNS outage until reschedule | 2–3 replicas + required anti-affinity (k3s default is 1) |
+| ~~coredns (`kube-system`)~~ | **fixed #67** — 2 replicas + required `hostname` anti-affinity, baked into devx provisioning; promoted to *survives 1 node* | — |
 | prometheus-server (`monitoring`) | 1 replica, PV pinned to mbp16 | relocatable (Longhorn) storage |
 | alertmanager (`monitoring`) | 1 replica, PV pinned to mbp32 | 3-replica gossip cluster + relocatable storage |
 | MinIO (`minio`) | 4 drives, 2 co-located (only 3 arm64 nodes exist); losing the 2-drive node breaches EC:2 **write** quorum (reads still served) | *preferred* anti-affinity + PDB applied (#65); full fix is arch-bound — see [note](#post-65-hardening-applied-2026-06-13) |
@@ -105,13 +105,16 @@ fedora (DB reconnect-gated).
 
 1. ~~`cnpg-cluster` → 3 instances~~ — **done** (PR #61, applied + verified, see
    [verification](#improvements-verified-2026-06-12)).
-2. ~~Single default StorageClass~~ — **done live** (`local-path` un-defaulted;
-   `longhorn` sole default and now carrying real volumes). k3s re-asserts its
-   manifest on server restart; if the annotation reappears, fix at the k3s
-   server config level.
-3. ~~coredns → 2 replicas~~ — **done live + verified** (zero-downtime DNS
-   through a replica kill). k3s restart may revert the scale; permanent fix
-   (and required anti-affinity) belongs in the k3s server manifest.
+2. ~~Single default StorageClass~~ — **done + baked into provisioning** (#67).
+   `local-path` is un-defaulted (`longhorn` is sole default, carrying real
+   volumes). This drifted back once (k3s re-asserts its bundled `local-storage`
+   addon), so it now lives in devx `EnsureClusterDefaults`, re-applied on every
+   `cluster init`/`cluster apply`.
+3. ~~coredns → 2 replicas~~ — **done + baked into provisioning** (#67). Now 2
+   replicas **+ required `hostname` anti-affinity** (the live scale had no
+   anti-affinity — replicas could co-locate). Also in devx
+   `EnsureClusterDefaults`, so a k3s upgrade that resets the bundled addon is
+   re-converged on the next apply. Validated: DNS resolves throughout the roll.
 4. ~~Migrate stateful PVs local-path → Longhorn~~ (#64) — **done** for the DBs,
    prometheus, and alertmanager (PRs #74–75, zero downtime). MinIO drives 0/1/2
    remain `local-path` (the IaC template is `longhorn`, so they migrate on the
@@ -143,9 +146,12 @@ Conclusion: with 3 instances + relocatable storage, the cnpg database now
 (local-path → Longhorn) remains the fix for grafana-db, prometheus,
 alertmanager, and MinIO.
 
-Remaining work is tracked as GitHub issues **#64–#71** (label
-`infrastructure`): the plan items above, plus making the live fixes permanent
-in devx provisioning (#67, #68) and laptop-sleep node churn (#71).
+Remaining work is tracked as GitHub issues (label `infrastructure`). **Done:**
+#64 (PV→Longhorn), #65 (anti-affinity + PDBs), #67 (CoreDNS HA + single default
+StorageClass baked into devx provisioning), #68 (native-node firewalld/iSCSI).
+**Open:** #66 (2-replica leader-elected singletons), #69 (etcd 3→5 voters),
+#70 (registry storage / tempo persistence / orphaned PV), #71 (laptop-sleep
+node churn), #90 (MinIO low-replica StorageClass + finish drive migration).
 
 ## Post-#65 hardening applied (2026-06-13)
 
