@@ -9,6 +9,12 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 # stops it from generating BUILD files under src/.
 # gazelle:ignore
 # gazelle:exclude src
+
+# Inter-app boundary (#82): default targets to mcp-slack-internal visibility so
+# other top-level apps can't depend on internals. The published ts_project
+# below keeps its explicit //visibility:public.
+package(default_visibility = ["//mcp-slack:__subpackages__"])
+
 npm_link_all_packages(name = "node_modules")
 
 # @vitruviansoftware/mcp-slack is a TypeScript (ESM) project built with `tsc`.
