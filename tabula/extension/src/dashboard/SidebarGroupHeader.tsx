@@ -22,6 +22,7 @@
 
 import React, { useRef } from "react";
 import { MenuOverlay } from "./MenuOverlay";
+import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
 import type { SpaceGroup } from "../types";
@@ -63,6 +64,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
   onDelete,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const colorItemRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
@@ -162,6 +164,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
             {/* Change color */}
             <div
               className="dropdown-item"
+              ref={colorItemRef}
               style={{ position: "relative" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -175,46 +178,39 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                 size="sm"
                 style={{ marginLeft: "auto" }}
               />
-              {/* Color picker submenu */}
-              {colorPickerOpen && (
-                <div
-                  className="dropdown-menu"
-                  style={{
-                    position: "fixed",
-                    left: "284px",
-                    top: "auto",
-                    minWidth: "120px",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {SPACE_GROUP_COLORS.map((color) => (
-                    <div
-                      key={color.name}
-                      className="dropdown-item"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                      onClick={() => onChangeColor(color.value)}
-                    >
-                      {color.value ? (
-                        <div
-                          style={{
-                            width: "12px",
-                            height: "12px",
-                            borderRadius: "50%",
-                            backgroundColor: color.value,
-                          }}
-                        />
-                      ) : (
-                        <Icon name="block" size="sm" />
-                      )}
-                      {color.name}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Color picker submenu (portaled beside this item) */}
+              <SubmenuFlyout
+                anchorRef={colorItemRef}
+                open={colorPickerOpen}
+                minWidth={120}
+              >
+                {SPACE_GROUP_COLORS.map((color) => (
+                  <div
+                    key={color.name}
+                    className="dropdown-item"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                    onClick={() => onChangeColor(color.value)}
+                  >
+                    {color.value ? (
+                      <div
+                        style={{
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          backgroundColor: color.value,
+                        }}
+                      />
+                    ) : (
+                      <Icon name="block" size="sm" />
+                    )}
+                    {color.name}
+                  </div>
+                ))}
+              </SubmenuFlyout>
             </div>
             <div className="dropdown-divider" />
 

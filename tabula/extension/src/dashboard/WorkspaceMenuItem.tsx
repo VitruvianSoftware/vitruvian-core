@@ -22,6 +22,7 @@
 
 import React, { useRef } from "react";
 import { MenuOverlay } from "./MenuOverlay";
+import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
 import type { Workspace, SpaceGroup } from "../types";
@@ -75,6 +76,8 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
   onMoveToSection,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const colorItemRef = useRef<HTMLDivElement>(null);
+  const sectionItemRef = useRef<HTMLDivElement>(null);
 
   // Compute effective accent color: workspace color > group color > default
   const groupColor = spaceGroups.find((g) => g.id === workspace.groupId)?.color;
@@ -173,6 +176,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
             {/* Change color */}
             <div
               className="dropdown-item"
+              ref={colorItemRef}
               style={{ position: "relative" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -186,54 +190,48 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                 size="sm"
                 style={{ marginLeft: "auto" }}
               />
-              {/* Color picker submenu */}
-              {colorPickerOpen && (
-                <div
-                  className="dropdown-menu"
-                  style={{
-                    position: "fixed",
-                    left: "284px",
-                    top: "auto",
-                    minWidth: "120px",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {SPACE_GROUP_COLORS.map((color) => (
-                    <div
-                      key={color.name}
-                      className="dropdown-item"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        await onChangeColor(color.value);
-                      }}
-                    >
-                      {color.value ? (
-                        <div
-                          style={{
-                            width: "12px",
-                            height: "12px",
-                            borderRadius: "50%",
-                            backgroundColor: color.value,
-                          }}
-                        />
-                      ) : (
-                        <Icon name="block" size="sm" />
-                      )}
-                      {color.name}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Color picker submenu (portaled beside this item) */}
+              <SubmenuFlyout
+                anchorRef={colorItemRef}
+                open={colorPickerOpen}
+                minWidth={120}
+              >
+                {SPACE_GROUP_COLORS.map((color) => (
+                  <div
+                    key={color.name}
+                    className="dropdown-item"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await onChangeColor(color.value);
+                    }}
+                  >
+                    {color.value ? (
+                      <div
+                        style={{
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          backgroundColor: color.value,
+                        }}
+                      />
+                    ) : (
+                      <Icon name="block" size="sm" />
+                    )}
+                    {color.name}
+                  </div>
+                ))}
+              </SubmenuFlyout>
             </div>
 
             {/* Move to section */}
             <div
               className="dropdown-item"
+              ref={sectionItemRef}
               style={{ position: "relative" }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -247,61 +245,54 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                 size="sm"
                 style={{ marginLeft: "auto" }}
               />
-              {/* Section picker submenu */}
-              {sectionPickerOpen && (
+              {/* Section picker submenu (portaled beside this item) */}
+              <SubmenuFlyout
+                anchorRef={sectionItemRef}
+                open={sectionPickerOpen}
+                minWidth={140}
+              >
+                {/* No section option */}
                 <div
-                  className="dropdown-menu"
-                  style={{
-                    position: "fixed",
-                    left: "284px",
-                    top: "auto",
-                    minWidth: "140px",
+                  className="dropdown-item"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await onMoveToSection(null);
                   }}
-                  onClick={(e) => e.stopPropagation()}
                 >
-                  {/* No section option */}
+                  <Icon name="block" size="sm" />
+                  No section
+                </div>
+                <div className="dropdown-divider" />
+
+                {/* List all sections */}
+                {spaceGroups.map((group) => (
                   <div
+                    key={group.id}
                     className="dropdown-item"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await onMoveToSection(null);
+                      await onMoveToSection(group.id);
                     }}
                   >
-                    <Icon name="block" size="sm" />
-                    No section
+                    {group.color && (
+                      <div
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          backgroundColor: group.color,
+                        }}
+                      />
+                    )}
+                    {group.title}
                   </div>
-                  <div className="dropdown-divider" />
-
-                  {/* List all sections */}
-                  {spaceGroups.map((group) => (
-                    <div
-                      key={group.id}
-                      className="dropdown-item"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        await onMoveToSection(group.id);
-                      }}
-                    >
-                      {group.color && (
-                        <div
-                          style={{
-                            width: "8px",
-                            height: "8px",
-                            borderRadius: "50%",
-                            backgroundColor: group.color,
-                          }}
-                        />
-                      )}
-                      {group.title}
-                    </div>
-                  ))}
-                </div>
-              )}
+                ))}
+              </SubmenuFlyout>
             </div>
             <div className="dropdown-divider" />
 
