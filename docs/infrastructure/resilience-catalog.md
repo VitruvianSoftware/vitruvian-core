@@ -53,19 +53,19 @@ flowchart LR
 | App | Why it dies | Fix |
 |---|---|---|
 | `cnpg-cluster` Postgres (`cnpg-cluster`) | 1 instance, PV pinned to mbp32 → total DB outage, unrecoverable until that node returns | **3 instances** (PR #61) + Longhorn storage |
-| coredns (`kube-system`) | single replica (on mbp32) → cluster-wide DNS outage until reschedule | 2–3 replicas + required anti-affinity (k3s default is 1) |
+| ~~coredns (`kube-system`)~~ | **fixed #67** — 2 replicas + required `hostname` anti-affinity, baked into devx provisioning; promoted to *survives 1 node* | — |
 | prometheus-server (`monitoring`) | 1 replica, PV pinned to mbp16 | relocatable (Longhorn) storage |
 | alertmanager (`monitoring`) | 1 replica, PV pinned to mbp32 | 3-replica gossip cluster + relocatable storage |
-| MinIO (`minio`) | 4 drives but **2 co-located on mbp32**; losing it breaches the EC:2 erasure set's write quorum | required anti-affinity: 4 drives → 4 distinct nodes |
+| MinIO (`minio`) | 4 drives, 2 co-located (only 3 arm64 nodes exist); losing the 2-drive node breaches EC:2 **write** quorum (reads still served) | *preferred* anti-affinity + PDB applied (#65); full fix is arch-bound — see [note](#post-65-hardening-applied-2026-06-13) |
 
 ### Survives 1 node: DEGRADED (serves, but on thin ice)
 
 | App | Behavior on node loss | Gap |
 |---|---|---|
-| traefik (ingress) | 1 of 2 replicas survives | no anti-affinity (replicas can co-locate), no PDB |
+| ~~traefik (ingress)~~ | **fixed #65** — required anti-affinity + PDB now applied; promoted to *survives 1 node* | — |
 | grafana CNPG Postgres | **validated**: stays writable at 2/3; stranded replica `Pending` until its node returns | local-path pinning prevents re-cloning elsewhere |
-| cert-manager (+webhook, cainjector) | leader-elected; 1 replica suffices | webhook has no PDB/anti-affinity — its loss blocks cert API ops |
-| external-secrets, cnpg-operator, otel-collector/operator, longhorn-ui | leader-elected / 2 replicas; 1 survives | no anti-affinity, no PDBs |
+| cert-manager (+webhook, cainjector) | leader-elected; 1 replica suffices | ~~webhook unprotected~~ — **fixed #65**: controller + webhook + cainjector all have PDBs |
+| external-secrets, cnpg-operator, otel-collector/operator, longhorn-ui | leader-elected / 2 replicas; 1 survives | ~~no anti-affinity, no PDBs~~ — **fixed #65**: PDBs added (+ anti-affinity where >1 replica) |
 | external-dns, metallb-controller, metrics-server, kube-state-metrics, pushgateway, local-path-provisioner, devx-registry | stateless singletons — reschedule if quorum holds | brief outage window; registry storage backend unverified |
 | Longhorn CSI controllers (attacher/provisioner/resizer/snapshotter) | leader-elected, 3 replicas each | *preferred* anti-affinity silently co-locates 2 of 3 on mbp32 |
 
@@ -105,19 +105,25 @@ fedora (DB reconnect-gated).
 
 1. ~~`cnpg-cluster` → 3 instances~~ — **done** (PR #61, applied + verified, see
    [verification](#improvements-verified-2026-06-12)).
-2. ~~Single default StorageClass~~ — **done live** (`local-path` un-defaulted;
-   `longhorn` sole default and now carrying real volumes). k3s re-asserts its
-   manifest on server restart; if the annotation reappears, fix at the k3s
-   server config level.
-3. ~~coredns → 2 replicas~~ — **done live + verified** (zero-downtime DNS
-   through a replica kill). k3s restart may revert the scale; permanent fix
-   (and required anti-affinity) belongs in the k3s server manifest.
-4. **Migrate stateful PVs local-path → Longhorn** (#64) (DBs first — CNPG can roll
-   replicas onto a new storage class; then prometheus/alertmanager/MinIO).
-   Precondition: fix CSI-controller spread (required anti-affinity) first.
-5. **Required anti-affinity + PDBs** (#65) for traefik, MinIO (4 drives → 4 nodes),
-   cert-manager-webhook/cainjector, external-secrets, cnpg-operator,
-   otel-collector/operator.
+2. ~~Single default StorageClass~~ — **done + baked into provisioning** (#67).
+   `local-path` is un-defaulted (`longhorn` is sole default, carrying real
+   volumes). This drifted back once (k3s re-asserts its bundled `local-storage`
+   addon), so it now lives in devx `EnsureClusterDefaults`, re-applied on every
+   `cluster init`/`cluster apply`.
+3. ~~coredns → 2 replicas~~ — **done + baked into provisioning** (#67). Now 2
+   replicas **+ required `hostname` anti-affinity** (the live scale had no
+   anti-affinity — replicas could co-locate). Also in devx
+   `EnsureClusterDefaults`, so a k3s upgrade that resets the bundled addon is
+   re-converged on the next apply. Validated: DNS resolves throughout the roll.
+4. ~~Migrate stateful PVs local-path → Longhorn~~ (#64) — **done** for the DBs,
+   prometheus, and alertmanager (PRs #74–75, zero downtime). MinIO drives 0/1/2
+   remain `local-path` (the IaC template is `longhorn`, so they migrate on the
+   next drive recycle); see the [MinIO storage note](#post-65-hardening-applied-2026-06-13).
+5. ~~Required anti-affinity + PDBs~~ (#65) — **done** (PR #86 + #87; 22 PDBs
+   live). traefik, cert-manager-webhook/cainjector, external-secrets,
+   cnpg-operator, otel-collector/operator, longhorn-ui, and the grafana app are
+   all covered. MinIO landed *preferred* (not required) anti-affinity — see the
+   [constraint note](#post-65-hardening-applied-2026-06-13).
 6. **Scale leader-elected singletons to 2** (#66) (metallb-controller, external-dns).
 7. **etcd 3 → 5 voters** (#69) (promote fedora + james-mbp) *only if* they can sit on
    separate power/network domains.
@@ -140,9 +146,57 @@ Conclusion: with 3 instances + relocatable storage, the cnpg database now
 (local-path → Longhorn) remains the fix for grafana-db, prometheus,
 alertmanager, and MinIO.
 
-Remaining work is tracked as GitHub issues **#64–#71** (label
-`infrastructure`): the plan items above, plus making the live fixes permanent
-in devx provisioning (#67, #68) and laptop-sleep node churn (#71).
+Remaining work is tracked as GitHub issues (label `infrastructure`). **Done:**
+#64 (PV→Longhorn), #65 (anti-affinity + PDBs), #67 (CoreDNS HA + single default
+StorageClass baked into devx provisioning), #68 (native-node firewalld/iSCSI).
+**Open:** #66 (2-replica leader-elected singletons), #69 (etcd 3→5 voters),
+#70 (registry storage / tempo persistence / orphaned PV), #71 (laptop-sleep
+node churn), #90 (MinIO low-replica StorageClass + finish drive migration).
+
+## Post-#65 hardening applied (2026-06-13)
+
+The anti-affinity + PDB sweep (#65, PRs #86/#87) is live: **22 PodDisruptionBudgets**
+across the stack. Six show `ALLOWED DISRUPTIONS = 0` and that is **by design**, not
+a misconfiguration — the two `*-primary` PDBs are CNPG protecting each Postgres
+primary (failover is a switchover, never an eviction), and the four
+`instance-manager-*` are Longhorn's own dynamic node-drain guards.
+
+What moved:
+
+- **traefik** now renders required `kubernetes.io/hostname` podAntiAffinity and a
+  `minAvailable=1` PDB; its 2 replicas sit on distinct hosts. (The
+  HelmChartConfig is applied by a k3s `helm-install-traefik` job — if that job
+  ever wedges `Running 0/1` with no pod, just `kubectl delete job` it and the
+  helm-controller re-runs the upgrade.) → traefik graduates from *DEGRADED* to
+  **survives 1 node**.
+- **cert-manager** (controller + webhook + cainjector), **external-secrets**,
+  **cnpg-operator**, **otel-collector/operator**, **longhorn-ui**, and the
+  **grafana app** all gained PDBs (+ anti-affinity where they run >1 replica).
+
+Two MinIO constraints are **permanent under the current topology**, not bugs:
+
+- **arch (preferred, not required, anti-affinity).** Distributed MinIO needs an
+  identical binary — i.e. identical CPU arch — on every member; it refuses to
+  cluster across amd64+arm64. This cluster has only **3 arm64 nodes** for **4
+  drives**, so the 4th drive must co-locate. Anti-affinity is therefore
+  *preferred* + an `arch=arm64` nodeSelector. Net effect: MinIO **survives loss
+  of a 1-drive node** (3/4 drives ⇒ EC:2 write quorum holds) but **loses writes
+  if the node hosting 2 drives dies** (reads still served; current 2-drive node
+  is `james-mbp16`). The PDB (`maxUnavailable=1`) prevents *voluntary* drains
+  from compounding this.
+- **storage (longhorn drive stuck 2/3 replicas).** Only `export-minio-3` is on
+  Longhorn; it holds **2 healthy replicas on distinct nodes (redundant) but
+  cannot place a 3rd** — `replica-soft-anti-affinity=false` forbids a second
+  replica on the nodes that already host one (macbook-pro, fedora), and the only
+  other candidates (james-mbp16, james-mbp32) are too full (<10 Gi reservable).
+  It is degraded-but-redundant, and MinIO's own EC:2 sits on top, so this is
+  cosmetic. The right fix is a MinIO-specific StorageClass with a lower replica
+  count (MinIO already erasure-codes; 3× Longhorn replication under it is
+  redundant **and** infeasible here) — tracked separately.
+
+One follow-up the sweep introduced: `opentelemetry/tempo` runs a single replica
+with `minAvailable=1`, so its PDB blocks voluntary drains of tempo's node. Prefer
+`maxUnavailable=1` (or 2 replicas) there.
 
 ## Known operational quirks
 
