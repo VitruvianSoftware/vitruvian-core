@@ -37,6 +37,10 @@ func DeployK3sHA(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 
 	_, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
 		Name: "traefik-ha-config",
+		// NOTE: `deployment.podAntiAffinity` is NOT a traefik chart value (it
+		// was silently ignored; the rendered Deployment had no affinity at all
+		// and the 2 replicas spread only by luck). The chart takes a full
+		// top-level `affinity` stanza, plus podDisruptionBudget.
 		YAML: `apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -46,8 +50,17 @@ spec:
   valuesContent: |-
     deployment:
       replicas: 2
+    affinity:
       podAntiAffinity:
-        type: hard
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: traefik
+                app.kubernetes.io/instance: traefik-kube-system
+            topologyKey: kubernetes.io/hostname
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
 `,
 	})
 	return err

@@ -73,13 +73,25 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 					"purge":  false,
 				},
 			},
+			// Longhorn (replicated, relocatable): with node-pinned local-path a
+			// single node loss could remove 2 of 4 erasure-set drives (below
+			// write quorum). See docs/infrastructure/resilience-catalog.md.
 			"persistence": map[string]interface{}{
 				"enabled":      true,
-				"storageClass": "local-path",
+				"storageClass": "longhorn",
 				"size":         "10Gi",
 			},
-			"nodeSelector": map[string]interface{}{
-				"kubernetes.io/arch": "arm64",
+			// No arch nodeSelector: the image is multi-arch and only 3 arm64
+			// nodes exist — 4 drives need 4 distinct nodes for the required
+			// anti-affinity below to be schedulable.
+			"affinity": hostnameAntiAffinity(map[string]interface{}{
+				"app": "minio",
+			}),
+			// minio chart 5.4.0 only supports maxUnavailable (minAvailable is
+			// silently ignored by its PDB template).
+			"podDisruptionBudget": map[string]interface{}{
+				"enabled":        true,
+				"maxUnavailable": 1,
 			},
 			"resources": map[string]interface{}{
 				"requests": map[string]interface{}{

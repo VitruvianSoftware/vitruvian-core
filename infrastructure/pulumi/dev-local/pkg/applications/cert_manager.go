@@ -74,11 +74,31 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 		ValuesFile:      "cert-manager",
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
+			// Hard spread + PDBs: the webhook is admission-path critical (its
+			// loss blocks all cert-manager API operations) and none of these
+			// had anti-affinity — replicas co-located by scheduler chance.
+			"affinity": hostnameAntiAffinity(map[string]interface{}{
+				"app.kubernetes.io/name": "cert-manager",
+			}),
 			"webhook": map[string]interface{}{
 				"replicaCount": replicas,
+				"affinity": hostnameAntiAffinity(map[string]interface{}{
+					"app.kubernetes.io/name": "webhook",
+				}),
+				"podDisruptionBudget": map[string]interface{}{
+					"enabled":      true,
+					"minAvailable": 1,
+				},
 			},
 			"cainjector": map[string]interface{}{
 				"replicaCount": replicas,
+				"affinity": hostnameAntiAffinity(map[string]interface{}{
+					"app.kubernetes.io/name": "cainjector",
+				}),
+				"podDisruptionBudget": map[string]interface{}{
+					"enabled":      true,
+					"minAvailable": 1,
+				},
 			},
 			"crds": map[string]interface{}{
 				"enabled": false,

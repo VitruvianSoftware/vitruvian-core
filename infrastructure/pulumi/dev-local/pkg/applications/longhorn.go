@@ -62,5 +62,26 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 	}
 
 	ctx.Log.Info("Longhorn Helm chart deployed successfully.", nil)
+
+	// longhorn 1.6.2 exposes no PDB values for the UI (its Deployment template
+	// hardcodes soft anti-affinity); add a raw PDB. Longhorn manages its own
+	// PDBs for instance-managers/CSI — do not add more there.
+	if _, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
+		Name: "longhorn-ui-pdb",
+		YAML: `apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: longhorn-ui
+  namespace: ` + namespace + `
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: longhorn-ui
+`,
+	}, pulumi.DependsOn([]pulumi.Resource{release})); err != nil {
+		return nil, err
+	}
+
 	return release, nil
 }

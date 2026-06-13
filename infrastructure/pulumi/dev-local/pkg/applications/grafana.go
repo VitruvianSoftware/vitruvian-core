@@ -230,6 +230,11 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				},
 			},
 		}
+		// No `.enabled` flag in this chart — the PDB renders iff the map is
+		// non-empty.
+		grafanaValues["podDisruptionBudget"] = map[string]interface{}{
+			"minAvailable": 1,
+		}
 	}
 
 	// Set up dashboard providers

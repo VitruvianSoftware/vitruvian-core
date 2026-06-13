@@ -104,6 +104,15 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
 			"installCRDs":  false,
+			// Hard spread + PDB for the (leader-elected) core controller; the
+			// webhook/certController workloads are disabled in this install.
+			"affinity": hostnameAntiAffinity(map[string]interface{}{
+				"app.kubernetes.io/name": "external-secrets",
+			}),
+			"podDisruptionBudget": map[string]interface{}{
+				"enabled":      true,
+				"minAvailable": 1,
+			},
 			"webhook": map[string]interface{}{
 				"create": false,
 			},
