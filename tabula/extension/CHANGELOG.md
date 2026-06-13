@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.14...tabula-extension-v0.1.15) (2026-06-13)
+
+
+### Bug Fixes
+
+* **tabula:** submenu flyouts not displaying (portal them beside the menu) ([#97](https://github.com/VitruvianSoftware/vitruvian-core/issues/97)) ([a3f2717](https://github.com/VitruvianSoftware/vitruvian-core/commit/a3f2717df8f528a33d36f33fc5945c696d578cbf))
+
 ## [0.1.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.13...tabula-extension-v0.1.14) (2026-06-13)
 
 
