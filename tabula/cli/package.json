@@ -1,6 +1,6 @@
 {
   "name": "@tabula/cli",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "description": "TabCLI - Command-line tool for managing Tabula infrastructure and operations",
   "license": "MIT",
