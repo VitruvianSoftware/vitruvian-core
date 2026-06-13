@@ -2,6 +2,11 @@ config:
   vitruvian-core-repo-config:repoOwner: VitruvianSoftware
   vitruvian-core-repo-config:requirePullRequest: "false"
   vitruvian-core-repo-config:requireStatusChecks: "false"
+  # Merge queue (#83) is the enforcement authority for main: PR merges go
+  # through the queue and must pass the required CI checks. Classic
+  # requireStatusChecks stays false to avoid the strict-up-to-date conflict
+  # with the queue (the queue rebases entries itself).
+  vitruvian-core-repo-config:mergeQueue: "true"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
   vitruvian-core-repo-config:tabulaVars:
