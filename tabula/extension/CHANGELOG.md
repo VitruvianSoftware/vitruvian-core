@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.11...tabula-extension-v0.1.12) (2026-06-13)
+
+
+### Features
+
+* **tabula:** frosted-glass design system for the extension UI ([#88](https://github.com/VitruvianSoftware/vitruvian-core/issues/88)) ([c393143](https://github.com/VitruvianSoftware/vitruvian-core/commit/c3931433cba9448fbe0f0a224f73fe1004f6422a))
+
 ## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.10...tabula-extension-v0.1.11) (2026-06-12)
 
 
