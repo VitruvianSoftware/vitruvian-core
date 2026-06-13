@@ -66,7 +66,7 @@ flowchart LR
 | grafana CNPG Postgres | **validated**: stays writable at 2/3; stranded replica `Pending` until its node returns | local-path pinning prevents re-cloning elsewhere |
 | cert-manager (+webhook, cainjector) | leader-elected; 1 replica suffices | ~~webhook unprotected~~ — **fixed #65**: controller + webhook + cainjector all have PDBs |
 | external-secrets, cnpg-operator, otel-collector/operator, longhorn-ui | leader-elected / 2 replicas; 1 survives | ~~no anti-affinity, no PDBs~~ — **fixed #65**: PDBs added (+ anti-affinity where >1 replica) |
-| external-dns, metallb-controller, metrics-server, kube-state-metrics, pushgateway, local-path-provisioner, devx-registry | stateless singletons — reschedule if quorum holds | brief outage window; registry storage backend unverified |
+| external-dns, metallb-controller, metrics-server, kube-state-metrics, pushgateway, local-path-provisioner, devx-registry | stateless singletons — reschedule if quorum holds | brief outage window. ~~registry storage unverified~~ — **#70**: devx-registry now on a durable PVC (default StorageClass = Longhorn), survives pod/node loss + relocates; pushgateway stays in-memory by design (batch metrics re-pushed) |
 | Longhorn CSI controllers (attacher/provisioner/resizer/snapshotter) | leader-elected, 3 replicas each | *preferred* anti-affinity silently co-locates 2 of 3 on mbp32 |
 
 ### Survives 1 node: YES
@@ -74,7 +74,7 @@ flowchart LR
 | App | Why |
 |---|---|
 | grafana (app) | 2 replicas with **required** anti-affinity; stateless (state in CNPG) — **validated**: served continuously through the drain |
-| tempo | 2 replicas, required anti-affinity, **no PVC at all** (verified — tracing data is ephemeral; the `storage-tempo-0` PV is orphaned) |
+| tempo | 2 replicas, required anti-affinity, **no PVC** — and that's correct: traces are durable in **MinIO** (`backend: s3`, bucket `tempo`); local is only the WAL/cache (#70). The orphaned `storage-tempo-0` PV has been deleted. |
 | All DaemonSets (longhorn manager/csi-plugin/engine-image, metallb speaker, node-exporter) | per-node by design; losing a node only loses that node's pod |
 
 ### Survives 2 nodes
@@ -127,8 +127,10 @@ fedora (DB reconnect-gated).
 6. **Scale leader-elected singletons to 2** (#66) (metallb-controller, external-dns).
 7. **etcd 3 → 5 voters** (#69) (promote fedora + james-mbp) *only if* they can sit on
    separate power/network domains.
-8. (#70) Verify `devx-registry` storage backend; decide whether tempo should be
-   persistent (today it isn't).
+8. ~~Verify `devx-registry` storage backend; decide tempo persistence; clean
+   orphaned PV~~ (#70) — **done**: registry now on a durable PVC (default
+   StorageClass); tempo stays PVC-less (traces durable in MinIO `s3` backend);
+   pushgateway stays in-memory by design; orphaned `storage-tempo-0` PV deleted.
 
 ## Improvements verified (2026-06-12)
 
@@ -148,10 +150,11 @@ alertmanager, and MinIO.
 
 Remaining work is tracked as GitHub issues (label `infrastructure`). **Done:**
 #64 (PV→Longhorn), #65 (anti-affinity + PDBs), #67 (CoreDNS HA + single default
-StorageClass baked into devx provisioning), #68 (native-node firewalld/iSCSI).
+StorageClass baked into devx provisioning), #68 (native-node firewalld/iSCSI),
+#70 (registry durable PVC + tempo/pushgateway decisions + orphaned-PV cleanup).
 **Open:** #66 (2-replica leader-elected singletons), #69 (etcd 3→5 voters),
-#70 (registry storage / tempo persistence / orphaned PV), #71 (laptop-sleep
-node churn), #90 (MinIO low-replica StorageClass + finish drive migration).
+#71 (laptop-sleep node churn), #90 (MinIO low-replica StorageClass + finish
+drive migration).
 
 ## Post-#65 hardening applied (2026-06-13)
 
