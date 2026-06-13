@@ -4,17 +4,18 @@
 mode: standalone
 
 cluster:
-  # 3 instances (1 primary + 2 standbys) so the database survives a node loss.
-  # CNPG's default anti-affinity spreads them across nodes; with node-pinned
-  # local-path storage a downed instance strands, but the cluster stays
-  # writable at 2/3 (validated in docs/infrastructure/resilience-catalog.md).
+  # 3 instances (1 primary + 2 standbys) so the database survives a node loss
+  # via CNPG's own streaming replication (a downed instance is re-cloned onto a
+  # healthy node by the operator). CNPG's anti-affinity spreads them across nodes.
   instances: 3
   storage:
     size: 1Gi
-    # Longhorn (replicated, relocatable) so instances can reschedule on node
-    # loss; CNPG applies this only to NEW instance PVCs (existing ones keep
-    # their class until the instance is recycled).
-    storageClass: longhorn
+    # storageClass: local-path (node-local, reliable I/O) — NOT Longhorn. On this
+    # homelab Longhorn's cross-node engine<->replica I/O is unreliable under
+    # sustained write load (it corrupted/IO-errored DB volumes during the
+    # 2026-06-13 incident). HA is provided by CNPG replication above, not the
+    # storage layer, so node-local reliable storage is the correct trade-off.
+    storageClass: local-path
 
   inheritedMetadata:
     annotations:

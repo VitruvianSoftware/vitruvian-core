@@ -119,13 +119,17 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 					},
 				},
 				// Pin the data volume size to the chart default so it can't silently drift on a chart upgrade; most provisioners (incl. local-path) can't shrink a PVC.
-				// storageClass pinned to Longhorn (replicated, relocatable): CNPG only
-				// consults it when CREATING an instance PVC, so existing instances keep
-				// their class until recycled — node-pinned local-path stranded a replica
-				// whenever a laptop node slept (docs/infrastructure/resilience-catalog.md).
+				// storageClass: local-path (node-local, reliable I/O) — NOT Longhorn.
+				// Longhorn's cross-node engine<->replica I/O proved unreliable under the
+				// sustained write load of a DB restore on this homelab (EXT4 journal
+				// aborts / "input/output error" -> CrashLoopBackOff; the 2026-06-13
+				// incident). CNPG runs its own streaming replication, so HA + relocation
+				// come from CNPG (3 instances; a downed instance is re-cloned onto a
+				// healthy node via pg_basebackup), not from the storage layer. Reliable
+				// local I/O beats relocatable-but-unreliable Longhorn for Postgres here.
 				"storage": map[string]interface{}{
 					"size":         "8Gi",
-					"storageClass": "longhorn",
+					"storageClass": "local-path",
 				},
 				// Default chart key is topology.kubernetes.io/zone, meaningless on a local cluster without zone labels; spread across physical nodes instead
 				"affinity": map[string]interface{}{
