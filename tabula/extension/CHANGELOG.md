@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.15...tabula-extension-v0.1.16) (2026-06-13)
+
+
+### Bug Fixes
+
+* **tabula:** recover session from refresh token so Settings matches the rest of the app ([#99](https://github.com/VitruvianSoftware/vitruvian-core/issues/99)) ([4e06548](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e065484c33eb03ab973f8772cd8a63241cb9dcf))
+
 ## [0.1.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.14...tabula-extension-v0.1.15) (2026-06-13)
 
 
