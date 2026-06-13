@@ -25,9 +25,10 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import jwt from "@fastify/jwt";
 import dotenv from "dotenv";
-import { ZodError } from "zod";
 import { redis } from "./lib/redis";
 import { resolveJwtSecret, ACCESS_TOKEN_TTL } from "./lib/auth";
+import { errorHandler } from "./lib/errorHandler";
+import { assertDatabaseSchemaCurrent } from "./lib/migrationGuard";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { spaceGroupRoutes } from "./routes/spacegroup.routes";
 import { authRoutes } from "./routes/auth.routes";
@@ -84,48 +85,10 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
     `JWT_SECRET configured: ${hasJwtSecret ? "Yes (from env)" : "No (dev fallback)"}`,
   );
 
-  // Central error handler. Keeps intentional 4xx messages (validation,
-  // not-found, conflict, forbidden) but never forwards raw 5xx/internal error
-  // messages (Prisma/Redis constraint names, connection fragments) to clients.
-  // Routes that want the generic 500 simply rethrow; this is the single place
-  // that decides what a client sees.
-  app.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-
-    if (error instanceof ZodError) {
-      return reply.code(400).send({
-        error: "Bad Request",
-        message: "Invalid input",
-        details: error.flatten(),
-      });
-    }
-
-    // Body too large -> actionable 413 instead of an opaque error.
-    if ((error as { code?: string }).code === "FST_ERR_CTP_BODY_TOO_LARGE") {
-      return reply.code(413).send({
-        error: "Payload Too Large",
-        message: "Request body exceeds the maximum allowed size",
-      });
-    }
-
-    const statusCode =
-      typeof error.statusCode === "number" && error.statusCode >= 400
-        ? error.statusCode
-        : 500;
-
-    // Only expose the real message for client errors (4xx). 5xx messages are
-    // generic in production; in dev/test we keep the detail to aid debugging.
-    const exposeMessage =
-      statusCode < 500 || process.env.NODE_ENV !== "production";
-
-    return reply.code(statusCode).send({
-      error:
-        statusCode < 500
-          ? error.name || "Bad Request"
-          : "Internal Server Error",
-      message: exposeMessage ? error.message : "An unexpected error occurred",
-    });
-  });
+  // Central error handler (extracted to lib/errorHandler for unit testing).
+  // Maps schema-drift (P2021/P2022) to a clean 503 and otherwise keeps 4xx
+  // messages while masking raw 5xx detail in production.
+  app.setErrorHandler(errorHandler);
 
   // Register routes
   app.register(authRoutes, { prefix: "/api/v1/auth" });
@@ -162,6 +125,11 @@ const app = buildApp();
 // Start server
 const start = async () => {
   try {
+    // Refuse to serve traffic against a database that is behind this code (a
+    // migration-less rollout). Crash-looping here keeps Cloud Run on the
+    // previous healthy revision instead of surfacing schema errors to users.
+    await assertDatabaseSchemaCurrent(app.log);
+
     const port = parseInt(process.env.PORT || "8080", 10);
     const host = process.env.HOST || "0.0.0.0";
 
