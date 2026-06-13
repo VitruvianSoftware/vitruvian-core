@@ -118,41 +118,54 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(10, 14, 30, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(2px);
 }
 
-/* Glassmorphic overlay effect */
+/* Glassmorphic overlay effect — just the scrim; the real frost lives on the
+   modal surface below. */
 .glassmorphic-overlay {
-  backdrop-filter: blur(8px);
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: rgba(10, 14, 30, 0.32);
 }
 
-/* Glassmorphic modal styling */
+/* Glassmorphic modal styling — redirected onto the shared glass tokens so the
+   existing markup (modal-content glassmorphic-modal) picks up the real glass
+   (mirrors .glass-strong). */
 .glassmorphic-modal {
-  backdrop-filter: blur(20px) saturate(180%);
-  background-color: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
 }
 
-/* Dark theme glassmorphic adjustments */
+/* Dark theme glassmorphic adjustments — background/border now come from the
+   dark --glass-* tokens automatically; only dim the inset top sheen. */
 [data-theme="dark"] .glassmorphic-modal {
-  background-color: rgba(33, 38, 49, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.14),
+    var(--glass-shadow);
 }
 
 .modal-content {
-  background-color: var(--color-bg-card);
   border-radius: 8px;
-  box-shadow: var(--shadow-dropdown);
   width: 90%;
   max-width: 400px;
   overflow: hidden;
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.5),
+    var(--glass-shadow);
 }
 
 .modal-header {

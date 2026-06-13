@@ -179,6 +179,37 @@ describe("Auth API Endpoints", () => {
       expect(response.payload).toContain("TABULA_AUTH_SUCCESS");
     });
 
+    it("should declare UTF-8 and preserve a non-ASCII name in the HTML callback", async () => {
+      // Regression: without charset=utf-8 the browser parsing this page guesses
+      // a legacy encoding (windows-1252) and mojibakes multi-byte characters
+      // (e.g. "Nguyễn" -> "Nguyá»…n") before the name is postMessage'd to the
+      // extension, so every surface that renders it shows garbage.
+      const mockUser = {
+        id: "user-utf8",
+        email: "james.nguyen@example.com",
+        name: "James Nguyễn",
+        tier: "free",
+      };
+      (AuthService.authenticateAndSyncUser as jest.Mock).mockResolvedValue(
+        mockUser,
+      );
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/callback?code=valid-code",
+        headers: { accept: "text/html" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      // HTTP-level declaration so the browser decodes the body as UTF-8...
+      expect(response.headers["content-type"]).toContain("charset=utf-8");
+      // ...plus an in-document declaration as a defense against header-stripping proxies.
+      expect(response.payload).toContain('<meta charset="utf-8">');
+      // The name must survive as correct UTF-8 bytes on the wire (the server is
+      // not the one corrupting it — the missing charset was).
+      expect(response.rawPayload.toString("utf-8")).toContain("James Nguyễn");
+    });
+
     it("should return 500 on authentication failure (JSON)", async () => {
       (AuthService.authenticateAndSyncUser as jest.Mock).mockRejectedValue(
         new Error("Invalid code"),

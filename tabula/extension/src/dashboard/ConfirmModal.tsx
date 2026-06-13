@@ -69,12 +69,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <motion.div
             className="glassmorphic-modal"
             style={{
-              backgroundColor: "var(--color-bg-card)",
               borderRadius: "8px",
               padding: "24px",
               minWidth: "320px",
               maxWidth: "400px",
-              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
             }}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}

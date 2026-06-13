@@ -311,6 +311,23 @@ describe("AuthService", () => {
     });
   });
 
+  describe("setCachedUser", () => {
+    it("overwrites the cached user record under tabula_user", async () => {
+      const user = {
+        id: "user-123",
+        email: "james@example.com",
+        name: "James Nguyễn",
+        tier: "free",
+      };
+
+      await AuthService.setCachedUser(user);
+
+      expect(mockChrome.storage.local.set).toHaveBeenCalledWith({
+        tabula_user: user,
+      });
+    });
+  });
+
   describe("getToken", () => {
     it("should return token from session storage", async () => {
       mockChrome.storage.session.get.mockResolvedValue({
