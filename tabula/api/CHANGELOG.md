@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.13...tabula-api-v0.1.14) (2026-06-13)
+
+
+### Bug Fixes
+
+* **tabula:** fail fast on DB schema drift instead of breaking sync silently ([#94](https://github.com/VitruvianSoftware/vitruvian-core/issues/94)) ([28081fd](https://github.com/VitruvianSoftware/vitruvian-core/commit/28081fdc5917be5af2c701a9f086feb50d7dff82))
+
 ## [0.1.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.12...tabula-api-v0.1.13) (2026-06-13)
 
 
