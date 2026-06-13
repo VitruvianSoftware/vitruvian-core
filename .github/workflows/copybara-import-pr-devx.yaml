@@ -1,0 +1,146 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Import PR (devx)
+
+# ONE-WAY devx PR-import (CHANGE_REQUEST). Consumes a PR on VitruvianSoftware/devx
+# that a MAINTAINER has reviewed/approved and labelled 'import-to-monorepo', and
+# opens a MONOREPO PR under devx/ for review + merge. Monorepo is the single
+# source of truth; nothing is pushed to monorepo main here.
+#
+# SECURITY POSTURE (do NOT weaken):
+#   * Trigger is repository_dispatch (devx-import-pr) fired by the standalone
+#     ONLY after an approval gate (see VitruvianSoftware/devx sync-to-monorepo.yaml
+#     in standaloneRunbook), or manual workflow_dispatch by a monorepo maintainer.
+#     We never use pull_request_target, so no monorepo secret is ever exposed to a
+#     trigger evaluated in the context of untrusted PR head code.
+#   * This job NEVER builds/tests/executes the imported PR content. Copybara only
+#     applies core.move + the loop-prevention dynamic_transform. The single build
+#     step (//:tidy) regenerates gazelle BUILD files and is monorepo-owned tooling;
+#     it runs against the imported tree but does not execute arbitrary PR scripts.
+#   * The standalone deploy key (DEVX_SYNC_SSH_KEY) is used ONLY to READ the
+#     standalone PR origin; the monorepo PR is opened over HTTPS with GITHUB_TOKEN.
+
+on:
+    repository_dispatch:
+        types: [devx-import-pr]
+    workflow_dispatch:
+        inputs:
+            pr_number:
+                description: "Standalone devx PR number to import (must be labelled import-to-monorepo and approved)."
+                required: true
+            copybara_options:
+                description: "Copybara CLI options."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: write
+    pull-requests: write
+
+# Serialize PR imports so two simultaneously-labelled PRs cannot race the same
+# monorepo PR branch / GitHub API (residual-risk #2 from the design, now closed).
+concurrency:
+    group: copybara-import-pr-devx
+    cancel-in-progress: false
+
+jobs:
+    import-pr:
+        runs-on: ubuntu-latest
+        env:
+            # Origin (standalone) PR number, from either trigger.
+            DEVX_PR_NUMBER: ${{ github.event.client_payload.pr_number || github.event.inputs.pr_number }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                fetch-depth: 0
+            - name: Set up Copybara auth (SSH read key + HTTPS token)
+              env:
+                SSH_KEY: ${{ secrets.DEVX_SYNC_SSH_KEY }}
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                mkdir -p ~/.ssh
+                printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > ~/.git-credentials
+                chmod 600 ~/.git-credentials
+                printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
+            - name: Copybara import PR (labelled standalone PR -> monorepo PR under devx/)
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                CB_OPTS: ${{ github.event.client_payload.copybara_options || github.event.inputs.copybara_options || '--ignore-noop' }}
+              run: |
+                set +e
+                # CHANGE_REQUEST is selective by PR; pass the specific origin PR so
+                # only the labelled+approved PR is imported.
+                docker run --rm \
+                  -v "$GITHUB_WORKSPACE":/usr/src/app \
+                  -v "$HOME/.ssh/id_rsa":/root/.ssh/id_rsa \
+                  -v "$HOME/.ssh/known_hosts":/root/.ssh/known_hosts \
+                  -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                  -v "$HOME/.git-credentials":/root/.git-credentials \
+                  -v "$HOME/.gitconfig":/root/.gitconfig \
+                  -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                  -e COPYBARA_WORKFLOW=import_pr_devx \
+                  -e COPYBARA_OPTIONS="$CB_OPTS" \
+                  -e GITHUB_TOKEN="$GH_TOKEN" \
+                  olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                  copybara import_pr_devx "$DEVX_PR_NUMBER"
+                rc=$?
+                # 0 = PR opened/updated; 4 = NO_OP (skip-guard dropped an export-origin
+                # change, or nothing to import). Both are acceptable terminal states.
+                if [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]; then echo "Copybara OK (exit $rc)"; exit 0; fi
+                echo "Copybara import_pr failed (exit $rc)"; exit "$rc"
+            - name: Install Bazel
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                bazelisk-cache: true
+                repository-cache: true
+            - name: Regenerate gazelle BUILD files on the import PR branch
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                set -uo pipefail
+                BR="devx-import-pr-${DEVX_PR_NUMBER}"
+                # The Copybara PR branch may not exist if the import no-op'd; bail cleanly.
+                if ! git ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+                  echo "No import PR branch ($BR) — nothing to tidy (import likely no-op'd)."; exit 0
+                fi
+                # Push race: the PR branch is owned by this single concurrency group, but
+                # retry defensively in case the branch was just (re)created by Copybara.
+                for attempt in 1 2 3 4 5; do
+                  git fetch origin "$BR"
+                  git checkout -B "$BR" "origin/$BR"
+                  bazel run //:tidy
+                  git add -A
+                  if git diff --cached --quiet; then
+                    echo "BUILD already up to date on $BR — nothing to regenerate."; exit 0
+                  fi
+                  git commit -m "chore(bazel): tidy BUILD for devx import PR #${DEVX_PR_NUMBER}"
+                  if git push origin "HEAD:refs/heads/$BR"; then
+                    echo "Pushed BUILD regeneration onto $BR."; exit 0
+                  fi
+                  echo "push rejected (attempt ${attempt}/5) — branch advanced; re-syncing"
+                  sleep $((attempt * 3))
+                done
+                echo "::error::could not push BUILD regeneration onto $BR"
+                exit 1
+
