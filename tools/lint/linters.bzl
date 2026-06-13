@@ -26,7 +26,6 @@ load("@aspect_rules_lint//lint:eslint.bzl", "lint_eslint_aspect")
 load("@aspect_rules_lint//lint:ktlint.bzl", "lint_ktlint_aspect")
 load("@aspect_rules_lint//lint:lint_test.bzl", "lint_test")
 load("@aspect_rules_lint//lint:pmd.bzl", "lint_pmd_aspect")
-load("@aspect_rules_lint//lint:rubocop.bzl", "lint_rubocop_aspect")
 load("@aspect_rules_lint//lint:ruff.bzl", "lint_ruff_aspect")
 load("@aspect_rules_lint//lint:shellcheck.bzl", "lint_shellcheck_aspect")
 load("@aspect_rules_lint//lint:ty.bzl", "lint_ty_aspect")
@@ -82,7 +81,7 @@ shellcheck_test = lint_test(aspect = shellcheck)
 clippy = lint_clippy_aspect(
     config = Label("//:.clippy.toml"),
 )
-rubocop = lint_rubocop_aspect(
-    binary = Label("@bundle//bin:rubocop"),
-    configs = [Label("//:.rubocop.yml")],
-)
+
+# rubocop was dropped in #85 (no Ruby sources to lint). Reintroducing it needs
+# the gem locked in Gemfile.lock AND aspect_rules_lint's sarif parser patched
+# for the RuboCop mnemonic — see that PR for the full recipe.
