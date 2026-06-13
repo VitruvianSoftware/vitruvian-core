@@ -140,10 +140,10 @@
   --ambient-bloom-3: rgba(34, 211, 238, 0.05);
 }
 
-/* Ambient backdrop — painted on body for all themes. The flat page color
-   stays as the base (background-color, set on body below); these blooms layer
-   a soft aurora/mesh on top with background-attachment: fixed so glass has
-   something gorgeous to refract. No animation (perf + taste). */
+/* Ambient backdrop — a whisper-subtle aurora painted on the page behind the
+   content, giving the floating glass overlays something with a little life to
+   refract. Painted once: no background-attachment: fixed (which would force a
+   full-viewport repaint on every scroll/composite) and no animation. */
 body {
   background-image:
     radial-gradient(
@@ -161,19 +161,20 @@ body {
       var(--ambient-bloom-3),
       transparent 60%
     );
-  background-attachment: fixed;
   background-repeat: no-repeat;
 }
 
 /* ============================================
    FROSTED GLASS UTILITY CLASSES
    - .glass-strong : modals & the command palette (the hero) — real frost
-   - .glass-panel  : chrome (sidebar, sticky header) — lighter translucency
+   - .glass-panel  : lighter-frost panel utility, for any TRANSIENT translucent
+                     panel that needs it (chrome itself — sidebar, header — stays
+                     solid: always-on blur is invisible there and far too costly)
    - .glass-menu   : floating menus (dropdowns, popovers, context menus)
    Each bundles background + backdrop-filter (with -webkit- prefix) + the
    hairline border + the tinted layered shadow + a 1px inset top sheen.
-   NEVER nest a strong blur inside another (glass-on-glass): chrome uses the
-   lighter blur, floating menus carry the real frost.
+   Apply ONLY to transient/floating surfaces — never to always-on chrome, and
+   never nest one inside another (glass-on-glass).
    ============================================ */
 .glass-strong {
   background-color: var(--glass-bg-strong);

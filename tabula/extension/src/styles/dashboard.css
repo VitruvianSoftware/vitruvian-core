@@ -32,18 +32,12 @@
    ============================================ */
 .sidebar {
   width: var(--sidebar-width);
-  /* Lighter chrome translucency — keep the sidebar dark enough for white text
-     (do NOT use the light --glass-bg-panel here). Lower the dark base alpha so
-     the ambient backdrop reads through, then add a modest blur. The strong
-     frost is reserved for floating menus that open over this (no glass-on-glass). */
-  background-color: color-mix(
-    in srgb,
-    var(--color-bg-sidebar) 90%,
-    transparent
-  );
-  -webkit-backdrop-filter: blur(var(--glass-blur-light))
-    saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturate));
+  /* Solid chrome — the sidebar is full-height opaque navigation, so a blur here
+     is invisible (nothing meaningful sits behind it) yet would re-composite the
+     entire page backdrop on every frame (prohibitive under software rendering).
+     Frost is reserved for the floating overlays that open OVER it (command
+     palette, modals, menus) — those are transient, so they stay cheap. */
+  background-color: var(--color-bg-sidebar);
   border-right: 1px solid var(--color-border-sidebar);
   display: flex;
   flex-direction: column;
@@ -188,13 +182,11 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md) var(--spacing-xl);
-  /* Sticky frosted top header — content scrolls under it. Uses --glass-bg-panel
-     (theme-aware), distinct from the sidebar's own darker translucency, with the
-     lighter chrome blur so it never stacks a strong blur over the sidebar. */
-  background-color: var(--glass-bg-panel);
-  -webkit-backdrop-filter: blur(var(--glass-blur-light))
-    saturate(var(--glass-saturate));
-  backdrop-filter: blur(var(--glass-blur-light)) saturate(var(--glass-saturate));
+  /* Solid sticky top bar — content scrolls cleanly under it. Kept opaque
+     (not frosted): as always-on chrome it would otherwise re-composite the
+     whole backdrop every frame. The frost lives on the floating overlays that
+     open above it. */
+  background-color: var(--color-bg-card);
   border-bottom: 1px solid var(--color-border);
   min-height: 56px;
   position: sticky;
