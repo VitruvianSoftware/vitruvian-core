@@ -39,7 +39,6 @@ js_library(
 exports_files(
     [
         ".clang-tidy",
-        ".rubocop.yml",
         "ktlint-baseline.xml",
         ".editorconfig",
         "pmd.xml",
