@@ -37,11 +37,9 @@ on:
     workflow_run:
         workflows:
             - "Copybara Export (mcp-slack)"
-            - "Copybara Export (devx)"
             - "Copybara Export (homelab)"
             - "Copybara Export (nexus-agent)"
             - "Copybara Import (mcp-slack)"
-            - "Copybara Import (devx)"
             - "Copybara Import (homelab)"
             - "Copybara Import (nexus-agent)"
         types: [completed]
@@ -63,7 +61,6 @@ jobs:
         # bash indirect expansion (GitHub expressions can't index secrets by a var).
         env:
             MCP_SLACK_SYNC_SSH_KEY: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}
-            DEVX_SYNC_SSH_KEY: ${{ secrets.DEVX_SYNC_SSH_KEY }}
             HOMELAB_SYNC_SSH_KEY: ${{ secrets.HOMELAB_SYNC_SSH_KEY }}
             NEXUS_AGENT_SYNC_SSH_KEY: ${{ secrets.NEXUS_AGENT_SYNC_SSH_KEY }}
         steps:
@@ -80,7 +77,9 @@ jobs:
                 #   BUILD / BUILD.bazel     : monorepo-only (Bazel/gazelle)
                 #   package-lock.json       : standalone-only (npm; monorepo uses root pnpm)
                 #   sync-to-monorepo.yaml   : standalone-only (the dispatch workflow)
-                components="mcp-slack devx homelab nexus-agent"
+                # devx is one-way (export-only mirror, #76) — no drift check; the
+                # monorepo is its single source of truth.
+                components="mcp-slack homelab nexus-agent"
                 drift=0
                 checked=0
                 for comp in $components; do
