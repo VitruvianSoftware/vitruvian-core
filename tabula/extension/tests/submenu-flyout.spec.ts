@@ -127,7 +127,8 @@ test.describe("Workspace submenu flyouts", () => {
     const menu = await openWorkspaceMenu(page);
 
     await menu.getByText("Change color").click();
-    const flyout = page.locator(".dropdown-menu", { hasText: "Red" });
+    const flyout = page.getByTestId("submenu-flyout");
+    await expect(flyout.getByText("Red")).toBeVisible();
     await assertFlyoutBesideMenu(page, menu, flyout);
 
     await page.close();
@@ -138,7 +139,8 @@ test.describe("Workspace submenu flyouts", () => {
     const menu = await openWorkspaceMenu(page);
 
     await menu.getByText("Move to section").click();
-    const flyout = page.locator(".dropdown-menu", { hasText: "No section" });
+    const flyout = page.getByTestId("submenu-flyout");
+    await expect(flyout.getByText("No section")).toBeVisible();
     await assertFlyoutBesideMenu(page, menu, flyout);
 
     await page.close();

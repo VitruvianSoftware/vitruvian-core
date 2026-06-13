@@ -92,6 +92,7 @@ export const SubmenuFlyout: React.FC<SubmenuFlyoutProps> = ({
     <div
       ref={flyoutRef}
       className="dropdown-menu"
+      data-testid="submenu-flyout"
       style={{
         position: "fixed",
         top: pos?.top ?? 0,
