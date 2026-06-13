@@ -271,6 +271,21 @@ export class AuthService {
     return result[this.userKey] || null;
   }
 
+  /**
+   * Overwrite the cached user record (tabula_user) in place.
+   *
+   * The cache is otherwise only written at login. That made it a sticky home
+   * for stale or mis-encoded fields: a name that an older login flow stored as
+   * mojibake (UTF-8 decoded as windows-1252, e.g. "Nguyá»…n") stays wrong on
+   * every cache-backed surface until the user logs out and back in. This lets
+   * callers re-project the authoritative profile over the cache without a full
+   * re-login. Writing it fires chrome.storage.onChanged, so open dashboards
+   * pick the corrected value up automatically.
+   */
+  static async setCachedUser(user: User): Promise<void> {
+    await chrome.storage.local.set({ [this.userKey]: user });
+  }
+
   static async getToken(): Promise<string | null> {
     // Token lives in session storage (in-memory) when available, falling back
     // to local for environments without storage.session.

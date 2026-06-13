@@ -27,6 +27,7 @@ import { WorkspaceForm } from "../components/WorkspaceForm";
 import { Login } from "../components/Login";
 import { AccountSettings } from "../components/AccountSettings";
 import { AuthService, type User } from "../services/auth";
+import { ApiService } from "../services/api";
 import { SyncService } from "../services/sync";
 import { WindowOwnershipService } from "../services/windowOwnership";
 import type { Workspace, WorkspaceCreateInput } from "../types";
@@ -87,6 +88,12 @@ const Popup: React.FC = () => {
           setUser(storedUser);
           setAuthView("app");
           loadWorkspaces();
+          // Re-project the authoritative server profile over the cached user so
+          // a name corrupted by an older mis-encoded login (mojibake) self-heals
+          // without a re-login. Best-effort; never throws.
+          ApiService.refreshCachedUser().then((refreshed) => {
+            if (refreshed) setUser(refreshed);
+          });
         } else {
           setAuthView("login");
         }

@@ -29,6 +29,8 @@ jest.mock("./auth", () => ({
   AuthService: {
     getToken: jest.fn(),
     refreshAccessToken: jest.fn(),
+    getUser: jest.fn(),
+    setCachedUser: jest.fn(),
   },
 }));
 // Mock device id (best-effort header)
@@ -329,6 +331,104 @@ describe("ApiService", () => {
           body: JSON.stringify({ email: "test@example.com" }),
         }),
       );
+    });
+  });
+
+  describe("refreshCachedUser", () => {
+    it("re-projects the server profile over the cache, preserving the avatar", async () => {
+      // Cached name was mojibaked by an older mis-encoded login; the avatar URL
+      // is cache-only (the server never returns it).
+      (AuthService.getUser as jest.Mock).mockResolvedValue({
+        id: "user-1",
+        name: "James Nguyá»…n",
+        email: "james@example.com",
+        tier: "free",
+        picture: "https://cdn.example.com/avatar.png",
+      });
+      (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: "user-1",
+            name: "James Nguyễn",
+            email: "james@example.com",
+            tier: "pro",
+          },
+        }),
+      });
+
+      const result = await ApiService.refreshCachedUser();
+
+      const expected = {
+        id: "user-1",
+        name: "James Nguyễn",
+        email: "james@example.com",
+        tier: "pro",
+        picture: "https://cdn.example.com/avatar.png",
+      };
+      expect(result).toEqual(expected);
+      expect(AuthService.setCachedUser).toHaveBeenCalledWith(expected);
+    });
+
+    it("returns the cache without fetching or writing when signed out", async () => {
+      const cached = {
+        id: "user-1",
+        name: "James Nguyá»…n",
+        email: "james@example.com",
+        tier: "free",
+      };
+      (AuthService.getUser as jest.Mock).mockResolvedValue(cached);
+      (AuthService.getToken as jest.Mock).mockResolvedValue(null);
+
+      const result = await ApiService.refreshCachedUser();
+
+      expect(result).toEqual(cached);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(AuthService.setCachedUser).not.toHaveBeenCalled();
+    });
+
+    it("does not rewrite the cache when it already matches the server", async () => {
+      const cached = {
+        id: "user-1",
+        name: "James Nguyễn",
+        email: "james@example.com",
+        tier: "free",
+      };
+      (AuthService.getUser as jest.Mock).mockResolvedValue(cached);
+      (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { ...cached } }),
+      });
+
+      const result = await ApiService.refreshCachedUser();
+
+      expect(result).toEqual(cached);
+      expect(AuthService.setCachedUser).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the cache (never throws) when the profile fetch fails", async () => {
+      const cached = {
+        id: "user-1",
+        name: "James Nguyá»…n",
+        email: "james@example.com",
+        tier: "free",
+      };
+      (AuthService.getUser as jest.Mock).mockResolvedValue(cached);
+      (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+      (AuthService.refreshAccessToken as jest.Mock).mockResolvedValue(null);
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Server Error",
+        json: async () => ({ message: "boom" }),
+      });
+
+      const result = await ApiService.refreshCachedUser();
+
+      expect(result).toEqual(cached);
+      expect(AuthService.setCachedUser).not.toHaveBeenCalled();
     });
   });
 

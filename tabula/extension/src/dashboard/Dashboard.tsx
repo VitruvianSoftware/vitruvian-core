@@ -39,6 +39,7 @@ import { useLatest } from "../hooks/useLatest";
 import { SortableNavItem } from "./SortableNavItem";
 import { AccountSettings } from "../components/AccountSettings";
 import { AuthService, User } from "../services/auth";
+import { ApiService } from "../services/api";
 import { SyncStatusIndicator } from "../components/SyncStatusIndicator";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { UpdateCheckService } from "../services/updateCheck";
@@ -208,7 +209,14 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Render the cached user immediately, then re-project the authoritative
+    // server profile over it so a name corrupted by an older mis-encoded login
+    // (mojibake) self-heals here without a re-login. setCachedUser also fires
+    // the storage listener below, keeping other open windows in sync.
     AuthService.getUser().then(setUser);
+    ApiService.refreshCachedUser().then((refreshed) => {
+      if (refreshed) setUser(refreshed);
+    });
   }, []);
 
   const handleSignIn = async () => {

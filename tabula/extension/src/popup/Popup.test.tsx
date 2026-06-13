@@ -26,6 +26,7 @@ import "@testing-library/jest-dom";
 import Popup from "./Popup";
 import { useWorkspaceStore } from "../stores/workspace";
 import { AuthService } from "../services/auth";
+import { ApiService } from "../services/api";
 
 // Mock stores
 jest.mock("../stores/workspace", () => ({
@@ -36,7 +37,18 @@ jest.mock("../stores/workspace", () => ({
 jest.mock("../services/auth", () => ({
   AuthService: {
     getUser: jest.fn(),
+    getToken: jest.fn(),
+    setCachedUser: jest.fn(),
     logout: jest.fn(),
+  },
+}));
+
+// Mock ApiService: the popup fires refreshCachedUser() on mount to self-heal a
+// stale/mis-encoded cached name. Default to a no-op so existing tests are
+// unaffected; the dedicated test below overrides it.
+jest.mock("../services/api", () => ({
+  ApiService: {
+    refreshCachedUser: jest.fn().mockResolvedValue(null),
   },
 }));
 
@@ -166,6 +178,28 @@ describe("Popup", () => {
     });
 
     expect(mockLoadWorkspaces).toHaveBeenCalled();
+  });
+
+  it("self-heals a mojibaked cached name from the refreshed profile", async () => {
+    // Cached name was corrupted by an older mis-encoded login...
+    (AuthService.getUser as jest.Mock).mockResolvedValue({
+      id: "user1",
+      name: "James Nguyá»…n",
+      email: "james@example.com",
+    });
+    // ...and the authoritative profile re-projection returns the correct name.
+    (ApiService.refreshCachedUser as jest.Mock).mockResolvedValue({
+      id: "user1",
+      name: "James Nguyễn",
+      email: "james@example.com",
+    });
+
+    render(<Popup />);
+
+    await waitFor(() => {
+      expect(screen.getByText("James Nguyễn")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("James Nguyá»…n")).not.toBeInTheDocument();
   });
 
   it("should show empty state when no workspaces", async () => {
