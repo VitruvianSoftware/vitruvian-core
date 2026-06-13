@@ -1,12 +1,20 @@
 # tools/copybara/copy.bara.sky
 #
-# Copybara configuration for bidirectionally syncing each vitruvian-core
-# component subfolder with its standalone VitruvianSoftware/<component> repo.
+# Copybara configuration syncing each vitruvian-core component subfolder with its
+# standalone VitruvianSoftware/<component> repo.
 #
-# Components synced (see COMPONENTS below): mcp-slack, devx, homelab, nexus-agent.
-# For each component this file generates TWO workflows by loop:
-#   - export_<comp>  : monorepo <comp>/  -> standalone repo root  (push to `main`)
-#   - import_<comp>  : standalone root   -> monorepo <comp>/      (push to `main`)
+# Two sync shapes (selected per component by `is_one_way`):
+#   * BIDIRECTIONAL (is_one_way=False, the default) -- mcp-slack, homelab,
+#     nexus-agent. Generates the pair:
+#       - export_<comp> : monorepo <comp>/ -> standalone root  (push to `main`)
+#       - import_<comp> : standalone root  -> monorepo <comp>/ (push to `main`)
+#   * ONE-WAY w/ PR-IMPORT (is_one_way=True) -- devx. Monorepo is the single
+#     source of truth; the standalone is an EXPORT-ONLY mirror. Generates:
+#       - export_<comp>    : monorepo <comp>/ -> standalone root (push to `main`)
+#       - import_pr_<comp> : a labelled standalone PR -> a MONOREPO PR under
+#                            <comp>/ (CHANGE_REQUEST mode) for human review+merge.
+#     There is deliberately NO push-to-main import_<comp> for one-way components.
+#
 # (`-` in a component name becomes `_` in the workflow name, e.g.
 #  export_nexus_agent.) The first run against a fresh destination (no rev-id
 # baseline yet) needs a one-time `--force` to seed the baseline; normal runs use
@@ -18,19 +26,24 @@
 # transforms), so the mcp-slack live baseline is preserved across this refactor.
 #
 # ---------------------------------------------------------------------------
-# LOOP PREVENTION (bidirectional, on-push peer sync)  -- VERIFIED IN CI
+# LOOP PREVENTION (peer sync)  -- VERIFIED IN CI
 # ---------------------------------------------------------------------------
-# In a peer bidirectional setup an EXPORTed change must not bounce back as an
-# IMPORT (and vice-versa), or the two repos ping-pong forever. We prevent this
-# with two cooperating mechanisms (BOTH required):
+# An EXPORTed change must not bounce back as an IMPORT (and vice-versa), or the
+# two repos ping-pong forever. We prevent this with two cooperating mechanisms
+# (BOTH required):
 #
 #   1. Distinct per-direction rev-id labels.
 #      By default Copybara stamps every migrated change with `GitOrigin-RevId`.
 #      If BOTH directions used that default label they could not tell their own
 #      footprint apart from the peer's. Instead each direction stamps the
 #      destination with its OWN label (see `experimental_custom_rev_id` below):
-#        - export stamps `MONOREPO_REV_ID`     (change came FROM the monorepo)
-#        - import stamps `<COMPONENT>_REV_ID`   (change came FROM the standalone)
+#        - export        stamps `MONOREPO_REV_ID`   (change came FROM the monorepo)
+#        - import        stamps `<COMPONENT>_REV_ID` (change came FROM the standalone)
+#        - import_pr      stamps `<COMPONENT>_REV_ID` (SAME label as the bidi
+#          import: a PR-imported change is still standalone-origin, so it must
+#          carry the component's import label. This is what lets export_<comp>'s
+#          UNCHANGED skip-guard drop it instead of re-exporting it -- the
+#          one-way loop guard reuses the bidi loop guard verbatim.)
 #
 #      LABEL SCOPING (why these names are safe across components):
 #        * The EXPORT label is the same literal `MONOREPO_REV_ID` for every
@@ -48,29 +61,38 @@
 #      peer, so we `core.fail_with_noop(...)` to drop it instead of migrating
 #      it back. This NOOP (exit code 4) is what breaks the loop.
 #
+#      For the one-way devx component the guard pairing is:
+#        - export_devx    skips changes carrying DEVX_REV_ID  (PR-imported), and
+#        - import_pr_devx skips changes carrying MONOREPO_REV_ID (export-origin).
+#      i.e. EXACTLY the same guard pairing the bidi import_devx used -- so
+#      switching devx to one-way does NOT change export_devx's behaviour at all.
+#
 # COPYBARA VERSION NOTE (important for upgrades):
 #   This config was VERIFIED end-to-end against `olivr/copybara` (build date
-#   2023-01, "Unknown version"). That build:
+#   2023-01, "Unknown version") FOR THE BIDIRECTIONAL ITERATIVE workflows. That
+#   build:
 #     - exposes the parameter as `experimental_custom_rev_id` (NOT the newer
 #       `custom_rev_id` -- the rename landed in Copybara ~late-2023), and
 #     - enforces the older label format `[A-Z][A-Z_0-9]{1,30}_REV_ID`
 #       (hence `MONOREPO_REV_ID` / `<COMPONENT>_REV_ID`; the modern `Xxx-RevId`
 #       form is NOT accepted by this build).
+#   *** VERIFIED ON THE PINNED IMAGE (2026-06-13, Actions run 27481204796):
+#   git.github_pr_origin / git.github_pr_destination (used ONLY by
+#   import_pr_<comp>) LOAD AND VALIDATE on the pinned olivr/copybara 2023-01
+#   image -- the config-load smoke-test reached "Validating configuration" and
+#   "Resolving origin reference", failing only on the missing CLI PR-number
+#   argument (expected). So adding import_pr_<comp> here does NOT break any
+#   component's export config-load, and the import-pr workflow can use the SAME
+#   pinned image. (Smoke-test workflow: .github/workflows/copybara-pr-mode-smoketest.yaml.) ***
 #   On a CURRENT Copybara, make exactly these two edits (logic is identical):
 #     - rename `experimental_custom_rev_id` -> `custom_rev_id`, and
 #     - the `_REV_ID` labels keep working (modern format is a superset).
 #
-# HISTORY MODE (ITERATIVE -- required for correct bidi; do NOT use SQUASH):
-#   We migrate one commit at a time so the skip guard runs PER COMMIT, dropping
-#   only the peer-origin commits while migrating the genuine ones.
-#
-#   SQUASH is WRONG here: it evaluates the skip guard over the labels of the
-#   WHOLE squashed range, so a range that merely *contains* a peer-origin commit
-#   is skipped ENTIRELY -- including genuine changes batched with it. Verified in
-#   CI 2026-05-26: an import lands on monorepo main (carrying the component label,
-#   pushed via GITHUB_TOKEN so it does NOT advance the export baseline), then the
-#   next export range includes it and SQUASH skipped the genuine change too --
-#   the export direction got stuck. ITERATIVE fixes this.
+# HISTORY MODE:
+#   Bidirectional export/import use ITERATIVE (one commit at a time so the skip
+#   guard runs PER COMMIT). SQUASH is WRONG for bidi (verified in CI 2026-05-26).
+#   import_pr_<comp> uses ITERATIVE too: CHANGE_REQUEST consumes the PR's commits
+#   and the per-commit guard still drops any export-origin commit in the range.
 #
 # AUTH SPLIT: in CI the monorepo is reached over HTTPS authenticated by the
 # workflow's GITHUB_TOKEN (which only has access to vitruvian-core, the repo the
@@ -109,29 +131,37 @@ def _monorepo_only(component):
 #                       The dispatch workflow is standalone-only for every
 #                       component; npm projects also carry a package-lock.json
 #                       (the monorepo uses a single root pnpm-lock.yaml instead).
+#   is_one_way        : True  -> monorepo is source of truth; emit export_<comp>
+#                                + import_pr_<comp> (CHANGE_REQUEST), no bidi
+#                                push-to-main import.
+#                       False -> default; emit the bidirectional export+import
+#                                pair, unchanged from the verified baseline.
 COMPONENTS = [
     {
         "name": "mcp-slack",
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": False,
     },
     {
         "name": "devx",
         "standalone_rev_id": "DEVX_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": True,
     },
     {
         "name": "homelab",
         "standalone_rev_id": "HOMELAB_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": False,
     },
     {
         "name": "nexus-agent",
         "standalone_rev_id": "NEXUS_AGENT_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": False,
     },
 ]
-
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):
     """Return a dynamic-transform impl that NO-OPs any change already carrying
@@ -139,20 +169,18 @@ def _make_skip_guard(workflow_name, peer_label, origin_desc):
     breaking the export<->import loop. The factory captures `peer_label` per call
     so each generated workflow checks exactly its own peer's label.
     """
+
     def _guard(ctx):
         if ctx.find_label(peer_label):
             core.fail_with_noop(
-                workflow_name + ": skipping change that originated from "
-                + origin_desc + " (carries " + peer_label + ").")
+                workflow_name + ": skipping change that originated from " +
+                origin_desc + " (carries " + peer_label + ").",
+            )
 
     return _guard
 
-
-# Generate the export+import workflow pair for every component.
-#
-# Copybara's Starlark (like Bazel's) forbids top-level `for` STATEMENTS, so the
-# loop body lives in a function driven by a top-level list comprehension (which
-# IS allowed). core.workflow registers each workflow as a side effect of the call.
+# Generate the workflows for every component (top-level comprehension, not a
+# `for` -- Copybara's Starlark forbids top-level `for` STATEMENTS).
 def _define_component(_c):
     _name = _c["name"]
     _wf = _name.replace("-", "_")
@@ -160,8 +188,11 @@ def _define_component(_c):
     _standalone_rev_id = _c["standalone_rev_id"]
     _standalone_only = _c["standalone_only"]
     _monorepo_only_files = _monorepo_only(_name)
+    _is_one_way = _c.get("is_one_way", False)
 
-    # Export: vitruvian-core/<name>/  ->  VitruvianSoftware/<name> (repo root)
+    # Export: vitruvian-core/<name>/  ->  VitruvianSoftware/<name> (repo root).
+    # IDENTICAL for bidirectional and one-way components -- the export side is
+    # never touched by the one-way cutover, preserving the live export baseline.
     core.workflow(
         name = "export_" + _wf,
         origin = git.origin(
@@ -185,43 +216,103 @@ def _define_component(_c):
         experimental_custom_rev_id = MONOREPO_REV_ID,
         transformations = [
             core.dynamic_transform(impl = _make_skip_guard(
-                "export_" + _wf, _standalone_rev_id, "the standalone " + _name + " repo")),
+                "export_" + _wf,
+                _standalone_rev_id,
+                "the standalone " + _name + " repo",
+            )),
             # Strip the `<name>/` prefix so the component lands at the repo root.
             core.move(_name, ""),
         ],
     )
 
-    # Import: VitruvianSoftware/<name> (repo root)  ->  vitruvian-core/<name>/
-    core.workflow(
-        name = "import_" + _wf,
-        origin = git.origin(
-            url = _standalone,
-            ref = "main",
-        ),
-        destination = git.destination(
-            url = MONOREPO,
-            fetch = "main",
-            push = "main",
-        ),
-        # Standalone-only files must never be imported into the Bazel monorepo.
-        origin_files = glob(["**"], exclude = _standalone_only),
-        # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
-        # files so the sync never deletes them.
-        destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
-        authoring = authoring.pass_thru(default = AUTHOR),
-        mode = "ITERATIVE",
-        # Stamp the standalone's own per-component rev-id, and drop any change the
-        # export direction pushed out (carries the monorepo label).
-        experimental_custom_rev_id = _standalone_rev_id,
-        transformations = [
-            core.dynamic_transform(impl = _make_skip_guard(
-                "import_" + _wf, MONOREPO_REV_ID, "the vitruvian-core monorepo")),
-            # Re-add the `<name>/` prefix so the standalone root lands under the
-            # component directory in the monorepo.
-            core.move("", _name),
-        ],
-    )
-
+    if _is_one_way:
+        # One-way PR-import: a labelled PR on VitruvianSoftware/<name> becomes a
+        # MONOREPO PR under <name>/ for human review + merge. Monorepo is the
+        # single source of truth; nothing is pushed to monorepo main here.
+        #
+        # LOOP GUARD: stamp the component's import label (_standalone_rev_id) so
+        # export_<name>'s UNCHANGED skip-guard (which drops _standalone_rev_id)
+        # refuses to bounce the merged PR-import back out. The guard here drops
+        # any export-origin change (carries MONOREPO_REV_ID) so an exported
+        # change can never be re-imported.
+        core.workflow(
+            name = "import_pr_" + _wf,
+            origin = git.github_pr_origin(
+                url = _standalone,
+                use_merge = False,
+                required_labels = ["import-to-monorepo"],
+            ),
+            destination = git.github_pr_destination(
+                url = MONOREPO,
+                destination_ref = "main",
+                # ${GITHUB_PR_NUMBER} is the ORIGIN (standalone) PR number,
+                # resolved by Copybara from the github_pr_origin metadata.
+                pr_branch = "devx-import-pr-${GITHUB_PR_NUMBER}",
+                title = "[devx import] ${GITHUB_PR_TITLE}",
+                # Body footer carries the standalone PR ref so the post-merge
+                # auto-close workflow (copybara-import-pr-devx-close.yaml) can
+                # find and close the mirror PR after the monorepo PR merges.
+                # NOTE: a bare GitHub trailer cannot auto-close across repos;
+                # closure is done explicitly by that workflow, not by GitHub.
+                body = "Imported from VitruvianSoftware/devx#${GITHUB_PR_NUMBER} via Copybara.\n\nMirror-Of: VitruvianSoftware/devx#${GITHUB_PR_NUMBER}\nDevx-Pr-Number: ${GITHUB_PR_NUMBER}",
+            ),
+            # Standalone-only files must never be imported into the Bazel monorepo.
+            origin_files = glob(["**"], exclude = _standalone_only),
+            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # files so the sync never deletes them.
+            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            authoring = authoring.pass_thru(default = AUTHOR),
+            mode = "ITERATIVE",
+            # Stamp the standalone's per-component rev-id (NOT MONOREPO_REV_ID):
+            # PR-imported commits are standalone-origin; export's skip-guard
+            # drops _standalone_rev_id, breaking the loop.
+            experimental_custom_rev_id = _standalone_rev_id,
+            transformations = [
+                core.dynamic_transform(impl = _make_skip_guard(
+                    "import_pr_" + _wf,
+                    MONOREPO_REV_ID,
+                    "the vitruvian-core monorepo export",
+                )),
+                # Re-add the `<name>/` prefix so the standalone root lands under
+                # the component directory in the monorepo.
+                core.move("", _name),
+            ],
+        )
+    else:
+        # Bidirectional import: VitruvianSoftware/<name> (root) -> monorepo <name>/.
+        # UNCHANGED from the verified baseline.
+        core.workflow(
+            name = "import_" + _wf,
+            origin = git.origin(
+                url = _standalone,
+                ref = "main",
+            ),
+            destination = git.destination(
+                url = MONOREPO,
+                fetch = "main",
+                push = "main",
+            ),
+            # Standalone-only files must never be imported into the Bazel monorepo.
+            origin_files = glob(["**"], exclude = _standalone_only),
+            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # files so the sync never deletes them.
+            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            authoring = authoring.pass_thru(default = AUTHOR),
+            mode = "ITERATIVE",
+            # Stamp the standalone's own per-component rev-id, and drop any change
+            # the export direction pushed out (carries the monorepo label).
+            experimental_custom_rev_id = _standalone_rev_id,
+            transformations = [
+                core.dynamic_transform(impl = _make_skip_guard(
+                    "import_" + _wf,
+                    MONOREPO_REV_ID,
+                    "the vitruvian-core monorepo",
+                )),
+                # Re-add the `<name>/` prefix so the standalone root lands under
+                # the component directory in the monorepo.
+                core.move("", _name),
+            ],
+        )
 
 # Drive the generator for every component (top-level comprehension, not a `for`).
 [_define_component(_c) for _c in COMPONENTS]
