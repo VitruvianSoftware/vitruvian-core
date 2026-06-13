@@ -15,6 +15,7 @@ go_test(
     name = "k3s_test",
     srcs = [
         "advanced_test.go",
+        "k3s_defaults_test.go",
         "k3s_exec_test.go",
     ],
     embed = [":k3s"],
