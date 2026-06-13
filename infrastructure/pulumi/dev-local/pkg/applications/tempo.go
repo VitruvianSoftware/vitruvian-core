@@ -130,6 +130,23 @@ func DeployTempo(ctx *pulumi.Context, provider *kubernetes.Provider, namespace s
 		Wait:    false,
 		Timeout: 600,
 	})
+	if err == nil {
+		// tempo chart 1.24.4 exposes no PDB values; add a raw one.
+		_, err = resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
+			Name: "tempo-pdb",
+			YAML: `apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tempo
+  namespace: ` + namespace + `
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+`,
+		}, pulumi.DependsOn([]pulumi.Resource{release}))
+	}
 	if err != nil {
 		ctx.Log.Error("Failed to deploy Tempo Helm chart.", &pulumi.LogArgs{Resource: release})
 		return nil, fmt.Errorf("failed to deploy tempo: %w", err)

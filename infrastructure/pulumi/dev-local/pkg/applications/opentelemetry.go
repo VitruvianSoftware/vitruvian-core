@@ -67,6 +67,14 @@ func DeployOpenTelemetry(ctx *pulumi.Context, provider *kubernetes.Provider, cer
 		ValuesFile:      "opentelemetry-operator",
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
+			"affinity": hostnameAntiAffinity(map[string]interface{}{
+				"app.kubernetes.io/name": "opentelemetry-operator",
+			}),
+			// CAUTION: this chart's PDB key is `pdb`, not `podDisruptionBudget`.
+			"pdb": map[string]interface{}{
+				"create":       true,
+				"minAvailable": 1,
+			},
 		},
 		Wait:          true, // Set to true to wait for completion
 		Timeout:       600,
@@ -86,6 +94,14 @@ func DeployOpenTelemetry(ctx *pulumi.Context, provider *kubernetes.Provider, cer
 	// Deploy OpenTelemetry Collector with CRD management
 	collectorValues := map[string]interface{}{
 		"replicaCount": replicas,
+		"affinity": hostnameAntiAffinity(map[string]interface{}{
+			"app.kubernetes.io/name": "opentelemetry-collector",
+		}),
+		// Rendered only in mode=deployment (which this install uses).
+		"podDisruptionBudget": map[string]interface{}{
+			"enabled":      true,
+			"minAvailable": 1,
+		},
 	}
 
 	// The Helm chart blocks replicas > 1 if clusterMetrics is enabled

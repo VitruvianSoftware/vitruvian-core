@@ -81,6 +81,11 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 		ValuesFile:      "cnpg-operator", // Use the renamed values file
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
+			// Hard spread (leader-elected operator). The chart has no PDB
+			// support — a raw PodDisruptionBudget is created below.
+			"affinity": hostnameAntiAffinity(map[string]interface{}{
+				"app.kubernetes.io/name": "cloudnative-pg",
+			}),
 			"crds": map[string]interface{}{
 				"create": false,
 			},
@@ -96,6 +101,25 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 	}
 
 	ctx.Log.Info("CloudNativePG Operator Helm chart deployed successfully.", nil)
+
+	// The cloudnative-pg chart exposes no PDB values (verified at 0.23.2);
+	// guard the leader-elected operator against drains with a raw PDB.
+	if _, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
+		Name: "cnpg-operator-pdb",
+		YAML: `apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cnpg-operator
+  namespace: ` + operatorNamespace + `
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudnative-pg
+`,
+	}, pulumi.DependsOn([]pulumi.Resource{operatorRelease})); err != nil {
+		return nil, err
+	}
 
 	// Export CloudNativePG Operator information
 	ctx.Export("cnpgOperatorNamespace", pulumi.String(operatorNamespace))
