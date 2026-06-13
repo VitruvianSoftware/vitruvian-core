@@ -81,3 +81,7 @@ shellcheck_test = lint_test(aspect = shellcheck)
 clippy = lint_clippy_aspect(
     config = Label("//:.clippy.toml"),
 )
+
+# rubocop was dropped in #85 (no Ruby sources to lint). Reintroducing it needs
+# the gem locked in Gemfile.lock AND aspect_rules_lint's sarif parser patched
+# for the RuboCop mnemonic — see that PR for the full recipe.
