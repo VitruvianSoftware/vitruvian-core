@@ -9,6 +9,11 @@ load("@rules_go//go:def.bzl", "go_binary", "go_library")
 # gazelle:exclude internal/scaffold/templates/next-app
 # gazelle:exclude internal/scaffold/templates/python-api
 
+# Inter-app boundary (#82): targets in this package default to devx-internal
+# visibility so other top-level apps can't depend on devx internals. The
+# targets below keep their explicit visibility (private lib, public binary).
+package(default_visibility = ["//devx:__subpackages__"])
+
 go_library(
     name = "devx_lib",
     srcs = ["main.go"],
