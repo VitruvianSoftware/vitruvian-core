@@ -6,6 +6,19 @@ unresponsive?** Built from a live read-only audit of the cluster on
 (see [below](#validated-drain-experiment-james-mbp-2026-06-12)). Re-audit after
 topology or storage changes.
 
+> **⚠️ 2026-06-13 storage-architecture reversal (supersedes the Longhorn-for-DBs
+> guidance below).** A node flap cascaded into a multi-day incident: Longhorn's
+> cross-node engine↔replica I/O is **unreliable under sustained write load** on
+> this homelab (small Lima-on-Mac nodes + tailnet). It corrupted/IO-errored the
+> CNPG data volumes (EXT4 journal aborts, `input/output error`), and a `grafana-db`
+> restore could not complete on Longhorn — it succeeded only after moving to
+> `local-path`. **Decision: CNPG databases (`cnpg-cluster`, `grafana-db`) now use
+> `local-path` (node-local, reliable I/O); HA + relocation come from CNPG's own
+> streaming replication (3 instances, operator re-clones a downed instance), not
+> the storage layer.** Encoded in `pkg/applications/grafana.go` and
+> `values/cnpg-cluster.yaml`. Longhorn remains for non-DB volumes (MinIO/Tempo).
+> So ceiling #2 below is now intentionally reversed *for the databases*.
+
 ## Cluster topology
 
 | Node | Roles | Notes |
