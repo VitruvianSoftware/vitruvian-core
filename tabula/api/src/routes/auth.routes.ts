@@ -120,7 +120,15 @@ export async function authRoutes(fastify: FastifyInstance) {
         const accept = request.headers.accept || "";
         if (accept.includes("text/html")) {
           const targetOrigin = resolvePostMessageOrigin();
-          reply.type("text/html");
+          // charset=utf-8 is REQUIRED: the profile (e.g. a name like "Nguyễn")
+          // is emitted as raw UTF-8 bytes below. Without a declared charset the
+          // browser falls back to a locale default (often windows-1252) and
+          // mis-decodes multi-byte characters into mojibake ("Nguyá»…n") BEFORE
+          // JSON.parse + postMessage hand the value to the extension — so the
+          // corruption is baked in at parse time and shows up everywhere the
+          // extension renders the name. The <meta charset> below is belt-and-
+          // suspenders for proxies that strip the header.
+          reply.type("text/html; charset=utf-8");
           // Token data is delivered via a JSON <script type="application/json">
           // block parsed with JSON.parse — never interpolated into executable JS —
           // and the JSON is additionally escaped so `</script>` cannot break out.
@@ -128,6 +136,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           <!DOCTYPE html>
           <html>
           <head>
+            <meta charset="utf-8">
             <title>Tabula Authentication</title>
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
             <style>
@@ -173,10 +182,16 @@ export async function authRoutes(fastify: FastifyInstance) {
         // HTML Error response
         const accept = request.headers.accept || "";
         if (accept.includes("text/html")) {
-          reply.type("text/html");
+          // Same UTF-8 contract as the success page: the error message may carry
+          // non-ASCII text, so declare the charset rather than let the browser guess.
+          reply.type("text/html; charset=utf-8");
           return `
            <!DOCTYPE html>
            <html>
+           <head>
+             <meta charset="utf-8">
+             <title>Tabula Authentication</title>
+           </head>
            <body>
              <h2 style="color: red">Authentication Failed</h2>
              <p>${escapeHtml(errorMessage)}</p>

@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { AuthService } from "./auth";
+import { AuthService, User } from "./auth";
 import { getDeviceId } from "./deviceId";
 import { ApiError } from "./errors";
 import type {
@@ -183,6 +183,56 @@ export class ApiService {
 
   static async getUserProfile(): Promise<UserProfile> {
     return this.request<UserProfile>("/users/me");
+  }
+
+  /**
+   * Re-project the authoritative /users/me profile onto the locally cached user
+   * (tabula_user). The dashboard header and popup render the cache, which is
+   * only populated at login; a name corrupted by an older mis-encoded login
+   * (mojibake like "Nguyá»…n") therefore persists across the rotating 30-day
+   * refresh window — the refresh flow never rewrites the cached user. Calling
+   * this on app load lets those surfaces self-heal (and pick up tier changes)
+   * without forcing a re-login.
+   *
+   * The avatar (picture) is preserved from the cache: it comes from the identity
+   * provider at login and is not persisted server-side, so /users/me omits it.
+   *
+   * Best-effort: returns the existing cache when signed out or on any failure,
+   * and never throws, so it is safe to fire-and-forget from a mount effect.
+   */
+  static async refreshCachedUser(): Promise<User | null> {
+    let cached: User | null = null;
+    try {
+      cached = await AuthService.getUser();
+      // No session -> nothing authoritative to fetch; keep whatever is cached.
+      if (!(await AuthService.getToken())) return cached;
+
+      const profile = await this.getUserProfile();
+      const merged: User = {
+        ...(cached ?? {}),
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        tier: profile.tier,
+      };
+
+      // Avoid a redundant write (and the storage event it triggers) when the
+      // cache already matches the server.
+      if (
+        cached &&
+        cached.id === merged.id &&
+        cached.email === merged.email &&
+        cached.name === merged.name &&
+        cached.tier === merged.tier
+      ) {
+        return cached;
+      }
+
+      await AuthService.setCachedUser(merged);
+      return merged;
+    } catch {
+      return cached;
+    }
   }
 
   static async updateUserProfile(
