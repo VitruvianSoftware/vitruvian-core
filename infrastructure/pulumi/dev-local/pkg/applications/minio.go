@@ -73,20 +73,40 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 					"purge":  false,
 				},
 			},
-			// Longhorn (replicated, relocatable): with node-pinned local-path a
-			// single node loss could remove 2 of 4 erasure-set drives (below
-			// write quorum). See docs/infrastructure/resilience-catalog.md.
+			// Longhorn (replicated, relocatable): the real win is that a failed
+			// node's drive RESCHEDULES onto a surviving (arm64) node and heals,
+			// instead of stranding like node-pinned local-path did. See
+			// docs/infrastructure/resilience-catalog.md.
 			"persistence": map[string]interface{}{
 				"enabled":      true,
 				"storageClass": "longhorn",
 				"size":         "10Gi",
 			},
-			// No arch nodeSelector: the image is multi-arch and only 3 arm64
-			// nodes exist — 4 drives need 4 distinct nodes for the required
-			// anti-affinity below to be schedulable.
-			"affinity": hostnameAntiAffinity(map[string]interface{}{
-				"app": "minio",
-			}),
+			// Distributed MinIO requires an IDENTICAL binary on every node, i.e.
+			// the SAME CPU arch — it refuses to cluster across amd64+arm64
+			// ("mismatching configuration / binary checksum"). This cluster has
+			// only 3 arm64 nodes (+2 amd64), so all 4 drives must pin to arm64
+			// and anti-affinity can only be PREFERRED (4 drives can't occupy 4
+			// distinct arm64 nodes). Longhorn makes the unavoidable 2-on-one-node
+			// case survivable: the drive relocates on node loss.
+			"nodeSelector": map[string]interface{}{
+				"kubernetes.io/arch": "arm64",
+			},
+			"affinity": map[string]interface{}{
+				"podAntiAffinity": map[string]interface{}{
+					"preferredDuringSchedulingIgnoredDuringExecution": []interface{}{
+						map[string]interface{}{
+							"weight": 100,
+							"podAffinityTerm": map[string]interface{}{
+								"labelSelector": map[string]interface{}{
+									"matchLabels": map[string]interface{}{"app": "minio"},
+								},
+								"topologyKey": "kubernetes.io/hostname",
+							},
+						},
+					},
+				},
+			},
 			// minio chart 5.4.0 only supports maxUnavailable (minAvailable is
 			// silently ignored by its PDB template).
 			"podDisruptionBudget": map[string]interface{}{
