@@ -21,6 +21,7 @@ go_test(
         "buildload_integration_test.go",
         "image_test.go",
         "registry_integration_test.go",
+        "registry_test.go",
     ],
     embed = [":image"],
 )
