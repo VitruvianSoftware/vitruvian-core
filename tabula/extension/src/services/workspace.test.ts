@@ -285,6 +285,43 @@ describe("WorkspaceService", () => {
       ]);
       expect(StorageService.saveWorkspaces).toHaveBeenCalled();
     });
+
+    it("claims the active-device lease only when { claim: true }", async () => {
+      const workspace: Workspace = {
+        id: "ws1",
+        name: "Test",
+        tabs: [],
+        resources: [],
+        sections: [],
+        notes: [],
+        tasks: [],
+        position: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([workspace]);
+      (TabService.getCurrentTabs as jest.Mock).mockResolvedValue([
+        { url: "https://example.com", title: "Example" },
+      ]);
+      (StorageService.saveWorkspaces as jest.Mock).mockResolvedValue(undefined);
+      (AuthService.getToken as jest.Mock).mockResolvedValue("token");
+
+      // claim -> enqueue carries claimActiveDevice so it takes the lease.
+      await WorkspaceService.saveCurrentTabsToWorkspace("ws1", { claim: true });
+      expect(SyncService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityId: "ws1",
+          meta: { claimActiveDevice: true },
+        }),
+      );
+
+      // default -> a plain save, no claim (would no-op against a foreign lease).
+      (SyncService.enqueue as jest.Mock).mockClear();
+      await WorkspaceService.saveCurrentTabsToWorkspace("ws1");
+      expect(SyncService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ entityId: "ws1", meta: undefined }),
+      );
+    });
   });
 
   describe("restoreWorkspaceTabs", () => {

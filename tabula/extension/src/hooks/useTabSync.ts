@@ -35,7 +35,7 @@ import { useLatest } from "./useLatest";
  * elsewhere" and pause our own automatic tab capture; an explicit switch
  * (claimActiveDevice) takes the lease over.
  */
-const ACTIVE_DEVICE_STALE_MS = 2 * 60 * 1000;
+export const ACTIVE_DEVICE_STALE_MS = 2 * 60 * 1000;
 
 /**
  * Startup readiness poll cadence and bound (replaces the old blind 500ms

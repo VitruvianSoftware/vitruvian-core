@@ -64,6 +64,9 @@ import { SyncService } from "../services/sync";
 import { GhostOverlay } from "./GhostOverlay";
 import { getSpaceIdFromUrl } from "../utils/router";
 import { TabConflictPopover } from "../components/TabConflictPopover";
+import { CrossDeviceSessionPopover } from "../components/CrossDeviceSessionPopover";
+import type { CrossDeviceTab } from "../components/CrossDeviceSessionPopover";
+import { useCrossDeviceSession } from "./hooks/useCrossDeviceSession";
 import { WindowOwnershipService } from "../services/windowOwnership";
 
 export const Dashboard: React.FC = () => {
@@ -521,6 +524,40 @@ export const Dashboard: React.FC = () => {
       currentWindowId: currentWindowId ?? undefined, // Conflict detection
       setActiveWorkspaceId: setActiveWorkspaceAction, // Pass store action for non-destructive switch
     });
+
+  // Cross-device "Changes from your other device" prompt (Workona's "one
+  // primary session per space"). Surfaces when this device is PASSIVE — the
+  // space is live on another device (fresh foreign lease) — and the primary's
+  // synced tabs differ from what's open here.
+  const { conflictTabs: crossDeviceTabs, dismiss: dismissCrossDevice } =
+    useCrossDeviceSession(activeWorkspace);
+
+  const handleCrossDeviceApply = React.useCallback(
+    async (selected: CrossDeviceTab[]) => {
+      const ws = activeWorkspace;
+      if (!ws) return;
+      dismissCrossDevice();
+      // Recover the full Tab records (groupId/pinned) for the chosen URLs, then
+      // open them here and claim the lease (this device becomes the primary).
+      const selectedUrls = new Set(selected.map((t) => t.url));
+      const fullTabs = (ws.tabs || []).filter((t) => selectedUrls.has(t.url));
+      await WorkspaceService.restoreWorkspaceTabs(ws.id, {
+        closeCurrentTabs: true,
+        tabs: fullTabs,
+      });
+      const fresh = await WorkspaceService.getWorkspaceById(ws.id);
+      if (fresh) setActiveWorkspaceData(fresh);
+    },
+    [activeWorkspace, dismissCrossDevice],
+  );
+
+  const handleCrossDeviceKeepMine = React.useCallback(async () => {
+    const ws = activeWorkspace;
+    if (!ws) return;
+    dismissCrossDevice();
+    // Keep what's open here and make THIS device the primary going forward.
+    await WorkspaceService.saveCurrentTabsToWorkspace(ws.id, { claim: true });
+  }, [activeWorkspace, dismissCrossDevice]);
 
   // URL-based workspace initialization (Multi-Window support)
   // Reads ?spaceId= from URL on mount and pins THIS window to that workspace.
@@ -1621,6 +1658,15 @@ export const Dashboard: React.FC = () => {
             // After moving tabs, force switch to the target workspace (adopt mode, do not restore)
             forceSwitch(conflict.targetWorkspaceId, { restore: false });
           }}
+        />
+      )}
+
+      {/* Cross-device "Changes from your other device" prompt */}
+      {crossDeviceTabs && (
+        <CrossDeviceSessionPopover
+          serverTabs={crossDeviceTabs}
+          onApply={handleCrossDeviceApply}
+          onKeepMine={handleCrossDeviceKeepMine}
         />
       )}
 
