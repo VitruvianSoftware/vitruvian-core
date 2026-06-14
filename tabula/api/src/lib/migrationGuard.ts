@@ -93,17 +93,56 @@ export class MigrationDriftError extends Error {
   }
 }
 
-/**
- * Return the REQUIRED_COLUMNS absent from the connected database. One round trip
- * to information_schema; rejects only if that query itself fails.
- */
-export async function findMissingRequiredColumns(): Promise<RequiredColumn[]> {
-  const rows = await prisma.$queryRaw<
-    { table_name: string; column_name: string }[]
-  >`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`;
+/** Tuning for the information_schema probe (overridable in tests). */
+export interface ProbeOptions {
+  /** Total attempts before giving up (default 5). */
+  attempts?: number;
+  /** Base backoff between attempts, grows linearly per attempt (default 1000ms). */
+  backoffMs?: number;
+}
 
-  const present = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
-  return REQUIRED_COLUMNS.filter((c) => !present.has(`${c.table}.${c.column}`));
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * Return the REQUIRED_COLUMNS absent from the connected database.
+ *
+ * The information_schema probe is RETRIED. The very first database connection at
+ * startup can fail or time out — e.g. a Neon serverless compute waking from
+ * suspend — and a single attempt previously made the guard fail open, silently
+ * letting a drifted deploy serve traffic (the exact gap that shipped a broken
+ * backups/sync release). The deploy ran `migrate deploy` against the same
+ * database moments earlier, so it IS reachable; a transient cold start must not
+ * defeat the check. Rejects only if every attempt fails.
+ */
+export async function findMissingRequiredColumns(
+  opts: ProbeOptions = {},
+): Promise<RequiredColumn[]> {
+  const attempts = opts.attempts ?? 5;
+  const backoffMs = opts.backoffMs ?? 1000;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const rows = await prisma.$queryRaw<
+        { table_name: string; column_name: string }[]
+      >`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`;
+      const present = new Set(
+        rows.map((r) => `${r.table_name}.${r.column_name}`),
+      );
+      return REQUIRED_COLUMNS.filter(
+        (c) => !present.has(`${c.table}.${c.column}`),
+      );
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        await sleep(backoffMs * attempt);
+      }
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -119,29 +158,47 @@ export async function findMissingRequiredColumns(): Promise<RequiredColumn[]> {
  * deploy/restart re-checks. Bypass entirely with TABULA_SKIP_MIGRATION_CHECK=1.
  */
 export async function assertDatabaseSchemaCurrent(
-  logger: Pick<FastifyBaseLogger, "warn" | "fatal">,
+  logger: Pick<FastifyBaseLogger, "info" | "warn" | "error" | "fatal">,
+  opts: ProbeOptions = {},
 ): Promise<void> {
-  if (process.env.TABULA_SKIP_MIGRATION_CHECK === "1") return;
-
-  let missing: RequiredColumn[];
-  try {
-    missing = await findMissingRequiredColumns();
-  } catch (err) {
+  if (process.env.TABULA_SKIP_MIGRATION_CHECK === "1") {
+    // A bypass is legitimate (emergency), but it must be visible — a silent
+    // skip is how a drifted database goes unnoticed.
     logger.warn(
-      { err },
-      "migration drift check skipped: could not query information_schema",
+      "migration drift check BYPASSED via TABULA_SKIP_MIGRATION_CHECK=1",
     );
     return;
   }
 
-  if (missing.length === 0) return;
+  let missing: RequiredColumn[];
+  try {
+    missing = await findMissingRequiredColumns(opts);
+  } catch (err) {
+    // Could not probe even after retries. This is the path that previously let
+    // a drifted deploy serve, so make it LOUD (error, not a quiet warn). We
+    // still start — permanently crash-looping on a database outage would be
+    // worse than serving — but the gap is now visible to logs/alerts.
+    logger.error(
+      { err },
+      "migration drift check could NOT run after retries (information_schema " +
+        "unreachable); starting WITHOUT schema verification",
+    );
+    return;
+  }
 
-  const columns = missing.map((m) => `${m.table}.${m.column}`).join(", ");
-  const migrations = [...new Set(missing.map((m) => m.migration))].join(", ");
-  const message =
-    `Database schema is behind the deployed code: missing column(s) ${columns}. ` +
-    `Apply the pending migration(s) (${migrations}) with 'prisma migrate deploy' ` +
-    `before serving traffic. Refusing to start.`;
-  logger.fatal({ missing }, message);
-  throw new MigrationDriftError(message);
+  if (missing.length > 0) {
+    const columns = missing.map((m) => `${m.table}.${m.column}`).join(", ");
+    const migrations = [...new Set(missing.map((m) => m.migration))].join(", ");
+    const message =
+      `Database schema is behind the deployed code: missing column(s) ${columns}. ` +
+      `Apply the pending migration(s) (${migrations}) with 'prisma migrate deploy' ` +
+      `before serving traffic. Refusing to start.`;
+    logger.fatal({ missing }, message);
+    throw new MigrationDriftError(message);
+  }
+
+  // Confirm the guard actually ran and passed, so its effect is observable.
+  logger.info(
+    `migration drift check passed: all ${REQUIRED_COLUMNS.length} required columns present`,
+  );
 }

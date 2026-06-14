@@ -40,7 +40,12 @@ const allColumnsPresent = () =>
   REQUIRED_COLUMNS.map((c) => ({ table_name: c.table, column_name: c.column }));
 
 describe("migrationGuard", () => {
-  const logger = { warn: jest.fn(), fatal: jest.fn() };
+  const logger = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    fatal: jest.fn(),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,15 +77,28 @@ describe("migrationGuard", () => {
         ]),
       );
     });
+
+    it("retries the probe and succeeds after a transient startup failure", async () => {
+      // The first DB connection (e.g. a cold Neon compute) fails, the next works.
+      $queryRaw
+        .mockRejectedValueOnce(new Error("connection terminated"))
+        .mockResolvedValueOnce(allColumnsPresent());
+
+      await expect(
+        findMissingRequiredColumns({ backoffMs: 0 }),
+      ).resolves.toEqual([]);
+      expect($queryRaw).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("assertDatabaseSchemaCurrent", () => {
-    it("resolves quietly when the schema is current", async () => {
+    it("passes quietly and logs success when the schema is current", async () => {
       $queryRaw.mockResolvedValue(allColumnsPresent());
       await expect(
         assertDatabaseSchemaCurrent(logger),
       ).resolves.toBeUndefined();
       expect(logger.fatal).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledTimes(1);
     });
 
     it("throws MigrationDriftError and logs an actionable fatal on drift", async () => {
@@ -101,24 +119,27 @@ describe("migrationGuard", () => {
       expect(message).toContain("prisma migrate deploy");
     });
 
-    it("fails open (warns, does not throw) when the check itself cannot run", async () => {
-      // DB unreachable / no privileges: do not block startup on a check we
-      // could not complete.
+    it("logs an ERROR (not a silent skip) and fails open when the probe can't run after retries", async () => {
+      // DB unreachable for every attempt: don't permanently crash-loop, but make
+      // the skipped check loud — this is the path that previously let a drifted
+      // deploy serve silently.
       $queryRaw.mockRejectedValue(new Error("ECONNREFUSED"));
 
       await expect(
-        assertDatabaseSchemaCurrent(logger),
+        assertDatabaseSchemaCurrent(logger, { attempts: 3, backoffMs: 0 }),
       ).resolves.toBeUndefined();
-      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledTimes(1);
       expect(logger.fatal).not.toHaveBeenCalled();
+      expect($queryRaw).toHaveBeenCalledTimes(3);
     });
 
-    it("is bypassable via TABULA_SKIP_MIGRATION_CHECK without querying", async () => {
+    it("is bypassable via TABULA_SKIP_MIGRATION_CHECK and logs the bypass", async () => {
       process.env.TABULA_SKIP_MIGRATION_CHECK = "1";
       await expect(
         assertDatabaseSchemaCurrent(logger),
       ).resolves.toBeUndefined();
       expect($queryRaw).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
     });
   });
 });
