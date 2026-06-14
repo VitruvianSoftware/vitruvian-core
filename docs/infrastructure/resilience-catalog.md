@@ -19,6 +19,32 @@ topology or storage changes.
 > `values/cnpg-cluster.yaml`. Longhorn remains for non-DB volumes (MinIO/Tempo).
 > So ceiling #2 below is now intentionally reversed *for the databases*.
 
+> **⚠️ 2026-06-13 follow-on (grafana-db replica crash-loop, root-caused & fixed).**
+> After the restore, a `grafana-db` replica (`-2`, pinned to the sleepy `james-mbp`)
+> sat `0/1` crash-looping while the cluster reported "healthy" at 2/3. Two compounding
+> causes: **(1)** its initial `pg_basebackup` was interrupted by a `james-mbp` node
+> flap, leaving the PVC wedged in `shut down in recovery` (it could never reach a
+> consistent recovery state on restart); **(2)** the chart set a cpu **limit** equal
+> to the request (`500m`), and CFS throttling during the recovery burst starved the
+> instance-manager liveness endpoint (`:8000/healthz`) → kubelet SIGTERM'd it
+> mid-replay → restart → repeat. **Fix:** force a clean re-clone — `kubectl delete pvc
+> grafana-db-cluster-2 && kubectl delete pod grafana-db-cluster-2` (cordon the flaky
+> node first so the operator re-provisions the replica on a stable node; with
+> `local-path` the new PVC follows the new pod). CNPG re-clones as a **new instance
+> number** (`-4`) and reaches consistency in seconds. Now 3/3 on stable nodes. **IaC
+> hardening (this PR):** dropped the cpu limit (keep the cpu *request*; keep
+> memory request==limit for OOM protection) and switched grafana-db to **async**
+> streaming replication — synchronous replication stalls the primary whenever a
+> standby quorum is asleep, a real hazard on laptop nodes (it deadlocked grafana-db
+> earlier in this same incident). **Reconcile debt:** the live grafana-db-cluster was
+> rebuilt out of band, so it is **orphaned from its Helm release** and carries a
+> `recovery` bootstrap + backup write serverName `grafana-db-cluster-r4`. A `pulumi up`
+> therefore fails on a Helm ownership-conflict (not on bootstrap — bootstrap is
+> mutable/ignored by CNPG on an existing cluster), and chart v0.2.1 has no
+> `backups.serverName` to reproduce `-r4`. Returning it to clean Pulumi management
+> needs a maintenance-window recreate via the chart's recovery mode; data is safe in
+> MinIO `s3://grafana-db-backups/`. Documented inline in `grafana.go`.
+
 ## Cluster topology
 
 | Node | Roles | Notes |
