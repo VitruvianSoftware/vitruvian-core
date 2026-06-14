@@ -528,6 +528,74 @@ describe("SyncService", () => {
         }
       }
     });
+
+    // Regression: the server regenerates tab ids as strings ("tab_...") and
+    // echoes them back. parseInt on that string yields NaN, which
+    // JSON.stringify sends as `null` — which the API rejected (invalid_union),
+    // permanently failing every sync of an already-synced workspace. The
+    // sanitizer must OMIT a non-numeric id, never forward NaN/null.
+    it("omits a server-generated string tab id instead of emitting NaN/null", async () => {
+      const workspace = createMockWorkspace({
+        tabs: [
+          {
+            id: "tab_lq3x_abc123" as unknown as number,
+            url: "https://example.com",
+            title: "Test",
+            pinned: false,
+            active: false,
+            index: 0,
+          },
+        ],
+      });
+
+      await SyncService.clearQueue();
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+
+      await SyncService.processQueue();
+      await jest.runAllTimersAsync();
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalled();
+      const savedTab = (ApiService.saveWorkspace as jest.Mock).mock.calls[0][0]
+        .tabs[0];
+      // No NaN, no null — the id key is dropped entirely.
+      expect(savedTab.id).toBeUndefined();
+      expect("id" in savedTab).toBe(false);
+    });
+
+    it("omits a null tab id (self-heals a poison op already in the queue)", async () => {
+      const workspace = createMockWorkspace({
+        tabs: [
+          {
+            id: null as unknown as number,
+            url: "https://example.com",
+            title: "Test",
+            index: 0,
+          },
+        ],
+      });
+
+      await SyncService.clearQueue();
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+
+      await SyncService.processQueue();
+      await jest.runAllTimersAsync();
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalled();
+      const savedTab = (ApiService.saveWorkspace as jest.Mock).mock.calls[0][0]
+        .tabs[0];
+      expect(savedTab.id ?? null).toBeNull();
+      expect(Number.isNaN(savedTab.id)).toBe(false);
+    });
   });
 
   describe("error handling", () => {

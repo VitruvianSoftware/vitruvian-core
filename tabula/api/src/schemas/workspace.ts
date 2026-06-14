@@ -43,7 +43,16 @@ export const TabSchema = z.preprocess(
     };
   },
   z.object({
-    id: z.union([z.string(), z.number()]).optional(),
+    // Tab id is non-identifying INPUT: the service always regenerates tab ids
+    // server-side (see buildTabRows) and only reads this to stash the original
+    // in metadata.clientTabId. It must tolerate everything a client legitimately
+    // sends — a Chrome numeric id, a round-tripped server string id ("tab_..."),
+    // or null/absent (a tab with no stable id, or an older client that
+    // serialized a missing id as null). buildTabRows already guards `!== null`;
+    // rejecting null *here* used to 400 the ENTIRE workspace PUT over one
+    // ephemeral field, breaking every sync of an already-synced workspace.
+    // .nullish() = .optional().nullable().
+    id: z.union([z.string(), z.number()]).nullish(),
     // Not .url(): Chrome emits about:, chrome:, data: and other URIs that
     // must round-trip; an odd one must not reject the whole workspace PUT
     url: z.string().min(1),
