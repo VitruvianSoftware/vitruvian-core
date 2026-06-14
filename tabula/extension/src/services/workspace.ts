@@ -61,6 +61,26 @@ const WORKSPACE_CONFIG = {
   MAX_WORKSPACES: 10,
 };
 
+/**
+ * Normalize a user-entered resource URL into an absolute URL.
+ *
+ * The "Add resource" field is free text, so a user readily types a bare host
+ * ("example.com") or pads it with whitespace. That is not a valid absolute URL:
+ * `new URL()` throws on it (breaking the resource's title/"open" action) and the
+ * API's resource schema would reject it — 400-ing the ENTIRE workspace PUT and
+ * wedging sync for every item in the workspace. Trim, and prepend https:// when
+ * no scheme is present, so every stored resource is a valid, openable URL.
+ * Values that already carry a scheme (http:, https:, chrome:, about:, ...) are
+ * left untouched.
+ */
+export function normalizeResourceUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  // RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":"
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export class WorkspaceService {
   /**
    * Generate a unique workspace ID
@@ -656,7 +676,7 @@ export class WorkspaceService {
         const newResource = {
           id: `res_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           title: resource.title,
-          url: resource.url,
+          url: normalizeResourceUrl(resource.url),
           faviconUrl: resource.faviconUrl,
           createdAt: Date.now(),
         };
@@ -1129,7 +1149,7 @@ export class WorkspaceService {
         const newResource = {
           id: `res_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           title: resource.title,
-          url: resource.url,
+          url: normalizeResourceUrl(resource.url),
           faviconUrl: resource.faviconUrl,
           createdAt: Date.now(),
         };

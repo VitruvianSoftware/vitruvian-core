@@ -67,29 +67,37 @@ export const TabSchema = z.preprocess(
 );
 
 export const ResourceSchema = z.object({
-  id: z.string().optional(), // Client might send ID for update/sync
+  id: z.string().nullish(), // Client might send ID for update/sync (or null)
   title: z.string().max(500),
-  url: z.string().url(),
-  faviconUrl: z.string().url().optional().nullable(),
+  // Not .url(): like TabSchema.url, a resource URL must round-trip even when it
+  // is scheme-less or otherwise odd. A strict .url() here 400s the ENTIRE
+  // workspace PUT over a single bad resource — wedging sync for every tab,
+  // note, and task in that workspace (the same outage class as a rejected tab
+  // id). The client normalizes new resource URLs (prepends https://); this
+  // guard ensures one legacy bad row can never break the whole sync.
+  url: z.string().min(1),
+  // Drop .url() for the same reason: a favicon may be a relative path or an odd
+  // URI and must never wedge the PUT.
+  faviconUrl: z.string().optional().nullable(),
   position: z.number().int().min(0).optional(),
 });
 
 export const SectionSchema = z.object({
-  id: z.string().optional(),
+  id: z.string().nullish(), // tolerate null (sync may echo it); see TabSchema.id
   title: z.string().max(255),
   position: z.number().int().min(0).optional(),
   resources: z.array(ResourceSchema).optional(),
 });
 
 export const NoteSchema = z.object({
-  id: z.string().optional(),
+  id: z.string().nullish(), // tolerate null (sync may echo it); see TabSchema.id
   title: z.string().max(255),
   content: z.string(),
   position: z.number().int().min(0).optional(),
 });
 
 export const TaskSchema = z.object({
-  id: z.string().optional(),
+  id: z.string().nullish(), // tolerate null (sync may echo it); see TabSchema.id
   title: z.string().max(500),
   completed: z.boolean().default(false),
   position: z.number().int().min(0).optional(),

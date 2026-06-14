@@ -27,7 +27,11 @@
  * index }); the API persists { faviconUrl, isPinned, position }. Zod strips
  * unknown keys, so without explicit mapping the data would silently vanish.
  */
-import { TabSchema, WorkspaceUpdateSchema } from "../../src/schemas/workspace";
+import {
+  ResourceSchema,
+  TabSchema,
+  WorkspaceUpdateSchema,
+} from "../../src/schemas/workspace";
 
 describe("TabSchema wire-format mapping", () => {
   it("maps favIconUrl/pinned/index from the extension wire format", () => {
@@ -122,5 +126,51 @@ describe("TabSchema wire-format mapping", () => {
     expect(parsed.tabs![0].faviconUrl).toBe("https://a.example/i.png");
     expect(parsed.tabs![0].isPinned).toBe(true);
     expect(parsed.tabs![1].position).toBe(1);
+  });
+});
+
+describe("ResourceSchema resilience (must not wedge the whole workspace PUT)", () => {
+  // Regression: ResourceSchema.url used z.string().url(), which throws on a
+  // scheme-less host like "example.com". One such resource 400'd the ENTIRE
+  // workspace PUT — the same sync-wedge class as a rejected tab id. The schema
+  // must accept odd URLs (the client normalizes new ones) so a single legacy
+  // bad row can't break sync for every tab/note/task in the workspace.
+  it("accepts a scheme-less resource url", () => {
+    expect(() =>
+      ResourceSchema.parse({ title: "Bare", url: "example.com" }),
+    ).not.toThrow();
+  });
+
+  it("accepts an odd/relative faviconUrl and a null id", () => {
+    expect(() =>
+      ResourceSchema.parse({
+        id: null,
+        title: "Odd favicon",
+        url: "https://example.com",
+        faviconUrl: "/favicon.ico",
+      }),
+    ).not.toThrow();
+  });
+
+  it("still rejects an empty resource url", () => {
+    expect(() => ResourceSchema.parse({ title: "Empty", url: "" })).toThrow();
+  });
+
+  it("accepts a workspace PUT carrying a scheme-less resource url + null ids", () => {
+    expect(() =>
+      WorkspaceUpdateSchema.parse({
+        name: "WS",
+        resources: [{ id: null, title: "Bare", url: "example.com" }],
+        sections: [
+          {
+            id: null,
+            title: "S",
+            resources: [{ title: "R", url: "foo.bar/baz" }],
+          },
+        ],
+        notes: [{ id: null, title: "N", content: "c" }],
+        tasks: [{ id: null, title: "T", completed: false }],
+      }),
+    ).not.toThrow();
   });
 });
