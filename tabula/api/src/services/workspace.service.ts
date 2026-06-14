@@ -216,9 +216,9 @@ export class WorkspaceService {
         : false;
       const foreignFreshLease = Boolean(
         rows[0].active_device_id &&
-          deviceId &&
-          rows[0].active_device_id !== deviceId &&
-          leaseFresh,
+        deviceId &&
+        rows[0].active_device_id !== deviceId &&
+        leaseFresh,
       );
 
       // Passive tab-sync: a routine tab capture (tabSync, not an explicit

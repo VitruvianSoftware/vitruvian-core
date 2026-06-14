@@ -128,7 +128,9 @@ export function useCrossDeviceSession(
   }, [activeWorkspace]);
 
   const dismiss = useCallback(() => {
-    const primaryTabs = (activeWorkspace?.tabs || []).filter((t: Tab) => !!t.url);
+    const primaryTabs = (activeWorkspace?.tabs || []).filter(
+      (t: Tab) => !!t.url,
+    );
     dismissedSigRef.current = urlSignature(primaryTabs.map((t: Tab) => t.url));
     setConflictTabs(null);
   }, [activeWorkspace]);

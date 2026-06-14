@@ -844,13 +844,15 @@ export class WorkspaceService {
         // 2. Open new tabs from the workspace (or an explicit override set, e.g.
         // the subset chosen in the cross-device "Apply" prompt).
         // Filter out extension pages (like the dashboard) to prevent duplication/loops
-        const cleanTabs = (options.tabs ?? workspace.tabs ?? []).filter((tab) => {
-          const url = tab.url || "";
-          return (
-            !url.startsWith("chrome-extension://") &&
-            !url.includes("dashboard.html")
-          );
-        });
+        const cleanTabs = (options.tabs ?? workspace.tabs ?? []).filter(
+          (tab) => {
+            const url = tab.url || "";
+            return (
+              !url.startsWith("chrome-extension://") &&
+              !url.includes("dashboard.html")
+            );
+          },
+        );
 
         // eslint-disable-next-line no-console
         console.log("[restoreWorkspaceTabs] Opening tabs:", cleanTabs.length);

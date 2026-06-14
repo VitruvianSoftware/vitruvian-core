@@ -299,7 +299,9 @@ describe("WorkspaceService", () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([workspace]);
+      (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([
+        workspace,
+      ]);
       (TabService.getCurrentTabs as jest.Mock).mockResolvedValue([
         { url: "https://example.com", title: "Example" },
       ]);

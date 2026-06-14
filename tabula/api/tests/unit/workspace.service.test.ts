@@ -473,7 +473,12 @@ describe("WorkspaceService", () => {
         workspaceId,
         {
           tabs: [
-            { url: "https://mine.com", title: "Mine", isPinned: false, metadata: {} },
+            {
+              url: "https://mine.com",
+              title: "Mine",
+              isPinned: false,
+              metadata: {},
+            },
           ],
           tabSync: true,
         },

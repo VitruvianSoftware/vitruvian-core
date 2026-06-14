@@ -110,7 +110,10 @@ function TabRow({ tab, selected, onToggle }: TabRowProps) {
 
       {/* Favicon */}
       <img
-        src={getFaviconSrc({ favIconUrl: tab.favIconUrl ?? null, url: tab.url })}
+        src={getFaviconSrc({
+          favIconUrl: tab.favIconUrl ?? null,
+          url: tab.url,
+        })}
         alt=""
         style={{
           width: "18px",
@@ -245,7 +248,11 @@ export function CrossDeviceSessionPopover({
 
           {/* Tab list */}
           <div
-            style={{ maxHeight: "280px", overflowY: "auto", padding: "12px 8px" }}
+            style={{
+              maxHeight: "280px",
+              overflowY: "auto",
+              padding: "12px 8px",
+            }}
           >
             {serverTabs.length === 0 ? (
               <div

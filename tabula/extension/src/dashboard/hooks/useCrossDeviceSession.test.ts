@@ -71,9 +71,7 @@ describe("useCrossDeviceSession", () => {
     });
     const { result } = renderHook(() => useCrossDeviceSession(ws));
 
-    await waitFor(() =>
-      expect(result.current.conflictTabs).not.toBeNull(),
-    );
+    await waitFor(() => expect(result.current.conflictTabs).not.toBeNull());
     expect(result.current.conflictTabs?.map((t) => t.url)).toEqual([
       "https://primary.com",
     ]);
@@ -111,9 +109,7 @@ describe("useCrossDeviceSession", () => {
       activeDeviceSeenAt: new Date().toISOString(),
     });
     const { result } = renderHook(() => useCrossDeviceSession(ws));
-    await waitFor(() =>
-      expect(TabService.getCurrentTabs).toHaveBeenCalled(),
-    );
+    await waitFor(() => expect(TabService.getCurrentTabs).toHaveBeenCalled());
     expect(result.current.conflictTabs).toBeNull();
   });
 
@@ -123,9 +119,7 @@ describe("useCrossDeviceSession", () => {
       activeDeviceSeenAt: new Date().toISOString(),
     });
     const { result } = renderHook(() => useCrossDeviceSession(ws));
-    await waitFor(() =>
-      expect(result.current.conflictTabs).not.toBeNull(),
-    );
+    await waitFor(() => expect(result.current.conflictTabs).not.toBeNull());
     act(() => result.current.dismiss());
     expect(result.current.conflictTabs).toBeNull();
   });
