@@ -16,9 +16,3 @@ config:
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
   vitruvian-core-repo-config:buildbuddyApiKey:
     secure: AAABANxGwYCd5LRF4k2asEqPdOZXJzVWZJINz+uxv8YJlQvR6lEt1qvgysWvg1LL73q47A==
-  # Cross-repo fine-grained PAT for the devx one-way PR-import (#76). Resource
-  # owner VitruvianSoftware; scoped to devx + vitruvian-core; Pull requests +
-  # Contents read/write; expires 2027-06-13. Materialized as the
-  # DEVX_IMPORT_TOKEN Actions secret by main.go's actionsSecrets().
-  vitruvian-core-repo-config:devxImportToken:
-    secure: AAABAEFlQ41e2fkvavGHHHEC/ugkUZBi0VoeKEyWGDbnhiyl8L6s9S5/vYVosQd1gV4DEPBy6Gha8jkiV+rQdiWKhk8N2fSOQJqOu+z2NiuFWx7ReFK+L2Nc9gYPV+Vxk7o+4riWilzwDrO0/GnlVUMqU0e13sSFF5GO08A=
