@@ -31,6 +31,14 @@ import type {
   TabInput,
 } from "../schemas/workspace";
 
+/**
+ * Active-device lease freshness window. MUST match the extension's
+ * ACTIVE_DEVICE_STALE_MS (tabula/extension/src/hooks/useTabSync.ts) so client
+ * and server agree on when a lease is stale and another device may take over a
+ * workspace's live tab session.
+ */
+const ACTIVE_DEVICE_STALE_MS = 2 * 60 * 1000; // 2 minutes
+
 export class WorkspaceService {
   /**
    * Generate a unique ID with a given prefix
@@ -183,11 +191,13 @@ export class WorkspaceService {
     return prisma.$transaction(async (tx: any) => {
       // Lock the workspace row (scoped to the owner) and read the current
       // version + settings. This also serves as the ownership/existence check.
-      const rows: Array<{
+      const rows: {
         version: number | null;
         settings: Record<string, unknown> | null;
-      }> =
-        await tx.$queryRaw`SELECT version, settings FROM workspaces WHERE id = ${workspaceId} AND user_id = ${userId}::uuid FOR UPDATE`;
+        active_device_id: string | null;
+        active_device_seen_at: Date | null;
+      }[] =
+        await tx.$queryRaw`SELECT version, settings, active_device_id, active_device_seen_at FROM workspaces WHERE id = ${workspaceId} AND user_id = ${userId}::uuid FOR UPDATE`;
 
       if (!rows || rows.length === 0) {
         throw new Error("Workspace not found");
@@ -195,6 +205,49 @@ export class WorkspaceService {
 
       const currentVersion = rows[0].version ?? 0;
       const existingSettings = rows[0].settings ?? {};
+
+      // Active-device lease state. "One primary session per space": at most one
+      // device live-syncs a workspace's tabs at a time. A FRESH lease held by a
+      // DIFFERENT device makes this device a non-primary (passive) viewer.
+      const deviceId = options.deviceId;
+      const leaseSeenAt = rows[0].active_device_seen_at;
+      const leaseFresh = leaseSeenAt
+        ? Date.now() - new Date(leaseSeenAt).getTime() < ACTIVE_DEVICE_STALE_MS
+        : false;
+      const foreignFreshLease = Boolean(
+        rows[0].active_device_id &&
+          deviceId &&
+          rows[0].active_device_id !== deviceId &&
+          leaseFresh,
+      );
+
+      // Passive tab-sync: a routine tab capture (tabSync, not an explicit
+      // claim) from a non-primary device is a NO-OP. It must not bump the
+      // version, take the lease, or overwrite the primary's live tab session —
+      // return the authoritative state unchanged. This is what stops two live
+      // devices from ping-ponging 409 version conflicts and clobbering each
+      // other's tabs; the caller adopts the lease, goes passive, and can surface
+      // "Changes from your other device". Runs BEFORE the baseVersion check so a
+      // non-primary device never even sees a 409 for its automatic captures.
+      if (
+        input.tabSync === true &&
+        input.claimActiveDevice !== true &&
+        foreignFreshLease
+      ) {
+        return tx.workspace.findUnique({
+          where: { id: workspaceId },
+          include: {
+            tabs: { orderBy: { position: "asc" } },
+            sections: {
+              include: { resources: { orderBy: { position: "asc" } } },
+              orderBy: { position: "asc" },
+            },
+            notes: { orderBy: { position: "asc" } },
+            tasks: { orderBy: { position: "asc" } },
+            resources: { orderBy: { position: "asc" } },
+          },
+        });
+      }
 
       if (
         input.baseVersion !== undefined &&
@@ -230,14 +283,21 @@ export class WorkspaceService {
         data.settings = { ...baseSettings, tabGroups };
       }
 
-      // Advisory device lease: tabSync/claimActiveDevice are protocol flags,
-      // never persisted as workspace data. Either flag plus an x-device-id
-      // header assigns the active-device lease to that device.
+      // Advisory device lease (sticky). Assign it to this device on:
+      //  - an explicit claim (user switched INTO the space — may take over a
+      //    fresh lease held by another device), or
+      //  - a tab-sync NOT blocked by a fresh foreign lease (no lease yet, this
+      //    device already holds it, or the lease has gone stale).
+      // A passive tab-sync (fresh foreign lease, no claim) already returned
+      // above, so reaching here with tabSync=true means this device is allowed
+      // to become/remain the primary. The lease is NOT stolen by a routine
+      // capture — only an explicit claim takes it from a live device.
       if (
-        (input.tabSync === true || input.claimActiveDevice === true) &&
-        options.deviceId
+        deviceId &&
+        (input.claimActiveDevice === true ||
+          (input.tabSync === true && !foreignFreshLease))
       ) {
-        data.activeDeviceId = options.deviceId;
+        data.activeDeviceId = deviceId;
         data.activeDeviceSeenAt = new Date();
       }
 
