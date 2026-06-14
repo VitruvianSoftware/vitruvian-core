@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.20...tabula-extension-v0.1.21) (2026-06-14)
+
+
+### Features
+
+* **tabula:** one primary session per space (cross-device tab sync, Workona-style) ([#131](https://github.com/VitruvianSoftware/vitruvian-core/issues/131)) ([30d5a28](https://github.com/VitruvianSoftware/vitruvian-core/commit/30d5a285aed9633d63679afc9178153a06567503))
+
 ## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.19...tabula-extension-v0.1.20) (2026-06-14)
 
 
