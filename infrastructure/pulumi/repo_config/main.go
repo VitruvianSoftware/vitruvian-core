@@ -228,6 +228,10 @@ func main() {
 			return err
 		}
 
+		if err := actionsSecrets(ctx, cfg, repo); err != nil {
+			return err
+		}
+
 		if err := dependabotLabels(ctx, repo); err != nil {
 			return err
 		}
@@ -349,6 +353,34 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 		Repository:     repo.Name,
 		SecretName:     pulumi.String("BUILDBUDDY_API_KEY"),
 		PlaintextValue: cfg.RequireSecret("buildbuddyApiKey"),
+	})
+	return err
+}
+
+// actionsSecrets materializes the cross-repo credentials the monorepo's own
+// GitHub Actions workflows need, as repository Actions secrets.
+//
+// DEVX_IMPORT_TOKEN is a fine-grained PAT (resource owner VitruvianSoftware;
+// scoped to devx + vitruvian-core; Pull requests + Contents read/write) used by
+// the devx one-way PR-import poll (.github/workflows/copybara-import-pr-devx.yaml)
+// to read labelled PRs on VitruvianSoftware/devx and open the matching monorepo
+// PR (#76). The monorepo's built-in GITHUB_TOKEN is scoped to vitruvian-core only
+// and cannot read the standalone repo, hence a dedicated cross-repo token.
+//
+// Value is a Pulumi config SECRET, never committed in plaintext:
+//
+//	pulumi config set --secret devxImportToken <pat> --stack dev
+//
+// Optional like dependabotSecrets: unmanaged until the secret is set, so apply
+// stays green until the token is wired up.
+func actionsSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	if cfg.Get("devxImportToken") == "" {
+		return nil
+	}
+	_, err := github.NewActionsSecret(ctx, "devx-import-token", &github.ActionsSecretArgs{
+		Repository:     repo.Name,
+		SecretName:     pulumi.String("DEVX_IMPORT_TOKEN"),
+		PlaintextValue: cfg.RequireSecret("devxImportToken"),
 	})
 	return err
 }
