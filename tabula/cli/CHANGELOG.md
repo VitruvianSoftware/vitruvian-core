@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.19...tabula-cli-v0.1.20) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-cli:** Synchronize tabula versions
+
 ## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.18...tabula-cli-v0.1.19) (2026-06-14)
 
 

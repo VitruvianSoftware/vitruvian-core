@@ -1,7 +1,7 @@
 {
-  "tabula": "0.1.19",
-  "tabula/api": "0.1.19",
-  "tabula/extension": "0.1.19",
-  "tabula/cli": "0.1.19",
-  "tabula/web": "0.1.19"
+  "tabula": "0.1.20",
+  "tabula/api": "0.1.20",
+  "tabula/extension": "0.1.20",
+  "tabula/cli": "0.1.20",
+  "tabula/web": "0.1.20"
 }

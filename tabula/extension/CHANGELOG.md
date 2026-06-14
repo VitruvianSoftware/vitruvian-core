@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.19...tabula-extension-v0.1.20) (2026-06-14)
+
+
+### Bug Fixes
+
+* **tabula:** ship a default channel.json so alpha installs stop logging a 404 ([#129](https://github.com/VitruvianSoftware/vitruvian-core/issues/129)) ([8cd2904](https://github.com/VitruvianSoftware/vitruvian-core/commit/8cd29042199573d1c405a63d1a492c03d67a5696))
+
 ## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.18...tabula-extension-v0.1.19) (2026-06-14)
 
 
