@@ -57,17 +57,13 @@ jobs:
                 if [ -z "$n" ]; then n="${HEAD_REF#devx-import-pr-}"; fi
                 case "$n" in ''|*[!0-9]*) echo "::error::could not parse standalone PR number"; exit 1 ;; esac
                 echo "number=$n" >> "$GITHUB_OUTPUT"
-            - name: Mint token for VitruvianSoftware/devx
-              id: app-token
-              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-              with:
-                app-id: ${{ secrets.DEVX_DISPATCH_APP_ID }}
-                private-key: ${{ secrets.DEVX_DISPATCH_APP_PRIVATE_KEY }}
-                owner: VitruvianSoftware
-                repositories: devx
             - name: Comment and close the mirror PR
+              # DEVX_IMPORT_TOKEN (fine-grained PAT with devx Pull requests:write)
+              # comments + closes the mirror PR directly — no separate GitHub App
+              # needed. To migrate to a GitHub App later, swap this one secret for
+              # an actions/create-github-app-token mint step.
               env:
-                GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                GH_TOKEN: ${{ secrets.DEVX_IMPORT_TOKEN }}
                 DEVX_PR: ${{ steps.devxpr.outputs.number }}
                 MONO_PR: ${{ github.event.pull_request.number }}
               run: |
