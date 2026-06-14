@@ -4,16 +4,17 @@
 # standalone VitruvianSoftware/<component> repo.
 #
 # Two sync shapes (selected per component by `is_one_way`):
-#   * BIDIRECTIONAL (is_one_way=False, the default) -- mcp-slack, homelab,
-#     nexus-agent. Generates the pair:
-#       - export_<comp> : monorepo <comp>/ -> standalone root  (push to `main`)
-#       - import_<comp> : standalone root  -> monorepo <comp>/ (push to `main`)
-#   * ONE-WAY w/ PR-IMPORT (is_one_way=True) -- devx. Monorepo is the single
-#     source of truth; the standalone is an EXPORT-ONLY mirror. Generates:
+#   * ONE-WAY w/ PR-IMPORT (is_one_way=True) -- ALL current components (devx,
+#     homelab, mcp-slack, nexus-agent). The monorepo is the single source of
+#     truth; each standalone is an EXPORT-ONLY mirror. Generates:
 #       - export_<comp>    : monorepo <comp>/ -> standalone root (push to `main`)
 #       - import_pr_<comp> : a labelled standalone PR -> a MONOREPO PR under
 #                            <comp>/ (CHANGE_REQUEST mode) for human review+merge.
 #     There is deliberately NO push-to-main import_<comp> for one-way components.
+#   * BIDIRECTIONAL (is_one_way=False) -- the legacy shape, retained as a knob
+#     for any future component that genuinely needs writable-both-ways sync.
+#     Generates export_<comp> + a push-to-main import_<comp>. No current
+#     component uses it; converging on one-way removed the #1 drift risk.
 #
 # (`-` in a component name becomes `_` in the workflow name, e.g.
 #  export_nexus_agent.) The first run against a fresh destination (no rev-id
@@ -94,12 +95,21 @@
 #   import_pr_<comp> uses ITERATIVE too: CHANGE_REQUEST consumes the PR's commits
 #   and the per-commit guard still drops any export-origin commit in the range.
 #
-# AUTH SPLIT: in CI the monorepo is reached over HTTPS authenticated by the
-# workflow's GITHUB_TOKEN (which only has access to vitruvian-core, the repo the
-# workflow runs in); each standalone is reached over SSH using that component's
-# write deploy key (<COMPONENT>_SYNC_SSH_KEY, provisioned by Pulumi). Both an
-# HTTPS credential store and an SSH key are mounted with no URL rewriting, so the
-# two schemes coexist, selected per URL.
+# AUTH SPLIT (differs by direction):
+#   * export_<comp> (push to standalone main): the monorepo is read over HTTPS
+#     via the workflow GITHUB_TOKEN (vitruvian-core only); each standalone is
+#     written over SSH using that component's write deploy key
+#     (<COMPONENT>_SYNC_SSH_KEY, provisioned by Pulumi). An HTTPS credential
+#     store and an SSH key are both mounted with no URL rewriting, so the two
+#     schemes coexist, selected per URL.
+#   * import_pr_<comp> (labelled standalone PR -> monorepo PR): git.github_pr_*
+#     are GitHub REST endpoints, reachable ONLY over HTTPS, so no SSH key is
+#     used. Both repos are authenticated by a single short-lived GitHub App
+#     installation token (app `vitruvian-copybara-sync`, minted per run by
+#     actions/create-github-app-token, scoped to <comp> + vitruvian-core with
+#     Contents+Pull-requests:write). See copybara-import-pr.yaml. This replaced
+#     the earlier fine-grained PAT (DEVX_IMPORT_TOKEN) so the credential
+#     auto-rotates and no long-lived token is stored.
 
 MONOREPO = "https://github.com/VitruvianSoftware/vitruvian-core.git"
 STANDALONE_SSH_PREFIX = "git@github.com:VitruvianSoftware/"
@@ -141,7 +151,7 @@ COMPONENTS = [
         "name": "mcp-slack",
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
-        "is_one_way": False,
+        "is_one_way": True,
     },
     {
         "name": "devx",
@@ -153,13 +163,13 @@ COMPONENTS = [
         "name": "homelab",
         "standalone_rev_id": "HOMELAB_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
-        "is_one_way": False,
+        "is_one_way": True,
     },
     {
         "name": "nexus-agent",
         "standalone_rev_id": "NEXUS_AGENT_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
-        "is_one_way": False,
+        "is_one_way": True,
     },
 ]
 
@@ -246,15 +256,17 @@ def _define_component(_c):
                 url = MONOREPO,
                 destination_ref = "main",
                 # ${GITHUB_PR_NUMBER} is the ORIGIN (standalone) PR number,
-                # resolved by Copybara from the github_pr_origin metadata.
-                pr_branch = "devx-import-pr-${GITHUB_PR_NUMBER}",
-                title = "[devx import] ${GITHUB_PR_TITLE}",
-                # Body footer carries the standalone PR ref so the post-merge
-                # auto-close workflow (copybara-import-pr-devx-close.yaml) can
-                # find and close the mirror PR after the monorepo PR merges.
-                # NOTE: a bare GitHub trailer cannot auto-close across repos;
-                # closure is done explicitly by that workflow, not by GitHub.
-                body = "Imported from VitruvianSoftware/devx#${GITHUB_PR_NUMBER} via Copybara.\n\nMirror-Of: VitruvianSoftware/devx#${GITHUB_PR_NUMBER}\nDevx-Pr-Number: ${GITHUB_PR_NUMBER}",
+                # resolved by Copybara from the github_pr_origin metadata. The
+                # branch is per-component (<name>-import-pr-<N>) so two apps'
+                # imports of the same PR number never collide on one branch.
+                pr_branch = _name + "-import-pr-${GITHUB_PR_NUMBER}",
+                title = "[" + _name + " import] ${GITHUB_PR_TITLE}",
+                # Body footer carries the standalone repo + PR ref so the
+                # post-merge auto-close workflow (copybara-import-pr-close.yaml)
+                # can find and close the right mirror PR after the monorepo PR
+                # merges. NOTE: a bare GitHub trailer cannot auto-close across
+                # repos; closure is done explicitly by that workflow, not GitHub.
+                body = "Imported from VitruvianSoftware/" + _name + "#${GITHUB_PR_NUMBER} via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _name + "#${GITHUB_PR_NUMBER}\nMirror-Pr-Number: ${GITHUB_PR_NUMBER}",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),

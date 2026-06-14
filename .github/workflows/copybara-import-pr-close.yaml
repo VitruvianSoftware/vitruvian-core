@@ -1,0 +1,102 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Import PR auto-close mirror
+
+# When an import PR (branch <component>-import-pr-<N>) MERGES into monorepo main,
+# explicitly close the originating VitruvianSoftware/<component>#<N> mirror PR.
+# Cross-repo closure cannot be done by a commit trailer, so we do it by API. The
+# mirror repo + PR number are read from the monorepo PR body footer
+# 'Mirror-Of: VitruvianSoftware/<repo>#<N>' that import_pr_<component> embedded
+# (falling back to the branch name for older PRs).
+#
+# Trigger is `pull_request` (NOT pull_request_target) on the monorepo's own PRs;
+# it runs in the trusted base context after merge and reads only PR metadata.
+#
+# CREDENTIAL: a short-lived GitHub App token (vitruvian-copybara-sync), minted
+# scoped to ONLY the mirror repo with Pull requests:write -- just enough to
+# comment + close. Replaces the earlier DEVX_IMPORT_TOKEN PAT.
+on:
+    pull_request:
+        types: [closed]
+        branches: [main]
+
+permissions:
+    contents: read
+
+jobs:
+    close-mirror:
+        # Only for merged import PRs (any component). The head.repo guard ensures
+        # the branch lives in vitruvian-core itself (where only Copybara/maintainers
+        # can push) -- a fork PR with a crafted '*-import-pr-*' branch name is
+        # excluded, so an attacker cannot spoof this job into acting on a forged
+        # Mirror-Of footer.
+        if: >-
+            github.event.pull_request.merged == true &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            contains(github.event.pull_request.head.ref, '-import-pr-')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Extract mirror repo + PR number
+              id: mirror
+              env:
+                BODY: ${{ github.event.pull_request.body }}
+                HEAD_REF: ${{ github.event.pull_request.head.ref }}
+              run: |
+                set -euo pipefail
+                # Prefer the body footer 'Mirror-Of: VitruvianSoftware/<repo>#<N>'
+                # (carries the exact repo); fall back to the branch
+                # '<repo>-import-pr-<N>' (handles hyphenated repo names via the
+                # fixed '-import-pr-' delimiter).
+                repo="$(printf '%s' "$BODY" | sed -n 's#^Mirror-Of: VitruvianSoftware/\([A-Za-z0-9._-]*\)#\1#p' | sed 's/#.*//' | head -1)"
+                num="$(printf '%s' "$BODY" | sed -n 's/^Mirror-Pr-Number: \([0-9][0-9]*\).*/\1/p' | head -1)"
+                if [ -z "$repo" ]; then repo="${HEAD_REF%-import-pr-*}"; fi
+                if [ -z "$num" ]; then num="${HEAD_REF##*-import-pr-}"; fi
+                case "$num" in ''|*[!0-9]*) echo "::error::could not parse mirror PR number"; exit 1 ;; esac
+                # Allowlist: only ever act on a known mirror repo, so a forged
+                # footer can never redirect the comment/close to another repo.
+                case "$repo" in
+                  devx|homelab|mcp-slack|nexus-agent) ;;
+                  *) echo "::error::refusing to act on non-mirror repo '$repo'"; exit 1 ;;
+                esac
+                echo "repo=$repo" >> "$GITHUB_OUTPUT"
+                echo "number=$num" >> "$GITHUB_OUTPUT"
+                echo "Closing VitruvianSoftware/${repo}#${num}"
+
+            - name: Mint scoped GitHub App token (mirror repo only)
+              id: app-token
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                app-id: ${{ secrets.SYNC_APP_ID }}
+                private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                owner: VitruvianSoftware
+                repositories: ${{ steps.mirror.outputs.repo }}
+
+            - name: Comment and close the mirror PR
+              env:
+                GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                MIRROR_REPO: ${{ steps.mirror.outputs.repo }}
+                MIRROR_PR: ${{ steps.mirror.outputs.number }}
+                MONO_PR: ${{ github.event.pull_request.number }}
+              run: |
+                set -euo pipefail
+                gh pr comment "$MIRROR_PR" --repo "VitruvianSoftware/${MIRROR_REPO}" \
+                  --body "Imported and merged into VitruvianSoftware/vitruvian-core#${MONO_PR} (${MIRROR_REPO}/). The monorepo is the source of truth; this mirror PR is now closed. Your change will appear on this repo's main via the next Copybara export." || true
+                gh pr close "$MIRROR_PR" --repo "VitruvianSoftware/${MIRROR_REPO}" || true

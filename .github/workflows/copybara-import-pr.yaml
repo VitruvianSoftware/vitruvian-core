@@ -1,0 +1,315 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Import PR
+
+# ONE-WAY PR-import for EVERY mirrored component (devx, homelab, mcp-slack,
+# nexus-agent) -- SCHEDULED-POLL variant. One matrix leg per component.
+#
+# The MONOREPO polls VitruvianSoftware/<component> for open PRs labelled
+# 'import-to-monorepo' and, for EACH match, opens/updates a MONOREPO PR under
+# <component>/ for human review + merge. The monorepo is the single source of
+# truth; nothing is pushed to monorepo main here.
+#
+# WHY POLL (NOT repository_dispatch): a scheduled poll keeps ALL control flow
+# inside the monorepo. A standalone repo never triggers a monorepo workflow and
+# never supplies workflow inputs, so there is no path for PR-influenced input
+# (e.g. an attacker-controlled copybara_options or PR number) to reach this job.
+# The maintainer approval gate is simply "apply the label in the mirror UI"; the
+# monorepo decides what to import, on its own schedule, with its own credential.
+#
+# CREDENTIAL (GitHub App, HTTPS only -- do NOT reintroduce SSH or a PAT):
+#   Each matrix leg mints a SHORT-LIVED installation token from the
+#   `vitruvian-copybara-sync` GitHub App (secrets.SYNC_APP_ID /
+#   secrets.SYNC_APP_PRIVATE_KEY), scoped to exactly TWO repos:
+#       - <component>      (Pull requests + Contents) -- lets `gh pr list` and
+#         Copybara's git.github_pr_origin read mirror PR metadata + head.
+#       - vitruvian-core   (Pull requests + Contents) -- lets Copybara's
+#         git.github_pr_destination push the import branch / open the monorepo
+#         PR, and lets the tidy step push BUILD regeneration.
+#   The token expires ~1h after the job, so there is no long-lived secret to
+#   rotate (this replaced the fine-grained PAT DEVX_IMPORT_TOKEN). The App is
+#   installed org-wide on "Only select repositories"; minting fails closed if a
+#   component repo was not added to the installation.
+#
+# SECURITY POSTURE (do NOT weaken):
+#   * Triggers are `schedule` (cron) + `workflow_dispatch` (manual). There is no
+#     pull_request_target and no repository_dispatch, so the App token is never
+#     exposed to a trigger evaluated in the context of untrusted PR head code,
+#     and no externally-supplied payload reaches the container.
+#   * This job NEVER builds/tests/executes the imported PR content. Copybara
+#     applies only core.move + the loop-prevention dynamic_transform. The single
+#     build step (//:tidy) regenerates gazelle BUILD files and is monorepo-owned
+#     tooling; it runs against the imported tree but does not execute arbitrary
+#     PR scripts.
+#   * Poll is best-effort and idempotent: a PR unlabelled between poll and import
+#     is dropped by Copybara's required_labels skip-guard (exit 4, logged); a PR
+#     labelled after the poll window is imported on the next cycle.
+#   * The matrix is fail-fast:false with a per-component concurrency group, so
+#     one component's poll failure neither cancels nor blocks the others.
+
+on:
+    schedule:
+        # Poll every 15 minutes for newly-labelled import PRs across all mirrors.
+        - cron: "*/15 * * * *"
+    workflow_dispatch:
+        inputs:
+            only_component:
+                description: "Limit this manual run to one component (devx|homelab|mcp-slack|nexus-agent). Empty = all."
+                default: ""
+                required: false
+            poll_only:
+                description: "If 'true', list matching PRs and exit without importing (debugging)."
+                default: "false"
+                required: false
+
+# Minimal token: all repo writes go through the per-leg App token, not this
+# workflow's GITHUB_TOKEN, which only needs to check out vitruvian-core.
+permissions:
+    contents: read
+
+jobs:
+    poll-and-import:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                component: [devx, homelab, mcp-slack, nexus-agent]
+        # Serialize poll cycles PER COMPONENT so two runs cannot race the same
+        # monorepo PR branch / GitHub API. cancel-in-progress:false means a queued
+        # cycle waits rather than pre-empting an in-flight import.
+        concurrency:
+            group: copybara-import-pr-${{ matrix.component }}
+            cancel-in-progress: false
+        # Bound the whole cycle well under the 15-minute cron interval so a slow
+        # cycle cannot still be running when the next is released from the
+        # concurrency queue (prevents overlapping tidy pushes to the same branch).
+        timeout-minutes: 12
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                fetch-depth: 0
+                # CRITICAL: without this, checkout injects an http extraheader
+                # carrying the workflow GITHUB_TOKEN (here only contents:read) that
+                # SHADOWS the App-token ~/.git-credentials store for every host-side
+                # `origin` op -- so the tidy step's `git push origin` would go out as
+                # the read-only GITHUB_TOKEN and 403. persist-credentials:false drops
+                # the extraheader; host fetch/push then use the App token (the docker
+                # copybara step has its own container git config and is unaffected).
+                persist-credentials: false
+
+            - name: Mint scoped GitHub App token (<component> + vitruvian-core)
+              id: app-token
+              # vitruvian-copybara-sync App: Contents + Pull requests : write on the
+              # selected repos. Token is scoped to ONLY this leg's component plus
+              # the monorepo, and expires ~1h later. Same App + pinned SHA the
+              # dependabot workflows already use.
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                app-id: ${{ secrets.SYNC_APP_ID }}
+                private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                owner: VitruvianSoftware
+                repositories: |
+                  ${{ matrix.component }}
+                  vitruvian-core
+
+            - name: Set up Copybara auth (HTTPS App token only)
+              env:
+                IMPORT_TOKEN: ${{ steps.app-token.outputs.token }}
+              run: |
+                set -euo pipefail
+                # HTTPS git-credentials cover BOTH repos: the App token reads the
+                # mirror (github_pr_origin) and writes vitruvian-core
+                # (github_pr_destination + tidy push). No SSH key is mounted.
+                printf 'https://x-access-token:%s@github.com\n' "$IMPORT_TOKEN" > ~/.git-credentials
+                chmod 600 ~/.git-credentials
+                printf '[credential]\n\thelper = store\n[user]\n\tname = VitruvianSoftware Sync\n\temail = sync@vitruviansoftware.com\n' > ~/.gitconfig
+
+            - name: Poll mirror for labelled import PRs
+              id: poll
+              env:
+                GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                COMPONENT: ${{ matrix.component }}
+                # Empty on schedule runs; on manual dispatch, restricts the run to
+                # one component. Filtered in bash (not a job-level `if`) so the
+                # null/empty schedule case is unambiguous.
+                ONLY_COMPONENT: ${{ github.event.inputs.only_component }}
+              run: |
+                set -euo pipefail
+
+                # Manual single-component runs: legs that don't match are a no-op.
+                if [ -n "${ONLY_COMPONENT}" ] && [ "${ONLY_COMPONENT}" != "${COMPONENT}" ]; then
+                  echo "Skipping ${COMPONENT}: manual run targeted '${ONLY_COMPONENT}' only."
+                  echo "count=0" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+
+                # Fail fast if the gate label was deleted on the mirror --
+                # otherwise the poll silently returns zero PRs forever and imports
+                # just stop.
+                if ! gh label list --repo "VitruvianSoftware/${COMPONENT}" --limit 200 \
+                     | grep -q '^import-to-monorepo'; then
+                  echo "::error::Label 'import-to-monorepo' not found on VitruvianSoftware/${COMPONENT}. Recreate it (see CONTRIBUTING.md) before imports can resume."
+                  exit 1
+                fi
+
+                # Query open mirror PRs carrying the maintainer gate label.
+                # A failure here (network / API throttle / mirror unavailable)
+                # exits non-zero under `set -e`, failing this cycle visibly; the
+                # next 15-minute cycle retries.
+                prs="$(gh pr list \
+                  --repo "VitruvianSoftware/${COMPONENT}" \
+                  --label import-to-monorepo \
+                  --state open \
+                  --json number \
+                  --jq '.[].number')"
+
+                printf '%s\n' "$prs" > /tmp/import_prs.txt
+                count="$(printf '%s\n' "$prs" | grep -c . || true)"
+                echo "count=${count}" >> "$GITHUB_OUTPUT"
+                if [ "$count" -eq 0 ]; then
+                  echo "No ${COMPONENT} PRs labelled import-to-monorepo on this cycle (nothing to import)."
+                else
+                  echo "Found ${count} labelled import PR(s) on ${COMPONENT}: $(printf '%s' "$prs" | tr '\n' ' ')"
+                fi
+
+            - name: Import each labelled PR (mirror PR -> monorepo PR under <component>/)
+              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
+              env:
+                IMPORT_TOKEN: ${{ steps.app-token.outputs.token }}
+                COMPONENT: ${{ matrix.component }}
+              run: |
+                set -euo pipefail
+
+                prs="$(cat /tmp/import_prs.txt)"
+                # copy.bara.sky workflow name: import_pr_<component> with '-' -> '_'.
+                WF="import_pr_${COMPONENT//-/_}"
+
+                # For EACH matching PR, run `copybara <WF> <PR>` in the PINNED
+                # olivr/copybara image. The positional PR number is the CLI arg the
+                # smoke-test validated for git.github_pr_origin selection. The
+                # concurrency group serializes whole cycles; this loop is sequential
+                # within a cycle so each import finishes before the next.
+                imported=0; noop=0
+                while IFS= read -r pr_number; do
+                  [ -z "$pr_number" ] && continue
+                  echo "::group::Importing ${COMPONENT} PR #${pr_number}"
+
+                  set +e
+                  docker run --rm \
+                    -v "$GITHUB_WORKSPACE":/usr/src/app \
+                    -v "$HOME/.git-credentials":/root/.git-credentials \
+                    -v "$HOME/.gitconfig":/root/.gitconfig \
+                    -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                    -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                    -e COPYBARA_WORKFLOW="$WF" \
+                    -e COPYBARA_OPTIONS="--ignore-noop" \
+                    -e GITHUB_TOKEN="$IMPORT_TOKEN" \
+                    olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                    copybara "$WF" "$pr_number"
+                  rc=$?
+                  set -e
+
+                  # 0 = monorepo PR opened/updated; 4 = NO_OP. NO_OP means either the
+                  # skip-guard dropped an export-origin change, OR the PR was
+                  # unlabelled between poll and import (required_labels no longer
+                  # match), OR there is nothing new to import. All are correct and
+                  # idempotent, but we log exit 4 so a maintainer who labelled then
+                  # unlabelled is not surprised by a missing import.
+                  if [ "$rc" -eq 0 ]; then
+                    echo "Copybara OK (exit 0) for ${COMPONENT} PR #${pr_number} -- monorepo PR opened/updated."
+                    imported=$((imported + 1))
+                  elif [ "$rc" -eq 4 ]; then
+                    echo "::warning::Copybara NO_OP (exit 4) for ${COMPONENT} PR #${pr_number} -- skipped (export-origin change, nothing new, or unlabelled between poll and import). No monorepo PR change."
+                    noop=$((noop + 1))
+                  else
+                    echo "::error::Copybara ${WF} failed for ${COMPONENT} PR #${pr_number} (exit $rc)"
+                    echo "::endgroup::"
+                    exit "$rc"
+                  fi
+                  echo "::endgroup::"
+                done <<< "$prs"
+
+                echo "Import summary (${COMPONENT}): ${imported} opened/updated, ${noop} no-op."
+
+            - name: Install Bazel
+              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                bazelisk-cache: true
+                repository-cache: true
+
+            - name: Regenerate gazelle BUILD files on each import PR branch
+              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
+              env:
+                # Same per-leg App token: the push target is vitruvian-core, where
+                # the token has Contents write.
+                GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                COMPONENT: ${{ matrix.component }}
+              run: |
+                set -euo pipefail
+
+                prs="$(cat /tmp/import_prs.txt)"
+
+                # For EACH imported PR, tidy the corresponding import branch. The
+                # branch only exists if that PR's import was non-no-op, so a missing
+                # branch is skipped cleanly (not an error). Per-PR tidy is slower
+                # than a single batched run but keeps each PR's BUILD regeneration
+                # isolated and individually debuggable; the 12-minute job timeout
+                # bounds the worst case.
+                while IFS= read -r pr_number; do
+                  [ -z "$pr_number" ] && continue
+                  BR="${COMPONENT}-import-pr-${pr_number}"
+                  echo "::group::Tidy BUILD on ${BR}"
+
+                  if ! git ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+                    echo "No import PR branch (${BR}) -- skipping tidy (import no-op'd or PR unlabelled)."
+                    echo "::endgroup::"
+                    continue
+                  fi
+
+                  pushed=""
+                  for attempt in 1 2 3 4 5; do
+                    git fetch origin "$BR"
+                    git checkout -B "$BR" "origin/$BR"
+                    bazel run //:tidy
+                    git add -A
+                    if git diff --cached --quiet; then
+                      echo "BUILD already up to date on ${BR} -- nothing to regenerate."
+                      pushed="ok"
+                      break
+                    fi
+                    git commit -m "chore(bazel): tidy BUILD for ${COMPONENT} import PR #${pr_number}"
+                    if git push origin "HEAD:refs/heads/$BR"; then
+                      echo "Pushed BUILD regeneration onto ${BR}."
+                      pushed="ok"
+                      break
+                    fi
+                    echo "push rejected (attempt ${attempt}/5) -- branch advanced; re-syncing"
+                    sleep $((attempt * 3))
+                  done
+
+                  if [ -z "$pushed" ]; then
+                    echo "::error::could not push BUILD regeneration onto ${BR}"
+                    echo "::endgroup::"
+                    exit 1
+                  fi
+                  echo "::endgroup::"
+                done <<< "$prs"
