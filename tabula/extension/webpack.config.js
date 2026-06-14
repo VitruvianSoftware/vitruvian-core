@@ -108,6 +108,12 @@ module.exports = {
         // post-Bazel, so the webpack action stays hermetic/cacheable (the
         // same constraint that keeps the SHA out of manifest.version above).
         { from: "src/build_info.json", to: "build_info.json" },
+        // Release channel marker. The source default is {"channel":"alpha"};
+        // tabcli overwrites it with {"channel":"beta"} for managed installs.
+        // Shipping a default (rather than relying on its absence) keeps the
+        // update checker's getOwnChannel() fetch from logging a noisy
+        // ERR_FILE_NOT_FOUND on every load of an unpacked/alpha install.
+        { from: "src/channel.json", to: "channel.json" },
       ],
     }),
     new webpack.DefinePlugin({
