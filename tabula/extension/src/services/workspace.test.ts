@@ -25,7 +25,7 @@
  * Unit tests for WorkspaceService
  */
 
-import { WorkspaceService } from "./workspace";
+import { WorkspaceService, normalizeResourceUrl } from "./workspace";
 import { StorageService } from "./storage";
 import { TabService } from "./tabs";
 import type { Workspace } from "../types";
@@ -3039,5 +3039,54 @@ describe("tab-sync durability metadata", () => {
         meta: { claimActiveDevice: true },
       }),
     );
+  });
+});
+
+describe("normalizeResourceUrl", () => {
+  it("prepends https:// to a scheme-less host", () => {
+    expect(normalizeResourceUrl("example.com")).toBe("https://example.com");
+  });
+
+  it("trims surrounding whitespace before normalizing", () => {
+    expect(normalizeResourceUrl("  example.com/path  ")).toBe(
+      "https://example.com/path",
+    );
+  });
+
+  it("leaves URLs that already carry a scheme untouched", () => {
+    expect(normalizeResourceUrl("http://x.com")).toBe("http://x.com");
+    expect(normalizeResourceUrl("https://x.com")).toBe("https://x.com");
+    expect(normalizeResourceUrl("chrome://newtab/")).toBe("chrome://newtab/");
+    expect(normalizeResourceUrl("about:blank")).toBe("about:blank");
+  });
+
+  it("returns empty/whitespace-only input unchanged (caller guards empty)", () => {
+    expect(normalizeResourceUrl("   ")).toBe("");
+  });
+});
+
+describe("WorkspaceService.addResource URL normalization", () => {
+  it("stores a normalized absolute URL for a scheme-less resource", async () => {
+    const workspace: Workspace = {
+      id: "ws1",
+      name: "Test",
+      tabs: [],
+      resources: [],
+      sections: [],
+      notes: [],
+      tasks: [],
+      position: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([workspace]);
+    (StorageService.saveWorkspaces as jest.Mock).mockResolvedValue(undefined);
+
+    const result = await WorkspaceService.addResource("ws1", {
+      title: "Bare",
+      url: "example.com",
+    });
+
+    expect(result.sections[0].resources[0].url).toBe("https://example.com");
   });
 });
