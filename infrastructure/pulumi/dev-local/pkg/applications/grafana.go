@@ -98,6 +98,22 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			return nil, fmt.Errorf("grafana_db_backups_enabled requires minio_enabled: MinIO is the backup object store")
 		}
 
+		// ⚠️ Operational note (2026-06-13 incident restore — see docs/infrastructure/resilience-catalog.md):
+		// The LIVE grafana-db-cluster in this cluster was rebuilt OUT OF BAND during the
+		// multi-day Longhorn-I/O incident: it was restored from the MinIO backup with a
+		// `recovery` bootstrap and a fresh backup write serverName (grafana-db-cluster-r4,
+		// reading recovery from grafana-db-cluster). That live object is therefore NOT owned
+		// by this Helm release (no app.kubernetes.io/managed-by label), so a `pulumi up` will
+		// currently FAIL on a Helm ownership-conflict for the existing Cluster object — it does
+		// NOT silently mutate the running DB. (Bootstrap itself is mutable/ignored by CNPG on an
+		// existing cluster — confirmed via server-side dry-run — so the `initdb` rendered below
+		// is harmless; the blocker is the ownership label + the chart's inability to express the
+		// live backup serverName: chart v0.2.1 has no backups.serverName and always writes under
+		// the cluster name.) The values below are the canonical FROM-SCRATCH spec. To return the
+		// live DB to clean Pulumi management, recreate it via the chart in a maintenance window
+		// (chart `mode: recovery`, recovery.clusterName = the source serverName); the data is
+		// safe in MinIO at s3://grafana-db-backups/. Until then the live DB runs healthy and HA
+		// (3 instances, async streaming replication) and is reconciled by hand, not by pulumi up.
 		dbValues := map[string]interface{}{
 			"cluster": map[string]interface{}{
 				"instances": 3, // 3 keeps a primary + replica through a single node loss
@@ -107,14 +123,19 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 						"prometheus.io/port":   "9187",
 					},
 				},
-				// Guaranteed QoS (requests == limits) so Postgres isn't OOM-killed/starved under node memory pressure
+				// Memory request == limit pins the memory floor so Postgres isn't OOM-killed or
+				// evicted under node memory pressure. Deliberately NO cpu limit: a cpu limit
+				// equal to the request caused CFS throttling that starved the instance-manager's
+				// liveness endpoint (:8000/healthz) during a recovery burst, so a recovering
+				// replica got SIGTERM'd mid-replay and crash-looped (the 2026-06-13 instance-2
+				// incident). A cpu *request* still guarantees a baseline share; dropping the
+				// *limit* lets Postgres burst CPU during recovery/checkpoints without throttling.
 				"resources": map[string]interface{}{
 					"requests": map[string]interface{}{
 						"cpu":    "500m",
 						"memory": "512Mi",
 					},
 					"limits": map[string]interface{}{
-						"cpu":    "500m",
 						"memory": "512Mi",
 					},
 				},
@@ -135,13 +156,15 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				"affinity": map[string]interface{}{
 					"topologyKey": "kubernetes.io/hostname",
 				},
-				// Quorum synchronous replication (ANY 1): zero data-loss on failover, safe at 3 instances
-				"postgresql": map[string]interface{}{
-					"synchronous": map[string]interface{}{
-						"method": "any",
-						"number": 1,
-					},
-				},
+				// Async streaming replication (CNPG default — no `synchronous` block). On this
+				// homelab the nodes are laptops that sleep/drop off Tailscale, so synchronous
+				// replication is a liability: a primary configured to wait for standby acks
+				// stalls writes whenever its quorum of standbys is asleep (this deadlocked
+				// grafana-db during the 2026-06-13 incident). Async never stalls the primary;
+				// HA + durability come from 3-instance streaming replication plus the MinIO WAL
+				// archive (a downed instance is re-cloned via pg_basebackup). For a homelab
+				// Grafana state DB the tiny last-transaction failover window is an acceptable
+				// trade for not stalling on a sleeping node.
 				"initdb": map[string]interface{}{
 					"database": "grafana",
 					"owner":    "grafana",
