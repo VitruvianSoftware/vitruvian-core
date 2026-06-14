@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.16...tabula-api-v0.1.17) (2026-06-14)
+
+
+### Bug Fixes
+
+* **tabula:** harden DB schema guard so it can't silently fail open ([#115](https://github.com/VitruvianSoftware/vitruvian-core/issues/115)) ([66743d1](https://github.com/VitruvianSoftware/vitruvian-core/commit/66743d17ad57bf41525509f1c7d7f11d27faf8de))
+* **tabula:** repair migration to reconcile drifted sync/backup columns ([#112](https://github.com/VitruvianSoftware/vitruvian-core/issues/112)) ([9934315](https://github.com/VitruvianSoftware/vitruvian-core/commit/993431531d434e777f8f487415d30788c627d182))
+
 ## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.15...tabula-api-v0.1.16) (2026-06-13)
 
 
