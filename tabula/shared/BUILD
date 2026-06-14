@@ -27,6 +27,12 @@ load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 # gazelle:ignore
 # gazelle:exclude src
 
+# Inter-app boundary (#82): default targets to tabula-internal visibility so
+# other top-level apps can't depend on tabula internals. Explicit per-target
+# visibility (public artifacts + the extension->api //tabula:__subpackages__
+# deps) is preserved below.
+package(default_visibility = ["//tabula:__subpackages__"])
+
 ts_project(
     name = "lib",
     srcs = glob(["src/**/*.ts"]),
