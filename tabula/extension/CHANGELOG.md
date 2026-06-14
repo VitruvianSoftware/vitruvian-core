@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.17...tabula-extension-v0.1.18) (2026-06-14)
+
+
+### Bug Fixes
+
+* **tabula:** stop sync sending null tab ids that 400 the workspace PUT ([#119](https://github.com/VitruvianSoftware/vitruvian-core/issues/119)) ([6512498](https://github.com/VitruvianSoftware/vitruvian-core/commit/6512498ef7fd42c7f84e0ab55453d4203d5bc1cf))
+
 ## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.16...tabula-extension-v0.1.17) (2026-06-14)
 
 
