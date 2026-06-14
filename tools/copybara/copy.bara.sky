@@ -255,18 +255,24 @@ def _define_component(_c):
             destination = git.github_pr_destination(
                 url = MONOREPO,
                 destination_ref = "main",
-                # ${GITHUB_PR_NUMBER} is the ORIGIN (standalone) PR number,
-                # resolved by Copybara from the github_pr_origin metadata. The
-                # branch is per-component (<name>-import-pr-<N>) so two apps'
-                # imports of the same PR number never collide on one branch.
-                pr_branch = _name + "-import-pr-${GITHUB_PR_NUMBER}",
-                title = "[" + _name + " import] ${GITHUB_PR_TITLE}",
+                # @@PR_NUMBER@@ is the ORIGIN (standalone) PR number. The pinned
+                # 2023-01 copybara image does NOT resolve copybara label templates
+                # like ${GITHUB_PR_NUMBER}/${GITHUB_PR_TITLE} in these fields (it
+                # leaves them as literals, mangling the branch name), so the import
+                # workflow sed-substitutes @@PR_NUMBER@@ with the real PR number
+                # into a throwaway config copy before invoking copybara. The branch
+                # is per-component (<name>-import-pr-<N>) so two apps' imports of the
+                # same PR number never collide on one branch.
+                pr_branch = _name + "-import-pr-@@PR_NUMBER@@",
+                # Static, self-identifying title (the contributor's commit message
+                # carries the detail; ${GITHUB_PR_TITLE} also does not resolve here).
+                title = "[" + _name + " import] " + _name + "#@@PR_NUMBER@@",
                 # Body footer carries the standalone repo + PR ref so the
                 # post-merge auto-close workflow (copybara-import-pr-close.yaml)
                 # can find and close the right mirror PR after the monorepo PR
                 # merges. NOTE: a bare GitHub trailer cannot auto-close across
                 # repos; closure is done explicitly by that workflow, not GitHub.
-                body = "Imported from VitruvianSoftware/" + _name + "#${GITHUB_PR_NUMBER} via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _name + "#${GITHUB_PR_NUMBER}\nMirror-Pr-Number: ${GITHUB_PR_NUMBER}",
+                body = "Imported from VitruvianSoftware/" + _name + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _name + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),

@@ -202,28 +202,43 @@ jobs:
                 # copy.bara.sky workflow name: import_pr_<component> with '-' -> '_'.
                 WF="import_pr_${COMPONENT//-/_}"
 
-                # For EACH matching PR, run `copybara <WF> <PR>` in the PINNED
-                # olivr/copybara image. The positional PR number is the CLI arg the
-                # smoke-test validated for git.github_pr_origin selection. The
-                # concurrency group serializes whole cycles; this loop is sequential
-                # within a cycle so each import finishes before the next.
+                # For EACH matching PR, run copybara in the PINNED olivr/copybara
+                # image. The image entrypoint is ENV-DRIVEN and ignores CLI args
+                # (google/copybara#158): it runs
+                #   java -jar copybara.jar $COPYBARA_OPTIONS $COPYBARA_SUBCOMMAND \
+                #       $COPYBARA_CONFIG $COPYBARA_WORKFLOW $COPYBARA_SOURCEREF
+                # so the PR number is supplied via COPYBARA_SOURCEREF (NOT as a
+                # positional). This mirrors the proven export invocation; the only
+                # addition for PR-mode is COPYBARA_SOURCEREF. The concurrency group
+                # serializes whole cycles; this loop is sequential within a cycle so
+                # each import finishes before the next.
                 imported=0; noop=0
                 while IFS= read -r pr_number; do
                   [ -z "$pr_number" ] && continue
                   echo "::group::Importing ${COMPONENT} PR #${pr_number}"
+
+                  # The pinned 2023-01 copybara image does NOT resolve
+                  # ${GITHUB_PR_NUMBER} in pr_branch/title/body, so bake the real PR
+                  # number into a throwaway config copy via the @@PR_NUMBER@@
+                  # placeholder (see copy.bara.sky). $pr_number is digits-only here
+                  # (validated by the poll's --jq number output), so the sed is safe.
+                  resolved_cfg="$RUNNER_TEMP/copy.bara.${COMPONENT}.${pr_number}.sky"
+                  sed "s/@@PR_NUMBER@@/${pr_number}/g" \
+                    "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky" > "$resolved_cfg"
 
                   set +e
                   docker run --rm \
                     -v "$GITHUB_WORKSPACE":/usr/src/app \
                     -v "$HOME/.git-credentials":/root/.git-credentials \
                     -v "$HOME/.gitconfig":/root/.gitconfig \
-                    -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                    -v "$resolved_cfg":/root/copy.bara.sky \
                     -e COPYBARA_CONFIG=/root/copy.bara.sky \
                     -e COPYBARA_WORKFLOW="$WF" \
+                    -e COPYBARA_SOURCEREF="$pr_number" \
                     -e COPYBARA_OPTIONS="--ignore-noop" \
                     -e GITHUB_TOKEN="$IMPORT_TOKEN" \
                     olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
-                    copybara "$WF" "$pr_number"
+                    copybara
                   rc=$?
                   set -e
 
