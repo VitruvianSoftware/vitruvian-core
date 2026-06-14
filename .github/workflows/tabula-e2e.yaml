@@ -52,6 +52,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Free up runner disk space
+        # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
+        # Chromium) plus coverage instrumentation can exhaust the ~14GB free on
+        # a stock ubuntu-latest runner. A prior run died with 86MB left: a Java
+        # toolchain build action failed mid-write and the whole lane was
+        # reported as a (misleading) flaky e2e failure. Reclaim large
+        # preinstalled SDKs this lane never touches before building (~12GB).
+        #
+        # Do NOT remove /usr/local/lib/android: rules_android in the module
+        # graph fetches an android_sdk_repository at analysis time and aborts the
+        # build if the SDK is gone ("No Android SDK apis found"), even though no
+        # Android target is built here. Likewise keep /opt/hostedtoolcache/node
+        # and .../Python (used by `npx playwright`); only CodeQL is removed from
+        # the toolcache. `|| true` so a missing path is never fatal.
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/powershell \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
+
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
