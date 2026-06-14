@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.18...tabula-api-v0.1.19) (2026-06-14)
+
+
+### Bug Fixes
+
+* **tabula:** harden workspace PUT so a bad resource URL can't wedge sync ([#126](https://github.com/VitruvianSoftware/vitruvian-core/issues/126)) ([8432fbb](https://github.com/VitruvianSoftware/vitruvian-core/commit/8432fbb93e5c5a244e0a8704e51d3a04cee3ebbc))
+
 ## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.17...tabula-api-v0.1.18) (2026-06-14)
 
 
