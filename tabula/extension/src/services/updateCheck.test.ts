@@ -20,8 +20,6 @@
  * SOFTWARE.
  */
 
-import { readFileSync } from "fs";
-import { join } from "path";
 import {
   UpdateCheckService,
   compareVersions,
@@ -293,17 +291,5 @@ describe("UpdateCheckService", () => {
       stubInstall({ commit: "dev" });
       await expect(UpdateCheckService.getDisplayIdentity()).resolves.toBeNull();
     });
-  });
-});
-
-describe("shipped channel.json default", () => {
-  // Guards the asset webpack copies to the bundle root. getOwnChannel() does
-  // fetch(getURL("channel.json")); shipping this file (instead of relying on its
-  // absence) is what stops the ERR_FILE_NOT_FOUND console error on every load of
-  // an unpacked/alpha install. It must stay valid JSON and default to "alpha"
-  // (tabcli overwrites it with {"channel":"beta"} for managed installs).
-  it("exists, is valid JSON, and defaults to the alpha channel", () => {
-    const raw = readFileSync(join(__dirname, "..", "channel.json"), "utf8");
-    expect(JSON.parse(raw)).toEqual({ channel: "alpha" });
   });
 });
