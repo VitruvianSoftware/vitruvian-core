@@ -76,7 +76,7 @@ Apply by hand to tools/copybara/copy.bara.sky (current file is 228 lines, header
    - CRITICAL: experimental_custom_rev_id = _standalone_rev_id  (i.e. DEVX_REV_ID, NOT MONOREPO_REV_ID — this is the fix to both review blockers about inverted/colliding labels; it makes export_devx's unchanged skip-guard drop the PR-imported commit and prevents the export loop)
    - transformations = [core.dynamic_transform(impl=_make_skip_guard("import_pr_"+_wf, MONOREPO_REV_ID, "the vitruvian-core monorepo export")), core.move("", _name)]  (guard checks MONOREPO_REV_ID = the EXPORT label, so an export-origin change is never re-imported)
 
-Net loaded-config delta: export_mcp_slack/homelab/nexus-agent and import_mcp_slack/homelab/nexus-agent are byte-for-byte identical to today; export_devx is identical to today; import_devx is no longer emitted; import_pr_devx is new. conflict-precheck.sh is unchanged and is never invoked for devx (the import-pr workflow does not call it; export_devx's precheck still works because its import baseline = DEVX_REV_ID is still laid down by merged+exported PR-imports).
+Net loaded-config delta: export_mcp_slack/homelab/nexus-agent and import_mcp_slack/homelab/nexus-agent are byte-for-byte identical to today; export_devx is identical to today; import_devx is no longer emitted; import_pr_devx is new. The conflict pre-check is now the Go tool //tools/copybara/conflict_precheck (replacing the former conflict-precheck.sh) and is still never invoked for devx (the import-pr workflow does not call it; export_devx's precheck still works because its import baseline = DEVX_REV_ID is still laid down by merged+exported PR-imports).
 
 ## §B. New monorepo workflow — `.github/workflows/copybara-import-pr-devx.yaml`
 

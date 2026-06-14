@@ -115,6 +115,12 @@ jobs:
                 # copybara step has its own container git config and is unaffected).
                 persist-credentials: false
 
+            - name: Install Bazel
+              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+              with:
+                bazelisk-cache: true
+                repository-cache: true
+
             - name: Mint scoped GitHub App token (<component> + vitruvian-core)
               id: app-token
               # vitruvian-copybara-sync App: Contents + Pull requests : write on the
@@ -193,83 +199,34 @@ jobs:
             - name: Import each labelled PR (mirror PR -> monorepo PR under <component>/)
               if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
               env:
-                IMPORT_TOKEN: ${{ steps.app-token.outputs.token }}
+                # The Go sync wrapper passes GITHUB_TOKEN through to the copybara
+                # container for the github_pr_* REST calls.
+                GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                 COMPONENT: ${{ matrix.component }}
               run: |
                 set -euo pipefail
 
                 prs="$(cat /tmp/import_prs.txt)"
-                # copy.bara.sky workflow name: import_pr_<component> with '-' -> '_'.
-                WF="import_pr_${COMPONENT//-/_}"
 
-                # For EACH matching PR, run copybara in the PINNED olivr/copybara
-                # image. The image entrypoint is ENV-DRIVEN and ignores CLI args
-                # (google/copybara#158): it runs
-                #   java -jar copybara.jar $COPYBARA_OPTIONS $COPYBARA_SUBCOMMAND \
-                #       $COPYBARA_CONFIG $COPYBARA_WORKFLOW $COPYBARA_SOURCEREF
-                # so the PR number is supplied via COPYBARA_SOURCEREF (NOT as a
-                # positional). This mirrors the proven export invocation; the only
-                # addition for PR-mode is COPYBARA_SOURCEREF. The concurrency group
-                # serializes whole cycles; this loop is sequential within a cycle so
-                # each import finishes before the next.
-                imported=0; noop=0
+                # For EACH matching PR, drive the TESTED Go wrapper
+                # (//tools/copybara/sync import_pr). It rewrites the @@PR_NUMBER@@
+                # placeholder, sets COPYBARA_SOURCEREF, and runs the pinned
+                # olivr/copybara image (the image entrypoint is env-driven and
+                # ignores CLI args, google/copybara#158). The wrapper exits 0 for
+                # success AND no-op (skip-guard / nothing to import); a real failure
+                # exits non-zero and fails this step under `set -e`. The concurrency
+                # group serializes whole cycles; this loop is sequential within a
+                # cycle so each import finishes before the next.
+                imported=0
                 while IFS= read -r pr_number; do
                   [ -z "$pr_number" ] && continue
                   echo "::group::Importing ${COMPONENT} PR #${pr_number}"
-
-                  # The pinned 2023-01 copybara image does NOT resolve
-                  # ${GITHUB_PR_NUMBER} in pr_branch/title/body, so bake the real PR
-                  # number into a throwaway config copy via the @@PR_NUMBER@@
-                  # placeholder (see copy.bara.sky). $pr_number is digits-only here
-                  # (validated by the poll's --jq number output), so the sed is safe.
-                  resolved_cfg="$RUNNER_TEMP/copy.bara.${COMPONENT}.${pr_number}.sky"
-                  sed "s/@@PR_NUMBER@@/${pr_number}/g" \
-                    "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky" > "$resolved_cfg"
-
-                  set +e
-                  docker run --rm \
-                    -v "$GITHUB_WORKSPACE":/usr/src/app \
-                    -v "$HOME/.git-credentials":/root/.git-credentials \
-                    -v "$HOME/.gitconfig":/root/.gitconfig \
-                    -v "$resolved_cfg":/root/copy.bara.sky \
-                    -e COPYBARA_CONFIG=/root/copy.bara.sky \
-                    -e COPYBARA_WORKFLOW="$WF" \
-                    -e COPYBARA_SOURCEREF="$pr_number" \
-                    -e COPYBARA_OPTIONS="--ignore-noop" \
-                    -e GITHUB_TOKEN="$IMPORT_TOKEN" \
-                    olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
-                    copybara
-                  rc=$?
-                  set -e
-
-                  # 0 = monorepo PR opened/updated; 4 = NO_OP. NO_OP means either the
-                  # skip-guard dropped an export-origin change, OR the PR was
-                  # unlabelled between poll and import (required_labels no longer
-                  # match), OR there is nothing new to import. All are correct and
-                  # idempotent, but we log exit 4 so a maintainer who labelled then
-                  # unlabelled is not surprised by a missing import.
-                  if [ "$rc" -eq 0 ]; then
-                    echo "Copybara OK (exit 0) for ${COMPONENT} PR #${pr_number} -- monorepo PR opened/updated."
-                    imported=$((imported + 1))
-                  elif [ "$rc" -eq 4 ]; then
-                    echo "::warning::Copybara NO_OP (exit 4) for ${COMPONENT} PR #${pr_number} -- skipped (export-origin change, nothing new, or unlabelled between poll and import). No monorepo PR change."
-                    noop=$((noop + 1))
-                  else
-                    echo "::error::Copybara ${WF} failed for ${COMPONENT} PR #${pr_number} (exit $rc)"
-                    echo "::endgroup::"
-                    exit "$rc"
-                  fi
+                  bazel run //tools/copybara/sync -- import_pr "${COMPONENT}" "${pr_number}"
+                  imported=$((imported + 1))
                   echo "::endgroup::"
                 done <<< "$prs"
 
-                echo "Import summary (${COMPONENT}): ${imported} opened/updated, ${noop} no-op."
-
-            - name: Install Bazel
-              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
-              uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
-              with:
-                bazelisk-cache: true
-                repository-cache: true
+                echo "Import summary (${COMPONENT}): ${imported} PR(s) processed."
 
             - name: Regenerate gazelle BUILD files on each import PR branch
               if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
