@@ -531,17 +531,32 @@ export class SyncService {
   ): Promise<"ok" | "drop"> {
     // Clone before sanitizing — never mutate the queued payload
     const workspace = { ...(operation.data as Workspace) };
-    // Sanitize data: Ensure tab IDs are numbers (sync issue fix)
-    // Some UI operations might have left them as strings.
-    // Also drop tabs without a URL (mid-navigation snapshots) — one invalid
-    // tab must not fail the whole workspace PUT.
+    // Sanitize tabs before they hit the API:
+    // - Drop tabs without a URL (mid-navigation snapshots) — one invalid tab
+    //   must not fail the whole workspace PUT.
+    // - Normalize the tab id. `id` is Chrome's ephemeral numeric runtime id (or
+    //   absent). The SERVER owns persistent tab identity: it regenerates string
+    //   ids like "tab_..." on every write and echoes them back in the response.
+    //   A round-tripped server id is therefore NOT a Chrome id — parseInt-ing it
+    //   yields NaN, which JSON.stringify serializes as `null`, which the API's
+    //   tab schema rejected (invalid_union -> 400 "Invalid input"). That failed
+    //   EVERY subsequent sync of an already-synced workspace, permanently. Keep
+    //   a genuine finite numeric id (some UI paths stringify it) and OMIT the
+    //   field otherwise, so we never emit NaN/null.
     if (workspace.tabs) {
       workspace.tabs = workspace.tabs
         .filter((tab) => !!tab.url)
-        .map((tab) => ({
-          ...tab,
-          id: typeof tab.id === "string" ? parseInt(tab.id, 10) : tab.id,
-        }));
+        .map((tab) => {
+          const numericId =
+            typeof tab.id === "string" ? parseInt(tab.id, 10) : tab.id;
+          const sanitized = { ...tab };
+          if (typeof numericId === "number" && Number.isFinite(numericId)) {
+            sanitized.id = numericId;
+          } else {
+            delete sanitized.id;
+          }
+          return sanitized;
+        });
     }
 
     try {

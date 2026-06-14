@@ -76,6 +76,35 @@ describe("TabSchema wire-format mapping", () => {
     expect(() => TabSchema.parse({ url: "" })).toThrow();
   });
 
+  // Regression: the client's parseInt sanitizer turned server-generated string
+  // tab ids ("tab_...") into NaN, which JSON.stringify sends as null. The schema
+  // must tolerate that (and any absent id) instead of 400-ing the whole PUT —
+  // the service regenerates tab ids regardless (buildTabRows).
+  it("accepts a null tab id (id is non-identifying; the service regenerates it)", () => {
+    expect(() =>
+      TabSchema.parse({ id: null, url: "https://example.com" }),
+    ).not.toThrow();
+  });
+
+  it("accepts a round-tripped server string id and an absent id", () => {
+    expect(() =>
+      TabSchema.parse({ id: "tab_lq3x_abc123", url: "https://example.com" }),
+    ).not.toThrow();
+    expect(() => TabSchema.parse({ url: "https://example.com" })).not.toThrow();
+  });
+
+  it("accepts a workspace PUT whose tabs carry null ids", () => {
+    expect(() =>
+      WorkspaceUpdateSchema.parse({
+        name: "WS",
+        tabs: [
+          { id: null, url: "https://a.example", index: 0 },
+          { id: "tab_zzz", url: "https://b.example", index: 1 },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
   it("maps tab fields inside a full workspace update payload", () => {
     const parsed = WorkspaceUpdateSchema.parse({
       name: "WS",
