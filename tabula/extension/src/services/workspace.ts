@@ -564,12 +564,16 @@ export class WorkspaceService {
   /**
    * Save current tabs to a workspace
    */
-  static async saveCurrentTabsToWorkspace(id: string): Promise<Workspace> {
-    return this.withLock(() => this._saveCurrentTabsToWorkspace(id));
+  static async saveCurrentTabsToWorkspace(
+    id: string,
+    options: { claim?: boolean } = {},
+  ): Promise<Workspace> {
+    return this.withLock(() => this._saveCurrentTabsToWorkspace(id, options));
   }
 
   private static async _saveCurrentTabsToWorkspace(
     id: string,
+    options: { claim?: boolean } = {},
   ): Promise<Workspace> {
     try {
       const workspaces = await StorageService.getWorkspaces();
@@ -647,6 +651,10 @@ export class WorkspaceService {
           action: "save",
           entityId: workspaces[index].id,
           data: workspaces[index],
+          // claim: become the primary device for this space. Without it a
+          // tab-save from a non-primary device no-ops against the holder's
+          // sticky lease (see WorkspaceService.updateWorkspace, server side).
+          meta: options.claim ? { claimActiveDevice: true } : undefined,
         });
       }
       return workspaces[index];
@@ -775,7 +783,16 @@ export class WorkspaceService {
    */
   static async restoreWorkspaceTabs(
     id: string,
-    options: { inNewWindow?: boolean; closeCurrentTabs?: boolean } = {},
+    options: {
+      inNewWindow?: boolean;
+      closeCurrentTabs?: boolean;
+      /**
+       * Restore this explicit set of tabs instead of the workspace's stored
+       * session. Used by the cross-device "Apply" action to open only the
+       * subset of the primary device's tabs the user selected.
+       */
+      tabs?: Tab[];
+    } = {},
   ): Promise<void> {
     return this.withLock(async () => {
       try {
@@ -824,15 +841,18 @@ export class WorkspaceService {
           console.log("[restoreWorkspaceTabs] Tabs to close:", tabsToClose);
         }
 
-        // 2. Open new tabs from workspace
+        // 2. Open new tabs from the workspace (or an explicit override set, e.g.
+        // the subset chosen in the cross-device "Apply" prompt).
         // Filter out extension pages (like the dashboard) to prevent duplication/loops
-        const cleanTabs = (workspace.tabs || []).filter((tab) => {
-          const url = tab.url || "";
-          return (
-            !url.startsWith("chrome-extension://") &&
-            !url.includes("dashboard.html")
-          );
-        });
+        const cleanTabs = (options.tabs ?? workspace.tabs ?? []).filter(
+          (tab) => {
+            const url = tab.url || "";
+            return (
+              !url.startsWith("chrome-extension://") &&
+              !url.includes("dashboard.html")
+            );
+          },
+        );
 
         // eslint-disable-next-line no-console
         console.log("[restoreWorkspaceTabs] Opening tabs:", cleanTabs.length);

@@ -450,6 +450,124 @@ describe("WorkspaceService", () => {
       expect(data.activeDeviceSeenAt).toBeUndefined();
     });
 
+    // --- "one primary session per space": sticky active-device lease ---
+
+    const freshLeaseRow = (deviceId: string, version = 0) => [
+      {
+        version,
+        settings: {},
+        active_device_id: deviceId,
+        active_device_seen_at: new Date(), // within ACTIVE_DEVICE_STALE_MS
+      },
+    ];
+
+    it("passive tab-sync (fresh foreign lease) is a no-op: no write, primary tabs preserved", async () => {
+      const tx = makeTx();
+      tx.$queryRaw.mockResolvedValue(freshLeaseRow("primary-device", 4));
+      const current = { id: workspaceId, tabs: [{ id: "t1" }], version: 4 };
+      tx.workspace.findUnique.mockResolvedValue(current);
+      useTx(tx);
+
+      const result = await WorkspaceService.updateWorkspace(
+        userId,
+        workspaceId,
+        {
+          tabs: [
+            {
+              url: "https://mine.com",
+              title: "Mine",
+              isPinned: false,
+              metadata: {},
+            },
+          ],
+          tabSync: true,
+        },
+        { deviceId: "other-device" },
+      );
+
+      // Returns the authoritative current state, unchanged...
+      expect(result).toBe(current);
+      // ...without writing anything or clobbering the primary's tab session.
+      expect(tx.workspace.update).not.toHaveBeenCalled();
+      expect(tx.tab.deleteMany).not.toHaveBeenCalled();
+      expect(tx.tab.createMany).not.toHaveBeenCalled();
+    });
+
+    it("passive tab-sync short-circuits BEFORE the baseVersion check (no 409 churn for a non-primary capture)", async () => {
+      const tx = makeTx();
+      tx.$queryRaw.mockResolvedValue(freshLeaseRow("primary-device", 9));
+      useTx(tx);
+
+      // A stale baseVersion would normally throw ConflictError — but a passive
+      // capture no-ops first, so the non-primary device never even sees a 409.
+      await expect(
+        WorkspaceService.updateWorkspace(
+          userId,
+          workspaceId,
+          { tabs: [], tabSync: true, baseVersion: 1 },
+          { deviceId: "other-device" },
+        ),
+      ).resolves.toBeDefined();
+      expect(tx.workspace.update).not.toHaveBeenCalled();
+    });
+
+    it("claimActiveDevice DOES take over a fresh foreign lease (explicit switch)", async () => {
+      const tx = makeTx();
+      tx.$queryRaw.mockResolvedValue(freshLeaseRow("primary-device"));
+      useTx(tx);
+
+      await WorkspaceService.updateWorkspace(
+        userId,
+        workspaceId,
+        { claimActiveDevice: true },
+        { deviceId: "taking-over" },
+      );
+
+      const { data } = tx.workspace.update.mock.calls[0][0];
+      expect(data.activeDeviceId).toBe("taking-over");
+    });
+
+    it("renews the lease on a tab-sync from the device that already holds it", async () => {
+      const tx = makeTx();
+      tx.$queryRaw.mockResolvedValue(freshLeaseRow("me"));
+      useTx(tx);
+
+      await WorkspaceService.updateWorkspace(
+        userId,
+        workspaceId,
+        { tabSync: true },
+        { deviceId: "me" },
+      );
+
+      const { data } = tx.workspace.update.mock.calls[0][0];
+      expect(data.activeDeviceId).toBe("me");
+      expect(data.activeDeviceSeenAt).toBeInstanceOf(Date);
+    });
+
+    it("takes over a STALE foreign lease on a routine tab-sync", async () => {
+      const tx = makeTx();
+      tx.$queryRaw.mockResolvedValue([
+        {
+          version: 0,
+          settings: {},
+          active_device_id: "idle-device",
+          active_device_seen_at: new Date(Date.now() - 3 * 60 * 1000), // stale (>2m)
+        },
+      ]);
+      useTx(tx);
+
+      await WorkspaceService.updateWorkspace(
+        userId,
+        workspaceId,
+        { tabSync: true },
+        { deviceId: "me" },
+      );
+
+      const { data } = tx.workspace.update.mock.calls[0][0];
+      // Lease was stale -> not passive -> wrote and took the lease.
+      expect(data.activeDeviceId).toBe("me");
+    });
+
     it("should always generate fresh server tab ids and keep the client id in metadata", async () => {
       const tx = makeTx();
       useTx(tx);
