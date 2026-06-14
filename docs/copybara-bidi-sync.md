@@ -65,7 +65,7 @@ flowchart LR
 | `.github/workflows/copybara-export-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `push` path trigger (`<comp>/**`) + per-component concurrency group; calls the export reusable. |
 | `.github/workflows/copybara-import-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `repository_dispatch` trigger (type `<comp>-import`) + per-component concurrency; calls the import reusable. |
 | `.github/workflows/copybara-drift-check.yaml` | vitruvian-core | Loops all 4 components, diffs each subtree against its standalone (gated on whether the component is seeded). |
-| `tools/copybara/conflict-precheck.sh` | vitruvian-core | Component-aware pre-push conflict guard (run by both reusables). |
+| `tools/copybara/conflict_precheck/` (Go) | vitruvian-core | Component-aware pre-push conflict guard; Bazel-built, run via `bazel run //tools/copybara/conflict_precheck` (invoked by the export reusable). |
 | `.github/workflows/sync-to-monorepo.yaml` | **each standalone** | On push, mints a GitHub App token and fires the `repository_dispatch` into vitruvian-core. The only sync machinery a standalone carries. |
 | `infrastructure/pulumi/pkg/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + three Actions secrets. |
 
@@ -249,7 +249,7 @@ longer corrupts silently — you get a failing run pointing you at the diverged 
 hand (see the diff in the run log).
 
 **Conflicts are now also PREVENTED (implemented):** each sync workflow runs
-[`tools/copybara/conflict-precheck.sh`](../tools/copybara/conflict-precheck.sh) **before** Copybara.
+the Go pre-check [`tools/copybara/conflict_precheck`](../tools/copybara/conflict_precheck) (`bazel run //tools/copybara/conflict_precheck`) **before** Copybara.
 It refuses to sync (exit 1, red, with an error annotation) when the **peer** repo has an un-synced
 *genuine* change — a commit that does **not** carry the other direction's rev-id label, i.e. a real
 edit not yet reflected back. Syncing then would overwrite it. Because **both** directions run the
