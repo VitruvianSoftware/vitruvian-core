@@ -8,6 +8,10 @@
 > Related references: [`workona_walkthrough.md`](./workona_walkthrough.md),
 > [`../architecture/workona_research.md`](../architecture/workona_research.md),
 > [`ui-design-language.md`](./ui-design-language.md), [`REQUIREMENTS.md`](./REQUIREMENTS.md).
+>
+> **Tracking:** organized as GitHub milestones **M1 Organizer Hardening · M2 Sync & Sharing
+> Foundation · M3 Connected Layer · M4 Team & Collaboration Hub** — §5 maps each gap to one. This
+> document is the narrative; the milestones and their issues are the tracker.
 
 ## Why this rewrite
 
@@ -16,9 +20,9 @@ Search?") and concluded most gaps were closed. That is accurate but measures the
 Workona's UX advantage was never its data model — which Tabula has cloned with high fidelity, down to
 the `#3370ff` blue. Its moat is the **connected layer** (live integrations, cross-surface search,
 collaboration, a Teams tier, template automation) and the **depth** of Notes/Tasks. This document
-scores those axes and frames the result for an upcoming release.
+scores those axes and maps the result onto the project's M1–M4 milestones.
 
-## 1. Executive summary (release lens)
+## 1. Executive summary
 
 Tabula is ready to ship as what it actually is: a fast, private, **local-first** tab-and-workspace
 organizer with a more generous free tier — at genuine parity with Workona's *organizer shell* and
@@ -27,7 +31,7 @@ replacement," because Workona's stickiness comes from a **connected workspace** 
 Google/GitHub/Confluence/Slack integrations, cross-surface search, real-time collaboration, a Teams
 tier, and a template-automation engine) that Tabula has not built yet.
 
-Release strategy follows directly: **lead with the wedge, do not over-claim the gap.**
+Strategy follows directly: **lead with the wedge, do not over-claim the gap.**
 
 ## 2. Pricing & positioning
 
@@ -110,7 +114,19 @@ Driving the live Workona app added/widened several findings the docs alone did n
 - **Visual verdict flips to Tabula's favor.** Workona's live UI is clean but flat and utilitarian;
   Tabula's frosted-glass modals + framer-motion polish are at or above that bar.
 
-## 5. Gap register (prioritized for the release)
+## 5. Gap register (mapped to milestones)
+
+The work is tracked under four GitHub milestones (see §6 for what each delivers):
+
+| Milestone                          | Gaps it covers                                                                            | Issues           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | ---------------- |
+| **M1 · Organizer Hardening**       | Onboarding; hide placeholder Share; parity round-out (archive, file upload, multi-window) | #137, #138       |
+| **M2 · Sync & Sharing Foundation** | Verified sync; sharing (relay + permissions/ACL); web companion                           | #136, #139, #140 |
+| **M3 · Connected Layer**           | Drive integration (MVP) → GitHub/Slack; universal search; Notes/Tasks depth; Create palette; split layout | #48 (epic) |
+| **M4 · Team & Collaboration Hub**  | Real-time collaboration, roles/presence, Teams tier; templates + automations; enterprise  | #49 (epic)       |
+
+The detailed register below adds severity/status/effort; the original P0–P3 priorities map to
+milestone order (P0/P1 → M1/M2, P2 → M3, P3 → M3/M4):
 
 | Priority | Gap                                   | Severity      | Tabula status     | Effort   | Recommendation                                        |
 | -------- | ------------------------------------- | ------------- | ----------------- | -------- | ----------------------------------------------------- |
@@ -128,27 +144,27 @@ Driving the live Workona app added/widened several findings the docs alone did n
 | **P3**   | Archive, file upload, ✈ share, New Tab page | 🟡      | partial           | Low      | Quick parity round-out                                |
 | **P3**   | Multi-window spaces                    | 🟡            | designed          | Med      | Phase 2 as planned                                    |
 
-## 6. Recommended release scope
+## 6. Milestone sequencing & positioning
 
-**Ship & market now (true, defensible):**
+**M1 — the organizer + the wedge (solid today):**
 
 - The organizer core — Spaces/Sections/Resources/Notes/Tasks, drag-and-drop, color accents, Cmd+K
   **local** search, tab suspension, glassmorphic polish.
 - The wedge — local-first, offline, private, 10 free workspaces, $4.99 Pro.
 
-**Release-blocking decisions (tracked as issues):**
+**M1–M2 — resolve placeholders & build the foundation (tracked as issues):**
 
-- **Sync messaging** — do not advertise "cross-device sync" until P0 E2E verification passes. If not
-  ready, ship single-device and frame sync as "coming." Shipping unproven sync is the biggest
+- **Sync messaging** — don't surface "cross-device sync" in UI/marketing until M2 verification (#136)
+  passes. Until then, single-device or framed as "coming." Shipping unproven sync is the biggest
   reputational risk.
-- **The Share button** — currently a placeholder. For v1, either ship the documented relay flow or
-  hide the button. A dead Share button reads as broken.
-- **Onboarding** — cheapest high-leverage add before launch; even a 3-step first-run materially lifts
+- **The Share button** — currently a placeholder. Hide it now (#137, M1); the real relay + permissions
+  land in M2 (#139 backend, #140 web companion). A dead Share button reads as broken.
+- **Onboarding** — cheapest high-leverage add (#138, M1); even a 3-step first-run materially lifts
   activation.
 
-**Explicitly defer & do not over-claim:** integrations (Drive/GitHub/Confluence/Slack), universal
+**M3–M4 — sequenced, not premature claims:** integrations (Drive/GitHub/Confluence/Slack), universal
 cross-surface search, real-time collaboration, Teams, templates/automations, the cross-app Create
-palette, split layouts.
+palette, split layouts. These are the post-foundation roadmap, decomposed just-in-time.
 
 **Positioning guardrail:** market Tabula as *"the private, local-first workspace organizer,"* **not**
 *"a Workona alternative."* The moment a head-to-head is invited, the connected-layer gap (rows 16–22)
