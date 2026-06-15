@@ -22,9 +22,11 @@
 # extension against a fully hermetic Bazel-managed stack (PostgreSQL, Redis,
 # migrations, the Fastify API). e2e-tagged targets are excluded from the
 # default test sweep (.bazelrc) and run only here; Chromium's host system
-# libraries are the one non-hermetic input, installed below. Coverage for the
-# tabula unit/integration suites (jest coverageThreshold enforcement) also
-# runs in this lane.
+# libraries are the one non-hermetic input, installed below.
+#
+# jest coverageThreshold enforcement runs in a SEPARATE, parallel `coverage`
+# job (below) rather than as a second step in this lane — the slow Playwright
+# run and the coverage re-run used to stack sequentially on the critical path.
 
 name: tabula-e2e
 
@@ -94,8 +96,26 @@ jobs:
       - name: Run E2E suite
         run: bazel test --config=e2e //tabula/...
 
-      - name: Enforce coverage thresholds
-        run: bazel coverage //tabula/...
+      - name: Report slowest E2E tests
+        # Surface the per-test durations the 'list' reporter wrote into Bazel's
+        # test.log, so the lane's real cost is visible at a glance. Best-effort;
+        # never fails the build.
+        if: always()
+        continue-on-error: true
+        run: |
+          log="bazel-testlogs/tabula/extension/e2e/test.log"
+          if [ ! -f "$log" ]; then echo "no test.log at $log"; exit 0; fi
+          echo "### Slowest E2E tests (top 25, milliseconds)"
+          sed -E 's/\x1b\[[0-9;]*m//g' "$log" \
+            | grep -E '\([0-9.]+(ms|s|m)\)[[:space:]]*$' \
+            | awk '{
+                d=$NF; gsub(/[()]/,"",d);
+                if (d ~ /ms$/)      ms=substr(d,1,length(d)-2)+0;
+                else if (d ~ /m$/)  ms=substr(d,1,length(d)-1)*60000;
+                else                ms=substr(d,1,length(d)-1)*1000;
+                printf "%8.0f\t%s\n", ms, $0;
+              }' \
+            | sort -rn | head -25
 
       - name: Upload Playwright artifacts on failure
         if: failure()
@@ -104,3 +124,38 @@ jobs:
           name: playwright-results
           path: bazel-testlogs/tabula/extension/e2e/
           retention-days: 7
+
+  coverage:
+    # jest coverageThreshold enforcement for the tabula unit/integration suites.
+    # Runs in PARALLEL with the `e2e` job: `bazel coverage` excludes e2e-tagged
+    # targets (the coverage command inherits --test_tag_filters=-e2e), so this no
+    # longer stacks ~80s onto the e2e critical path. Needs the Bazel stack but
+    # not Chromium.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free up runner disk space
+        # Coverage instrumentation is disk-heavy; reclaim the same unused SDKs as
+        # the e2e job (see that step for the rationale; the Android SDK is kept).
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/powershell \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          bazelrc: |
+            common --announce_rc --color=yes
+            common --show_progress_rate_limit=60 --show_timestamps
+
+      - name: Enforce coverage thresholds
+        run: bazel coverage //tabula/...
