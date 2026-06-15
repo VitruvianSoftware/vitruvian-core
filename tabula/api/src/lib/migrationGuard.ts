@@ -126,9 +126,14 @@ export async function findMissingRequiredColumns(
   let lastErr: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
+      // information_schema.columns exposes table_name/column_name as the
+      // Postgres `name` type (domain sql_identifier). Prisma's $queryRaw
+      // cannot deserialize `name` ("Failed to deserialize column of type
+      // 'name'"), which crashed this probe at startup and stopped the API
+      // from ever becoming healthy. Cast to text so Prisma can map them.
       const rows = await prisma.$queryRaw<
         { table_name: string; column_name: string }[]
-      >`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`;
+      >`SELECT table_name::text AS table_name, column_name::text AS column_name FROM information_schema.columns WHERE table_schema = 'public'`;
       const present = new Set(
         rows.map((r) => `${r.table_name}.${r.column_name}`),
       );
