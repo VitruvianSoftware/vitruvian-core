@@ -47,6 +47,10 @@ export interface ExtensionSettings {
   theme: "light" | "dark" | "auto";
   autoSave: boolean;
   tabCloseMode: "hybrid" | "id-only";
-  /** Whether the first-run onboarding has been completed or skipped (#138). */
-  onboardingCompleted: boolean;
+  /**
+   * Whether the first-run onboarding has been completed or skipped (#138).
+   * Optional so existing settings objects (and other consumers) remain valid;
+   * absent is treated as "not completed".
+   */
+  onboardingCompleted?: boolean;
 }

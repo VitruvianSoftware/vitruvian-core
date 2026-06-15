@@ -22,20 +22,20 @@
 
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { OnboardingModal } from "./OnboardingModal";
+import { OnboardingModal, OnboardingModalProps } from "./OnboardingModal";
 
-const setup = (overrides: Record<string, unknown> = {}) => {
-  const props = {
+const setup = (overrides: Partial<OnboardingModalProps> = {}) => {
+  const mocks = {
     isOpen: true,
     onSkip: jest.fn(),
     onComplete: jest.fn(),
     onCreateSpace: jest.fn().mockResolvedValue(undefined),
     onAddResource: jest.fn().mockResolvedValue(undefined),
     onSaveTabs: jest.fn().mockResolvedValue(undefined),
-    ...overrides,
   };
-  render(<OnboardingModal {...(props as never)} />);
-  return props;
+  const props: OnboardingModalProps = { ...mocks, ...overrides };
+  render(<OnboardingModal {...props} />);
+  return mocks;
 };
 
 const createSpace = async (name = "Work") => {
