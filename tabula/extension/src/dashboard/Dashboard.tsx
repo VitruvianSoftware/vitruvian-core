@@ -29,6 +29,7 @@ import {
 import { useWorkspaceStore } from "../stores/workspace";
 import { WorkspaceService } from "../services/workspace";
 import type { Workspace } from "../types";
+import { FEATURE_FLAGS } from "../constants/features";
 import "../styles/dashboard.css";
 import { Modal } from "../components/Modal";
 import { Icon } from "../components/icons";
@@ -1265,7 +1266,10 @@ export const Dashboard: React.FC = () => {
                 className="flex gap-sm"
                 style={{ minWidth: "80px", justifyContent: "flex-end" }}
               >
-                <button className="btn btn-primary">Share</button>
+                {/* Share — hidden until sharing ships (M2: #139/#140). See #137. */}
+                {FEATURE_FLAGS.SHARING_ENABLED && (
+                  <button className="btn btn-primary">Share</button>
+                )}
               </div>
             </div>
 

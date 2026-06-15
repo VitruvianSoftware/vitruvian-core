@@ -25,6 +25,7 @@ import { MenuOverlay } from "./MenuOverlay";
 import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
+import { FEATURE_FLAGS } from "../constants/features";
 import type { Workspace, SpaceGroup } from "../types";
 
 // Color options for workspace
@@ -136,15 +137,17 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
             className="dropdown-menu"
             style={{ right: 0, top: "100%", minWidth: "180px", zIndex: 20 }}
           >
-            {/* Share (placeholder) */}
-            <div
-              className="dropdown-item"
-              style={{ opacity: 0.5, cursor: "not-allowed" }}
-              title="Coming soon"
-            >
-              <Icon name="share" size="sm" />
-              Share
-            </div>
+            {/* Share — hidden until sharing ships (M2: #139/#140). See #137. */}
+            {FEATURE_FLAGS.SHARING_ENABLED && (
+              <div
+                className="dropdown-item"
+                style={{ opacity: 0.5, cursor: "not-allowed" }}
+                title="Coming soon"
+              >
+                <Icon name="share" size="sm" />
+                Share
+              </div>
+            )}
 
             {/* Add a description (placeholder) */}
             <div

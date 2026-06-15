@@ -449,6 +449,17 @@ describe("Dashboard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("should not render the placeholder Share button while sharing is disabled (#137)", async () => {
+    await act(async () => {
+      render(<Dashboard />);
+    });
+    // The header still renders (search bar present) but the inert Share
+    // button must be gone until real sharing ships (M2: #139/#140).
+    expect(
+      screen.queryByRole("button", { name: "Share" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("should handle adding a new space group via Modal", async () => {
     mockCreateSpaceGroup.mockResolvedValue({ id: "new-group" });
 
