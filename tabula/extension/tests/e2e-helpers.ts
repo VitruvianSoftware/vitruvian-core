@@ -489,6 +489,33 @@ async function ensureAnchorPage(
 }
 
 /**
+ * Suppress the first-run onboarding modal (#138) for tests that aren't
+ * exercising it. The extension auto-opens the dashboard at install with zero
+ * workspaces, which triggers the onboarding overlay before a test can seed
+ * data — and that overlay then intercepts pointer events. Mark onboarding as
+ * completed (merging into any existing settings) and reload so the dashboard
+ * mounts without it. Best-effort: never let this break a test's setup.
+ */
+async function suppressOnboarding(page: Page): Promise<void> {
+  try {
+    await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const storage = (window as any).chrome?.storage?.local;
+      if (!storage) return;
+      const current =
+        (await storage.get("tabula_settings")).tabula_settings || {};
+      await storage.set({
+        tabula_settings: { ...current, onboardingCompleted: true },
+      });
+    });
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+  } catch {
+    // Best-effort only.
+  }
+}
+
+/**
  * Get or create a dashboard page. Prefers reusing the existing pinned dashboard tab.
  * Falls back to creating a new page if no existing dashboard is found.
  *
@@ -521,6 +548,8 @@ export async function getOrCreateDashboardPage(
         await survivor.bringToFront();
         // eslint-disable-next-line no-await-in-loop
         await survivor.waitForLoadState("domcontentloaded");
+        // eslint-disable-next-line no-await-in-loop
+        await suppressOnboarding(survivor);
         return survivor;
       }
     }
@@ -535,6 +564,7 @@ export async function getOrCreateDashboardPage(
   await closeDuplicateDashboardTabs(context, extensionId);
   const finalCheck = await getDashboardPage(context, extensionId);
   if (finalCheck) {
+    await suppressOnboarding(finalCheck);
     return finalCheck;
   }
 
@@ -543,5 +573,6 @@ export async function getOrCreateDashboardPage(
   const page = await context.newPage();
   await page.goto(dashboardUrl);
   await page.waitForLoadState("domcontentloaded");
+  await suppressOnboarding(page);
   return page;
 }
