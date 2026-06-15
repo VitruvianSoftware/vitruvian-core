@@ -54,11 +54,16 @@ export default defineConfig({
   // Pin workers explicitly: Playwright's core-count detection overshoots
   // Bazel's local resource accounting.
   workers: 2,
-  reporter: "line",
+  // 'list' in CI prints each test with its duration (captured in Bazel's
+  // test.log), so the lane can report its slowest tests; 'line' stays compact
+  // for local runs.
+  reporter: process.env.CI ? "list" : "line",
   use: {
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "on", // Enable video recording to verify single dashboard tab
+    // Record video only for failures. Recording every test (the old "on") is
+    // pure CPU/IO overhead on green runs — and green is the common case.
+    video: "retain-on-failure",
   },
 
   projects: [
