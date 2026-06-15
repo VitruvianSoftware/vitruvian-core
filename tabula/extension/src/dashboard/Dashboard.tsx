@@ -82,7 +82,6 @@ export const Dashboard: React.FC = () => {
 
   const {
     workspaces,
-    loading,
     spaceGroups,
     activeWorkspaceId,
     loadWorkspaces,
@@ -107,20 +106,11 @@ export const Dashboard: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const onboardingCheckedRef = useRef(false);
 
-  useEffect(() => {
-    if (loading || onboardingCheckedRef.current) return;
-    onboardingCheckedRef.current = true;
-    void (async () => {
-      try {
-        const settings = await StorageService.getSettings();
-        if (shouldShowOnboarding(settings, workspaces.length)) {
-          setShowOnboarding(true);
-        }
-      } catch {
-        // Non-blocking: never let onboarding detection break the dashboard.
-      }
-    })();
-  }, [loading, workspaces.length]);
+  // The first-run check runs AFTER loadWorkspaces() resolves (see the "Load
+  // initial data" effect below) so it reads the real loaded count. Deciding
+  // here would race the async load — workspaces is [] on first render even for
+  // returning users, which flashed the onboarding modal over a populated
+  // dashboard.
 
   const finishOnboarding = () => {
     setShowOnboarding(false);
@@ -379,9 +369,26 @@ export const Dashboard: React.FC = () => {
     return (groupId: string) => groupMap.get(groupId) || [];
   }, [sortedWorkspaces]);
 
-  // Load initial data
+  // Load initial data, then decide first-run onboarding from the loaded count.
   useEffect(() => {
-    loadWorkspaces();
+    let cancelled = false;
+    void (async () => {
+      await loadWorkspaces();
+      if (cancelled || onboardingCheckedRef.current) return;
+      onboardingCheckedRef.current = true;
+      try {
+        const settings = await StorageService.getSettings();
+        const count = useWorkspaceStore.getState().workspaces.length;
+        if (shouldShowOnboarding(settings, count)) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        // Non-blocking: never let onboarding detection break the dashboard.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [loadWorkspaces]);
 
   // URL-based workspace initialization moved below useWorkspaceSwitch to enable conflict detection

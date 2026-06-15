@@ -100,6 +100,17 @@ test.describe("Empty States", () => {
         tabula_access_token: "fake-token",
         tabula_workspaces: [], // No workspaces
         tabula_space_groups: [], // No groups
+        // Returning user (already onboarded) so the first-run onboarding modal
+        // (#138) does not overlay the empty state under test.
+        tabula_settings: {
+          autoSuspend: false,
+          suspendAfterMinutes: 30,
+          syncEnabled: false,
+          theme: "auto",
+          autoSave: true,
+          tabCloseMode: "hybrid",
+          onboardingCompleted: true,
+        },
       });
     });
     await page.reload();
@@ -158,6 +169,17 @@ test.describe("Empty States", () => {
         tabula_access_token: "fake-token",
         tabula_workspaces: [], // No workspaces
         tabula_space_groups: [], // No groups
+        // Returning user (already onboarded) so the first-run onboarding modal
+        // (#138) does not overlay the empty state under test.
+        tabula_settings: {
+          autoSuspend: false,
+          suspendAfterMinutes: 30,
+          syncEnabled: false,
+          theme: "auto",
+          autoSave: true,
+          tabCloseMode: "hybrid",
+          onboardingCompleted: true,
+        },
       });
     });
     await page.reload();
