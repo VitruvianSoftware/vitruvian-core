@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, pointerWithin } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -69,6 +69,10 @@ import { CrossDeviceSessionPopover } from "../components/CrossDeviceSessionPopov
 import type { CrossDeviceTab } from "../components/CrossDeviceSessionPopover";
 import { useCrossDeviceSession } from "./hooks/useCrossDeviceSession";
 import { WindowOwnershipService } from "../services/windowOwnership";
+import { OnboardingModal } from "../components/onboarding/OnboardingModal";
+import { shouldShowOnboarding } from "../components/onboarding/shouldShowOnboarding";
+import { StorageService } from "../services/storage";
+import { useSettingsStore } from "../stores/settings";
 
 export const Dashboard: React.FC = () => {
   useEffect(() => {
@@ -78,6 +82,7 @@ export const Dashboard: React.FC = () => {
 
   const {
     workspaces,
+    loading,
     spaceGroups,
     activeWorkspaceId,
     loadWorkspaces,
@@ -97,6 +102,57 @@ export const Dashboard: React.FC = () => {
 
   // Theme management
   const { theme, setTheme } = useTheme();
+
+  // First-run onboarding (#138)
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const onboardingCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || onboardingCheckedRef.current) return;
+    onboardingCheckedRef.current = true;
+    void (async () => {
+      try {
+        const settings = await StorageService.getSettings();
+        if (shouldShowOnboarding(settings, workspaces.length)) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        // Non-blocking: never let onboarding detection break the dashboard.
+      }
+    })();
+  }, [loading, workspaces.length]);
+
+  const finishOnboarding = () => {
+    setShowOnboarding(false);
+    void useSettingsStore
+      .getState()
+      .updateSettings({ onboardingCompleted: true })
+      .catch(() => {});
+  };
+
+  const handleOnboardingCreateSpace = async (name: string) => {
+    const ws = await createWorkspaceAction({ name });
+    setActiveWorkspaceAction(ws.id);
+  };
+
+  const handleOnboardingAddResource = async (input: {
+    title: string;
+    url: string;
+  }) => {
+    const id = useWorkspaceStore.getState().activeWorkspaceId;
+    if (!id) return;
+    await WorkspaceService.addResource(id, {
+      title: input.title || "New Resource",
+      url: input.url,
+    });
+    await loadWorkspaces();
+  };
+
+  const handleOnboardingSaveTabs = async () => {
+    const id = useWorkspaceStore.getState().activeWorkspaceId;
+    if (!id) return;
+    await useWorkspaceStore.getState().saveCurrentTabs(id);
+  };
 
   const [activeWorkspace, setActiveWorkspaceData] = useState<Workspace | null>(
     null,
@@ -1648,6 +1704,7 @@ export const Dashboard: React.FC = () => {
           onClose={() => setShowAccountSettings(false)}
           theme={theme}
           setTheme={setTheme}
+          onReplayOnboarding={() => setShowOnboarding(true)}
         />
       )}
 
@@ -1688,6 +1745,16 @@ export const Dashboard: React.FC = () => {
         isOpen={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         onSwitchWorkspace={handleSwitch}
+      />
+
+      {/* First-run onboarding (#138) */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onSkip={finishOnboarding}
+        onComplete={finishOnboarding}
+        onCreateSpace={handleOnboardingCreateSpace}
+        onAddResource={handleOnboardingAddResource}
+        onSaveTabs={handleOnboardingSaveTabs}
       />
     </div>
   );

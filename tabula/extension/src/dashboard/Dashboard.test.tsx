@@ -422,6 +422,33 @@ describe("Dashboard", () => {
     expect(screen.getByTestId("workspace-menu-item-ws2")).toBeInTheDocument();
   });
 
+  it("shows first-run onboarding when there are no spaces (#138)", async () => {
+    (useWorkspaceStore as unknown as jest.Mock).mockReturnValue({
+      ...getDefaultStoreState(),
+      workspaces: [],
+      activeWorkspaceId: null,
+    });
+    (useWorkspaceStore as any).getState = jest.fn(() => ({
+      activeWorkspaceId: null,
+      workspaces: [],
+    }));
+    await act(async () => {
+      render(<Dashboard />);
+    });
+    expect(
+      await screen.findByText("Get started with Tabula"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show onboarding when spaces already exist (#138)", async () => {
+    await act(async () => {
+      render(<Dashboard />);
+    });
+    expect(
+      screen.queryByText("Get started with Tabula"),
+    ).not.toBeInTheDocument();
+  });
+
   it("should not render the placeholder Share button while sharing is disabled (#137)", async () => {
     await act(async () => {
       render(<Dashboard />);

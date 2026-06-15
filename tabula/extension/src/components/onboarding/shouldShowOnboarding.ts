@@ -20,37 +20,18 @@
  * SOFTWARE.
  */
 
+import type { ExtensionSettings } from "../../types";
+
 /**
- * User-related types shared across packages
+ * Decide whether the first-run onboarding should be shown.
+ *
+ * It appears only for a genuinely new user: onboarding not yet completed AND no
+ * spaces created yet. Existing users (who already have spaces) are never
+ * interrupted, even if the flag predates this feature. See #138.
  */
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  name: string;
-  tier: string;
-  createdAt: Date;
-  updatedAt: Date;
-  lastLoginAt: Date | null;
-  preferences: Record<string, unknown>;
-}
-
-export interface UserUpdateInput {
-  name?: string;
-  preferences?: Record<string, unknown>;
-}
-
-export interface ExtensionSettings {
-  autoSuspend: boolean;
-  suspendAfterMinutes: number;
-  syncEnabled: boolean;
-  theme: "light" | "dark" | "auto";
-  autoSave: boolean;
-  tabCloseMode: "hybrid" | "id-only";
-  /**
-   * Whether the first-run onboarding has been completed or skipped (#138).
-   * Optional so existing settings objects (and other consumers) remain valid;
-   * absent is treated as "not completed".
-   */
-  onboardingCompleted?: boolean;
+export function shouldShowOnboarding(
+  settings: Pick<ExtensionSettings, "onboardingCompleted">,
+  workspaceCount: number,
+): boolean {
+  return !settings.onboardingCompleted && workspaceCount === 0;
 }

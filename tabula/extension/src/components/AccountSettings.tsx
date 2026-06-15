@@ -38,6 +38,8 @@ interface AccountSettingsProps {
   setTheme: (theme: "system" | "light" | "dark") => void;
   /** 'popup' uses compact single-column layout, 'modal' uses sidebar layout */
   variant?: "popup" | "modal";
+  /** Replay the first-run onboarding flow (#138). Hidden when omitted. */
+  onReplayOnboarding?: () => void;
 }
 
 export const AccountSettings: React.FC<AccountSettingsProps> = ({
@@ -45,6 +47,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   theme,
   setTheme,
   variant = "modal",
+  onReplayOnboarding,
 }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -660,6 +663,64 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
         >
           Preferences
         </h2>
+      )}
+
+      {onReplayOnboarding && (
+        <section
+          style={{ marginBottom: variant === "popup" ? "16px" : "24px" }}
+        >
+          <h3
+            style={{
+              fontSize: variant === "popup" ? "12px" : "14px",
+              fontWeight: "600",
+              marginBottom: variant === "popup" ? "12px" : "16px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Getting started
+          </h3>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: variant === "popup" ? "10px" : "12px",
+              border: "1px solid var(--color-border)",
+              borderRadius: "8px",
+              gap: "12px",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: "500",
+                  fontSize: variant === "popup" ? "13px" : "14px",
+                  marginBottom: "2px",
+                }}
+              >
+                Replay onboarding
+              </div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                Walk through creating a space, adding a resource, and saving
+                tabs.
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                onReplayOnboarding();
+                onClose();
+              }}
+            >
+              Show me
+            </button>
+          </div>
+        </section>
       )}
 
       <section>

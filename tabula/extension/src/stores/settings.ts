@@ -46,6 +46,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     theme: "auto",
     autoSave: true,
     tabCloseMode: "hybrid",
+    onboardingCompleted: false,
   },
   loading: false,
   error: null,

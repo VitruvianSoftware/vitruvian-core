@@ -140,6 +140,7 @@ describe("StorageService", () => {
         syncEnabled: false,
         theme: "auto",
         tabCloseMode: "hybrid",
+        onboardingCompleted: false,
       });
     });
 
@@ -332,6 +333,7 @@ describe("StorageService", () => {
         theme: "auto",
         autoSave: true,
         tabCloseMode: "hybrid",
+        onboardingCompleted: false,
       });
     });
 
