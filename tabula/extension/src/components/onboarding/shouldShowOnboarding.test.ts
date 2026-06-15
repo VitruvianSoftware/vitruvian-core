@@ -20,33 +20,18 @@
  * SOFTWARE.
  */
 
-/**
- * User-related types shared across packages
- */
+import { shouldShowOnboarding } from "./shouldShowOnboarding";
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  name: string;
-  tier: string;
-  createdAt: Date;
-  updatedAt: Date;
-  lastLoginAt: Date | null;
-  preferences: Record<string, unknown>;
-}
+describe("shouldShowOnboarding (#138)", () => {
+  it("shows for a brand-new user: not completed and no spaces", () => {
+    expect(shouldShowOnboarding({ onboardingCompleted: false }, 0)).toBe(true);
+  });
 
-export interface UserUpdateInput {
-  name?: string;
-  preferences?: Record<string, unknown>;
-}
+  it("does not show once onboarding is completed", () => {
+    expect(shouldShowOnboarding({ onboardingCompleted: true }, 0)).toBe(false);
+  });
 
-export interface ExtensionSettings {
-  autoSuspend: boolean;
-  suspendAfterMinutes: number;
-  syncEnabled: boolean;
-  theme: "light" | "dark" | "auto";
-  autoSave: boolean;
-  tabCloseMode: "hybrid" | "id-only";
-  /** Whether the first-run onboarding has been completed or skipped (#138). */
-  onboardingCompleted: boolean;
-}
+  it("does not interrupt users who already have spaces", () => {
+    expect(shouldShowOnboarding({ onboardingCompleted: false }, 3)).toBe(false);
+  });
+});

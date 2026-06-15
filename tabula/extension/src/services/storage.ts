@@ -115,6 +115,7 @@ export class StorageService {
           theme: "auto",
           autoSave: true,
           tabCloseMode: "hybrid",
+          onboardingCompleted: false,
         }
       );
     } catch (error) {
@@ -127,6 +128,7 @@ export class StorageService {
         theme: "auto",
         autoSave: true,
         tabCloseMode: "hybrid",
+        onboardingCompleted: false,
       };
     }
   }

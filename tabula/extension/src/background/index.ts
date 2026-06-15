@@ -85,6 +85,7 @@ chrome.runtime.onInstalled.addListener((details) => {
           theme: "auto",
           autoSave: true, // Default to true for Workona-like experience
           tabCloseMode: "hybrid",
+          onboardingCompleted: false,
         });
       }
     });
