@@ -140,6 +140,14 @@ describe("SidebarGroupHeader", () => {
       expect(screen.getByText("Delete")).toBeInTheDocument();
     });
 
+    it("should not render the Share with team item while sharing is disabled (#137)", () => {
+      render(<SidebarGroupHeader {...defaultProps} isMenuOpen={true} />);
+      // Real sharing lands in M2 (#139/#140); until then the placeholder must
+      // not be visible. Other items confirm the menu itself still renders.
+      expect(screen.queryByText("Share with team")).not.toBeInTheDocument();
+      expect(screen.getByText("Rename")).toBeInTheDocument();
+    });
+
     it("should call onRename when Rename clicked", () => {
       render(<SidebarGroupHeader {...defaultProps} isMenuOpen={true} />);
       fireEvent.click(screen.getByText("Rename"));

@@ -25,6 +25,7 @@ import { MenuOverlay } from "./MenuOverlay";
 import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
+import { FEATURE_FLAGS } from "../constants/features";
 import type { SpaceGroup } from "../types";
 
 // Color options for space groups
@@ -144,16 +145,20 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
             style={{ right: 0, top: "100%", minWidth: "160px", zIndex: 20 }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Share with team (placeholder) */}
-            <div
-              className="dropdown-item"
-              style={{ opacity: 0.5, cursor: "not-allowed" }}
-              title="Coming soon"
-            >
-              <Icon name="group" size="sm" />
-              Share with team
-            </div>
-            <div className="dropdown-divider" />
+            {/* Share with team — hidden until sharing ships (M2: #139/#140). See #137. */}
+            {FEATURE_FLAGS.SHARING_ENABLED && (
+              <>
+                <div
+                  className="dropdown-item"
+                  style={{ opacity: 0.5, cursor: "not-allowed" }}
+                  title="Coming soon"
+                >
+                  <Icon name="group" size="sm" />
+                  Share with team
+                </div>
+                <div className="dropdown-divider" />
+              </>
+            )}
 
             {/* Rename */}
             <div className="dropdown-item" onClick={onRename}>
