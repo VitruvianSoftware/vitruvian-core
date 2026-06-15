@@ -251,6 +251,17 @@ test.describe("Workspace Management", () => {
         tabula_access_token: "fake-token",
         tabula_workspaces: [],
         tabula_active_workspace: null,
+        // Onboarded user so the first-run onboarding modal (#138) does not
+        // overlay the dashboard under test.
+        tabula_settings: {
+          autoSuspend: false,
+          suspendAfterMinutes: 30,
+          syncEnabled: false,
+          theme: "auto",
+          autoSave: true,
+          tabCloseMode: "hybrid",
+          onboardingCompleted: true,
+        },
       });
     });
     await page.reload();
@@ -809,6 +820,17 @@ test.describe("Workspace Management - API Verification", () => {
       await storage.set({
         tabula_workspaces: [],
         tabula_active_workspace: null,
+        // Onboarded user so the first-run onboarding modal (#138) does not
+        // overlay the dashboard under test.
+        tabula_settings: {
+          autoSuspend: false,
+          suspendAfterMinutes: 30,
+          syncEnabled: false,
+          theme: "auto",
+          autoSave: true,
+          tabCloseMode: "hybrid",
+          onboardingCompleted: true,
+        },
       });
     });
 

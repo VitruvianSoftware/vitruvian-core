@@ -218,7 +218,7 @@ test.describe("User Journey: User Profile & Settings", () => {
  * Note: Feature may be placeholder in current version
  */
 test.describe("User Journey: Sharing a Space", () => {
-  test("should have accessible Share functionality", async () => {
+  test("hides the placeholder Share button until sharing ships (#137)", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
 
     // Create a workspace to work with
@@ -231,17 +231,12 @@ test.describe("User Journey: Sharing a Space", () => {
       page.locator(".nav-item").filter({ hasText: wsName }).first(),
     ).toBeVisible();
 
-    // Look for Share button in workspace header (exact match to avoid matching workspace name)
-    const shareButton = page.getByRole("button", {
-      name: "Share",
-      exact: true,
-    });
-
-    // Verify Share button is visible and accessible
-    await expect(shareButton).toBeVisible();
-
-    // Note: We don't click Share as it may trigger browser native share
-    // or be a placeholder. Just verify it exists.
+    // Sharing is gated behind FEATURE_FLAGS.SHARING_ENABLED (#137) until the
+    // M2 sharing foundation (#139 backend, #140 web companion) ships, so the
+    // placeholder Share button must NOT be present.
+    await expect(
+      page.getByRole("button", { name: "Share", exact: true }),
+    ).toHaveCount(0);
 
     await page.close();
   });
