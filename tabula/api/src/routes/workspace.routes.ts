@@ -26,7 +26,7 @@
 import { FastifyInstance } from "fastify";
 import { WorkspaceService } from "../services/workspace.service";
 import { authenticateUser } from "../middleware/auth";
-import { ConflictError } from "../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { getDeviceId } from "../lib/device";
 import { publishSyncEvent } from "../lib/syncEvents";
 import { isTombstoned, markEntityDeleted } from "../lib/tombstones";
@@ -209,13 +209,31 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
             data: transformWorkspaceResponse(current),
           });
         }
-        if (error instanceof Error && error.message === "Workspace not found") {
+        // A VIEW collaborator attempting a write: they can see the space but may
+        // not edit it. 403 (never falls through to upsert-create).
+        if (error instanceof ForbiddenError) {
+          return reply
+            .code(403)
+            .send({ error: "Forbidden", message: error.message });
+        }
+        if (
+          error instanceof NotFoundError ||
+          (error instanceof Error && error.message === "Workspace not found")
+        ) {
           // Resurrection guard: a recently deleted id must not be re-created by
           // a stale offline snapshot. Never-seen ids are allowed through.
           if (await isTombstoned(userId, "workspace", workspaceId)) {
             return reply
               .code(410)
               .send({ error: "Gone", message: "Entity was deleted" });
+          }
+          // If the row actually exists, the caller simply has no access (a
+          // stranger, or a grant that was revoked). Never upsert-create over
+          // someone else's space — return the same existence-masked 404.
+          if (await WorkspaceService.exists(workspaceId)) {
+            return reply
+              .code(404)
+              .send({ error: "Not Found", message: "Workspace not found" });
           }
           try {
             // Upsert: Create if not found using the input and ID
@@ -293,6 +311,12 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
       try {
         await WorkspaceService.deleteWorkspace(userId, workspaceId);
       } catch (error) {
+        // A collaborator (edit) can see the space but may not delete it.
+        if (error instanceof ForbiddenError) {
+          return reply
+            .code(403)
+            .send({ error: "Forbidden", message: error.message });
+        }
         return reply.code(404).send({
           error: "Not Found",
           message:
@@ -344,10 +368,19 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
         );
         return { data: workspace };
       } catch (error) {
-        if (error instanceof Error && error.message === "Workspace not found") {
+        if (error instanceof ForbiddenError) {
+          return reply
+            .code(403)
+            .send({ error: "Forbidden", message: error.message });
+        }
+        if (
+          error instanceof NotFoundError ||
+          (error instanceof Error && error.message === "Workspace not found")
+        ) {
           return reply.code(404).send({
             error: "Not Found",
-            message: error.message,
+            message:
+              error instanceof Error ? error.message : "Workspace not found",
           });
         }
         if (!(error instanceof Error) || error.name !== "ZodError")
@@ -375,6 +408,11 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
       );
       return { data: tab };
     } catch (error) {
+      if (error instanceof ForbiddenError) {
+        return reply
+          .code(403)
+          .send({ error: "Forbidden", message: error.message });
+      }
       if (error instanceof Error && error.message.includes("not found")) {
         return reply.code(404).send({
           error: "Not Found",
@@ -404,6 +442,11 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
       );
       return { data: tab };
     } catch (error) {
+      if (error instanceof ForbiddenError) {
+        return reply
+          .code(403)
+          .send({ error: "Forbidden", message: error.message });
+      }
       if (error instanceof Error && error.message.includes("not found")) {
         return reply.code(404).send({
           error: "Not Found",
@@ -449,11 +492,15 @@ export async function workspaceRoutes(fastify: FastifyInstance) {
 
       return { data: result };
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not belong")) {
-        return reply.code(403).send({
-          error: "Forbidden",
-          message: error.message,
-        });
+      if (error instanceof ForbiddenError) {
+        return reply
+          .code(403)
+          .send({ error: "Forbidden", message: error.message });
+      }
+      if (error instanceof NotFoundError) {
+        return reply
+          .code(404)
+          .send({ error: "Not Found", message: error.message });
       }
       if (!(error instanceof Error) || error.name !== "ZodError")
         request.log.error(error);
