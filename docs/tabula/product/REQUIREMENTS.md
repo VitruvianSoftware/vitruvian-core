@@ -47,8 +47,8 @@ This section outlines the high-level capabilities. Status is tracked as:
 | ID       | Requirement                                                  | Status | Verification Note                         |
 | -------- | ------------------------------------------------------------ | ------ | ----------------------------------------- |
 | **SS-1** | **Local Storage**: Data persists locally for offline access. | `[x]`  | Verified (Chrome Storage).                |
-| **SS-2** | **Cloud Sync**: Sync data across devices when logged in.     | `[/]`  | Sync logic exists; full E2E sync pending. |
-| **SS-3** | **Conflict Resolution**: Last-write-wins strategy.           | `[/]`  | Basic implementation active.              |
+| **SS-2** | **Cloud Sync**: Sync data across devices when logged in.     | `[x]`  | E2E-verified two-device convergence (`sync-convergence.spec.ts`, #136). |
+| **SS-3** | **Conflict Resolution**: Last-write-wins strategy.           | `[x]`  | Hybrid: server version-locking + client LWW; documented in [`conflict-resolution.md`](../architecture/conflict-resolution.md); E2E-verified (#136). |
 
 ---
 

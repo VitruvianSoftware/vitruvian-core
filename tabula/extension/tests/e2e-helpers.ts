@@ -28,6 +28,7 @@
  */
 
 import { Page, BrowserContext } from "@playwright/test";
+import jwt from "jsonwebtoken";
 
 /**
  * Rate limit delay (ms) - helps avoid 429 errors between API operations
@@ -51,6 +52,49 @@ export const TEST_USER = {
   name: "E2E Test User",
   tier: "free",
 };
+
+/**
+ * A SECOND seeded e2e user, dedicated to the cross-device convergence spec
+ * (sync-convergence.spec.ts). Playwright runs spec files in parallel workers
+ * (`workers: 2`) against ONE shared backend, and several specs broadly delete
+ * the seeded user's workspaces between tests (`cleanupApiWorkspaces`). The
+ * convergence tests hold a workspace live across long (25-40s) two-device
+ * windows, so a parallel spec's cleanup would delete it mid-test — and the
+ * convergence spec's own cleanup would delete theirs. Giving convergence its
+ * own user removes that shared-state collision entirely. Must match the second
+ * user seeded in `api/prisma/seed-test-user.ts`.
+ */
+export const CONV_TEST_USER = {
+  id: "00000000-0000-0000-0000-e2e000000002",
+  email: "e2e-conv@tabula.dev",
+  name: "E2E Convergence User",
+  tier: "free",
+};
+
+/**
+ * Mint (or read) a JWT for a seeded e2e user (defaults to {@link TEST_USER}).
+ *
+ * For the default user, prefers `E2E_TEST_TOKEN` (emitted by the seed and
+ * injected into the pw_suite env), otherwise signs one from `JWT_SECRET` —
+ * which the pw_suite Bazel target exports — so API-backed sync tests actually
+ * RUN in CI instead of skipping (the gap that left SS-2/SS-3 at `[/]`). For any
+ * OTHER user, always signs fresh from `JWT_SECRET` (the shared `E2E_TEST_TOKEN`
+ * belongs to the default user). Payloads match `api/prisma/seed-test-user.ts`.
+ * Returns null only when no secret is available (a non-e2e local run).
+ */
+export function mintTestToken(
+  user: { id: string; email: string; tier: string } = TEST_USER,
+): string | null {
+  if (user.id === TEST_USER.id) {
+    const existing = process.env.E2E_TEST_TOKEN;
+    if (existing) return existing;
+  }
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return null;
+  return jwt.sign({ id: user.id, email: user.email, tier: user.tier }, secret, {
+    expiresIn: "24h",
+  });
+}
 
 /**
  * Check if API is available

@@ -129,6 +129,11 @@ sequenceDiagram
 
 We utilize a **Last-Modified-Wins** strategy based on high-precision client-side timestamps.
 
+> The complete cross-device model — server-side version-based optimistic
+> locking (409 + retry) combined with this client reconciliation, plus
+> granularity, real-time propagation, and the verified convergence guarantees —
+> is documented in [`conflict-resolution.md`](conflict-resolution.md) (#136).
+
 ### Data Model
 
 Every synchronized entity (`Workspace`, `SpaceGroup`) includes an `updatedAt` timestamp:
