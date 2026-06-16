@@ -115,4 +115,128 @@ describe("RelayLandingPage", () => {
       ).toBeInTheDocument(),
     );
   });
+
+  it("on a 401 from accept, prompts login and re-enables the button without navigating", async () => {
+    mockToken.mockReturnValue("tok");
+    mockInfo.mockResolvedValue(info("view"));
+    mockAccept.mockRejectedValue(new ApiError(401, "unauthorized"));
+    (AuthService.login as jest.Mock).mockResolvedValue(undefined);
+    render(<RelayLandingPage />);
+    const btn = await screen.findByRole("button", { name: /View in browser/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(AuthService.login).toHaveBeenCalled());
+    expect(push).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: /View in browser/ }),
+    ).toBeEnabled();
+  });
+
+  it("on a non-401 accept failure, clears busy without logging in or navigating", async () => {
+    mockToken.mockReturnValue("tok");
+    mockInfo.mockResolvedValue(info("view"));
+    mockAccept.mockRejectedValue(new ApiError(404, "gone"));
+    render(<RelayLandingPage />);
+    const btn = await screen.findByRole("button", { name: /View in browser/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toBeEnabled());
+    expect(AuthService.login).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("logged-out 'Log in to open in browser' triggers the login flow", async () => {
+    mockInfo.mockResolvedValue(info("view"));
+    (AuthService.login as jest.Mock).mockResolvedValue(undefined);
+    render(<RelayLandingPage />);
+    const btn = await screen.findByRole("button", {
+      name: /Log in to open in browser/,
+    });
+    fireEvent.click(btn);
+    await waitFor(() => expect(AuthService.login).toHaveBeenCalled());
+  });
+});
+
+// The extension-installed path depends on a non-empty extension id (read at
+// call time) plus a chrome stub, so it gets its own setup. Detection must only
+// pick the CTA — it must never auto-redeem or auto-deep-link (consent gate).
+describe("RelayLandingPage — extension installed", () => {
+  const origId = process.env.NEXT_PUBLIC_TABULA_EXTENSION_ID;
+  let sendMessage: jest.Mock;
+
+  const installChrome = (
+    opts: { respond?: boolean; lastError?: unknown } = {},
+  ) => {
+    const { respond = true, lastError = undefined } = opts;
+    sendMessage = jest.fn(
+      (_id: string, msg: unknown, cb?: (r: unknown) => void) => {
+        if (cb && (msg as { type?: string })?.type === "PING") {
+          cb(respond ? { ok: true } : undefined);
+        }
+      },
+    );
+    (globalThis as unknown as { chrome: unknown }).chrome = {
+      runtime: { lastError, sendMessage },
+    };
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockToken.mockReturnValue(null);
+    process.env.NEXT_PUBLIC_TABULA_EXTENSION_ID = "ext-id";
+  });
+
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_TABULA_EXTENSION_ID = origId;
+    delete (globalThis as unknown as { chrome?: unknown }).chrome;
+  });
+
+  it("shows 'Open in Tabula' on PING success and deep-links the relay only on click", async () => {
+    installChrome({ respond: true });
+    mockInfo.mockResolvedValue(info("view"));
+    render(<RelayLandingPage />);
+
+    const openBtn = await screen.findByRole("button", {
+      name: /Open in Tabula/,
+    });
+    expect(screen.queryByText("Install Tabula")).not.toBeInTheDocument();
+    // PING fired during detection, but IMPORT_SPACE must NOT fire without a click.
+    expect(sendMessage).not.toHaveBeenCalledWith(
+      "ext-id",
+      expect.objectContaining({ type: "IMPORT_SPACE" }),
+    );
+
+    fireEvent.click(openBtn);
+    expect(sendMessage).toHaveBeenCalledWith("ext-id", {
+      type: "IMPORT_SPACE",
+      spaceId: "ws_1",
+      relayId: "relay-abc",
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/Opening in Tabula/)).toBeInTheDocument(),
+    );
+  });
+
+  it("falls back to the Install preview when PING reports a lastError", async () => {
+    installChrome({ respond: true, lastError: { message: "no" } });
+    mockInfo.mockResolvedValue(info("view"));
+    render(<RelayLandingPage />);
+    await waitFor(() =>
+      expect(screen.getByText("Install Tabula")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: /Open in Tabula/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the Install preview when the extension never answers (timeout)", async () => {
+    sendMessage = jest.fn(); // never invokes the PING callback
+    (globalThis as unknown as { chrome: unknown }).chrome = {
+      runtime: { sendMessage },
+    };
+    mockInfo.mockResolvedValue(info("view"));
+    render(<RelayLandingPage />);
+    await waitFor(
+      () => expect(screen.getByText("Install Tabula")).toBeInTheDocument(),
+      { timeout: 2000 },
+    );
+  });
 });

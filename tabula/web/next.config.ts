@@ -22,17 +22,20 @@
 
 import type { NextConfig } from "next";
 
-// Defense-in-depth security headers. The primary XSS guards are in the code
-// (lib/safeHref for URLs, escaped React text for note bodies — never
-// dangerouslySetInnerHTML); this CSP is the backstop, and frame-ancestors +
-// Referrer-Policy specifically protect the relay landing (no clickjacking, and
-// the /s/<relayId> handle never leaks via Referer when the page links out).
+// Defense-in-depth security headers. The PRIMARY XSS guard is React's default
+// text escaping (note bodies render as escaped text, never
+// dangerouslySetInnerHTML; user URLs go through lib/safeHref). This CSP is a
+// secondary layer — and, because script-src still allows 'unsafe-inline' (see
+// below), it is not yet a hard backstop against injected inline script.
+// frame-ancestors + Referrer-Policy specifically protect the relay landing (no
+// clickjacking, and the /s/<relayId> handle never leaks via Referer on link-out).
 // NOTE: script-src keeps 'unsafe-inline' for Next's hydration bootstrap;
-// tightening to nonces is a follow-up. connect-src hardcodes the dev API origin,
-// matching the rest of the app (lib/data.ts / lib/auth.ts).
+// tightening it away needs a per-request nonce pipeline (follow-up). 'unsafe-eval'
+// is NOT needed at runtime, so it is omitted. connect-src hardcodes the dev API
+// origin, matching the rest of the app (lib/data.ts / lib/auth.ts).
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
   "connect-src 'self' http://localhost:8080",
