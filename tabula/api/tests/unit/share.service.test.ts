@@ -75,6 +75,11 @@ describe("ShareService", () => {
       expect(persisted.tokenHash).not.toBe(result.token);
       expect(persisted.role).toBe("edit");
       expect(result.role).toBe("edit");
+      // A distinct 256-bit relay id is also returned once; only its hash is stored.
+      expect(result.relayId).toMatch(/^[a-f0-9]{64}$/);
+      expect(result.relayId).not.toBe(result.token);
+      expect(persisted.relayIdHash).toBe(hashToken(result.relayId));
+      expect(persisted.relayIdHash).not.toBe(result.relayId);
     });
 
     it("stores expiresAt as a Date when provided", async () => {
@@ -120,17 +125,18 @@ describe("ShareService", () => {
   });
 
   describe("getLinkInfo", () => {
-    it("resolves a valid token to its space + role", async () => {
+    it("resolves a valid token to its space, role, and owner name", async () => {
       mockLink.findUnique.mockResolvedValue({
         workspaceId: WS,
         role: "view",
         revokedAt: null,
         expiresAt: null,
-        workspace: { name: "Alpha", userId: OWNER },
+        workspace: { name: "Alpha", userId: OWNER, user: { name: "Jane" } },
       });
       expect(await ShareService.getLinkInfo("tok")).toEqual({
         workspaceId: WS,
         workspaceName: "Alpha",
+        ownerName: "Jane",
         role: "view",
       });
     });
@@ -208,6 +214,51 @@ describe("ShareService", () => {
       await expect(
         ShareService.acceptLink("nope", USER, "u@x.com"),
       ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  describe("relay (by relay id)", () => {
+    const link = {
+      workspaceId: WS,
+      role: "edit",
+      revokedAt: null,
+      expiresAt: null,
+      createdByUserId: OWNER,
+      workspace: { name: "Alpha", userId: OWNER, user: { name: "Jane" } },
+    };
+
+    it("getRelayInfo resolves a relay id (by hash) to space, role, and owner", async () => {
+      mockLink.findUnique.mockResolvedValue(link);
+      expect(await ShareService.getRelayInfo("relay-id")).toEqual({
+        workspaceId: WS,
+        workspaceName: "Alpha",
+        ownerName: "Jane",
+        role: "edit",
+      });
+      // Resolved by the HASH of the relay id, never the raw value.
+      expect(mockLink.findUnique.mock.calls[0][0].where).toEqual({
+        relayIdHash: hashToken("relay-id"),
+      });
+    });
+
+    it("getRelayInfo throws for an unknown / revoked / expired relay id", async () => {
+      mockLink.findUnique.mockResolvedValue(null);
+      await expect(ShareService.getRelayInfo("nope")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+
+    it("acceptByRelayId materializes a grant for the caller", async () => {
+      mockLink.findUnique.mockResolvedValue(link);
+      mockCollab.findUnique.mockResolvedValue(null);
+      mockCollab.upsert.mockResolvedValue({ role: "edit" });
+      const result = await ShareService.acceptByRelayId(
+        "relay-id",
+        USER,
+        "u@x.com",
+      );
+      expect(result.role).toBe("edit");
+      expect(mockCollab.upsert.mock.calls[0][0].create.role).toBe("edit");
     });
   });
 });
