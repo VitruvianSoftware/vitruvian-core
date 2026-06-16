@@ -28,9 +28,13 @@ import { SharingService, ApiError, type RelayInfo } from "@/lib/sharing";
 import { AuthService } from "@/lib/auth";
 
 // The installed extension's id + store listing. Until the extension publishes,
-// EXTENSION_ID is empty and detection simply fails closed (→ the not-installed
+// the id is empty and detection simply fails closed (→ the not-installed
 // states), which is the correct graceful fallback for non-Chrome browsers too.
-const EXTENSION_ID = process.env.NEXT_PUBLIC_TABULA_EXTENSION_ID ?? "";
+// Read via a function (not a module constant) so it is resolvable in tests; Next
+// inlines the NEXT_PUBLIC_ var at build time regardless of where it is read.
+function extensionId(): string {
+  return process.env.NEXT_PUBLIC_TABULA_EXTENSION_ID ?? "";
+}
 const CHROME_STORE_URL =
   "https://chromewebstore.google.com/detail/tabula-tab-manager";
 const DETECT_TIMEOUT_MS = 400;
@@ -38,14 +42,14 @@ const DETECT_TIMEOUT_MS = 400;
 type Phase = "loading" | "invalid" | "opening" | "preview";
 
 /**
- * Relay landing for tabula.com/s/<relayId> (#140). Four states:
- *  0. extension installed     → deep-link into it ("Opening in Tabula…")
- *  1. stranger (logged out)   → preview + Install + Log in
- *  2. logged in, view grant   → preview + Install + "View in browser"
- *  3. logged in, edit grant   → preview + Install + "Edit in browser"
- * The extension stays the primary surface, so Install is always primary; opening
- * in the browser is the additive escape hatch. The preview is PUBLIC (no token
- * in the URL — the relayId is an opaque handle resolved server-side).
+ * Relay landing for tabula.com/s/<relayId> (#140). The page always lands on a
+ * PUBLIC preview (no token in the URL — relayId is an opaque handle resolved
+ * server-side) and the recipient chooses how to open it; nothing is redeemed or
+ * deep-linked without an explicit click. The primary CTA depends on detection:
+ *  - extension installed → "Open in Tabula" (deep-links on click → "Opening…")
+ *  - not installed       → "Install Tabula" (Chrome Web Store)
+ * Below it, the additive in-browser path: logged out → "Log in"; logged in →
+ * "View in browser" / "Edit in browser" by grant role.
  */
 export default function RelayLandingPage() {
   const params = useParams<{ relayId: string }>();
@@ -55,6 +59,7 @@ export default function RelayLandingPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [info, setInfo] = useState<RelayInfo | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [extensionInstalled, setExtensionInstalled] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -64,14 +69,15 @@ export default function RelayLandingPage() {
       .then(async (i) => {
         if (!active) return;
         setInfo(i);
+        // Detection only chooses which CTA to show — it must NOT auto-deep-link.
+        // Opening the extension kicks off a grant redeem, so it requires an
+        // explicit click; merely visiting /s/<id> must never silently join you
+        // to a (possibly attacker-controlled) space. The page always lands on
+        // the preview and lets the recipient choose.
         const installed = await detectExtension();
         if (!active) return;
-        if (installed) {
-          openInExtension(relayId, i.workspaceId);
-          setPhase("opening");
-        } else {
-          setPhase("preview");
-        }
+        setExtensionInstalled(installed);
+        setPhase("preview");
       })
       .catch(() => {
         if (active) setPhase("invalid");
@@ -80,6 +86,12 @@ export default function RelayLandingPage() {
       active = false;
     };
   }, [relayId]);
+
+  function openInTabula() {
+    if (!info) return;
+    openInExtension(relayId, info.workspaceId);
+    setPhase("opening");
+  }
 
   async function openInBrowser() {
     setBusy(true);
@@ -111,12 +123,22 @@ export default function RelayLandingPage() {
     <div className="mx-auto max-w-lg px-6 py-16">
       {info ? <RelayPreviewCard info={info} /> : null}
       <div className="mt-8 flex flex-col gap-3">
-        <a
-          href={CHROME_STORE_URL}
-          className="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          Install Tabula
-        </a>
+        {extensionInstalled ? (
+          <button
+            type="button"
+            onClick={openInTabula}
+            className="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Open in Tabula
+          </button>
+        ) : (
+          <a
+            href={CHROME_STORE_URL}
+            className="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Install Tabula
+          </a>
+        )}
         {loggedIn ? (
           <button
             type="button"
@@ -190,8 +212,9 @@ function getChrome(): ChromeRuntime | undefined {
  */
 function detectExtension(): Promise<boolean> {
   return new Promise((resolve) => {
+    const id = extensionId();
     const chrome = getChrome();
-    if (!EXTENSION_ID || !chrome?.runtime?.sendMessage) {
+    if (!id || !chrome?.runtime?.sendMessage) {
       resolve(false);
       return;
     }
@@ -204,7 +227,7 @@ function detectExtension(): Promise<boolean> {
     };
     setTimeout(() => finish(false), DETECT_TIMEOUT_MS);
     try {
-      chrome.runtime.sendMessage(EXTENSION_ID, { type: "PING" }, (resp) => {
+      chrome.runtime.sendMessage(id, { type: "PING" }, (resp) => {
         finish(!chrome.runtime?.lastError && Boolean(resp));
       });
     } catch {
@@ -216,7 +239,7 @@ function detectExtension(): Promise<boolean> {
 function openInExtension(relayId: string, workspaceId: string) {
   const chrome = getChrome();
   try {
-    chrome?.runtime?.sendMessage?.(EXTENSION_ID, {
+    chrome?.runtime?.sendMessage?.(extensionId(), {
       type: "IMPORT_SPACE",
       spaceId: workspaceId,
       relayId,

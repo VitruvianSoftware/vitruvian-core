@@ -186,6 +186,41 @@ describe("AuthService", () => {
       // Should not throw or resolve
       messageHandler(messageEvent);
     });
+
+    it("should reject a TABULA_AUTH_SUCCESS from a foreign origin (token-fixation guard)", async () => {
+      const windowAddEventListenerSpy = jest.spyOn(window, "addEventListener");
+      let resolved = false;
+      AuthService.login().then(() => {
+        resolved = true;
+      });
+
+      const call = windowAddEventListenerSpy.mock.calls.find(
+        (c) => c[0] === "message",
+      );
+      expect(call).toBeDefined();
+      const messageHandler = call![1] as EventListener;
+
+      // A hostile page postMessages a valid-looking success from the WRONG
+      // origin. The origin guard must drop it: no token stored, promise pending.
+      messageHandler(
+        new MessageEvent("message", {
+          origin: "https://evil.example.com",
+          data: {
+            type: "TABULA_AUTH_SUCCESS",
+            payload: { token: "attacker-token", user: { id: "x" } },
+          },
+        }),
+      );
+
+      // Flush microtasks so any (erroneous) resolution would have happened.
+      await Promise.resolve();
+
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+        "tabula_token",
+        "attacker-token",
+      );
+      expect(resolved).toBe(false);
+    });
   });
 
   describe("edge cases", () => {
