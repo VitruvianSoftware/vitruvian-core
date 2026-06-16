@@ -49,6 +49,14 @@ export interface AcceptResult {
   role: SpaceRole;
 }
 
+/** Public preview of a relay link (no token material). */
+export interface RelayInfo {
+  workspaceId: string;
+  workspaceName: string;
+  ownerName: string;
+  role: "view" | "edit";
+}
+
 /**
  * A failed API call, carrying the HTTP status so callers branch on it (401 →
  * login, 403 → view-only, 404 → existence-masked, 409 → conflict). For a 409 the
@@ -134,6 +142,27 @@ export const SharingService = {
       headers: authHeaders(),
       body: JSON.stringify({ token }),
     });
+    return unwrap<AcceptResult>(res);
+  },
+
+  /**
+   * PUBLIC preview of a relay link (tabula.com/s/<relayId>) — no auth, so a
+   * logged-out stranger sees what they were invited to. The relayId is the URL
+   * handle (not the bearer token). 404 = unknown / revoked / expired.
+   */
+  async getRelayInfo(relayId: string): Promise<RelayInfo> {
+    const res = await fetch(
+      `${API_URL}/share-links/relay/${encodeURIComponent(relayId)}/info`,
+    );
+    return unwrap<RelayInfo>(res);
+  },
+
+  /** Redeem a relay link (requires login) → materializes the caller's grant. */
+  async acceptRelay(relayId: string): Promise<AcceptResult> {
+    const res = await fetch(
+      `${API_URL}/share-links/relay/${encodeURIComponent(relayId)}/accept`,
+      { method: "POST", headers: authHeaders() },
+    );
     return unwrap<AcceptResult>(res);
   },
 };
