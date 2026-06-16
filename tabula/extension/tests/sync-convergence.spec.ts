@@ -127,7 +127,15 @@ async function renameSpaceA(
   page: Page,
   currentName: string,
   newName: string,
+  options: { confirmVisible?: boolean } = {},
 ): Promise<void> {
+  // confirmVisible asserts the optimistic nav-item update right after Save. That
+  // post-condition is safe in isolation, but in the LWW scenario a SECOND device
+  // has just edited the same space server-side, so inbound sync can transiently
+  // revert the visible name while the client reconciles the 409 — racing this
+  // assertion. Callers exercising that path pass confirmVisible:false and verify
+  // the true converged state via the backend + local-storage polls instead.
+  const { confirmVisible = true } = options;
   const row = page
     .locator(".nav-item")
     .filter({ hasText: currentName })
@@ -138,14 +146,22 @@ async function renameSpaceA(
     .locator(".dropdown-menu .dropdown-item")
     .filter({ hasText: "Rename" })
     .click();
-  await page.locator('input[placeholder="Enter name..."]').fill(newName);
-  await page
+  const input = page.locator('input[placeholder="Enter name..."]');
+  await expect(input).toBeVisible();
+  await input.fill(newName);
+  const save = page
     .locator(".modal-footer button.btn-primary")
-    .filter({ hasText: "Save" })
-    .click();
-  await expect(
-    page.locator(".nav-item").filter({ hasText: newName }).first(),
-  ).toBeVisible({ timeout: 15000 });
+    .filter({ hasText: "Save" });
+  await save.click();
+  if (confirmVisible) {
+    await expect(
+      page.locator(".nav-item").filter({ hasText: newName }).first(),
+    ).toBeVisible({ timeout: 15000 });
+  } else {
+    // The rename was committed once the modal dismisses; convergence of the name
+    // itself is asserted by the caller's waitForApi / waitForLocalA polls.
+    await expect(save).toBeHidden({ timeout: 15000 });
+  }
 }
 
 /** Poll the backend until `check` holds, returning the matching workspace. */
@@ -339,9 +355,11 @@ test.describe("Cross-device sync convergence (#136)", () => {
 
     // Device A edits LATER (newer write) without having pulled B's edit, so its
     // queued PUT 409s on the now-stale baseVersion and the client reconciles by
-    // last-write-wins (A is newer) — A's whole-workspace write must win.
+    // last-write-wins (A is newer) — A's whole-workspace write must win. The
+    // optimistic nav-item assertion is skipped here because B's concurrent edit
+    // makes it race; the convergence polls below are the real assertions.
     const aName = `${base} [A-later]`;
-    await renameSpaceA(page, base, aName);
+    await renameSpaceA(page, base, aName, { confirmVisible: false });
 
     // The later writer (A) wins on the backend; B's rename is overwritten.
     await waitForApi(
