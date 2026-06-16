@@ -19,6 +19,8 @@
 
 # production
 /build
+# ...but keep the Bazel BUILD file (case-insensitive filesystems match /build).
+!/BUILD
 
 # misc
 .DS_Store
