@@ -135,7 +135,7 @@ jobs:
           bazel run //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
 
       - name: Install Pulumi
-        uses: pulumi/actions@v6
+        uses: pulumi/actions@v7
 
       - name: Deploy Cloud Run via Pulumi
         env:
