@@ -164,12 +164,15 @@ describe("Sharing API Endpoints", () => {
         label: null,
         expiresAt: null,
         token: "a".repeat(64),
+        relayId: "b".repeat(64),
       });
       const res = await inject("POST", `/api/v1/workspaces/${WS}/share-links`, {
         role: "view",
       });
       expect(res.statusCode).toBe(201);
-      expect(JSON.parse(res.payload).data.token).toBe("a".repeat(64));
+      const body = JSON.parse(res.payload).data;
+      expect(body.token).toBe("a".repeat(64));
+      expect(body.relayId).toBe("b".repeat(64));
     });
 
     it("revokes a link (204)", async () => {
@@ -185,6 +188,7 @@ describe("Sharing API Endpoints", () => {
       mockShare.getLinkInfo.mockResolvedValue({
         workspaceId: WS,
         workspaceName: "Alpha",
+        ownerName: "Jane",
         role: "view",
       });
       const res = await inject("POST", "/api/v1/share-links/info", {

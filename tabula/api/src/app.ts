@@ -36,6 +36,7 @@ import { userRoutes } from "./routes/user.routes";
 import { backupRoutes } from "./routes/backup.routes";
 import { syncRoutes } from "./routes/sync.routes";
 import { sharingRoutes } from "./routes/sharing.routes";
+import { relayRoutes } from "./routes/relay.routes";
 
 // Load environment variables
 dotenv.config();
@@ -100,6 +101,9 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
   app.register(syncRoutes, { prefix: "/api/v1/sync" });
   // Sharing routes use full /workspaces/... and /share-links/... paths.
   app.register(sharingRoutes, { prefix: "/api/v1" });
+  // Relay routes are a SEPARATE plugin so the public preview is not behind
+  // sharingRoutes' blanket auth hook.
+  app.register(relayRoutes, { prefix: "/api/v1" });
 
   // Health check endpoint
   app.get("/health", async () => ({

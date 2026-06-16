@@ -47,11 +47,13 @@ export class ShareService {
     expiresAt?: string,
   ) {
     const token = generateOpaqueToken();
+    const relayId = generateOpaqueToken();
     const link = await prisma.shareLink.create({
       data: {
         id: generateId("sl"),
         workspaceId,
         tokenHash: hashToken(token),
+        relayIdHash: hashToken(relayId),
         role,
         createdByUserId,
         label: label ?? null,
@@ -59,7 +61,9 @@ export class ShareService {
       },
       select: { id: true, role: true, label: true, expiresAt: true },
     });
-    return { ...link, token };
+    // `token` (body-based accept) and `relayId` (the /s/<relayId> URL handle) are
+    // each returned exactly once; only their SHA-256 hashes are persisted.
+    return { ...link, token, relayId };
   }
 
   /** Active (non-revoked) links for a space. Never returns token material. */
@@ -92,41 +96,81 @@ export class ShareService {
    * Resolve a raw token to a usable link, or null if it does not exist, is
    * revoked, or is expired (all indistinguishable to the caller).
    */
-  private static async resolveToken(token: string) {
+  /**
+   * Resolve a share link by a unique hashed handle (token OR relay id), or null
+   * if it does not exist, is revoked, or is expired (all indistinguishable to
+   * the caller — no oracle). Includes the owner's name for preview attribution.
+   */
+  private static async resolveLink(
+    where: { tokenHash: string } | { relayIdHash: string },
+  ) {
     const link = await prisma.shareLink.findUnique({
-      where: { tokenHash: hashToken(token) },
-      include: { workspace: { select: { name: true, userId: true } } },
+      where,
+      include: {
+        workspace: {
+          select: {
+            name: true,
+            userId: true,
+            user: { select: { name: true } },
+          },
+        },
+      },
     });
     if (!link || link.revokedAt) return null;
     if (link.expiresAt && link.expiresAt.getTime() < Date.now()) return null;
     return link;
   }
 
-  /** Preview a link before accepting (no grant is created). */
-  static async getLinkInfo(token: string) {
-    const link = await this.resolveToken(token);
-    if (!link) {
-      throw new NotFoundError("Share link not found");
-    }
+  private static resolveToken(token: string) {
+    return this.resolveLink({ tokenHash: hashToken(token) });
+  }
+
+  private static resolveByRelayId(relayId: string) {
+    return this.resolveLink({ relayIdHash: hashToken(relayId) });
+  }
+
+  private static toInfo(link: {
+    workspaceId: string;
+    role: string;
+    workspace: { name: string; user: { name: string } };
+  }) {
     return {
       workspaceId: link.workspaceId,
       workspaceName: link.workspace.name,
+      ownerName: link.workspace.user.name,
       role: link.role as GrantRole,
     };
   }
 
-  /**
-   * Redeem a link: materialize a collaborator grant for the caller. Idempotent
-   * and never downgrades an existing higher grant; the owner accepting their own
-   * link is a no-op. Throws NotFoundError for an invalid/revoked/expired token.
-   */
-  static async acceptLink(token: string, userId: string, userEmail: string) {
+  /** Preview a link by its token (body-based flow). No grant is created. */
+  static async getLinkInfo(token: string) {
     const link = await this.resolveToken(token);
-    if (!link) {
-      throw new NotFoundError("Share link not found");
-    }
+    if (!link) throw new NotFoundError("Share link not found");
+    return this.toInfo(link);
+  }
 
-    // The owner is already the owner — accepting their own link does nothing.
+  /** Preview a link by its relay id (the /s/<relayId> URL handle). Public. */
+  static async getRelayInfo(relayId: string) {
+    const link = await this.resolveByRelayId(relayId);
+    if (!link) throw new NotFoundError("Share link not found");
+    return this.toInfo(link);
+  }
+
+  /**
+   * Materialize a collaborator grant for the caller from an already-resolved
+   * link. Idempotent and never downgrades a higher existing grant; the owner
+   * accepting their own link is a no-op.
+   */
+  private static async materialize(
+    link: {
+      workspaceId: string;
+      role: string;
+      createdByUserId: string;
+      workspace: { name: string; userId: string };
+    },
+    userId: string,
+    userEmail: string,
+  ) {
     if (link.workspace.userId === userId) {
       return {
         workspaceId: link.workspaceId,
@@ -174,5 +218,23 @@ export class ShareService {
       workspaceName: link.workspace.name,
       role: collaborator.role as GrantRole,
     };
+  }
+
+  /** Redeem a link by its token. */
+  static async acceptLink(token: string, userId: string, userEmail: string) {
+    const link = await this.resolveToken(token);
+    if (!link) throw new NotFoundError("Share link not found");
+    return this.materialize(link, userId, userEmail);
+  }
+
+  /** Redeem a link by its relay id (the /s/<relayId> URL handle). */
+  static async acceptByRelayId(
+    relayId: string,
+    userId: string,
+    userEmail: string,
+  ) {
+    const link = await this.resolveByRelayId(relayId);
+    if (!link) throw new NotFoundError("Share link not found");
+    return this.materialize(link, userId, userEmail);
   }
 }

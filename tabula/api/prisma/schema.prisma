@@ -228,6 +228,11 @@ model ShareLink {
   // SHA-256 hex of the opaque token; the raw token is NEVER persisted (returned
   // to the creator exactly once), mirroring lib/auth refresh-token hashing.
   tokenHash       String    @unique @map("token_hash") @db.VarChar(64)
+  // SHA-256 hex of the opaque relay id — the shareable URL handle (tabula.com/s/
+  // <relayId>). Stored hashed (like tokenHash) so a DB read never yields a usable
+  // relay URL; the raw relayId lives only in the link the owner shares. Nullable
+  // for links minted before relay support.
+  relayIdHash     String?   @unique @map("relay_id_hash") @db.VarChar(64)
   role            String    @default("view") @db.VarChar(20)
   createdByUserId String    @map("created_by_user_id") @db.Uuid
   label           String?   @db.VarChar(255)
