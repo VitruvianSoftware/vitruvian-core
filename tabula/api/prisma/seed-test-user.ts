@@ -48,6 +48,19 @@ const TEST_USER = {
   tier: "free" as const,
 };
 
+// A second deterministic user dedicated to the cross-device convergence spec
+// (extension/tests/sync-convergence.spec.ts). Those tests hold a workspace live
+// across long two-device windows; isolating them on their own user keeps the
+// parallel specs' workspace cleanups (which target the shared TEST_USER) from
+// deleting it mid-test. Must match CONV_TEST_USER in extension/tests/
+// e2e-helpers.ts.
+const CONV_TEST_USER = {
+  id: "00000000-0000-0000-0000-e2e000000002",
+  email: "e2e-conv@tabula.dev",
+  name: "E2E Convergence User",
+  tier: "free" as const,
+};
+
 async function main() {
   console.log("[seed-test-user] Starting...");
 
@@ -58,30 +71,25 @@ async function main() {
     process.exit(1);
   }
 
-  // Upsert the test user
-  const user = await prisma.user.upsert({
-    where: { id: TEST_USER.id },
-    update: {
-      email: TEST_USER.email,
-      name: TEST_USER.name,
-      tier: TEST_USER.tier,
-    },
-    create: {
-      id: TEST_USER.id,
-      email: TEST_USER.email,
-      name: TEST_USER.name,
-      tier: TEST_USER.tier,
-    },
-  });
+  // Upsert the test users
+  for (const u of [TEST_USER, CONV_TEST_USER]) {
+    const user = await prisma.user.upsert({
+      where: { id: u.id },
+      update: { email: u.email, name: u.name, tier: u.tier },
+      create: { id: u.id, email: u.email, name: u.name, tier: u.tier },
+    });
+    console.log("[seed-test-user] User created/updated:", user.email);
+  }
 
-  console.log("[seed-test-user] User created/updated:", user.email);
-
-  // Generate a token (expires in 24 hours)
+  // Generate a token for the primary test user (expires in 24 hours). It is
+  // parsed out of this seed's stdout and injected into the pw_suite env as
+  // E2E_TEST_TOKEN; the convergence user's token is minted in-test from
+  // JWT_SECRET (see e2e-helpers.mintTestToken).
   const token = jwt.sign(
     {
-      id: user.id,
-      email: user.email,
-      tier: user.tier,
+      id: TEST_USER.id,
+      email: TEST_USER.email,
+      tier: TEST_USER.tier,
     },
     jwtSecret,
     { expiresIn: "24h" },
@@ -92,8 +100,8 @@ async function main() {
   console.log(`E2E_TEST_TOKEN=${token}`);
 
   // Also output user info for verification
-  console.log(`E2E_TEST_USER_ID=${user.id}`);
-  console.log(`E2E_TEST_USER_EMAIL=${user.email}`);
+  console.log(`E2E_TEST_USER_ID=${TEST_USER.id}`);
+  console.log(`E2E_TEST_USER_EMAIL=${TEST_USER.email}`);
 }
 
 main()
