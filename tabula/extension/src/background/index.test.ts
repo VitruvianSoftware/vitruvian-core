@@ -358,4 +358,89 @@ describe("Background Script", () => {
     const resultUnknown = messageCallback({ type: "UNKNOWN" }, {}, jest.fn());
     expect(resultUnknown).toBe(false);
   });
+
+  describe("onMessageExternal (relay)", () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    const loadExternalHandler = () => {
+      let handler: any;
+      mockChrome.runtime.onMessageExternal.addListener.mockImplementation(
+        (cb: any) => {
+          handler = cb;
+        },
+      );
+      jest.isolateModules(() => {
+        require("./index");
+      });
+      return handler;
+    };
+
+    it("answers PING so the relay landing can detect the extension", () => {
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      const result = handler({ type: "PING" }, { origin: "x" }, sendResponse);
+
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, installed: true }),
+      );
+    });
+
+    it("opens the dashboard at the relay handle for IMPORT_SPACE", async () => {
+      mockChrome.tabs.create.mockResolvedValue({ id: 1 });
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      const result = handler(
+        { type: "IMPORT_SPACE", relayId: "relay-abc", spaceId: "ws_1" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+      expect(result).toBe(true);
+      await flush();
+
+      expect(mockChrome.tabs.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
+          active: true,
+        }),
+      );
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, action: "opened_dashboard" }),
+      );
+    });
+
+    it("falls back to a bare spaceId deep-link when no relayId is given", async () => {
+      mockChrome.tabs.create.mockResolvedValue({ id: 1 });
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      handler(
+        { type: "IMPORT_SPACE", spaceId: "ws_1" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+      await flush();
+
+      expect(mockChrome.tabs.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "chrome-extension://test-id/dashboard.html?spaceId=ws_1",
+        }),
+      );
+    });
+
+    it("rejects IMPORT_SPACE that carries neither a relayId nor a spaceId", () => {
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      handler({ type: "IMPORT_SPACE" }, { origin: "x" }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: "Missing relayId",
+      });
+      expect(mockChrome.tabs.create).not.toHaveBeenCalled();
+    });
+  });
 });

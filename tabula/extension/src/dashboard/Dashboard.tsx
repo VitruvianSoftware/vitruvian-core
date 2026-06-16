@@ -59,6 +59,7 @@ import { useNotesAndTasks } from "./hooks/useNotesAndTasks";
 import { useResourceHandlers } from "./hooks/useResourceHandlers";
 import { useMenuState } from "./hooks/useMenuState";
 import { useWorkspaceSwitch } from "./hooks/useWorkspaceSwitch";
+import { useRelayImport } from "./hooks/useRelayImport";
 import { ConfirmModal } from "./ConfirmModal";
 import { CommandPalette } from "./CommandPalette";
 import { SyncService } from "../services/sync";
@@ -184,6 +185,11 @@ export const Dashboard: React.FC = () => {
   // resolve against THIS window's effective id, never the shared store id,
   // or a URL-pinned window would adopt another window's workspace.
   const effectiveActiveWorkspaceIdRef = useLatest(effectiveActiveWorkspaceId);
+
+  // Relay import (#140): if this dashboard was opened from a relay link
+  // (dashboard.html?relayId=…), redeem the grant, pull the shared space, and
+  // pin THIS window to it. No-op without a relayId or a signed-in user.
+  useRelayImport({ loadWorkspaces, setLocalActiveWorkspaceId });
 
   // Resource and Section - Now using extracted hook
   const {

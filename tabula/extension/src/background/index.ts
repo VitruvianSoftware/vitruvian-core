@@ -253,17 +253,29 @@ chrome.runtime.onMessageExternal.addListener(
         return true;
 
       case "IMPORT_SPACE": {
-        // Handle space import from Relay page
-        // Payload: { type: 'IMPORT_SPACE', spaceId: string, data?: SpaceData }
-        if (!message.spaceId) {
-          sendResponse({ success: false, error: "Missing spaceId" });
+        // Handle space import from the relay landing (tabula.com/s/<relayId>).
+        // Payload: { type: 'IMPORT_SPACE', relayId: string, spaceId?: string }
+        //
+        // We open the dashboard pointed at the relay handle and let it redeem
+        // the grant + pull the shared space (useRelayImport): redeeming needs
+        // the signed-in user's token + transparent refresh, which live in the
+        // dashboard's auth/sync context, so the import is driven there rather
+        // than in the service worker. spaceId (the resolved workspace id) is
+        // only a legacy fallback for a direct deep-link carrying no relay handle.
+        const relayId =
+          typeof message.relayId === "string" ? message.relayId.trim() : "";
+        const spaceId =
+          typeof message.spaceId === "string" ? message.spaceId.trim() : "";
+        if (!relayId && !spaceId) {
+          sendResponse({ success: false, error: "Missing relayId" });
           return true;
         }
 
-        // For now, we just open the dashboard with the spaceId.
-        // Full import logic (fetching data from backend) will be added in a future iteration.
+        const params = new URLSearchParams();
+        if (relayId) params.set("relayId", relayId);
+        else params.set("spaceId", spaceId);
         const dashboardUrl = chrome.runtime.getURL(
-          `dashboard.html?spaceId=${message.spaceId}`,
+          `dashboard.html?${params.toString()}`,
         );
         chrome.tabs
           .create({ url: dashboardUrl, active: true })
