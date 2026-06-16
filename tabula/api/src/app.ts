@@ -35,6 +35,7 @@ import { authRoutes } from "./routes/auth.routes";
 import { userRoutes } from "./routes/user.routes";
 import { backupRoutes } from "./routes/backup.routes";
 import { syncRoutes } from "./routes/sync.routes";
+import { sharingRoutes } from "./routes/sharing.routes";
 
 // Load environment variables
 dotenv.config();
@@ -97,6 +98,8 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
   app.register(spaceGroupRoutes, { prefix: "/api/v1/space-groups" });
   app.register(backupRoutes, { prefix: "/api/v1/backups" });
   app.register(syncRoutes, { prefix: "/api/v1/sync" });
+  // Sharing routes use full /workspaces/... and /share-links/... paths.
+  app.register(sharingRoutes, { prefix: "/api/v1" });
 
   // Health check endpoint
   app.get("/health", async () => ({
