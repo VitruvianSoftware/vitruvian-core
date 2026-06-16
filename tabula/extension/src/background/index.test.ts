@@ -358,4 +358,152 @@ describe("Background Script", () => {
     const resultUnknown = messageCallback({ type: "UNKNOWN" }, {}, jest.fn());
     expect(resultUnknown).toBe(false);
   });
+
+  describe("onMessageExternal (relay)", () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    const loadExternalHandler = () => {
+      let handler: any;
+      mockChrome.runtime.onMessageExternal.addListener.mockImplementation(
+        (cb: any) => {
+          handler = cb;
+        },
+      );
+      jest.isolateModules(() => {
+        require("./index");
+      });
+      return handler;
+    };
+
+    it("answers PING so the relay landing can detect the extension", () => {
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      const result = handler(
+        { type: "PING" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, installed: true }),
+      );
+    });
+
+    it("rejects any message from an origin not on the allow-list", () => {
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      const result = handler(
+        { type: "PING" },
+        { origin: "https://evil.example.com" },
+        sendResponse,
+      );
+
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: "Unauthorized origin",
+      });
+      expect(mockChrome.tabs.create).not.toHaveBeenCalled();
+    });
+
+    it("opens the dashboard at the relay handle for IMPORT_SPACE", async () => {
+      mockChrome.tabs.create.mockResolvedValue({ id: 1 });
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      const result = handler(
+        { type: "IMPORT_SPACE", relayId: "relay-abc", spaceId: "ws_1" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+      expect(result).toBe(true);
+      await flush();
+
+      expect(mockChrome.tabs.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
+          active: true,
+        }),
+      );
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, action: "opened_dashboard" }),
+      );
+    });
+
+    it("falls back to a bare spaceId deep-link when no relayId is given", async () => {
+      mockChrome.tabs.create.mockResolvedValue({ id: 1 });
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      handler(
+        { type: "IMPORT_SPACE", spaceId: "ws_1" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+      await flush();
+
+      expect(mockChrome.tabs.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "chrome-extension://test-id/dashboard.html?spaceId=ws_1",
+        }),
+      );
+    });
+
+    it("rejects IMPORT_SPACE that carries neither a relayId nor a spaceId", () => {
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      handler(
+        { type: "IMPORT_SPACE" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: "Missing relayId",
+      });
+      expect(mockChrome.tabs.create).not.toHaveBeenCalled();
+    });
+
+    it("reports failure when chrome.tabs.create rejects for IMPORT_SPACE", async () => {
+      mockChrome.tabs.create.mockRejectedValue(new Error("boom"));
+      const handler = loadExternalHandler();
+      const sendResponse = jest.fn();
+
+      handler(
+        { type: "IMPORT_SPACE", relayId: "relay-abc" },
+        { origin: "https://tabula.com" },
+        sendResponse,
+      );
+      await flush();
+
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false }),
+      );
+    });
+  });
+
+  describe("externally_connectable allow-list (manifest)", () => {
+    // The manifest match list is the real security boundary (Chrome enforces it
+    // before onMessageExternal fires). Pin it so it can't be silently broadened.
+    it("is scoped to the intended hosts with no wildcard", () => {
+      const manifest = require("../manifest.json");
+      const matches = manifest.externally_connectable.matches as string[];
+
+      expect(matches).toEqual([
+        "*://tabula.com/*",
+        "*://*.tabula.com/*",
+        "*://tabula-staging.com/*",
+        "*://*.tabula-staging.com/*",
+        "*://localhost/*",
+        "*://127.0.0.1/*",
+      ]);
+      expect(matches).not.toContain("*://*/*");
+      expect(matches).not.toContain("<all_urls>");
+    });
+  });
 });

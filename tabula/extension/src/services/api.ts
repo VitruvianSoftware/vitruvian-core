@@ -48,6 +48,13 @@ export interface SaveOptions {
   claimActiveDevice?: boolean;
 }
 
+/** Result of redeeming a relay link — the grant the caller now holds. */
+export interface RelayAcceptResult {
+  workspaceId: string;
+  workspaceName: string;
+  role: "owner" | "edit" | "view";
+}
+
 export class ApiService {
   /**
    * Helper to perform authenticated requests
@@ -341,5 +348,23 @@ export class ApiService {
     return this.request(`/backups/${backupId}`, {
       method: "DELETE",
     });
+  }
+
+  // ============================================
+  // SHARING — RELAY
+  // ============================================
+
+  /**
+   * Redeem a relay link (the `tabula.com/s/<relayId>` URL handle) → materializes
+   * the caller's collaborator grant for the shared space. Auth required; the
+   * server is idempotent and never downgrades an existing higher grant. After
+   * this resolves, the shared workspace is returned by GET /workspaces, so a
+   * normal sync pulls it into local state (see useRelayImport).
+   */
+  static async acceptRelay(relayId: string): Promise<RelayAcceptResult> {
+    return this.request<RelayAcceptResult>(
+      `/share-links/relay/${encodeURIComponent(relayId)}/accept`,
+      { method: "POST" },
+    );
   }
 }

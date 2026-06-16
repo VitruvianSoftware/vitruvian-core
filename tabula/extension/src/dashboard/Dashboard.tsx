@@ -59,6 +59,7 @@ import { useNotesAndTasks } from "./hooks/useNotesAndTasks";
 import { useResourceHandlers } from "./hooks/useResourceHandlers";
 import { useMenuState } from "./hooks/useMenuState";
 import { useWorkspaceSwitch } from "./hooks/useWorkspaceSwitch";
+import { useRelayImport } from "./hooks/useRelayImport";
 import { ConfirmModal } from "./ConfirmModal";
 import { CommandPalette } from "./CommandPalette";
 import { SyncService } from "../services/sync";
@@ -184,6 +185,23 @@ export const Dashboard: React.FC = () => {
   // resolve against THIS window's effective id, never the shared store id,
   // or a URL-pinned window would adopt another window's workspace.
   const effectiveActiveWorkspaceIdRef = useLatest(effectiveActiveWorkspaceId);
+
+  // Relay import (#140): if this dashboard was opened from a relay link
+  // (dashboard.html?relayId=…), redeem the grant, pull the shared space, and
+  // pin THIS window to it. No-op without a relayId or a signed-in user.
+  //
+  // The imported space is shared — its tabs belong to the owner — so pinning to
+  // it must NOT capture this window's unrelated tabs into it. We record the
+  // freshly-imported id here and the sync effect below skips the ownership
+  // claim/save for it (mirroring the non-destructive ?spaceId= URL pin).
+  const justRelayImportedRef = React.useRef<string | null>(null);
+  useRelayImport({
+    loadWorkspaces,
+    onImported: (workspaceId) => {
+      justRelayImportedRef.current = workspaceId;
+      setLocalActiveWorkspaceId(workspaceId);
+    },
+  });
 
   // Resource and Section - Now using extracted hook
   const {
@@ -555,6 +573,16 @@ export const Dashboard: React.FC = () => {
       if (!effectiveActiveWorkspaceId || document.visibilityState !== "visible")
         return;
       if (!currentWindowId) return;
+
+      // A relay-imported shared space: pin & display it, but do NOT capture this
+      // window's unrelated tabs into it — that would overwrite the owner's saved
+      // tab list (and, for an edit collaborator, PUT the clobber to everyone).
+      // Skip the claim/save once; genuine later switches behave normally.
+      if (effectiveActiveWorkspaceId === justRelayImportedRef.current) {
+        justRelayImportedRef.current = null;
+        loadWorkspaces();
+        return;
+      }
 
       const currentTab = await chrome.tabs.getCurrent();
       const claim = await WindowOwnershipService.tryClaimWorkspace(

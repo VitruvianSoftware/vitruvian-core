@@ -35,6 +35,30 @@ export function getSpaceIdFromUrl(): string | null {
 }
 
 /**
+ * Gets the relayId from the current URL query parameters. The dashboard is
+ * opened at `dashboard.html?relayId=<id>` when the background receives an
+ * IMPORT_SPACE message from the relay landing (tabula.com/s/<relayId>); the
+ * relayId is the opaque share handle to redeem, not a workspace id.
+ * @returns The relayId if present, or null.
+ */
+export function getRelayIdFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("relayId");
+}
+
+/**
+ * Removes the relayId from the current URL without reloading. Uses
+ * history.replaceState (not pushState) so that, once a relay has been redeemed,
+ * a reload or Back navigation does not re-trigger the import against a link that
+ * may now be single-use/expired.
+ */
+export function clearRelayIdFromUrl(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("relayId");
+  window.history.replaceState({}, "", url.toString());
+}
+
+/**
  * Updates the URL to include the given spaceId without reloading the page.
  * Uses history.pushState for clean browser history.
  * @param spaceId - The workspace ID to set in the URL.

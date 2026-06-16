@@ -122,6 +122,9 @@ jest_test(
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.js",
+        # manifest.json is asserted on by background/index.test.ts (the
+        # externally_connectable allow-list is the relay's real trust boundary).
+        "src/**/*.json",
     ]) + [
         "jest.setup.js",
         "tests/styleMock.js",

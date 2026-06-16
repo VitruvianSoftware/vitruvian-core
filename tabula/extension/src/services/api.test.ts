@@ -769,4 +769,57 @@ describe("ApiService", () => {
       expect(result).toEqual({});
     });
   });
+
+  describe("acceptRelay", () => {
+    beforeEach(() => {
+      (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+    });
+
+    it("POSTs to the relay accept endpoint and unwraps the grant", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: { workspaceId: "ws_1", workspaceName: "Alpha", role: "edit" },
+        }),
+      });
+
+      const result = await ApiService.acceptRelay("relay-abc");
+
+      expect(result).toEqual({
+        workspaceId: "ws_1",
+        workspaceName: "Alpha",
+        role: "edit",
+      });
+      const [url, init] = (globalThis.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain("/share-links/relay/relay-abc/accept");
+      expect(init.method).toBe("POST");
+      expect((init.headers as Headers).get("Authorization")).toBe(
+        "Bearer test-token",
+      );
+    });
+
+    it("encodes the relay id into the path", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { workspaceId: "ws_1" } }),
+      });
+
+      await ApiService.acceptRelay("a/b c");
+
+      const [url] = (globalThis.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain("/share-links/relay/a%2Fb%20c/accept");
+    });
+
+    it("surfaces a 404 for an unknown / revoked / expired relay", async () => {
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({ message: "Share link not found" }),
+      });
+
+      await expect(ApiService.acceptRelay("dead")).rejects.toMatchObject({
+        status: 404,
+      });
+    });
+  });
 });

@@ -30,12 +30,15 @@ import {
   setSpaceIdInUrl,
   clearSpaceIdFromUrl,
   getDashboardUrlWithSpace,
+  getRelayIdFromUrl,
+  clearRelayIdFromUrl,
 } from "./router";
 
 describe("router", () => {
   // Store original location
   const originalLocation = window.location;
   const originalHistoryPushState = window.history.pushState;
+  const originalHistoryReplaceState = window.history.replaceState;
 
   beforeEach(() => {
     // Reset location mock before each test
@@ -44,8 +47,9 @@ describe("router", () => {
       "chrome-extension://test-id/dashboard.html",
     );
 
-    // Mock history.pushState
+    // Mock history.pushState / replaceState
     window.history.pushState = jest.fn();
+    window.history.replaceState = jest.fn();
 
     // Mock chrome.runtime.getURL
     (globalThis as any).chrome = {
@@ -59,6 +63,7 @@ describe("router", () => {
     // Restore original location
     (window as any).location = originalLocation;
     window.history.pushState = originalHistoryPushState;
+    window.history.replaceState = originalHistoryReplaceState;
   });
 
   describe("getSpaceIdFromUrl", () => {
@@ -127,6 +132,42 @@ describe("router", () => {
         "chrome-extension://test-id/dashboard.html?spaceId=my-workspace",
       );
       expect(chrome.runtime.getURL).toHaveBeenCalledWith("dashboard.html");
+    });
+  });
+
+  describe("getRelayIdFromUrl", () => {
+    it("should return null when no relayId param exists", () => {
+      (window as any).location = new URL(
+        "chrome-extension://test-id/dashboard.html?spaceId=ws-1",
+      );
+      expect(getRelayIdFromUrl()).toBeNull();
+    });
+
+    it("should return relayId when the param exists", () => {
+      (window as any).location = new URL(
+        "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
+      );
+      expect(getRelayIdFromUrl()).toBe("relay-abc");
+    });
+  });
+
+  describe("clearRelayIdFromUrl", () => {
+    it("should remove relayId via replaceState (not pushState)", () => {
+      (window as any).location = new URL(
+        "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
+      );
+
+      clearRelayIdFromUrl();
+
+      expect(window.history.replaceState).toHaveBeenCalledWith(
+        {},
+        "",
+        expect.any(String),
+      );
+      expect(window.history.pushState).not.toHaveBeenCalled();
+      const calledUrl = (window.history.replaceState as jest.Mock).mock
+        .calls[0][2];
+      expect(calledUrl).not.toContain("relayId");
     });
   });
 });

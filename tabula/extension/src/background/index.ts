@@ -227,6 +227,25 @@ chrome.action.onClicked.addListener(() => {
 });
 
 /**
+ * Origins permitted to drive the extension via the relay pattern. Chrome already
+ * enforces the externally_connectable match list in the manifest before this
+ * listener fires; this is defense-in-depth (and a guard against the manifest
+ * being accidentally broadened to a wildcard). Keep this in sync with
+ * manifest.json externally_connectable.matches. localhost/127.0.0.1 stay for dev
+ * + e2e; production builds serve the app only from tabula.com.
+ */
+const ALLOWED_EXTERNAL_ORIGINS = [
+  /^https?:\/\/(.*\.)?tabula\.com$/,
+  /^https?:\/\/(.*\.)?tabula-staging\.com$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+];
+
+function isAllowedExternalOrigin(origin: string | undefined): boolean {
+  return !!origin && ALLOWED_EXTERNAL_ORIGINS.some((re) => re.test(origin));
+}
+
+/**
  * Handle messages from external websites (Relay Pattern).
  * Allows approved domains (tabula.com, staging, localhost) to trigger actions in the extension.
  * @see externally_connectable in manifest.json
@@ -242,6 +261,12 @@ chrome.runtime.onMessageExternal.addListener(
       sender.origin,
     );
 
+    // Defense-in-depth: reject any origin not on the allow-list before acting.
+    if (!isAllowedExternalOrigin(sender.origin)) {
+      sendResponse({ success: false, error: "Unauthorized origin" });
+      return true;
+    }
+
     switch (message.type) {
       case "PING":
         // Simple health check to confirm extension is installed
@@ -253,17 +278,29 @@ chrome.runtime.onMessageExternal.addListener(
         return true;
 
       case "IMPORT_SPACE": {
-        // Handle space import from Relay page
-        // Payload: { type: 'IMPORT_SPACE', spaceId: string, data?: SpaceData }
-        if (!message.spaceId) {
-          sendResponse({ success: false, error: "Missing spaceId" });
+        // Handle space import from the relay landing (tabula.com/s/<relayId>).
+        // Payload: { type: 'IMPORT_SPACE', relayId: string, spaceId?: string }
+        //
+        // We open the dashboard pointed at the relay handle and let it redeem
+        // the grant + pull the shared space (useRelayImport): redeeming needs
+        // the signed-in user's token + transparent refresh, which live in the
+        // dashboard's auth/sync context, so the import is driven there rather
+        // than in the service worker. spaceId (the resolved workspace id) is
+        // only a legacy fallback for a direct deep-link carrying no relay handle.
+        const relayId =
+          typeof message.relayId === "string" ? message.relayId.trim() : "";
+        const spaceId =
+          typeof message.spaceId === "string" ? message.spaceId.trim() : "";
+        if (!relayId && !spaceId) {
+          sendResponse({ success: false, error: "Missing relayId" });
           return true;
         }
 
-        // For now, we just open the dashboard with the spaceId.
-        // Full import logic (fetching data from backend) will be added in a future iteration.
+        const params = new URLSearchParams();
+        if (relayId) params.set("relayId", relayId);
+        else params.set("spaceId", spaceId);
         const dashboardUrl = chrome.runtime.getURL(
-          `dashboard.html?spaceId=${message.spaceId}`,
+          `dashboard.html?${params.toString()}`,
         );
         chrome.tabs
           .create({ url: dashboardUrl, active: true })
