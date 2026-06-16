@@ -126,7 +126,9 @@ describe("AuthService", () => {
             user: mockUser,
           },
         },
-        origin: window.location.origin,
+        // The auth popup's own origin (AuthService.API_URL). Required by the
+        // postMessage origin check that guards against token fixation.
+        origin: "http://localhost:8080",
       });
 
       messageHandler(messageEvent);

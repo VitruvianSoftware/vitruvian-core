@@ -22,11 +22,42 @@
 
 import type { NextConfig } from "next";
 
+// Defense-in-depth security headers. The primary XSS guards are in the code
+// (lib/safeHref for URLs, escaped React text for note bodies — never
+// dangerouslySetInnerHTML); this CSP is the backstop, and frame-ancestors +
+// Referrer-Policy specifically protect the relay landing (no clickjacking, and
+// the /s/<relayId> handle never leaks via Referer when the page links out).
+// NOTE: script-src keeps 'unsafe-inline' for Next's hydration bootstrap;
+// tightening to nonces is a follow-up. connect-src hardcodes the dev API origin,
+// matching the rest of the app (lib/data.ts / lib/auth.ts).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "connect-src 'self' http://localhost:8080",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 const nextConfig: NextConfig = {
   // geist ships ESM-only; transpile it for both next build and next/jest
   // (next/jest derives its jest transformIgnorePatterns from this list).
   transpilePackages: ["geist"],
-  /* config options here */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: CSP },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

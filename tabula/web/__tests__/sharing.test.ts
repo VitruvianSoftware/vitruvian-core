@@ -125,4 +125,39 @@ describe("SharingService", () => {
       expect(JSON.parse(init.body)).toEqual({ token: "secret-token" });
     });
   });
+
+  describe("relay", () => {
+    it("getRelayInfo fetches the public preview WITHOUT an auth header", async () => {
+      mockFetch.mockResolvedValue(
+        ok({
+          workspaceId: "ws_1",
+          workspaceName: "Alpha",
+          ownerName: "Jane",
+          role: "view",
+        }),
+      );
+      const info = await SharingService.getRelayInfo("relay-abc");
+      expect(info.ownerName).toBe("Jane");
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        "http://localhost:8080/api/v1/share-links/relay/relay-abc/info",
+      );
+      // Public endpoint: no Authorization header is sent.
+      expect(init?.headers).toBeUndefined();
+    });
+
+    it("acceptRelay POSTs to the relay accept endpoint with a Bearer header", async () => {
+      mockFetch.mockResolvedValue(
+        ok({ workspaceId: "ws_1", workspaceName: "Alpha", role: "edit" }),
+      );
+      const result = await SharingService.acceptRelay("relay-abc");
+      expect(result.role).toBe("edit");
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        "http://localhost:8080/api/v1/share-links/relay/relay-abc/accept",
+      );
+      expect(init.method).toBe("POST");
+      expect(init.headers.Authorization).toBe("Bearer test-token");
+    });
+  });
 });

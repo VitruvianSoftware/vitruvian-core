@@ -57,7 +57,13 @@ export class AuthService {
         return;
       }
 
+      // Only the auth popup's own origin may deliver a token. Without this,
+      // any page that can postMessage to this window could inject an attacker's
+      // JWT (login CSRF / token fixation) — a risk widened by the relay funnel
+      // that drives strangers through this login popup.
+      const expectedOrigin = new URL(AuthService.API_URL).origin;
       const messageHandler = (event: MessageEvent) => {
+        if (event.origin !== expectedOrigin) return;
         if (event.data?.type === "TABULA_AUTH_SUCCESS") {
           const { token, user } = event.data.payload;
 
