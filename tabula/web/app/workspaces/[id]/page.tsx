@@ -27,6 +27,7 @@ import { useParams } from "next/navigation";
 import type { Workspace } from "@tabula/shared";
 import { SharingService, ApiError } from "@/lib/sharing";
 import { SpaceView } from "@/app/components/space/SpaceView";
+import { EditableSpace } from "@/app/components/space/EditableSpace";
 
 type LoadError = "auth" | "notfound" | "error";
 
@@ -41,6 +42,8 @@ export default function SpaceDetailPage() {
   const id = typeof params?.id === "string" ? params.id : "";
 
   const [space, setSpace] = useState<Workspace | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,9 +51,20 @@ export default function SpaceDetailPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    SharingService.getSpace(id)
-      .then((s) => {
+    setEditing(false);
+    // Fetch the space (VIEW+) and the caller's shared grants together. A space
+    // NOT in shared-with-me is one the caller OWNS (editable); a shared grant of
+    // "edit" is editable; "view" is read-only. This only decides whether to
+    // OFFER the edit toggle — the server (#139) is the real gate, so a forged
+    // edit still gets a 403 on save.
+    Promise.all([
+      SharingService.getSpace(id),
+      SharingService.getSharedWithMe().catch(() => []),
+    ])
+      .then(([s, shared]) => {
         if (!active) return;
+        const grant = shared.find((g) => g.workspaceId === id);
+        setCanEdit(!grant || grant.role === "edit");
         setSpace(s);
         setLoading(false);
       })
@@ -77,7 +91,26 @@ export default function SpaceDetailPage() {
   if (error || !space)
     return <Centered>Something went wrong loading this space.</Centered>;
 
-  return <SpaceView space={space} />;
+  return (
+    <div>
+      {canEdit ? (
+        <div className="mx-auto flex max-w-3xl justify-end px-4 pt-4">
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200"
+          >
+            {editing ? "Done" : "Edit"}
+          </button>
+        </div>
+      ) : null}
+      {editing && canEdit ? (
+        <EditableSpace space={space} />
+      ) : (
+        <SpaceView space={space} />
+      )}
+    </div>
+  );
 }
 
 function Centered({ children }: { children: ReactNode }) {
