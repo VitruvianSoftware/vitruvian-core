@@ -39,11 +39,12 @@ jest.mock("@/lib/sharing", () => {
   }
   return {
     ApiError: MockApiError,
-    SharingService: { getSpace: jest.fn() },
+    SharingService: { getSpace: jest.fn(), getSharedWithMe: jest.fn() },
   };
 });
 
 const mockGetSpace = SharingService.getSpace as jest.Mock;
+const mockShared = SharingService.getSharedWithMe as jest.Mock;
 
 const fullSpace = {
   id: "ws_1",
@@ -59,7 +60,10 @@ const fullSpace = {
 };
 
 describe("SpaceDetailPage", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockShared.mockResolvedValue([]);
+  });
 
   it("shows a loading state, then the space on success", async () => {
     mockGetSpace.mockResolvedValue(fullSpace);
@@ -91,5 +95,23 @@ describe("SpaceDetailPage", () => {
     await waitFor(() =>
       expect(screen.getByText(/Something went wrong/)).toBeInTheDocument(),
     );
+  });
+
+  it("offers an Edit toggle for an owned space (not in shared-with-me)", async () => {
+    mockGetSpace.mockResolvedValue(fullSpace);
+    mockShared.mockResolvedValue([]);
+    render(<SpaceDetailPage />);
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("hides the Edit toggle for a view-only grant", async () => {
+    mockGetSpace.mockResolvedValue(fullSpace);
+    mockShared.mockResolvedValue([
+      { workspaceId: "ws_1", role: "view", name: "Alpha" },
+    ]);
+    render(<SpaceDetailPage />);
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 });
