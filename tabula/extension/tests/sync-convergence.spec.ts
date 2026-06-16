@@ -145,7 +145,7 @@ async function renameSpaceA(
     .click();
   await expect(
     page.locator(".nav-item").filter({ hasText: newName }).first(),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15000 });
 }
 
 /** Poll the backend until `check` holds, returning the matching workspace. */
@@ -157,8 +157,8 @@ async function waitForApi(
   await expect
     .poll(async () => check(await apiById(id)), {
       message,
-      timeout: 25000,
-      intervals: [500, 1000, 1500, 2000],
+      timeout: 45000,
+      intervals: [500, 1000, 1500, 2000, 3000],
     })
     .toBe(true);
   const ws = await apiById(id);
@@ -184,13 +184,17 @@ async function waitForLocalA(
         await page.waitForTimeout(1200);
         return check(await readLocal(page));
       },
-      { message, timeout: 40000, intervals: [1500, 2500, 3500] },
+      { message, timeout: 70000, intervals: [1500, 2500, 3500, 4000] },
     )
     .toBe(true);
 }
 
 test.describe("Cross-device sync convergence (#136)", () => {
-  test.describe.configure({ mode: "serial" });
+  // Two-device convergence (reloads + backend polls) can run long under CI
+  // load; the 30s Playwright default would cut a slow-but-correct converge off
+  // mid-poll. Give each test generous headroom (it returns as soon as it
+  // converges, so green runs stay fast).
+  test.describe.configure({ mode: "serial", timeout: 120000 });
 
   let context: BrowserContext;
   let extensionId: string;

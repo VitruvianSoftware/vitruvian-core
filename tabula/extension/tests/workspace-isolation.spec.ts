@@ -110,7 +110,12 @@ test.describe("Workspace Tab Isolation", () => {
     const activeTabsPanel = page
       .locator(".card-section")
       .filter({ hasText: "Active Tabs" });
-    await expect(activeTabsPanel.getByText("example.com")).toBeVisible();
+    // .first(): a tab renders its host in more than one node (url + label), so a
+    // bare getByText("example.com") matches multiple elements and trips
+    // Playwright strict mode. The assertion only needs the tab to be PRESENT.
+    await expect(
+      activeTabsPanel.getByText("example.com").first(),
+    ).toBeVisible();
 
     // Switch to Workspace 2
     await page
@@ -164,7 +169,12 @@ test.describe("Workspace Tab Isolation", () => {
     const activeTabsPanel = page
       .locator(".card-section")
       .filter({ hasText: "Active Tabs" });
-    await expect(activeTabsPanel.getByText("example.com")).toBeVisible();
+    // .first(): a tab renders its host in more than one node (url + label), so a
+    // bare getByText("example.com") matches multiple elements and trips
+    // Playwright strict mode. The assertion only needs the tab to be PRESENT.
+    await expect(
+      activeTabsPanel.getByText("example.com").first(),
+    ).toBeVisible();
 
     // Switch to another workspace (first one in the list)
     await page.locator(".nav-item").first().click();
@@ -175,7 +185,12 @@ test.describe("Workspace Tab Isolation", () => {
     await page.waitForTimeout(1000);
 
     // Tab should be restored
-    await expect(activeTabsPanel.getByText("example.com")).toBeVisible();
+    // .first(): a tab renders its host in more than one node (url + label), so a
+    // bare getByText("example.com") matches multiple elements and trips
+    // Playwright strict mode. The assertion only needs the tab to be PRESENT.
+    await expect(
+      activeTabsPanel.getByText("example.com").first(),
+    ).toBeVisible();
 
     await testTab.close();
     await page.close();
