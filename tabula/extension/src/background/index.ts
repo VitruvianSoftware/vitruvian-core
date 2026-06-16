@@ -227,6 +227,25 @@ chrome.action.onClicked.addListener(() => {
 });
 
 /**
+ * Origins permitted to drive the extension via the relay pattern. Chrome already
+ * enforces the externally_connectable match list in the manifest before this
+ * listener fires; this is defense-in-depth (and a guard against the manifest
+ * being accidentally broadened to a wildcard). Keep this in sync with
+ * manifest.json externally_connectable.matches. localhost/127.0.0.1 stay for dev
+ * + e2e; production builds serve the app only from tabula.com.
+ */
+const ALLOWED_EXTERNAL_ORIGINS = [
+  /^https?:\/\/(.*\.)?tabula\.com$/,
+  /^https?:\/\/(.*\.)?tabula-staging\.com$/,
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+];
+
+function isAllowedExternalOrigin(origin: string | undefined): boolean {
+  return !!origin && ALLOWED_EXTERNAL_ORIGINS.some((re) => re.test(origin));
+}
+
+/**
  * Handle messages from external websites (Relay Pattern).
  * Allows approved domains (tabula.com, staging, localhost) to trigger actions in the extension.
  * @see externally_connectable in manifest.json
@@ -241,6 +260,12 @@ chrome.runtime.onMessageExternal.addListener(
       "from:",
       sender.origin,
     );
+
+    // Defense-in-depth: reject any origin not on the allow-list before acting.
+    if (!isAllowedExternalOrigin(sender.origin)) {
+      sendResponse({ success: false, error: "Unauthorized origin" });
+      return true;
+    }
 
     switch (message.type) {
       case "PING":

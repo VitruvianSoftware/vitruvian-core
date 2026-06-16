@@ -21,6 +21,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { StrictMode } from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useRelayImport } from "./useRelayImport";
 import { AuthService } from "../../services/auth";
@@ -45,17 +46,15 @@ const mockClearRelayId = clearRelayIdFromUrl as jest.Mock;
 
 describe("useRelayImport", () => {
   let loadWorkspaces: jest.Mock;
-  let setLocalActiveWorkspaceId: jest.Mock;
+  let onImported: jest.Mock;
 
   const render = () =>
-    renderHook(() =>
-      useRelayImport({ loadWorkspaces, setLocalActiveWorkspaceId }),
-    );
+    renderHook(() => useRelayImport({ loadWorkspaces, onImported }));
 
   beforeEach(() => {
     jest.clearAllMocks();
     loadWorkspaces = jest.fn().mockResolvedValue(undefined);
-    setLocalActiveWorkspaceId = jest.fn();
+    onImported = jest.fn();
     mockHasSession.mockResolvedValue(true);
     mockAcceptRelay.mockResolvedValue({
       workspaceId: "ws_1",
@@ -72,42 +71,45 @@ describe("useRelayImport", () => {
 
     expect(mockAcceptRelay).not.toHaveBeenCalled();
     expect(loadWorkspaces).not.toHaveBeenCalled();
-    expect(setLocalActiveWorkspaceId).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
   });
 
-  it("redeems the relay, reloads workspaces, and pins this window to the space", async () => {
+  it("redeems the relay, reloads workspaces, and hands the space back to be pinned", async () => {
     mockGetRelayId.mockReturnValue("relay-abc");
 
     render();
 
-    await waitFor(() =>
-      expect(setLocalActiveWorkspaceId).toHaveBeenCalledWith("ws_1"),
-    );
+    await waitFor(() => expect(onImported).toHaveBeenCalledWith("ws_1"));
     expect(mockAcceptRelay).toHaveBeenCalledWith("relay-abc");
     expect(loadWorkspaces).toHaveBeenCalled();
-    // The relayId is always stripped so a reload won't re-redeem a dead link.
+    // Consumed: the relayId is stripped so a reload won't redeem again.
     expect(mockClearRelayId).toHaveBeenCalled();
   });
 
-  it("does not redeem when the user is signed out, but still clears the link", async () => {
+  it("does NOT redeem or clear the link when the user is signed out (resumable after login)", async () => {
     mockGetRelayId.mockReturnValue("relay-abc");
     mockHasSession.mockResolvedValue(false);
 
     render();
 
-    await waitFor(() => expect(mockClearRelayId).toHaveBeenCalled());
+    // Let the async effect settle.
+    await waitFor(() => expect(mockHasSession).toHaveBeenCalled());
+    await Promise.resolve();
+
     expect(mockAcceptRelay).not.toHaveBeenCalled();
-    expect(setLocalActiveWorkspaceId).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
+    // The invite must survive so the post-login reload can redeem it.
+    expect(mockClearRelayId).not.toHaveBeenCalled();
   });
 
-  it("fails silently and clears the link when the relay is invalid", async () => {
+  it("fails silently and clears the dead link when the relay is invalid", async () => {
     mockGetRelayId.mockReturnValue("dead");
     mockAcceptRelay.mockRejectedValue(new Error("404"));
 
     render();
 
     await waitFor(() => expect(mockClearRelayId).toHaveBeenCalled());
-    expect(setLocalActiveWorkspaceId).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
   });
 
   it("redeems only once across re-renders", async () => {
@@ -120,6 +122,18 @@ describe("useRelayImport", () => {
     rerender();
     await Promise.resolve();
 
+    expect(mockAcceptRelay).toHaveBeenCalledTimes(1);
+  });
+
+  it("redeems only once under StrictMode's double-invoke", async () => {
+    mockGetRelayId.mockReturnValue("relay-abc");
+
+    renderHook(() => useRelayImport({ loadWorkspaces, onImported }), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => expect(mockAcceptRelay).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
     expect(mockAcceptRelay).toHaveBeenCalledTimes(1);
   });
 });

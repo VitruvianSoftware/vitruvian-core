@@ -48,13 +48,20 @@ import { getRelayIdFromUrl, clearRelayIdFromUrl } from "../../utils/router";
 export interface UseRelayImportProps {
   /** Reloads workspaces from the store (pulls + merges remote into local). */
   loadWorkspaces: () => Promise<void>;
-  /** Pins this window to a workspace id (Multi-Window local active id). */
-  setLocalActiveWorkspaceId: (id: string | null) => void;
+  /**
+   * Called once the shared space has been redeemed + pulled into local state,
+   * with its workspace id. The dashboard pins THIS window to it — but must do
+   * so WITHOUT letting the ownership-claim effect capture this window's tabs
+   * into the shared space (that would overwrite the owner's tab list, and for
+   * an edit collaborator PUT the clobber to everyone). See the relay-import
+   * guard in Dashboard's sync effect.
+   */
+  onImported: (workspaceId: string) => void;
 }
 
 export function useRelayImport({
   loadWorkspaces,
-  setLocalActiveWorkspaceId,
+  onImported,
 }: UseRelayImportProps): void {
   // Guard against React 18 StrictMode's double-invoke and any re-render churn:
   // redeeming is a network side effect that must run exactly once.
@@ -67,21 +74,26 @@ export function useRelayImport({
     ranRef.current = true;
 
     void (async () => {
+      // Redeeming requires the signed-in user. If they aren't signed in, leave
+      // the relayId in the URL: the dashboard's post-login reload remounts this
+      // hook, which then redeems (the link is NOT consumed server-side because
+      // acceptRelay never ran). Clearing it here would strip the invite and dead-
+      // end the user on an empty dashboard.
+      if (!(await AuthService.hasSession())) return;
       try {
-        // Redeeming requires the signed-in user. If they aren't signed in, the
-        // dashboard shows its normal state; we don't force a login flow here.
-        if (!(await AuthService.hasSession())) return;
         const { workspaceId } = await ApiService.acceptRelay(relayId);
         // The grant now exists server-side, so the shared space is returned by
         // GET /workspaces — a reload merges it into local state.
         await loadWorkspaces();
-        setLocalActiveWorkspaceId(workspaceId);
+        onImported(workspaceId);
+        // Consumed: drop the handle so a reload doesn't redeem again.
+        clearRelayIdFromUrl();
       } catch {
         // Invalid / revoked / expired relay, or a transient error: silently
-        // fall back to the normal dashboard.
-      } finally {
+        // fall back to the normal dashboard, and drop the dead handle so a
+        // reload doesn't retry it.
         clearRelayIdFromUrl();
       }
     })();
-  }, [loadWorkspaces, setLocalActiveWorkspaceId]);
+  }, [loadWorkspaces, onImported]);
 }
