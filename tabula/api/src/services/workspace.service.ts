@@ -24,7 +24,8 @@
  * Workspace service - Business logic for workspace operations
  */
 import { prisma } from "../lib/prisma";
-import { ConflictError } from "../lib/errors";
+import { ConflictError, NotFoundError } from "../lib/errors";
+import { PermissionService } from "./permission.service";
 import type {
   WorkspaceCreateInput,
   WorkspaceUpdateInput,
@@ -98,14 +99,14 @@ export class WorkspaceService {
   }
 
   /**
-   * Get a single workspace by ID
+   * Get a single workspace by ID. Requires VIEW access (owner or any active
+   * collaborator); a caller with no access gets NotFoundError (existence-masked).
    */
   static async getWorkspaceById(userId: string, workspaceId: string) {
+    await PermissionService.requireRole(userId, workspaceId, "view");
+
     const workspace = await prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        userId,
-      },
+      where: { id: workspaceId },
       include: {
         tabs: { orderBy: { position: "asc" } },
         sections: {
@@ -118,11 +119,26 @@ export class WorkspaceService {
       },
     });
 
+    // Deleted between the permission check and the read — treat as not found.
     if (!workspace) {
-      throw new Error("Workspace not found");
+      throw new NotFoundError();
     }
 
     return workspace;
+  }
+
+  /**
+   * Whether a workspace row exists at all, ignoring access. Used by the PUT
+   * upsert path to tell "this id is genuinely new" (create it, owned by the
+   * caller) from "it exists but the caller has no access" (404-mask, never
+   * create over someone else's space).
+   */
+  static async exists(workspaceId: string): Promise<boolean> {
+    const row = await prisma.workspace.findFirst({
+      where: { id: workspaceId },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   /**
@@ -187,20 +203,32 @@ export class WorkspaceService {
     input: WorkspaceUpdateInput,
     options: { deviceId?: string } = {},
   ) {
+    // Writes require EDIT (owner or an active edit collaborator). A VIEW
+    // collaborator gets ForbiddenError (403); no access gets NotFoundError (404).
+    // Authorization happens here, NOT via a user_id predicate on the lock below,
+    // so an edit collaborator (who does not own the row) is allowed through.
+    const role = await PermissionService.requireRole(
+      userId,
+      workspaceId,
+      "edit",
+    );
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return prisma.$transaction(async (tx: any) => {
-      // Lock the workspace row (scoped to the owner) and read the current
-      // version + settings. This also serves as the ownership/existence check.
+      // Lock the workspace row by id (authorization already checked above) and
+      // read the current version + settings.
       const rows: {
         version: number | null;
         settings: Record<string, unknown> | null;
         active_device_id: string | null;
         active_device_seen_at: Date | null;
       }[] =
-        await tx.$queryRaw`SELECT version, settings, active_device_id, active_device_seen_at FROM workspaces WHERE id = ${workspaceId} AND user_id = ${userId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT version, settings, active_device_id, active_device_seen_at FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
 
       if (!rows || rows.length === 0) {
-        throw new Error("Workspace not found");
+        // Authorized above, so an empty lock means the row was deleted between
+        // the permission check and the lock — treat as not found.
+        throw new NotFoundError();
       }
 
       const currentVersion = rows[0].version ?? 0;
@@ -292,7 +320,12 @@ export class WorkspaceService {
       // above, so reaching here with tabSync=true means this device is allowed
       // to become/remain the primary. The lease is NOT stolen by a routine
       // capture — only an explicit claim takes it from a live device.
+      // Only the OWNER's devices participate in the advisory active-device
+      // lease, so an edit collaborator cannot steal the owner's live primary tab
+      // session via a client-controlled x-device-id. Collaborators still write
+      // content normally; they just never claim the lease.
       if (
+        role === "owner" &&
         deviceId &&
         (input.claimActiveDevice === true ||
           (input.tabSync === true && !foreignFreshLease))
@@ -432,8 +465,9 @@ export class WorkspaceService {
    * Delete a workspace
    */
   static async deleteWorkspace(userId: string, workspaceId: string) {
-    // Verify ownership
-    await this.getWorkspaceById(userId, workspaceId);
+    // Only the owner may delete a shared space — collaborators can edit content
+    // but not destroy the space.
+    await PermissionService.requireRole(userId, workspaceId, "owner");
 
     // Delete workspace (cascade will delete tabs)
     await prisma.workspace.delete({
@@ -451,8 +485,8 @@ export class WorkspaceService {
     workspaceId: string,
     tabs: TabInput[],
   ) {
-    // Verify ownership
-    await this.getWorkspaceById(userId, workspaceId);
+    // Writing tabs requires EDIT (owner or an active edit collaborator).
+    await PermissionService.requireRole(userId, workspaceId, "edit");
 
     // Delete existing tabs and create new ones in a transaction
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -490,20 +524,27 @@ export class WorkspaceService {
     targetWorkspaceId: string,
     position?: number,
   ) {
-    // Verify target workspace ownership
-    await this.getWorkspaceById(userId, targetWorkspaceId);
+    // Adding a tab to the target space requires EDIT there.
+    await PermissionService.requireRole(userId, targetWorkspaceId, "edit");
 
-    // Get the tab and verify it belongs to user's workspace
     const tab = await prisma.tab.findUnique({
       where: { id: tabId },
-      include: { workspace: true },
+      select: { id: true, workspaceId: true },
     });
-
-    if (!tab || tab.workspace.userId !== userId) {
-      throw new Error("Tab not found");
+    if (!tab) {
+      throw new NotFoundError("Tab not found");
     }
 
-    // Move the tab
+    if (tab.workspaceId === targetWorkspaceId) {
+      // Same-space move: EDIT on the space is sufficient.
+      await PermissionService.requireRole(userId, tab.workspaceId, "edit");
+    } else {
+      // Cross-space move REMOVES the tab from its source space. Require OWNER of
+      // the source so an edit collaborator cannot relocate (exfiltrate) a tab out
+      // of a space that was shared with them.
+      await PermissionService.requireRole(userId, tab.workspaceId, "owner");
+    }
+
     return prisma.tab.update({
       where: { id: tabId },
       data: {
@@ -517,15 +558,15 @@ export class WorkspaceService {
    * Reorder a tab within a workspace
    */
   static async reorderTab(userId: string, tabId: string, newPosition: number) {
-    // Get the tab and verify ownership
     const tab = await prisma.tab.findUnique({
       where: { id: tabId },
-      include: { workspace: true },
+      select: { id: true, workspaceId: true },
     });
-
-    if (!tab || tab.workspace.userId !== userId) {
-      throw new Error("Tab not found");
+    if (!tab) {
+      throw new NotFoundError("Tab not found");
     }
+    // Reordering a tab within its space requires EDIT.
+    await PermissionService.requireRole(userId, tab.workspaceId, "edit");
 
     return prisma.tab.update({
       where: { id: tabId },
@@ -537,27 +578,15 @@ export class WorkspaceService {
    * Bulk delete tabs
    */
   static async bulkDeleteTabs(userId: string, tabIds: string[]) {
-    // Verify all tabs belong to user's workspaces
     const tabs = await prisma.tab.findMany({
-      where: {
-        id: { in: tabIds },
-      },
-      include: { workspace: true },
+      where: { id: { in: tabIds } },
+      select: { workspaceId: true },
     });
+    // EDIT must be held on every distinct space the tabs belong to.
+    await this.requireEditOnTabWorkspaces(userId, tabs);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const invalidTabs = tabs.filter(
-      (tab: any) => tab.workspace.userId !== userId,
-    );
-    if (invalidTabs.length > 0) {
-      throw new Error("Some tabs do not belong to user");
-    }
-
-    // Delete tabs
     await prisma.tab.deleteMany({
-      where: {
-        id: { in: tabIds },
-      },
+      where: { id: { in: tabIds } },
     });
 
     return { deleted: tabIds.length };
@@ -571,32 +600,33 @@ export class WorkspaceService {
     tabIds: string[],
     operation: "pin" | "unpin",
   ) {
-    // Verify all tabs belong to user's workspaces
     const tabs = await prisma.tab.findMany({
-      where: {
-        id: { in: tabIds },
-      },
-      include: { workspace: true },
+      where: { id: { in: tabIds } },
+      select: { workspaceId: true },
     });
+    // EDIT must be held on every distinct space the tabs belong to.
+    await this.requireEditOnTabWorkspaces(userId, tabs);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const invalidTabs = tabs.filter(
-      (tab: any) => tab.workspace.userId !== userId,
-    );
-    if (invalidTabs.length > 0) {
-      throw new Error("Some tabs do not belong to user");
-    }
-
-    // Update tabs
     await prisma.tab.updateMany({
-      where: {
-        id: { in: tabIds },
-      },
-      data: {
-        isPinned: operation === "pin",
-      },
+      where: { id: { in: tabIds } },
+      data: { isPinned: operation === "pin" },
     });
 
     return { updated: tabIds.length };
+  }
+
+  /**
+   * Assert the caller holds EDIT on every distinct workspace the given tabs
+   * belong to. Throws NotFoundError / ForbiddenError on the first failure, so a
+   * bulk op touching any space the caller cannot edit rejects as a whole.
+   */
+  private static async requireEditOnTabWorkspaces(
+    userId: string,
+    tabs: { workspaceId: string }[],
+  ): Promise<void> {
+    const workspaceIds = [...new Set(tabs.map((t) => t.workspaceId))];
+    for (const workspaceId of workspaceIds) {
+      await PermissionService.requireRole(userId, workspaceId, "edit");
+    }
   }
 }

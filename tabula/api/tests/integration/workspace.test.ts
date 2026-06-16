@@ -28,6 +28,8 @@ import fastifyJwt from "@fastify/jwt";
 import { workspaceRoutes } from "../../src/routes/workspace.routes";
 import { prisma } from "../../src/lib/prisma";
 import { redis } from "../../src/lib/redis";
+import { PermissionService } from "../../src/services/permission.service";
+import { ForbiddenError, NotFoundError } from "../../src/lib/errors";
 
 // Mock prisma
 jest.mock("../../src/lib/prisma", () => ({
@@ -61,6 +63,14 @@ jest.mock("../../src/lib/redis", () => ({
     publish: jest.fn(),
   },
 }));
+
+// Mock the authorization chokepoint. This suite verifies that single-OWNER
+// behavior is unchanged by the sharing refactor; the real permission logic
+// (collaborators, the 403-vs-404 distinction) is covered by
+// permission.service.test.ts and the sharing integration tests. Default below:
+// the caller is the owner, so every requireRole passes.
+jest.mock("../../src/services/permission.service");
+const mockPermission = jest.mocked(PermissionService);
 
 /**
  * Mock transaction client for WorkspaceService.updateWorkspace: $queryRaw for
@@ -119,6 +129,10 @@ describe("Workspace API Endpoints", () => {
     (redis.set as jest.Mock).mockResolvedValue("OK");
     (redis.del as jest.Mock).mockResolvedValue(1);
     (redis.publish as jest.Mock).mockResolvedValue(1);
+    // Default: the caller is the owner — every role requirement is satisfied.
+    mockPermission.requireRole.mockResolvedValue("owner");
+    mockPermission.resolveAccess.mockResolvedValue("owner");
+    mockPermission.listAccessUserIds.mockResolvedValue([]);
   });
 
   afterAll(async () => {
@@ -473,6 +487,9 @@ describe("Workspace API Endpoints", () => {
       };
 
       (prisma.workspace.count as jest.Mock).mockResolvedValue(0);
+      // The id is genuinely new, so exists() must report absent — otherwise the
+      // route 404-masks instead of taking the upsert-create path.
+      (prisma.workspace.findFirst as jest.Mock).mockResolvedValue(null);
       // Mock create for the upsert logic
       (prisma.workspace.create as jest.Mock).mockResolvedValue(
         createdWorkspace,
@@ -590,7 +607,8 @@ describe("Workspace API Endpoints", () => {
     });
 
     it("should return 404 for non-existent workspace", async () => {
-      (prisma.workspace.findFirst as jest.Mock).mockResolvedValue(null);
+      // Permission resolution reports no access for a non-existent space.
+      mockPermission.requireRole.mockRejectedValueOnce(new NotFoundError());
 
       const response = await app.inject({
         method: "DELETE",
@@ -746,6 +764,8 @@ describe("Workspace API Endpoints", () => {
       const tabs = [{ id: tabId1, workspace: { userId: "different-user" } }];
 
       (prisma.tab.findMany as jest.Mock).mockResolvedValue(tabs);
+      // The caller lacks edit on the tab's workspace.
+      mockPermission.requireRole.mockRejectedValue(new ForbiddenError());
 
       const response = await app.inject({
         method: "POST",
@@ -859,7 +879,8 @@ describe("Workspace API Endpoints", () => {
       };
 
       (prisma.tab.findUnique as jest.Mock).mockResolvedValue(mockTab);
-      (prisma.workspace.findFirst as jest.Mock).mockResolvedValue(null);
+      // The target workspace does not exist.
+      mockPermission.requireRole.mockRejectedValueOnce(new NotFoundError());
 
       const response = await app.inject({
         method: "POST",
@@ -1003,7 +1024,8 @@ describe("Workspace API Endpoints", () => {
         },
       ];
 
-      (prisma.workspace.findFirst as jest.Mock).mockResolvedValue(null);
+      // No access to the target workspace.
+      mockPermission.requireRole.mockRejectedValueOnce(new NotFoundError());
 
       const response = await app.inject({
         method: "POST",
@@ -1173,9 +1195,7 @@ describe("Workspace API Endpoints", () => {
     });
 
     it("should handle DELETE with non-Error thrown", async () => {
-      (prisma.workspace.findFirst as jest.Mock).mockRejectedValue(
-        "string error",
-      );
+      (prisma.workspace.delete as jest.Mock).mockRejectedValue("string error");
 
       const response = await app.inject({
         method: "DELETE",

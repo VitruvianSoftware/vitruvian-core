@@ -24,7 +24,8 @@
  * Unit tests for workspace service
  */
 import { WorkspaceService } from "../../src/services/workspace.service";
-import { ConflictError } from "../../src/lib/errors";
+import { ConflictError, ForbiddenError } from "../../src/lib/errors";
+import { PermissionService } from "../../src/services/permission.service";
 import { prisma } from "../../src/lib/prisma";
 
 // Mock prisma
@@ -67,12 +68,20 @@ jest.mock("../../src/lib/prisma", () => ({
   },
 }));
 
+// Authorization is delegated to PermissionService; mock it so these unit tests
+// exercise WorkspaceService's own logic. Default: the caller is the owner.
+jest.mock("../../src/services/permission.service");
+const mockPermission = jest.mocked(PermissionService);
+
 describe("WorkspaceService", () => {
   const userId = "user-123";
   const workspaceId = "workspace-456";
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPermission.requireRole.mockResolvedValue("owner");
+    mockPermission.resolveAccess.mockResolvedValue("owner");
+    mockPermission.listAccessUserIds.mockResolvedValue([]);
   });
 
   describe("getAllWorkspaces", () => {
@@ -934,25 +943,28 @@ describe("WorkspaceService", () => {
       expect(result.deleted).toBe(2);
     });
 
-    it("should throw error if tabs do not belong to user", async () => {
-      const tabs = [{ id: "tab-1", workspace: { userId: "other-user" } }];
-      (prisma.tab.findMany as jest.Mock).mockResolvedValue(tabs);
+    it("should reject when the caller lacks edit on a tab's workspace", async () => {
+      (prisma.tab.findMany as jest.Mock).mockResolvedValue([
+        { workspaceId: "ws-other" },
+      ]);
+      mockPermission.requireRole.mockRejectedValue(new ForbiddenError());
 
       await expect(
         WorkspaceService.bulkDeleteTabs(userId, ["tab-1"]),
-      ).rejects.toThrow("Some tabs do not belong to user");
+      ).rejects.toBeInstanceOf(ForbiddenError);
     });
   });
 
   describe("bulkUpdateTabs", () => {
-    it("should throw error if tabs do not belong to user", async () => {
+    it("should reject when the caller lacks edit on a tab's workspace", async () => {
       (prisma.tab.findMany as jest.Mock).mockResolvedValue([
-        { id: "tab-1", workspace: { userId: "other-user" } },
+        { workspaceId: "ws-other" },
       ]);
+      mockPermission.requireRole.mockRejectedValue(new ForbiddenError());
 
       await expect(
         WorkspaceService.bulkUpdateTabs(userId, ["tab-1"], "pin"),
-      ).rejects.toThrow("Some tabs do not belong to user");
+      ).rejects.toBeInstanceOf(ForbiddenError);
     });
 
     it("should pin multiple tabs", async () => {

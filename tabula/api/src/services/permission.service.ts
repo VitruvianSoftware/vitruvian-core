@@ -119,7 +119,7 @@ export class PermissionService {
    */
   static async listSpacesSharedWith(
     userId: string,
-  ): Promise<Array<{ workspaceId: string; role: GrantRole; name: string }>> {
+  ): Promise<{ workspaceId: string; role: GrantRole; name: string }[]> {
     const grants = await prisma.spaceCollaborator.findMany({
       where: { userId, status: "active" },
       select: {
