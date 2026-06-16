@@ -25,6 +25,8 @@ model User {
   sessions     Session[]
   workspaces   Workspace[]
 
+  collaborations SpaceCollaborator[] @relation("CollaboratorUser")
+
   @@map("users")
 }
 
@@ -51,6 +53,9 @@ model Workspace {
   notes       Note[]
   tasks       Task[]
   groupId     String?  @map("group_id") @db.VarChar(100)
+
+  collaborators SpaceCollaborator[]
+  shareLinks    ShareLink[]
 
   @@index([userId], map: "idx_workspaces_user")
   @@index([groupId], map: "idx_workspaces_group")
@@ -184,4 +189,57 @@ model Task {
 
   @@index([workspaceId], map: "idx_tasks_workspace")
   @@map("tasks")
+}
+
+// --- Sharing & permissions (#139) -------------------------------------------
+// A workspace ("space") is owned by exactly one user (Workspace.userId). Sharing
+// is ADDITIVE: collaborators and share links grant access WITHOUT changing the
+// owner. Roles are lowercase strings ("view" | "edit") validated by Zod — the
+// repo has no Prisma enums, so status/role stay VarChar(20) like User.tier and
+// Backup.type. OWNER is implicit (Workspace.userId == caller), never a row here.
+
+model SpaceCollaborator {
+  id              String    @id @db.VarChar(100)
+  workspaceId     String    @map("workspace_id") @db.VarChar(100)
+  // Null while the invite is pending for an email that has no User row yet.
+  userId          String?   @map("user_id") @db.Uuid
+  // Always stored lowercased; the durable key for pending invites.
+  inviteeEmail    String    @map("invitee_email") @db.VarChar(255)
+  role            String    @default("view") @db.VarChar(20)
+  invitedByUserId String    @map("invited_by_user_id") @db.Uuid
+  // "active" once a matching User exists; "pending" for an unregistered email.
+  status          String    @default("active") @db.VarChar(20)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User?     @relation("CollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // One grant per invitee email per space — re-sharing updates the role.
+  @@unique([workspaceId, inviteeEmail], map: "uq_collaborator_ws_email")
+  @@index([userId], map: "idx_collaborators_user")
+  @@index([workspaceId], map: "idx_collaborators_workspace")
+  @@map("space_collaborators")
+}
+
+model ShareLink {
+  id              String    @id @db.VarChar(100)
+  workspaceId     String    @map("workspace_id") @db.VarChar(100)
+  // SHA-256 hex of the opaque token; the raw token is NEVER persisted (returned
+  // to the creator exactly once), mirroring lib/auth refresh-token hashing.
+  tokenHash       String    @unique @map("token_hash") @db.VarChar(64)
+  role            String    @default("view") @db.VarChar(20)
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  label           String?   @db.VarChar(255)
+  // Soft-revoke: set instead of deleting so in-flight accepts fail cleanly and
+  // an accepted-then-revoked link leaves an auditable trail.
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamp(6)
+  expiresAt       DateTime? @map("expires_at") @db.Timestamp(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_share_links_workspace")
+  @@map("share_links")
 }
