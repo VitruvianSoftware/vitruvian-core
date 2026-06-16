@@ -52,7 +52,7 @@ jobs:
         # target-determinator's module is `go 1.24`; pin >= 1.24. The binary
         # lands in $(go env GOPATH)/bin, not on PATH (same as addlicense below).
         # Only meaningfully used on pull_request; harmless on push.
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
 
