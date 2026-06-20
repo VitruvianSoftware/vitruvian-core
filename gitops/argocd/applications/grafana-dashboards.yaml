@@ -29,15 +29,18 @@ spec:
   source:
     repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
     targetRevision: main
+    # kustomize source (kustomization.yaml generates the labeled dashboard
+    # ConfigMaps from the JSON files). No `directory:` block, or ArgoCD would
+    # treat the dashboard JSON as k8s manifests.
     path: gitops/argocd/platform/grafana-dashboards
-    directory:
-      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    namespace: grafana
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
     syncOptions:
       - ServerSideApply=true
