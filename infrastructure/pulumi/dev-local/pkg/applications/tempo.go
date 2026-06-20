@@ -127,13 +127,15 @@ func DeployTempo(ctx *pulumi.Context, provider *kubernetes.Provider, namespace s
 				},
 			},
 		},
-		Wait:    false,
-		Timeout: 600,
+		Wait:           false,
+		Timeout:        600,
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/tempo); S3-backed, no PVC
 	})
 	if err == nil {
 		// tempo chart 1.24.4 exposes no PDB values; add a raw one.
 		_, err = resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-			Name: "tempo-pdb",
+			Name:           "tempo-pdb",
+			RetainOnDelete: true, // handed off with the tempo chart's own PDB under ArgoCD
 			YAML: `apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

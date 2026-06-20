@@ -76,10 +76,11 @@ func DeployOpenTelemetry(ctx *pulumi.Context, provider *kubernetes.Provider, cer
 				"minAvailable": 1,
 			},
 		},
-		Wait:          true, // Set to true to wait for completion
-		Timeout:       600,
-		CleanupCRDs:   false,
-		CRDsToCleanup: otelCRDs,
+		Wait:           true, // Set to true to wait for completion
+		Timeout:        600,
+		CleanupCRDs:    false,
+		CRDsToCleanup:  otelCRDs,
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/opentelemetry-operator); retain on flag-off to avoid helm-uninstall + namespace cascade
 	}, pulumi.DependsOn(dependencyResources))
 	if err != nil {
 		return err
@@ -126,6 +127,7 @@ func DeployOpenTelemetry(ctx *pulumi.Context, provider *kubernetes.Provider, cer
 		Timeout:         600,
 		CleanupCRDs:     false,
 		CRDsToCleanup:   otelCRDs,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/opentelemetry-collector)
 	}, pulumi.DependsOn([]pulumi.Resource{otelOperator, tempoRelease}))
 
 	// Export OpenTelemetry information
