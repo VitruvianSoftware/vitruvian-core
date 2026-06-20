@@ -21,6 +21,7 @@
 package applications
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
@@ -138,7 +139,12 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 	appDbName := conf.GetString("cnpg_app_db_name", "app")
 	appDbUser := conf.GetString("cnpg_app_db_user", "app_user")
 
-	appDbPasswordOutputResult := pulumi.String(utils.GenerateRandomPassword(16))
+	// Read the app DB password from config (the same key external_secrets.go uses),
+	// so it is deterministic and consistent across the stack. Previously this
+	// generated a new random password on every run, which made the Secret churn
+	// (replace) on every `pulumi up` and diverge from the value external-secrets
+	// manages.
+	appDbPasswordOutputResult := conf.RequireSecret(ctx, "cnpg_app_db_password")
 
 	// Ensure we have a dependency on the operator being ready
 	var dependsOnOperator pulumi.ResourceOption
@@ -158,9 +164,14 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 			Namespace: pulumi.String(clusterNamespace), // Create secret in the cluster namespace
 		},
 		Type: pulumi.String("kubernetes.io/basic-auth"),
-		StringData: pulumi.StringMap{
-			"username": pulumi.String(appDbUser),
-			"password": appDbPasswordOutputResult,
+		// base64 `data` (not `stringData`) to avoid Pulumi's perpetual replace diff
+		// (the API never returns stringData). The password is a secret config Output,
+		// base64-encoded via Apply — secretness is preserved through the Apply.
+		Data: pulumi.StringMap{
+			"username": pulumi.String(base64.StdEncoding.EncodeToString([]byte(appDbUser))),
+			"password": appDbPasswordOutputResult.ApplyT(func(p string) string {
+				return base64.StdEncoding.EncodeToString([]byte(p))
+			}).(pulumi.StringOutput),
 		},
 	}, pulumi.Provider(provider), dependsOnOperator) // Depend on operator
 	if err != nil {

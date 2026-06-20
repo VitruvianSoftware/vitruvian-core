@@ -21,6 +21,7 @@
 package applications
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 
@@ -82,9 +83,13 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				Namespace: pulumi.String(grafanaNamespace),
 			},
 			Type: pulumi.String("kubernetes.io/basic-auth"),
-			StringData: pulumi.StringMap{
-				"username": pulumi.String("grafana"),
-				"password": pulumi.String(dbPassword),
+			// Use base64 `data` (not `stringData`): the Kubernetes API never returns
+			// stringData, so Pulumi would see it as a perpetual diff and replace the
+			// Secret on every `pulumi up`. `data` compares against the live object, so
+			// the resource stays stable.
+			Data: pulumi.StringMap{
+				"username": pulumi.String(base64.StdEncoding.EncodeToString([]byte("grafana"))),
+				"password": pulumi.String(base64.StdEncoding.EncodeToString([]byte(dbPassword))),
 			},
 		}, pulumi.Provider(provider), pulumi.DependsOn([]pulumi.Resource{ns}))
 		if err != nil {
