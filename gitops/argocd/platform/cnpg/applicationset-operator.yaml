@@ -18,29 +18,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
-  name: tabula
+  name: cnpg-operator
   namespace: argocd
+  labels:
+    environment: cnpg
 spec:
-  project: applications-project
-  source:
-    # OCI Helm chart published to GHCR by .github/workflows/charts-publish.yml.
-    # Public package, so no repo credential is required. If you make it private,
-    # register the repo in ArgoCD with enableOCI=true + a pull secret.
-    repoURL: ghcr.io/vitruviansoftware/charts
-    chart: tabula
-    targetRevision: 0.1.0
-    helm:
-      values: |
-        image:
-          tag: latest
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: tabula
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: cnpg-operator
+      labels:
+        app: cnpg
+      annotations:
+        # Operators install before workloads (CNPG clusters / grafana-db).
+        argocd.argoproj.io/sync-wave: "-1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://cloudnative-pg.github.io/charts
+        chart: cloudnative-pg
+        # Align with the operator version pinned in dev-local at cutover.
+        targetRevision: "0.22.0"
+        helm:
+          version: v3
+      destination:
+        server: '{{.server}}'
+        namespace: cnpg-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
