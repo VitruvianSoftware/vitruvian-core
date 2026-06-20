@@ -67,7 +67,10 @@ func main() {
 		// Setup base components
 		var certManagerRelease pulumi.Resource
 
-		// Configure K3s HA components
+		// K3s HA (traefik-ha-config) — code retained but DISABLED via the
+		// k3s_ha_enabled flag (now ArgoCD-managed in
+		// gitops/argocd/platform/platform-config). Re-enable the flag to bring it
+		// back under Pulumi.
 		if err := applications.DeployK3sHA(ctx, k8sProvider); err != nil {
 			return err
 		}

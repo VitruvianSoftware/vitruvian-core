@@ -115,3 +115,12 @@ spec:
           # ArgoCD ADOPT the existing live CRDs/CRs in place (no recreate) and
           # avoids the CSA failure (matches the cnpg/cert-manager appsets).
           - ServerSideApply=true
+      ignoreDifferences:
+        # The Longhorn CRDs carry fields owned by the now-released Pulumi field
+        # manager + k3s; SSA leaves them be (kubectl diff is clean). Ignore those
+        # managers to clear the cosmetic CRD OutOfSync.
+        - group: apiextensions.k8s.io
+          kind: CustomResourceDefinition
+          managedFieldsManagers:
+            - pulumi-resource-kubernetes
+            - k3s
