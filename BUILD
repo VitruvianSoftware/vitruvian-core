@@ -63,6 +63,9 @@ exports_files(
 # tools/pulumi holds a hand-authored macro (defs.bzl) + wrapper scripts; gazelle
 # would otherwise generate a bzl_library with an unresolvable rules_shell dep.
 # gazelle:exclude tools/pulumi
+# tools/gitops is the same: a hand-authored macro (defs.bzl) + wrapper script
+# loading rules_shell; exclude it for the identical bzl_library dep reason.
+# gazelle:exclude tools/gitops
 # tabula is a JS/TS app suite with hand-authored BUILD files (ts_project +
 # webpack/next js_run_binary + jest/itest wiring) that the JS gazelle extension
 # would mangle, same situation as mcp-slack. Keep gazelle out of the subtree.

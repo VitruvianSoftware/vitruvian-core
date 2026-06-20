@@ -1,5 +1,3 @@
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
 """GitOps `bazel run` wrappers — kubectl behind bazel (see defs.bzl).
 
 Generic passthroughs forward manifests via `-- -f <path>`:
@@ -45,11 +43,4 @@ sh_binary(
     srcs = ["gitops_cmd.sh"],
     args = ["helm"],
     visibility = ["//visibility:public"],
-)
-
-bzl_library(
-    name = "defs",
-    srcs = ["defs.bzl"],
-    visibility = ["//visibility:public"],
-    deps = ["@rules_shell//shell:sh_binary"],
 )
