@@ -65,6 +65,9 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 		&yaml.ConfigFileArgs{
 			File: "crds/cnpg.crds.yaml",
 		}, pulumi.Provider(provider),
+		// Retain on cutover: deleting these CRDs cascade-deletes every CNPG Cluster
+		// (the live Postgres data). Must survive cnpg_enabled=false.
+		pulumi.RetainOnDelete(true),
 	)
 	if err != nil {
 		return nil, err
@@ -91,10 +94,11 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 				"create": false,
 			},
 		},
-		Wait:          false,
-		CleanupCRDs:   false, // CRDs managed by Phase 1
-		CRDsToCleanup: CNPGCRDs,
-		Timeout:       600, // Standard timeout
+		Wait:           false,
+		CleanupCRDs:    false, // CRDs managed by Phase 1
+		CRDsToCleanup:  CNPGCRDs,
+		Timeout:        600,  // Standard timeout
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/cnpg); retain operator + ns
 	}, pulumi.DependsOn([]pulumi.Resource{cnpgCrds}))
 	if err != nil {
 		ctx.Log.Error("Failed to deploy CloudNativePG Operator Helm chart.", &pulumi.LogArgs{Resource: nil})
@@ -106,7 +110,8 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 	// The cloudnative-pg chart exposes no PDB values (verified at 0.23.2);
 	// guard the leader-elected operator against drains with a raw PDB.
 	if _, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-		Name: "cnpg-operator-pdb",
+		Name:           "cnpg-operator-pdb",
+		RetainOnDelete: true, // handed off with the operator
 		YAML: `apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -173,7 +178,7 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 				return base64.StdEncoding.EncodeToString([]byte(p))
 			}).(pulumi.StringOutput),
 		},
-	}, pulumi.Provider(provider), dependsOnOperator) // Depend on operator
+	}, pulumi.Provider(provider), dependsOnOperator, pulumi.RetainOnDelete(true)) // Depend on operator; retain on cutover (the cnpg Cluster reads this secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CNPG initial app credentials secret: %w", err)
 	}
@@ -189,6 +194,7 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 		RepositoryURL:   "https://cloudnative-pg.github.io/charts", // Same repo URL as operator
 		Version:         clusterVersion,                            // Use cluster specific version
 		CreateNamespace: true,                                      // Ensure the cluster namespace exists
+		RetainOnDelete:  true,                                      // handed off to ArgoCD (gitops/argocd/platform/cnpg-cluster); retain Cluster + PVCs (Postgres data) + ns
 		ValuesFile:      "cnpg-cluster",                            // Use the new values file
 		Values: map[string]interface{}{ // Dynamic values mirroring Terraform template
 			"cluster": map[string]interface{}{

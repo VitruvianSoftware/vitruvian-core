@@ -42,6 +42,11 @@ _SUBCOMMANDS = [
     "destroy",
     "refresh",
     "config",
+    # `stack` (e.g. --show-urns) + `state` (e.g. state delete <urn>) for surgical
+    # state ops — used to orphan resources from Pulumi state during a non-faithful
+    # ArgoCD cutover without touching the live (ArgoCD-managed) objects.
+    "stack",
+    "state",
 ]
 
 def pulumi_project(name, dir, visibility = ["//visibility:public"]):

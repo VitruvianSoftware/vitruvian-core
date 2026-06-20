@@ -60,7 +60,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: pulumi.String(grafanaNamespace),
 		},
-	}, pulumi.Provider(provider))
+	}, pulumi.Provider(provider), pulumi.RetainOnDelete(true)) // handed off to ArgoCD; retain ns on grafana_enabled=false
 	if err != nil {
 		return nil, fmt.Errorf("failed to create grafana namespace: %w", err)
 	}
@@ -91,7 +91,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				"username": pulumi.String(base64.StdEncoding.EncodeToString([]byte("grafana"))),
 				"password": pulumi.String(base64.StdEncoding.EncodeToString([]byte(dbPassword))),
 			},
-		}, pulumi.Provider(provider), pulumi.DependsOn([]pulumi.Resource{ns}))
+		}, pulumi.Provider(provider), pulumi.DependsOn([]pulumi.Resource{ns}), pulumi.RetainOnDelete(true)) // retain on cutover: grafana + grafana-db read this secret
 		if err != nil {
 			return nil, fmt.Errorf("failed to create grafana db secret: %w", err)
 		}
@@ -223,6 +223,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			Values:          dbValues,
 			Wait:            false,
 			Timeout:         600,
+			RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/grafana-db); retain Cluster + PVCs (Postgres data)
 		}, pulumi.DependsOn(dbClusterDeps))
 		if err != nil {
 			return nil, fmt.Errorf("failed to deploy grafana cnpg cluster: %w", err)
@@ -401,6 +402,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		Values:          grafanaValues,
 		Wait:            false,
 		Timeout:         600,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/grafana); retain release on grafana_enabled=false
 	}, pulumi.DependsOn(deps))
 	if err != nil {
 		ctx.Log.Error("Failed to deploy Grafana Helm chart.", &pulumi.LogArgs{Resource: release})
