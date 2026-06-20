@@ -21,6 +21,8 @@
 package applications
 
 import (
+	"encoding/base64"
+
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -144,8 +146,8 @@ metadata:
   name: cloudflare-api-token-secret
   namespace: ` + namespace + `
 type: Opaque
-stringData:
-  api-token: ` + cloudflareApiToken + `
+data:
+  api-token: ` + base64.StdEncoding.EncodeToString([]byte(cloudflareApiToken)) + `
 `,
 		}, pulumi.DependsOn(deps))
 		if err != nil {
