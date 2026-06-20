@@ -58,3 +58,19 @@ sh_binary(
     args = ["kubeseal"],
     visibility = ["//visibility:public"],
 )
+
+# Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
+# Requires `bw` unlocked: export BW_SESSION=$(bw unlock --raw)
+sh_binary(
+    name = "sealed-secrets-backup",
+    srcs = ["sealed_secrets_keys.sh"],
+    args = ["backup"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "sealed-secrets-restore",
+    srcs = ["sealed_secrets_keys.sh"],
+    args = ["restore"],
+    visibility = ["//visibility:public"],
+)
