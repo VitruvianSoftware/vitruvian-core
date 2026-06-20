@@ -1,0 +1,142 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# minio — Pulumi -> ArgoCD platform cutover.
+# Values mirror the LIVE Pulumi/Helm deployment exactly (verified against
+# `helm get values minio -a` and the Pulumi DeployMinio HelmChartConfig in
+# infrastructure/pulumi/dev-local/pkg/applications/minio.go).
+#   chart minio-5.4.0 (repo https://charts.min.io/), namespace minio.
+#   mode=distributed + replicas=4 (high_availability_enabled=true): a fixed
+#   4-drive erasure-coded set. This is StatefulSet-backed — the pod count and
+#   the per-replica PVCs (data-minio-0..3, 10Gi each, storageClass=longhorn)
+#   are IMMUTABLE post-create. The rendered values below MUST stay byte-faithful
+#   so ArgoCD adopts the existing StatefulSet + 4 PVCs with zero churn (no pod
+#   restart, no PVC re-create, no data loss).
+#
+# Pinned points that MUST NOT drift on adoption:
+#   - mode: distributed  (switching to/from standalone re-templates the
+#     StatefulSet and orphans the existing erasure set + data)
+#   - replicas: 4        (changing drive count of a distributed set is a
+#     destructive re-init; MinIO will refuse / lose the pool)
+#   - persistence.size: 10Gi, storageClass: longhorn (PVC spec is immutable;
+#     any change forces new PVCs and strands the live data volumes)
+#   - rootUser/rootPassword: unchanged so the bootstrap secret is not rotated
+#     under running clients (tempo, grafana-db-backups consumers).
+#
+# DATA / SECRET retention during cutover: the 4 Longhorn PVCs (data-minio-0..3)
+# and the buckets (tempo, grafana-db-backups — the latter holds CNPG WAL +
+# base backups for the Grafana HA cluster) are retained out-of-band by Pulumi.
+# minio-5.4.0 has no CRDs. At cutover set the dev-local stack flag so Pulumi
+# releases ownership as ArgoCD adopts; Pulumi must NOT prune the namespace,
+# PVCs, or the bootstrap secret. buckets[].purge stays false so the post-job
+# never deletes bucket contents.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: minio
+  namespace: argocd
+  labels:
+    environment: minio
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: minio
+      labels:
+        app: minio
+      annotations:
+        # Stateful object store consumed by observability (tempo) and the
+        # Grafana CNPG backup path (grafana-db-backups). Sync after core
+        # operators/storage are ready but before the workloads that write to
+        # it. No CRDs to pre-stage.
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.min.io/
+        chart: minio
+        # Pinned to the live release version (Pulumi Version: "5.4.0").
+        targetRevision: "5.4.0"
+        helm:
+          version: v3
+          values: |
+            # Distributed erasure-coded mode (high_availability_enabled=true).
+            # Immutable post-create — do not switch to standalone.
+            mode: distributed
+            # Fixed 4-drive set. Changing this re-inits the pool destructively.
+            replicas: 4
+            # Bootstrap root credentials — kept identical so the secret is not
+            # rotated under running clients.
+            rootUser: admin
+            rootPassword: minio-admin-password
+            # Buckets reconciled by the chart post-job. purge=false so contents
+            # (tempo traces, CNPG WAL + base backups) are never deleted.
+            buckets:
+              - name: tempo
+                policy: none
+                purge: false
+              - name: grafana-db-backups
+                policy: none
+                purge: false
+            # Longhorn-backed, relocatable drives: a failed node's drive
+            # reschedules onto a surviving arm64 node and heals. PVC spec
+            # (size + storageClass) is immutable — must match the live volumes.
+            persistence:
+              enabled: true
+              storageClass: longhorn
+              size: 10Gi
+            # Distributed MinIO requires an identical binary (same CPU arch) on
+            # every node; pin all 4 drives to arm64.
+            nodeSelector:
+              kubernetes.io/arch: arm64
+            # Only 3 arm64 nodes exist, so anti-affinity is PREFERRED (4 drives
+            # cannot occupy 4 distinct arm64 nodes); Longhorn makes the
+            # 2-on-one-node case survivable.
+            affinity:
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    podAffinityTerm:
+                      labelSelector:
+                        matchLabels:
+                          app: minio
+                      topologyKey: kubernetes.io/hostname
+            # minio chart 5.4.0 only honors maxUnavailable in its PDB template.
+            podDisruptionBudget:
+              enabled: true
+              maxUnavailable: 1
+            resources:
+              requests:
+                memory: 512Mi
+      destination:
+        server: '{{.server}}'
+        namespace: minio
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          # CSA keeps adoption of the existing StatefulSet/PVCs/Service clean
+          # and avoids the client-side last-applied annotation size limit
+          # (matches the cnpg/cert-manager appsets).
+          - ServerSideApply=true

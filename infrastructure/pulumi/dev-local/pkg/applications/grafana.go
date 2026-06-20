@@ -60,7 +60,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		Metadata: &metav1.ObjectMetaArgs{
 			Name: pulumi.String(grafanaNamespace),
 		},
-	}, pulumi.Provider(provider))
+	}, pulumi.Provider(provider), pulumi.RetainOnDelete(true)) // handed off to ArgoCD; retain ns on grafana_enabled=false
 	if err != nil {
 		return nil, fmt.Errorf("failed to create grafana namespace: %w", err)
 	}
@@ -91,7 +91,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				"username": pulumi.String(base64.StdEncoding.EncodeToString([]byte("grafana"))),
 				"password": pulumi.String(base64.StdEncoding.EncodeToString([]byte(dbPassword))),
 			},
-		}, pulumi.Provider(provider), pulumi.DependsOn([]pulumi.Resource{ns}))
+		}, pulumi.Provider(provider), pulumi.DependsOn([]pulumi.Resource{ns}), pulumi.RetainOnDelete(true)) // retain on cutover: grafana + grafana-db read this secret
 		if err != nil {
 			return nil, fmt.Errorf("failed to create grafana db secret: %w", err)
 		}
@@ -223,6 +223,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			Values:          dbValues,
 			Wait:            false,
 			Timeout:         600,
+			RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/grafana-db); retain Cluster + PVCs (Postgres data)
 		}, pulumi.DependsOn(dbClusterDeps))
 		if err != nil {
 			return nil, fmt.Errorf("failed to deploy grafana cnpg cluster: %w", err)
@@ -345,17 +346,14 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			"revision": 1,
 		}
 	}
-	if conf.GetBool("monitoring_enabled", false) {
-		dashboardsNodeExporter["node-exporter"] = loadLocalDashboard(ctx, "node-exporter")
-		dashboards["k8s-compute"] = loadLocalDashboard(ctx, "k8s-compute")
-		dashboards["traefik"] = loadLocalDashboard(ctx, "traefik")
-	}
-	if conf.GetBool("longhorn_enabled", false) {
-		dashboards["longhorn"] = loadLocalDashboard(ctx, "longhorn")
-	}
-	if conf.GetBool("minio_enabled", false) {
-		dashboards["minio"] = loadLocalDashboard(ctx, "minio")
-	}
+	// prometheus(monitoring), longhorn, and minio are permanent platform components
+	// migrated to ArgoCD; keep their dashboards unconditional so the Pulumi->ArgoCD
+	// flag flips don't churn grafana (still Pulumi-managed until it migrates last).
+	dashboardsNodeExporter["node-exporter"] = loadLocalDashboard(ctx, "node-exporter")
+	dashboards["k8s-compute"] = loadLocalDashboard(ctx, "k8s-compute")
+	dashboards["traefik"] = loadLocalDashboard(ctx, "traefik")
+	dashboards["longhorn"] = loadLocalDashboard(ctx, "longhorn")
+	dashboards["minio"] = loadLocalDashboard(ctx, "minio")
 
 	// Load custom local dashboards from the dashboards directory
 	if conf.GetBool("gemini_telemetry_enabled", true) {
@@ -404,6 +402,7 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		Values:          grafanaValues,
 		Wait:            false,
 		Timeout:         600,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/grafana); retain release on grafana_enabled=false
 	}, pulumi.DependsOn(deps))
 	if err != nil {
 		ctx.Log.Error("Failed to deploy Grafana Helm chart.", &pulumi.LogArgs{Resource: release})

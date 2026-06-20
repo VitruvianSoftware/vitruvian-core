@@ -43,7 +43,8 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 
 	namespace := "minio"
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
-		Name: namespace,
+		Name:           namespace,
+		RetainOnDelete: true, // handed off to ArgoCD; retain ns on minio_enabled=false
 	})
 	if err != nil {
 		return nil, err
@@ -56,6 +57,7 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 		RepositoryURL:   "https://charts.min.io/",
 		Version:         "5.4.0",
 		CreateNamespace: false,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/minio); retain release + 4 PVCs (data)
 		Values: map[string]interface{}{
 			"mode":         mode,
 			"replicas":     replicas,

@@ -1,0 +1,117 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# longhorn — Pulumi -> ArgoCD platform cutover. THE STORAGE CSI (highest stakes).
+# Values mirror the LIVE Pulumi/Helm deployment exactly (DeployLonghorn in
+# infrastructure/pulumi/dev-local/pkg/applications/longhorn.go; no ValuesFile, so
+# live user-supplied values = the code Values map only — verified against
+# `helm get values longhorn -a`):
+#   chart longhorn-1.6.2 (repo https://charts.longhorn.io), ns longhorn-system,
+#   defaultSettings.defaultReplicaCount=3,
+#   persistence.defaultClass=true, persistence.defaultClassReplicaCount=3.
+#
+# CRDs: Pulumi installs Longhorn with SkipCrds=false (HelmChartConfig.SkipCRDs is
+# unset in longhorn.go -> Go zero value false), i.e. the chart itself owns and
+# manages every Longhorn CRD. We mirror that here with helm.skipCrds=false so the
+# chart continues to manage its own CRDs. Longhorn 1.6.2 ships its CRDs as regular
+# templates (not a separate crds/ dir), so they are part of the normal manifest set
+# and are adopted in place via ServerSideApply.
+#
+# DATA / CRD RETENTION DURING CUTOVER: the live CRDs AND their custom resources
+# (volumes, replicas, engines, nodes, backingimages, settings, etc.) back live
+# PVCs and MUST survive the handoff untouched — no pod restart, no PVC churn, no
+# CR deletion. Pulumi retains the release out-of-band (RetainOnDelete / no
+# destructive `helm uninstall`) at cutover; ArgoCD adopts the existing objects
+# rather than recreating them. ArgoCD must NEVER prune or reinstall the live CRDs
+# or their CRs.
+#
+# CUTOVER ORDER — CUT THIS OVER LAST. Despite the very-early storage sync-wave
+# ("-6"), Longhorn backs live PVCs (prometheus, alertmanager, registry, and one
+# minio volume). It must be the FINAL component handed from Pulumi to ArgoCD: a
+# mistimed reconcile here can detach/recreate volumes and take down every stateful
+# consumer. The wave only governs ordering WITHIN an ArgoCD sync (storage first);
+# it does not change the Pulumi->ArgoCD handoff order, which is operator-driven.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped + the platform
+# root is applied, AND only after all other components have been cut over. At
+# cutover, set longhorn_enabled=false in the dev-local stack and `pulumi up` so
+# Pulumi releases ownership as ArgoCD takes it — but the CRDs, their CRs, the
+# StorageClass, and all backing PVCs/PVs MUST survive (never let Pulumi prune
+# them). The longhorn-ui PodDisruptionBudget that Pulumi creates as a raw manifest
+# alongside the chart is NOT part of this chart and must be migrated/managed
+# separately.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: longhorn
+  namespace: argocd
+  labels:
+    environment: longhorn
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: longhorn
+      labels:
+        app: longhorn
+      annotations:
+        # Storage CSI: must be available before any stateful workload that
+        # provisions a PVC. Earliest of the platform waves. NOTE: the wave only
+        # orders objects within an ArgoCD sync — Longhorn is still CUT OVER LAST
+        # from Pulumi because it backs live PVCs (see header).
+        argocd.argoproj.io/sync-wave: "-6"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.longhorn.io
+        chart: longhorn
+        # Pinned to the live release version (helm list: longhorn-1.6.2).
+        targetRevision: "1.6.2"
+        helm:
+          version: v3
+          # Mirror Pulumi SkipCrds=false: the chart owns/manages its own CRDs.
+          # Longhorn 1.6.2 ships CRDs as templates, so they are part of the normal
+          # manifest set and are adopted in place (never pruned/reinstalled).
+          skipCrds: false
+          values: |
+            # LIVE user-supplied values (exact mirror of the Pulumi Values map;
+            # no ValuesFile is used for Longhorn). Changing any of these would
+            # churn the storage layer — keep byte-faithful to the live release.
+            defaultSettings:
+              defaultReplicaCount: 3
+            persistence:
+              defaultClass: true
+              defaultClassReplicaCount: 3
+      destination:
+        server: '{{.server}}'
+        namespace: longhorn-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          # Longhorn ships many CRDs and large manifests; the client-side
+          # last-applied annotation exceeds the 256KB limit. ServerSideApply lets
+          # ArgoCD ADOPT the existing live CRDs/CRs in place (no recreate) and
+          # avoids the CSA failure (matches the cnpg/cert-manager appsets).
+          - ServerSideApply=true
