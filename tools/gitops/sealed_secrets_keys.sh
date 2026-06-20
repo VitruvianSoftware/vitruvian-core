@@ -18,10 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Back up / restore the sealed-secrets controller PRIVATE KEYS to/from Bitwarden.
+# Back up / restore / verify the sealed-secrets controller PRIVATE KEYS in Bitwarden.
 # These keys are the ONLY thing that can decrypt the SealedSecrets committed to
 # the (public) repo, so they must live off-cluster in a vault. Invoked via
-# `bazel run //tools/gitops:sealed-secrets-backup` / `:sealed-secrets-restore`;
+# `bazel run //tools/gitops:sealed-secrets-{backup,restore,verify}`;
 # the calling sh_binary bakes the subcommand as $1. Bitwarden unlock is handled
 # for you: if locked, the target prompts for the master password (or uses
 # $BW_PASSWORD / a pre-set $BW_SESSION). You must `bw login` once beforehand.
@@ -29,7 +29,7 @@ set -euo pipefail
 
 # NB: keep this :? message free of { } — a literal brace closes the ${...:?} early
 # and the trailing brace would be appended to SUBCMD (e.g. "backup}" -> no case match).
-SUBCMD="${1:?usage: sealed-secrets-backup | sealed-secrets-restore}"
+SUBCMD="${1:?usage: sealed-secrets-backup | sealed-secrets-restore | sealed-secrets-verify}"
 shift || true
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
@@ -119,6 +119,11 @@ case "$SUBCMD" in
     bw create attachment --file "$F" --itemid "$id" >/dev/null \
       || { echo "ERROR: failed to upload the key attachment to Bitwarden." >&2; exit 1; }
     bw sync >/dev/null 2>&1 || true
+    # Self-verify the attachment actually persisted. Bitwarden file attachments need
+    # a paid plan (Premium/Families/Org); a free account would create the item but
+    # silently store no file — so confirm the key is really there before claiming success.
+    bw get item "$id" | jq -e --arg f "$FILE" 'any(.attachments[]?; .fileName == $f)' >/dev/null 2>&1 \
+      || { echo "ERROR: item created but attachment '$FILE' did not persist — Bitwarden file attachments require a paid plan (Premium/Families/Org)." >&2; exit 1; }
     echo "✓ Backed up ${n} sealed-secrets key secret(s) to Bitwarden item '$ITEM' (attachment: $FILE)."
     ;;
   restore)
@@ -136,8 +141,20 @@ case "$SUBCMD" in
     kubectl --context "$KCTX" -n "$NS" rollout status deployment "$CONTROLLER" --timeout=120s
     echo "✓ Restored ${n} sealed-secrets key(s); controller is up. Existing SealedSecrets will decrypt with the restored key."
     ;;
+  verify)
+    # Read-only: prove the backup is real + restorable by downloading the attachment
+    # and confirming it decodes to >=1 Secret. No cluster access.
+    bw sync >/dev/null 2>&1 || true
+    id="$(item_id)"
+    [ -n "$id" ] || { echo "✗ No Bitwarden item '$ITEM' found — nothing is backed up." >&2; exit 1; }
+    bw get attachment "$FILE" --itemid "$id" --output "$F" >/dev/null 2>&1 \
+      || { echo "✗ Item '$ITEM' exists but has NO '$FILE' attachment — the key is NOT backed up (re-run backup)." >&2; exit 1; }
+    n="$(key_count "$F")"
+    [ "$n" -ge 1 ] || { echo "✗ Attachment '$FILE' is present but contains no Secret — backup is invalid." >&2; exit 1; }
+    echo "✓ Backup OK: item '$ITEM' holds '$FILE' with ${n} sealed-secrets key secret(s) — restorable via 'bazel run //tools/gitops:sealed-secrets-restore'."
+    ;;
   *)
-    echo "ERROR: unknown subcommand '$SUBCMD' (backup|restore)" >&2
+    echo "ERROR: unknown subcommand '$SUBCMD' (backup|restore|verify)" >&2
     exit 2
     ;;
 esac
