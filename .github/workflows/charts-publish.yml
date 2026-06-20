@@ -1,0 +1,65 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+name: charts-publish
+
+# Packages every co-located Helm chart (**/deploy/chart) and pushes it as an OCI
+# artifact to GHCR (oci://ghcr.io/vitruviansoftware/charts/<name>). Versions are
+# driven by each Chart.yaml `version`. Charts are intended to be public so ArgoCD
+# can pull them without a credential.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - '**/deploy/chart/**'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Package and push charts
+        run: |
+          set -euo pipefail
+          ORG=vitruviansoftware
+          mkdir -p /tmp/charts
+          found=0
+          while IFS= read -r chart; do
+            dir="$(dirname "$chart")"
+            name="$(awk -F': ' '/^name:/{print $2; exit}' "$chart")"
+            echo "::group::Packaging ${name} from ${dir}"
+            helm package "$dir" -d /tmp/charts
+            helm push /tmp/charts/"${name}"-*.tgz "oci://ghcr.io/${ORG}/charts"
+            echo "::endgroup::"
+            found=1
+          done < <(find . -path '*/deploy/chart/Chart.yaml' -not -path './bazel-*/*')
+          [ "$found" = 1 ] || echo "No charts found under **/deploy/chart"
+      - name: Visibility note
+        run: |
+          echo "New GHCR packages start private. Make each chart public once (UI or):"
+          echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"
