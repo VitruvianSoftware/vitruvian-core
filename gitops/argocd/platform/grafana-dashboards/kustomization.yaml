@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: grafana
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+configMapGenerator:
+  - name: grafana-dashboard-cert-manager
+    files:
+      - cert-manager.json
+  - name: grafana-dashboard-cnpg
+    files:
+      - cnpg.json
+  - name: grafana-dashboard-external-dns
+    files:
+      - external-dns.json
+  - name: grafana-dashboard-gemini-cli
+    files:
+      - gemini-cli.json
+  - name: grafana-dashboard-k8s-compute
+    files:
+      - k8s-compute.json
+  - name: grafana-dashboard-longhorn
+    files:
+      - longhorn.json
+  - name: grafana-dashboard-managed-ingress-dns
+    files:
+      - managed-ingress-dns.json
+  - name: grafana-dashboard-minio
+    files:
+      - minio.json
+  - name: grafana-dashboard-node-exporter
+    files:
+      - node-exporter.json
+  - name: grafana-dashboard-traefik
+    files:
+      - traefik.json

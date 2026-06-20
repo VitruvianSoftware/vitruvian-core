@@ -167,3 +167,18 @@ spec:
           # CNPG Cluster manifests are large/CRD-typed; CSA avoids the 256KB
           # client-side last-applied annotation failure (matches cnpg appset).
           - ServerSideApply=true
+      # grafana-db was rebuilt via a `recovery` bootstrap during the 2026-06-13
+      # incident (live serverName grafana-db-cluster-r4). CNPG ignores bootstrap
+      # post-init, and chart v0.2.1 cannot express the live backup serverName — so
+      # ignore both divergent fields: ArgoCD adopts the Cluster faithfully WITHOUT
+      # resetting the live recovery bootstrap or churning the WAL archive path
+      # (preserves PITR continuity; no fresh base backup needed).
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          jsonPointers:
+            - /spec/bootstrap
+            - /spec/backup/barmanObjectStore/serverName
+            # The recovery source (externalClusters) the chart doesn't render; SSA
+            # leaves it in place, so ignore it to avoid a perpetual OutOfSync.
+            - /spec/externalClusters
