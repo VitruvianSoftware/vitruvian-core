@@ -369,15 +369,15 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 		}
 	}
 
-	if conf.GetBool("external_dns_enabled", false) {
-		managedIngressJSON, err := os.ReadFile("dashboards/managed-ingress-dns.json")
-		if err == nil {
-			dashboards["managed-ingress-dns"] = map[string]interface{}{
-				"json": string(managedIngressJSON),
-			}
-		} else {
-			ctx.Log.Warn("Could not load managed-ingress-dns.json dashboard", nil)
+	// managed-ingress-dns dashboard: external-dns is a permanent platform component
+	// (ArgoCD-owned post-cutover), so keep its dashboard regardless of the
+	// external_dns_enabled cutover flag — gating it churns grafana on flag-off.
+	if managedIngressJSON, err := os.ReadFile("dashboards/managed-ingress-dns.json"); err == nil {
+		dashboards["managed-ingress-dns"] = map[string]interface{}{
+			"json": string(managedIngressJSON),
 		}
+	} else {
+		ctx.Log.Warn("Could not load managed-ingress-dns.json dashboard", nil)
 	}
 
 	if len(dashboards) > 0 {

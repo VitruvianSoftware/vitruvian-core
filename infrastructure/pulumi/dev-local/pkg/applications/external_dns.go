@@ -47,6 +47,7 @@ func DeployExternalDNS(ctx *pulumi.Context, provider *kubernetes.Provider) error
 		Labels: map[string]string{
 			"app": "external-dns",
 		},
+		RetainOnDelete: true, // handed off to ArgoCD; retain ns on external_dns_enabled=false
 	})
 	if err != nil {
 		return err
@@ -80,7 +81,8 @@ func DeployExternalDNS(ctx *pulumi.Context, provider *kubernetes.Provider) error
 	if externalSecretsEnabled {
 		// Create an ExternalSecret to fetch Cloudflare API token
 		externalSecret, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-			Name: "cf-external-secret",
+			Name:           "cf-external-secret",
+			RetainOnDelete: true, // bridges external-secrets->external-dns (owns cf-secret); must survive cutover
 			YAML: `apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -142,6 +144,7 @@ spec:
 		Values:          values,
 		Wait:            true,
 		Timeout:         600,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/external-dns)
 	}, pulumi.DependsOn(deps))
 
 	// Export external-dns information
