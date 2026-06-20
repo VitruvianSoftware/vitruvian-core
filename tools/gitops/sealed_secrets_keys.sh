@@ -27,7 +27,9 @@
 # $BW_PASSWORD / a pre-set $BW_SESSION). You must `bw login` once beforehand.
 set -euo pipefail
 
-SUBCMD="${1:?usage: sealed-secrets-{backup|restore}}"
+# NB: keep this :? message free of { } — a literal brace closes the ${...:?} early
+# and the trailing brace would be appended to SUBCMD (e.g. "backup}" -> no case match).
+SUBCMD="${1:?usage: sealed-secrets-backup | sealed-secrets-restore}"
 shift || true
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
