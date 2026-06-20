@@ -22,8 +22,9 @@
 # These keys are the ONLY thing that can decrypt the SealedSecrets committed to
 # the (public) repo, so they must live off-cluster in a vault. Invoked via
 # `bazel run //tools/gitops:sealed-secrets-backup` / `:sealed-secrets-restore`;
-# the calling sh_binary bakes the subcommand as $1. Bitwarden auth comes from
-# $BW_SESSION (run `export BW_SESSION=$(bw unlock --raw)` first). Never directly.
+# the calling sh_binary bakes the subcommand as $1. Bitwarden unlock is handled
+# for you: if locked, the target prompts for the master password (or uses
+# $BW_PASSWORD / a pre-set $BW_SESSION). You must `bw login` once beforehand.
 set -euo pipefail
 
 SUBCMD="${1:?usage: sealed-secrets-{backup|restore}}"
@@ -42,12 +43,29 @@ for t in kubectl bw jq; do
   command -v "$t" >/dev/null 2>&1 || { echo "ERROR: '$t' not found on PATH." >&2; exit 1; }
 done
 
-# Bitwarden must be unlocked; the CLI reads $BW_SESSION automatically.
-if [ "$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown)" != "unlocked" ]; then
-  echo "ERROR: Bitwarden CLI is not unlocked. Set up a session, then re-run:" >&2
-  echo "    bw login                              # once, if not logged in" >&2
-  echo "    export BW_SESSION=\$(bw unlock --raw)  # unlock; bazel run inherits the env" >&2
-  exit 1
+# Ensure a usable Bitwarden session, folding `bw unlock` into the target (no
+# manual export needed). Priority: existing unlocked $BW_SESSION -> $BW_PASSWORD
+# (non-interactive) -> interactive master-password prompt (bazel run keeps the TTY).
+ss_status() { bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown; }
+if [ "$(ss_status)" != "unlocked" ]; then
+  if [ "$(ss_status)" = "unauthenticated" ]; then
+    echo "ERROR: not logged in to Bitwarden — run 'bw login' once, then re-run." >&2
+    exit 1
+  fi
+  if [ -n "${BW_PASSWORD:-}" ]; then
+    BW_SESSION="$(bw unlock --passwordenv BW_PASSWORD --raw)" \
+      || { echo "ERROR: 'bw unlock' failed (BW_PASSWORD)." >&2; exit 1; }
+  elif [ -t 0 ]; then
+    echo "Unlocking Bitwarden — enter your master password:" >&2
+    BW_SESSION="$(bw unlock --raw)" \
+      || { echo "ERROR: 'bw unlock' failed." >&2; exit 1; }
+  else
+    echo "ERROR: Bitwarden is locked and there's no TTY to prompt. Either:" >&2
+    echo "    export BW_SESSION=\$(bw unlock --raw)   # then re-run, or" >&2
+    echo "    export BW_PASSWORD=...                  # for non-interactive unlock" >&2
+    exit 1
+  fi
+  export BW_SESSION
 fi
 
 tmpd="$(mktemp -d -t sskeys.XXXXXX)"
