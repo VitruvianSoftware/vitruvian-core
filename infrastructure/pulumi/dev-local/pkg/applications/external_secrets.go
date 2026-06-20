@@ -173,7 +173,8 @@ spec:
 	datadogEnabled := conf.GetBool("datadog_enabled", false)
 	if datadogEnabled {
 		_, err = resources.CreateK8sManifest(ctx, esProvider, resources.K8sManifestConfig{
-			Name: "external-secrets-fake-datadog-secret-store",
+			Name:           "external-secrets-fake-datadog-secret-store",
+			RetainOnDelete: true, // uniform with cloudflare/cnpg stores; survive cutover if datadog is ever enabled
 			YAML: fmt.Sprintf(`apiVersion: external-secrets.io/v1beta1
 kind: ClusterSecretStore
 metadata:
