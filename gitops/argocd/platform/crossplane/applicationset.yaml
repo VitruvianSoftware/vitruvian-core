@@ -17,30 +17,46 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+# Mirrored from the source lab-GCP gitops. Crossplane provisions external/cloud
+# resources and is OPTIONAL on the homelab — delete this file if not wanted.
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
-  name: tabula
+  name: crossplane
   namespace: argocd
+  labels:
+    environment: crossplane
 spec:
-  project: applications-project
-  source:
-    # OCI Helm chart published to GHCR by .github/workflows/charts-publish.yml.
-    # Public package, so no repo credential is required. If you make it private,
-    # register the repo in ArgoCD with enableOCI=true + a pull secret.
-    repoURL: ghcr.io/vitruviansoftware/charts
-    chart: tabula
-    targetRevision: 0.1.0
-    helm:
-      values: |
-        image:
-          tag: latest
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: tabula
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: crossplane
+      labels:
+        app: crossplane
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.crossplane.io/stable
+        chart: crossplane
+        targetRevision: "1.16.0"
+        helm:
+          version: v3
+          values: |
+            resourcesCrossplane:
+              requests: {cpu: 250m, memory: 512Mi}
+              limits: {cpu: 250m, memory: 512Mi}
+            resourcesRBACManager:
+              requests: {cpu: 250m, memory: 512Mi}
+              limits: {cpu: 250m, memory: 512Mi}
+      destination:
+        server: '{{.server}}'
+        namespace: crossplane-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

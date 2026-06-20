@@ -20,19 +20,20 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: applications
+  name: applications-project
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   description: First-party applications from the vitruvian-core monorepo
-  sourceRepos:
-    - https://github.com/VitruvianSoftware/vitruvian-core.git
-    - ghcr.io/vitruviansoftware/charts/*
-  destinations:
-    - server: https://kubernetes.default.svc
-      namespace: '*'
+  orphanedResources:
+    warn: false
   clusterResourceWhitelist:
     - group: '*'
       kind: '*'
-  namespaceResourceWhitelist:
-    - group: '*'
-      kind: '*'
+  sourceRepos:
+    - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
+    - 'ghcr.io/vitruviansoftware/charts/*'
+  destinations:
+    - namespace: '*'
+      server: 'https://kubernetes.default.svc'
