@@ -42,10 +42,53 @@ spec:
       source:
         repoURL: https://cloudnative-pg.github.io/charts
         chart: cloudnative-pg
-        # Align with the operator version pinned in dev-local at cutover.
-        targetRevision: "0.22.0"
+        # Pinned to the LIVE release (helm list: cloudnative-pg-0.23.2).
+        targetRevision: "0.23.2"
         helm:
           version: v3
+          # Mirror the live Pulumi values exactly so adoption is zero-churn.
+          # CRDs are out-of-band (crds.create:false — Pulumi installs them, retained
+          # at cutover); webhook serving cert is minted by cert-manager.
+          values: |
+            replicaCount: 2
+            config:
+              clusterWide: true
+            crds:
+              create: false
+            hostNetwork: true
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: cloudnative-pg
+                    topologyKey: kubernetes.io/hostname
+            metrics:
+              enabled: true
+              serviceMonitor:
+                enabled: false
+            podAnnotations:
+              prometheus.io/port: "8080"
+              prometheus.io/scrape: "true"
+            podSecurityContext:
+              fsGroup: 65534
+              runAsNonRoot: true
+              runAsUser: 65534
+            securityContext:
+              runAsGroup: 65534
+              runAsNonRoot: true
+              runAsUser: 65534
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+            webhook:
+              certManager:
+                enabled: true
+              timeoutSeconds: 60
       destination:
         server: '{{.server}}'
         namespace: cnpg-system

@@ -1,0 +1,150 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# prometheus — Pulumi -> ArgoCD platform cutover. Central metrics store +
+# remote-write receiver consumed by the OTel collector and Tempo's metrics
+# generator. helm.values mirror the LIVE Pulumi/Helm release verbatim
+# (`helm get values prometheus -n monitoring` == DeployPrometheus in
+# infrastructure/pulumi/dev-local/pkg/applications/monitoring.go), so ArgoCD
+# adoption is a no-op — no pod restart, no PVC churn.
+#   chart prometheus-22.6.7 (prometheus-community), ns monitoring.
+#   server: replicaCount=1, statefulSet.enabled=false (Deployment, NOT a
+#     StatefulSet — single replica because simple-mode Prometheus has no HA
+#     remote-write without Thanos/Mimir; two replicas would split-brain the
+#     collector's round-robin).
+#   server.persistentVolume: 25Gi on longhorn. retention.size is delivered as a
+#     RAW FLAG via server.extraFlags (storage.tsdb.retention.size=20GB) —
+#     chart 22.6.7 does NOT render server.retentionSize, so it must stay in
+#     extraFlags or the live --storage.tsdb.retention.size arg would disappear.
+#     extraFlags also carries web.enable-lifecycle + web.enable-remote-write-
+#     receiver (the remote-write receiver the OTel/Tempo pipeline writes into).
+#   alertmanager.persistence: 2Gi on longhorn. NOTE the live release persists via
+#     `alertmanager.persistence` (the subchart's real key). The legacy
+#     `alertmanager.persistentVolume` spelling is silently ignored by this chart
+#     — do NOT "fix" it to persistentVolume here or the alertmanager PVC binding
+#     changes and silences/nflog churn.
+#
+# DATA IS RETAINED OUT-OF-BAND BY PULUMI DURING CUTOVER. The two PVCs
+# (prometheus-server 25Gi, alertmanager 2Gi on longhorn) and their backing
+# Longhorn volumes hold live TSDB + alertmanager state and MUST survive the
+# handoff. The chart ships no CRDs, so there is no CRD bundle to preserve; the
+# only stateful objects are the PVCs. At cutover set the prometheus/monitoring
+# enable flag to false in the dev-local stack and `pulumi up` so Pulumi releases
+# ownership (RetainOnDelete keeps the release + PVCs) as ArgoCD adopts — Pulumi
+# must NEVER prune the PVCs or the StatefulSet/Deployment-bound volumes.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: prometheus
+  namespace: argocd
+  labels:
+    environment: monitoring
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: prometheus
+      labels:
+        app: prometheus
+      annotations:
+        # Base observability datastore + remote-write receiver. Lands before the
+        # consumers that write to / scrape it: the OTel collector (wave 1) and
+        # Tempo's metrics generator. Peer of the tempo datastore (wave 0).
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://prometheus-community.github.io/helm-charts
+        chart: prometheus
+        # Pinned to the live release version (helm list: prometheus-22.6.7).
+        targetRevision: "22.6.7"
+        helm:
+          version: v3
+          values: |
+            server:
+              extraFlags:
+              - web.enable-lifecycle
+              - web.enable-remote-write-receiver
+              - storage.tsdb.retention.size=20GB
+              persistentVolume:
+                enabled: true
+                size: 25Gi
+                storageClass: longhorn
+              replicaCount: 1
+              statefulSet:
+                enabled: false
+            serverFiles:
+              recording_rules.yml:
+                groups:
+                - name: k8s.rules
+                  rules:
+                  - expr: sum by (namespace, pod, container) (irate(container_cpu_usage_seconds_total{image!=""}[5m]))
+                    record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate
+            extraScrapeConfigs: |2
+
+              - job_name: 'node-exporter'
+                kubernetes_sd_configs:
+                  - role: endpoints
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: '.*node-exporter.*'
+                  action: keep
+                - source_labels: [__meta_kubernetes_endpoint_node_name]
+                  target_label: instance
+              - job_name: 'traefik'
+                kubernetes_sd_configs:
+                  - role: endpoints
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: 'traefik'
+                  action: keep
+              - job_name: 'longhorn'
+                metrics_path: /metrics
+                kubernetes_sd_configs:
+                  - role: endpoints
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: 'longhorn-backend'
+                  action: keep
+              - job_name: 'minio'
+                metrics_path: /minio/v2/metrics/cluster
+                kubernetes_sd_configs:
+                  - role: endpoints
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: 'minio'
+                  action: keep
+            alertmanager:
+              persistence:
+                enabled: true
+                size: 2Gi
+                storageClass: longhorn
+      destination:
+        server: '{{.server}}'
+        namespace: monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

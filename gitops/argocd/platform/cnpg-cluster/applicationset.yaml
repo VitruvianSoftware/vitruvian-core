@@ -1,0 +1,128 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# cnpg-cluster — Pulumi -> ArgoCD platform cutover.
+# A CloudNativePG CLUSTER (Postgres) — this is the application database and
+# HOLDS LIVE DATA on local-path PVCs. Values mirror the LIVE Pulumi/Helm release
+# EXACTLY (verified against `helm get values cnpg-cluster -a` plus the Pulumi
+# DeployCnpgCluster code: values/cnpg-cluster.yaml MERGED with the code-supplied
+# cluster.initdb overrides).
+#   chart cluster-0.2.1 (cloudnative-pg charts repo), namespace cnpg-cluster
+#   mode=standalone, cluster.instances=3 (1 primary + 2 streaming standbys),
+#   cluster.storage.size=1Gi storageClass=local-path (node-local, NOT Longhorn),
+#   enableSuperuserAccess=true, superuserSecret="",
+#   initdb {database=app, owner=app_user, secret.name=cnpg-initial-app-credentials},
+#   monitoring.enabled=false + podMonitor.enabled=true,
+#   inheritedMetadata annotation-based scrape on :9187, backups.enabled=false.
+#
+# DATA / CRD RETENTION (read before any cutover):
+#   * The 3 instance PVCs (local-path, hostname-pinned) carry the actual Postgres
+#     data and MUST be retained across the cutover — no PVC churn, no pod
+#     restart. ArgoCD must ADOPT the existing Cluster CR + PVCs in place; it must
+#     never delete/recreate them. Do NOT let prune touch the PVCs.
+#   * The CloudNativePG CRDs (cluster.postgresql.cnpg.io et al.) are installed
+#     out-of-band by Pulumi (crds/cnpg.crds.yaml, resource-policy=keep) and owned
+#     by the operator Application (gitops/argocd/platform/cnpg). This chart must
+#     not install or own CRDs — the `cluster` chart ships none.
+#   * cnpg-initial-app-credentials Secret is created by Pulumi (and reconciled by
+#     external-secrets); it is NOT templated by this chart. It must already exist
+#     and survive the cutover (initdb.secret.name references it). Never prune it.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped, the platform
+# root is applied, AND the cnpg-operator Application is Healthy. At cutover, set
+# the cnpg cluster flag false in the dev-local stack and `pulumi up` so Pulumi
+# releases ownership as ArgoCD adopts it — but the Cluster CR, PVCs, CRDs, and
+# credentials Secret MUST survive. Take a fresh DB backup/snapshot first.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cnpg-cluster
+  namespace: argocd
+  labels:
+    environment: cnpg
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: cnpg-cluster
+      labels:
+        app: cnpg
+      annotations:
+        # Workload that consumes the CNPG operator + CRDs: must sync AFTER the
+        # operator (gitops/argocd/platform/cnpg, wave -1) so the Cluster CR's
+        # controller and CRDs already exist. Positive wave keeps it last.
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://cloudnative-pg.github.io/charts
+        chart: cluster
+        # Pinned to the live release version (helm list: cluster-0.2.1).
+        targetRevision: "0.2.1"
+        helm:
+          version: v3
+          values: |
+            # Faithful mirror of the LIVE merged release (values/cnpg-cluster.yaml
+            # + Pulumi code overrides). Changing any of these risks a Cluster CR
+            # rollout / PVC churn — keep byte-for-byte equivalent at cutover.
+            mode: standalone
+            cluster:
+              # 3 instances (1 primary + 2 standbys) — HA via CNPG streaming
+              # replication, not the storage layer. Spread by CNPG anti-affinity.
+              instances: 3
+              storage:
+                # LIVE DATA. local-path is node-local + hostname-pinned; these
+                # PVCs must be adopted in place (no resize, no class change).
+                size: 1Gi
+                storageClass: local-path
+              inheritedMetadata:
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "9187"
+              enableSuperuserAccess: true
+              superuserSecret: ""
+              monitoring:
+                enabled: false
+                podMonitor:
+                  enabled: true
+              # initdb is set in Pulumi code (overrides the values-file
+              # placeholders); these are the resolved LIVE values. The owner
+              # secret already exists out-of-band and must not be pruned.
+              initdb:
+                database: app
+                owner: app_user
+                secret:
+                  name: cnpg-initial-app-credentials
+            backups:
+              enabled: false
+      destination:
+        server: '{{.server}}'
+        namespace: cnpg-cluster
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          # CNPG Cluster CR is large/CRD-backed; CSA avoids the client-side
+          # last-applied 256KB annotation failure (matches cnpg-operator appset).
+          - ServerSideApply=true
