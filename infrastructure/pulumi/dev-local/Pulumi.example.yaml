@@ -36,10 +36,13 @@ config:
   monorepo:mongodb_replicaset_version: "4.4.19"
   monorepo:argocd_enabled: "false"
   # Optional ArgoCD access (defaults: ClusterIP, reach via `kubectl port-forward`).
-  # Set both to expose the UI through traefik + external-dns:
-  #   monorepo:argocd_domain: "argocd.dev.example.io"
+  # Set domain + ingress_enabled to expose a real HTTPS URL through traefik, with
+  # external-dns creating the Cloudflare record and cert-manager issuing the cert
+  # (same pattern as grafana/otel):
+  #   monorepo:argocd_domain: "argocd.lab.ipv1337.dev"
   #   monorepo:argocd_ingress_enabled: "true"
-  #   monorepo:argocd_ingress_class: "traefik"   # override the default if needed
+  #   monorepo:argocd_ingress_class: "traefik"                       # default
+  #   monorepo:argocd_ingress_cluster_issuer: "letsencrypt-cloudflare"  # default
   #   monorepo:argocd_admin_email: "you@example.com"  # binds org-admin (needs an SSO connector)
   monorepo:telepresence_enabled: "false"
   monitoring:namespace: monitoring

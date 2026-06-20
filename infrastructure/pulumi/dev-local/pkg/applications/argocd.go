@@ -63,6 +63,9 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 	domain := conf.GetString("argocd_domain", "")
 	ingressEnabled := conf.GetBool("argocd_ingress_enabled", false)
 	ingressClass := conf.GetString("argocd_ingress_class", "traefik")
+	// cert-manager ClusterIssuer that signs the ingress cert — same one grafana/otel
+	// use on the homelab (Let's Encrypt via the Cloudflare DNS-01 solver).
+	ingressIssuer := conf.GetString("argocd_ingress_cluster_issuer", "letsencrypt-cloudflare")
 	adminEmail := conf.GetString("argocd_admin_email", "")
 
 	// RBAC: read-only by default plus an org-admin role. Only bind an admin subject
@@ -77,16 +80,25 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		policyCSV += fmt.Sprintf("g, %s, role:org-admin\n", adminEmail)
 	}
 
-	// Ingress via traefik + external-dns, only when explicitly enabled and a domain
-	// is provided; otherwise ClusterIP-only.
+	// Ingress via traefik, only when explicitly enabled and a domain is provided;
+	// otherwise ClusterIP-only. Matches the homelab pattern used by grafana/otel:
+	//   - external-dns.../sync-enabled "true": our external-dns annotationFilter is
+	//     `sync-enabled in (true)` and it reads the host from the ingress rule, so
+	//     THIS is what makes it create the Cloudflare record. (The older /hostname
+	//     annotation would be silently ignored by that filter — the bug this fixes.)
+	//   - cert-manager.io/cluster-issuer: cert-manager issues the TLS cert.
+	//   - tls: true: render the TLS block. The API server runs insecure
+	//     (configs.params server.insecure), so TLS terminates at the ingress.
 	ingress := map[string]interface{}{"enabled": false}
 	if ingressEnabled && domain != "" {
 		ingress = map[string]interface{}{
 			"enabled":          true,
 			"ingressClassName": ingressClass,
 			"hostname":         domain,
+			"tls":              true,
 			"annotations": map[string]interface{}{
-				"external-dns.alpha.kubernetes.io/hostname": domain,
+				"external-dns.alpha.kubernetes.io/sync-enabled": "true",
+				"cert-manager.io/cluster-issuer":                ingressIssuer,
 			},
 		}
 	}
