@@ -39,7 +39,7 @@ NS="${SS_NAMESPACE:-sealed-secrets}"
 LABEL="sealedsecrets.bitnami.com/sealed-secrets-key"
 CONTROLLER="${SS_CONTROLLER:-sealed-secrets-controller}"
 ITEM="${SS_BW_ITEM:-dev-local sealed-secrets controller keys}"
-FILE="sealed-secrets-keys.yaml"
+FILE="sealed-secrets-keys.json"
 
 for t in kubectl bw jq; do
   command -v "$t" >/dev/null 2>&1 || { echo "ERROR: '$t' not found on PATH." >&2; exit 1; }
@@ -49,8 +49,9 @@ done
 # manual export needed). Priority: existing unlocked $BW_SESSION -> $BW_PASSWORD
 # (non-interactive) -> interactive master-password prompt (bazel run keeps the TTY).
 ss_status() { bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown; }
-if [ "$(ss_status)" != "unlocked" ]; then
-  if [ "$(ss_status)" = "unauthenticated" ]; then
+st="$(ss_status)"
+if [ "$st" != "unlocked" ]; then
+  if [ "$st" = "unauthenticated" ]; then
     echo "ERROR: not logged in to Bitwarden — run 'bw login' once, then re-run." >&2
     exit 1
   fi
@@ -67,44 +68,73 @@ if [ "$(ss_status)" != "unlocked" ]; then
     echo "    export BW_PASSWORD=...                  # for non-interactive unlock" >&2
     exit 1
   fi
+  [ -n "${BW_SESSION:-}" ] || { echo "ERROR: 'bw unlock' returned an empty session." >&2; exit 1; }
   export BW_SESSION
 fi
 
+# The plaintext key only ever lives in this private temp dir; umask + the EXIT/signal
+# trap keep it 0600 and ensure it's wiped on any normal or interrupted exit.
+umask 077
 tmpd="$(mktemp -d -t sskeys.XXXXXX)"
-trap 'rm -rf "$tmpd"' EXIT
+trap 'rm -rf "$tmpd"' EXIT INT TERM HUP
 F="$tmpd/$FILE"
 
-item_id() { bw get item "$ITEM" 2>/dev/null | jq -r '.id // empty' 2>/dev/null; }
+# Tolerant of a missing item: `bw get item` exits non-zero when the item is absent,
+# which under `set -o pipefail` would otherwise abort this whole script at the bare
+# `id="$(item_id)"` assignment (set -e) BEFORE the create / not-found branches run.
+item_id() { bw get item "$ITEM" 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true; }
+
+# Count the Secret objects in a captured List JSON (0 if the file is absent/empty).
+key_count() { jq '[.items[]? | select(.kind == "Secret")] | length' "$1" 2>/dev/null || echo 0; }
 
 case "$SUBCMD" in
   backup)
-    kubectl --context "$KCTX" -n "$NS" get secret -l "$LABEL" -o yaml > "$F"
-    grep -q "kind: Secret" "$F" || { echo "ERROR: no sealed-secrets keys (label $LABEL) found in ns '$NS'." >&2; exit 1; }
-    n="$(grep -c "kind: Secret" "$F" || true)"
+    # Capture as JSON and strip server-managed metadata so the artifact is create-clean:
+    # a later restore can't hit a resourceVersion Conflict (which would also echo the
+    # base64 tls.key to the console). The data/type/name/labels that the controller
+    # needs are preserved.
+    kubectl --context "$KCTX" -n "$NS" get secret -l "$LABEL" -o json \
+      | jq 'del(.metadata.resourceVersion)
+            | del(.items[].metadata.resourceVersion, .items[].metadata.uid,
+                  .items[].metadata.creationTimestamp, .items[].metadata.generation,
+                  .items[].metadata.managedFields,
+                  .items[].metadata.annotations."kubectl.kubernetes.io/last-applied-configuration")' \
+      > "$F"
+    n="$(key_count "$F")"
+    [ "$n" -ge 1 ] || { echo "ERROR: no sealed-secrets keys (label $LABEL) found in ns '$NS'." >&2; exit 1; }
+
     bw sync >/dev/null 2>&1 || true
     id="$(item_id)"
     if [ -z "$id" ]; then
-      id="$(jq -n --arg n "$ITEM" '{type:2,secureNote:{type:0},name:$n,notes:"Sealed-secrets controller private keys for dev-local — the ONLY thing that decrypts the SealedSecrets in git. Restore: bazel run //tools/gitops:sealed-secrets-restore"}' | bw encode | bw create item | jq -r '.id')"
+      # `|| true`: keep a failed create pipeline (set -e / pipefail) from aborting
+      # before the explicit empty-id check below can report it.
+      id="$(jq -n --arg n "$ITEM" '{type:2,secureNote:{type:0},name:$n,notes:"Sealed-secrets controller private keys for dev-local — the ONLY thing that decrypts the SealedSecrets in git. Restore: bazel run //tools/gitops:sealed-secrets-restore"}' | bw encode | bw create item | jq -r '.id // empty' || true)"
+      [ -n "$id" ] || { echo "ERROR: 'bw create item' failed or returned no id." >&2; exit 1; }
       echo "Created Bitwarden item: $ITEM"
     fi
-    # Replace any prior copy of the attachment so backups are idempotent.
-    for att in $(bw get item "$id" | jq -r --arg f "$FILE" '.attachments[]? | select(.fileName==$f) | .id'); do
+    # Replace any prior copy of the attachment so re-running backup is idempotent.
+    for att in $(bw get item "$id" 2>/dev/null | jq -r --arg f "$FILE" '.attachments[]? | select(.fileName == $f) | .id'); do
       bw delete attachment "$att" --itemid "$id" >/dev/null 2>&1 || true
     done
-    bw create attachment --file "$F" --itemid "$id" >/dev/null
+    bw create attachment --file "$F" --itemid "$id" >/dev/null \
+      || { echo "ERROR: failed to upload the key attachment to Bitwarden." >&2; exit 1; }
     bw sync >/dev/null 2>&1 || true
     echo "✓ Backed up ${n} sealed-secrets key secret(s) to Bitwarden item '$ITEM' (attachment: $FILE)."
     ;;
   restore)
+    bw sync >/dev/null 2>&1 || true
     id="$(item_id)"
     [ -n "$id" ] || { echo "ERROR: Bitwarden item '$ITEM' not found (nothing to restore)." >&2; exit 1; }
-    bw sync >/dev/null 2>&1 || true
-    bw get attachment "$FILE" --itemid "$id" --output "$F" >/dev/null
-    grep -q "kind: Secret" "$F" || { echo "ERROR: Bitwarden attachment '$FILE' is missing or invalid." >&2; exit 1; }
-    echo "Applying sealed-secrets key(s) to ns '$NS' and restarting '$CONTROLLER'..."
+    bw get attachment "$FILE" --itemid "$id" --output "$F" >/dev/null 2>&1 \
+      || { echo "ERROR: Bitwarden attachment '$FILE' not found on item '$ITEM' (backup incomplete?)." >&2; exit 1; }
+    n="$(key_count "$F")"
+    [ "$n" -ge 1 ] || { echo "ERROR: Bitwarden attachment '$FILE' is missing or invalid." >&2; exit 1; }
+
+    echo "Applying ${n} sealed-secrets key(s) to ns '$NS' and restarting '$CONTROLLER'..."
     kubectl --context "$KCTX" -n "$NS" apply -f "$F"
     kubectl --context "$KCTX" -n "$NS" rollout restart deployment "$CONTROLLER"
-    echo "✓ Restored sealed-secrets keys + restarted the controller. Existing SealedSecrets will decrypt with the restored key."
+    kubectl --context "$KCTX" -n "$NS" rollout status deployment "$CONTROLLER" --timeout=120s
+    echo "✓ Restored ${n} sealed-secrets key(s); controller is up. Existing SealedSecrets will decrypt with the restored key."
     ;;
   *)
     echo "ERROR: unknown subcommand '$SUBCMD' (backup|restore)" >&2
