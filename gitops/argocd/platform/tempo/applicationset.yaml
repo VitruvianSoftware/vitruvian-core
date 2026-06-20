@@ -1,0 +1,100 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# tempo — OTel trace store. S3-backed via MinIO (persistence disabled, no PVC),
+# so safe to ArgoCD-adopt. Part of the OTel stack: operator (wave -1) -> tempo
+# (wave 0) -> collector (wave 1). All three are released from Pulumi together by
+# the single `opentelemetry_enabled` flag. helm.values mirror the live release
+# (`helm get values tempo -n opentelemetry`) verbatim, so adoption is a no-op.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tempo
+  namespace: argocd
+  labels:
+    environment: opentelemetry
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: tempo
+      labels:
+        app: tempo
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://grafana.github.io/helm-charts
+        chart: tempo
+        targetRevision: "1.24.4"
+        helm:
+          version: v3
+          values: |
+            replicas: 2
+            persistence:
+              enabled: false
+              size: 2Gi
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: tempo
+                    topologyKey: kubernetes.io/hostname
+            tempo:
+              metricsGenerator:
+                enabled: true
+                remoteWriteUrl: http://prometheus-server.monitoring.svc.cluster.local:80/api/v1/write
+                processor:
+                  service_graphs:
+                    enabled: true
+                  span_metrics:
+                    enabled: true
+                registry:
+                  external_labels:
+                    source: tempo
+              overrides:
+                defaults:
+                  metrics_generator:
+                    processors:
+                      - service-graphs
+                      - span-metrics
+              storage:
+                trace:
+                  backend: s3
+                  s3:
+                    access_key: admin
+                    secret_key: minio-admin-password
+                    bucket: tempo
+                    endpoint: minio.minio.svc.cluster.local:9000
+                    insecure: true
+      destination:
+        server: '{{.server}}'
+        namespace: opentelemetry
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -47,5 +47,11 @@ case "$SUBCMD" in
     echo "=== ArgoCD projects / appsets / applications (sync · health) ==="
     exec kubectl --context "$KCTX" get appprojects,applicationsets,applications -n argocd -o wide "$@"
     ;;
-  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|status)" >&2; exit 2 ;;
+  helm)
+    # Read-only helm against the live cluster (e.g. `helm get values <rel> -n <ns> -a`)
+    # to author faithful ApplicationSets from the deployed release.
+    command -v helm >/dev/null 2>&1 || { echo "ERROR: helm not found on PATH." >&2; exit 1; }
+    exec helm --kube-context "$KCTX" "$@"
+    ;;
+  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|status|helm)" >&2; exit 2 ;;
 esac

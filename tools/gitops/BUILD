@@ -37,3 +37,10 @@ sh_binary(
     args = ["status"],
     visibility = ["//visibility:public"],
 )
+
+sh_binary(
+    name = "helm",
+    srcs = ["gitops_cmd.sh"],
+    args = ["helm"],
+    visibility = ["//visibility:public"],
+)
