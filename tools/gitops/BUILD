@@ -51,3 +51,10 @@ sh_binary(
     args = ["helm"],
     visibility = ["//visibility:public"],
 )
+
+sh_binary(
+    name = "kubeseal",
+    srcs = ["gitops_cmd.sh"],
+    args = ["kubeseal"],
+    visibility = ["//visibility:public"],
+)

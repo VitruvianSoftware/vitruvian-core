@@ -25,7 +25,7 @@
 # paths are workspace-relative. KUBECONFIG defaults to the dev-local cluster.
 set -euo pipefail
 
-SUBCMD="${1:?gitops subcommand required (apply|delete|diff|get|status|helm)}"
+SUBCMD="${1:?gitops subcommand required (apply|delete|diff|get|status|helm|kubeseal)}"
 shift || true
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
@@ -54,5 +54,11 @@ case "$SUBCMD" in
     command -v helm >/dev/null 2>&1 || { echo "ERROR: helm not found on PATH." >&2; exit 1; }
     exec helm --kube-context "$KCTX" "$@"
     ;;
-  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|get|status|helm)" >&2; exit 2 ;;
+  kubeseal)
+    # Seal a Secret (stdin) into a SealedSecret using the in-cluster controller
+    # cert, for git-safe secret management. Uses the controller via KUBECONFIG.
+    command -v kubeseal >/dev/null 2>&1 || { echo "ERROR: kubeseal not found on PATH." >&2; exit 1; }
+    exec kubeseal "$@"
+    ;;
+  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|get|status|helm|kubeseal)" >&2; exit 2 ;;
 esac
