@@ -1,0 +1,69 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# sealed-secrets — NEW ArgoCD-native install (not a Pulumi adopt).
+# Provides git-safe secret management for the orphaned secrets left by the
+# Pulumi->ArgoCD cutover (Cloudflare token, CNPG/Grafana DB credentials):
+# secrets are sealed with kubeseal and committed as SealedSecrets, which this
+# controller decrypts in-cluster. Pinned to a current chart.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sealed-secrets
+  namespace: argocd
+  labels:
+    environment: sealed-secrets
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: sealed-secrets
+      labels:
+        app: sealed-secrets
+      annotations:
+        # Controller must exist before any SealedSecret syncs.
+        argocd.argoproj.io/sync-wave: "-5"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://bitnami.github.io/sealed-secrets
+        chart: sealed-secrets
+        targetRevision: "2.19.0"
+        helm:
+          version: v3
+          values: |
+            fullnameOverride: sealed-secrets-controller
+            namespace: sealed-secrets
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+      destination:
+        server: '{{.server}}'
+        namespace: sealed-secrets
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
