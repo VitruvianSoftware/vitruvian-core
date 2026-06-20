@@ -32,7 +32,8 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 	namespace := "longhorn-system"
 
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
-		Name: namespace,
+		Name:           namespace,
+		RetainOnDelete: true, // storage CSI; retain ns on longhorn_enabled=false (handed to ArgoCD)
 	})
 	if err != nil {
 		return nil, err
@@ -54,8 +55,9 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 				"defaultClassReplicaCount": 3,
 			},
 		},
-		Wait:    false,
-		Timeout: 600,
+		Wait:           false,
+		Timeout:        600,
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/longhorn); retain release + CRDs + volumes (data)
 	}, pulumi.DependsOn([]pulumi.Resource{ns}))
 	if err != nil {
 		return nil, err
@@ -67,7 +69,8 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 	// hardcodes soft anti-affinity); add a raw PDB. Longhorn manages its own
 	// PDBs for instance-managers/CSI — do not add more there.
 	if _, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-		Name: "longhorn-ui-pdb",
+		Name:           "longhorn-ui-pdb",
+		RetainOnDelete: true, // handed off with longhorn
 		YAML: `apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
