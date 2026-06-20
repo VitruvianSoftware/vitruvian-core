@@ -332,12 +332,13 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			"revision": 1,
 		}
 	}
-	if conf.GetBool("external_dns_enabled", false) {
-		dashboards["external-dns"] = loadLocalDashboard(ctx, "external-dns")
-	}
-	if conf.GetBool("cert_manager_enabled", false) {
-		dashboards["cert-manager"] = loadLocalDashboard(ctx, "cert-manager")
-	}
+	// cert-manager and external-dns are permanent platform components. After the
+	// Pulumi->ArgoCD cutover their *_enabled flags go false (ArgoCD owns the
+	// charts) but the components keep running, so their dashboards stay
+	// unconditional. Gating on the cutover flag would drop the dashboard and
+	// needlessly churn the grafana release on every handoff.
+	dashboards["external-dns"] = loadLocalDashboard(ctx, "external-dns")
+	dashboards["cert-manager"] = loadLocalDashboard(ctx, "cert-manager")
 	if conf.GetBool("argocd_enabled", false) {
 		dashboards["argocd"] = map[string]interface{}{
 			"gnetId":   14191,
