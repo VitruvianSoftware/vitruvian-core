@@ -60,7 +60,7 @@ sh_binary(
 )
 
 # Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
-# Requires `bw` unlocked: export BW_SESSION=$(bw unlock --raw)
+# Unlock is automatic (prompts for the master password if locked); `bw login` once first.
 sh_binary(
     name = "sealed-secrets-backup",
     srcs = ["sealed_secrets_keys.sh"],
