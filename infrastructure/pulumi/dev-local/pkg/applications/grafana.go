@@ -345,17 +345,14 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 			"revision": 1,
 		}
 	}
-	if conf.GetBool("monitoring_enabled", false) {
-		dashboardsNodeExporter["node-exporter"] = loadLocalDashboard(ctx, "node-exporter")
-		dashboards["k8s-compute"] = loadLocalDashboard(ctx, "k8s-compute")
-		dashboards["traefik"] = loadLocalDashboard(ctx, "traefik")
-	}
-	if conf.GetBool("longhorn_enabled", false) {
-		dashboards["longhorn"] = loadLocalDashboard(ctx, "longhorn")
-	}
-	if conf.GetBool("minio_enabled", false) {
-		dashboards["minio"] = loadLocalDashboard(ctx, "minio")
-	}
+	// prometheus(monitoring), longhorn, and minio are permanent platform components
+	// migrated to ArgoCD; keep their dashboards unconditional so the Pulumi->ArgoCD
+	// flag flips don't churn grafana (still Pulumi-managed until it migrates last).
+	dashboardsNodeExporter["node-exporter"] = loadLocalDashboard(ctx, "node-exporter")
+	dashboards["k8s-compute"] = loadLocalDashboard(ctx, "k8s-compute")
+	dashboards["traefik"] = loadLocalDashboard(ctx, "traefik")
+	dashboards["longhorn"] = loadLocalDashboard(ctx, "longhorn")
+	dashboards["minio"] = loadLocalDashboard(ctx, "minio")
 
 	// Load custom local dashboards from the dashboards directory
 	if conf.GetBool("gemini_telemetry_enabled", true) {

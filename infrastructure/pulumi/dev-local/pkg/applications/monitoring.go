@@ -36,7 +36,8 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 
 	namespace := "monitoring"
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
-		Name: namespace,
+		Name:           namespace,
+		RetainOnDelete: true, // handed off to ArgoCD; retain ns on monitoring_enabled=false
 	})
 	if err != nil {
 		return err
@@ -49,6 +50,7 @@ func DeployPrometheus(ctx *pulumi.Context, provider *kubernetes.Provider) error 
 		RepositoryURL:   "https://prometheus-community.github.io/helm-charts",
 		Version:         "22.6.7",
 		CreateNamespace: false,
+		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/prometheus); retain release + PVCs
 		Values: map[string]interface{}{
 			"server": map[string]interface{}{
 				"replicaCount": replicas,
