@@ -35,6 +35,12 @@ config:
   monorepo:mongodb_operator_version: "0.13.0"
   monorepo:mongodb_replicaset_version: "4.4.19"
   monorepo:argocd_enabled: "false"
+  # Optional ArgoCD access (defaults: ClusterIP, reach via `kubectl port-forward`).
+  # Set both to expose the UI through traefik + external-dns:
+  #   monorepo:argocd_domain: "argocd.dev.example.io"
+  #   monorepo:argocd_ingress_enabled: "true"
+  #   monorepo:argocd_ingress_class: "traefik"   # override the default if needed
+  #   monorepo:argocd_admin_email: "you@example.com"  # binds org-admin (needs an SSO connector)
   monorepo:telepresence_enabled: "false"
   monitoring:namespace: monitoring
   database:namespace: database
