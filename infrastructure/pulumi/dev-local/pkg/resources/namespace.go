@@ -29,8 +29,9 @@ import (
 
 // K8sNamespaceConfig defines the configuration for a Kubernetes namespace
 type K8sNamespaceConfig struct {
-	Name   string
-	Labels map[string]string
+	Name           string
+	Labels         map[string]string
+	RetainOnDelete bool // Keep the namespace in the cluster when removed from the program (e.g. handoff to ArgoCD)
 }
 
 // CreateK8sNamespace creates a Kubernetes namespace with the given configuration
@@ -42,10 +43,14 @@ func CreateK8sNamespace(ctx *pulumi.Context, provider *kubernetes.Provider, conf
 	}
 
 	// Create the namespace
+	nsOpts := []pulumi.ResourceOption{pulumi.Provider(provider)}
+	if config.RetainOnDelete {
+		nsOpts = append(nsOpts, pulumi.RetainOnDelete(true))
+	}
 	return corev1.NewNamespace(ctx, config.Name, &corev1.NamespaceArgs{
 		Metadata: &metav1.ObjectMetaArgs{
 			Name:   pulumi.String(config.Name),
 			Labels: labels,
 		},
-	}, pulumi.Provider(provider))
+	}, nsOpts...)
 }

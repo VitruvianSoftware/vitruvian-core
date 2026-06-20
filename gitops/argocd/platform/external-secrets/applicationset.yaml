@@ -1,0 +1,138 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# external-secrets — Pulumi -> ArgoCD platform cutover.
+# Values mirror the LIVE Pulumi deployment EXACTLY (verified via
+#   `helm get values external-secrets -n external-secrets` — USER-SUPPLIED, not -a;
+#   confirmed an exact deep match of the helm.values block below):
+#   chart external-secrets-0.14.4 (appVersion v0.14.4), helm revision 4, deployed
+#   running image oci.external-secrets.io/external-secrets/external-secrets:v0.14.4
+#   running args: --concurrent=1 --metrics-addr=:8080 --loglevel=info --zap-time-encoding=epoch
+#
+# CRDs are NOT chart-managed (installCRDs:false; Pulumi installs with SkipCRDs:true).
+# They are installed out-of-band (Pulumi Phase 1 from crds/external-secrets.crds.yaml)
+# and carry NO helm ownership annotation (only external-secrets.io/component=controller);
+# ArgoCD MUST keep installCRDs:false so it never owns/prunes the 19 live external-secrets
+# CRDs (which back existing ClusterSecretStores).
+#
+# webhook + certController are disabled in this install (create:false) — there are
+# NO ValidatingWebhookConfigurations on-cluster, so there is no webhook ordering
+# constraint. Keep them false (enabling pulls in a cert-manager issuer "my-issuer"
+# that does not exist here).
+#
+# SECRET STORES NOT REPRODUCED HERE: this controller SERVES fake ClusterSecretStores
+# created by a SEPARATE Pulumi dependent provider, NOT by this chart. On THIS live
+# stack exactly TWO exist (datadog_enabled=false in Pulumi.local.yaml):
+#   - external-secret-cluster-fake-cloudflare-secrets  (external-dns token)
+#   - external-secret-cluster-fake-cnpg-secrets         (CNPG app db user/password)
+# (external-secret-cluster-fake-datadog-secrets is NOT live; it only appears if
+# datadog_enabled is flipped true.) This ApplicationSet does NOT reproduce any of
+# them — migrate them separately or downstream consumers lose their secret source.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped + the platform
+# root is applied. Let this AppSet adopt the Helm-owned Deployment FIRST, THEN set
+# external_secrets_enabled=false in the dev-local stack and `pulumi up` so Pulumi
+# releases the Helm release as ArgoCD takes it. Do not run an enabled Pulumi stack
+# concurrently with this AppSet (prune+selfHeal vs Pulumi reconcile = owner fight).
+# Disabling Pulumi will NOT delete the CRDs or live ClusterSecretStores
+# (CleanupCRDs:false, CRDs not helm-owned).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: external-secrets
+  namespace: argocd
+  labels:
+    environment: external-secrets
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: external-secrets
+      labels:
+        app: external-secrets
+      annotations:
+        # Operator + its CRDs + ClusterSecretStores must be ready before any
+        # consumer (external-dns, cnpg, datadog). Earlier than cnpg-operator (-1).
+        argocd.argoproj.io/sync-wave: "-2"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.external-secrets.io
+        chart: external-secrets
+        # Pinned to the live release; matches running image v0.14.4.
+        targetRevision: "0.14.4"
+        helm:
+          version: v3
+          values: |
+            # CRDs are managed out-of-band (Pulumi Phase 1); chart must not own them.
+            installCRDs: false
+            crds:
+              enabled: true
+              keep: false
+            replicaCount: 2
+            leaderElection:
+              enabled: true
+              namespace: external-secrets
+            # webhook + certController disabled in this install.
+            webhook:
+              create: false
+              port: 8443
+            certController:
+              create: false
+              enabled: true
+            serviceAccount:
+              create: true
+              annotations: {}
+            # Hard hostname anti-affinity + PDB for the leader-elected controller.
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: external-secrets
+                    topologyKey: kubernetes.io/hostname
+            podDisruptionBudget:
+              enabled: true
+              minAvailable: 1
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+            metrics:
+              service:
+                enabled: true
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "8080"
+            # Dev fake SecretStore enabled (matches live install).
+            dev:
+              fakeSecretStore:
+                enabled: true
+      destination:
+        server: '{{.server}}'
+        namespace: external-secrets
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

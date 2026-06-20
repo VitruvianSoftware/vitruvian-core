@@ -1,0 +1,132 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# datadog — Pulumi -> ArgoCD platform cutover (currently DORMANT, see below).
+#
+# NOTE ON \"LIVE\" VALUES: datadog is NOT deployed on dev-local. There is no helm
+# release, no `datadog` namespace, and no datadog CRDs on the cluster, and the
+# stack pins `monorepo:datadog_enabled: \"false\"` in Pulumi.local.yaml /
+# Pulumi.example.yaml. `helm get values datadog -n datadog` returns
+# \"release: not found\". The values below therefore mirror the INTENDED Pulumi
+# config exactly: values/datadog.yaml (ValuesFile: \"datadog\") DEEP-MERGED with
+# the inline Values{} overrides in pkg/applications/datadog.go (Pulumi uses a
+# recursive MergeValues, inline taking precedence). The two sources agree on
+# every overlapping key, so the merge is unambiguous; file-only keys
+# (apiKeyExistingSecret/appKeyExistingSecret/collectEvents/agents.resources)
+# survive the merge and are reproduced here. Version is pinned to datadog_version
+# 3.74.1 (the configured stack value).
+#
+# SECRET DEPENDENCY: the agent consumes API/APP keys from a pre-existing k8s
+# Secret named `datadog` (datadog.apiKeyExistingSecret / appKeyExistingSecret).
+# Pulumi creates that Secret via an ExternalSecret (only when
+# external_secrets_enabled=true) sourced from ClusterSecretStore
+# `external-secret-cluster-fake-datadog-secrets` (keys DATADOG_API_KEY ->
+# token+api-key, DATADOG_APP_KEY -> app-key). VERIFIED ABSENT TODAY: that
+# ClusterSecretStore does NOT exist on the cluster (only fake-cloudflare and
+# fake-cnpg stores are present) and no `datadog` Secret exists in any namespace.
+# They must be created (out of band / by external-secrets gitops) before this app
+# will produce healthy pods. This ApplicationSet does NOT manage the Secret or
+# the ExternalSecret; it only consumes the resulting `datadog` Secret by
+# reference.
+#
+# CUTOVER (do NOT just enable): only after ArgoCD is bootstrapped, the platform
+# root is applied, AND the `datadog` Secret (+ its ClusterSecretStore +
+# ExternalSecret) exist. datadog_enabled is already false in the dev-local stack,
+# so there is no Pulumi-owned helm release to hand off — this is effectively a
+# fresh ArgoCD-owned install (no helm release ownership conflict to resolve).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: datadog
+  namespace: argocd
+  labels:
+    environment: datadog
+spec:
+  goTemplate: true
+  goTemplateOptions: [\"missingkey=zero\"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: datadog
+      labels:
+        app: datadog
+      annotations:
+        # Leaf observability agent — installs with the other workloads (wave 0).
+        # Relies on the `datadog` Secret (created by external-secrets) already
+        # existing; it is not an operator/CRD provider, so no negative wave.
+        argocd.argoproj.io/sync-wave: \"0\"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://helm.datadoghq.com
+        chart: datadog
+        # Pin to datadog_version configured in the dev-local stack.
+        targetRevision: \"3.74.1\"
+        helm:
+          version: v3
+          values: |
+            # Mirrors values/datadog.yaml + inline Values{} from
+            # pkg/applications/datadog.go (the Pulumi source of truth),
+            # collapsed via Pulumi's recursive deep merge.
+            targetSystem: \"linux\"
+            datadog:
+              # API/APP keys are read from the pre-existing `datadog` Secret.
+              # These names MUST NOT change on migration (the external-secrets
+              # ExternalSecret targets Secret name `datadog`).
+              apiKeyExistingSecret: datadog
+              appKeyExistingSecret: datadog
+              collectEvents: false
+              # Tags for all metrics, logs, and traces. owner:ipv1337 / env:dev
+              # are identity-bearing — keep them stable so historical series in
+              # Datadog stay attributed to this cluster.
+              tags:
+                - tenant:monorepo
+                - owner:ipv1337
+                - env:dev
+              logs:
+                enabled: true
+                containerCollectAll: true
+                autoMultiLineDetection: true
+              apm:
+                portEnabled: true
+            clusterAgent:
+              enabled: true
+              admissionController:
+                enabled: true
+            agents:
+              containers:
+                agent:
+                  resources:
+                    requests:
+                      cpu: 100m
+                      memory: 256Mi
+                    limits:
+                      cpu: 200m
+                      memory: 512Mi
+      destination:
+        server: '{{.server}}'
+        namespace: datadog
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

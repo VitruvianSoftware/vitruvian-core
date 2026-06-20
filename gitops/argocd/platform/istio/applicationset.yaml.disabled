@@ -1,0 +1,126 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# istio — Pulumi -> ArgoCD platform cutover (NOT YET LIVE).
+#
+# SOURCE-OF-TRUTH NOTE: At authoring time Istio is DISABLED in the dev-local
+# Pulumi stack (monorepo:istio_enabled=false in Pulumi.local.yaml /
+# Pulumi.example.yaml) and is NOT deployed on the live cluster — there is no
+# istio-system namespace and no istio-base/istio-cni/istiod/istio-ingressgateway
+# helm releases. There are therefore NO live helm values to mirror. The values
+# below are transcribed EXACTLY from the Pulumi deploy logic
+# (pkg/applications/istio.go) and its base values file (values/istio-base.yaml):
+#   - base   -> values/istio-base.yaml (crds.create, base.enableIstioConfigCRDs,
+#               defaultRevision: default)
+#   - cni    -> inline {cniBinDir: /home/kubernetes/bin}
+#   - istiod -> empty map {} (chart defaults)
+#   - gateway-> empty map {} (chart defaults; Pulumi release name
+#               "istio-ingressgateway")
+#   version pin = istio_version "1.23.3" (charts are versioned == release).
+#
+# The four charts are split into one Application each (list generator x clusters)
+# so the Pulumi DependsOn ordering base -> cni -> istiod -> gateway is preserved
+# as ArgoCD sync-waves; a single multi-source Application cannot order its sources.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped + the platform
+# root is applied. To actually enable Istio, this cutover happens WITH a stack
+# flip — keep istio_enabled=false in Pulumi (it never owned these objects on the
+# live cluster) and let ArgoCD create everything fresh. The Pulumi base values
+# file pins istio_version 1.23.3; keep targetRevision in lockstep with it.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istio
+  namespace: argocd
+  labels:
+    environment: istio
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    # matrix: one Application per Istio chart, per target cluster.
+    - matrix:
+        generators:
+          - clusters: {}
+          - list:
+              elements:
+                # Pulumi release "istio-base" — owns the Istio CRDs
+                # (crds.create: true). Must install first.
+                - appName: istio-base
+                  chart: base
+                  syncWave: "-3"
+                  values: |
+                    crds:
+                      create: true
+                    base:
+                      enableIstioConfigCRDs: true
+                    defaultRevision: default
+                # Pulumi release "istio-cni" — node CNI plugin; cniBinDir override
+                # matches the live node layout (/home/kubernetes/bin).
+                - appName: istio-cni
+                  chart: cni
+                  syncWave: "-2"
+                  values: |
+                    cniBinDir: /home/kubernetes/bin
+                # Pulumi release "istiod" — control plane; chart defaults (empty
+                # values in Pulumi).
+                - appName: istiod
+                  chart: istiod
+                  syncWave: "-1"
+                  values: |
+                    {}
+                # Pulumi release "istio-ingressgateway" — ingress gateway; chart
+                # defaults (empty values in Pulumi). gateway chart deploys into
+                # its own release-named workload, so name the Application
+                # istio-ingressgateway to match Pulumi.
+                - appName: istio-ingressgateway
+                  chart: gateway
+                  syncWave: "0"
+                  values: |
+                    {}
+  template:
+    metadata:
+      name: '{{.appName}}'
+      labels:
+        app: istio
+      annotations:
+        # base (CRDs) earliest, then cni, istiod, gateway as the leaf.
+        argocd.argoproj.io/sync-wave: '{{.syncWave}}'
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        chart: '{{.chart}}'
+        targetRevision: "1.23.3"
+        helm:
+          version: v3
+          releaseName: '{{.appName}}'
+          values: |
+            {{- .values | nindent 12 }}
+      destination:
+        server: '{{.server}}'
+        namespace: istio-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

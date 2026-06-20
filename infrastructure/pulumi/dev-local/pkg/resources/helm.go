@@ -52,6 +52,10 @@ type HelmChartConfig struct {
 	WebhooksToCleanup []string // List of webhook names to clean up
 	// New field for replace functionality
 	Replace bool // Whether to replace the release if it already exists
+	// Keep the release (and any namespace it creates) in the cluster when removed
+	// from the program — hands a component off to ArgoCD without a destructive
+	// `helm uninstall` / namespace cascade.
+	RetainOnDelete bool
 }
 
 // DeployHelmChart creates a Helm chart release with given configuration
@@ -59,7 +63,8 @@ func DeployHelmChart(ctx *pulumi.Context, provider *kubernetes.Provider, config 
 	// Create the namespace if needed
 	if config.CreateNamespace {
 		_, err := CreateK8sNamespace(ctx, provider, K8sNamespaceConfig{
-			Name: config.Namespace,
+			Name:           config.Namespace,
+			RetainOnDelete: config.RetainOnDelete,
 		})
 		if err != nil {
 			return nil, err
@@ -190,6 +195,9 @@ func DeployHelmChart(ctx *pulumi.Context, provider *kubernetes.Provider, config 
 
 	// Add provider to options
 	opts = append(opts, pulumi.Provider(provider))
+	if config.RetainOnDelete {
+		opts = append(opts, pulumi.RetainOnDelete(true))
+	}
 
 	// Create the release
 	return helm.NewRelease(ctx, config.Name, releaseArgs, opts...)

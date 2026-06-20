@@ -1,0 +1,127 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# opentelemetry-operator — Pulumi -> ArgoCD platform cutover.
+#
+# Values mirror the LIVE Pulumi deployment exactly (verified against
+# `helm get values opentelemetry-operator -n opentelemetry` USER-SUPPLIED output
+# and the running operator Deployment spec on-cluster). The live values are the
+# Pulumi merge of the base values file
+# (infrastructure/pulumi/dev-local/values/opentelemetry-operator.yaml: crds,
+# manager, admissionWebhooks) with the inline Go map (replicaCount, affinity,
+# pdb) — both halves are reproduced below.
+#   chart opentelemetry-operator-0.110.0  (appVersion / operator image 0.148.0)
+#   replicaCount=2 (high_availability_enabled -> 2 replicas)
+#   manager.collectorImage.repository=otel/opentelemetry-collector-k8s
+#                                          (-> --collector-image=...:0.148.0)
+#   manager.leaderElection.enabled=true   (--enable-leader-election)
+#   admissionWebhooks.create=true + certManager.enabled=true (cert-manager-issued
+#                                          serving cert; autoGenerateCert also true,
+#                                          but certManager takes precedence)
+#   crds.create=true                       (chart owns the OTel CRDs)
+#   pdb.create=true / minAvailable=1       (NOTE: chart key is `pdb`, NOT
+#                                          podDisruptionBudget)
+#   affinity = hostname podAntiAffinity (requiredDuringScheduling) so the 2
+#                                          replicas spread across nodes.
+#
+# DEPENDS ON cert-manager: the validating/mutating webhooks fail closed
+# (failurePolicy: Fail) and their serving cert is issued by cert-manager. Stand
+# up cert-manager (and let it issue opentelemetry-operator-serving-cert) before /
+# at an earlier (strictly more-negative) sync-wave than this operator, or the
+# operator pods crashloop and the webhooks reject all OTel CRs.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped + the platform
+# root is applied. SAFE SEQUENCE: (1) sync this ApplicationSet so ArgoCD adopts
+# the in-cluster objects/CRDs in place; (2) THEN set opentelemetry_enabled=false
+# in the dev-local stack and `pulumi up` so Pulumi RELEASES its Helm-release
+# ownership. crds.create=true on BOTH sides is the central handoff hazard — but
+# Pulumi's CleanupCRDs=false (and CRDsToCleanup listing only 2 of the 4 CRDs)
+# means Pulumi will NOT delete CRDs on removal, so CRs survive the cutover.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: opentelemetry-operator
+  namespace: argocd
+  labels:
+    environment: opentelemetry
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: opentelemetry-operator
+      labels:
+        app: opentelemetry-operator
+      annotations:
+        # Operator + CRDs install before leaf workloads (the OTel Collector and
+        # any Instrumentation/OpenTelemetryCollector CRs). Lands after
+        # cert-manager (which must sit at a strictly earlier/more-negative wave)
+        # so the webhook serving cert exists before the operator comes up.
+        argocd.argoproj.io/sync-wave: "-2"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+        chart: opentelemetry-operator
+        targetRevision: "0.110.0"
+        helm:
+          version: v3
+          values: |
+            crds:
+              create: true
+            replicaCount: 2
+            manager:
+              collectorImage:
+                repository: otel/opentelemetry-collector-k8s
+              leaderElection:
+                enabled: true
+            admissionWebhooks:
+              create: true
+              certManager:
+                enabled: true
+                issuerRef: {}
+                certificateAnnotations: {}
+                issuerAnnotations: {}
+                duration: ""
+                renewBefore: ""
+              autoGenerateCert:
+                enabled: true
+                recreate: true
+                certPeriodDays: 365
+            pdb:
+              create: true
+              minAvailable: 1
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: opentelemetry-operator
+                    topologyKey: kubernetes.io/hostname
+      destination:
+        server: '{{.server}}'
+        namespace: opentelemetry
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

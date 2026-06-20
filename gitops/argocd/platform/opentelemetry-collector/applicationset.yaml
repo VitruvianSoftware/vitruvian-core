@@ -1,0 +1,143 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# opentelemetry-collector — Pulumi -> ArgoCD platform cutover.
+# Values mirror the LIVE Helm release EXACTLY (helm get values, USER-SUPPLIED).
+#
+# SOURCE-OF-TRUTH RECONCILIATION (live wins over the static values file):
+#   - Live chart is opentelemetry-collector-0.110.0 (app 0.114.0). The
+#     conf default opentelemetry_version=0.79.0 in opentelemetry.go is STALE;
+#     targetRevision is pinned to the deployed 0.110.0.
+#   - replicaCount=2 and presets.clusterMetrics.enabled=false come from the
+#     HA code path (high_availability_enabled=true) in opentelemetry.go
+#     (lines 108-114), which OVERRIDES the values file's replicaCount=1 /
+#     clusterMetrics.enabled=true. The live state is reproduced here.
+#   - podDisruptionBudget (enabled/minAvailable=1) and the hostname
+#     podAntiAffinity are INLINE in the Go collectorValues map, not the
+#     values file. Reproduced verbatim.
+#   - config is a PARTIAL override; Helm deep-merges it onto the chart's
+#     default config (receivers/processors/extensions/logs pipeline). It is
+#     byte-identical to the live USER-SUPPLIED config, so the merged
+#     COMPUTED config matches the live release. Do NOT expand it from the
+#     `helm get values -a` dump.
+#
+# OWNERSHIP / SECRETS (do NOT template or prune these):
+#   - otel-tls is a cert-manager Certificate (ClusterIssuer
+#     letsencrypt-cloudflare), NOT a chart object.
+#   - otel.lab.ipv1337.dev DNS is published by external-dns
+#     (txtOwnerId=bluecentre-dev) via the ingress sync-enabled annotation.
+#   - opentelemetry.io CRDs are owned by the opentelemetry-operator chart.
+#
+# CUTOVER (do NOT just merge): release is live-owned by Pulumi (revision 9).
+# Bootstrap ArgoCD + apply the platform root first, then gate/disable the
+# Pulumi collector release and `pulumi up` so Pulumi relinquishes ownership.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: opentelemetry-collector
+  namespace: argocd
+  labels:
+    environment: opentelemetry
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: opentelemetry-collector
+      labels:
+        app: opentelemetry-collector
+      annotations:
+        # Leaf workload: installs AFTER the opentelemetry-operator (CRDs +
+        # webhook, sync-wave -1) and Tempo. Positive wave keeps it last.
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+        chart: opentelemetry-collector
+        # Pinned to the LIVE deployed chart (helm list: 0.110.0), NOT the
+        # stale conf default 0.79.0 in pkg/applications/opentelemetry.go.
+        targetRevision: "0.110.0"
+        helm:
+          version: v3
+          values: |
+            mode: deployment
+            replicaCount: 2
+            image:
+              repository: otel/opentelemetry-collector-contrib
+            presets:
+              clusterMetrics:
+                enabled: false
+            podDisruptionBudget:
+              enabled: true
+              minAvailable: 1
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: opentelemetry-collector
+                    topologyKey: kubernetes.io/hostname
+            config:
+              exporters:
+                debug:
+                  verbosity: detailed
+                otlp:
+                  endpoint: tempo:4317
+                  tls:
+                    insecure: true
+                prometheusremotewrite:
+                  endpoint: http://prometheus-server.monitoring.svc.cluster.local:80/api/v1/write
+                  timeout: 30s
+              service:
+                pipelines:
+                  metrics:
+                    exporters:
+                      - prometheusremotewrite
+                  traces:
+                    exporters:
+                      - otlp
+                      - debug
+            ingress:
+              enabled: true
+              ingressClassName: traefik
+              annotations:
+                external-dns.alpha.kubernetes.io/sync-enabled: "true"
+                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+              hosts:
+                - host: otel.lab.ipv1337.dev
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      port: 4318
+              tls:
+                - secretName: otel-tls
+                  hosts:
+                    - otel.lab.ipv1337.dev
+      destination:
+        server: '{{.server}}'
+        namespace: opentelemetry
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

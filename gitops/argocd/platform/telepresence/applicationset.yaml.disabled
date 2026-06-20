@@ -1,0 +1,116 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# telepresence — Pulumi -> ArgoCD platform component (traffic-manager).
+#
+# !! SOURCE-OF-TRUTH CAVEAT !!
+# Telepresence is DISABLED on dev-local (monorepo:telepresence_enabled="false" in
+# both Pulumi.local.yaml and Pulumi.example.yaml). There is NO live Helm release,
+# NO `telepresence` namespace, and NO running traffic-manager on the cluster
+# (verified: `helm get values telepresence -n telepresence -a` -> "release: not found";
+# `helm list -A` has no telepresence row; namespace NotFound). Unlike external-dns,
+# these values were NOT mirrored from a live release — they are reproduced verbatim
+# from the Pulumi values map in
+#   infrastructure/pulumi/dev-local/pkg/applications/telepresence.go
+# (chart telepresence 2.14.1, app.getambassador.io). If telepresence is ever enabled
+# via Pulumi before this cutover, re-run `helm get values telepresence -n telepresence -a`
+# and reconcile any drift before trusting this file.
+#
+# Telepresence installs a MutatingWebhookConfiguration (the agent-injector). It is a
+# cluster-wide injector and is given an EARLY (negative) sync-wave so it lands before
+# any workloads that may want agent injection. The traffic-manager replicaCount=1 and
+# the injector port 8443 must match what clients/CLI expect.
+#
+# CUTOVER (do NOT just merge): only after ArgoCD is bootstrapped + the platform root
+# is applied. At cutover, set telepresence_enabled=false (already false here) — i.e.
+# never `pulumi up` it on, let ArgoCD own it exclusively. If it had been Pulumi-managed,
+# you would flip telepresence_enabled=false and `pulumi up` to release the Helm release
+# before ArgoCD adopts it.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: telepresence
+  namespace: argocd
+  labels:
+    environment: telepresence
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: telepresence
+      labels:
+        app: telepresence
+      annotations:
+        argocd.argoproj.io/sync-wave: "-5"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://app.getambassador.io
+        chart: telepresence
+        targetRevision: "2.14.1"
+        helm:
+          version: v3
+          values: |
+            replicaCount: 1
+            image:
+              registry: docker.io
+              repository: datawire/telepresence
+              tag: 2.14.1
+              imagePullPolicy: IfNotPresent
+            podLabels:
+              app.kubernetes.io/name: traffic-manager
+              app.kubernetes.io/part-of: telepresence
+            clientRbac:
+              create: true
+            agentInjector:
+              enabled: true
+              webhook:
+                port: 8443
+                livenessProbe:
+                  failureThreshold: 3
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  successThreshold: 1
+                  timeoutSeconds: 1
+                readinessProbe:
+                  failureThreshold: 3
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  successThreshold: 1
+                  timeoutSeconds: 1
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+      destination:
+        server: '{{.server}}'
+        namespace: telepresence
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

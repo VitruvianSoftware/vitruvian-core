@@ -28,14 +28,18 @@ import (
 
 // K8sManifestConfig defines the configuration for a Kubernetes manifest
 type K8sManifestConfig struct {
-	Name string
-	YAML string
+	Name           string
+	YAML           string
+	RetainOnDelete bool // Keep the object(s) in the cluster when removed from the program
 }
 
 // CreateK8sManifest creates a Kubernetes manifest from YAML
 func CreateK8sManifest(ctx *pulumi.Context, provider *kubernetes.Provider, config K8sManifestConfig, opts ...pulumi.ResourceOption) (*yaml.ConfigGroup, error) {
 	// Add provider to options
 	opts = append(opts, pulumi.Provider(provider))
+	if config.RetainOnDelete {
+		opts = append(opts, pulumi.RetainOnDelete(true))
+	}
 
 	// Create the manifest
 	return yaml.NewConfigGroup(ctx, config.Name, &yaml.ConfigGroupArgs{
