@@ -67,10 +67,9 @@ func main() {
 		// Setup base components
 		var certManagerRelease pulumi.Resource
 
-		// Configure K3s HA components
-		if err := applications.DeployK3sHA(ctx, k8sProvider); err != nil {
-			return err
-		}
+		// K3s HA (traefik-ha-config HelmChartConfig) is now ArgoCD-managed
+		// (gitops/argocd/platform/platform-config) — retired from Pulumi so the
+		// stack enables only argocd. DeployK3sHA in k3s_ha.go is left dead.
 
 		if longhornEnabled {
 			if _, err := applications.DeployLonghorn(ctx, k8sProvider); err != nil {

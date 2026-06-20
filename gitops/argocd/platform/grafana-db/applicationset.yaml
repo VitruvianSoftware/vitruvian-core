@@ -176,6 +176,13 @@ spec:
       ignoreDifferences:
         - group: postgresql.cnpg.io
           kind: Cluster
+          # Also ignore fields owned by the CNPG operator + the now-released Pulumi
+          # field manager — they back the live spec and SSA leaves them be; clears
+          # the cosmetic OutOfSync without touching the live object.
+          managedFieldsManagers:
+            - manager
+            - pulumi-resource-kubernetes
+            - kubectl-patch
           jsonPointers:
             - /spec/bootstrap
             - /spec/backup/barmanObjectStore/serverName
