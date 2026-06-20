@@ -69,7 +69,8 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 	// Create namespace
 	namespace := conf.GetString("external_secrets:namespace", "external-secrets")
 	ns, err := resources.CreateK8sNamespace(ctx, provider, resources.K8sNamespaceConfig{
-		Name: namespace,
+		Name:           namespace,
+		RetainOnDelete: true, // handed off to ArgoCD; retain ns on external_secrets_enabled=false
 	})
 	if err != nil {
 		return err
@@ -80,6 +81,9 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 		&yaml.ConfigFileArgs{
 			File: "crds/external-secrets.crds.yaml",
 		}, pulumi.Provider(provider),
+		// Retain on cutover: deleting these CRDs cascades every ClusterSecretStore /
+		// ExternalSecret. They must survive when external_secrets_enabled flips false.
+		pulumi.RetainOnDelete(true),
 	)
 	if err != nil {
 		return err
@@ -120,10 +124,11 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 				"create": false,
 			},
 		},
-		Wait:          false,
-		Timeout:       600,
-		CleanupCRDs:   false, // CRDs managed by Phase 1
-		CRDsToCleanup: ExternalSecretsCRDs,
+		Wait:           false,
+		Timeout:        600,
+		CleanupCRDs:    false, // CRDs managed by Phase 1
+		CRDsToCleanup:  ExternalSecretsCRDs,
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/external-secrets)
 	}, pulumi.DependsOn([]pulumi.Resource{ns, externalSecretsCrds}))
 	if err != nil {
 		return err
@@ -143,7 +148,8 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 	externalDNS := conf.GetBool("external_dns_enabled", false)
 	if externalDNS {
 		_, err = resources.CreateK8sManifest(ctx, esProvider, resources.K8sManifestConfig{
-			Name: "external-secrets-fake-cloudflare-secret-store",
+			Name:           "external-secrets-fake-cloudflare-secret-store",
+			RetainOnDelete: true, // shared store (external-dns cf-secret depends on it); survive cutover
 			YAML: fmt.Sprintf(`apiVersion: external-secrets.io/v1beta1
 kind: ClusterSecretStore
 metadata:
@@ -217,7 +223,7 @@ spec:
 			// Use the base yaml.NewConfigGroup directly here, passing the provider
 			manifest, err := yaml.NewConfigGroup(ctx, "external-secret-cluster-fake-cnpg-secrets", &yaml.ConfigGroupArgs{
 				YAML: []string{cnpgStoreYaml},
-			}, pulumi.Provider(esProvider)) // Pass the dependent provider
+			}, pulumi.Provider(esProvider), pulumi.RetainOnDelete(true)) // retain: cnpg secret depends on this store
 			if err != nil {
 				ctx.Log.Error(fmt.Sprintf("Failed to create fake CNPG secret store: %v", err), nil)
 				return nil, fmt.Errorf("failed to create fake CNPG secret store: %w", err)

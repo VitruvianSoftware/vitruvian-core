@@ -32,6 +32,13 @@ sh_binary(
 )
 
 sh_binary(
+    name = "get",
+    srcs = ["gitops_cmd.sh"],
+    args = ["get"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "status",
     srcs = ["gitops_cmd.sh"],
     args = ["status"],

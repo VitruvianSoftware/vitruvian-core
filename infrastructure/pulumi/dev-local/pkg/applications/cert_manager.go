@@ -53,6 +53,10 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 		&yaml.ConfigFileArgs{
 			File: "crds/cert-manager.crds.yaml",
 		}, pulumi.Provider(provider),
+		// Retain on cutover: deleting these CRDs would cascade-delete every
+		// Certificate/ClusterIssuer/etc. in the cluster. They must survive when
+		// cert_manager_enabled flips false (chart handed to ArgoCD).
+		pulumi.RetainOnDelete(true),
 	)
 	if err != nil {
 		return nil, err
@@ -122,10 +126,11 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 				"enabled": false,
 			},
 		},
-		Wait:          false,
-		Timeout:       600,
-		CleanupCRDs:   false, // CRDs managed by Phase 1
-		CRDsToCleanup: CertManagerCRDs,
+		Wait:           false,
+		Timeout:        600,
+		CleanupCRDs:    false, // CRDs managed by Phase 1
+		CRDsToCleanup:  CertManagerCRDs,
+		RetainOnDelete: true, // handed off to ArgoCD (gitops/argocd/platform/cert-manager); retain chart + namespace on flag-off
 	}, pulumi.DependsOn([]pulumi.Resource{certManagerCrds}))
 	if err != nil {
 		return nil, err
@@ -139,7 +144,8 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 
 	if cloudflareApiToken != "" {
 		cfSecret, err := resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-			Name: "cert-manager-cloudflare-token",
+			Name:           "cert-manager-cloudflare-token",
+			RetainOnDelete: true, // shared Cloudflare token secret; must survive cutover (ClusterIssuer depends on it)
 			YAML: `apiVersion: v1
 kind: Secret
 metadata:
@@ -158,7 +164,8 @@ data:
 
 		// Create Let's Encrypt ClusterIssuer
 		_, err = resources.CreateK8sManifest(ctx, provider, resources.K8sManifestConfig{
-			Name: "letsencrypt-cloudflare-cluster-issuer",
+			Name:           "letsencrypt-cloudflare-cluster-issuer",
+			RetainOnDelete: true, // shared cluster-wide issuer; must survive cutover (all TLS depends on it)
 			YAML: `apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
