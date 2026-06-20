@@ -74,6 +74,16 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 		ValuesFile:      "cert-manager",
 		Values: map[string]interface{}{
 			"replicaCount": replicas,
+			// DNS-01 self-check must use a public recursive resolver. This homelab
+			// blocks pod egress to authoritative nameservers on :53, so cert-manager's
+			// default authoritative-NS propagation check loops "DNS record not yet
+			// propagated" forever even when the Cloudflare TXT is live and correct —
+			// the argocd cert sat stuck ~15 min until this was added (2026-06-20).
+			// 1.1.1.1 IS reachable, and validates the record promptly.
+			"extraArgs": []interface{}{
+				"--dns01-recursive-nameservers-only",
+				"--dns01-recursive-nameservers=1.1.1.1:53,1.0.0.1:53",
+			},
 			// Hard spread + PDBs: the webhook is admission-path critical (its
 			// loss blocks all cert-manager API operations) and none of these
 			// had anti-affinity — replicas co-located by scheduler chance.
