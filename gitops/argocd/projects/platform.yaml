@@ -27,8 +27,14 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   description: Platform project — cluster system components migrated from Pulumi dev-local
+  # Surface retained-but-untracked resources (the orphaned cert-manager
+  # ClusterIssuer / cf-secret / ClusterSecretStores left by the Pulumi->ArgoCD
+  # cutover) so accidental adoption or drift is visible.
+  # NOTE: prune-safety for the retained CRDs depends entirely on
+  # installCRDs:false / crds.enabled:false in the child AppSets — keep those; a
+  # permissive project (clusterResourceWhitelist '*') is no backstop on its own.
   orphanedResources:
-    warn: false
+    warn: true
   clusterResourceWhitelist:
     - group: '*'
       kind: '*'

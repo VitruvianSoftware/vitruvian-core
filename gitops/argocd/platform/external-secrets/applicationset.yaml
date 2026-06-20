@@ -84,10 +84,10 @@ spec:
           version: v3
           values: |
             # CRDs are managed out-of-band (Pulumi Phase 1); chart must not own them.
+            # installCRDs:false is the REAL and only gate — this chart has no
+            # crds.enabled / crds.keep keys (they are silently ignored), so do
+            # NOT add them back thinking they protect the retained CRDs.
             installCRDs: false
-            crds:
-              enabled: true
-              keep: false
             replicaCount: 2
             leaderElection:
               enabled: true
