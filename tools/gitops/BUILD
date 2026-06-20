@@ -74,3 +74,11 @@ sh_binary(
     args = ["restore"],
     visibility = ["//visibility:public"],
 )
+
+# Read-only: confirm the key attachment exists in Bitwarden and decodes to >=1 Secret.
+sh_binary(
+    name = "sealed-secrets-verify",
+    srcs = ["sealed_secrets_keys.sh"],
+    args = ["verify"],
+    visibility = ["//visibility:public"],
+)
