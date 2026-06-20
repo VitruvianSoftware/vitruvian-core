@@ -31,7 +31,10 @@ import (
 // DeployK3sHA configures built-in K3s components (Traefik) for HA
 func DeployK3sHA(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 	conf := utils.NewConfig(ctx)
-	if !conf.GetBool("high_availability_enabled", false) {
+	// Dedicated toggle (default off): traefik-ha-config is ArgoCD-managed
+	// (gitops/argocd/platform/platform-config). The module's code is retained;
+	// set k3s_ha_enabled=true to manage traefik-ha-config from Pulumi instead.
+	if !conf.GetBool("k3s_ha_enabled", false) {
 		return nil
 	}
 
