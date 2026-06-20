@@ -1,0 +1,104 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ingress-nginx — Pulumi -> ArgoCD platform cutover (LEAF networking component).
+#
+# !!! CRITICAL — NOT CURRENTLY LIVE ON dev-local !!!
+# This component is DEAD on the live cluster and the values below mirror the
+# Pulumi *intended* spec (pkg/applications/ingress.go), NOT a running release.
+# Verified on-cluster (2026-06-20, KUBECONFIG=~/.kube/cluster.yaml):
+#   * `helm get values ingress-nginx -n ingress-nginx -a`  -> "release: not found"
+#   * no `ingress-nginx` namespace, deployment, pod, svc, or helm secret exist
+#   * the ONLY IngressClass is `traefik` (k3s built-in, controller
+#     traefik.io/ingress-controller, in kube-system; releases traefik +
+#     traefik-crd) — Traefik is the real ingress controller on this cluster.
+# Root cause: main.go:61 resolves
+#   ingressEnabled := pulumiConf.GetBool("ingress_controller_enabled", false)
+# default=false, and Pulumi.local.yaml never sets it true, so the call at
+# main.go:217-218 (DeployIngressController) is never invoked.
+# (`ingress:namespace: ingress-nginx` in the stack config is only a namespace
+# string, not an enable flag. ingress.go's own internal default GetBool(...,true)
+# is unreachable because main.go gates the call with default=false.)
+#
+# OWNERSHIP HANDOFF: NONE. Pulumi never created any ingress-nginx objects, so
+# there is no helm-release ownership for ArgoCD to adopt. If adopted, this is a
+# greenfield install — no `pulumi up`/disable-flag handoff is required (unlike a
+# truly-live component). Keep ingress_controller_enabled=false in Pulumi so it
+# never competes for ownership.
+#
+# DECISION REQUIRED before applying this ApplicationSet:
+#   (a) Do NOT introduce ingress-nginx — keep Traefik as the cluster ingress and
+#       drop this file (preferred unless there's a concrete need); OR
+#   (b) Intentionally adopt ingress-nginx as a NEW component — then this is a
+#       greenfield install (no Pulumi ownership to hand off) and you must decide
+#       how it coexists with Traefik (two IngressClasses; ingress-nginx will NOT
+#       be cluster default unless you set controller.ingressClassResource.default).
+#
+# Values below mirror ingress.go exactly (controller.service.type=ClusterIP,
+# controller.resources.requests cpu=100m/memory=90Mi). targetRevision pins the
+# chart version from ingress.go (4.7.1). If adopting fresh, consider bumping to a
+# current 4.x — 4.7.1 (Aug 2023) is old; pin deliberately.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  labels:
+    environment: ingress-nginx
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: ingress-nginx
+      labels:
+        app: ingress-nginx
+      annotations:
+        # Leaf networking component: install after operators/issuers/CRDs
+        # (negative waves) but before app workloads. The chart bundles its own
+        # CRDs, so no separate CRD wave is needed.
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://kubernetes.github.io/ingress-nginx
+        chart: ingress-nginx
+        targetRevision: "4.7.1"
+        helm:
+          version: v3
+          values: |
+            controller:
+              service:
+                type: ClusterIP
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 90Mi
+      destination:
+        server: '{{.server}}'
+        namespace: ingress-nginx
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
