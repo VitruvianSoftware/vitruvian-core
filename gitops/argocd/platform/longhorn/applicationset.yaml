@@ -124,3 +124,11 @@ spec:
           managedFieldsManagers:
             - pulumi-resource-kubernetes
             - k3s
+          # The two actual drifts (confirmed by diffing every Longhorn CRD's desired
+          # vs live): the conversion-webhook caBundle that Longhorn injects at runtime
+          # (chart ships none), and preserveUnknownFields:false which the API server
+          # drops as the default. managedFieldsManagers alone can't clear these (the
+          # webhook injector owns the caBundle, not Pulumi/k3s).
+          jsonPointers:
+            - /spec/conversion/webhook/clientConfig/caBundle
+            - /spec/preserveUnknownFields

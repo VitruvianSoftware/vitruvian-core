@@ -167,6 +167,14 @@ spec:
           # CNPG Cluster manifests are large/CRD-typed; CSA avoids the 256KB
           # client-side last-applied annotation failure (matches cnpg appset).
           - ServerSideApply=true
+          # Honor ignoreDifferences DURING SYNC, not just in the diff. The cluster
+          # chart 0.2.1 ALWAYS emits backup wal/data `encryption` (renders null for
+          # our empty value), and CNPG rejects null (must be AES256/aws:kms/absent)
+          # — so an SSA sync of the rendered manifest fails outright. With this, the
+          # ignored paths (encryption + the recovery bootstrap/serverName/externalClusters)
+          # are dropped from the apply, so ArgoCD preserves the live values (no
+          # encryption, serverName grafana-db-cluster-r4) and the sync succeeds.
+          - RespectIgnoreDifferences=true
       # grafana-db was rebuilt via a `recovery` bootstrap during the 2026-06-13
       # incident (live serverName grafana-db-cluster-r4). CNPG ignores bootstrap
       # post-init, and chart v0.2.1 cannot express the live backup serverName — so
@@ -189,3 +197,10 @@ spec:
             # The recovery source (externalClusters) the chart doesn't render; SSA
             # leaves it in place, so ignore it to avoid a perpetual OutOfSync.
             - /spec/externalClusters
+            # chart 0.2.1 emits these as null (our empty value); CNPG rejects null.
+            # The live cluster has no encryption (backups to non-SSE MinIO work) — so
+            # ignore + RespectIgnoreDifferences drops them from the apply, keeping the
+            # live (absent) value. Verified: SSA server dry-run fails WITH these,
+            # succeeds WITHOUT them.
+            - /spec/backup/barmanObjectStore/wal/encryption
+            - /spec/backup/barmanObjectStore/data/encryption
