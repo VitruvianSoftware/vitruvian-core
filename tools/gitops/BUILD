@@ -39,6 +39,13 @@ sh_binary(
 )
 
 sh_binary(
+    name = "patch",
+    srcs = ["gitops_cmd.sh"],
+    args = ["patch"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "status",
     srcs = ["gitops_cmd.sh"],
     args = ["status"],
