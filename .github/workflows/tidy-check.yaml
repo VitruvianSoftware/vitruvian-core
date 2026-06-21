@@ -30,6 +30,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded PR runs; never cancel the push-to-main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   tidy-check:
     runs-on: ubuntu-latest
