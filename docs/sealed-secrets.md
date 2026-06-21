@@ -91,6 +91,30 @@ Then restart Claude Desktop (Cmd-Q) and confirm both MCP servers connect.
 - **Rotating the ArgoCD mcp token:** `argocd account generate-token --account mcp`,
   update `claude_desktop_config.json`, then `bazel run //tools/gitops:argocd-secret-backup`.
 
+## Gotchas (learned the hard way)
+
+- **ApplicationSets are `kubectl apply`-ed, not git-reconciled.** The platform
+  `ApplicationSet`s (`gitops/argocd/platform/*/applicationset.yaml`) are applied
+  imperatively (`bazel run //tools/gitops:apply -- -f <file>`); there is no live
+  `app-of-platform` reconciling them. A git change to an applicationset does **not**
+  auto-propagate — you must re-apply it. On reinstall, ensure the platform
+  ApplicationSets (incl. grafana, which references the sealed admin secret) are applied
+  as part of bootstrap. The leaf Applications they generate *do* auto-sync; the
+  `sealed-secrets-manifests` Application also auto-syncs from `main`.
+- **Grafana's admin password only initializes from the env on a FRESH DB.**
+  `GF_SECURITY_ADMIN_PASSWORD` (via `admin.existingSecret` → `grafana-admin-credentials`)
+  sets the password only when the admin user is first created. Grafana is Postgres-backed
+  (`grafana-db`), so on an existing DB the password is whatever is stored — changing the
+  sealed value + rolling pods does **not** rotate it. To reconcile an existing cluster,
+  reset it once via the API with the current creds:
+  ```bash
+  NEWPW="$(kubectl -n grafana get secret grafana-admin-credentials -o jsonpath='{.data.admin-password}' | base64 -d)"
+  curl -u admin:<current-pw> -X PUT https://grafana.lab.ipv1337.dev/api/admin/users/1/password \
+    -H 'Content-Type: application/json' -d "$(jq -nc --arg p "$NEWPW" '{password:$p}')"
+  ```
+  On a genuinely fresh reinstall (empty grafana DB) the env sets it automatically — no
+  reset needed. The sealed value is authoritative either way.
+
 ## Notes
 
 - The `mcp` ArgoCD account (apiKey, role:admin) is created by pulumi
