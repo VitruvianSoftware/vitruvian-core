@@ -44,6 +44,11 @@ config:
   #   monorepo:argocd_ingress_class: "traefik"                       # default
   #   monorepo:argocd_ingress_cluster_issuer: "letsencrypt-cloudflare"  # default
   #   monorepo:argocd_admin_email: "you@example.com"  # binds org-admin (needs an SSO connector)
+  # Optional dedicated apiKey-only account for API tokens (e.g. the Argo CD MCP
+  # server). Empty => not created. Mint with `argocd account generate-token
+  # --account <name>`. Defaults to full-access role:admin; scope down via _role:
+  #   monorepo:argocd_api_account: "mcp"
+  #   monorepo:argocd_api_account_role: "role:readonly"   # default: role:admin
   monorepo:telepresence_enabled: "false"
   monitoring:namespace: monitoring
   database:namespace: database
