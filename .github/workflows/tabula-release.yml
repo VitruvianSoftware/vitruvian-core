@@ -44,7 +44,7 @@ jobs:
       extension_release_created: ${{ steps.release.outputs['tabula/extension--release_created'] }}
       extension_tag_name: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           # NOTE: if main ever gains required status checks, swap GITHUB_TOKEN
