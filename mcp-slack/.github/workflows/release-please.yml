@@ -27,7 +27,9 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: google-github-actions/release-please-action@v4
+      # Migrated from the deprecated google-github-actions/release-please-action
+      # namespace to googleapis/* and SHA-pinned (completes #203 for this repo).
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           release-type: node
