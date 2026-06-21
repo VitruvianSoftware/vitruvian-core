@@ -51,6 +51,7 @@ jobs:
             github.event.workflow_run.actor.login == 'dependabot[bot]' &&
             contains(github.event.workflow_run.head_branch, '-minor-patch')
         runs-on: ubuntu-latest
+        timeout-minutes: 45
         steps:
             - name: Mint App token
               id: app-token

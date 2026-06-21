@@ -44,6 +44,7 @@ jobs:
     reconcile:
         if: github.actor == 'dependabot[bot]'
         runs-on: ubuntu-latest
+        timeout-minutes: 45
         steps:
             - name: Mint App token
               id: app-token

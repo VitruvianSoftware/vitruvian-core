@@ -40,6 +40,7 @@ concurrency:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       # RBE auth for BuildBuddy (remote execution + cache on the Linux runner).
       # Endpoints come from the committed tools/remote.bazelrc (--config=remote);
@@ -103,6 +104,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -174,6 +176,7 @@ jobs:
     # files are ignored (BUILD = gazelle, lockfiles, baselines) so the tool never
     # fights their regeneration. Catches a missing header on the PR, before fan-out.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - name: Install addlicense

@@ -51,6 +51,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -144,6 +145,7 @@ jobs:
     # longer stacks ~80s onto the e2e critical path. Needs the Bazel stack but
     # not Chromium.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
