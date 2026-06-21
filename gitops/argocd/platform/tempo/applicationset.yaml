@@ -66,11 +66,11 @@ spec:
               metricsGenerator:
                 enabled: true
                 remoteWriteUrl: http://prometheus-server.monitoring.svc.cluster.local:80/api/v1/write
-                processor:
-                  service_graphs:
-                    enabled: true
-                  span_metrics:
-                    enabled: true
+                # Do NOT set processor.<service_graphs|span_metrics>.enabled — Tempo's config has no
+                # such field, so it renders into /conf/tempo.yaml and crash-loops the pod with
+                # "yaml: field enabled not found in type servicegraphs.Config / spanmetrics.Config".
+                # The processors are enabled the correct way below, via
+                # overrides.defaults.metrics_generator.processors.
                 registry:
                   external_labels:
                     source: tempo
