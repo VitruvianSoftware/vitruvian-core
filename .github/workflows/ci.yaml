@@ -29,6 +29,14 @@ on:
   # fast-forwards main. Handled like postsubmit below -- a full //... sweep.
   merge_group:
 
+# Cancel a PR's in-flight CI when it is superseded by a newer push to the same
+# PR. NEVER cancels push-to-main or merge_group runs (the postsubmit + merge
+# queue safety floor): cancellation is gated on the pull_request event, and
+# push / merge_group runs key into their own (non-cancelling) ref groups.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
     runs-on: ubuntu-latest

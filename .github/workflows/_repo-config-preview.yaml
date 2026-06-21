@@ -40,6 +40,11 @@ permissions:
     contents: read
     pull-requests: write
 
+# Cancel superseded preview runs for the same PR (pull_request-only trigger).
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
     preview:
         if: ${{ vars.REPO_CONFIG_PREVIEW_ENABLED == 'true' }}
