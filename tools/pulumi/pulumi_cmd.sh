@@ -79,10 +79,15 @@ fi
 if [ "$PROJECT_DIR" = "infrastructure/pulumi/dev-local" ]; then
   : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
   export KUBECONFIG
-  case " $* " in
-    *" --stack "*|*" -s "*) : ;;
-    *) set -- --stack local "$@" ;;
-  esac
+  # Default --stack to "local" unless the caller already chose a stack. Match
+  # whole flag tokens (space- and equals-forms) so a forwarded VALUE containing
+  # "--stack"/"-s" can't false-match, and so an explicit --stack=NAME isn't
+  # silently overridden by an appended "--stack local" (cobra is last-wins).
+  _has_stack=
+  for _a in "$@"; do
+    case "$_a" in --stack|--stack=*|-s|-s=*) _has_stack=1; break ;; esac
+  done
+  [ -n "$_has_stack" ] || set -- --stack local "$@"
 fi
 
 exec pulumi "$SUBCMD" "$@"
