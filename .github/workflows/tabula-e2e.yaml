@@ -94,7 +94,19 @@ jobs:
         run: npx --yes playwright@1.57.0 install-deps chromium
 
       - name: Run E2E suite
-        run: bazel test --config=e2e //tabula/...
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          # Share the BuildBuddy cache when the key is present (internal PRs +
+          # push to main); fall back to a fully local run when it is absent (e.g.
+          # a fork PR) so the lane never hard-depends on a secret it may not have.
+          # Cache-only keeps test EXECUTION on the runner, where the Chromium
+          # system libraries installed above live (full RBE would not have them).
+          cache=()
+          if [ -n "$BUILDBUDDY_API_KEY" ]; then
+            cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
+          fi
+          bazel test "${cache[@]}" --config=e2e //tabula/...
 
       - name: Report slowest E2E tests
         # Surface the per-test durations the 'list' reporter wrote into Bazel's
@@ -158,4 +170,14 @@ jobs:
             common --show_progress_rate_limit=60 --show_timestamps
 
       - name: Enforce coverage thresholds
-        run: bazel coverage //tabula/...
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          # Cache-only: reuse the tabula build CI already cached (this lane
+          # otherwise rebuilds the whole stack from cold). Key-guarded so a fork
+          # PR without the secret still runs fully locally.
+          cache=()
+          if [ -n "$BUILDBUDDY_API_KEY" ]; then
+            cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
+          fi
+          bazel coverage "${cache[@]}" //tabula/...
