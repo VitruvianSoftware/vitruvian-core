@@ -25,7 +25,7 @@
 # paths are workspace-relative. KUBECONFIG defaults to the dev-local cluster.
 set -euo pipefail
 
-SUBCMD="${1:?gitops subcommand required (apply|delete|diff|get|status|helm|kubeseal)}"
+SUBCMD="${1:?gitops subcommand required (apply|delete|diff|get|patch|status|helm|kubeseal)}"
 shift || true
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
@@ -44,6 +44,9 @@ case "$SUBCMD" in
   delete) exec kubectl --context "$KCTX" delete "$@" ;;
   diff)   exec kubectl --context "$KCTX" diff "$@" ;;
   get)    exec kubectl --context "$KCTX" get "$@" ;;
+  # e.g. trigger an ArgoCD sync:
+  #   patch application <app> -n argocd --type merge -p '{"operation":{"sync":{"revision":"<rev>"}}}'
+  patch)  exec kubectl --context "$KCTX" patch "$@" ;;
   status)
     echo "=== ArgoCD projects / appsets / applications (sync · health) ==="
     exec kubectl --context "$KCTX" get appprojects,applicationsets,applications -n argocd -o wide "$@"
@@ -60,5 +63,5 @@ case "$SUBCMD" in
     command -v kubeseal >/dev/null 2>&1 || { echo "ERROR: kubeseal not found on PATH." >&2; exit 1; }
     exec kubeseal "$@"
     ;;
-  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|get|status|helm|kubeseal)" >&2; exit 2 ;;
+  *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|get|patch|status|helm|kubeseal)" >&2; exit 2 ;;
 esac
