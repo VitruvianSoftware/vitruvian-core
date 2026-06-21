@@ -66,10 +66,11 @@ if [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
 fi
 # ---------------------------------------------------------------------------
 
-# --- dev-local cluster + stack pin -----------------------------------------
+# --- dev-local cluster + backend + stack pin -------------------------------
 # The dev-local project targets the local k3s cluster (kubeconfig context
-# "default") and the "local" stack. Pin both here so `bazel run //…dev-local:*`
-# self-targets the cluster/stack regardless of the ambient environment or which
+# "default"), the Pulumi Cloud backend, and the "local" stack. Pin all three
+# here so `bazel run //…dev-local:*` self-targets them regardless of the
+# ambient environment, the global pulumi `current` backend, or which
 # checkout it runs from — mirroring the gitops wrapper (tools/gitops/gitops_cmd.sh),
 # which already defaults KUBECONFIG the same way. Without this, a shell that lacks
 # an explicit KUBECONFIG falls back to a dead context and Pulumi can't reach the
@@ -79,6 +80,14 @@ fi
 if [ "$PROJECT_DIR" = "infrastructure/pulumi/dev-local" ]; then
   : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
   export KUBECONFIG
+  # The dev-local stack (ipv1337/monorepo/local) lives in the Pulumi Cloud
+  # backend, but `current` in ~/.pulumi/credentials.json is GLOBAL state shared
+  # with every other Pulumi project/session — a sibling project on the file
+  # backend (`pulumi login --local`) flips it, so `--stack local` then resolves
+  # against the wrong backend ("no stack named 'local' found"). Pin the cloud
+  # backend so dev-local is immune. An explicit PULUMI_BACKEND_URL still wins.
+  : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
+  export PULUMI_BACKEND_URL
   # Default --stack to "local" unless the caller already chose a stack. Match
   # whole flag tokens (space- and equals-forms) so a forwarded VALUE containing
   # "--stack"/"-s" can't false-match, and so an explicit --stack=NAME isn't
