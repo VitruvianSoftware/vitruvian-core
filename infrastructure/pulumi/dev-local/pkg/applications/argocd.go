@@ -68,6 +68,18 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 	ingressIssuer := conf.GetString("argocd_ingress_cluster_issuer", "letsencrypt-cloudflare")
 	adminEmail := conf.GetString("argocd_admin_email", "")
 
+	// API-token service account for the Argo CD MCP server (and any other
+	// automation that needs a token). ArgoCD's built-in `admin` account has no
+	// `apiKey` capability, so `argocd account generate-token` fails for it; and
+	// granting admin that capability would give the resulting token the admin
+	// login's full blast radius. Instead create a dedicated local account that
+	// ONLY carries API tokens (apiKey capability, no UI login) and bind it via
+	// RBAC below. Config-driven: empty name => no account is created, preserving
+	// the prior behavior. Role defaults to the built-in full-access `role:admin`;
+	// override argocd_api_account_role to scope it down (e.g. role:readonly).
+	apiAccount := conf.GetString("argocd_api_account", "")
+	apiAccountRole := conf.GetString("argocd_api_account_role", "role:admin")
+
 	// RBAC: read-only by default plus an org-admin role. Only bind an admin subject
 	// when an SSO identity is configured — the homelab has no SSO connector by
 	// default, so the binding is omitted and access is via the initial admin secret.
@@ -78,6 +90,17 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		"p, role:org-admin, exec, create, */*, allow\n"
 	if adminEmail != "" {
 		policyCSV += fmt.Sprintf("g, %s, role:org-admin\n", adminEmail)
+	}
+	if apiAccount != "" {
+		policyCSV += fmt.Sprintf("g, %s, %s\n", apiAccount, apiAccountRole)
+	}
+
+	// argocd-cm entries. Register the API-token service account when configured.
+	// `accounts.<name>: apiKey` grants only the token capability (no `login`),
+	// so this identity can mint/use tokens but cannot sign into the UI.
+	cm := map[string]interface{}{}
+	if apiAccount != "" {
+		cm["accounts."+apiAccount] = "apiKey"
 	}
 
 	// Ingress via traefik, only when explicitly enabled and a domain is provided;
@@ -127,6 +150,8 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			},
 			"global": global,
 			"configs": map[string]interface{}{
+				// Extra argocd-cm entries (e.g. the API-token service account).
+				"cm": cm,
 				// TLS is terminated at the ingress/proxy, so run the API server in
 				// insecure mode. Replaces the older server.extraArgs: ["--insecure"].
 				"params": map[string]interface{}{

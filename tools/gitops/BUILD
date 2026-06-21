@@ -82,3 +82,27 @@ sh_binary(
     args = ["verify"],
     visibility = ["//visibility:public"],
 )
+
+# Back up / restore / verify the ArgoCD argocd-secret (server.secretkey + mcp token
+# seed) to/from Bitwarden. ArgoCD is the pulumi bootstrap, so its secret can't be a
+# SealedSecret; this keeps the signing key + token seed restorable across reinstalls.
+sh_binary(
+    name = "argocd-secret-backup",
+    srcs = ["argocd_secret.sh"],
+    args = ["backup"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "argocd-secret-restore",
+    srcs = ["argocd_secret.sh"],
+    args = ["restore"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "argocd-secret-verify",
+    srcs = ["argocd_secret.sh"],
+    args = ["verify"],
+    visibility = ["//visibility:public"],
+)

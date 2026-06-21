@@ -68,7 +68,13 @@ spec:
           version: v3
           values: |
             replicas: 2
-            adminPassword: admin
+            # Admin credentials come from the sealed `grafana-admin-credentials`
+            # Secret (gitops/argocd/platform/sealed-secrets-manifests), not a
+            # plaintext value in git. Materialized by the sealed-secrets controller.
+            admin:
+              existingSecret: grafana-admin-credentials
+              userKey: admin-user
+              passwordKey: admin-password
             persistence:
               enabled: false
             initChownData:
