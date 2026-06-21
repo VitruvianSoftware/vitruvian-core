@@ -34,6 +34,7 @@ concurrency:
 jobs:
   license-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - run: go install github.com/google/addlicense@v1.2.0

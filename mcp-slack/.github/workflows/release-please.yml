@@ -26,6 +26,7 @@ name: release-please
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       # Migrated from the deprecated google-github-actions/release-please-action
       # namespace to googleapis/* and SHA-pinned (completes #203 for this repo).
