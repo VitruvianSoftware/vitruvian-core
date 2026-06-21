@@ -30,6 +30,13 @@ spec:
     targetRevision: HEAD
     directory:
       recurse: true
+      # Manage ONLY the component ApplicationSets. The shared-manifest dirs under
+      # platform/ (platform-config/, grafana-dashboards/, sealed-secrets-manifests/)
+      # are owned by their own git-source Applications via app-of-applications, so
+      # including them here would double-manage them; and the dir mixes kustomize +
+      # raw JSON that aren't directly appliable. `*.disabled` files (parked
+      # components: crossplane, datadog, istio, ...) are skipped automatically.
+      include: "*/applicationset*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
