@@ -198,6 +198,15 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 		ValuesFile:      "cnpg-cluster",                            // Use the new values file
 		Values: map[string]interface{}{ // Dynamic values mirroring Terraform template
 			"cluster": map[string]interface{}{
+				// Spread instances 1-per-node so a single node loss can't take the
+				// whole DB down. hostname (nodes have no zone label, so the chart
+				// default topology.kubernetes.io/zone is a no-op). Mirrors the live
+				// gitops cnpg-cluster AppSet + grafana.go. NOTE: hostnameAntiAffinity()
+				// is the OPERATOR helper — the cluster takes a CNPG AffinityConfiguration.
+				// See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
+				"affinity": map[string]interface{}{
+					"topologyKey": "kubernetes.io/hostname",
+				},
 				"initdb": map[string]interface{}{
 					"database": appDbName,
 					"owner":    appDbUser, // Owner derived from secret

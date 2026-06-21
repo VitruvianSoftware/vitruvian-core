@@ -98,6 +98,17 @@ spec:
             # churn the storage layer — keep byte-faithful to the live release.
             defaultSettings:
               defaultReplicaCount: 3
+              # Let a dead node's StatefulSet pods self-evict so their RWO volumes
+              # release and the pod reschedules onto a working node. WITHOUT this
+              # (default "do-nothing"), pods stayed stuck Terminating, volumes stayed
+              # attached to the dead node, and replacements hit Multi-Attach + a stale
+              # VolumeAttachment requiring MANUAL force-delete (incident 2026-06-21).
+              # Scoped to statefulset pods (deployments reschedule on their own) to
+              # limit reschedule churn when a laptop node briefly sleeps.
+              # See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
+              # NB: chart defaultSettings keys are camelCase (like defaultReplicaCount);
+              # it renders to the kebab-case `node-down-pod-deletion-policy` setting.
+              nodeDownPodDeletionPolicy: delete-statefulset-pod
             persistence:
               defaultClass: true
               defaultClassReplicaCount: 3

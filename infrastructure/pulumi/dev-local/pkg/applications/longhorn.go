@@ -49,6 +49,12 @@ func DeployLonghorn(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.
 		Values: map[string]interface{}{
 			"defaultSettings": map[string]interface{}{
 				"defaultReplicaCount": 3,
+				// Let a dead node's StatefulSet pods self-evict so their RWO volumes
+				// release and reschedule onto a working node (default "do-nothing"
+				// left pods stuck + required manual VolumeAttachment surgery — incident
+				// 2026-06-21). Mirrors the live longhorn AppSet. Chart defaultSettings
+				// keys are camelCase; renders to the node-down-pod-deletion-policy setting.
+				"nodeDownPodDeletionPolicy": "delete-statefulset-pod",
 			},
 			"persistence": map[string]interface{}{
 				"defaultClass":             true,
