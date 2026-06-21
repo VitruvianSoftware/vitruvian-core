@@ -186,13 +186,19 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			},
 			"controller": map[string]interface{}{
 				"resources": map[string]interface{}{
+					// Right-sized 2026-06-21 (REC-11): the controller was pegged at
+					// the old 500m CPU limit (100% throttled) and near the 512Mi mem
+					// limit (OOM-killed twice in the fedora incident), which wedged
+					// syncs once app-of-platform/-applications put all the AppSets +
+					// their child apps under continuous reconciliation. 4x headroom.
+					// See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
 					"limits": map[string]interface{}{
-						"cpu":    "500m",
-						"memory": "512Mi",
+						"cpu":    "2000m",
+						"memory": "2Gi",
 					},
 					"requests": map[string]interface{}{
-						"cpu":    "250m",
-						"memory": "256Mi",
+						"cpu":    "500m",
+						"memory": "1Gi",
 					},
 				},
 			},

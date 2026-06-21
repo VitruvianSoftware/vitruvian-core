@@ -66,4 +66,28 @@ if [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
 fi
 # ---------------------------------------------------------------------------
 
+# --- dev-local cluster + stack pin -----------------------------------------
+# The dev-local project targets the local k3s cluster (kubeconfig context
+# "default") and the "local" stack. Pin both here so `bazel run //…dev-local:*`
+# self-targets the cluster/stack regardless of the ambient environment or which
+# checkout it runs from — mirroring the gitops wrapper (tools/gitops/gitops_cmd.sh),
+# which already defaults KUBECONFIG the same way. Without this, a shell that lacks
+# an explicit KUBECONFIG falls back to a dead context and Pulumi can't reach the
+# cluster — the Helm provider then defaults to kubeVersion v1.20.0 and chart
+# templating fails. Other Pulumi projects are unaffected; a caller-supplied
+# --stack/-s still wins.
+if [ "$PROJECT_DIR" = "infrastructure/pulumi/dev-local" ]; then
+  : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
+  export KUBECONFIG
+  # Default --stack to "local" unless the caller already chose a stack. Match
+  # whole flag tokens (space- and equals-forms) so a forwarded VALUE containing
+  # "--stack"/"-s" can't false-match, and so an explicit --stack=NAME isn't
+  # silently overridden by an appended "--stack local" (cobra is last-wins).
+  _has_stack=
+  for _a in "$@"; do
+    case "$_a" in --stack|--stack=*|-s|-s=*) _has_stack=1; break ;; esac
+  done
+  [ -n "$_has_stack" ] || set -- --stack local "$@"
+fi
+
 exec pulumi "$SUBCMD" "$@"
