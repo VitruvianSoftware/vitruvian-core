@@ -77,6 +77,11 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment || 'development' }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      # Cache-only BuildBuddy access (see --config=remotecache in tools/remote.bazelrc):
+      # reuse the image/schema-engine actions CI already cached instead of a cold
+      # rebuild on the deploy critical path. No RBE, so outputs stay local for the
+      # image push + the vendored schema-engine binary.
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v6
 
@@ -113,7 +118,8 @@ jobs:
 
       - name: Build and push API image
         run: |
-          bazel run //tabula/api:image_push -- \
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:image_push -- \
             --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api" \
             --tag "${GITHUB_SHA}" --tag latest
 
@@ -121,7 +127,8 @@ jobs:
         # Before the new revision takes traffic; vendored schema-engine keeps
         # this hermetic apart from the database connection itself.
         run: |
-          bazel build //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
+          bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
           export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
           export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
           # Plain assignment (not `export VAR=$(...)`): export would swallow
@@ -132,7 +139,8 @@ jobs:
             exit 1
           fi
           export DATABASE_URL
-          bazel run //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
 
       - name: Install Pulumi
         uses: pulumi/actions@v7

@@ -71,7 +71,11 @@ jobs:
           repository-cache: true
 
       - name: Build extension package
-        run: bazel build //tabula/extension:chrome_zip
+        env:
+          # Cache-only (see --config=remotecache in tools/remote.bazelrc): reuse
+          # the chrome_zip build CI already cached; outputs stay local for the cp.
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" //tabula/extension:chrome_zip
 
       - name: Stamp build identity and attach to release
         env:
