@@ -44,13 +44,22 @@ jobs:
       extension_release_created: ${{ steps.release.outputs['tabula/extension--release_created'] }}
       extension_tag_name: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
     steps:
+      # Mint a GitHub App token so the release PR is authored by the App, not by
+      # GITHUB_TOKEN. main now has required status checks (the live merge queue,
+      # #83), and a PR opened with GITHUB_TOKEN never triggers workflow runs — so
+      # a GITHUB_TOKEN-authored release PR could never satisfy the required checks
+      # and would be unmergeable. The App-authored PR triggers CI normally.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          # NOTE: if main ever gains required status checks, swap GITHUB_TOKEN
-          # for a PAT/App token — PRs created with GITHUB_TOKEN never trigger
-          # the checks and the release PR becomes unmergeable.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: tabula/release-please-config.json
           manifest-file: tabula/.release-please-manifest.json
           target-branch: main
