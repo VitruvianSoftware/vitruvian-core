@@ -2,7 +2,7 @@
 
 |              |                                                                              |
 | ------------ | ---------------------------------------------------------------------------- |
-| **Status**   | ✅ Service restored (manually); 🔧 prevention tracked in Action Items below   |
+| **Status**   | ✅ Service restored (manually); ✅ **self-heal P0s (placement + storage) shipped + applied 2026-06-21** (#194/#196/#197 — see **Resolution** section below); 🔧 node auto-recovery (P0) still open |
 | **Severity** | SEV-1 — main `cnpg-cluster` Postgres DB fully down ~43 min + broad platform disruption (homelab, no external users) |
 | **Detected** | 2026-06-21 ~04:01 UTC (during the [Prometheus WAL incident](2026-06-13-prometheus-wal-corruption.md) work) |
 | **Restored** | 2026-06-21 ~05:00 UTC (manual force-deletes + physical power-cycle + iSCSI re-layer) |
@@ -11,6 +11,20 @@
 | **Related**  | [2026-06-13-prometheus-wal-corruption.md](2026-06-13-prometheus-wal-corruption.md) |
 
 > Living document. This incident is about **resilience**: fedora goes offline repeatedly, so the goal is making the platform **self-heal onto working nodes** instead of requiring manual surgery + a physical power-cycle.
+
+## Resolution / update — 2026-06-21
+
+The self-heal **P0 placement + storage** fixes (Root cause B #1, #2) are now **shipped and live**, and the "over-burdened controller" stressor (Root cause A) turned out to sit on the **critical path**, not the sidelines:
+
+- **CNPG hostname anti-affinity** — `cluster.affinity.topologyKey: kubernetes.io/hostname` added to `cnpg-cluster/applicationset.yaml` + `cnpg.go` (**#194**). Applied, and the 3 co-located instances were **cycled one at a time off fedora** → now **1-per-node** (primary `cnpg-cluster-10` on james-mbp; replicas on james-mbp32 + fedora), both replicas streaming `replay_lag=0`, data verified against a pre-cycle `pg_dumpall`. A fedora loss can no longer take the whole DB down.
+- **Longhorn `node-down-pod-deletion-policy: delete-statefulset-pod`** added to `longhorn/applicationset.yaml` + `longhorn.go` (**#194**), live. *(The verified-supported value is `delete-statefulset-pod`, not the originally-planned `delete-both-statefulset-and-deployment-pod`; the camelCase key `nodeDownPodDeletionPolicy` must match exactly or helm silently drops it.)*
+- **`argocd-application-controller` right-sized** to **2000m/2Gi** limits (500m/1Gi requests) in `argocd.go` (**#196**). **This was the critical-path blocker, not just a P2 stressor:** closing the GitOps loop (deploying `app-of-platform`/`app-of-applications`) pushed the controller past its old **500m CPU limit (100%-throttled)** and 512Mi mem under the larger watch set; too starved to complete its apiserver TLS handshakes, it **wedged `app-of-platform`'s sync** so #194 couldn't apply. The resize drained the sync (controller now idles ~11–24m CPU).
+
+**Mis-diagnosis corrected — fedora's network is healthy.** The wedged controller logged `TLS handshake timeout` / `i/o timeout` to the apiserver VIP `10.43.0.1:443`, which *looked* like a fedora pod→apiserver fault. It was not — it was CPU starvation (the resize fixed it with CPU to spare). fedora's path was verified healthy **host-side** (`ssh fedora` → curl `10.43.0.1:443/healthz` = 0.01s; all 3 apiserver endpoints fast) **and pod-side** (`nsenter` into a fedora pod's netns → **16/16** to the VIP + all 3 endpoints; firewalld correctly trusts the k3s CIDRs `10.42/10.43` + `cni0`/`flannel.1`/`tailscale0`). **Lesson: an apiserver timeout *from* a pod on fedora is not proof fedora's network is broken — test the host path, the pod-netns path, and the pod's own CPU/throttle (`kubectl top pod`) before blaming fedora.**
+
+A side fix landed too: the bazel pulumi wrapper now self-pins `KUBECONFIG` + `PULUMI_BACKEND_URL` (cloud) + `--stack local` for dev-local (**#196/#197**), so `bazel run //…dev-local:*` self-targets the cluster/stack/backend from any checkout (the resize `up` initially failed `no stack named 'local'` because a sibling project had flipped pulumi's global `current` backend to `file://~`).
+
+**Still open:** the **freeze itself + unattended recovery (P0 node auto-recovery)** are unaddressed — a frozen fedora still needs a physical power-cycle. That is now the top remaining priority; the data-loss risk of a hard power-cut is reduced now that the DB survives a fedora loss (P0 placement done).
 
 ## Summary
 
@@ -56,11 +70,11 @@ Every safety layer that should have absorbed a single-node loss was independentl
 
 | Pri | Area | Change | Where | Effort | Key trade-off |
 |----|------|--------|-------|--------|---------------|
-| **P0** | placement | **CNPG anti-affinity `topologyKey: kubernetes.io/hostname`** — mirror grafana-db exactly: add `cluster.affinity: {topologyKey: kubernetes.io/hostname}` (inherits CNPG `enablePodAntiAffinity:true`, `preferred`). Stops whole-DB-on-one-node. | `cnpg-cluster/applicationset.yaml` values; **and** set the same in `cnpg.go`'s `DeployCnpgCluster` Values (mirror `grafana.go`) — **not** the `hostnameAntiAffinity` helper (that's operator-only) | low | live instances are already co-located + local-path-pinned → won't move on apply; must **cycle one instance at a time** (delete pod/PVC → CNPG re-clones onto a distinct host) to un-stack. Server-side dry-run first. |
-| **P0** | storage self-heal | **Longhorn `node-down-pod-deletion-policy: delete-both-statefulset-and-deployment-pod`** → dead-node pods self-evict, volumes release, reschedulable Longhorn workloads (prometheus, alertmanager) self-heal. | `longhorn/applicationset.yaml` `defaultSettings`; mirror in `longhorn.go` | low | **sleep-churn**: Longhorn fires on NotReady, which sleeping Mac nodes hit routinely → can trigger unwanted reschedules/rebuilds. Monitor; consider pairing with a longer `node-not-ready` confirmation. |
+| **P0 ✅** | placement | **CNPG anti-affinity `topologyKey: kubernetes.io/hostname`** — mirror grafana-db exactly: add `cluster.affinity: {topologyKey: kubernetes.io/hostname}` (inherits CNPG `enablePodAntiAffinity:true`, `preferred`). Stops whole-DB-on-one-node. | `cnpg-cluster/applicationset.yaml` values; **and** set the same in `cnpg.go`'s `DeployCnpgCluster` Values (mirror `grafana.go`) — **not** the `hostnameAntiAffinity` helper (that's operator-only) | low | live instances are already co-located + local-path-pinned → won't move on apply; must **cycle one instance at a time** (delete pod/PVC → CNPG re-clones onto a distinct host) to un-stack. Server-side dry-run first. |
+| **P0 ✅** | storage self-heal | **Longhorn `node-down-pod-deletion-policy: delete-statefulset-pod`** *(shipped value; not the `-both-` variant)* → dead-node pods self-evict, volumes release, reschedulable Longhorn workloads (prometheus, alertmanager) self-heal. | `longhorn/applicationset.yaml` `defaultSettings`; mirror in `longhorn.go` | low | **sleep-churn**: Longhorn fires on NotReady, which sleeping Mac nodes hit routinely → can trigger unwanted reschedules/rebuilds. Monitor; consider pairing with a longer `node-not-ready` confirmation. |
 | **P0** | node auto-recovery | **Make a frozen fedora actually auto-recover**: a *real* hardware watchdog bite path (`iTCO_wdt`/NMI with pretimeout — the `intel_oc_wdt` software path wedges) **and/or** an external power-cycle path (smart plug + a tiny controller off-cluster). | host/devx provisioning (not a manifest) | high | a hard power-cut still risks ext4 corruption of fedora's local-path PVs → only safe once P0-#1 lands so a 2/3 replica set survives. Do P0-#1 **first**. |
 | **P1** | failover speed | **Shorten `unreachable`/`not-ready` `tolerationSeconds` to ~60–90s** for the reschedulable monitoring pods (prometheus, alertmanager). | those AppSets' pod `tolerations` | medium | laptop sleep-churn → don't apply to anything pinned/arm64. **Drop MinIO** (arm64-pinned, can't run on fedora anyway). |
-| **P2** | node stability | **Right-size `argocd-application-controller` memory** (it OOM'd ×2) — bump requests/limits in `argocd.go`. Rebalance heavy workloads off fedora. | `argocd.go` resources | low | doesn't prevent the freeze; reduces one stressor. |
+| **P0 ✅** | node stability | **Right-size `argocd-application-controller`** (OOM'd ×2 **and** CPU-pegged at the 500m limit) — bumped to **2000m/2Gi** in `argocd.go`. Rebalance heavy workloads off fedora. | `argocd.go` resources | low | **DONE #196.** Re-prioritized from P2: this was the **critical-path blocker** for the GitOps loop (a throttled controller wedged the sync — see Resolution), not merely a stressor. Doesn't prevent the freeze itself. |
 | **P2** | detection | **node-problem-detector (detection only)** to surface node liveness/kernel issues — the genuine gap. | new platform AppSet | medium | **skip the auto-remediation** half (self-node-remediation/Medik8s) — too risky on a 3-CP cluster where a CP node sleeping could trigger destructive reboots. |
 | **P2** | docs | **Codify the recovery runbook** (force-delete stuck pods + clear stale VolumeAttachment + iSCSI re-layer) — these are already one-liners with `//tools/gitops:delete`. | this doc's appendix + a runbook | low | risk of **false comfort** — a polished runbook must not de-prioritize the P0 prevention above. |
 
@@ -73,11 +87,11 @@ Every safety layer that should have absorbed a single-node loss was independentl
 
 ## Action items (living)
 
-- [ ] **P0** CNPG hostname anti-affinity (gitops + `cnpg.go`) + carefully cycle the 3 co-located instances apart. *(prevents whole-DB-on-one-node)*
-- [ ] **P0** Longhorn `node-down-pod-deletion-policy=delete-both-statefulset-and-deployment-pod` (gitops + `longhorn.go`). *(enables stateful self-heal)*
+- [x] **P0 ✅** CNPG hostname anti-affinity (gitops + `cnpg.go`) + cycled the 3 co-located instances apart → **1-per-node, primary off fedora**. *(prevents whole-DB-on-one-node)* — #194
+- [x] **P0 ✅** Longhorn `node-down-pod-deletion-policy=delete-statefulset-pod` (gitops + `longhorn.go`). *(enables stateful self-heal)* — #194
 - [ ] **P0** Reliable fedora auto-recovery (hardware watchdog that bites, or external power-cycle automation). *(do after the anti-affinity fix)*
 - [ ] **P1** `tolerationSeconds` ~60–90s for prometheus/alertmanager (not pinned/arm64 workloads).
-- [ ] **P2** Bump `argocd-application-controller` memory; rebalance load off fedora.
+- [x] **P0 ✅** Right-size `argocd-application-controller` → **2000m/2Gi** (CPU+mem; was the GitOps-loop blocker) — #196. *(rebalancing other heavy workloads off fedora: still open)*
 - [ ] **P2** node-problem-detector (detection only).
 - [ ] **Verify** devx #256 actually persists fedora's iSCSI/tailscaled across reboots (it didn't this time).
 - [ ] **Investigate** the NVIDIA freeze hypothesis (persistent kernel logging / GPU health) before any driver change.
