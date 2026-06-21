@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "scaffold",
@@ -49,4 +49,10 @@ go_library(
     ],
     importpath = "github.com/VitruvianSoftware/devx/internal/scaffold",
     visibility = ["//devx:__subpackages__"],
+)
+
+go_test(
+    name = "scaffold_test",
+    srcs = ["engine_render_test.go"],
+    embed = [":scaffold"],
 )
