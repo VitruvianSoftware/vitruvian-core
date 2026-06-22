@@ -103,6 +103,9 @@ spec:
               - name: grafana-db-backups
                 policy: none
                 purge: false
+              - name: cnpg-cluster-backups
+                policy: none
+                purge: false
             # Longhorn-backed, relocatable drives: a failed node's drive
             # reschedules onto a surviving arm64 node and heals. PVC spec
             # (size + storageClass) is immutable — must match the live volumes.

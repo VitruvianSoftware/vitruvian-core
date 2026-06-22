@@ -1,0 +1,89 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# R1/R2 — off-cluster logical backup of the grafana-db DB. grafana-db already has
+# barman PITR, but to in-cluster MinIO (same failure domain). This daily pg_dump
+# to the NAS over NFS puts a copy on a separate machine. 30-day retention.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-dump-nfs
+  namespace: grafana
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-backup
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-dump-nfs
+  namespace: grafana
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # root + no_root_squash export → writes to the NAS without uid mapping.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            fsGroup: 0
+          containers:
+            - name: pg-dump
+              image: ghcr.io/cloudnative-pg/postgresql:16
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  ts=$(date +%Y%m%d-%H%M%S)
+                  out="/backup/grafana-${ts}.sql.gz"
+                  echo "pg_dump ${PGDATABASE}@${PGHOST} -> ${out}"
+                  pg_dump --no-owner --no-privileges | gzip -c > "${out}.partial"
+                  mv "${out}.partial" "${out}"
+                  echo "prune dumps older than 30d:"
+                  find /backup -name 'grafana-*.sql.gz' -mtime +30 -print -delete || true
+                  echo "current dumps:"; ls -lh /backup | tail -8
+              env:
+                - {name: PGHOST, value: grafana-db-cluster-rw.grafana.svc.cluster.local}
+                - {name: PGPORT, value: "5432"}
+                - {name: PGDATABASE, value: grafana}
+                - {name: PGSSLMODE, value: require}
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef: {name: grafana-db-credentials, key: username}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: grafana-db-credentials, key: password}
+              volumeMounts:
+                - {name: backup, mountPath: /backup}
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: pg-dump-nfs

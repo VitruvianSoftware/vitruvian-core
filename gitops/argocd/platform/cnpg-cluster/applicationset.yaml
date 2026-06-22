@@ -120,8 +120,34 @@ spec:
                 owner: app_user
                 secret:
                   name: cnpg-initial-app-credentials
+            # Continuous WAL archiving + daily base backups to MinIO (R1: the app
+            # DB previously had NO backup at all). Mirrors grafana-db's working
+            # config. SSE disabled (MinIO has none) to avoid barman archive errors.
             backups:
-              enabled: false
+              enabled: true
+              provider: s3
+              endpointURL: http://minio.minio.svc.cluster.local:9000
+              destinationPath: s3://cnpg-cluster-backups/
+              s3:
+                region: us-east-1
+                bucket: cnpg-cluster-backups
+              # S3 creds from SealedSecret cnpg-cluster-minio-backup-creds (no
+              # plaintext in git); create=false → reference the existing secret.
+              secret:
+                create: false
+                name: cnpg-cluster-minio-backup-creds
+              wal:
+                compression: gzip
+                encryption: ""
+              data:
+                compression: gzip
+                encryption: ""
+              scheduledBackups:
+                - name: daily-backup
+                  schedule: 0 0 0 * * *
+                  backupOwnerReference: self
+                  method: barmanObjectStore
+              retentionPolicy: 7d
       destination:
         server: '{{.server}}'
         namespace: cnpg-cluster
@@ -134,3 +160,16 @@ spec:
           # CNPG Cluster CR is large/CRD-backed; CSA avoids the client-side
           # last-applied 256KB annotation failure (matches cnpg-operator appset).
           - ServerSideApply=true
+          # Honor ignoreDifferences DURING sync: chart 0.2.1 renders backup
+          # wal/data `encryption: null`, which CNPG rejects under SSA — drop those
+          # paths from the apply so the live (absent) value is preserved.
+          - RespectIgnoreDifferences=true
+      # chart 0.2.1 always emits backup wal/data encryption as null (our empty
+      # value); CNPG rejects null. Ignore both so the SSA sync succeeds (matches
+      # grafana-db).
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          jsonPointers:
+            - /spec/backup/barmanObjectStore/wal/encryption
+            - /spec/backup/barmanObjectStore/data/encryption
