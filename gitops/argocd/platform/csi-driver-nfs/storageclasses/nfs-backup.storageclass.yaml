@@ -28,7 +28,11 @@ metadata:
     argocd.argoproj.io/sync-wave: "-5"
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: "100.126.21.94"
+  # NAS LAN IP, NOT the Tailscale IP: the NAS's Tailscale package runs in
+  # userspace mode and masquerades inbound tailnet NFS, so the export rule never
+  # matches a 100.x source. Nodes reach the NAS over the LAN (192.168.0.0/16 is
+  # in the export). Requires nodes on the LAN — true for this homelab.
+  server: "192.168.86.200"
   share: /volume1/backups
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}/${pv.metadata.name}
   mountPermissions: "0775"
