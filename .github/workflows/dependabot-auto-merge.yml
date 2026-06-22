@@ -20,16 +20,18 @@
 
 name: Dependabot auto-merge
 
-# Auto-merge Dependabot MINOR/PATCH PRs after CI passes, via a DIRECT merge with
-# the GitHub App token. The merge is App-attributed, so it triggers the
-# per-component copybara export (a GITHUB_TOKEN merge would NOT — that's the
-# import-side recursion-prevention). MAJOR bumps are never auto-merged (left for
-# manual review; a normal human merge is still user-attributed and fans out).
+# Auto-merge Dependabot MINOR/PATCH PRs by ENQUEUING them in the merge queue
+# (#83) once CI passes. `--auto` makes the PR merge THROUGH the queue instead of
+# via a direct merge that bypassed it, so Dependabot bumps get the same required-
+# check serialization as every other PR. The queue's merge still fans out the
+# per-component copybara export: a push to main from the queue triggers the
+# export workflows normally (it is not the GITHUB_TOKEN self-trigger that the
+# old direct merge had to dodge). MAJOR bumps are never auto-merged (manual).
 #
-# Why workflow_run + a direct merge (not `gh pr merge --auto`): the org disables
-# repo-level auto-merge, so `--auto` is unavailable. workflow_run fires AFTER CI
-# in the default-branch context (full Actions secrets — hence SYNC_APP_* exists
-# as an Actions secret too, not only a Dependabot secret).
+# workflow_run fires AFTER CI in the default-branch context (full Actions
+# secrets — hence SYNC_APP_* exists as an Actions secret too, not only a
+# Dependabot secret). The App token enables auto-merge; the workflow's own
+# GITHUB_TOKEN is contents:read only.
 #
 # MINOR/PATCH detection: our monorepo gomod/github-actions Dependabot groups are
 # named `*-minor-patch`, so qualifying PRs land on branches like
@@ -59,7 +61,7 @@ jobs:
               with:
                 app-id: ${{ secrets.SYNC_APP_ID }}
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-            - name: Merge the Dependabot PR (App-attributed → fans out via export)
+            - name: Enable auto-merge so the PR merges through the queue
               env:
                 GH_TOKEN: ${{ steps.app-token.outputs.token }}
                 BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -67,5 +69,5 @@ jobs:
               run: |
                 num="$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
                 if [ -z "$num" ]; then echo "No open PR for branch $BRANCH — nothing to merge."; exit 0; fi
-                echo "Merging Dependabot PR #$num (branch $BRANCH) via App token."
-                gh pr merge "$num" -R "$REPO" --squash
+                echo "Enabling auto-merge for Dependabot PR #$num (branch $BRANCH); the queue merges it."
+                gh pr merge "$num" -R "$REPO" --squash --auto
