@@ -145,7 +145,11 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
-      - name: Deploy Cloud Run via Pulumi
+      # Blue-green rollout (issue #204): deploy the new revision with NO traffic,
+      # smoke its dedicated candidate URL, then shift 100% only on success. A
+      # smoke failure exits before the shift, so the live revision keeps serving
+      # 100% and there is nothing to roll back.
+      - name: Deploy the new revision without traffic (Pulumi)
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           # Pulumi shells out to `go build`; the repo-root go.work does not
@@ -153,18 +157,44 @@ jobs:
           GOWORK: off
         working-directory: infrastructure/pulumi/tabula
         run: |
-          # Stack identity/region/env come from the committed
-          # Pulumi.<stack>.yaml (config-as-code); only the per-deploy image
-          # tag is set here.
           pulumi stack select "$DEPLOY_ENV" --create
+          # Pin 100% to whatever serves now; the new revision publishes at 0%
+          # behind a `candidate` tag. Empty on the first ever deploy -> the
+          # program routes 100% straight to the new revision.
+          STABLE="$(gcloud run services describe "tabula-api-${DEPLOY_ENV}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
+          echo "Current live revision: ${STABLE:-<none, first deploy>}"
           pulumi config set tabula:imageTag "$GITHUB_SHA"
+          pulumi config set tabula:stableRevision "$STABLE"
+          pulumi config set tabula:promote false
           pulumi up --yes
 
-      - name: Smoke check
-        working-directory: infrastructure/pulumi/tabula
+      - name: Smoke-check the candidate revision (before any traffic shift)
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
+        working-directory: infrastructure/pulumi/tabula
         run: |
-          URL="$(pulumi stack output serviceUrl)"
-          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "$URL/health"
+          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
+          # The candidate's dedicated tag URL. On the first deploy there is no
+          # candidate (traffic went straight to the new revision), so fall back
+          # to the live service URL.
+          CAND="$(gcloud run services describe "tabula-api-${DEPLOY_ENV}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format=json | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
+          if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
+            CAND="$(pulumi stack output serviceUrl)"
+          fi
+          echo "Smoke-checking ${CAND}/health"
+          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/health"
+
+      - name: Shift 100% traffic to the new revision (Pulumi)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/tabula
+        run: |
+          pulumi stack select "$DEPLOY_ENV"
+          pulumi config set tabula:promote true
+          pulumi up --yes

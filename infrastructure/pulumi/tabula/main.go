@@ -68,6 +68,16 @@ func main() {
 		if imageTag == "" {
 			imageTag = "latest"
 		}
+		// Blue-green rollout knobs, set per phase by the deploy workflow:
+		//   promote=false (default): publish the new revision at 0% behind a
+		//     `candidate` tag, keeping 100% on stableRevision, so the deploy can
+		//     smoke the candidate's own URL before any traffic shifts to it.
+		//   promote=true: route 100% to the new (imageTag) revision.
+		// stableRevision is the revision currently serving 100% (the workflow
+		// reads it from the live service before rolling out); empty only on the
+		// first ever deploy, where traffic goes straight to the new revision.
+		promote := cfg.GetBool("promote")
+		stableRevision := cfg.Get("stableRevision")
 		// adoptExistingSecrets imports pre-existing Secret Manager secrets
 		// (created by the standalone repo's Terraform/tabcli) into this
 		// stack's state instead of attempting a colliding create. One-time
@@ -206,11 +216,44 @@ func main() {
 		}
 		envs = append(envs, secretEnvs...)
 
+		// Cloud Run requires the revision name to be prefixed by the service
+		// name; make it deterministic per image so the workflow can address the
+		// new revision by name across the no-traffic -> smoke -> shift phases.
+		revisionName := pulumi.Sprintf("tabula-api-%s-%s", env, imageTag)
+		var traffics cloudrunv2.ServiceTrafficArray
+		if promote || stableRevision == "" {
+			// Promote (or first deploy): route 100% to the new revision.
+			traffics = cloudrunv2.ServiceTrafficArray{
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: revisionName,
+					Percent:  pulumi.Int(100),
+				},
+			}
+		} else {
+			// No-traffic rollout: 100% stays on the live revision; the new one is
+			// published at 0% behind a `candidate` tag (its own URL) for smoking.
+			traffics = cloudrunv2.ServiceTrafficArray{
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: pulumi.String(stableRevision),
+					Percent:  pulumi.Int(100),
+				},
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: revisionName,
+					Percent:  pulumi.Int(0),
+					Tag:      pulumi.String("candidate"),
+				},
+			}
+		}
+
 		service, err := cloudrunv2.NewService(ctx, "tabula-api", &cloudrunv2.ServiceArgs{
 			Project:  pulumi.String(project),
 			Location: pulumi.String(region),
 			Name:     pulumi.Sprintf("tabula-api-%s", env),
 			Template: &cloudrunv2.ServiceTemplateArgs{
+				Revision:       revisionName,
 				ServiceAccount: sa.Email,
 				Containers: cloudrunv2.ServiceTemplateContainerArray{
 					&cloudrunv2.ServiceTemplateContainerArgs{
@@ -219,6 +262,7 @@ func main() {
 					},
 				},
 			},
+			Traffics: traffics,
 		},
 			pulumi.DependsOn([]pulumi.Resource{repo}),
 			// Ports are left at the Cloud Run default (8080, matching the
