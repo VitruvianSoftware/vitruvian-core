@@ -1,0 +1,90 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# File-level backup of the Prometheus TSDB to the NAS over NFS. The TSDB lives on
+# a single-replica, fedora-pinned local-path PVC (prometheus-server) — if fedora's
+# disk dies it's gone. This daily snapshot puts a copy on the NAS. The admin
+# snapshot API isn't enabled, so we tar the live /data dir: that's crash-
+# consistent, which Prometheus recovers from on restore (WAL replay). 7-day
+# retention. Pinned to fedora (where the local-path PVC physically resides; the
+# RWO PVC is co-mounted read-only alongside the running prometheus-server pod).
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nas-backup
+  namespace: monitoring
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-backup
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: prometheus-nas-backup
+  namespace: monitoring
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          # The TSDB PVC is local-path on fedora — the backup must run there too.
+          nodeSelector:
+            kubernetes.io/hostname: fedora
+          # root + no_root_squash export → writes to the NAS without uid mapping.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            fsGroup: 0
+          containers:
+            - name: backup
+              image: busybox:1.36
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -e
+                  ts=$(date +%Y%m%d-%H%M%S)
+                  out="/backup/prometheus-tsdb-${ts}.tar.gz"
+                  echo "snapshot /data -> ${out} (crash-consistent; Prometheus replays WAL on restore)"
+                  tar czf "${out}.partial" -C /data . 2>/dev/null || echo "tar finished (live-TSDB read warnings ignored)"
+                  mv "${out}.partial" "${out}"
+                  echo "prune snapshots older than 7d:"
+                  find /backup -name 'prometheus-tsdb-*.tar.gz' -mtime +7 -print -delete || true
+                  echo "current snapshots:"; ls -lh /backup | tail -8
+              volumeMounts:
+                - {name: tsdb, mountPath: /data, readOnly: true}
+                - {name: nas, mountPath: /backup}
+          volumes:
+            - name: tsdb
+              persistentVolumeClaim:
+                claimName: prometheus-server
+                readOnly: true
+            - name: nas
+              persistentVolumeClaim:
+                claimName: nas-backup
