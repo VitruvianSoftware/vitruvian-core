@@ -43,8 +43,8 @@
 #     changes and silences/nflog churn.
 #
 # DATA IS RETAINED OUT-OF-BAND BY PULUMI DURING CUTOVER. The two PVCs
-# (prometheus-server 25Gi, alertmanager 2Gi on longhorn) and their backing
-# Longhorn volumes hold live TSDB + alertmanager state and MUST survive the
+# (prometheus-server 25Gi, alertmanager 2Gi on local-path) and their backing
+# local-path volumes hold live TSDB + alertmanager state and MUST survive the
 # handoff. The chart ships no CRDs, so there is no CRD bundle to preserve; the
 # only stateful objects are the PVCs. At cutover set the prometheus/monitoring
 # enable flag to false in the dev-local stack and `pulumi up` so Pulumi releases
