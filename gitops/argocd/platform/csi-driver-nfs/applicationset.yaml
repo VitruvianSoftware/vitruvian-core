@@ -1,0 +1,92 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# csi-driver-nfs — NFS CSI driver providing off-node, cross-node (RWX) volumes
+# backed by the springwood-nas NAS (Tailscale 100.126.21.94, NFSv4.1).
+#   chart csi-driver-nfs-4.13.3 (kubernetes-csi/csi-driver-nfs), ns csi-driver-nfs.
+#
+# Why: post-Longhorn, all in-cluster storage is node-pinned local-path. This adds
+# a second tier — NAS-backed NFS — for (a) off-cluster backup targets (R1/R2) and
+# (b) live volumes that must survive a node sleeping / be reachable cross-node
+# (e.g. the container registry, R9). local-path stays the cluster DEFAULT; both
+# NFS StorageClasses are opt-in (non-default).
+#
+# The node plugin is a DaemonSet (tolerates everything) so any node can mount the
+# NAS; the controller (provisioning) runs 2 replicas. The nodes' cluster-internal
+# IPs ARE their Tailscale 100.x addresses, so kubelet mounts the NAS natively over
+# the tailnet — no per-pod sidecar.
+#
+# StorageClasses (`nfs` -> /volume1/k8s, `nfs-backup` -> /volume1/backups) are NOT
+# created by the chart (storageClass.create=false) — they ship as raw manifests in
+# ./storageclasses, applied by the csi-driver-nfs-storageclasses Application, so we
+# can define two classes against two shares with different reclaim policies.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: csi-driver-nfs
+  namespace: argocd
+  labels:
+    environment: csi-driver-nfs
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: csi-driver-nfs
+      labels:
+        app: csi-driver-nfs
+      annotations:
+        # Storage driver: must be Healthy before any NFS-backed PVC (wave >= 0)
+        # binds. Driver at -6, the StorageClasses at -5 (see ./storageclasses).
+        argocd.argoproj.io/sync-wave: "-6"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+        chart: csi-driver-nfs
+        targetRevision: "4.13.3"
+        helm:
+          version: v3
+          values: |
+            # We ship our own StorageClasses (nfs, nfs-backup); chart creates none.
+            storageClass:
+              create: false
+            # No CSI VolumeSnapshots — the NAS does its own server-side snapshots.
+            externalSnapshotter:
+              enabled: false
+            # HA provisioning controller. The node plugin below is a DaemonSet.
+            controller:
+              replicas: 2
+            # Run the node mount plugin on EVERY node (incl. tainted control-plane
+            # nodes) so any node scheduling an NFS PVC can mount the NAS.
+            node:
+              tolerations:
+                - operator: Exists
+      destination:
+        server: '{{.server}}'
+        namespace: csi-driver-nfs
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
