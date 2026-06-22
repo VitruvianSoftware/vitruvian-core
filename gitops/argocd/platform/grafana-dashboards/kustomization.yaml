@@ -40,9 +40,6 @@ configMapGenerator:
   - name: grafana-dashboard-k8s-compute
     files:
       - k8s-compute.json
-  - name: grafana-dashboard-longhorn
-    files:
-      - longhorn.json
   - name: grafana-dashboard-managed-ingress-dns
     files:
       - managed-ingress-dns.json

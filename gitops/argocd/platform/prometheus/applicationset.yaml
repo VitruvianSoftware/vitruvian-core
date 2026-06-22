@@ -119,14 +119,6 @@ spec:
                 - source_labels: [__meta_kubernetes_service_name]
                   regex: 'traefik'
                   action: keep
-              - job_name: 'longhorn'
-                metrics_path: /metrics
-                kubernetes_sd_configs:
-                  - role: endpoints
-                relabel_configs:
-                - source_labels: [__meta_kubernetes_service_name]
-                  regex: 'longhorn-backend'
-                  action: keep
               - job_name: 'minio'
                 metrics_path: /minio/v2/metrics/cluster
                 kubernetes_sd_configs:
