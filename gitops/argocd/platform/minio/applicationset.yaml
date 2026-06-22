@@ -24,7 +24,7 @@
 #   chart minio-5.4.0 (repo https://charts.min.io/), namespace minio.
 #   mode=distributed + replicas=4 (high_availability_enabled=true): a fixed
 #   4-drive erasure-coded set. This is StatefulSet-backed — the pod count and
-#   the per-replica PVCs (data-minio-0..3, 10Gi each, storageClass=longhorn)
+#   the per-replica PVCs (export-minio-0..3, 10Gi each, storageClass=local-path)
 #   are IMMUTABLE post-create. The rendered values below MUST stay byte-faithful
 #   so ArgoCD adopts the existing StatefulSet + 4 PVCs with zero churn (no pod
 #   restart, no PVC re-create, no data loss).
@@ -34,8 +34,12 @@
 #     StatefulSet and orphans the existing erasure set + data)
 #   - replicas: 4        (changing drive count of a distributed set is a
 #     destructive re-init; MinIO will refuse / lose the pool)
-#   - persistence.size: 10Gi, storageClass: longhorn (PVC spec is immutable;
-#     any change forces new PVCs and strands the live data volumes)
+#   - persistence.size: 10Gi (drive size immutable). storageClass MIGRATED
+#     longhorn -> local-path (2026-06): MinIO's distributed erasure coding is the
+#     redundancy layer, so each drive is node-local (Longhorn cross-node
+#     replication is unreliable on this homelab). Drives 0-2 are already
+#     local-path; drive-3 (still on longhorn) is re-created during the migration
+#     and MinIO heals it from the erasure set.
 #   - rootUser/rootPassword: unchanged so the bootstrap secret is not rotated
 #     under running clients (tempo, grafana-db-backups consumers).
 #
@@ -102,7 +106,7 @@ spec:
             # (size + storageClass) is immutable — must match the live volumes.
             persistence:
               enabled: true
-              storageClass: longhorn
+              storageClass: local-path
               size: 10Gi
             # Distributed MinIO requires an identical binary (same CPU arch) on
             # every node; pin all 4 drives to arm64.

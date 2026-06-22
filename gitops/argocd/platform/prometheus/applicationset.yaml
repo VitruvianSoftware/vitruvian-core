@@ -29,13 +29,14 @@
 #     StatefulSet — single replica because simple-mode Prometheus has no HA
 #     remote-write without Thanos/Mimir; two replicas would split-brain the
 #     collector's round-robin).
-#   server.persistentVolume: 25Gi on longhorn. retention.size is delivered as a
+#   server.persistentVolume: 25Gi on local-path (node-local; TSDB history is
+#     disposable — re-scraped after a node loss). retention.size is delivered as a
 #     RAW FLAG via server.extraFlags (storage.tsdb.retention.size=20GB) —
 #     chart 22.6.7 does NOT render server.retentionSize, so it must stay in
 #     extraFlags or the live --storage.tsdb.retention.size arg would disappear.
 #     extraFlags also carries web.enable-lifecycle + web.enable-remote-write-
 #     receiver (the remote-write receiver the OTel/Tempo pipeline writes into).
-#   alertmanager.persistence: 2Gi on longhorn. NOTE the live release persists via
+#   alertmanager.persistence: 2Gi on local-path (node-local; minimal state). NOTE the live release persists via
 #     `alertmanager.persistence` (the subchart's real key). The legacy
 #     `alertmanager.persistentVolume` spelling is silently ignored by this chart
 #     — do NOT "fix" it to persistentVolume here or the alertmanager PVC binding
@@ -89,7 +90,7 @@ spec:
               persistentVolume:
                 enabled: true
                 size: 25Gi
-                storageClass: longhorn
+                storageClass: local-path
               replicaCount: 1
               statefulSet:
                 enabled: false
@@ -138,7 +139,7 @@ spec:
               persistence:
                 enabled: true
                 size: 2Gi
-                storageClass: longhorn
+                storageClass: local-path
       destination:
         server: '{{.server}}'
         namespace: monitoring
