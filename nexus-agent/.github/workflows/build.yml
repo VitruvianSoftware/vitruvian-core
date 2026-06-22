@@ -1,0 +1,98 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Build/check CI for nexus-agent: a Node syntax check on every PR, and a Swift
+# compile of the macOS executable gated to PRs that touch macos/** (macOS
+# runners are ~10x cost). Previously nexus-agent PRs ran only license-check +
+# CLA -- no build/test at all.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  node:
+    name: Node syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Syntax-check JS sources
+        # No build/test/lint scripts exist yet (src/bot.js is the entrypoint); at
+        # minimum fail the PR on a syntax error. `node --check` parses without
+        # executing, so it needs no dependencies installed.
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find src -name '*.js' -type f)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No JS sources under src/ -- nothing to check."
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+  changes:
+    name: Detect macOS changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      macos: ${{ steps.filter.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.base_ref }}
+          filters: |
+            macos:
+              - 'macos/**'
+
+  swift:
+    name: Swift build (macOS)
+    needs: changes
+    # Build on push to main (floor); on a PR only when macos/** changed, so a
+    # non-macOS PR never starts a (10x-cost) macOS runner. Compiles the
+    # executableTarget in macos/Package.swift -- catches Swift compile errors
+    # (the full .app bundle is built by the monorepo's Bazel macos-app lane).
+    if: github.event_name == 'push' || needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: swift build
+        working-directory: macos
+        run: swift build
