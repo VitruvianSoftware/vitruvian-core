@@ -72,6 +72,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: tabula-${{ inputs.environment || 'development' }}
     env:
       DEPLOY_ENV: ${{ inputs.environment || 'development' }}
