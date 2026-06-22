@@ -84,9 +84,11 @@ echo "affected-targets: before-rev (merge-base) = ${BEFORE_REV}"
 #   gazelle_python.yaml (root)        Python dependency mapping that drives
 #                                     BUILD generation; a graph diff may not see
 #                                     a dep remap until BUILD files regenerate.
-#   .github/workflows/                any workflow file: this CI, plus the
-#                                     copybara/repo-config/tabula lanes that can
-#                                     reshape build inputs.
+# NOTE: .github/workflows/** is deliberately NOT global-impact. A workflow-file
+# edit changes zero Bazel targets, so it must not force a full //... sweep on
+# every PR that touches CI. A workflow that changes how the build runs is
+# validated by that workflow running on its own PR; and tools/** below still
+# force-sweeps on any change to tools/ci/affected-targets.sh (this script).
 #
 # We diff names only (no content) between the merge-base and the working tree.
 CHANGED_FILES="$(git diff --name-only "${BEFORE_REV}" -- || true)"
@@ -99,12 +101,11 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 
 # Anchored at start-of-path. `BUILD` and `gazelle_python.yaml` are matched ONLY
 # at the repo root (^BUILD$, ^gazelle_python\.yaml$); nested package BUILD files
-# are intentionally left to the graph diff. `.github/workflows/` (no $) matches
-# every workflow file under that directory.
+# are intentionally left to the graph diff.
 if echo "${CHANGED_FILES}" | grep -E \
-  '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|tools/|BUILD$|gazelle_python\.yaml$|\.github/workflows/)' \
+  '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|tools/|BUILD$|gazelle_python\.yaml$)' \
   >/dev/null 2>&1; then
-  run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml/.github/workflows/**)"
+  run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)"
 fi
 
 # --- 3. install + run target-determinator. -----------------------------------
