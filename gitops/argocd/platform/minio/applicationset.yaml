@@ -40,8 +40,10 @@
 #     replication is unreliable on this homelab). Drives 0-2 are already
 #     local-path; drive-3 (still on longhorn) is re-created during the migration
 #     and MinIO heals it from the erasure set.
-#   - rootUser/rootPassword: unchanged so the bootstrap secret is not rotated
-#     under running clients (tempo, grafana-db-backups consumers).
+#   - root credentials: sourced from SealedSecret `minio-root` (existingSecret),
+#     rotated 2026-06 (R8 — the old plaintext value was public in git). No
+#     plaintext creds in git; consumers (tempo, grafana-db-backups) read the
+#     same rotated value from their own SealedSecrets.
 #
 # DATA / SECRET retention during cutover: the 4 Longhorn PVCs (data-minio-0..3)
 # and the buckets (tempo, grafana-db-backups — the latter holds CNPG WAL +
@@ -88,10 +90,10 @@ spec:
             mode: distributed
             # Fixed 4-drive set. Changing this re-inits the pool destructively.
             replicas: 4
-            # Bootstrap root credentials — kept identical so the secret is not
-            # rotated under running clients.
-            rootUser: admin
-            rootPassword: minio-admin-password
+            # Root credentials sourced from SealedSecret `minio-root` (ns minio;
+            # keys rootUser/rootPassword). No plaintext creds in git (R8). The
+            # chart ignores rootUser/rootPassword when existingSecret is set.
+            existingSecret: minio-root
             # Buckets reconciled by the chart post-job. purge=false so contents
             # (tempo traces, CNPG WAL + base backups) are never deleted.
             buckets:

@@ -69,7 +69,10 @@ func DeployTempo(ctx *pulumi.Context, provider *kubernetes.Provider, namespace s
 				"bucket":     "tempo",
 				"endpoint":   "minio.minio.svc.cluster.local:9000",
 				"access_key": "admin",
-				"secret_key": "minio-admin-password",
+				// R8: rotated + moved to SealedSecret `tempo-minio-creds` (injected
+				// via tempo config.expand-env). Pulumi is decommissioned for this
+				// release (ArgoCD handoff); placeholder is non-secret.
+				"secret_key": "ROTATED-SEE-SEALEDSECRET-tempo-minio-creds",
 				"insecure":   true,
 			},
 		}

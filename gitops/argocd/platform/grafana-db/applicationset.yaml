@@ -141,8 +141,13 @@ spec:
               s3:
                 region: us-east-1
                 bucket: grafana-db-backups
-                accessKey: admin
-                secretKey: minio-admin-password
+              # Backup S3 credentials come from SealedSecret
+              # `grafana-db-minio-backup-creds` (ns grafana; keys ACCESS_KEY_ID /
+              # ACCESS_SECRET_KEY). create=false → the chart references that
+              # existing secret instead of rendering one from plaintext (R8).
+              secret:
+                create: false
+                name: grafana-db-minio-backup-creds
               wal:
                 compression: gzip
                 encryption: ""

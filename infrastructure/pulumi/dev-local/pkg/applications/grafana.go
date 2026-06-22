@@ -192,8 +192,11 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 				"s3": map[string]interface{}{
 					"region":    "us-east-1", // MinIO ignores region, but the S3 client requires one
 					"bucket":    "grafana-db-backups",
-					"accessKey": "admin",                // mirrors rootUser in minio.go (dev-local)
-					"secretKey": "minio-admin-password", // mirrors rootPassword in minio.go (dev-local)
+					"accessKey": "admin", // mirrors rootUser in minio.go (dev-local)
+					// R8: rotated + moved to SealedSecret `grafana-db-minio-backup-creds`.
+					// Pulumi is decommissioned for this release (ArgoCD handoff); do not
+					// re-run to manage backup creds. Placeholder is non-secret.
+					"secretKey": "ROTATED-SEE-SEALEDSECRET-grafana-db-minio-backup-creds",
 				},
 				// MinIO has no server-side encryption by default; disable barman-side SSE to avoid archive failures
 				"wal":  map[string]interface{}{"compression": "gzip", "encryption": ""},

@@ -59,10 +59,14 @@ func DeployMinio(ctx *pulumi.Context, provider *kubernetes.Provider) (pulumi.Res
 		CreateNamespace: false,
 		RetainOnDelete:  true, // handed off to ArgoCD (gitops/argocd/platform/minio); retain release + 4 PVCs (data)
 		Values: map[string]interface{}{
-			"mode":         mode,
-			"replicas":     replicas,
-			"rootUser":     "admin",
-			"rootPassword": "minio-admin-password",
+			"mode":     mode,
+			"replicas": replicas,
+			"rootUser": "admin",
+			// R8: root password rotated + moved to SealedSecret `minio-root`
+			// (gitops/argocd/platform/sealed-secrets-manifests). This Pulumi
+			// release is decommissioned (RetainOnDelete handoff to ArgoCD) and
+			// MUST NOT be re-run to manage MinIO creds; placeholder is non-secret.
+			"rootPassword": "ROTATED-SEE-SEALEDSECRET-minio-root",
 			"buckets": []interface{}{
 				map[string]interface{}{
 					"name":   "tempo",
