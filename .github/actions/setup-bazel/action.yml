@@ -18,40 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Tidy Check
+# Canonical Bazel setup for the monorepo's CI lanes: the pinned setup-bazel
+# action with the repo's standard caches and CI bazelrc, in one place so the
+# ~14 inline copies don't drift. The action pin is bumped here once (Dependabot
+# tracks action.yml files in the github-actions ecosystem).
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace). Every caller does
+# actions/checkout before this step.
+name: Set up Bazel
+description: Install Bazel (bazelisk) with the repo's standard caches and CI bazelrc.
 
-# Fails the PR when BUILD files are stale (gazelle) or unformatted. The single
-# remediation is `bazel run //:tidy`. Complements Aspect Workflows' build/test CI.
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-permissions:
-  contents: read
-
-# Cancel superseded PR runs; never cancel the push-to-main run.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-jobs:
-  tidy-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Run //:tidy and verify the tree is clean
-        run: |
-          bazel run //:tidy
-          changed="$(git status --porcelain -- ':!MODULE.bazel.lock')"
-          if [ -n "$changed" ]; then
-            echo "::error::BUILD files are stale or unformatted. Run 'bazel run //:tidy' and commit the result."
-            echo "$changed"
-            git diff -- ':!MODULE.bazel.lock'
-            exit 1
-          fi
+runs:
+  using: composite
+  steps:
+    - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+      with:
+        bazelisk-cache: true
+        repository-cache: true
+        bazelrc: |
+          common --announce_rc --color=yes --curses=yes
+          common --show_progress_rate_limit=60 --show_timestamps
