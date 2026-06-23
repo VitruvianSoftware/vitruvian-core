@@ -82,6 +82,7 @@ spec:
         helm:
           version: v3
           values: |
+            {{`
             server:
               extraFlags:
               - web.enable-lifecycle
@@ -557,6 +558,7 @@ spec:
                 enabled: true
                 size: 2Gi
                 storageClass: local-path
+            `}}
       destination:
         server: '{{.server}}'
         namespace: monitoring
