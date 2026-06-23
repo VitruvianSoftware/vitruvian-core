@@ -60,6 +60,13 @@ spec:
             sources:
               - service
               - ingress
+              - crd
+            # crd source serves DNSEndpoint CRs (e.g. the k8s-api control-plane
+            # endpoint record in platform-config). RBAC for dnsendpoints is added
+            # by the chart automatically when "crd" is in sources.
+            extraArgs:
+              - --crd-source-apiversion=externaldns.k8s.io/v1alpha1
+              - --crd-source-kind=DNSEndpoint
             domainFilters:
               - ipv1337.dev
             policy: sync
