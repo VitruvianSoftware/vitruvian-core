@@ -61,15 +61,18 @@ spec:
               - service
               - ingress
               - crd
-              - gateway-httproute
             # crd source serves DNSEndpoint CRs (e.g. the k8s-api control-plane
-            # endpoint record in platform-config). RBAC for dnsendpoints is added
-            # by the chart automatically when "crd" is in sources.
-            # gateway-httproute publishes HTTPRoute hostnames -> their parent
-            # Gateway's LB IP (the Cilium/Gateway-API migration). Gateways/HTTPRoutes
-            # RBAC is added by the chart automatically when the gateway source is set;
-            # the sync-enabled annotationFilter below still gates which HTTPRoutes
-            # are published.
+            # endpoint record in platform-config, and the Cloudflare Tunnel CNAMEs
+            # for external apps). RBAC for dnsendpoints is added by the chart
+            # automatically when "crd" is in sources.
+            # NOTE: the gateway-httproute source was tried (Gateway-API migration) but
+            # does NOT honor the sync-enabled annotationFilter — it publishes EVERY
+            # HTTPRoute's hostname -> its Gateway LB IP, which collides with the
+            # proxied tunnel CNAMEs that external apps need (A vs CNAME on the same
+            # name; external-dns discards the CNAME). External/tunnel apps therefore
+            # use explicit DNSEndpoint CRs. Reintroduce gateway-httproute only with a
+            # dedicated internal-only Gateway (or gateway-label-filter) once the
+            # production TLS apps migrate off Ingress.
             extraArgs:
               - --crd-source-apiversion=externaldns.k8s.io/v1alpha1
               - --crd-source-kind=DNSEndpoint
