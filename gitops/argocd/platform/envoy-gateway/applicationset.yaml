@@ -1,0 +1,70 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# envoy-gateway — Gateway API controller (Envoy data plane). Interim GatewayClass
+# for the Cilium + Gateway-API migration (Phase 0); Envoy is the same data plane
+# Cilium Gateway and GKE Gateway use, so HTTPRoutes carry over to the eventual
+# Cilium Gateway (Phase 3). Gateway API CRDs are already installed cluster-wide, so
+# this chart installs ONLY the controller (no CRDs).
+# See docs/design/cilium-gateway-api-migration.md.
+#   chart gateway-helm v1.8.1 (OCI docker.io/envoyproxy), ns envoy-gateway-system.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+  labels:
+    environment: envoy-gateway
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: envoy-gateway
+      labels:
+        app: envoy-gateway
+      annotations:
+        # Gateway controller — lands before the Gateway/HTTPRoute resources that
+        # depend on it (gateway-resources, wave 1).
+        argocd.argoproj.io/sync-wave: "-1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: oci://docker.io/envoyproxy
+        chart: gateway-helm
+        targetRevision: v1.8.1
+        helm:
+          version: v3
+          values: |
+            # Controller-only install; defaults suit a homelab. The Gateway
+            # data-plane (proxy) Service type + LB IP are set per-Gateway via the
+            # EnvoyProxy CR in gateway-resources, not here.
+      destination:
+        server: '{{.server}}'
+        namespace: envoy-gateway-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
