@@ -18,25 +18,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# cloudflared config — locally-managed tunnel (config in git, not the CF dashboard).
-# Single catch-all -> the platform Gateway LB IP (MetalLB 10.44.86.211, default-pool;
-# migration-stable, survives the Cilium cutover which reuses the pool). cloudflared
-# preserves the Host header, so the Gateway does all hostname routing via HTTPRoutes;
-# only hostnames whose DNS points at this tunnel ever reach here.
-apiVersion: v1
-kind: ConfigMap
+# whoami DNS — external endpoint published via external-dns's crd source. A PROXIED
+# CNAME whoami.ipv1337.dev -> <tunnel>.cfargotunnel.com routes the hostname through
+# Cloudflare's edge into the tunnel (cfargotunnel.com only resolves behind the proxy,
+# so cloudflare-proxied=true is REQUIRED). Explicit CNAME because the gateway-httproute
+# source would instead publish the internal Gateway LB IP.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
 metadata:
-  name: cloudflared-config
-  namespace: cloudflared
-data:
-  config.yaml: |
-    tunnel: 1f7b9704-bb66-41f4-966f-5bb722e3c10e
-    credentials-file: /etc/cloudflared/creds/credentials.json
-    metrics: 0.0.0.0:2000
-    no-autoupdate: true
-    # Force HTTP/2 over TCP 443. The cluster egress blocks cloudflared's default QUIC
-    # transport (outbound UDP/7844) — the QUIC dial to the edge times out while the TCP
-    # precheck succeeds. http2 is Cloudflare's supported QUIC-blocked transport.
-    protocol: http2
-    ingress:
-      - service: http://10.44.86.211:80
+  name: whoami-tunnel
+  namespace: whoami
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  endpoints:
+    - dnsName: whoami.ipv1337.dev
+      recordType: CNAME
+      recordTTL: 1
+      targets:
+        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+      providerSpecific:
+        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+          value: "true"
