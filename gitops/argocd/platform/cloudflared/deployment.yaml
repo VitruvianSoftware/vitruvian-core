@@ -64,9 +64,11 @@ spec:
             httpGet:
               path: /ready
               port: 2000
-            initialDelaySeconds: 10
+            # Tolerant: give the edge connection time to establish before restarting
+            # (a transient edge hiccup shouldn't crash-loop the connector).
+            initialDelaySeconds: 30
             periodSeconds: 30
-            failureThreshold: 3
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /ready
