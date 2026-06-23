@@ -25,6 +25,9 @@
 # this chart installs ONLY the controller (no CRDs).
 # See docs/design/cilium-gateway-api-migration.md.
 #   chart gateway-helm v1.8.1 (OCI docker.io/envoyproxy), ns envoy-gateway-system.
+#   The OCI registry is registered in oci-repo.yaml (enableOCI=true); the repoURL
+#   here is SCHEME-LESS on purpose — with an oci:// scheme ArgoCD drops the chart
+#   name from the OCI path and 401s.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -49,7 +52,7 @@ spec:
     spec:
       project: platform-project
       source:
-        repoURL: oci://docker.io/envoyproxy
+        repoURL: docker.io/envoyproxy
         chart: gateway-helm
         targetRevision: v1.8.1
         helm:
