@@ -1,0 +1,43 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# whoami HTTPRoute — attaches to the platform Gateway (cross-namespace; the Gateway
+# allows All). external-dns (gateway-httproute source) publishes whoami.ipv1337.dev
+# as a PROXIED CNAME to the tunnel (target annotation overrides the Gateway LB IP),
+# so this hostname is reached via Cloudflare's edge, not the internal tailnet path.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: whoami
+  namespace: whoami
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/target: 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+  hostnames:
+    - whoami.ipv1337.dev
+  rules:
+    - backendRefs:
+        - name: whoami
+          port: 80
