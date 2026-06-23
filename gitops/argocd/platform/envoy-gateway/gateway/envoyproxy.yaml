@@ -18,22 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# OCI registry registration — registers docker.io/envoyproxy as an anonymous
-# (public, no-credential) OCI Helm registry so ArgoCD's repo-server pulls the
-# gateway-helm chart via `helm pull oci://docker.io/envoyproxy/gateway-helm`.
-# REQUIRED: ArgoCD only treats a repoURL as OCI when a matching repository is
-# declared with enableOCI=true and type=helm; without it the repoURL is parsed
-# as an HTTPS Helm repo and the chart name is dropped from the OCI path
-# (envoyproxy/manifests/<v> -> 401). No credentials — docker.io OCI is public.
-apiVersion: v1
-kind: Secret
+# EnvoyProxy `platform` — data-plane config referenced by the `envoy` GatewayClass.
+# Provisions the proxy Service as a LoadBalancer so MetalLB assigns the next free
+# default-pool IP (10.44.86.211, after Traefik's .210), reachable over tailscale via
+# the existing 10.44.86.0/24 subnet route — same reachability as the current Traefik
+# ingress.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
 metadata:
-  name: oci-docker-io-envoyproxy
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  name: docker-io-envoyproxy
-  type: helm
-  url: docker.io/envoyproxy
-  enableOCI: "true"
+  name: platform
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: LoadBalancer
