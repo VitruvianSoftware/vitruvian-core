@@ -101,6 +101,431 @@ spec:
                   rules:
                   - expr: sum by (namespace, pod, container) (irate(container_cpu_usage_seconds_total{image!=""}[5m]))
                     record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate
+              alerting_rules.yml:
+                groups:
+
+                # ── 1. Watchdog (dead-man's-switch) ──────────────────────────
+                - name: watchdog
+                  rules:
+                  - alert: Watchdog
+                    expr: vector(1)
+                    labels:
+                      severity: none
+                    annotations:
+                      summary: "Alerting pipeline heartbeat (dead-man's-switch)"
+                      description: >-
+                        Always firing. Routed to healthchecks.io so that if dev-local,
+                        Prometheus, or Alertmanager dies, hc.io stops receiving pings
+                        and raises an external alarm.
+
+                # ── 2. Nodes (sleep-prone laptop VMs = #1 failure mode) ──────
+                - name: nodes
+                  rules:
+                  - alert: KubeNodeNotReady
+                    expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+                    for: 10m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "Node {{ $labels.node }} is NotReady"
+                      description: "{{ $labels.node }} NotReady for >10m (kube-state-metrics)."
+
+                  - alert: KubeNodeUnreachable
+                    expr: up{job="kubernetes-nodes"} == 0
+                    for: 5m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "Node {{ $labels.instance }} kubelet unreachable"
+                      description: "kubelet on {{ $labels.instance }} unscrapeable for >5m (node down/asleep)."
+
+                  - alert: KubeNodeMemoryPressure
+                    expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "MemoryPressure on {{ $labels.node }}"
+                      description: "{{ $labels.node }} MemoryPressure >5m; pods may be evicted."
+
+                  - alert: KubeNodeDiskPressure
+                    expr: kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "DiskPressure on {{ $labels.node }}"
+                      description: "{{ $labels.node }} DiskPressure >5m; image GC / evictions imminent."
+
+                  - alert: NodeFilesystemNearFull
+                    expr: |
+                      (
+                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        /
+                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                      ) * 100 < 12
+                      and
+                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <12% free"
+                      description: "{{ $value | printf \"%.1f\" }}% free on {{ $labels.mountpoint }} ({{ $labels.instance }}) for >30m."
+
+                  - alert: NodeFilesystemNearFullCritical
+                    expr: |
+                      (
+                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        /
+                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                      ) * 100 < 5
+                      and
+                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                    for: 10m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <5% free"
+                      description: "CRITICAL: {{ $value | printf \"%.1f\" }}% left on {{ $labels.mountpoint }} ({{ $labels.instance }})."
+
+                  - alert: NodeFilesystemInodesNearFull
+                    expr: |
+                      (
+                        node_filesystem_files_free{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        /
+                        node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                      ) * 100 < 10
+                      and
+                      node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Inodes <10% free on {{ $labels.mountpoint }} ({{ $labels.instance }})"
+                      description: "{{ $value | printf \"%.1f\" }}% inodes left on {{ $labels.mountpoint }} ({{ $labels.instance }}) for >30m."
+
+                  - alert: NodeMemoryHigh
+                    expr: |
+                      (
+                        1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+                      ) * 100 > 92
+                    for: 20m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Memory >92% on {{ $labels.instance }}"
+                      description: "{{ $labels.instance }} memory at {{ $value | printf \"%.1f\" }}% for >20m (OOM / eviction risk)."
+
+                # ── 3. etcd quorum PROXY (etcd metrics NOT scraped here) ─────
+                # Voter set hard-coded; re-check if cluster membership changes.
+                - name: etcd-quorum-proxy
+                  rules:
+                  - alert: EtcdServerNodeDown
+                    expr: up{job="kubernetes-nodes", instance=~"james-macbook-pro|james-mbp32|fedora"} == 0
+                    for: 3m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "etcd voter node {{ $labels.instance }} unreachable"
+                      description: "etcd server {{ $labels.instance }} kubelet down >3m. 1 voter lost; quorum holds (2/3). Wake it before a second drops."
+
+                  - alert: EtcdQuorumAtRisk
+                    expr: count(up{job="kubernetes-nodes", instance=~"james-macbook-pro|james-mbp32|fedora"} == 0) >= 2
+                    for: 1m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "etcd quorum LOST — {{ $value }} of 3 voters down"
+                      description: "2+ of 3 etcd voters (james-macbook-pro/james-mbp32/fedora) unreachable. API server read-only / unavailable. Wake a laptop NOW."
+
+                  - alert: EtcdNoLeader
+                    expr: max(etcd_server_has_leader) == 0
+                    for: 1m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "etcd reports no leader"
+                      description: "etcd_server_has_leader==0 (inert until an etcd scrape job exists; harmless if absent)."
+
+                # ── 4. Runtime wedge (cri-dockerd/shim incident as SYMPTOM) ──
+                - name: runtime-wedge
+                  rules:
+                  - alert: NodeContainersStuckWaiting
+                    expr: |
+                      sum by (node) (
+                        kube_pod_container_status_waiting
+                        * on(namespace, pod) group_left(node) kube_pod_info
+                      ) >= 3
+                    for: 10m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "{{ $value }} containers stuck waiting on node {{ $labels.node }}"
+                      description: >-
+                        {{ $value }} containers in Waiting on {{ $labels.node }} for >10m while
+                        other nodes run — classic cri-dockerd/containerd shim wedge
+                        (FailedCreatePodSandbox / 'unsupported protocol'). Check pod events on
+                        {{ $labels.node }}; restart k3s/docker on that node.
+
+                  - alert: PodNotReadyLong
+                    expr: |
+                      sum by (namespace, pod) (
+                        kube_pod_status_phase{phase=~"Pending|Unknown"}
+                      ) > 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} stuck Pending/Unknown >15m"
+                      description: "{{ $labels.namespace }}/{{ $labels.pod }} has not reached Running for >15m."
+
+                # ── 5. Workloads (node-exporter/metallb noise routed to null) ─
+                - name: workloads
+                  rules:
+                  - alert: KubePodCrashLooping
+                    expr: |
+                      increase(
+                        kube_pod_container_status_restarts_total{
+                          container!~"node-exporter|.*metallb.*|speaker"
+                        }[15m]
+                      ) > 3
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "CrashLoop: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
+                      description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted >3x in 15m."
+
+                  - alert: KubePodCrashLoopingNoisy
+                    expr: |
+                      increase(
+                        kube_pod_container_status_restarts_total{
+                          container=~"node-exporter|.*metallb.*|speaker"
+                        }[1h]
+                      ) > 10
+                    for: 30m
+                    labels:
+                      severity: noise
+                    annotations:
+                      summary: "Chronic crashloop (known noise): {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
+                      description: "Known-noisy {{ $labels.container }} flapping. Informational only; routed to null receiver."
+
+                  - alert: KubeDeploymentReplicasMismatch
+                    expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+                    for: 20m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} under desired replicas"
+                      description: "Available != desired for >20m ({{ $labels.namespace }}/{{ $labels.deployment }})."
+
+                  - alert: KubeStatefulSetReplicasMismatch
+                    expr: kube_statefulset_status_replicas_ready != kube_statefulset_status_replicas
+                    for: 20m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} under desired replicas"
+                      description: "Ready != desired for >20m ({{ $labels.namespace }}/{{ $labels.statefulset }})."
+
+                  - alert: KubeDaemonSetMisScheduled
+                    expr: kube_daemonset_status_number_misscheduled > 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} mis-scheduled"
+                      description: "{{ $value }} pods of {{ $labels.namespace }}/{{ $labels.daemonset }} running where they shouldn't for >15m."
+
+                  - alert: KubeDaemonSetNotScheduled
+                    expr: |
+                      kube_daemonset_status_desired_number_scheduled
+                        - kube_daemonset_status_current_number_scheduled > 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} not fully scheduled"
+                      description: "{{ $value }} pods of {{ $labels.namespace }}/{{ $labels.daemonset }} not scheduled for >15m."
+
+                # ── 6. Backups (must not silently fail) ──────────────────────
+                - name: backups
+                  rules:
+                  - alert: CronJobBackupStale
+                    expr: |
+                      (
+                        time() - kube_cronjob_status_last_successful_time{
+                          cronjob=~"pg-dump-nfs|prometheus-nas-backup"
+                        }
+                      ) > 36 * 3600
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} stale (>36h)"
+                      description: >-
+                        {{ $labels.namespace }}/{{ $labels.cronjob }} last succeeded
+                        {{ $value | humanizeDuration }} ago (>36h). NAS backups failing
+                        silently — check the CronJob and the NAS mount.
+
+                  - alert: CronJobNeverSucceeded
+                    expr: |
+                      kube_cronjob_status_last_successful_time{
+                        cronjob=~"pg-dump-nfs|prometheus-nas-backup"
+                      } == 0
+                    for: 6h
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Backup CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} has never succeeded"
+                      description: "No successful run on record for {{ $labels.namespace }}/{{ $labels.cronjob }}."
+
+                  - alert: KubeJobFailed
+                    expr: kube_job_status_failed > 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed"
+                      description: "{{ $labels.namespace }}/{{ $labels.job_name }} has {{ $value }} failed pod(s)."
+
+                # ── 7. CNPG Postgres (ready instances via KSM, not cnpg labels) ─
+                - name: cnpg
+                  rules:
+                  - alert: CNPGClusterUnderReplicated
+                    expr: |
+                      sum by (namespace) (
+                        kube_pod_status_ready{condition="true"}
+                        * on(namespace, pod) group_left
+                        kube_pod_info{created_by_kind="Cluster", namespace=~"cnpg-cluster|grafana"}
+                      ) < 3
+                    for: 10m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "CNPG cluster in {{ $labels.namespace }} has <3 ready instances"
+                      description: >-
+                        Only {{ $value }} ready CNPG Postgres instance(s) in {{ $labels.namespace }}
+                        (expected 3) for >10m. Likely a sleeping node + hostname-pinned local-path
+                        PV stranding a replica.
+
+                  - alert: CNPGCollectorDown
+                    expr: cnpg_collector_up == 0
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "CNPG metrics collector down ({{ $labels.namespace }})"
+                      description: "cnpg_collector_up==0 for >10m; CNPG instance metrics unavailable."
+
+                # ── 8. Storage (PVC/PV) ──────────────────────────────────────
+                - name: storage
+                  rules:
+                  - alert: PersistentVolumeClaimNearFull
+                    expr: |
+                      (
+                        kubelet_volume_stats_available_bytes
+                        /
+                        kubelet_volume_stats_capacity_bytes
+                      ) * 100 < 12
+                    for: 20m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <12% free"
+                      description: "{{ $value | printf \"%.1f\" }}% space left on {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} for >20m."
+
+                  - alert: PersistentVolumeClaimCritical
+                    expr: |
+                      (
+                        kubelet_volume_stats_available_bytes
+                        /
+                        kubelet_volume_stats_capacity_bytes
+                      ) * 100 < 5
+                    for: 5m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} <5% free"
+                      description: "CRITICAL: {{ $value | printf \"%.1f\" }}% left on {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}."
+
+                  - alert: PersistentVolumeFailed
+                    expr: kube_persistentvolume_status_phase{phase="Failed"} == 1
+                    for: 5m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "PersistentVolume {{ $labels.persistentvolume }} Failed"
+                      description: "PV {{ $labels.persistentvolume }} in phase=Failed (reclaim/detach error)."
+
+                  - alert: PersistentVolumeClaimPending
+                    expr: kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} Pending"
+                      description: "PVC unbound (no provisioner / node affinity unmet) for >15m."
+
+                # ── 9. Certificates (cert-manager metrics present) ───────────
+                - name: certificates
+                  rules:
+                  - alert: CertManagerCertExpiringSoon
+                    expr: certmanager_certificate_expiration_timestamp_seconds - time() < 7 * 24 * 3600
+                    for: 1h
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} expires <7d"
+                      description: "{{ $labels.name }} ({{ $labels.namespace }}) expires in {{ $value | humanizeDuration }}."
+
+                  - alert: CertManagerCertNotReady
+                    expr: certmanager_certificate_ready_status{condition="True"} == 0
+                    for: 1h
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} not Ready"
+                      description: "{{ $labels.name }} ({{ $labels.namespace }}) not-Ready for >1h."
+
+                # ── 10. Monitoring self ──────────────────────────────────────
+                - name: monitoring-self
+                  rules:
+                  - alert: PrometheusConfigReloadFailed
+                    expr: prometheus_config_last_reload_successful == 0
+                    for: 10m
+                    labels:
+                      severity: page
+                    annotations:
+                      summary: "Prometheus config reload failed"
+                      description: "prometheus_config_last_reload_successful==0 for >10m — running config stale; new rules/alerts NOT loaded."
+
+                  - alert: PrometheusTSDBCompactionsFailing
+                    expr: increase(prometheus_tsdb_compactions_failed_total[3h]) > 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Prometheus TSDB compactions failing"
+                      description: "{{ $value }} failed TSDB compaction(s) in 3h — disk/corruption risk on the 25Gi PVC."
+
+                  - alert: PrometheusNotificationsDropped
+                    expr: increase(prometheus_notifications_dropped_total[15m]) > 0
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Prometheus dropping alert notifications to Alertmanager"
+                      description: "{{ $value }} notifications dropped in 15m — Alertmanager may be down/unreachable."
+
+                  - alert: PrometheusTargetDown
+                    expr: up{job!~"node-exporter|.*metallb.*"} == 0
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Scrape target down: {{ $labels.job }} / {{ $labels.instance }}"
+                      description: "{{ $labels.job }} target {{ $labels.instance }} unscrapeable for >15m."
             extraScrapeConfigs: |2
 
               - job_name: 'node-exporter'
