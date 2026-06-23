@@ -20,9 +20,9 @@
 #
 # whoami HTTPRoute — attaches to the platform Gateway (cross-namespace; the Gateway
 # allows All). DNS for whoami.ipv1337.dev is owned by the DNSEndpoint CR (a PROXIED
-# CNAME to the tunnel), NOT by external-dns's gateway-httproute source: that source
-# publishes the Gateway's LB IP (10.44.86.211), which Cloudflare rejects as a proxied
-# A-record target. So this route carries no external-dns annotations.
+# CNAME to the tunnel), NOT external-dns's gateway-httproute source. The match +
+# backendRef fields below are written explicitly to the Gateway-API server defaults
+# so ArgoCD doesn't flag them as drift (it doesn't normalize CRD-defaulted fields).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -35,6 +35,13 @@ spec:
   hostnames:
     - whoami.ipv1337.dev
   rules:
-    - backendRefs:
-        - name: whoami
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: whoami
           port: 80
+          weight: 1
