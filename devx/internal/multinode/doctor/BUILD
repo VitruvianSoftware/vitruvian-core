@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "doctor",
@@ -12,4 +12,10 @@ go_library(
         "//devx/internal/multinode/remote",
         "//devx/internal/multinode/util",
     ],
+)
+
+go_test(
+    name = "doctor_test",
+    srcs = ["bridged_ip_test.go"],
+    embed = [":doctor"],
 )
