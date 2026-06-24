@@ -101,12 +101,9 @@ spec:
               # overrides the chart default topology.kubernetes.io/zone.
               affinity:
                 topologyKey: kubernetes.io/hostname
-                # Pin every instance to a WIRED node. WiFi nodes (~230ms RTT + loss)
-                # can't carry a replica's base-backup and strand the replica if the
-                # laptop sleeps (Grafana-cascade pattern). node.ipv1337.dev/link is
-                # set by devx provisioning + applied to the live nodes (PR #269).
-                nodeSelector:
-                  node.ipv1337.dev/link: wired
+                # NOTE: link=wired nodeSelector reverted (issue #271). The overlay
+                # base-backup stall makes relocating a replica impossible; removing
+                # the pin lets the Pending replica rebind its existing PVC.
               # Annotation-based scrape (no ServiceMonitor/PodMonitor here).
               inheritedMetadata:
                 annotations:

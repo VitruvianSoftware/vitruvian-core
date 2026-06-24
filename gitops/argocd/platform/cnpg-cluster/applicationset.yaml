@@ -86,9 +86,11 @@ spec:
             # rollout / PVC churn — keep byte-for-byte equivalent at cutover.
             mode: standalone
             cluster:
-              # 3 instances (1 primary + 2 standbys) — HA via CNPG streaming
-              # replication, not the storage layer.
-              instances: 3
+              # 2 instances (1 primary + 1 standby) — reduced from 3 because the
+              # pod-overlay base-backup stall (issue #271) prevents building a 3rd
+              # replica at all; 2 still survives a single node loss. Restore to 3
+              # once the overlay base-backup bug is fixed.
+              instances: 2
               # Spread instances 1-per-node so a single node loss never takes the
               # whole DB down. WITHOUT this, the chart default topologyKey is
               # topology.kubernetes.io/zone — a NO-OP on these unlabelled nodes — so
@@ -97,12 +99,9 @@ spec:
               # 2/3). See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
               affinity:
                 topologyKey: kubernetes.io/hostname
-                # Pin every instance to a WIRED node. WiFi nodes (~230ms RTT + loss)
-                # can't carry a replica's base-backup and strand the replica if the
-                # laptop sleeps (Grafana-cascade pattern). node.ipv1337.dev/link is
-                # set by devx provisioning + applied to the live nodes (PR #269).
-                nodeSelector:
-                  node.ipv1337.dev/link: wired
+                # NOTE: link=wired nodeSelector reverted (issue #271). The overlay
+                # base-backup stall makes relocating an existing replica impossible,
+                # so keep replicas where they are (incl. WiFi nodes) until it's fixed.
               storage:
                 # LIVE DATA. local-path is node-local + hostname-pinned; these
                 # PVCs must be adopted in place (no resize, no class change).
