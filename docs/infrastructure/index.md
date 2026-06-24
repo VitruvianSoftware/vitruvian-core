@@ -17,6 +17,11 @@ the same `bazel run` wrappers.
 - **Just want a command or a fact?** See the [Reference](reference.md).
 - **Wondering what survives a node failure?** See the
   [Resilience catalog](resilience-catalog.md).
+- **Curious how the dev cluster actually runs?** See the
+  [dev-local Cluster Architecture](dev-local-cluster.md) — nodes, the Cilium CNI,
+  ingress, GitOps, and data planes.
+- **Building locally and shipping to GKE?** See [dev-local vs GKE](dev-local-vs-gke.md)
+  for what's identical, analogous, and divergent between the two.
 
 ## The estate at a glance
 
