@@ -97,6 +97,12 @@ spec:
               # 2/3). See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
               affinity:
                 topologyKey: kubernetes.io/hostname
+                # Pin every instance to a WIRED node. WiFi nodes (~230ms RTT + loss)
+                # can't carry a replica's base-backup and strand the replica if the
+                # laptop sleeps (Grafana-cascade pattern). node.ipv1337.dev/link is
+                # set by devx provisioning + applied to the live nodes (PR #269).
+                nodeSelector:
+                  node.ipv1337.dev/link: wired
               storage:
                 # LIVE DATA. local-path is node-local + hostname-pinned; these
                 # PVCs must be adopted in place (no resize, no class change).
