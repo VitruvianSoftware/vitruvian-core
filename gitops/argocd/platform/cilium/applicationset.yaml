@@ -22,10 +22,10 @@
 # migration. Chart pinned 1.17.17 (helm.cilium.io). Phase 2 of
 # docs/design/cilium-gateway-api-migration.md.
 #
-# Rolling migration safety:
-#   - The agent DaemonSet is GATED by nodeSelector cilium.ipv1337.dev/ready=true,
-#     so installing this App on the still-Flannel cluster schedules ZERO agents
-#     (operator + CRDs only). Each node is labeled as it is reconfigured to Cilium.
+# Cilium is live on all nodes (Flannel + kube-proxy migrated out, 2026-06-24). The
+# rolling migration used a nodeSelector gate (now removed) so the agent ran only on
+# reconfigured nodes; servers got --flannel-backend=none/--disable-kube-proxy in
+# /etc/rancher/k3s/config.yaml, agents inherited it. Notes:
 #   - ipam=kubernetes reuses the existing per-node Node.spec.podCIDR (10.42.x/24) —
 #     no IPAM conflict with Flannel, pod CIDR preserved.
 #   - kube-proxy-replacement needs a DIRECT API endpoint (kube-proxy is gone):
@@ -37,7 +37,9 @@
 #   - l2announcements feature ON but no CiliumL2AnnouncementPolicy/LB-IPAM pool yet
 #     (those land at the Stage-4 MetalLB cutover) -> announces nothing until then.
 #   - envoy.enabled false -> embedded Envoy (gated with the agent), no un-gated DS.
-#   - hubble deferred to Stage 5 (relay would be NotReady with 0 agents).
+#   - hubble enabled (relay + UI) now that all agents are up.
+#   - L2/LB-IPAM feature ON but no pool/policy CR yet — MetalLB still owns the LB IPs
+#     (.210/.211); MetalLB->Cilium-L2 cutover is a follow-up (they coexist fine).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -93,17 +95,21 @@ spec:
             gatewayAPI:
               enabled: false
             hubble:
-              enabled: false
+              enabled: true
+              relay:
+                enabled: true
+              ui:
+                enabled: true
             envoy:
               enabled: false
             operator:
               replicas: 2
               rollOutPods: true
             rollOutCiliumPods: true
-            # MIGRATION GATE — agent runs only on reconfigured nodes. Removed in
-            # Stage 5 (all nodes Cilium) so future nodes get Cilium by default.
-            nodeSelector:
-              cilium.ipv1337.dev/ready: "true"
+            # Migration nodeSelector gate REMOVED (Stage 5) — all nodes are Cilium, so
+            # the agent runs everywhere by default and future nodes get Cilium with no
+            # per-node label. The cilium.ipv1337.dev/ready labels on the nodes are now
+            # inert and can be cleaned up.
       destination:
         server: '{{.server}}'
         namespace: kube-system
