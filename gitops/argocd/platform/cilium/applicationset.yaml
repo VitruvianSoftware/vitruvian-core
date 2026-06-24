@@ -89,7 +89,8 @@ spec:
               - tailscale0
               - lima+
               - enp+
-              - eth+
+              - eno+   # nuc9's LAN NIC is eno1 — without this Cilium skips BPF-masquerade
+              - eth+    # on it and nuc9 CoreDNS upstream forwards get dropped
             mtu: 1280
             enableIPv4Masquerade: true
             bpf:
