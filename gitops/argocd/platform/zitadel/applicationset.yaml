@@ -1,0 +1,248 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# zitadel — self-hosted Zitadel identity platform (OIDC/OAuth2/SAML + the v2
+# login) for dev and the first-party apps we build. This is the GitOps-native,
+# HA promotion of the prior throwaway eval.
+#
+# HA: 2 API/console replicas + 2 v2-login replicas, each hostname-anti-affine
+# with a minAvailable=1 PDB; Zitadel is stateless/event-sourced so it scales out
+# horizontally. All durable state lives in the zitadel-db CNPG cluster (HA
+# Postgres, sibling AppSet). Every secret is sealed: the 32-byte master key
+# (SealedSecret zitadel-masterkey, key `masterkey`); the DB password — injected
+# via env from the CNPG-managed role secret zitadel-db-app-credentials, the
+# SINGLE source of truth (CNPG sets the role password from it, Zitadel reads the
+# same secret), so it is never duplicated; and the one-time bootstrap admin
+# (SealedSecret zitadel-secret-config, key `config-yaml`). NOTHING sensitive is
+# in this file.
+#
+# EDGE (PUBLIC): exposed on the public internet at https://auth.ipv1337.dev — a
+# top-level name (not .lab) because it's an IdP for apps beyond the homelab. The
+# path is Cloudflare (edge TLS, PROXIED) -> the cloudflared Tunnel (catch-all) ->
+# the platform Envoy Gateway -> an HTTPRoute (in extraManifests). Zitadel v4
+# splits the login into a separate pod, so the HTTPRoute is PATH-ROUTED:
+# /ui/v2/login -> the login Deployment, everything else -> the API/console.
+# ExternalSecure + ExternalPort 443 (TLS.Enabled=false in-pod; Cloudflare
+# terminates) so the issuer the login-client validates is https://auth.ipv1337.dev.
+# A PROXIED DNSEndpoint CNAME (auth.ipv1337.dev -> the tunnel) + the HTTPRoute ride
+# in extraManifests. NO Cloudflare Access in front (you cannot gate an IdP behind
+# Access — it breaks OIDC); Access is opt-in per-host, so this stays public.
+# Homelab availability caveat applies; the name is portable to GKE/Zitadel Cloud.
+#
+# MASTER KEY (critical): losing zitadel-masterkey means losing ALL encrypted data
+# (tokens, keys, secrets). It is sealed in git AND must be backed up out-of-band
+# with the sealed-secrets controller key (bazel run //tools/gitops:sealed-secrets-backup,
+# Bitwarden). A cluster rebuild that restores the controller key restores it.
+#   chart zitadel-10.0.4 (https://charts.zitadel.com), Zitadel v4.x, ns zitadel,
+#   external CNPG DB zitadel-db-cluster-rw, FirstInstance org "Vitruvian".
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: zitadel
+  namespace: argocd
+  labels:
+    environment: zitadel
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: zitadel
+      labels:
+        app: zitadel
+      annotations:
+        # After its DB (zitadel-db, wave 0) and the sealed secrets (wave -5).
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.zitadel.com
+        chart: zitadel
+        targetRevision: "10.0.4"
+        helm:
+          version: v3
+          values: |
+            # 2 API/console replicas across distinct nodes.
+            replicaCount: 2
+            zitadel:
+              # Master key + sensitive config from SealedSecrets (never inline).
+              masterkeySecretName: zitadel-masterkey
+              # config-yaml carries ONLY the one-time FirstInstance bootstrap
+              # admin (the DB password comes from env, below). Merged into config
+              # at startup.
+              configSecretName: zitadel-secret-config
+              configSecretKey: config-yaml
+              # Non-secret connection config; the DB password is supplied by the
+              # ZITADEL_* env vars below (which override config). configmap values
+              # take priority over config-yaml for shared keys.
+              configmapConfig:
+                ExternalDomain: auth.ipv1337.dev
+                ExternalPort: 443
+                ExternalSecure: true
+                # TLS terminated at Cloudflare's edge (the tunnel is plaintext HTTP
+                # in-cluster); ExternalSecure=true keeps the issuer https://auth.ipv1337.dev.
+                TLS:
+                  Enabled: false
+                Database:
+                  Postgres:
+                    Host: zitadel-db-cluster-rw.zitadel.svc.cluster.local
+                    Port: 5432
+                    Database: zitadel
+                    MaxOpenConns: 20
+                    MaxIdleConns: 10
+                    # Runtime app user (owns the zitadel db) — password in config-yaml.
+                    User:
+                      Username: zitadel
+                      SSL:
+                        Mode: require
+                    # Migration/admin user — same app user (owns the db, pre-created
+                    # by CNPG initdb so no CREATE DATABASE / superuser is needed).
+                    Admin:
+                      Username: zitadel
+                      SSL:
+                        Mode: require
+            # DB password from the CNPG-managed role secret (single source of
+            # truth — CNPG sets the `zitadel` role password from this same secret
+            # via initdb). ZITADEL_* env overrides config and reaches exactly the
+            # Postgres-connecting pods (start Deployment + init/setup jobs), so the
+            # password is never copied into config-yaml and cannot drift.
+            env:
+              - name: ZITADEL_DATABASE_POSTGRES_USER_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: zitadel-db-app-credentials
+                    key: password
+              - name: ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: zitadel-db-app-credentials
+                    key: password
+            # HA for the API/console pods.
+            pdb:
+              enabled: true
+              minAvailable: 1
+            affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app.kubernetes.io/component: start
+                    topologyKey: kubernetes.io/hostname
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+            # Public edge: Cloudflare Tunnel (a single catch-all) -> the platform
+            # Envoy Gateway -> the HTTPRoute below. NO Traefik ingress and NO
+            # cert-manager — Cloudflare terminates TLS at its edge for the proxied
+            # hostname, and the chart's own ingress stays off.
+            ingress:
+              enabled: false
+            extraManifests:
+              # Public DNS: a PROXIED CNAME auth.ipv1337.dev -> the Cloudflare Tunnel
+              # (<tunnel-id>.cfargotunnel.com only resolves behind the proxy, so
+              # proxied=true is REQUIRED). Published by external-dns's crd source.
+              - apiVersion: externaldns.k8s.io/v1alpha1
+                kind: DNSEndpoint
+                metadata:
+                  name: zitadel-tunnel
+                  namespace: zitadel
+                  annotations:
+                    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+                    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+                spec:
+                  endpoints:
+                    - dnsName: auth.ipv1337.dev
+                      recordType: CNAME
+                      recordTTL: 1
+                      targets:
+                        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+                      providerSpecific:
+                        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+                          value: "true"
+              # Public routing on the platform Gateway, path-split: /ui/v2/login ->
+              # the login pod (3000), everything else -> the API/console (8080).
+              # group+kind set explicitly to the Gateway-API server defaults so
+              # ArgoCD doesn't perpetually flag the HTTPRoute OutOfSync (cf. PR #261).
+              - apiVersion: gateway.networking.k8s.io/v1
+                kind: HTTPRoute
+                metadata:
+                  name: zitadel
+                  namespace: zitadel
+                spec:
+                  parentRefs:
+                    - group: gateway.networking.k8s.io
+                      kind: Gateway
+                      name: platform
+                      namespace: envoy-gateway-system
+                  hostnames:
+                    - auth.ipv1337.dev
+                  rules:
+                    - matches:
+                        - path:
+                            type: PathPrefix
+                            value: /ui/v2/login
+                      backendRefs:
+                        - group: ""
+                          kind: Service
+                          name: zitadel-login
+                          port: 3000
+                          weight: 1
+                    - matches:
+                        - path:
+                            type: PathPrefix
+                            value: /
+                      backendRefs:
+                        - group: ""
+                          kind: Service
+                          name: zitadel
+                          port: 8080
+                          weight: 1
+            # Zitadel v4 split login (separate Next.js Deployment).
+            login:
+              enabled: true
+              # 2 login replicas across distinct nodes.
+              replicaCount: 2
+              pdb:
+                enabled: true
+                minAvailable: 1
+              affinity:
+                podAntiAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    - labelSelector:
+                        matchLabels:
+                          app.kubernetes.io/component: login
+                      topologyKey: kubernetes.io/hostname
+              # Login routing (/ui/v2/login) is handled by the shared HTTPRoute in
+              # extraManifests above; the chart's own login ingress stays off.
+              ingress:
+                enabled: false
+      destination:
+        server: '{{.server}}'
+        namespace: zitadel
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

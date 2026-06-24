@@ -1,0 +1,168 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# zitadel-db — HA Postgres for the self-hosted Zitadel identity platform.
+# A CloudNativePG cluster (1 primary + 2 streaming standbys) on local-path,
+# backing Zitadel (auth.lab.ipv1337.dev). Unlike grafana-db / cnpg-cluster this
+# is a NET-NEW cluster (no Pulumi adoption / recovery history) — CNPG bootstraps
+# it fresh via initdb, so no managedFields / bootstrap / serverName ignores are
+# needed. Mirrors the established CNPG pattern:
+#   chart cluster-0.2.1 (https://cloudnative-pg.github.io/charts), ns zitadel,
+#   cluster.instances=3, hostname-spread affinity (survive a single node loss),
+#   storage 8Gi/local-path (node-local reliable I/O; Zitadel is event-sourced so
+#   the store grows — local-path PVCs cannot shrink, size is pinned), memory
+#   request==limit 1Gi + cpu request 500m (deliberately NO cpu limit: a cpu
+#   limit==request caused CFS throttling that SIGTERM'd a recovering replica,
+#   2026-06-13), async streaming replication (CNPG default — NO `synchronous`
+#   block: laptop nodes sleep, sync would stall the primary), initdb
+#   db/owner=zitadel from SealedSecret zitadel-db-app-credentials, prometheus
+#   scrape on :9187, backups -> MinIO s3://zitadel-db-backups/ (gzip WAL+data,
+#   SSE off, daily 00:00:00 base backup, 7d retention) via SealedSecret
+#   zitadel-db-minio-backup-creds.
+#
+# DATA RETENTION: the 3 instance PVCs (zitadel-db-cluster-1/-2/-3 on local-path)
+# carry the LIVE identity database (users, orgs, projects, the event store) and
+# MUST survive — CNPG owns the PVCs (not chart-rendered), so an ownership handoff
+# never deletes them; size pinned so a chart bump can't request a shrink. Never
+# prune the PVCs/PVs. CRDs are owned out-of-band by the cnpg-operator path.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: zitadel-db
+  namespace: argocd
+  labels:
+    environment: zitadel-db
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: zitadel-db
+      labels:
+        app: zitadel-db
+      annotations:
+        # The CNPG Cluster is a workload: it must sync AFTER the CNPG operator
+        # (cnpg-operator AppSet, sync-wave -1) and its CRDs are present.
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://cloudnative-pg.github.io/charts
+        chart: cluster
+        # Pinned to the version already proven on grafana-db / cnpg-cluster.
+        targetRevision: "0.2.1"
+        helm:
+          version: v3
+          values: |
+            cluster:
+              # 3 keeps a primary + replica through a single node loss.
+              instances: 3
+              # Spread 1-per-node (no zone labels on this homelab); overrides the
+              # chart default topology.kubernetes.io/zone (a no-op here).
+              affinity:
+                topologyKey: kubernetes.io/hostname
+              # Annotation-based scrape (no ServiceMonitor/PodMonitor).
+              inheritedMetadata:
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "9187"
+              # Memory request==limit pins the floor (no OOM/evict) with headroom
+              # for Zitadel's migration + event-store load. NO cpu limit on
+              # purpose (cpu limit==request caused CFS throttling, 2026-06-13).
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  memory: 1Gi
+              # local-path (node-local, reliable I/O) — NOT Longhorn. Size pinned
+              # so a chart bump can't request a shrink (local-path can't shrink).
+              storage:
+                size: 8Gi
+                storageClass: local-path
+              # Auto-managed postgres superuser secret (zitadel-db-cluster-superuser)
+              # for ops/break-glass; Zitadel itself uses only the app user.
+              enableSuperuserAccess: true
+              superuserSecret: ""
+              monitoring:
+                enabled: false
+                podMonitor:
+                  enabled: true
+              # Fresh bootstrap: create db `zitadel` owned by `zitadel`, with the
+              # password from SealedSecret zitadel-db-app-credentials (basic-auth).
+              # CNPG ignores this block once the cluster is initialized.
+              initdb:
+                database: zitadel
+                owner: zitadel
+                secret:
+                  name: zitadel-db-app-credentials
+            # Continuous WAL archiving + daily base backups to MinIO. SSE disabled
+            # (MinIO has none) to avoid barman archive failures.
+            backups:
+              enabled: true
+              provider: s3
+              endpointURL: http://minio.minio.svc.cluster.local:9000
+              destinationPath: s3://zitadel-db-backups/
+              s3:
+                region: us-east-1
+                bucket: zitadel-db-backups
+              # S3 creds from SealedSecret zitadel-db-minio-backup-creds (no
+              # plaintext in git); create=false → reference the existing secret.
+              secret:
+                create: false
+                name: zitadel-db-minio-backup-creds
+              wal:
+                compression: gzip
+                encryption: ""
+              data:
+                compression: gzip
+                encryption: ""
+              scheduledBackups:
+                - name: daily-backup
+                  schedule: 0 0 0 * * *
+                  backupOwnerReference: self
+                  method: barmanObjectStore
+              retentionPolicy: 7d
+      destination:
+        server: '{{.server}}'
+        namespace: zitadel
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          # CNPG Cluster CR is large/CRD-typed; CSA avoids the 256KB client-side
+          # last-applied annotation failure (matches grafana-db / cnpg-cluster).
+          - ServerSideApply=true
+          # Honor ignoreDifferences DURING sync: chart 0.2.1 renders backup
+          # wal/data `encryption: null`, which CNPG rejects under SSA — drop those
+          # paths from the apply so the live (absent) value is preserved.
+          - RespectIgnoreDifferences=true
+      # chart 0.2.1 always emits backup wal/data encryption as null (our empty
+      # value); CNPG rejects null. Ignore both so the SSA sync succeeds (matches
+      # grafana-db / cnpg-cluster).
+      ignoreDifferences:
+        - group: postgresql.cnpg.io
+          kind: Cluster
+          jsonPointers:
+            - /spec/backup/barmanObjectStore/wal/encryption
+            - /spec/backup/barmanObjectStore/data/encryption
