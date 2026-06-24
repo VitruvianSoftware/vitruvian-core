@@ -103,6 +103,19 @@ spec:
               storage:
                 size: 8Gi
                 storageClass: local-path
+              # CNPG defaults wal_sender_timeout to 5s (aggressive failover
+              # detection). The homelab Tailscale mesh has high cross-node RTT
+              # (measured avg ~400ms, spiking ~1s) and an initial base-backup
+              # SATURATES that laggy link, blowing past 5s — so the primary kills
+              # the replica's pg_basebackup ("server closed the connection
+              # unexpectedly") and the INITIAL join never completes. (Steady-state
+              # WAL trickle stays under 5s, which is why the older grafana-db /
+              # cnpg-cluster joined fine and keep replicating.) Raise it so a fresh
+              # join survives the laggy window; async replication is unaffected (a
+              # dead async standby never blocks the primary).
+              postgresql:
+                parameters:
+                  wal_sender_timeout: "600s"
               # Auto-managed postgres superuser secret (zitadel-db-cluster-superuser)
               # for ops/break-glass; Zitadel itself uses only the app user.
               enableSuperuserAccess: true
