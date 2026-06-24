@@ -146,6 +146,12 @@ spec:
             pdb:
               enabled: true
               minAvailable: 1
+            # Pin the API/console pods to WIRED nodes: they are DB-chatty (every
+            # console request hits zitadel-db on fedora), so a pod on a WiFi node
+            # adds ~230ms mesh latency per query -> a sluggish console + canceled
+            # queries. Stateless, so this just reschedules (no CNPG/#271 risk).
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             affinity:
               podAntiAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
@@ -233,6 +239,9 @@ spec:
               pdb:
                 enabled: true
                 minAvailable: 1
+              # Pin the v2-login pods to WIRED nodes too (same DB-chatty reason).
+              nodeSelector:
+                node.ipv1337.dev/link: wired
               affinity:
                 podAntiAffinity:
                   requiredDuringSchedulingIgnoredDuringExecution:
