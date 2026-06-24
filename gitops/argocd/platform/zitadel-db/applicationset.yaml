@@ -84,6 +84,26 @@ spec:
               # chart default topology.kubernetes.io/zone (a no-op here).
               affinity:
                 topologyKey: kubernetes.io/hostname
+                # Keep instances on the LAN-local nodes. james-mbp32 / james-mbp16
+                # are a REMOTE site (~230ms RTT + packet loss, over the internet via
+                # Tailscale); a replica's initial pg_basebackup is a sustained
+                # high-throughput stream that cannot survive that link, so the join
+                # never completes and thrashes the primary. The LAN nodes
+                # (fedora/nuc9/james-macbook-pro/james-mbp) are ~1-3ms, where the
+                # base-backup finishes in seconds. Streaming replication wants low
+                # latency regardless; the remote machines are DR territory (served by
+                # the MinIO backups), not sync replicas.
+                # TODO: swap the hostname list for a node label (e.g. site=lan) once
+                # the devx node provisioning sets one.
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                      - matchExpressions:
+                          - key: kubernetes.io/hostname
+                            operator: NotIn
+                            values:
+                              - james-mbp32
+                              - james-mbp16
               # Annotation-based scrape (no ServiceMonitor/PodMonitor).
               inheritedMetadata:
                 annotations:
