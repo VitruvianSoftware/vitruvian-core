@@ -108,22 +108,27 @@ spec:
                     Database: zitadel
                     MaxOpenConns: 20
                     MaxIdleConns: 10
-                    # Runtime app user (owns the zitadel db) — password in config-yaml.
+                    # Runtime app user (owns the zitadel db) — password via env below.
                     User:
                       Username: zitadel
                       SSL:
                         Mode: require
-                    # Migration/admin user — same app user (owns the db, pre-created
-                    # by CNPG initdb so no CREATE DATABASE / superuser is needed).
+                    # Setup/migration user = the CNPG SUPERUSER (postgres). The app
+                    # user `zitadel` lacks CREATEDB, which Zitadel's init needs to
+                    # verify/create the database (it issues CREATE DATABASE and only
+                    # tolerates "already exists", not "permission denied"). The
+                    # superuser sees the existing db + runs migrations, granting the
+                    # runtime User access (Zitadel's standard Admin!=User pattern).
+                    # Password from the CNPG-managed superuser secret via env, below.
                     Admin:
-                      Username: zitadel
+                      Username: postgres
                       SSL:
                         Mode: require
-            # DB password from the CNPG-managed role secret (single source of
-            # truth — CNPG sets the `zitadel` role password from this same secret
-            # via initdb). ZITADEL_* env overrides config and reaches exactly the
-            # Postgres-connecting pods (start Deployment + init/setup jobs), so the
-            # password is never copied into config-yaml and cannot drift.
+            # DB passwords from CNPG-managed secrets via env (override config and
+            # reach exactly the Postgres-connecting pods: start Deployment + the
+            # init/setup jobs). The User password is the same secret CNPG uses for
+            # initdb (single source — can't drift); the Admin password is the
+            # CNPG-auto-generated superuser secret. Neither is copied into config-yaml.
             env:
               - name: ZITADEL_DATABASE_POSTGRES_USER_PASSWORD
                 valueFrom:
@@ -133,7 +138,9 @@ spec:
               - name: ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD
                 valueFrom:
                   secretKeyRef:
-                    name: zitadel-db-app-credentials
+                    # CNPG-managed superuser secret (auto-created via the cluster's
+                    # enableSuperuserAccess) — the privileged Admin user above.
+                    name: zitadel-db-cluster-superuser
                     key: password
             # HA for the API/console pods.
             pdb:
