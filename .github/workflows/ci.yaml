@@ -68,6 +68,25 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
+      # PRESUBMIT ONLY. `build-test` is a REQUIRED status check behind the merge
+      # queue, so it must ALWAYS report a result -- a naive `paths-ignore` would
+      # make it never report and wedge the PR "pending" forever, and merge_group
+      # events ignore `paths:` anyway. So we keep triggering on every event and
+      # only short-circuit the pull_request lane: when a PR's diff is
+      # docs/gitops/markdown-only the affected-targets step below is skipped and
+      # the job reports success fast. Native git diff -- no third-party action;
+      # ci.yaml already checks out with fetch-depth: 0 so the merge-base is here.
+      # The push / merge_group full //... sweep below is left UNCONDITIONAL: this
+      # gate never touches it, so the postsubmit + merge-queue safety floor is
+      # exactly as strong as before.
+      - name: Gate on changed paths (PR only)
+        id: gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash tools/ci/relevant-paths.sh
+
       # --- POSTSUBMIT (push to main) + MERGE QUEUE: ALWAYS the full sweep. ----
       # This is the safety floor. The worst case must never be less safe than
       # today: every commit that lands on main -- whether pushed directly or
@@ -90,8 +109,13 @@ jobs:
       # Gated to pull_request ONLY: on push the full sweep above runs instead,
       # and on any future trigger (e.g. merge_group, where github.base_ref is
       # empty) this step is skipped rather than running with an unset BASE_REF.
+      # Gated additionally on the changed-paths result: skipped (job still green)
+      # when the PR is docs/gitops/markdown-only. `relevant` is empty on any
+      # non-pull_request event, but this step is already pull_request-only, so
+      # the extra clause only ever suppresses the docs-only case; the steps fail
+      # safe to running whenever the gate is uncertain (relevant != 'false').
       - name: Build + test affected targets (PR)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.gate.outputs.relevant != 'false'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: bash tools/ci/affected-targets.sh
