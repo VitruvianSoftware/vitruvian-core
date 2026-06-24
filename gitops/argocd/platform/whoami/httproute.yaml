@@ -30,7 +30,11 @@ metadata:
   namespace: whoami
 spec:
   parentRefs:
-    - name: platform
+    # group/kind are Gateway-API server defaults — set them explicitly so ArgoCD
+    # doesn't perpetually flag the HTTPRoute OutOfSync against the populated values
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
       namespace: envoy-gateway-system
   hostnames:
     - whoami.ipv1337.dev
