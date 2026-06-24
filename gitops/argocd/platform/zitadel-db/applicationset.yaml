@@ -78,32 +78,28 @@ spec:
           version: v3
           values: |
             cluster:
-              # 3 keeps a primary + replica through a single node loss.
-              instances: 3
-              # Spread 1-per-node (no zone labels on this homelab); overrides the
-              # chart default topology.kubernetes.io/zone (a no-op here).
+              # ---- HA TOGGLE -------------------------------------------------
+              # Set to 3 for a 3-node streaming-replication HA cluster (needs 3+
+              # nodes labelled node.ipv1337.dev/link=wired). Until the WiFi nodes
+              # are on Ethernet we run a SINGLE instance: a replica's initial
+              # pg_basebackup is a sustained high-throughput stream that the homelab
+              # WiFi path (~230ms RTT + packet loss) drops mid-stream, so the join
+              # thrashes the primary. Single instance + WAL/base backups to MinIO
+              # give durability now; flip to 3 once enough wired nodes exist and the
+              # nodeSelector below lands the replicas on them automatically.
+              instances: 1
+              # ----------------------------------------------------------------
+              # Spread 1-per-node (matters at instances>1); overrides the chart
+              # default topology.kubernetes.io/zone (a no-op on this homelab).
               affinity:
                 topologyKey: kubernetes.io/hostname
-                # Keep instances on the LAN-local nodes. james-mbp32 / james-mbp16
-                # are a REMOTE site (~230ms RTT + packet loss, over the internet via
-                # Tailscale); a replica's initial pg_basebackup is a sustained
-                # high-throughput stream that cannot survive that link, so the join
-                # never completes and thrashes the primary. The LAN nodes
-                # (fedora/nuc9/james-macbook-pro/james-mbp) are ~1-3ms, where the
-                # base-backup finishes in seconds. Streaming replication wants low
-                # latency regardless; the remote machines are DR territory (served by
-                # the MinIO backups), not sync replicas.
-                # TODO: swap the hostname list for a node label (e.g. site=lan) once
-                # the devx node provisioning sets one.
-                nodeAffinity:
-                  requiredDuringSchedulingIgnoredDuringExecution:
-                    nodeSelectorTerms:
-                      - matchExpressions:
-                          - key: kubernetes.io/hostname
-                            operator: NotIn
-                            values:
-                              - james-mbp32
-                              - james-mbp16
+                # Pin every instance to a WIRED (Ethernet) node. WiFi nodes
+                # (~230ms RTT + loss) can't sustain a base-backup stream; wired
+                # nodes are ~1-3ms. The node.ipv1337.dev/link label is set by the
+                # devx node provisioning (+ applied to running nodes); relabel a
+                # node when its link changes (WiFi <-> Ethernet) and CNPG follows.
+                nodeSelector:
+                  node.ipv1337.dev/link: wired
               # Annotation-based scrape (no ServiceMonitor/PodMonitor).
               inheritedMetadata:
                 annotations:
