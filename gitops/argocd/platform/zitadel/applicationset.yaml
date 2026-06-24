@@ -32,12 +32,18 @@
 # (SealedSecret zitadel-secret-config, key `config-yaml`). NOTHING sensitive is
 # in this file.
 #
-# EDGE: Traefik + cert-manager (letsencrypt-cloudflare) + external-dns at
-# https://auth.lab.ipv1337.dev (matches argocd/grafana). Zitadel v4 splits the
-# login into a separate pod, so the ingress is PATH-ROUTED: /ui/v2/login -> the
-# login Deployment, everything else -> the API/console Deployment. ExternalSecure
-# + ExternalPort 443 with TLS terminated at Traefik (TLS.Enabled=false in-pod) so
-# the issuer the login-client validates is the public https origin.
+# EDGE (PUBLIC): exposed on the public internet at https://auth.ipv1337.dev — a
+# top-level name (not .lab) because it's an IdP for apps beyond the homelab. The
+# path is Cloudflare (edge TLS, PROXIED) -> the cloudflared Tunnel (catch-all) ->
+# the platform Envoy Gateway -> an HTTPRoute (in extraManifests). Zitadel v4
+# splits the login into a separate pod, so the HTTPRoute is PATH-ROUTED:
+# /ui/v2/login -> the login Deployment, everything else -> the API/console.
+# ExternalSecure + ExternalPort 443 (TLS.Enabled=false in-pod; Cloudflare
+# terminates) so the issuer the login-client validates is https://auth.ipv1337.dev.
+# A PROXIED DNSEndpoint CNAME (auth.ipv1337.dev -> the tunnel) + the HTTPRoute ride
+# in extraManifests. NO Cloudflare Access in front (you cannot gate an IdP behind
+# Access — it breaks OIDC); Access is opt-in per-host, so this stays public.
+# Homelab availability caveat applies; the name is portable to GKE/Zitadel Cloud.
 #
 # MASTER KEY (critical): losing zitadel-masterkey means losing ALL encrypted data
 # (tokens, keys, secrets). It is sealed in git AND must be backed up out-of-band
@@ -88,10 +94,11 @@ spec:
               # ZITADEL_* env vars below (which override config). configmap values
               # take priority over config-yaml for shared keys.
               configmapConfig:
-                ExternalDomain: auth.lab.ipv1337.dev
+                ExternalDomain: auth.ipv1337.dev
                 ExternalPort: 443
                 ExternalSecure: true
-                # TLS terminated at Traefik; pod speaks plaintext h2c behind it.
+                # TLS terminated at Cloudflare's edge (the tunnel is plaintext HTTP
+                # in-cluster); ExternalSecure=true keeps the issuer https://auth.ipv1337.dev.
                 TLS:
                   Enabled: false
                 Database:
@@ -145,22 +152,72 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 512Mi
-            # API/console ingress: host root -> this Deployment.
+            # Public edge: Cloudflare Tunnel (a single catch-all) -> the platform
+            # Envoy Gateway -> the HTTPRoute below. NO Traefik ingress and NO
+            # cert-manager — Cloudflare terminates TLS at its edge for the proxied
+            # hostname, and the chart's own ingress stays off.
             ingress:
-              enabled: true
-              className: traefik
-              annotations:
-                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                external-dns.alpha.kubernetes.io/sync-enabled: "true"
-              hosts:
-                - host: auth.lab.ipv1337.dev
-                  paths:
-                    - path: /
-                      pathType: Prefix
-              tls:
-                - secretName: zitadel-tls
-                  hosts:
-                    - auth.lab.ipv1337.dev
+              enabled: false
+            extraManifests:
+              # Public DNS: a PROXIED CNAME auth.ipv1337.dev -> the Cloudflare Tunnel
+              # (<tunnel-id>.cfargotunnel.com only resolves behind the proxy, so
+              # proxied=true is REQUIRED). Published by external-dns's crd source.
+              - apiVersion: externaldns.k8s.io/v1alpha1
+                kind: DNSEndpoint
+                metadata:
+                  name: zitadel-tunnel
+                  namespace: zitadel
+                  annotations:
+                    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+                    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+                spec:
+                  endpoints:
+                    - dnsName: auth.ipv1337.dev
+                      recordType: CNAME
+                      recordTTL: 1
+                      targets:
+                        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+                      providerSpecific:
+                        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+                          value: "true"
+              # Public routing on the platform Gateway, path-split: /ui/v2/login ->
+              # the login pod (3000), everything else -> the API/console (8080).
+              # group+kind set explicitly to the Gateway-API server defaults so
+              # ArgoCD doesn't perpetually flag the HTTPRoute OutOfSync (cf. PR #261).
+              - apiVersion: gateway.networking.k8s.io/v1
+                kind: HTTPRoute
+                metadata:
+                  name: zitadel
+                  namespace: zitadel
+                spec:
+                  parentRefs:
+                    - group: gateway.networking.k8s.io
+                      kind: Gateway
+                      name: platform
+                      namespace: envoy-gateway-system
+                  hostnames:
+                    - auth.ipv1337.dev
+                  rules:
+                    - matches:
+                        - path:
+                            type: PathPrefix
+                            value: /ui/v2/login
+                      backendRefs:
+                        - group: ""
+                          kind: Service
+                          name: zitadel-login
+                          port: 3000
+                          weight: 1
+                    - matches:
+                        - path:
+                            type: PathPrefix
+                            value: /
+                      backendRefs:
+                        - group: ""
+                          kind: Service
+                          name: zitadel
+                          port: 8080
+                          weight: 1
             # Zitadel v4 split login (separate Next.js Deployment).
             login:
               enabled: true
@@ -176,21 +233,10 @@ spec:
                         matchLabels:
                           app.kubernetes.io/component: login
                       topologyKey: kubernetes.io/hostname
-              # Login ingress: /ui/v2/login -> the login Deployment. Shares the
-              # auth.lab.ipv1337.dev host + zitadel-tls cert (issued by the API
-              # ingress above); Traefik longest-prefix routes the two together.
+              # Login routing (/ui/v2/login) is handled by the shared HTTPRoute in
+              # extraManifests above; the chart's own login ingress stays off.
               ingress:
-                enabled: true
-                className: traefik
-                hosts:
-                  - host: auth.lab.ipv1337.dev
-                    paths:
-                      - path: /ui/v2/login
-                        pathType: Prefix
-                tls:
-                  - secretName: zitadel-tls
-                    hosts:
-                      - auth.lab.ipv1337.dev
+                enabled: false
       destination:
         server: '{{.server}}'
         namespace: zitadel
