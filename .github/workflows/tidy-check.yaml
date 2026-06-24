@@ -41,11 +41,36 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The relevant-paths gate (below) diffs HEAD against the PR merge-base,
+          # so the merge-base must be present locally. The default shallow fetch
+          # (depth 1) lacks it; full history makes the merge-base reliable. On
+          # push/merge_group the gate is skipped and the full check always runs.
+          fetch-depth: 0
+
+      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
+      # `tidy-check` is a REQUIRED status check behind the merge queue, so it
+      # must ALWAYS report a result -- a naive `paths-ignore` would make it never
+      # report and wedge the PR "pending" forever. Instead we keep triggering on
+      # every event and make the heavy steps no-op to success in seconds when the
+      # PR diff is docs/gitops/markdown-only. Native git diff -- no third-party
+      # action. Runs on pull_request ONLY; on push/merge_group the gate is
+      # skipped and `relevant` is unset (empty), so the steps below -- gated on
+      # `relevant != 'false'`, which fails SAFE to running on any non-'false'
+      # value -- run unconditionally, exactly as before.
+      - name: Gate on changed paths (PR only)
+        id: gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash tools/ci/relevant-paths.sh
 
       - name: Install Bazel
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
 
       - name: Run //:tidy and verify the tree is clean
+        if: steps.gate.outputs.relevant != 'false'
         run: |
           bazel run //:tidy
           changed="$(git status --porcelain -- ':!MODULE.bazel.lock')"
