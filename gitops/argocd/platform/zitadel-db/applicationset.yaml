@@ -23,7 +23,7 @@
 # is a NET-NEW cluster (no Pulumi adoption / recovery history) — CNPG bootstraps
 # it fresh via initdb, so no managedFields / bootstrap / serverName ignores are
 # needed. Mirrors the established CNPG pattern:
-#   chart cluster-0.2.1 (https://cloudnative-pg.github.io/charts), ns zitadel,
+#   chart cluster-0.7.0 (https://cloudnative-pg.github.io/charts), ns zitadel,
 #   cluster.instances=3, hostname-spread affinity (survive a single node loss),
 #   storage 8Gi/local-path (node-local reliable I/O; Zitadel is event-sourced so
 #   the store grows — local-path PVCs cannot shrink, size is pinned), memory
@@ -67,8 +67,13 @@ spec:
       source:
         repoURL: https://cloudnative-pg.github.io/charts
         chart: cluster
-        # Pinned to the version already proven on grafana-db / cnpg-cluster.
-        targetRevision: "0.2.1"
+        # 0.7.0 — NOT grafana-db/cnpg-cluster's pinned 0.2.1. Those were ADOPTED
+        # (Pulumi-created) so ArgoCD never had to CREATE them; 0.2.1 renders backup
+        # wal/data `encryption: null` from our empty value, which CNPG's admission
+        # webhook rejects on a fresh CREATE (the ignoreDifferences guard only helps
+        # when adopting an existing object). 0.7.0 OMITS encryption when empty, so
+        # this net-new cluster applies cleanly (server-side dry-run confirmed).
+        targetRevision: "0.7.0"
         helm:
           version: v3
           values: |
@@ -153,13 +158,12 @@ spec:
           # CNPG Cluster CR is large/CRD-typed; CSA avoids the 256KB client-side
           # last-applied annotation failure (matches grafana-db / cnpg-cluster).
           - ServerSideApply=true
-          # Honor ignoreDifferences DURING sync: chart 0.2.1 renders backup
-          # wal/data `encryption: null`, which CNPG rejects under SSA — drop those
-          # paths from the apply so the live (absent) value is preserved.
+          # Honor ignoreDifferences during sync (defensive; see below).
           - RespectIgnoreDifferences=true
-      # chart 0.2.1 always emits backup wal/data encryption as null (our empty
-      # value); CNPG rejects null. Ignore both so the SSA sync succeeds (matches
-      # grafana-db / cnpg-cluster).
+      # Defensive only: chart 0.7.0 OMITS backup wal/data encryption when empty, so
+      # these paths are normally absent and this is a no-op. Retained so that if a
+      # future chart bump re-emits `encryption: null`, ArgoCD keeps it out of the
+      # SSA apply rather than letting CNPG reject the Cluster on sync.
       ignoreDifferences:
         - group: postgresql.cnpg.io
           kind: Cluster
