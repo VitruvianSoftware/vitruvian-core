@@ -100,7 +100,13 @@ spec:
               - enp+
               - eno+   # nuc9's LAN NIC is eno1 — without this Cilium skips BPF-masquerade
               - eth+    # on it and nuc9 CoreDNS upstream forwards get dropped
-            mtu: 1280
+            # Underlay (tailscale0) MTU. Cilium's GetRouteMTU subtracts the 50B Geneve
+            # tunnel overhead -> pod eth0 = 1280-50 = 1230, so the encapsulated frame =
+            # 1230+50 = 1280 = tailscale0 (no fragmentation). MUST be uppercase `MTU`: the
+            # chart only renders the config from the uppercase MTU value; lowercase `mtu` is
+            # dropped by Helm (it was a no-op -> --mtu=0 auto-detect -> pod stuck at 1280
+            # with the encapsulated frame at 1330 relying on fragmentation).
+            MTU: 1280
             enableIPv4Masquerade: true
             bpf:
               masquerade: true
