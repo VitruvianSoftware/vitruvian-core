@@ -17,69 +17,48 @@ Currently manages:
   `invalid_request` / _"The requested redirect_uri is missing in the client
   configuration."_
 
-## Prerequisites
+## How it applies (pipeline-triggered)
 
-A Zitadel **machine (service) user** with permission to manage applications in
-the target project (e.g. `Org Owner`, or a project-scoped manager role), and a
-**JSON key** of type "Key" downloaded from that user. Keep the key out of git.
+Per principle §2.14 (the pipeline is the only trigger) and §2.15 (infra lands
+before the app), this stack is applied **by CI as the "expand" step of the
+`oauth-user-inspector-deploy` workflow** — it runs before the app revision so
+the redirect URIs are registered before the hosted login needs them. The Bazel
+wrappers (`bazel run //infrastructure/pulumi/zitadel-apps:preview` / `:up`) are
+for local **preview / break-glass only**, never the path to prod.
 
-## Configure
+The apply job is **gated** on the `ZITADEL_APPS_AUTO_APPLY` repo/environment
+variable so it cleanly no-ops until the one-time bootstrap below is done.
 
-The Zitadel provider reads its connection settings from `zitadel:*` config; the
-application settings are under `zitadel-apps:*`:
+## One-time bootstrap (seed, then it's automated)
 
-```bash
-cd infrastructure/pulumi/zitadel-apps   # or use the bazel wrappers below
-pulumi stack select development --create
+1. **Machine user + key.** In the Zitadel console create a service (machine)
+   user with permission to manage applications in the target project (e.g.
+   `Org Owner`), add a JSON **Key**, and store its contents as the
+   **`ZITADEL_MACHINE_KEY_JSON`** GitHub Actions secret on the
+   `oauth-user-inspector-development` environment. (This is the one root
+   credential seeded out-of-band; the pipeline uses it from then on.)
+2. **Org / project / import IDs.** Fill the commented `zitadel-apps:projectId`
+   (and optionally `orgId`) in `Pulumi.development.yaml`, and set
+   `zitadel-apps:importId` to the existing application's import id
+   (`"<org_id>:<project_id>:<app_id>"`, from Project → Applications → the app)
+   so the apply **adopts** the existing client and its Client ID/Secret already
+   in GCP Secret Manager stay valid (rather than minting a new client).
+3. **Enable.** Set the `ZITADEL_APPS_AUTO_APPLY` variable to `true`.
 
-# Provider connection (machine-user JWT profile key).
-pulumi config set zitadel:domain auth.ipv1337.dev
-pulumi config set zitadel:jwtProfileFile /abs/path/to/zitadel-machine-key.json
-# (alternatively, store the key inline as a secret:)
-#   pulumi config set --secret zitadel:jwtProfileJson "$(cat key.json)"
+From then on, every change to `infrastructure/pulumi/zitadel-apps/**` (or an
+oauth-user-inspector deploy) re-applies the stack automatically; redirect-URI
+changes are a code edit + merge, never a console click.
 
-# Application placement.
-pulumi config set zitadel-apps:projectId <zitadel-project-id>
-pulumi config set zitadel-apps:orgId     <zitadel-org-id>   # optional; defaults to the service user's org
+> If you skip the import (no `importId`), Pulumi creates a **new** client — then
+> read `pulumi stack output clientId` / `clientSecret --show-secrets` and update
+> `ZITADEL_APP_OAUTH_CLIENT_ID` / `_SECRET` in GCP Secret Manager to match.
 
-# Redirect URIs (defaults to https://oauth-inspector.ipv1337.dev/ if unset).
-pulumi config set --path zitadel-apps:redirectUris[0] https://oauth-inspector.ipv1337.dev/
-```
-
-Per-stack config (`Pulumi.<stack>.yaml`) is git-ignored — it holds the
-environment-specific IDs and the credential path. Nothing secret is committed.
-
-## Adopt the existing application (do this first)
-
-The running app reads its `client_id` / `client_secret` from GCP Secret Manager
-(`ZITADEL_APP_OAUTH_CLIENT_ID` / `_SECRET`). To keep those valid, **import** the
-existing Zitadel application instead of creating a new client:
-
-```bash
-pulumi config set zitadel-apps:importId "<org_id>:<project_id>:<app_id>"
-bazel run //infrastructure/pulumi/zitadel-apps:preview   # confirm it ADOPTS (not replaces)
-bazel run //infrastructure/pulumi/zitadel-apps:up
-```
-
-`<app_id>` is the application's resource ID from the Zitadel console (Project →
-Applications → the app). If you instead let the program create a **new** client
-(leave `importId` unset), read the generated credentials back and update Secret
-Manager:
+## Break-glass / local preview
 
 ```bash
-pulumi stack output clientId
-pulumi stack output clientSecret --show-secrets
-# then update ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET in GCP Secret Manager
-```
-
-## Apply
-
-```bash
+# Preview only — requires the machine-user key locally; not the path to prod.
+ZITADEL_MACHINE_KEY_JSON="$(cat key.json)"
+# (set provider creds for a local run)
+#   pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
 bazel run //infrastructure/pulumi/zitadel-apps:preview
-bazel run //infrastructure/pulumi/zitadel-apps:up
 ```
-
-> This stack is applied **deliberately by an operator** holding the Zitadel
-> machine-user key; it is intentionally not wired into an automatic CI deploy.
-> To change an allowed redirect URI, edit it here and re-apply rather than
-> touching the Zitadel console.

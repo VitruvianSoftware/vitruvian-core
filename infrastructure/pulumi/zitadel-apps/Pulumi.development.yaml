@@ -1,0 +1,41 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Committed stack config (config-as-code): non-secret identifiers only, so the
+# deploy workflow can resolve them on a clean checkout (principle §2.5). The
+# Zitadel provider credential is injected at apply time by the deploy workflow
+# from the ZITADEL_MACHINE_KEY_JSON pipeline secret — never stored here.
+#
+# Before enabling the ZITADEL_APPS_AUTO_APPLY variable on the
+# oauth-user-inspector-deploy workflow, an operator seeds the org/project/import
+# IDs below (read from the Zitadel console: Project → your project → the app).
+# Until then the apply job is gated off and these are inert.
+config:
+  zitadel:domain: auth.ipv1337.dev
+  zitadel-apps:redirectUris:
+    - https://oauth-inspector.ipv1337.dev/
+  zitadel-apps:postLogoutRedirectUris:
+    - https://oauth-inspector.ipv1337.dev/
+  # Fill these in, then flip ZITADEL_APPS_AUTO_APPLY=true:
+  # zitadel-apps:projectId: "<zitadel-project-id>"
+  # zitadel-apps:orgId: "<zitadel-org-id>"                  # optional; defaults to the service user's org
+  # Adopt the EXISTING application so its Client ID/Secret in GCP Secret Manager
+  # stay valid (format: "<org_id>:<project_id>:<app_id>"):
+  # zitadel-apps:importId: "<org_id>:<project_id>:<app_id>"

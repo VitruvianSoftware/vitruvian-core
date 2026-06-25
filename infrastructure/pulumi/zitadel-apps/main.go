@@ -38,7 +38,9 @@
 // existing application by setting zitadel-apps:importId rather than letting this
 // program create a new client. See the README.
 //
-// Apply: bazel run //infrastructure/pulumi/zitadel-apps:up
+// Applied by CI as the "expand" step of the oauth-user-inspector-deploy workflow
+// (principles §2.14/§2.15), gated on ZITADEL_APPS_AUTO_APPLY. The Bazel run
+// targets (:preview/:up) are local preview / break-glass only.
 package main
 
 import (
