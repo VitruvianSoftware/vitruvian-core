@@ -32,6 +32,13 @@ import type {
   ProviderLinkedInUser,
   EnhancedOAuthError,
 } from "./types";
+import {
+  buildAuthMeta,
+  buildRefreshRequest,
+  buildRevokeRequest,
+  parseAuthMeta,
+  type ByoCredentials,
+} from "./utils/oauthSession";
 import { Spinner } from "./components/icons";
 import TopMenu from "./components/TopMenu";
 import UserInfoDisplay from "./components/UserInfoDisplay";
@@ -466,6 +473,12 @@ const App: React.FC = () => {
           redirectUri: getEffectiveRedirectUri(customRedirectUri),
         };
 
+        // BYO (bring-your-own-credentials) sessions read the user-supplied
+        // client credentials from the single-use sessionStorage entry. We hold
+        // onto them so they can be persisted into auth_meta below — refresh and
+        // revoke need to replay these exact credentials, and sessionStorage is
+        // cleared here.
+        let byoCreds: ByoCredentials | null = null;
         if (!isHosted) {
           const credsString = sessionStorage.getItem("oauth_credentials");
           sessionStorage.removeItem("oauth_credentials");
@@ -474,14 +487,14 @@ const App: React.FC = () => {
               "Could not find OAuth credentials. Please try logging in again.",
             );
           }
-          const creds = JSON.parse(credsString);
-          requestBody.clientId = creds.clientId;
-          requestBody.clientSecret = creds.clientSecret;
-          if (creds.auth0Domain) {
-            requestBody.auth0Domain = creds.auth0Domain;
+          byoCreds = JSON.parse(credsString) as ByoCredentials;
+          requestBody.clientId = byoCreds.clientId;
+          requestBody.clientSecret = byoCreds.clientSecret;
+          if (byoCreds.auth0Domain) {
+            requestBody.auth0Domain = byoCreds.auth0Domain;
           }
-          if (creds.zitadelDomain) {
-            requestBody.zitadelDomain = creds.zitadelDomain;
+          if (byoCreds.zitadelDomain) {
+            requestBody.zitadelDomain = byoCreds.zitadelDomain;
           }
         }
 
@@ -527,16 +540,7 @@ const App: React.FC = () => {
           );
         }
 
-        const {
-          access_token,
-          scope,
-          expires_in,
-          token_type,
-          id_token,
-          refresh_token,
-          auth0_domain,
-          zitadel_domain,
-        } = data;
+        const { access_token } = data;
         if (!access_token) {
           throw new Error("Access token not found in server response.");
         }
@@ -545,18 +549,13 @@ const App: React.FC = () => {
           "auth_details",
           JSON.stringify({ token: access_token, provider }),
         );
+        // Persist how this session authenticated (hosted vs BYO) plus, for BYO,
+        // the user-supplied client credentials. handleTokenRefresh /
+        // handleTokenRevocation branch on this stored flag so they replay the
+        // correct credentials instead of always trying hosted-first.
         localStorage.setItem(
           "auth_meta",
-          JSON.stringify({
-            scope,
-            expires_in,
-            token_type,
-            id_token,
-            refresh_token,
-            fetched_at: Date.now(),
-            auth0_domain,
-            zitadel_domain,
-          }),
+          JSON.stringify(buildAuthMeta(data, isHosted, byoCreds, Date.now())),
         );
         await fetchUser(access_token, provider);
       } catch (err: any) {
@@ -736,71 +735,37 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // Get stored credentials for non-hosted flow or use hosted flag
-      const metaRaw = localStorage.getItem("auth_meta");
-      let isHosted = false;
-      let clientId = "";
-      let clientSecret = "";
-      let auth0Domain = "";
+      // Branch on how this session authenticated. Hosted sessions refresh with
+      // server-side Secret Manager credentials; BYO sessions replay the client
+      // credentials persisted in auth_meta at exchange time. (Previously this
+      // always tried hosted-first and then fell back to a sessionStorage entry
+      // that had already been cleared, so BYO refresh always failed.)
+      const meta = parseAuthMeta(localStorage.getItem("auth_meta"));
+      const requestBody = buildRefreshRequest(
+        user.provider,
+        user.refreshToken,
+        meta,
+      );
 
-      // Try to determine if this was a hosted OAuth session
-      // For simplicity, we'll try hosted first, then fall back to stored credentials
-      try {
-        const response = await fetch("/api/oauth/refresh", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: user.provider,
-            refreshToken: user.refreshToken,
-            isHosted: true,
-          }),
-        });
+      const response = await fetch("/api/oauth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
 
-        if (response.ok) {
-          const tokenData = await response.json();
-          await handleRefreshSuccess(tokenData);
+      if (!response.ok) {
+        const errorData = await response.json();
+        // If we received an enhanced OAuth error, preserve it
+        if (errorData.guide) {
+          setError(errorData);
+          setIsLoading(false);
           return;
         }
-      } catch (hostedError) {
-        // Hosted refresh failed, try with stored credentials
+        throw new Error(errorData.error || "Failed to refresh token");
       }
 
-      // Try with stored credentials if available
-      const credsString = sessionStorage.getItem("oauth_credentials");
-      if (credsString) {
-        const creds = JSON.parse(credsString);
-        const response = await fetch("/api/oauth/refresh", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: user.provider,
-            refreshToken: user.refreshToken,
-            isHosted: false,
-            clientId: creds.clientId,
-            clientSecret: creds.clientSecret,
-            auth0Domain: creds.auth0Domain,
-            zitadelDomain: creds.zitadelDomain,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          // If we received an enhanced OAuth error, preserve it
-          if (errorData.guide) {
-            setError(errorData);
-            setIsLoading(false);
-            return;
-          }
-          throw new Error(errorData.error || "Failed to refresh token");
-        }
-
-        const tokenData = await response.json();
-        await handleRefreshSuccess(tokenData);
-      } else {
-        throw new Error(
-          "No OAuth credentials available for token refresh. This session may have been started with hosted OAuth.",
-        );
-      }
+      const tokenData = await response.json();
+      await handleRefreshSuccess(tokenData);
     } catch (err: any) {
       setError(`Token refresh failed: ${err.message}`);
     } finally {
@@ -864,67 +829,42 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // Try hosted revocation first
-      try {
-        const response = await fetch("/api/oauth/revoke", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: user.provider,
-            token: user.accessToken,
-            tokenTypeHint: "access_token",
-            isHosted: true,
-          }),
-        });
+      // Branch on how this session authenticated, mirroring handleTokenRefresh.
+      // Hosted sessions revoke with server-side Secret Manager credentials; BYO
+      // sessions replay the credentials persisted in auth_meta. A BYO session
+      // with no stored credentials yields a null request body, in which case we
+      // just end the session locally (some providers/sessions have no usable
+      // revocation path).
+      const meta = parseAuthMeta(localStorage.getItem("auth_meta"));
+      const requestBody = buildRevokeRequest(
+        user.provider,
+        user.accessToken,
+        meta,
+      );
 
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            handleLogout();
-            setError(null);
-            alert(result.message || "Token revoked successfully!");
-            return;
-          }
-        }
-      } catch (hostedError) {
-        // Hosted revocation failed, try with stored credentials
-      }
-
-      // Try with stored credentials if available
-      const credsString = sessionStorage.getItem("oauth_credentials");
-      if (credsString) {
-        const creds = JSON.parse(credsString);
-        const response = await fetch("/api/oauth/revoke", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: user.provider,
-            token: user.accessToken,
-            tokenTypeHint: "access_token",
-            isHosted: false,
-            clientId: creds.clientId,
-            clientSecret: creds.clientSecret,
-            auth0Domain: creds.auth0Domain,
-            zitadelDomain: creds.zitadelDomain,
-          }),
-        });
-
-        const result = await response.json();
-
-        if (response.ok && result.success) {
-          handleLogout();
-          setError(null);
-          alert(result.message || "Token revoked successfully!");
-        } else {
-          throw new Error(result.error || "Failed to revoke token");
-        }
-      } else {
-        // For providers like LinkedIn that don't support revocation, just log out locally
+      if (!requestBody) {
         handleLogout();
         setError(null);
         alert(
           "Session ended locally. Some providers don't support token revocation.",
         );
+        return;
+      }
+
+      const response = await fetch("/api/oauth/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        handleLogout();
+        setError(null);
+        alert(result.message || "Token revoked successfully!");
+      } else {
+        throw new Error(result.error || "Failed to revoke token");
       }
     } catch (err: any) {
       setError(`Token revocation failed: ${err.message}`);

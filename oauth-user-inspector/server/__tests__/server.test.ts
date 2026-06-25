@@ -104,6 +104,23 @@ jest.mock("@google-cloud/secret-manager", () => ({
           },
         ]);
       }
+      // Zitadel hosted credentials. Intentionally omit ZITADEL_APP_OAUTH_DOMAIN
+      // so resolveZitadelDomain() falls back to the built-in default
+      // (auth.ipv1337.dev), matching the registered fetch handler.
+      if (name.includes("ZITADEL_APP_OAUTH_CLIENT_ID")) {
+        return Promise.resolve([
+          {
+            payload: { data: "test-zitadel-client-id" },
+          },
+        ]);
+      }
+      if (name.includes("ZITADEL_APP_OAUTH_CLIENT_SECRET")) {
+        return Promise.resolve([
+          {
+            payload: { data: "test-zitadel-client-secret" },
+          },
+        ]);
+      }
       if (name.includes("LINKEDIN_APP_OAUTH_CLIENT_ID")) {
         return Promise.resolve([
           {
@@ -235,6 +252,24 @@ function registerBaseHandlers(): void {
       return { json: { access_token: "test_linkedin_access_token" } };
     },
   );
+  // Zitadel uses its self-hosted default domain (auth.ipv1337.dev) and
+  // form-encoded OIDC grants, so refresh requests carry "grant_type=refresh_token".
+  fetchMock.register(
+    "POST",
+    "https://auth.ipv1337.dev/oauth/v2/token",
+    ({ body }) => {
+      if (isRefreshBody(body)) {
+        return {
+          json: {
+            access_token: "new_zitadel_access_token",
+            refresh_token: "new_zitadel_refresh_token",
+            expires_in: 3600,
+          },
+        };
+      }
+      return { json: { access_token: "test_zitadel_access_token" } };
+    },
+  );
 
   // OAuth revocation handlers
   fetchMock.register("POST", "https://oauth2.googleapis.com/revoke", () => ({
@@ -253,6 +288,11 @@ function registerBaseHandlers(): void {
     "POST",
     "https://oauth-user-inspector.us.auth0.com/oauth/revoke",
     () => ({ json: { success: true } }),
+  );
+  fetchMock.register(
+    "POST",
+    "https://auth.ipv1337.dev/oauth/v2/revoke",
+    () => ({ status: 200, body: null }),
   );
 }
 
@@ -720,6 +760,157 @@ describe("/api/oauth/revoke", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty("success", true);
+  });
+});
+
+// Regression coverage for the BYO refresh/revoke bug. The frontend previously
+// always tried hosted-first (Secret Manager credentials) before falling back to
+// an already-cleared sessionStorage entry, so a BYO session's refresh/revoke
+// was sent to the IdP with the WRONG client credentials (or none). The fix has
+// the frontend persist an isHosted flag + the BYO credentials and replay them.
+// These tests pin the server-side contract that fix depends on: the credentials
+// forwarded to the IdP must match the caller's BYO-vs-hosted intent.
+describe("BYO vs hosted credential routing (regression)", () => {
+  it("forwards the user's own client credentials for a BYO Google refresh", async () => {
+    let forwardedBody = "";
+    fetchMock.use("POST", "https://oauth2.googleapis.com/token", ({ body }) => {
+      forwardedBody = body;
+      return {
+        json: {
+          access_token: "new_google_access_token",
+          refresh_token: "new_google_refresh_token",
+          expires_in: 3600,
+        },
+      };
+    });
+
+    const response = await request(app).post("/api/oauth/refresh").send({
+      provider: "google",
+      refreshToken: "byo_refresh_token",
+      clientId: "byo-client-id",
+      clientSecret: "byo-client-secret",
+      isHosted: false,
+    });
+
+    expect(response.status).toBe(200);
+    const parsed = JSON.parse(forwardedBody);
+    expect(parsed.client_id).toBe("byo-client-id");
+    expect(parsed.client_secret).toBe("byo-client-secret");
+    // Crucially NOT the hosted Secret Manager credentials.
+    expect(parsed.client_id).not.toBe("test-google-client-id");
+  });
+
+  it("uses the hosted Secret Manager credentials for a hosted Google refresh", async () => {
+    let forwardedBody = "";
+    fetchMock.use("POST", "https://oauth2.googleapis.com/token", ({ body }) => {
+      forwardedBody = body;
+      return { json: { access_token: "new_google_access_token" } };
+    });
+
+    const response = await request(app).post("/api/oauth/refresh").send({
+      provider: "google",
+      refreshToken: "hosted_refresh_token",
+      isHosted: true,
+    });
+
+    expect(response.status).toBe(200);
+    const parsed = JSON.parse(forwardedBody);
+    expect(parsed.client_id).toBe("test-google-client-id");
+    expect(parsed.client_secret).toBe("test-google-client-secret");
+  });
+
+  it("forwards the user's own client credentials for a BYO Zitadel refresh", async () => {
+    let forwardedBody = "";
+    fetchMock.use(
+      "POST",
+      "https://auth.ipv1337.dev/oauth/v2/token",
+      ({ body }) => {
+        forwardedBody = body;
+        return {
+          json: {
+            access_token: "new_zitadel_access_token",
+            refresh_token: "new_zitadel_refresh_token",
+            expires_in: 3600,
+          },
+        };
+      },
+    );
+
+    const response = await request(app).post("/api/oauth/refresh").send({
+      provider: "zitadel",
+      refreshToken: "byo_zitadel_refresh_token",
+      clientId: "byo-zitadel-client-id",
+      clientSecret: "byo-zitadel-client-secret",
+      zitadelDomain: "auth.ipv1337.dev",
+      isHosted: false,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty(
+      "access_token",
+      "new_zitadel_access_token",
+    );
+    const params = new URLSearchParams(forwardedBody);
+    expect(params.get("grant_type")).toBe("refresh_token");
+    expect(params.get("client_id")).toBe("byo-zitadel-client-id");
+    expect(params.get("client_secret")).toBe("byo-zitadel-client-secret");
+  });
+
+  it("forwards the user's own client credentials for a BYO GitLab revoke", async () => {
+    let forwardedBody = "";
+    fetchMock.use("POST", "https://gitlab.com/oauth/revoke", ({ body }) => {
+      forwardedBody = body;
+      return { json: { success: true } };
+    });
+
+    const response = await request(app).post("/api/oauth/revoke").send({
+      provider: "gitlab",
+      token: "byo_access_token",
+      clientId: "byo-gitlab-client-id",
+      clientSecret: "byo-gitlab-client-secret",
+      isHosted: false,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty("success", true);
+    const parsed = JSON.parse(forwardedBody);
+    expect(parsed.client_id).toBe("byo-gitlab-client-id");
+    expect(parsed.client_secret).toBe("byo-gitlab-client-secret");
+  });
+});
+
+describe("/api/oauth/zitadel", () => {
+  it("should return an access token for a BYO Zitadel exchange (default domain)", async () => {
+    const response = await request(app).post("/api/oauth/token").send({
+      code: "valid_code",
+      provider: "zitadel",
+      clientId: "byo-zitadel-client-id",
+      clientSecret: "byo-zitadel-client-secret",
+      zitadelDomain: "auth.ipv1337.dev",
+      redirectUri: "http://localhost:3000",
+      isHosted: false,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty(
+      "access_token",
+      "test_zitadel_access_token",
+    );
+    expect(response.body).toHaveProperty("zitadel_domain", "auth.ipv1337.dev");
+  });
+
+  it("should refresh a Zitadel token for a hosted session", async () => {
+    const response = await request(app).post("/api/oauth/refresh").send({
+      provider: "zitadel",
+      refreshToken: "test_refresh_token",
+      isHosted: true,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty(
+      "access_token",
+      "new_zitadel_access_token",
+    );
   });
 });
 
