@@ -1,0 +1,73 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Conformance Check
+
+# Fails the PR when version pins drift across the repo's source-of-truth files —
+# e.g. a `go.mod` that no longer matches `go.work`, or a Dockerfile `FROM node:`
+# that disagrees with `.nvmrc`. Unlike `//:doctor` (which checks a developer's
+# machine), this runs on the source tree, so drift is caught automatically. The
+# single remediation is `bazel run //tools/conformance:check` (read its output).
+# Current known drift is allowlisted in check.sh — only NEW drift fails.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs; never cancel the push-to-main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  conformance-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # The relevant-paths gate (below) diffs HEAD against the PR merge-base,
+          # so the merge-base must be present locally; full history makes it
+          # reliable. On push/merge_group the gate is skipped and the check runs.
+          fetch-depth: 0
+
+      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor). Like
+      # tidy-check, this is intended to be a REQUIRED status check, so it must
+      # ALWAYS report a result — we keep triggering on every event and make the
+      # heavy steps no-op to success in seconds when the PR diff can't affect
+      # version pins (docs/gitops/markdown-only). On push/merge_group the gate is
+      # skipped and `relevant` is empty, so the steps run unconditionally.
+      - name: Gate on changed paths (PR only)
+        id: gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash tools/ci/relevant-paths.sh
+
+      - name: Install Bazel
+        if: steps.gate.outputs.relevant != 'false'
+        uses: ./.github/actions/setup-bazel
+
+      - name: Verify version pins are consistent across the repo
+        if: steps.gate.outputs.relevant != 'false'
+        run: bazel run //tools/conformance:check

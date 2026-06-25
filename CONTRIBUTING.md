@@ -202,8 +202,11 @@ PRs run **affected-target** tests (`tools/ci/affected-targets.sh` via target-det
 | **license-check** | `.github/workflows/ci.yaml` | whole-repo `addlicense -check` (Section 6) |
 | **tidy-check** | `.github/workflows/tidy-check.yaml` | `bazel run //:tidy` produced no diff |
 | **reconcile** | `.github/workflows/dependabot-bazel-reconcile.yml` | Bazel lockfile/dep reconciliation on dependabot PRs |
+| **conformance-check** | `.github/workflows/conformance-check.yaml` | `bazel run //tools/conformance:check` — version pins consistent across the repo (no drift; deviations justified in `version-pins.tsv`) |
 
 > **`actionlint` caveat:** it is *listed* as a standard check but **is not actually wired as a CI job** anywhere in `.github/workflows/`. It currently appears only as a manual pre-merge step in planning docs. **🎯 Target:** add a real `actionlint` job (the workflow tree is large and hand-tuned). Don't assume your workflow YAML is linted by CI today — run `actionlint` locally if you touch a workflow.
+
+> **Version policy.** The repo runs **one canonical version per tool** (`.bazelversion`, `go.work`, `.nvmrc`, root `packageManager`) and stays on the latest it has adopted. Every `go.mod`, Dockerfile `FROM node:`, and app `packageManager` must match canonical. To hold one back **temporarily**, add a justified row to [`tools/conformance/version-pins.tsv`](tools/conformance/version-pins.tsv) (`file`, `tool`, `pinned_value`, `review_by`, `owner`, `reason`) and delete it once the constraint clears — `conformance-check` fails on undeclared drift, on a pin whose file has caught up to canonical, and on a pin past its `review_by`.
 
 ---
 

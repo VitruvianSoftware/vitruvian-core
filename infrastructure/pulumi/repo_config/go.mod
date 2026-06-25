@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo_config
 
-go 1.25.8
+go 1.26.2
 
 require (
 	github.com/pulumi/pulumi-github/sdk/v6 v6.12.2

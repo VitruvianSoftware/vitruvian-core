@@ -108,6 +108,12 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **In practice:** **MIT, `(c) 2026 VitruvianSoftware`**, across all first-party code, enforced by `addlicense` in `license-check`. Every app ships the governance quartet: `LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`. **(target):** several apps still ship Apache-2.0 `LICENSE` files or wrong holders, and `addlicense -check` only verifies a header is *present* (it won't catch a wrong license/holder) — a content gate is needed; see the gaps doc.
 
+### 2.12 One canonical version; pins are temporary
+
+**Why:** Version drift across the repo ("works on my machine") and stale pins (held back and forgotten) are a slow tax that eventually breaks a build or a deploy.
+
+**In practice:** Every tool has ONE canonical version — the latest the repo has adopted — declared once in its source-of-truth: `.bazelversion` (Bazel), `go.work` (Go), `.nvmrc` (Node), the root `packageManager` (pnpm). Every consumer (each `go.mod`, each Dockerfile `FROM node:`, each app's `packageManager`) must match it. A deviation is allowed only as a **deliberate, temporary, justified pin** — recorded in the registry `tools/conformance/version-pins.tsv` and explained, with its removal plan, in [Version-Pin Exceptions](version-pin-exceptions.md) (the check keeps the two in sync) — carrying a reason, an owner, and a `review_by` date, and removed once its constraint no longer holds. The **conformance check** (`bazel run //tools/conformance:check`, a CI gate) fails on any undeclared drift, on a pin whose file has caught up to canonical (delete it), and on a pin past its review date. Staying on _latest_ is the goal; a pin is a tracked, expiring exception — never a resting place.
+
 ---
 
 ## 3. Per-category playbook

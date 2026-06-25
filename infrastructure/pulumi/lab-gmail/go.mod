@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/lab-gmail
 
-go 1.25.1
+go 1.26.2
 
 require (
 	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
