@@ -1,0 +1,32 @@
+# Version-pin registry — the ONLY place a tool version may legitimately deviate
+# from the repo's canonical (latest-adopted) version.
+#
+# POLICY (enforced by //tools/conformance:check): the monorepo runs ONE canonical
+# version per tool — the latest it has adopted — sourced live from:
+#     go    -> the `go X.Y.Z` directive in go.work
+#     node  -> the major of .nvmrc
+#     pnpm  -> the `packageManager` "pnpm@X.Y.Z" in the root package.json
+# The DEFAULT is that every file MATCHES canonical. This is NOT a static allowlist:
+# a row here is a deliberate, TEMPORARY, JUSTIFIED pin that must be reviewed and
+# DELETED once its constraint no longer holds. The checker FAILS on:
+#   - undeclared drift (a file matches neither canonical nor a registered pin),
+#   - a STALE pin (its file now matches canonical — the pin is no longer needed),
+#   - a pin past its review_by date (re-justify or remove),
+#   - a registry row that disagrees with the file it names (pinned_value != found),
+#   - a malformed row (missing column / bad date) — fix the row.
+# So this file both BLOCKS silent drift AND nags every pin toward removal.
+#
+# FORMAT: columns separated by any whitespace (the .tsv extension is nominal),
+# aligned with spaces for readability. The parser skips `#` comment and blank
+# lines and splits on runs of whitespace, so values must NOT contain spaces
+# EXCEPT the final `reason` column (free text, always last). Columns:
+#   file          workspace-relative path to the file carrying the pinned version
+#   tool          one of: go | node | pnpm
+#   pinned_value  the version the file is currently pinned to (must equal what the
+#                 file actually says; for node this is the major, e.g. 20)
+#   review_by     ISO date (YYYY-MM-DD) by which the pin must be re-justified or removed
+#   owner         who owns retiring this pin (e.g. @james)
+#   reason        free text justification (may contain spaces; MUST be the last column)
+#
+# file                    tool  pinned_value  review_by   owner   reason
+tabula/api/Dockerfile	node	20	2026-09-30	@james	tabula API not yet validated on Node 22; bump its Dockerfile to the .nvmrc major and delete this row once verified.

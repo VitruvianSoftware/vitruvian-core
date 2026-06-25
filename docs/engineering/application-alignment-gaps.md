@@ -105,11 +105,11 @@ There is **no rule** saying which a containerized app should use, and tabula add
 
 **Priority: P1 · Effort: S–M**
 
-**Current state.** Both Go CLIs are Gazelle/Bazel targets, but each adds a *different* out-of-band runner: **`devx` uses Mage**, **`homelab` uses `mise`**, and the Pulumi projects use Bazel `sh_binary` wrappers. A contributor switching directories must learn a different "how do I build" each time. On top of that, Go versions drift with nothing enforcing one: `go.work`/`homelab` **1.26.2**, `infrastructure/pulumi` **1.26.1**, `devx` **1.25.5** (and devx's `go.mod` even lags its own `go.work`).
+**Current state.** Both Go CLIs are Gazelle/Bazel targets, but each adds a *different* out-of-band runner: **`devx` uses Mage**, **`homelab` uses `mise`**, and the Pulumi projects use Bazel `sh_binary` wrappers. A contributor switching directories must learn a different "how do I build" each time. (The Go _version_ drift this section also flagged — `go.work` 1.26.2 vs `devx` 1.25.5, `infrastructure/pulumi` 1.26.1, and four more behind — has since been **fixed**: every `go.mod` was aligned to `go.work` 1.26.2 and is now enforced by `//tools/conformance:check`, see [3.22](#322-no-toolchain-version-enforcement-or-environment-self-check). The _task-runner_ divergence remains.)
 
 **Target.** One Go developer build (Bazel `go_binary` as source of truth; `mise` is the alternative pick since it also pins the toolchain — choose one), `goreleaser` only for mirror releases, and every `go.mod` pinned to the `go.work` toolchain version with a CI `//:tidy`/version check that fails on drift.
 
-**Recommended action.** Converge `devx` and `homelab` onto one runner, delete the other. Pin all `go.mod` files; bump `devx` to the workspace Go version; add the drift check to the conformance gate.
+**Recommended action.** Converge `devx` and `homelab` onto one runner, delete the other. (Pinning all `go.mod` files to the workspace Go version + a drift gate is **done** — every `go.mod` == `go.work`, enforced by `//tools/conformance:check`.)
 
 ### 3.5 No written app-type → hosting-target rule
 
@@ -355,7 +355,9 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Addressed in this PR.** `MODULE.bazel` now declares `bazel_compatibility = [">=9.1.0", "<10.0.0"]`, so _any_ Bazel out of range fails immediately with a clear message, independent of Bazelisk. And `bazel run //:doctor` (plus per-app `//<app>:doctor`) checks the local toolchain against the source-of-truth files (`.bazelversion`, `.nvmrc`, the root `packageManager`, each app's `go.mod`) and reports missing/wrong tools with fix hints.
 
-**Target / remaining.** Make `doctor` a **CI conformance gate** (and/or a pre-commit hook) so drift is caught automatically, not only on demand; fold the Go-version-drift check ([3.4](#34-three-go-task-runners--go-version-drift)) into it; and have `devx scaffold` ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) emit a `doctor` target for every new app.
+**Addressed further (this PR).** The version-drift half is now a real CI gate: **`//tools/conformance:check`** (workflow _Conformance Check_) enforces that every `go.mod` / Dockerfile `FROM node:` / app `packageManager` matches canonical (`go.work` / `.nvmrc` / the root `packageManager`); temporary deviations live in `tools/conformance/version-pins.tsv` with a reason + owner + `review_by`, and the check fails on undeclared drift, on a stale pin (file caught up to canonical), and on an expired pin. All pre-existing Go drift ([3.4](#34-three-go-task-runners--go-version-drift)) was fixed to canonical.
+
+**Remaining.** Add _Conformance Check_ to the required-status-check set (via `repo_config`) so it gates the merge queue; make `//:doctor` a pre-commit/CI check too; and have `devx scaffold` ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) emit a `doctor` target + conformance-clean pins for every new app.
 
 ---
 
