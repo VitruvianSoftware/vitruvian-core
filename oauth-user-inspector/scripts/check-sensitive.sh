@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright (c) 2026 VitruvianSoftware
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,32 +19,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# See https://pnpm.io/pnpm-workspace_yaml
-packages:
- - packages/*
- - tools
- - mcp-slack
- - nexus-agent
- - oauth-user-inspector
- - tabula/shared
- - tabula/api
- - tabula/extension
- - tabula/web
- - tabula/cli
+# Prevent committing .env and build outputs
+set -e
 
-# The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
-# don't declare it as a peer dependency upstream). Under the strict rules_js /
-# hoist=false layout that breaks their `declare module 'fastify'` type
-# augmentations (e.g. request.jwtVerify / request.user from @fastify/jwt).
-# Declaring the missing peer here makes pnpm link a sibling `fastify` into
-# each plugin's store instance, restoring resolution without any hoisting.
-packageExtensions:
-  '@fastify/jwt':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/cors':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/rate-limit':
-    peerDependencies:
-      fastify: '*'
+if git diff --cached --name-only | grep -E "(^|/)\.env(\.|$)|(^|/)(dist|dist-server)(/|$)" >/dev/null; then
+	echo "\nERROR: You're trying to commit a sensitive or build file (env or dist)."
+	echo "Please remove it from staging: git reset HEAD <file>"
+	echo "If you really intend to add a built artifact, add an exception to .gitignore or contact the repo maintainers.\n"
+	exit 1
+fi
+
+exit 0

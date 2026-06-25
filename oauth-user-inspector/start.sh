@@ -1,3 +1,4 @@
+#!/bin/sh
 # Copyright (c) 2026 VitruvianSoftware
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,32 +19,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# See https://pnpm.io/pnpm-workspace_yaml
-packages:
- - packages/*
- - tools
- - mcp-slack
- - nexus-agent
- - oauth-user-inspector
- - tabula/shared
- - tabula/api
- - tabula/extension
- - tabula/web
- - tabula/cli
+set -e
 
-# The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
-# don't declare it as a peer dependency upstream). Under the strict rules_js /
-# hoist=false layout that breaks their `declare module 'fastify'` type
-# augmentations (e.g. request.jwtVerify / request.user from @fastify/jwt).
-# Declaring the missing peer here makes pnpm link a sibling `fastify` into
-# each plugin's store instance, restoring resolution without any hoisting.
-packageExtensions:
-  '@fastify/jwt':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/cors':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/rate-limit':
-    peerDependencies:
-      fastify: '*'
+echo "🚀 Starting OAuth User Inspector"
+echo "Node version: $(node --version)"
+echo "NPM version: $(npm --version)"
+echo "Working directory: $(pwd)"
+echo "Environment: ${NODE_ENV:-development}"
+echo "Port: ${PORT:-8080}"
+
+# Check if frontend dist directory exists
+if [ ! -d "dist" ]; then
+	echo "❌ Error: dist directory (frontend) not found. Frontend build may have failed."
+	ls -la
+	exit 1
+fi
+
+# Check if server dist directory exists
+if [ ! -d "dist-server" ]; then
+	echo "❌ Error: dist-server directory not found. Server build may have failed."
+	ls -la
+	exit 1
+fi
+
+# Check if server.js exists
+if [ ! -f "dist-server/server.js" ]; then
+	echo "❌ Error: dist-server/server.js not found. Server build may have failed."
+	ls -la dist-server/
+	exit 1
+fi
+
+echo "✅ Build files found, starting server..."
+echo "Contents of dist/ (frontend):"
+ls -la dist/
+echo "Contents of dist-server/ (backend):"
+ls -la dist-server/
+
+# Start the server
+exec node dist-server/server.js

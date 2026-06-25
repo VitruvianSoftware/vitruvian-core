@@ -18,32 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# See https://pnpm.io/pnpm-workspace_yaml
-packages:
- - packages/*
- - tools
- - mcp-slack
- - nexus-agent
- - oauth-user-inspector
- - tabula/shared
- - tabula/api
- - tabula/extension
- - tabula/web
- - tabula/cli
+load("//tools/pulumi:defs.bzl", "pulumi_project")
 
-# The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
-# don't declare it as a peer dependency upstream). Under the strict rules_js /
-# hoist=false layout that breaks their `declare module 'fastify'` type
-# augmentations (e.g. request.jwtVerify / request.user from @fastify/jwt).
-# Declaring the missing peer here makes pnpm link a sibling `fastify` into
-# each plugin's store instance, restoring resolution without any hoisting.
-packageExtensions:
-  '@fastify/jwt':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/cors':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/rate-limit':
-    peerDependencies:
-      fastify: '*'
+pulumi_project(
+    name = "oauth-user-inspector",
+    dir = "infrastructure/pulumi/oauth-user-inspector",
+)

@@ -1,0 +1,44 @@
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+dist-server/
+
+# Local env files
+.env
+.env.*.local
+.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Jest
+coverage/
+
+# Vite
+.vite/
+
+# Misc
+.env.test
+/.parcel-cache
+.cache
+.playwright-mcp/

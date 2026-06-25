@@ -1,0 +1,138 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# OAuth User Inspector deploy: Dockerfile-built image -> Artifact Registry ->
+# Pulumi rollout (Cloud Run) -> smoke check. Replaces the old Cloud Build
+# (cloudbuild.yaml) + gcloud deploy path.
+#
+# One workflow, parameterized by GitHub Environment: oauth-user-inspector-
+# development deploys automatically on push to main; other environments are
+# promoted via workflow_dispatch.
+#
+# Per-environment identifiers (GCP_PROJECT_ID, GCP_DEPLOY_SERVICE_ACCOUNT,
+# GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
+# Actions *variables* — keyless WIF means none of them is a credential. The
+# only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; the app's
+# OAuth client secrets live in GCP Secret Manager and are read by the app at
+# runtime (the runtime service account is granted accessor by Pulumi).
+
+name: oauth-user-inspector-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "oauth-user-inspector/**"
+      - "infrastructure/pulumi/oauth-user-inspector/**"
+      - ".github/workflows/oauth-user-inspector-deploy.yaml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: oauth-user-inspector-deploy-${{ inputs.environment || 'development' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: oauth-user-inspector-${{ inputs.environment || 'development' }}
+    env:
+      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-west1' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Ensure Artifact Registry repository
+        # Bootstrap ordering: the image push runs before `pulumi up`, but
+        # Pulumi owns the repository resource. Create it idempotently here;
+        # the Pulumi program adopts it (unconditional pulumi.Import — by the
+        # time pulumi runs, this repo always exists).
+        run: |
+          gcloud artifacts repositories describe oauth-user-inspector \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
+          gcloud artifacts repositories create oauth-user-inspector \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
+            --repository-format=docker \
+            --description="OAuth User Inspector container images (managed by //infrastructure/pulumi/oauth-user-inspector)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3
+
+      - name: Build and push image
+        # The app ships its own Dockerfile (React+Vite frontend + Express+TS
+        # backend served as one container on 8080). Build with buildx and push
+        # the git SHA + latest, matching the SHA Pulumi pins below.
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
+          docker buildx build --push \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            --tag "${IMAGE}:latest" \
+            oauth-user-inspector/
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Deploy the new revision (Pulumi)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Pulumi shells out to `go build`; the repo-root go.work does not
+          # include this module (same as tools/pulumi/pulumi_cmd.sh).
+          GOWORK: off
+        working-directory: infrastructure/pulumi/oauth-user-inspector
+        run: |
+          pulumi stack select "$DEPLOY_ENV" --create
+          pulumi config set oauth-user-inspector:imageTag "$GITHUB_SHA"
+          pulumi up --yes
+
+      - name: Smoke-check the service
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/oauth-user-inspector
+        run: |
+          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
+          URL="$(pulumi stack output serviceUrl)"
+          echo "Smoke-checking ${URL}/"
+          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${URL}/"
