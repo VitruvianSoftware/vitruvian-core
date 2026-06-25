@@ -40,6 +40,7 @@ package copybara_sync
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
@@ -110,35 +111,36 @@ func secretPrefix(projectName string) string {
 	return strings.ToUpper(strings.ReplaceAll(projectName, "-", "_"))
 }
 
-// configKeyPrefix converts a project name into a safe Pulumi config-key prefix
-// for the GitHub App credentials. Config keys cannot contain '-' segments that
-// would be read as namespaces, so we drop the hyphens and lower-camel the name.
-// e.g. "mcp-slack" -> "mcpSlack", yielding config keys "mcpSlackDispatchAppId"
-// and "mcpSlackDispatchAppPrivateKey".
-func configKeyPrefix(projectName string) string {
-	parts := strings.Split(projectName, "-")
-	var b strings.Builder
-	for i, p := range parts {
-		if p == "" {
-			continue
-		}
-		if i == 0 {
-			b.WriteString(p)
-			continue
-		}
-		b.WriteString(strings.ToUpper(p[:1]))
-		b.WriteString(p[1:])
+// syncAppCreds returns the shared GitHub App id + private key. A single App backs
+// the import-back dispatch for every component plus the monorepo-side automation.
+// In CI the values are injected from the SYNC_APP_ID / SYNC_APP_PRIVATE_KEY
+// pipeline secrets (env); locally they fall back to the gitignored Pulumi stack
+// config (syncAppId / syncAppPrivateKey). The secret never lives in git.
+func syncAppCreds(cfg *config.Config) (pulumi.StringInput, pulumi.StringInput) {
+	return envOrConfigSecret(cfg, "SYNC_APP_ID", "syncAppId"),
+		envOrConfigSecret(cfg, "SYNC_APP_PRIVATE_KEY", "syncAppPrivateKey")
+}
+
+// envOrConfigSecret reads a secret from the named environment variable (CI, where
+// pipeline secrets are injected as env) or, when unset, from the Pulumi stack
+// config (local dev). The env value is marked secret so it is encrypted in state
+// and masked in logs, matching cfg.RequireSecret.
+func envOrConfigSecret(cfg *config.Config, envName, cfgKey string) pulumi.StringInput {
+	if v := os.Getenv(envName); v != "" {
+		return pulumi.ToSecret(pulumi.String(v)).(pulumi.StringOutput)
 	}
-	return b.String()
+	return cfg.RequireSecret(cfgKey)
 }
 
 // ManageSyncAuth provisions the sync-auth resources for every synced project.
 func ManageSyncAuth(ctx *pulumi.Context) error {
 	cfg := config.New(ctx, "")
+	// Shared GitHub App backing every component's import dispatch and the
+	// monorepo-side automation (one App; see syncAppCreds).
+	appID, appKey := syncAppCreds(cfg)
 
 	for _, project := range syncedProjects {
 		prefix := secretPrefix(project.Name)
-		cfgPrefix := configKeyPrefix(project.Name)
 
 		// 1. Create a fresh ED25519 key pair for the export push.
 		privateKey, err := tls.NewPrivateKey(ctx, fmt.Sprintf("%s-sync-key", project.Name), &tls.PrivateKeyArgs{
@@ -175,14 +177,11 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			// 4. Place the GitHub App dispatch credentials as Actions secrets in the
 			//    STANDALONE repo, where its dispatch workflow reads them to fire a
 			//    repository_dispatch back into the monorepo (the import trigger).
-			//    Values come from Pulumi config secrets; the App is created manually.
-			dispatchAppID := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppId", cfgPrefix))
-			dispatchAppPrivateKey := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppPrivateKey", cfgPrefix))
-
+			//    Uses the shared sync App creds (syncAppCreds); the App is created manually.
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-id-secret", project.Name), &github.ActionsSecretArgs{
 				Repository:     pulumi.String(project.StandaloneRepo),
 				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
-				PlaintextValue: dispatchAppID,
+				PlaintextValue: appID,
 			})
 			if err != nil {
 				return err
@@ -191,7 +190,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-private-key-secret", project.Name), &github.ActionsSecretArgs{
 				Repository:     pulumi.String(project.StandaloneRepo),
 				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
-				PlaintextValue: dispatchAppPrivateKey,
+				PlaintextValue: appKey,
 			})
 			if err != nil {
 				return err
@@ -204,9 +203,6 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	// Dependabot-triggered workflow runs cannot read normal Actions secrets, so
 	// the App id/key are placed as a Dependabot secret; the Actions-secret twins
 	// cover any non-Dependabot-context step. Both reuse the single sync App.
-	appID := cfg.RequireSecret("syncAppId")
-	appKey := cfg.RequireSecret("syncAppPrivateKey")
-
 	_, err := github.NewDependabotSecret(ctx, "monorepo-sync-app-id-dependabot", &github.DependabotSecretArgs{
 		Repository:     pulumi.String(monorepoRepoName),
 		SecretName:     pulumi.String("SYNC_APP_ID"),
