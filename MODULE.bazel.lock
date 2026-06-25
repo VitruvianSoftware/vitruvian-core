@@ -526,7 +526,7 @@
     "@@aspect_rules_ts+//ts:extensions.bzl%ext": {
       "general": {
         "bzlTransitiveDigest": "PhGFMUN9PhYP0AYGuIjyjpjOqK7SXNsI7vpiEClZiTI=",
-        "usagesDigest": "X4MzIGbRTOzJbPUzAwxFLfIFITZ1J33EdUQNlx39rdI=",
+        "usagesDigest": "KmtAs2BKz/zOAWMdoINiXzJX0Qa0UdyQ+aO9KelDsWo=",
         "recordedInputs": [
           "REPO_MAPPING:aspect_rules_ts+,aspect_rules_ts aspect_rules_ts+",
           "REPO_MAPPING:aspect_rules_ts+,bazel_tools bazel_tools"
@@ -725,7 +725,7 @@
     "@@rules_nodejs+//nodejs:extensions.bzl%node": {
       "general": {
         "bzlTransitiveDigest": "4pUxCNc22K4I+6+4Nxu52Hur12tFRfa1JMsN5mdDv60=",
-        "usagesDigest": "cVolofaKGQuAX0IdgIDk0VXek0wIkUx5dnv/kP+9P+k=",
+        "usagesDigest": "KuTw+3X3YPZhI/ge4JMp10sKaxFJzVsmMSe/KRs843M=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "nodejs_linux_amd64": {
@@ -864,7 +864,7 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "Vjs2aLDiztq2JcqxCwBcmhWsa/nb80kDJ1sMT56l+0k=",
-        "usagesDigest": "iryj6T8cqwkHR9S1XcG96IE6gYR+njvSPfRv4fB+udY=",
+        "usagesDigest": "G9F3jBYX0DYxRbhOrxqiMRkoi7JTw5788GLlOcAKq2c=",
         "recordedInputs": [
           "REPO_MAPPING:aspect_bazel_lib+,bazel_tools bazel_tools",
           "REPO_MAPPING:bazel_features+,bazel_tools bazel_tools",
@@ -1137,7 +1137,7 @@
     "@@rules_playwright+//playwright:extensions.bzl%playwright": {
       "general": {
         "bzlTransitiveDigest": "zT02cw/OBdxEmZTaQjmrdCS/RL8t2Y7D5zCAbcbUSJE=",
-        "usagesDigest": "N+F8oeVpOQ7OqE8B5txFrUCUQ8GJL4hqUF8VS37KoZw=",
+        "usagesDigest": "fswqCpA9sfy68AgUimXob8m7xvGhFYQE8RUN/hY/sPM=",
         "recordedInputs": [
           "REPO_MAPPING:rules_playwright+,bazel_tools bazel_tools",
           "FILE:@@rules_playwright+//tools/release/artifacts/cli-arm64-apple-darwin 67731b424ce41adff3be0b4f612c60be0bddb53454eab0a5c415815d9c97f9cc"

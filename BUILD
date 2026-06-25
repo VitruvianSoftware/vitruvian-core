@@ -7,6 +7,7 @@ load("@pip//:requirements.bzl", "all_whl_requirements")
 load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
 load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
+load("//tools/doctor:defs.bzl", "doctor")
 
 # TODO: remove once https://github.com/aspect-build/aspect-cli/issues/560 done
 # gazelle:js_npm_package_target_name pkg
@@ -66,6 +67,9 @@ exports_files(
 # tools/gitops is the same: a hand-authored macro (defs.bzl) + wrapper script
 # loading rules_shell; exclude it for the identical bzl_library dep reason.
 # gazelle:exclude tools/gitops
+# tools/doctor is the same: a hand-authored macro (defs.bzl) + the doctor.sh
+# engine loading rules_shell; exclude it for the identical bzl_library dep reason.
+# gazelle:exclude tools/doctor
 # tabula is a JS/TS app suite with hand-authored BUILD files (ts_project +
 # webpack/next js_run_binary + jest/itest wiring) that the JS gazelle extension
 # would mangle, same situation as mcp-slack. Keep gazelle out of the subtree.
@@ -138,4 +142,26 @@ gazelle_python_manifest(
     name = "gazelle_python_manifest",
     modules_mapping = ":modules_map",
     pip_repository_name = "pip",
+)
+
+# Core developer-environment overview: `bazel run //:doctor`. Only bazel + git
+# are hard-required so this never fails on a partial setup — everything else is
+# informational (warns, never gates). Per-app `:doctor` targets tighten the
+# required set for their own toolchain.
+doctor(
+    name = "doctor",
+    label = "vitruvian-core (core toolchain)",
+    optional = [
+        "node",
+        "pnpm",
+        "go",
+        "gh",
+        "gcloud",
+        "docker",
+        "direnv",
+    ],
+    required = [
+        "bazel",
+        "git",
+    ],
 )

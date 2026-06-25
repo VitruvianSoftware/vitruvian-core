@@ -18,6 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Pin the Bazel version range so a developer who skipped Bazelisk (or has a stray
+# system `bazel` on PATH) fails fast with a clear message instead of cryptic flag
+# errors or silent local-vs-CI drift. `.bazelversion` (consumed by Bazelisk) pins
+# the exact build (9.1.1); this is the floor/ceiling enforced by Bazel itself for
+# ANY invocation. Bump the ceiling deliberately when moving to Bazel 10.
+module(
+    name = "vitruvian_core",
+    bazel_compatibility = [
+        ">=9.1.0",
+        "<10.0.0",
+    ],
+)
+
 # Currently bazel-lib is only load()ed when platforms is used.
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5", repo_name = None)  # force a recent version that works with v3

@@ -1,5 +1,6 @@
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:ignore
 
@@ -12,4 +13,21 @@ npm_link_all_packages(name = "node_modules")
 sh_binary(
     name = "bot",
     srcs = ["bot.sh"],
+)
+
+# Developer-environment check: `bazel run //nexus-agent:doctor`. swift/python3
+# are optional (used by the native/agent tooling paths).
+doctor(
+    name = "doctor",
+    label = "nexus-agent",
+    optional = [
+        "swift",
+        "python3",
+    ],
+    required = [
+        "bazel",
+        "node",
+        "git",
+    ],
+    visibility = ["//visibility:public"],
 )
