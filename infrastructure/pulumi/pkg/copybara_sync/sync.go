@@ -67,6 +67,12 @@ type syncedProject struct {
 	// this component is synced with (e.g. "mcp-slack"). It is referenced by
 	// name only — this package never creates repositories.
 	StandaloneRepo string
+
+	// OneWay marks a component exported monorepo -> standalone only
+	// (copy.bara.sky is_one_way): it has no import-back dispatch workflow,
+	// so it needs no GitHub App dispatch credentials — only the export SSH
+	// key provisioned in steps 1-3 below.
+	OneWay bool
 }
 
 // syncedProjects is the source of truth for which components have sync auth
@@ -93,6 +99,7 @@ var syncedProjects = []syncedProject{
 	{
 		Name:           "oauth-user-inspector",
 		StandaloneRepo: "oauth-user-inspector",
+		OneWay:         true,
 	},
 }
 
@@ -164,29 +171,31 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			return err
 		}
 
-		// 4. Place the GitHub App dispatch credentials as Actions secrets in the
-		//    STANDALONE repo, where its dispatch workflow reads them to fire a
-		//    repository_dispatch back into the monorepo (the import trigger).
-		//    Values come from Pulumi config secrets; the App is created manually.
-		dispatchAppID := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppId", cfgPrefix))
-		dispatchAppPrivateKey := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppPrivateKey", cfgPrefix))
+		if !project.OneWay { // one-way export has no import-back dispatch workflow
+			// 4. Place the GitHub App dispatch credentials as Actions secrets in the
+			//    STANDALONE repo, where its dispatch workflow reads them to fire a
+			//    repository_dispatch back into the monorepo (the import trigger).
+			//    Values come from Pulumi config secrets; the App is created manually.
+			dispatchAppID := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppId", cfgPrefix))
+			dispatchAppPrivateKey := cfg.RequireSecret(fmt.Sprintf("%sDispatchAppPrivateKey", cfgPrefix))
 
-		_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-id-secret", project.Name), &github.ActionsSecretArgs{
-			Repository:     pulumi.String(project.StandaloneRepo),
-			SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
-			PlaintextValue: dispatchAppID,
-		})
-		if err != nil {
-			return err
-		}
+			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-id-secret", project.Name), &github.ActionsSecretArgs{
+				Repository:     pulumi.String(project.StandaloneRepo),
+				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
+				PlaintextValue: dispatchAppID,
+			})
+			if err != nil {
+				return err
+			}
 
-		_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-private-key-secret", project.Name), &github.ActionsSecretArgs{
-			Repository:     pulumi.String(project.StandaloneRepo),
-			SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
-			PlaintextValue: dispatchAppPrivateKey,
-		})
-		if err != nil {
-			return err
+			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-private-key-secret", project.Name), &github.ActionsSecretArgs{
+				Repository:     pulumi.String(project.StandaloneRepo),
+				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
+				PlaintextValue: dispatchAppPrivateKey,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
