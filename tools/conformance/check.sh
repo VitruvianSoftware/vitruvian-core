@@ -253,6 +253,48 @@ go_is_newer() {
   return 1
 }
 
+# Effective Node major(s) a Dockerfile pins, in first-seen order. Handles BOTH a
+# hardcoded `FROM node:<major>...` AND a parameterized `FROM node:${NODE_VERSION}...`
+# whose value comes from an `ARG NODE_VERSION=<default>` (the preferred pattern —
+# it keeps the version sourced from one place instead of hardcoded). A parameterized
+# FROM whose ARG has NO default is build-time-provided (the deploy passes it from
+# .nvmrc) and emits nothing — there is no static value to check. A Dockerfile with
+# no `FROM node:` emits nothing.
+df_node_majors() {
+  awk '
+    # Collect ARG defaults: `ARG NAME=VALUE` (a bare `ARG NAME` carries no default).
+    toupper($1) == "ARG" {
+      rest = $0
+      sub(/^[[:space:]]*[Aa][Rr][Gg][[:space:]]+/, "", rest)
+      eq = index(rest, "=")
+      if (eq > 0) {
+        nm = substr(rest, 1, eq - 1); vv = substr(rest, eq + 1)
+        gsub(/[[:space:]]/, "", nm); sub(/[[:space:]].*/, "", vv)
+        argval[nm] = vv
+      }
+    }
+    toupper($1) == "FROM" {
+      img = $2
+      if (img ~ /^node:/) {
+        tag = substr(img, 6)                 # strip "node:"
+        if (tag ~ /^\$/) {                   # parameterized: ${NAME}... or $NAME...
+          nm = tag
+          sub(/^\$\{?/, "", nm)              # strip leading $ or ${
+          sub(/[-}:].*/, "", nm)             # NAME ends at - } : or token-end
+          val = argval[nm]
+          if (val != "") {
+            split(val, p, /[^0-9]/)
+            if (p[1] != "" && !seen[p[1]]++) print p[1]
+          }
+        } else {                             # hardcoded major
+          split(tag, p, /[^0-9]/)
+          if (p[1] != "" && !seen[p[1]]++) print p[1]
+        }
+      }
+    }
+  ' "$1"
+}
+
 # ---------------------------------------------------------------------------
 # Report buffering, grouped by tool. Each row encoded as
 #   <glyph>\t<color>\t<file>\t<found>\t<canonical>\t<note>\t<fixhint>
@@ -345,10 +387,12 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# CHECK: Node. Every Dockerfile; for each `FROM node:<tag>` line, the leading
-# major vs .nvmrc's major. Dockerfiles with no node FROM are skipped silently.
-# A multi-stage Dockerfile contributes one row PER distinct node major it pins
-# (so a file mixing node:20 and node:22 surfaces both).
+# CHECK: Node. Every Dockerfile; the effective node major (see df_node_majors —
+# a hardcoded `FROM node:<major>` OR a parameterized `FROM node:${NODE_VERSION}`
+# resolved through its `ARG NODE_VERSION` default) vs .nvmrc's major. Dockerfiles
+# with no node FROM — or a parameterized FROM with no ARG default (build-provided)
+# — are skipped silently. A multi-stage Dockerfile contributes one row PER distinct
+# node major it pins (so a file mixing node:20 and node:22 surfaces both).
 # ---------------------------------------------------------------------------
 check_node() {
   canon="$(canonical_node)"
@@ -356,19 +400,8 @@ check_node() {
   _list="$(discover "Dockerfile*")"
   while IFS= read -r dockerfile; do
     [ -n "$dockerfile" ] || continue
-    # Distinct node majors referenced by FROM node:<tag> lines, in first-seen order.
-    majors="$(
-      awk '
-        toupper($1) == "FROM" {
-          img = $2
-          if (img ~ /^node:/) {
-            tag = substr(img, 6)            # strip "node:"
-            split(tag, p, /[^0-9]/)         # leading numeric run = major
-            if (p[1] != "" && !seen[p[1]]++) print p[1]
-          }
-        }
-      ' "$dockerfile"
-    )"
+    # Distinct effective node majors (hardcoded or ARG-resolved), first-seen order.
+    majors="$(df_node_majors "$dockerfile")"
     [ -n "$majors" ] || continue
     # Inner loop also via here-doc (same subshell reason as above).
     _df_rel="$(rel "$dockerfile")"
@@ -428,11 +461,7 @@ stale_sweep() {
         ;;
       node)
         canon="$c_node"
-        cur="$(awk '
-          toupper($1) == "FROM" {
-            img = $2
-            if (img ~ /^node:/) { tag = substr(img, 6); split(tag, p, /[^0-9]/); if (p[1] != "") { print p[1]; exit } }
-          }' "$fpath")"
+        cur="$(df_node_majors "$fpath" | head -1)"
         ;;
       pnpm)
         canon="$c_pnpm"

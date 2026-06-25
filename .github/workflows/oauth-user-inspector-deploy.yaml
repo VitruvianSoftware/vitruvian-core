@@ -106,7 +106,11 @@ jobs:
         # the git SHA + latest, matching the SHA Pulumi pins below.
         run: |
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
+          # Source the Node major from the repo canonical (.nvmrc) so the image
+          # always tracks it — the Dockerfile hardcodes nothing.
+          NODE_VERSION="$(cut -d. -f1 .nvmrc)"
           docker buildx build --push \
+            --build-arg NODE_VERSION="${NODE_VERSION}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:latest" \
             oauth-user-inspector/

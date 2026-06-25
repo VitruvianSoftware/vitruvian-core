@@ -19,16 +19,29 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 
 ## Current exceptions
 
-| Application / file | Tool | Pinned | Canonical | Owner | Review by | Tracking |
-|---|---|:---:|:---:|---|:---:|---|
-| [`tabula/api/Dockerfile`](../../tabula/api/Dockerfile) | Node | **20** | 22 (`.nvmrc`) | @james | 2026-09-30 | _(issue: tbd)_ |
+_None._ Every consumer currently matches its canonical version — there are **no active pins** in [`tools/conformance/version-pins.tsv`](../../tools/conformance/version-pins.tsv), and `bazel run //tools/conformance:check` is green with zero pins.
 
-### `tabula/api/Dockerfile` — Node 20 (canonical 22)
+> **Retired — `tabula/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: tabula's API image is built by Bazel (`//tabula/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
 
-- **Why.** The tabula API container has not yet been validated to build and run on Node 22; the rest of the repo (and `.nvmrc`) is on 22. Its Dockerfile still bases on `node:20-slim`.
-- **Why not just bump it.** Bumping a container base "blind" is exactly the class of failure that broke the oauth-user-inspector deploy (a Node/pnpm mismatch that built locally but failed in CI — see the lesson in §3.4 of the [alignment gaps](application-alignment-gaps.md)). tabula is the repo's most-deployed app, so its base image bump must be verified, not assumed.
-- **Removal criteria.** Build + smoke-test `tabula/api` on `node:22-slim`; if green, change both `FROM node:20-slim` lines to `node:22-slim`, then delete this entry **and** the matching `version-pins.tsv` row. (If you align the Dockerfile but forget the row, the check fails it as a _stale pin_ — forcing the cleanup.)
-- **Owner / review.** @james, by 2026-09-30.
+---
+
+## Preventing this class of exception
+
+The cleanest way to avoid a hardcoded-version drift is to **not hardcode the version in the Dockerfile** — source it from the canonical file instead. The repo has two build paths, both of which can do this:
+
+- **Bazel-built images** (`node_image`, e.g. `//tabula/api:image`, `//tabula/web`) already get their Node version from `.nvmrc` via the toolchain (`node.toolchain(node_version_from_nvmrc = "//:.nvmrc")` in `MODULE.bazel`). Nothing to pin — bump `.nvmrc` and every Bazel image follows. This is why tabula's Dockerfile was dead weight.
+- **Dockerfile-built images** (e.g. `oauth-user-inspector`) parameterize the major via a build arg instead of hardcoding it:
+
+  ```dockerfile
+  # NODE_VERSION defaults to the repo canonical (.nvmrc major); CI passes it explicitly.
+  ARG NODE_VERSION=22
+  FROM node:${NODE_VERSION}-slim AS build
+  ...
+  ```
+
+  The deploy workflow passes `--build-arg NODE_VERSION="$(cut -d. -f1 .nvmrc)"`, so CI builds always track `.nvmrc`. The conformance check resolves the `ARG NODE_VERSION` default and still enforces it equals canonical, so even the local-build default can't silently drift.
+
+A genuine exception (an app that truly cannot run on canonical yet) is then an explicit, tracked deviation — an overridden build arg plus a registry row — not an invisible hardcoded `FROM node:<major>`.
 
 ---
 
