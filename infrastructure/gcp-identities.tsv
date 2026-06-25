@@ -1,6 +1,6 @@
 # GCP identity map — which Google account manages each piece of infrastructure.
 #
-# WHY: this machine has several gcloud accounts (personal, abrial, vitruvian). GCP auth must
+# WHY: this machine has several gcloud accounts (personal, nocentre, vitruvian). GCP auth must
 # NOT depend on whichever account `gcloud` is currently set to. The Pulumi Bazel wrappers
 # (//tools/pulumi) read this file and inject a token for the declared account at run time
 # (GOOGLE_OAUTH_ACCESS_TOKEN), so the correct identity is always used — and using the wrong
@@ -14,12 +14,17 @@
 #   gcp_project  default GCP project (exported as GOOGLE_CLOUD_PROJECT); "-" if N/A
 #   purpose      free text; may contain spaces; MUST be the last column
 #
+# NOTE: every first-party app that deploys to / uses GCP in this repo authenticates as the
+# personal account james.nguyen@gmail.com today (distinct GCP projects, one row each).
+# james@nocentre.net is the go-forward account for future (company) projects.
+#
 # AD-HOC GCP WORK: look up the account here, then:
 #   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
 #
-# infra_dir                        account                              gcp_project   purpose
-infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
-infrastructure/pulumi/tabula       james.nguyen@gmail.com               tabula-dev-0001  Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
+# infra_dir                                   account                              gcp_project                 purpose
+infrastructure/pulumi/lab-gmail               james.nguyen@gmail.com               personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+infrastructure/pulumi/tabula                  james.nguyen@gmail.com               tabula-dev-0001             Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
+infrastructure/pulumi/oauth-user-inspector    james.nguyen@gmail.com               gen-lang-client-0352693779  OAuth User Inspector Cloud Run + Secret Manager (pulumi oauth-user-inspector)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
--                                  james@abrial.ai                      -             abrial.ai projects (future)
--                                  james@sandbox.vitruviansoftware.dev  -             Vitruvian Software sandbox/company (future)
+-                                             james@nocentre.net                   -                           nocentre.net projects (future)
+-                                             james@sandbox.vitruviansoftware.dev  -                           Vitruvian Software sandbox/company (future)
