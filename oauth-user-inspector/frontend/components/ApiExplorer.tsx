@@ -47,11 +47,36 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
     setSelectedEndpoint(endpoint);
 
     try {
-      const requestBody = {
+      const requestBody: {
+        provider: AppUser["provider"];
+        accessToken: string;
+        endpoint: ApiEndpoint;
+        zitadelDomain?: string;
+        auth0Domain?: string;
+      } = {
         provider: user.provider,
         accessToken: user.accessToken,
         endpoint,
       };
+
+      // Forward the active provider domain so the server can rewrite the host
+      // of relative endpoints (e.g. Zitadel /oidc/v1/userinfo, Auth0
+      // /userinfo) to the user's actual issuer rather than the default. The
+      // domain is persisted in localStorage `auth_meta` after token exchange
+      // (App.tsx writes `zitadel_domain` / `auth0_domain`).
+      try {
+        const metaRaw = localStorage.getItem("auth_meta");
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          const zitadelDomain = meta.zitadel_domain || meta.zitadelDomain;
+          const auth0Domain = meta.auth0_domain || meta.auth0Domain;
+          if (zitadelDomain) requestBody.zitadelDomain = zitadelDomain;
+          if (auth0Domain) requestBody.auth0Domain = auth0Domain;
+        }
+      } catch {
+        // Ignore malformed auth_meta; the server falls back to the default
+        // domain (Zitadel) or returns a clear error (Auth0).
+      }
 
       const apiResponse = await fetch("/api/explore", {
         method: "POST",

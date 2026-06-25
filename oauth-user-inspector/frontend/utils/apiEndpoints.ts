@@ -169,7 +169,9 @@ export const getProviderEndpoints = (
           id: "userinfo",
           name: "User Info",
           description: "Get the authenticated user's profile information",
-          url: "https://auth.ipv1337.dev/oidc/v1/userinfo",
+          // Relative URL so the server prefixes the resolved Zitadel domain
+          // (request-supplied / secret / default), matching the auth0 case.
+          url: "/oidc/v1/userinfo",
           method: "GET",
           requiredScopes: ["openid", "profile", "email"],
         },

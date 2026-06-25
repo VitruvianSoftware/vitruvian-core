@@ -861,7 +861,7 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
   const endTimer = logTiming(reqLogger, "oauth-hosted-init");
 
   try {
-    const { provider, redirectUri } = req.body;
+    const { provider, redirectUri, scopes } = req.body;
 
     reqLogger.info("Hosted OAuth initialization requested", {
       provider,
@@ -927,7 +927,12 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
       // instance so hosted login works out of the box. offline_access yields a
       // refresh token (so refresh + revoke work, like Auth0).
       const zitadelDomain = await resolveZitadelDomain();
-      const scope = "openid profile email offline_access";
+      // Honor user-selected scopes from the hosted Zitadel card (ScopeSelector),
+      // falling back to the sensible default (offline_access keeps refresh working).
+      const scope =
+        typeof scopes === "string" && scopes.trim()
+          ? scopes
+          : "openid profile email offline_access";
       authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodeURIComponent(
         scope,
       )}&state=zitadel-hosted`;

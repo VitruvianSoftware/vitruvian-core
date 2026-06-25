@@ -27,14 +27,14 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts"],
-  // NOTE: server/__tests__/server.test.ts uses msw@2 (ESM-only), which does not
-  // transform cleanly under ts-jest/CJS in the hermetic CI sandbox. Skipped here
-  // and tracked as a follow-up (migrate to a jest ESM config or a non-ESM fetch
-  // mock). The remaining unit suite runs in CI.
-  testPathIgnorePatterns: [
-    "/node_modules/",
-    "/server/__tests__/server\\.test\\.ts$",
-  ],
+  // server/__tests__/server.test.ts previously depended on msw@2 (ESM-only),
+  // whose deep .mjs transitive deps ts-jest/CJS could not transform in the
+  // hermetic bazel sandbox, so it was skipped. It now mocks the server's
+  // `node-fetch` calls directly via a pure-CJS fetch mock
+  // (server/__tests__/fetch-mock.ts), so it runs in both pnpm and bazel.
+  // fetch-mock.ts is a test helper, not a *.test.ts suite, so testMatch already
+  // excludes it from being run as a suite.
+  testPathIgnorePatterns: ["/node_modules/"],
   moduleNameMapper: {
     "^(\.{1,2}/.*)\.js$": "$1",
   },
