@@ -30,7 +30,7 @@ on:
     workflow_dispatch:
         inputs:
             copybara_options:
-                description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
+                description: "Copybara CLI options. First seed of a brand-new EMPTY mirror: '--init-history --force --ignore-noop' (an empty destination has no MONOREPO_REV_ID baseline, so --init-history is required). Re-seed an existing mirror: '--force --ignore-noop'. Normal runs: --ignore-noop."
                 default: "--ignore-noop"
                 required: false
 
