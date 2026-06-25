@@ -8,6 +8,10 @@ Pulumi.*.yaml
 # (project id, region, deployer SA email, adoption flags). Runtime secrets
 # stay in GCP Secret Manager.
 !tabula/Pulumi.*.yaml
+# oauth-user-inspector likewise commits its dev stack config (project id, region).
+# Its deploy workflow only sets oauth-user-inspector:imageTag, so cfg.Require("project")
+# must resolve from this committed file. Runtime secrets stay in GCP Secret Manager.
+!oauth-user-inspector/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").

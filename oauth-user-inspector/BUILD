@@ -65,7 +65,6 @@ jest_test(
         ":node_modules/express",
         ":node_modules/js-base64",
         ":node_modules/jwt-decode",
-        ":node_modules/msw",
         ":node_modules/node-fetch",
         ":node_modules/supertest",
         ":node_modules/ts-jest",

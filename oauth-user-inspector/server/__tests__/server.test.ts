@@ -21,12 +21,21 @@
  */
 
 import request from "supertest";
-import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
+import { FetchMock } from "./fetch-mock.js";
 
 // Ensure required env vars for hosted credential retrieval
 process.env.GOOGLE_CLOUD_PROJECT =
   process.env.GOOGLE_CLOUD_PROJECT || "test-project";
+
+// Shared mock-fetch registry. The server imports `node-fetch`; we replace that
+// module's default export with this registry's `fetch` so every outbound OAuth
+// provider call is intercepted in pure CJS (no msw/ESM transform needed).
+const fetchMock = new FetchMock();
+
+jest.mock("node-fetch", () => ({
+  __esModule: true,
+  default: (...args: unknown[]) => (fetchMock.fetch as any)(...args),
+}));
 
 // Mock Google Secret Manager
 jest.mock("@google-cloud/secret-manager", () => ({
@@ -163,113 +172,99 @@ jest.mock("winston", () => {
 
 import app from "../server.js";
 
-const restHandlers = [
+const isRefreshBody = (body: string): boolean =>
+  body.includes('"grant_type":"refresh_token"') ||
+  body.includes("grant_type=refresh_token");
+
+function registerBaseHandlers(): void {
   // OAuth token exchange handlers
-  http.post("https://github.com/login/oauth/access_token", () => {
-    return HttpResponse.json({ access_token: "test_access_token" });
-  }),
-  http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
-    const body = await request.text();
-    if (body.includes("grant_type=refresh_token")) {
-      return HttpResponse.json({
-        access_token: "new_google_access_token",
-        refresh_token: "new_google_refresh_token",
-        expires_in: 3600,
-        token_type: "Bearer",
-      });
-    } else {
-      return HttpResponse.json({
-        access_token: "new_google_access_token",
-        refresh_token: "new_google_refresh_token",
-        expires_in: 3600,
-        token_type: "Bearer",
-      });
+  fetchMock.register(
+    "POST",
+    "https://github.com/login/oauth/access_token",
+    () => ({ json: { access_token: "test_access_token" } }),
+  );
+  fetchMock.register("POST", "https://oauth2.googleapis.com/token", () => ({
+    json: {
+      access_token: "new_google_access_token",
+      refresh_token: "new_google_refresh_token",
+      expires_in: 3600,
+      token_type: "Bearer",
+    },
+  }));
+  fetchMock.register("POST", "https://gitlab.com/oauth/token", ({ body }) => {
+    if (isRefreshBody(body)) {
+      return {
+        json: {
+          access_token: "new_gitlab_access_token",
+          refresh_token: "new_gitlab_refresh_token",
+          expires_in: 7200,
+        },
+      };
     }
-  }),
-  http.post("https://gitlab.com/oauth/token", async ({ request }) => {
-    const body = await request.text();
-    const isRefresh =
-      body.includes('"grant_type":"refresh_token"') ||
-      body.includes("grant_type=refresh_token");
-    if (isRefresh) {
-      return HttpResponse.json({
-        access_token: "new_gitlab_access_token",
-        refresh_token: "new_gitlab_refresh_token",
-        expires_in: 7200,
-      });
-    } else {
-      return HttpResponse.json({
-        access_token: "test_gitlab_access_token",
-      });
-    }
-  }),
-  http.post(
+    return { json: { access_token: "test_gitlab_access_token" } };
+  });
+  fetchMock.register(
+    "POST",
     "https://oauth-user-inspector.us.auth0.com/oauth/token",
-    async ({ request }) => {
-      const body = await request.text();
-      const isRefresh =
-        body.includes('"grant_type":"refresh_token"') ||
-        body.includes("grant_type=refresh_token");
-      if (isRefresh) {
-        return HttpResponse.json({
-          access_token: "new_auth0_access_token",
-          refresh_token: "new_auth0_refresh_token",
-          expires_in: 86400,
-        });
-      } else {
-        return HttpResponse.json({
-          access_token: "test_auth0_access_token",
-        });
+    ({ body }) => {
+      if (isRefreshBody(body)) {
+        return {
+          json: {
+            access_token: "new_auth0_access_token",
+            refresh_token: "new_auth0_refresh_token",
+            expires_in: 86400,
+          },
+        };
       }
+      return { json: { access_token: "test_auth0_access_token" } };
     },
-  ),
-  http.post(
+  );
+  fetchMock.register(
+    "POST",
     "https://www.linkedin.com/oauth/v2/accessToken",
-    async ({ request }) => {
-      const body = await request.text();
-      const isRefresh = body.includes("grant_type=refresh_token");
-      if (isRefresh) {
-        return HttpResponse.json({
-          access_token: "new_linkedin_access_token",
-          refresh_token: "new_linkedin_refresh_token",
-          expires_in: 5184000,
-        });
-      } else {
-        return HttpResponse.json({
-          access_token: "test_linkedin_access_token",
-        });
+    ({ body }) => {
+      if (body.includes("grant_type=refresh_token")) {
+        return {
+          json: {
+            access_token: "new_linkedin_access_token",
+            refresh_token: "new_linkedin_refresh_token",
+            expires_in: 5184000,
+          },
+        };
       }
+      return { json: { access_token: "test_linkedin_access_token" } };
     },
-  ),
+  );
 
   // OAuth revocation handlers
-  http.post("https://oauth2.googleapis.com/revoke", () => {
-    return new HttpResponse(null, { status: 200 });
-  }),
-  http.delete("https://api.github.com/applications/:clientId/token", () => {
-    return new HttpResponse(null, { status: 204 });
-  }),
-  http.post("https://gitlab.com/oauth/revoke", () => {
-    return HttpResponse.json({ success: true });
-  }),
-  http.post("https://oauth-user-inspector.us.auth0.com/oauth/revoke", () => {
-    return HttpResponse.json({ success: true });
-  }),
-];
-
-const mswServer = setupServer(...restHandlers);
+  fetchMock.register("POST", "https://oauth2.googleapis.com/revoke", () => ({
+    status: 200,
+    body: null,
+  }));
+  fetchMock.register(
+    "DELETE",
+    /^https:\/\/api\.github\.com\/applications\/[^/]+\/token$/,
+    () => ({ status: 204, body: null }),
+  );
+  fetchMock.register("POST", "https://gitlab.com/oauth/revoke", () => ({
+    json: { success: true },
+  }));
+  fetchMock.register(
+    "POST",
+    "https://oauth-user-inspector.us.auth0.com/oauth/revoke",
+    () => ({ json: { success: true } }),
+  );
+}
 
 beforeAll(async () => {
   const logger = await import("../logger.js");
-  // Bypass unhandled requests (e.g., local supertest calls) instead of treating them as errors
-  mswServer.listen({ onUnhandledRequest: "bypass" });
+  registerBaseHandlers();
   const noop = () => {};
   jest.spyOn(logger.default, "info").mockImplementation(noop as any);
   jest.spyOn(logger.default, "error").mockImplementation(noop as any);
   jest.spyOn(logger.default, "warn").mockImplementation(noop as any);
 });
-afterAll(() => mswServer.close());
-afterEach(() => mswServer.resetHandlers());
+afterEach(() => fetchMock.reset());
 
 describe("/api/oauth/token", () => {
   it("should return an access token for a valid non-hosted request", async () => {
@@ -401,15 +396,15 @@ describe("/api/oauth/token", () => {
 
   it("should return enhanced OAuth error for invalid_scope", async () => {
     // Mock a GitHub OAuth error response
-    mswServer.use(
-      http.post("https://github.com/login/oauth/access_token", () => {
-        return HttpResponse.json(
-          {
-            error: "invalid_scope",
-            error_description: "The requested scope is invalid",
-          },
-          { status: 400 },
-        );
+    fetchMock.use(
+      "POST",
+      "https://github.com/login/oauth/access_token",
+      () => ({
+        status: 400,
+        json: {
+          error: "invalid_scope",
+          error_description: "The requested scope is invalid",
+        },
       }),
     );
 
@@ -432,17 +427,13 @@ describe("/api/oauth/token", () => {
 
   it("should return enhanced OAuth error for unauthorized_client", async () => {
     // Mock a Google OAuth error response
-    mswServer.use(
-      http.post("https://oauth2.googleapis.com/token", () => {
-        return HttpResponse.json(
-          {
-            error: "unauthorized_client",
-            error_description: "Client authentication failed",
-          },
-          { status: 401 },
-        );
-      }),
-    );
+    fetchMock.use("POST", "https://oauth2.googleapis.com/token", () => ({
+      status: 401,
+      json: {
+        error: "unauthorized_client",
+        error_description: "Client authentication failed",
+      },
+    }));
 
     const response = await request(app).post("/api/oauth/token").send({
       code: "test_code",
@@ -762,11 +753,9 @@ describe("/api/explore", () => {
   it("should handle API calls for GitHub endpoints", async () => {
     // Mock the fetch for GitHub API
     const mockResponse = { login: "testuser", id: 123 };
-    mswServer.use(
-      http.get("https://api.github.com/user", () => {
-        return HttpResponse.json(mockResponse);
-      }),
-    );
+    fetchMock.use("GET", "https://api.github.com/user", () => ({
+      json: mockResponse,
+    }));
 
     const response = await request(app)
       .post("/api/explore")
