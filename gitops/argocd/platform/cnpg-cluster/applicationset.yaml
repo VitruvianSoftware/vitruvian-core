@@ -86,11 +86,12 @@ spec:
             # rollout / PVC churn — keep byte-for-byte equivalent at cutover.
             mode: standalone
             cluster:
-              # 2 instances (1 primary + 1 standby) — reduced from 3 because the
-              # pod-overlay base-backup stall (issue #271) prevents building a 3rd
-              # replica at all; 2 still survives a single node loss. Restore to 3
-              # once the overlay base-backup bug is fixed.
-              instances: 2
+              # 3 instances (1 primary + 2 standby). The pod-overlay base-backup stall
+              # (issue #271) that blocked building a 3rd replica is FIXED — Cilium moved
+              # to Geneve tunnel mode (#275) and base-backups complete over the overlay
+              # again (verified: grafana-db rebuilt its 3rd replica → 3/3). Restored from
+              # the #272 workaround value of 2.
+              instances: 3
               # Spread instances 1-per-node so a single node loss never takes the
               # whole DB down. WITHOUT this, the chart default topologyKey is
               # topology.kubernetes.io/zone — a NO-OP on these unlabelled nodes — so
