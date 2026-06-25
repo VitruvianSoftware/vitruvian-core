@@ -30,14 +30,16 @@
 #     no IPAM conflict with Flannel, pod CIDR preserved.
 #   - kube-proxy-replacement needs a DIRECT API endpoint (kube-proxy is gone):
 #     k8sServiceHost=k8s-api.lab.ipv1337.dev (DNS -> 3 CP tailnet IPs, Go dials all).
-#   - routingMode NATIVE over tailscale subnet routes (NOT vxlan): every node
-#     advertises its pod CIDR 10.42.X.0/24 (auto-approved via tailnet autoApprovers)
-#     AND runs tailscale with --accept-routes, so the pod CIDRs are tailnet-routable
-#     and Cilium routes pod traffic natively over tailscale0. WHY: the vxlan BPF
-#     pod-egress path silently dropped cross-node pod traffic on the Mac Lima VMs;
-#     native sidesteps encap entirely. The Fedora nodes shipped with
-#     --accept-routes=false, which broke native cross-node until corrected — every
-#     node MUST --accept-routes. devices tailscale0 (+ LAN NICs lima+/enp+ for L2 LB).
+#   - routingMode TUNNEL (Geneve) over tailscale (#271 fix; was native): pod traffic
+#     is encapsulated in node-sourced Geneve UDP between node InternalIPs (all tailnet
+#     100.x) -> egresses the host stack over tailscale0, the SAME path host-net
+#     transfers proved byte-clean wired-to-wired. Native routing instead bpf_redirect'd
+#     raw pod frames into the tailscale0 WireGuard TUN, whose userspace TX black-holes
+#     a segment on sustained transfers (#271). The earlier "NOT vxlan" note (vxlan
+#     dropped Mac-Lima pod egress) was a WiFi/Lima artifact, not encap being broken.
+#     Nodes still advertise pod CIDRs (auto-approved) + run tailscale --accept-routes
+#     (harmless/unused under tunnel, but every node MUST --accept-routes — Fedora
+#     shipped with it off, which broke cross-node). devices tailscale0 (+ lima+/enp+).
 #   - gatewayAPI OFF — Envoy Gateway owns Gateway API; Cilium must NOT install a 2nd
 #     controller over the .211 Gateway cloudflared depends on.
 #   - l2announcements feature ON but no CiliumL2AnnouncementPolicy/LB-IPAM pool yet
@@ -79,12 +81,19 @@ spec:
             k8sServicePort: 6443
             ipam:
               mode: kubernetes
-            # Native routing over tailscale subnet routes (each node advertises its
-            # pod CIDR 10.42.X.0/24, approved in the tailnet). NO vxlan — the vxlan
-            # encap path silently dropped pod-sourced cross-node traffic on the Mac
-            # Lima VMs. autoDirectNodeRoutes stays off: the accepted tailscale subnet
-            # routes provide cross-node pod-CIDR reachability via the host stack.
-            routingMode: native
+            # Tunnel (Geneve) over tailscale — #271 fix (was native routing). Native
+            # routing bpf_redirect'd raw pod frames into the tailscale0 WireGuard TUN,
+            # whose userspace TX black-holes a TCP segment on sustained transfers
+            # (CNPG base-backup / WAL->MinIO stall after ~10-37MB, never retransmitted).
+            # Geneve wraps pod traffic in node-sourced UDP between node InternalIPs
+            # (all tailnet 100.x) -> it egresses the host stack over tailscale0, the
+            # SAME path host-net transfers proved byte-clean wired-to-wired (0/6 stalls
+            # vs 9/10 for the pod overlay). The earlier "NO vxlan" rationale (vxlan
+            # dropped Mac-Lima pod egress) was a WiFi/Lima artifact, not encap being
+            # broken — #271's wired-wired test isolated it. Pod MTU = 1280 underlay -
+            # 50B Geneve = 1230 (Cilium derives it). autoDirectNodeRoutes stays off.
+            routingMode: tunnel
+            tunnelProtocol: geneve
             devices:
               - tailscale0
               - lima+
