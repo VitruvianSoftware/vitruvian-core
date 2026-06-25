@@ -38,6 +38,45 @@ This application demonstrates OAuth token lifecycle best practices including:
 - **Security Best Practices**: Learn about token lifecycle management
 - **Provider Differences**: Compare how different OAuth providers implement standards
 
+## Hosted OAuth & redirect URIs
+
+The app supports two login modes per provider:
+
+- **BYO (bring-your-own credentials):** you paste your own Client ID/Secret. You
+  register the redirect URI shown in the UI on **your** OAuth application.
+- **Hosted ("use our app"):** the server uses a pre-configured OAuth application
+  whose Client ID/Secret live in GCP Secret Manager (`<PROVIDER>_APP_OAUTH_*`).
+
+In **both** modes the redirect URI sent to the provider is the app's own origin,
+`window.location.origin + window.location.pathname`. For the deployed instance
+that is exactly:
+
+```
+https://oauth-inspector.ipv1337.dev/
+```
+
+OAuth providers match `redirect_uri` **exactly** (the trailing slash is
+significant), so every hosted provider application must have that precise string
+registered in its allowed redirect URIs. If it doesn't, the provider rejects the
+authorize request before the user ever returns to the app — e.g. Zitadel returns
+`invalid_request` with _"The requested redirect_uri is missing in the client
+configuration."_
+
+> The authorize URL percent-encodes `redirect_uri`, but providers compare the
+> decoded value — so register the **decoded** form above (with the trailing
+> slash), not a percent-encoded one.
+
+### Zitadel (self-hosted) — managed as code
+
+The Zitadel **instance** is GitOps-managed
+(`gitops/argocd/platform/zitadel/`). The hosted oauth-user-inspector **OAuth
+application** and its redirect URIs are managed as code (Pulumi) under
+[`infrastructure/pulumi/zitadel-apps/`](../infrastructure/pulumi/zitadel-apps/) —
+add or change a redirect URI there and re-apply rather than editing the Zitadel
+console by hand. See that project's README for the required service-user
+credential and how to apply (including importing the existing application so its
+Client ID/Secret in Secret Manager stay valid).
+
 ## Repository Structure
 
 ```
@@ -101,7 +140,7 @@ The project uses Jest with ts-jest for backend API tests. To run the test suite:
 npm test
 ```
 
-Tests live under `server/__tests__`. They mock external OAuth provider calls using MSW and stub Google Cloud dependencies (Secret Manager and Cloud Logging). If you add new tests that perform network calls, add corresponding MSW handlers or they will be reported as unhandled.
+Server tests live under `server/__tests__` and drive the real Express app via `supertest`. Outbound OAuth provider calls (the server uses `node-fetch`) are intercepted by a small CommonJS fetch mock (`server/__tests__/fetch-mock.ts`); Google Cloud dependencies (Secret Manager and Cloud Logging) are stubbed. If you add a test that performs a network call, register a handler via `fetchMock.register()` / `fetchMock.use()` or the request will throw "No handler registered". Pure frontend helpers (e.g. `frontend/utils/oauthSession.ts`) are unit-tested under `frontend/__tests__` and run in the same Jest (node) environment.
 
 If Jest ever appears to hang, you can diagnose open handles with:
 

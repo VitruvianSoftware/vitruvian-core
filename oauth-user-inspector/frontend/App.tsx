@@ -636,29 +636,33 @@ const App: React.FC = () => {
 
     let authUrl = "";
     const redirectUri = getEffectiveRedirectUri(customRedirectUri);
+    // The redirect_uri must be percent-encoded in the authorize URL so the IdP
+    // sees an exact match for a registered URI, and so a custom redirect URI
+    // containing query params can't corrupt the rest of the authorize URL.
+    const encodedRedirectUri = encodeURIComponent(redirectUri);
 
     if (provider === "github") {
       const scope = scopes || "read:user,user:email";
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=github`;
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&scope=${scope}&state=github`;
     } else if (provider === "google") {
       const scope =
         scopes ||
         "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
-      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=google`;
+      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=google`;
     } else if (provider === "gitlab") {
       const scope = scopes || "read_user";
-      authUrl = `https://gitlab.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=gitlab`;
+      authUrl = `https://gitlab.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=gitlab`;
     } else if (provider === "auth0") {
       const scope = scopes || "openid profile email";
-      authUrl = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=auth0`;
+      authUrl = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=auth0`;
     } else if (provider === "zitadel") {
       const scope = scopes || "openid profile email offline_access";
-      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodeURIComponent(
+      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${encodeURIComponent(
         scope,
       )}&state=zitadel`;
     } else if (provider === "linkedin") {
       const scope = scopes || "r_liteprofile r_emailaddress";
-      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=linkedin`;
+      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=linkedin`;
     }
     window.location.href = authUrl;
   };

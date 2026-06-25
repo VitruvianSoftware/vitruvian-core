@@ -116,6 +116,12 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **Don't hardcode where you can source.** The best pin is the one you never need: prefer build paths that read the version from the canonical file directly. Bazel images (`node_image`) already take Node from `.nvmrc` via the toolchain (`node_version_from_nvmrc`); Dockerfile-built images parameterize it — `ARG NODE_VERSION` defaulting to the `.nvmrc` major, with the deploy passing `--build-arg NODE_VERSION="$(cut -d. -f1 .nvmrc)"` — instead of a hardcoded `FROM node:<major>`. The conformance check resolves the `ARG` default and still enforces it equals canonical. See [Version-Pin Exceptions § Preventing this class of exception](version-pin-exceptions.md#preventing-this-class-of-exception).
 
+### 2.13 Sanctioned tools only; a new tool needs explicit sign-off
+
+**Why:** Every tool the repo adopts is a permanent tax — one more thing to install, version-pin, secure, wire into CI, and teach. A second tool that does a job a sanctioned one already does fragments knowledge and invites drift, and reaching for an unfamiliar-but-comfortable tool is how that tax gets paid by accident.
+
+**In practice:** Build on the toolchain the repo has already standardized on — **Pulumi-in-Go for all IaC** (never Terraform/OpenTofu/CDK), **Bazel** for the build graph, **ArgoCD + Helm** for the cluster, **pnpm** for Node, **Copybara** for mirroring. Solving a problem *inside* the sanctioned tool is the default even when another tool looks marginally easier for the case at hand (e.g. a one-off Zitadel application belongs in a Pulumi program under `infrastructure/pulumi/*`, not a new `*.tf`). Introducing a **new** tool, language runtime, or IaC system is a deliberate, maintainer-approved decision: propose it explicitly — what it adds, what it replaces, and why the sanctioned tool can't do the job — and get sign-off **before** it lands, never slipped into the tree alongside a feature. When you are unsure whether something counts as "new," ask first.
+
 ---
 
 ## 3. Per-category playbook

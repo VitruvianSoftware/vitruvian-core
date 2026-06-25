@@ -902,18 +902,24 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
     // Retrieve hosted credentials
     const { clientId } = await getHostedCredentials(provider);
 
+    // OAuth providers require the redirect_uri in the authorize request to be an
+    // EXACT match for one registered on the application — so it must be sent
+    // percent-encoded. Encoding also keeps a custom redirect URI that contains
+    // query params (`?`/`&`) from corrupting the rest of the authorize URL.
+    const encodedRedirectUri = encodeURIComponent(redirectUri);
+
     let authUrl = "";
 
     if (provider === "github") {
       const scope = "read:user,user:email";
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=github-hosted`;
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&scope=${scope}&state=github-hosted`;
     } else if (provider === "google") {
       const scope =
         "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
-      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=google-hosted`;
+      authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=google-hosted`;
     } else if (provider === "gitlab") {
       const scope = "read_user";
-      authUrl = `https://gitlab.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=gitlab-hosted`;
+      authUrl = `https://gitlab.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=gitlab-hosted`;
     } else if (provider === "auth0") {
       // For hosted Auth0, we'll need to get the domain from configuration
       // For now, we'll use a placeholder that should be configured
@@ -921,7 +927,7 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
         () => "your-tenant.us.auth0.com",
       );
       const scope = "openid profile email";
-      authUrl = `https://${auth0Domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=auth0-hosted`;
+      authUrl = `https://${auth0Domain}/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=auth0-hosted`;
     } else if (provider === "zitadel") {
       // Self-hosted Zitadel: domain comes from the secret, defaulting to our
       // instance so hosted login works out of the box. offline_access yields a
@@ -933,12 +939,12 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
         typeof scopes === "string" && scopes.trim()
           ? scopes
           : "openid profile email offline_access";
-      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodeURIComponent(
+      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${encodeURIComponent(
         scope,
       )}&state=zitadel-hosted`;
     } else if (provider === "linkedin") {
       const scope = "r_liteprofile r_emailaddress";
-      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=linkedin-hosted`;
+      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=linkedin-hosted`;
     }
 
     reqLogger.info("Hosted OAuth authorization URL generated", {
