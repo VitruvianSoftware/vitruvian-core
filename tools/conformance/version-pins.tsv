@@ -29,4 +29,4 @@
 #   reason        free text justification (may contain spaces; MUST be the last column)
 #
 # file                    tool  pinned_value  review_by   owner   reason
-tabula/api/Dockerfile	node	20	2026-09-30	@james	tabula API not yet validated on Node 22; bump its Dockerfile to the .nvmrc major and delete this row once verified.
+# (no active pins — every file currently matches its canonical version)

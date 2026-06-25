@@ -21,14 +21,22 @@
 # SOFTWARE.
 #
 # Self-contained container build for the standalone repo + the monorepo deploy
-# pipeline. Node 22 (matches the monorepo .nvmrc) + pnpm via corepack. The build
-# context is this app directory; deps are resolved from package.json. In the
-# monorepo the pinned versions live in the root pnpm-lock.yaml (used by CI/tests);
-# here we resolve fresh so `docker build oauth-user-inspector/` works in both the
-# monorepo and the one-way standalone mirror.
+# pipeline. The Node major is NOT hardcoded: it comes from the NODE_VERSION build
+# arg below, which defaults to the repo canonical (the .nvmrc major) and is passed
+# explicitly from .nvmrc by the deploy workflow — so the image always tracks the
+# repo's single canonical Node. pnpm via corepack. The build context is this app
+# directory; deps are resolved from package.json. In the monorepo the pinned
+# versions live in the root pnpm-lock.yaml (used by CI/tests); here we resolve
+# fresh so `docker build oauth-user-inspector/` works in both the monorepo and
+# the one-way standalone mirror.
+
+# NODE_VERSION defaults to the repo canonical (.nvmrc major); CI overrides it via
+# --build-arg sourced from .nvmrc. //tools/conformance:check enforces that this
+# default equals canonical, so it cannot silently drift.
+ARG NODE_VERSION=22
 
 # --- Build stage: compile the Vite/React frontend (-> dist) + the TS server (-> dist-server)
-FROM node:22-slim AS build
+FROM node:${NODE_VERSION}-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json ./
@@ -39,7 +47,7 @@ RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 
 # --- Runtime stage: slim image with only production deps + built artifacts
-FROM node:22-slim AS runtime
+FROM node:${NODE_VERSION}-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080
