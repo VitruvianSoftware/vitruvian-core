@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright (c) 2026 VitruvianSoftware
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,32 +19,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# See https://pnpm.io/pnpm-workspace_yaml
-packages:
- - packages/*
- - tools
- - mcp-slack
- - nexus-agent
- - oauth-user-inspector
- - tabula/shared
- - tabula/api
- - tabula/extension
- - tabula/web
- - tabula/cli
+# Setup development environment hooks for this repository
+set -e
 
-# The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
-# don't declare it as a peer dependency upstream). Under the strict rules_js /
-# hoist=false layout that breaks their `declare module 'fastify'` type
-# augmentations (e.g. request.jwtVerify / request.user from @fastify/jwt).
-# Declaring the missing peer here makes pnpm link a sibling `fastify` into
-# each plugin's store instance, restoring resolution without any hoisting.
-packageExtensions:
-  '@fastify/jwt':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/cors':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/rate-limit':
-    peerDependencies:
-      fastify: '*'
+HOOKS_DIR=.git/hooks
+mkdir -p "$HOOKS_DIR"
+ln -sf ../../scripts/check-sensitive.sh "$HOOKS_DIR/pre-commit"
+chmod +x "$HOOKS_DIR/pre-commit"
+
+echo "Pre-commit hook installed -> $HOOKS_DIR/pre-commit"

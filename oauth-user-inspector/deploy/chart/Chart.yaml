@@ -17,33 +17,11 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-# See https://pnpm.io/pnpm-workspace_yaml
-packages:
- - packages/*
- - tools
- - mcp-slack
- - nexus-agent
- - oauth-user-inspector
- - tabula/shared
- - tabula/api
- - tabula/extension
- - tabula/web
- - tabula/cli
-
-# The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
-# don't declare it as a peer dependency upstream). Under the strict rules_js /
-# hoist=false layout that breaks their `declare module 'fastify'` type
-# augmentations (e.g. request.jwtVerify / request.user from @fastify/jwt).
-# Declaring the missing peer here makes pnpm link a sibling `fastify` into
-# each plugin's store instance, restoring resolution without any hoisting.
-packageExtensions:
-  '@fastify/jwt':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/cors':
-    peerDependencies:
-      fastify: '*'
-  '@fastify/rate-limit':
-    peerDependencies:
-      fastify: '*'
+apiVersion: v2
+name: oauth-user-inspector
+description: Helm chart for the OAuth User Inspector application
+type: application
+# Chart version — bump on chart changes; drives the OCI tag in GHCR.
+version: 0.1.0
+# appVersion tracks the deployed app image; overridden per-env via the Application.
+appVersion: "0.1.0"

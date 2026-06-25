@@ -1,0 +1,5 @@
+{
+  "name": "OAuth User Inspector",
+  "description": "A simple tool to fetch and display your user data using OAuth from various providers like GitHub and Google. Ideal for troubleshooting and API inspection.",
+  "requestFramePermissions": []
+}
