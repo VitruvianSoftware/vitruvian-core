@@ -163,6 +163,18 @@ export const getProviderEndpoints = (
         },
       ];
 
+    case "zitadel":
+      return [
+        {
+          id: "userinfo",
+          name: "User Info",
+          description: "Get the authenticated user's profile information",
+          url: "https://auth.ipv1337.dev/oidc/v1/userinfo",
+          method: "GET",
+          requiredScopes: ["openid", "profile", "email"],
+        },
+      ];
+
     case "linkedin":
       return [
         {
