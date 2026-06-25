@@ -25,11 +25,14 @@ name: Conformance Check
 # that disagrees with `.nvmrc`. Unlike `//:doctor` (which checks a developer's
 # machine), this runs on the source tree, so drift is caught automatically. The
 # single remediation is `bazel run //tools/conformance:check` (read its output).
-# Current known drift is allowlisted in check.sh — only NEW drift fails.
+# Deviations are tracked as temporary, justified rows in tools/conformance/version-pins.tsv.
 on:
   push:
     branches: [main]
   pull_request:
+  # Required status check: must report on the merge queue's `merge_group` event
+  # (repo_config gates the queue on this job) or the queue would hang pending.
+  merge_group:
 
 permissions:
   contents: read
