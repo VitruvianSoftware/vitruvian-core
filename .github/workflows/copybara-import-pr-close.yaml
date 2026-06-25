@@ -74,7 +74,7 @@ jobs:
                 # Allowlist: only ever act on a known mirror repo, so a forged
                 # footer can never redirect the comment/close to another repo.
                 case "$repo" in
-                  devx|homelab|mcp-slack|nexus-agent) ;;
+                  devx|homelab|mcp-slack|nexus-agent|oauth-user-inspector) ;;
                   *) echo "::error::refusing to act on non-mirror repo '$repo'"; exit 1 ;;
                 esac
                 echo "repo=$repo" >> "$GITHUB_OUTPUT"

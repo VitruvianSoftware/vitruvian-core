@@ -171,6 +171,12 @@ COMPONENTS = [
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
+    {
+        "name": "oauth-user-inspector",
+        "standalone_rev_id": "OAUTH_USER_INSPECTOR_REV_ID",
+        "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
+        "is_one_way": True,
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):

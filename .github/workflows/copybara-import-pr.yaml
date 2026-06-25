@@ -72,7 +72,7 @@ on:
     workflow_dispatch:
         inputs:
             only_component:
-                description: "Limit this manual run to one component (devx|homelab|mcp-slack|nexus-agent). Empty = all."
+                description: "Limit this manual run to one component (devx|homelab|mcp-slack|nexus-agent|oauth-user-inspector). Empty = all."
                 default: ""
                 required: false
             poll_only:
@@ -91,7 +91,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                component: [devx, homelab, mcp-slack, nexus-agent]
+                component: [devx, homelab, mcp-slack, nexus-agent, oauth-user-inspector]
         # Serialize poll cycles PER COMPONENT so two runs cannot race the same
         # monorepo PR branch / GitHub API. cancel-in-progress:false means a queued
         # cycle waits rather than pre-empting an in-flight import.
