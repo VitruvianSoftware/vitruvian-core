@@ -357,7 +357,7 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Addressed further (this PR).** The version-drift half is now a real CI gate: **`//tools/conformance:check`** (workflow _Conformance Check_) enforces that every `go.mod` / Dockerfile `FROM node:` / app `packageManager` matches canonical (`go.work` / `.nvmrc` / the root `packageManager`); temporary deviations live in `tools/conformance/version-pins.tsv` with a reason + owner + `review_by`, and the check fails on undeclared drift, on a stale pin (file caught up to canonical), and on an expired pin. All pre-existing Go drift ([3.4](#34-three-go-task-runners--go-version-drift)) was fixed to canonical.
 
-**Remaining.** Add _Conformance Check_ to the required-status-check set (via `repo_config`) so it gates the merge queue; make `//:doctor` a pre-commit/CI check too; and have `devx scaffold` ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) emit a `doctor` target + conformance-clean pins for every new app.
+**Remaining.** _Conformance Check_ is now in the merge-queue required-status-check set (via `repo_config`, alongside `tidy-check` — which the docs already claimed but the config had omitted — and a `merge_group` trigger on both workflows), so it gates the queue. Still open: make `//:doctor` a pre-commit/CI check too; and have `devx scaffold` ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) emit a `doctor` target + conformance-clean pins for every new app.
 
 ---
 

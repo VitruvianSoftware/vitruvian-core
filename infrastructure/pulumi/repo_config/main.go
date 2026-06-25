@@ -92,6 +92,11 @@ func main() {
 				"hasIssues",
 				"hasProjects",
 				"hasWiki",
+				// hasDownloads stays ignored: the GitHub provider deprecated it, but
+				// dropping it from this list makes Pulumi want to TOGGLE the repo's
+				// (defunct) hasDownloads setting (preview: `- hasDownloads: true`),
+				// which is exactly the brownfield clobber this list prevents. The
+				// cosmetic deprecation warning on preview is the lesser evil.
 				"hasDownloads",
 				"hasDiscussions",
 				"isTemplate",
@@ -159,12 +164,15 @@ func main() {
 		// roadmap. The jobs in .github/workflows/ci.yaml now also run on the
 		// `merge_group` event so the queue has checks to wait on.
 		if mergeQueueEnabled(cfg) {
-			// Required checks default to the CI job names in ci.yaml; override
-			// via the `mergeQueueRequiredChecks` JSON-list config.
+			// Required checks default to the merge-queue gate set — the job names
+			// across ci.yaml (build-test, build-macos, license-check), tidy-check.yaml
+			// and conformance-check.yaml. Each of those workflows triggers on the
+			// `merge_group` event so the queue has a result to wait on. Override via
+			// the `mergeQueueRequiredChecks` JSON-list config.
 			var checks []string
 			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
 			if len(checks) == 0 {
-				checks = []string{"build-test", "build-macos", "license-check"}
+				checks = []string{"build-test", "build-macos", "license-check", "tidy-check", "conformance-check"}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
 			for _, c := range checks {

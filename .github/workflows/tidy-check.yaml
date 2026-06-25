@@ -26,6 +26,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Required status check: must report on the merge queue's `merge_group` event
+  # (repo_config gates the queue on this job) or the queue would hang pending.
+  merge_group:
 
 permissions:
   contents: read
