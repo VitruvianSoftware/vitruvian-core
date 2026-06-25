@@ -90,6 +90,10 @@ var syncedProjects = []syncedProject{
 		Name:           "nexus-agent",
 		StandaloneRepo: "nexus-agent",
 	},
+	{
+		Name:           "oauth-user-inspector",
+		StandaloneRepo: "oauth-user-inspector",
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
