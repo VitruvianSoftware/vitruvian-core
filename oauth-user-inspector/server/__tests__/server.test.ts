@@ -914,6 +914,42 @@ describe("/api/oauth/zitadel", () => {
   });
 });
 
+describe("/api/oauth-hosted/init", () => {
+  it("percent-encodes the redirect_uri in the Zitadel hosted authorize URL", async () => {
+    const redirectUri = "https://oauth-inspector.ipv1337.dev/";
+    const response = await request(app).post("/api/oauth-hosted/init").send({
+      provider: "zitadel",
+      redirectUri,
+    });
+
+    expect(response.status).toBe(200);
+    const authUrl: string = response.body.authUrl;
+    expect(authUrl).toContain("https://auth.ipv1337.dev/oauth/v2/authorize");
+    expect(authUrl).toContain(
+      `redirect_uri=${encodeURIComponent(redirectUri)}`,
+    );
+    expect(authUrl).toContain("state=zitadel-hosted");
+    // The raw, unencoded redirect URI must not leak into the query string —
+    // that's what made Zitadel reject the request (exact-match redirect_uri).
+    expect(authUrl).not.toContain(`redirect_uri=${redirectUri}`);
+  });
+
+  it("percent-encodes the redirect_uri in the GitHub hosted authorize URL", async () => {
+    const redirectUri = "https://oauth-inspector.ipv1337.dev/";
+    const response = await request(app).post("/api/oauth-hosted/init").send({
+      provider: "github",
+      redirectUri,
+    });
+
+    expect(response.status).toBe(200);
+    const authUrl: string = response.body.authUrl;
+    expect(authUrl).toContain(
+      `redirect_uri=${encodeURIComponent(redirectUri)}`,
+    );
+    expect(authUrl).not.toContain(`redirect_uri=${redirectUri}`);
+  });
+});
+
 describe("/api/explore", () => {
   it("should return 400 for missing parameters", async () => {
     const response = await request(app).post("/api/explore").send({});
