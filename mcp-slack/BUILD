@@ -1,5 +1,6 @@
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//tools/doctor:defs.bzl", "doctor")
 
 # This BUILD is hand-authored: a single co-located ts_project whose tsconfig
 # (rootDir ./src, outDir ./dist, include src/**/*) resolves consistently. The
@@ -35,5 +36,17 @@ ts_project(
     deps = [
         ":node_modules/@modelcontextprotocol/sdk",
         ":node_modules/@types/node",
+    ],
+)
+
+# Developer-environment check: `bazel run //mcp-slack:doctor`.
+doctor(
+    name = "doctor",
+    label = "mcp-slack",
+    required = [
+        "bazel",
+        "node",
+        "pnpm",
+        "git",
     ],
 )

@@ -347,6 +347,18 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 ---
 
+### 3.22 No toolchain version enforcement or environment self-check
+
+**Priority: P1 · Effort: S (largely addressed in this PR)**
+
+**Current state.** The only thing pinning a developer's Bazel was `.bazelversion` — which a _non-Bazelisk_ `bazel` ignores entirely. A developer who skipped Bazelisk (or had a stray system `bazel` on `PATH`) would hit cryptic `Unrecognized option` flag errors, lockfile churn, or — worst — a silent local-vs-CI behavior split, with nothing naming the real cause. The `.nvmrc`/`packageManager` pins are likewise only honored by `nvm`/`corepack`, not enforced, and Go versions drift outright ([3.4](#34-three-go-task-runners--go-version-drift)). There was no single command to tell a developer "your environment is wrong — here's what to fix."
+
+**Addressed in this PR.** `MODULE.bazel` now declares `bazel_compatibility = [">=9.1.0", "<10.0.0"]`, so _any_ Bazel out of range fails immediately with a clear message, independent of Bazelisk. And `bazel run //:doctor` (plus per-app `//<app>:doctor`) checks the local toolchain against the source-of-truth files (`.bazelversion`, `.nvmrc`, the root `packageManager`, each app's `go.mod`) and reports missing/wrong tools with fix hints.
+
+**Target / remaining.** Make `doctor` a **CI conformance gate** (and/or a pre-commit hook) so drift is caught automatically, not only on demand; fold the Go-version-drift check ([3.4](#34-three-go-task-runners--go-version-drift)) into it; and have `devx scaffold` ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) emit a `doctor` target for every new app.
+
+---
+
 ## 4. What to standardize first
 
 Ordered by leverage (how many gaps a single fix closes) and by live-correctness/security risk. The first three are correctness/security issues that exist *today*; the rest are leverage plays.

@@ -1,4 +1,5 @@
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:prefix github.com/VitruvianSoftware/devx
 # gazelle:exclude docs
@@ -26,4 +27,22 @@ go_binary(
     name = "devx",
     embed = [":devx_lib"],
     visibility = ["//visibility:public"],
+)
+
+# Developer-environment check: `bazel run //devx:doctor`. Go is pinned to this
+# app's own go.mod (`--gomod devx/go.mod`).
+doctor(
+    name = "doctor",
+    gomod = "devx/go.mod",
+    label = "devx",
+    optional = [
+        "mage",
+        "lima",
+        "goreleaser",
+    ],
+    required = [
+        "bazel",
+        "go",
+        "git",
+    ],
 )

@@ -37,16 +37,25 @@ git clone <repo-url> vitruvian-core && cd vitruvian-core
 nvm install            # reads .nvmrc -> 22.21.1
 corepack enable        # pnpm 10.20.0
 
-# 3. Bazelisk — confirm it picks up the pinned Bazel
+# 3. Bazelisk — install it AS `bazel` so the `bazel` command honors .bazelversion (-> 9.1.1).
+#    MODULE.bazel also declares a bazel_compatibility range, so an out-of-range or
+#    non-Bazelisk `bazel` fails fast with a clear message instead of cryptic errors.
 bazel version          # -> 9.1.1
 
-# 4. Smoke-test the build graph (warms the BuildBuddy remote cache)
+# 4. Verify your environment has the right tools + versions (//<app>:doctor checks one app)
+bazel run //:doctor
+
+# 5. Smoke-test the build graph (warms the BuildBuddy remote cache)
 bazel build //...
 
-# 5. (Optional, for local-dev orchestration) install devx + gh
+# 6. (Optional, for local-dev orchestration) install devx + gh
 brew install vitruviansoftware/tap/devx
 gh auth login
 ```
+
+`bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//tabula:doctor`) checks
+that app's exact requirements and fails if anything is missing or the wrong version. Run it first whenever a
+build or test behaves unexpectedly — it's faster than diagnosing a cryptic toolchain error.
 
 A root **`.devcontainer/`** exists (Bazel + Kind + gcloud + Pulumi, Codespaces-capable) if you prefer a container-based setup. It is currently **generic and app-agnostic** — there is no per-app devcontainer wiring and no documented hosted-dev path. **🎯 Target / gap:** remote dev (Codespaces / Cloud Workstations) is not a supported standard today; everything is local + CI.
 

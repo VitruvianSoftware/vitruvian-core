@@ -33,6 +33,7 @@
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//tools/doctor:defs.bzl", "doctor")
 
 package(default_visibility = ["//oauth-user-inspector:__subpackages__"])
 
@@ -76,4 +77,20 @@ jest_test(
     # Node 22.12+ require(esm) makes jest's generated config throw
     # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback (cf. tabula/web).
     node_options = ["--no-experimental-require-module"],
+)
+
+# Developer-environment check: `bazel run //oauth-user-inspector:doctor`.
+doctor(
+    name = "doctor",
+    label = "oauth-user-inspector",
+    optional = [
+        "docker",
+        "gcloud",
+    ],
+    required = [
+        "bazel",
+        "node",
+        "pnpm",
+        "git",
+    ],
 )

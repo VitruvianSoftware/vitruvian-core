@@ -55,17 +55,22 @@ Each application type has its own conventions — see the
 
 You'll need **Bazelisk**, **Node 22.21.1** (pinned in `.nvmrc`), **pnpm 10.20.0**, **Go**, and — for cloud
 work — **gcloud** and **gh**. The full, exact setup is in
-**[CONTRIBUTING § Prerequisites & toolchain](CONTRIBUTING.md#1-prerequisites--toolchain)**.
+**[CONTRIBUTING § Prerequisites & toolchain](CONTRIBUTING.md#1-prerequisites--toolchain)**. Install Bazelisk
+**as** `bazel`: it provides the `bazel` command and pins the exact build via `.bazelversion`. The repo also
+declares a Bazel version range (`bazel_compatibility` in `MODULE.bazel`), so an out-of-range or non-Bazelisk
+`bazel` fails fast with a clear message instead of cryptic errors.
 
 ```sh
 nvm use && corepack enable     # Node 22 + pnpm 10.20.0
+bazel run //:doctor            # verify your toolchain has the right tools & versions
 bazel build //...              # warms the remote cache
 bazel test  //...              # full test sweep — what the merge queue runs
 ```
 
-Almost everything routes through Bazel. Run `bazel run //:tidy` (gazelle + buildifier + formatters) before
-every PR — it's a required check. This checkout may be shared across sessions/agents, so do isolated work
-in a **git worktree**.
+`bazel run //:doctor` checks the core toolchain; working on one app? `bazel run //<app>:doctor` checks that
+app's exact needs. Almost everything routes through Bazel, and `bazel run //:tidy` (gazelle + buildifier +
+formatters) is a required check — run it before every PR. This checkout may be shared across sessions/agents,
+so do isolated work in a **git worktree**.
 
 ## Find your way
 
