@@ -3,7 +3,8 @@
 ## GCP identity is pinned per-infrastructure
 
 This repo manages cloud infrastructure under multiple Google accounts (personal,
-abrial, Vitruvian). **Never assume the ambient `gcloud` account is correct.**
+nocentre, Vitruvian). Today every first-party app here deploys under the personal
+account `james.nguyen@gmail.com`. **Never assume the ambient `gcloud` account is correct.**
 
 The mapping of infrastructure → GCP account is in
 [`infrastructure/gcp-identities.tsv`](infrastructure/gcp-identities.tsv).

@@ -77,7 +77,7 @@ selection.
 
 ## GCP identity pinning
 
-This machine has several Google accounts (personal, abrial, Vitruvian sandbox).
+This machine has several Google accounts (personal, nocentre, Vitruvian sandbox).
 GCP auth must **never** depend on whichever account `gcloud` happens to be set
 to. The mapping of infrastructure directory → Google account → default project
 lives in [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv);
