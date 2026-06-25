@@ -99,7 +99,11 @@ describe("buildAuthMeta", () => {
     const zitadelMeta = buildAuthMeta(
       {} as any,
       false,
-      { clientId: "id", clientSecret: "secret", zitadelDomain: "auth.ipv1337.dev" },
+      {
+        clientId: "id",
+        clientSecret: "secret",
+        zitadelDomain: "auth.ipv1337.dev",
+      },
       FETCHED_AT,
     );
     expect(zitadelMeta.zitadel_domain).toBe("auth.ipv1337.dev");
@@ -165,7 +169,12 @@ describe("buildRefreshRequest", () => {
   });
 
   it("refreshes a hosted session with isHosted=true and no client credentials", () => {
-    const meta = buildAuthMeta({ refresh_token: "rt" } as any, true, null, FETCHED_AT);
+    const meta = buildAuthMeta(
+      { refresh_token: "rt" } as any,
+      true,
+      null,
+      FETCHED_AT,
+    );
 
     const body = buildRefreshRequest("google", "rt", meta);
 
@@ -224,7 +233,9 @@ describe("buildRevokeRequest", () => {
   });
 
   it("returns null (→ local logout) for a BYO session with no stored credentials", () => {
-    expect(buildRevokeRequest("github", "access-token", { isHosted: false })).toBeNull();
+    expect(
+      buildRevokeRequest("github", "access-token", { isHosted: false }),
+    ).toBeNull();
     expect(buildRevokeRequest("github", "access-token", null)).toBeNull();
   });
 });
