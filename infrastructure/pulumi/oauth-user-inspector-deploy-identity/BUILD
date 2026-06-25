@@ -18,13 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Committed stack config for the development environment (config-as-code, mirroring
-# tabula). The deploy workflow only sets oauth-user-inspector:imageTag at run time,
-# so the non-secret project/region identifiers must live here for cfg.Require("project")
-# to resolve. The app's OAuth provider client credentials live in GCP Secret Manager,
-# not in this file.
-config:
-  gcp:project: gen-lang-client-0352693779
-  oauth-user-inspector:project: gen-lang-client-0352693779
-  oauth-user-inspector:region: us-west1
-  oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector@gen-lang-client-0352693779.iam.gserviceaccount.com
+load("//tools/pulumi:defs.bzl", "pulumi_project")
+
+pulumi_project(
+    name = "oauth-user-inspector-deploy-identity",
+    dir = "infrastructure/pulumi/oauth-user-inspector-deploy-identity",
+)

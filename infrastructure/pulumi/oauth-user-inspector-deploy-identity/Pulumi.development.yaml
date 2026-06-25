@@ -19,12 +19,12 @@
 # SOFTWARE.
 
 # Committed stack config for the development environment (config-as-code, mirroring
-# tabula). The deploy workflow only sets oauth-user-inspector:imageTag at run time,
-# so the non-secret project/region identifiers must live here for cfg.Require("project")
-# to resolve. The app's OAuth provider client credentials live in GCP Secret Manager,
-# not in this file.
+# the oauth-user-inspector app stack). This bootstrap stack owns the GitHub Actions
+# Workload Identity Federation pool/provider, the deploy service account (impersonated
+# by the deploy workflow via WIF) and the runtime service account consumed by the
+# Cloud Run service in the app stack. Non-secret project/region identifiers live here
+# so cfg.Require("project") resolves without any per-run config set.
 config:
   gcp:project: gen-lang-client-0352693779
-  oauth-user-inspector:project: gen-lang-client-0352693779
-  oauth-user-inspector:region: us-west1
-  oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector@gen-lang-client-0352693779.iam.gserviceaccount.com
+  oauth-user-inspector-deploy-identity:project: gen-lang-client-0352693779
+  oauth-user-inspector-deploy-identity:region: us-west1

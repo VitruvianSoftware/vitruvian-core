@@ -25,6 +25,7 @@
 infrastructure/pulumi/lab-gmail               james.nguyen@gmail.com               personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
 infrastructure/pulumi/tabula                  james.nguyen@gmail.com               tabula-dev-0001             Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
 infrastructure/pulumi/oauth-user-inspector    james.nguyen@gmail.com               gen-lang-client-0352693779  OAuth User Inspector Cloud Run + Secret Manager (pulumi oauth-user-inspector)
+infrastructure/pulumi/oauth-user-inspector-deploy-identity james.nguyen@gmail.com  gen-lang-client-0352693779  GitHub Actions WIF + deploy/runtime SAs for oauth-user-inspector (pulumi bootstrap)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                             james@nocentre.net                   -                           nocentre.net projects (future)
 -                                             james@sandbox.vitruviansoftware.dev  -                           Vitruvian Software sandbox/company (future)

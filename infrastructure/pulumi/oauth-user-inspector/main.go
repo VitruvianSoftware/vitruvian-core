@@ -37,8 +37,6 @@ import (
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/artifactregistry"
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/cloudrunv2"
-	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/projects"
-	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -55,6 +53,11 @@ func main() {
 		if imageTag == "" {
 			imageTag = "latest"
 		}
+		// Runtime identity for the Cloud Run service. The SA itself (and its
+		// project-level Secret Manager accessor grant) is owned by the
+		// oauth-user-inspector-deploy-identity bootstrap stack; this stack only
+		// references its email.
+		runtimeSA := cfg.Require("runtimeServiceAccount")
 
 		// Artifact Registry repository the deploy workflow's docker buildx
 		// publishes into: us-west1-docker.pkg.dev/<project>/oauth-user-inspector/app
@@ -73,30 +76,6 @@ func main() {
 			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/repositories/oauth-user-inspector", project, region))),
 			pulumi.IgnoreChanges([]string{"description", "labels"}),
 		)
-		if err != nil {
-			return err
-		}
-
-		// Least-privilege runtime identity for the Cloud Run service.
-		sa, err := serviceaccount.NewAccount(ctx, "oauth-user-inspector-sa", &serviceaccount.AccountArgs{
-			Project:     pulumi.String(project),
-			AccountId:   pulumi.String("oauth-user-inspector"),
-			DisplayName: pulumi.String("OAuth User Inspector runtime"),
-		})
-		if err != nil {
-			return err
-		}
-
-		// The app fetches its OAuth client credentials (GITHUB_APP_OAUTH_*,
-		// GOOGLE_APP_OAUTH_*, GITLAB_*, AUTH0_*, LINKEDIN_*) from Secret Manager
-		// itself, so we do not enumerate or own the secrets here. Grant the
-		// runtime SA project-level accessor, matching the app's previous
-		// deploy.sh (add-iam-policy-binding roles/secretmanager.secretAccessor).
-		_, err = projects.NewIAMMember(ctx, "oauth-user-inspector-secret-accessor", &projects.IAMMemberArgs{
-			Project: pulumi.String(project),
-			Role:    pulumi.String("roles/secretmanager.secretAccessor"),
-			Member:  pulumi.Sprintf("serviceAccount:%s", sa.Email),
-		})
 		if err != nil {
 			return err
 		}
@@ -122,7 +101,7 @@ func main() {
 			Location: pulumi.String(region),
 			Name:     pulumi.String("oauth-user-inspector"),
 			Template: &cloudrunv2.ServiceTemplateArgs{
-				ServiceAccount: sa.Email,
+				ServiceAccount: pulumi.String(runtimeSA),
 				Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
 					MaxInstanceCount: pulumi.Int(10),
 				},
@@ -145,6 +124,11 @@ func main() {
 				},
 			},
 		},
+			// The Cloud Run service already exists (created by the old Cloud
+			// Build deploy), so adopt it on first run.
+			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/services/oauth-user-inspector", project, region))),
+			// Ignore fields the old Cloud Build deploy set so they don't churn.
+			pulumi.IgnoreChanges([]string{"client", "clientVersion", "launchStage", "annotations", "labels", "template.labels", "template.annotations"}),
 			pulumi.DependsOn([]pulumi.Resource{repo}),
 		)
 		if err != nil {
@@ -167,7 +151,7 @@ func main() {
 
 		ctx.Export("serviceUrl", service.Uri)
 		ctx.Export("artifactRegistry", pulumi.Sprintf("%s-docker.pkg.dev/%s/%s", region, project, repo.RepositoryId))
-		ctx.Export("serviceAccount", sa.Email)
+		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})
 }

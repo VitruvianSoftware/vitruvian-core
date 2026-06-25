@@ -12,6 +12,10 @@ Pulumi.*.yaml
 # Its deploy workflow only sets oauth-user-inspector:imageTag, so cfg.Require("project")
 # must resolve from this committed file. Runtime secrets stay in GCP Secret Manager.
 !oauth-user-inspector/Pulumi.*.yaml
+# oauth-user-inspector-deploy-identity (the GitHub Actions WIF + deploy/runtime SA
+# bootstrap) likewise commits its dev stack config (project id, region) so
+# cfg.Require("project") resolves on a clean checkout.
+!oauth-user-inspector-deploy-identity/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
