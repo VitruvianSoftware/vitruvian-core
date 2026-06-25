@@ -27,6 +27,7 @@ import {
   GoogleIcon,
   GitLabIcon,
   Auth0Icon,
+  ZitadelIcon,
   LinkedInIcon,
   ClipboardIcon,
   ClipboardCheckIcon,
@@ -39,7 +40,7 @@ interface LoginScreenProps {
     provider: AuthProvider,
     clientId: string,
     clientSecret: string,
-    auth0Domain?: string,
+    domain?: string,
     scopes?: string,
   ) => void;
   onPatLogin: (pat: string) => void;
@@ -80,6 +81,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   const [auth0ClientSecret, setAuth0ClientSecret] = useState("");
   const [auth0Domain, setAuth0Domain] = useState("");
   const [auth0Scopes, setAuth0Scopes] = useState("");
+  const [zitadelClientId, setZitadelClientId] = useState("");
+  const [zitadelClientSecret, setZitadelClientSecret] = useState("");
+  const [zitadelDomain, setZitadelDomain] = useState("auth.ipv1337.dev");
+  const [zitadelScopes, setZitadelScopes] = useState("");
   const [linkedinClientId, setLinkedinClientId] = useState("");
   const [linkedinClientSecret, setLinkedinClientSecret] = useState("");
   const [linkedinScopes, setLinkedinScopes] = useState("");
@@ -92,6 +97,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showGoogleSecret, setShowGoogleSecret] = useState(false);
   const [showGitlabSecret, setShowGitlabSecret] = useState(false);
   const [showAuth0Secret, setShowAuth0Secret] = useState(false);
+  const [showZitadelSecret, setShowZitadelSecret] = useState(false);
   const [showLinkedinSecret, setShowLinkedinSecret] = useState(false);
   const [showPat, setShowPat] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -127,12 +133,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
           setGithubClientId(obj.client_id || obj.clientId);
           setGitlabClientId(obj.client_id || obj.clientId);
           setAuth0ClientId(obj.client_id || obj.clientId);
+          setZitadelClientId(obj.client_id || obj.clientId);
           setLinkedinClientId(obj.client_id || obj.clientId);
         }
         if (obj.client_secret || obj.clientSecret) {
           setGithubClientSecret(obj.client_secret || obj.clientSecret);
           setGitlabClientSecret(obj.client_secret || obj.clientSecret);
           setAuth0ClientSecret(obj.client_secret || obj.clientSecret);
+          setZitadelClientSecret(obj.client_secret || obj.clientSecret);
           setLinkedinClientSecret(obj.client_secret || obj.clientSecret);
         }
         if (obj.google_client_id) setGoogleClientId(obj.google_client_id);
@@ -145,6 +153,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
         if (obj.auth0_client_secret)
           setAuth0ClientSecret(obj.auth0_client_secret);
         if (obj.auth0_domain) setAuth0Domain(obj.auth0_domain);
+        if (obj.zitadel_client_id) setZitadelClientId(obj.zitadel_client_id);
+        if (obj.zitadel_client_secret)
+          setZitadelClientSecret(obj.zitadel_client_secret);
+        if (obj.zitadel_domain) setZitadelDomain(obj.zitadel_domain);
         if (obj.linkedin_client_id) setLinkedinClientId(obj.linkedin_client_id);
         if (obj.linkedin_client_secret)
           setLinkedinClientSecret(obj.linkedin_client_secret);
@@ -967,6 +979,177 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   Sign in with Hosted Auth0 App
                 </button>
                 {!isHostedAvailable("auth0") && (
+                  <p className="mt-2 text-xs text-slate-400 text-center">
+                    Hosted app coming later.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </Tab>
+
+        <Tab label="Zitadel" icon={<ZitadelIcon />}>
+          <div className="space-y-8">
+            {/* Zitadel OAuth */}
+            <div className="bg-slate-900/50 p-6 rounded-lg border border-slate-700 space-y-4">
+              <div className="flex items-center mb-4">
+                <ZitadelIcon className="h-8 w-8" />
+                <h2 className="ml-3 text-xl font-semibold text-white">
+                  Sign in with Zitadel OAuth
+                </h2>
+              </div>
+              <p className="text-sm text-slate-400 mb-2">
+                Create an{" "}
+                <a
+                  href="https://auth.ipv1337.dev/ui/console"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline"
+                >
+                  Application
+                </a>{" "}
+                in your Zitadel project and add this as a "Redirect URI":
+              </p>
+              <div className="flex gap-2 mb-3">
+                <a
+                  href="https://auth.ipv1337.dev/ui/console"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                >
+                  <ZitadelIcon className="w-4 h-4" /> Open Zitadel Console
+                </a>
+              </div>
+              <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
+                <code className="text-xs text-slate-300 truncate">
+                  {getEffectiveRedirectUri(customRedirectUri)}
+                </code>
+                <button
+                  onClick={() => handleCopy("zitadel")}
+                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
+                  aria-label="Copy redirect URL"
+                >
+                  {copiedProvider === "zitadel" ? (
+                    <ClipboardCheckIcon className="h-5 w-5 text-green-400" />
+                  ) : (
+                    <ClipboardIcon className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="zitadel-domain"
+                    className="block text-sm font-medium text-slate-300"
+                  >
+                    Zitadel Domain
+                  </label>
+                  <input
+                    id="zitadel-domain"
+                    type="text"
+                    value={zitadelDomain}
+                    onChange={(e) => setZitadelDomain(e.target.value)}
+                    placeholder="auth.ipv1337.dev"
+                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Defaults to our self-hosted instance. Leave as-is unless you
+                    run your own Zitadel.
+                  </p>
+                </div>
+                <div>
+                  <label
+                    htmlFor="zitadel-client-id"
+                    className="block text-sm font-medium text-slate-300"
+                  >
+                    Zitadel Client ID
+                  </label>
+                  <input
+                    id="zitadel-client-id"
+                    type="text"
+                    value={zitadelClientId}
+                    onChange={(e) => setZitadelClientId(e.target.value)}
+                    placeholder="Enter your Zitadel Client ID"
+                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="zitadel-client-secret"
+                    className="block text-sm font-medium text-slate-300"
+                  >
+                    Zitadel Client Secret
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="zitadel-client-secret"
+                      type={showZitadelSecret ? "text" : "password"}
+                      value={zitadelClientSecret}
+                      onChange={(e) => setZitadelClientSecret(e.target.value)}
+                      placeholder="Enter your Zitadel Client Secret"
+                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowZitadelSecret((v) => !v)}
+                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                    >
+                      {showZitadelSecret ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+                <ScopeSelector
+                  provider="zitadel"
+                  onScopeChange={setZitadelScopes}
+                />
+              </div>
+              <div className="mt-6">
+                <button
+                  onClick={() =>
+                    onOAuthLogin(
+                      "zitadel",
+                      zitadelClientId,
+                      zitadelClientSecret,
+                      zitadelDomain,
+                      zitadelScopes,
+                    )
+                  }
+                  disabled={
+                    !zitadelClientId || !zitadelClientSecret || isLoading
+                  }
+                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ZitadelIcon className="h-5 w-5 mr-2" />
+                  Continue with Zitadel
+                </button>
+              </div>
+            </div>
+
+            {/* Hosted Zitadel OAuth */}
+            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+              <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
+                Or use our Zitadel App
+              </h3>
+              <div className="text-slate-400 space-y-2 text-sm bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+                <p>
+                  Use our hosted Zitadel OAuth app - no setup required! Just
+                  click the button below to authenticate with Zitadel.
+                </p>
+                <p className="text-slate-500">
+                  This option uses our pre-configured OAuth application for your
+                  convenience.
+                </p>
+              </div>
+              <div className="mt-6">
+                <button
+                  onClick={() => onHostedOAuthLogin("zitadel", zitadelScopes)}
+                  disabled={isLoading || !isHostedAvailable("zitadel")}
+                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                >
+                  <ZitadelIcon className="h-5 w-5 mr-2" />
+                  Sign in with Hosted Zitadel App
+                </button>
+                {!isHostedAvailable("zitadel") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
                   </p>

@@ -71,9 +71,32 @@ async function getSecret(secretName: string): Promise<string> {
   }
 }
 
+// Default Zitadel (self-hosted IdP) domain. Used when no domain is provided in
+// the request body and the ZITADEL_APP_OAUTH_DOMAIN secret is absent, so the
+// provider works out of the box. Mirrors how Auth0 sources its domain, but with
+// a sensible default for our self-hosted instance.
+const DEFAULT_ZITADEL_DOMAIN = "auth.ipv1337.dev";
+
+// Resolve the Zitadel domain from (in order): the request body, the
+// ZITADEL_APP_OAUTH_DOMAIN secret, or the built-in default.
+async function resolveZitadelDomain(domainFromBody?: string): Promise<string> {
+  if (domainFromBody) {
+    return domainFromBody;
+  }
+  try {
+    const secretDomain = await getSecret("ZITADEL_APP_OAUTH_DOMAIN");
+    if (secretDomain) {
+      return secretDomain;
+    }
+  } catch (e) {
+    // Secret absent; fall through to the default.
+  }
+  return DEFAULT_ZITADEL_DOMAIN;
+}
+
 // Helper function to get hosted OAuth credentials
 async function getHostedCredentials(
-  provider: "github" | "google" | "gitlab" | "auth0" | "linkedin",
+  provider: "github" | "google" | "gitlab" | "auth0" | "zitadel" | "linkedin",
 ): Promise<{ clientId: string; clientSecret: string }> {
   if (provider === "github") {
     const [clientId, clientSecret] = await Promise.all([
@@ -97,6 +120,12 @@ async function getHostedCredentials(
     const [clientId, clientSecret] = await Promise.all([
       getSecret("AUTH0_APP_OAUTH_CLIENT_ID"),
       getSecret("AUTH0_APP_OAUTH_CLIENT_SECRET"),
+    ]);
+    return { clientId, clientSecret };
+  } else if (provider === "zitadel") {
+    const [clientId, clientSecret] = await Promise.all([
+      getSecret("ZITADEL_APP_OAUTH_CLIENT_ID"),
+      getSecret("ZITADEL_APP_OAUTH_CLIENT_SECRET"),
     ]);
     return { clientId, clientSecret };
   } else if (provider === "linkedin") {
@@ -158,7 +187,7 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
 
   try {
     const { code, provider, redirectUri, isHosted } = req.body;
-    let { clientId, clientSecret, auth0Domain } = req.body;
+    let { clientId, clientSecret, auth0Domain, zitadelDomain } = req.body;
 
     reqLogger.info("OAuth token exchange initiated", {
       provider,
@@ -179,6 +208,7 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       provider !== "google" &&
       provider !== "gitlab" &&
       provider !== "auth0" &&
+      provider !== "zitadel" &&
       provider !== "linkedin"
     ) {
       reqLogger.warn("OAuth token exchange failed - unsupported provider", {
@@ -207,6 +237,10 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
         } catch (e) {
           // leave undefined; the provider-specific check below will handle error response
         }
+      }
+      // Hosted Zitadel resolves its domain from the secret (or built-in default).
+      if (provider === "zitadel") {
+        zitadelDomain = await resolveZitadelDomain(zitadelDomain);
       }
     } else if (!clientId || !clientSecret) {
       reqLogger.warn(
@@ -280,6 +314,24 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
         grant_type: "authorization_code",
         redirect_uri: redirectUri,
       });
+    } else if (provider === "zitadel") {
+      // Zitadel is standard OIDC (like Auth0) with a configurable domain that
+      // defaults to our self-hosted instance. Its token endpoint expects the
+      // form-encoded code grant.
+      zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      tokenUrl = `https://${zitadelDomain}/oauth/v2/token`;
+      fetchOptions.method = "POST";
+      fetchOptions.headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      };
+      const params = new URLSearchParams();
+      params.append("grant_type", "authorization_code");
+      params.append("code", code);
+      params.append("redirect_uri", redirectUri);
+      params.append("client_id", clientId);
+      params.append("client_secret", clientSecret);
+      fetchOptions.body = params;
     } else if (provider === "linkedin") {
       tokenUrl = "https://www.linkedin.com/oauth/v2/accessToken";
       fetchOptions.method = "POST";
@@ -348,6 +400,9 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
     if (provider === "auth0" && auth0Domain) {
       (tokenData as any).auth0_domain = auth0Domain;
     }
+    if (provider === "zitadel" && zitadelDomain) {
+      (tokenData as any).zitadel_domain = zitadelDomain;
+    }
 
     reqLogger.info("OAuth token exchange successful", {
       provider,
@@ -375,7 +430,7 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
 
   try {
     const { provider, refreshToken, isHosted } = req.body;
-    let { clientId, clientSecret, auth0Domain } = req.body;
+    let { clientId, clientSecret, auth0Domain, zitadelDomain } = req.body;
 
     reqLogger.info("OAuth token refresh initiated", {
       provider,
@@ -397,6 +452,7 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       provider !== "google" &&
       provider !== "gitlab" &&
       provider !== "auth0" &&
+      provider !== "zitadel" &&
       provider !== "linkedin"
     ) {
       reqLogger.warn("OAuth token refresh failed - unsupported provider", {
@@ -416,6 +472,9 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
         } catch (e) {
           // leave undefined; the provider-specific check below will handle error response
         }
+      }
+      if (provider === "zitadel") {
+        zitadelDomain = await resolveZitadelDomain(zitadelDomain);
       }
     } else if (!clientId || !clientSecret) {
       reqLogger.warn(
@@ -480,6 +539,20 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
         refresh_token: refreshToken,
         grant_type: "refresh_token",
       });
+    } else if (provider === "zitadel") {
+      zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      refreshUrl = `https://${zitadelDomain}/oauth/v2/token`;
+      fetchOptions.method = "POST";
+      fetchOptions.headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      };
+      const params = new URLSearchParams();
+      params.append("grant_type", "refresh_token");
+      params.append("refresh_token", refreshToken);
+      params.append("client_id", clientId);
+      params.append("client_secret", clientSecret);
+      fetchOptions.body = params;
     } else if (provider === "linkedin") {
       refreshUrl = "https://www.linkedin.com/oauth/v2/accessToken";
       fetchOptions.method = "POST";
@@ -563,7 +636,7 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
 
   try {
     const { provider, token, tokenTypeHint, isHosted } = req.body;
-    let { clientId, clientSecret, auth0Domain } = req.body;
+    let { clientId, clientSecret, auth0Domain, zitadelDomain } = req.body;
 
     reqLogger.info("OAuth token revocation initiated", {
       provider,
@@ -586,6 +659,7 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       provider !== "google" &&
       provider !== "gitlab" &&
       provider !== "auth0" &&
+      provider !== "zitadel" &&
       provider !== "linkedin"
     ) {
       reqLogger.warn("OAuth token revocation failed - unsupported provider", {
@@ -605,6 +679,9 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
         } catch (e) {
           // leave undefined; the provider-specific check below will handle error response
         }
+      }
+      if (provider === "zitadel") {
+        zitadelDomain = await resolveZitadelDomain(zitadelDomain);
       }
     } else if (!clientId || !clientSecret) {
       reqLogger.warn(
@@ -671,6 +748,20 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
         token: token,
         token_type_hint: tokenTypeHint || "access_token",
       });
+    } else if (provider === "zitadel") {
+      zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      revokeUrl = `https://${zitadelDomain}/oauth/v2/revoke`;
+      fetchOptions.method = "POST";
+      fetchOptions.headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      };
+      const params = new URLSearchParams();
+      params.append("token", token);
+      params.append("client_id", clientId);
+      params.append("client_secret", clientSecret);
+      params.append("token_type_hint", tokenTypeHint || "access_token");
+      fetchOptions.body = params;
     } else if (provider === "linkedin") {
       // LinkedIn doesn't have a standard revoke endpoint, but we can simulate it
       // by making an API call with the token to verify it's still valid
@@ -794,7 +885,9 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
     }
 
     if (
-      !["github", "google", "gitlab", "auth0", "linkedin"].includes(provider)
+      !["github", "google", "gitlab", "auth0", "zitadel", "linkedin"].includes(
+        provider,
+      )
     ) {
       reqLogger.warn(
         "Hosted OAuth initialization failed - unsupported provider",
@@ -802,7 +895,7 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
       );
       return res.status(400).json({
         error:
-          "Unsupported provider. Supported providers are: github, google, gitlab, auth0, linkedin.",
+          "Unsupported provider. Supported providers are: github, google, gitlab, auth0, zitadel, linkedin.",
       });
     }
 
@@ -829,6 +922,15 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
       );
       const scope = "openid profile email";
       authUrl = `https://${auth0Domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=auth0-hosted`;
+    } else if (provider === "zitadel") {
+      // Self-hosted Zitadel: domain comes from the secret, defaulting to our
+      // instance so hosted login works out of the box. offline_access yields a
+      // refresh token (so refresh + revoke work, like Auth0).
+      const zitadelDomain = await resolveZitadelDomain();
+      const scope = "openid profile email offline_access";
+      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodeURIComponent(
+        scope,
+      )}&state=zitadel-hosted`;
     } else if (provider === "linkedin") {
       const scope = "r_liteprofile r_emailaddress";
       authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=linkedin-hosted`;
@@ -878,6 +980,7 @@ app.get(
         auth0Id,
         auth0Secret,
         auth0Domain,
+        zitadel,
         linkedin,
       ] = await Promise.all([
         Promise.all([
@@ -895,6 +998,12 @@ app.get(
         secretExists("AUTH0_APP_OAUTH_CLIENT_ID"),
         secretExists("AUTH0_APP_OAUTH_CLIENT_SECRET"),
         secretExists("AUTH0_APP_OAUTH_DOMAIN"),
+        // Zitadel's domain has a built-in default, so hosted availability only
+        // depends on the client id + secret being present.
+        Promise.all([
+          secretExists("ZITADEL_APP_OAUTH_CLIENT_ID"),
+          secretExists("ZITADEL_APP_OAUTH_CLIENT_SECRET"),
+        ]).then(([id, secret]) => id && secret),
         Promise.all([
           secretExists("LINKEDIN_APP_OAUTH_CLIENT_ID"),
           secretExists("LINKEDIN_APP_OAUTH_CLIENT_SECRET"),
@@ -906,6 +1015,7 @@ app.get(
         google,
         gitlab,
         auth0: auth0Id && auth0Secret && auth0Domain,
+        zitadel,
         linkedin,
       };
 
@@ -976,6 +1086,12 @@ app.post("/api/explore", async (req: Request, res: Response) => {
         return;
       }
       targetUrl = `https://${metaRaw}${endpoint.url}`;
+    }
+    // Handle Zitadel relative URLs - construct full URL with the resolved
+    // domain (request-supplied, secret, or default).
+    if (provider === "zitadel" && endpoint.url.startsWith("/")) {
+      const zitadelDomain = await resolveZitadelDomain(req.body.zitadelDomain);
+      targetUrl = `https://${zitadelDomain}${endpoint.url}`;
     }
 
     // Prepare headers

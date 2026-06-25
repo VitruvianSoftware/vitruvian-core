@@ -266,6 +266,28 @@ export const Auth0Icon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+export const ZitadelIcon: React.FC<{ className?: string }> = ({
+  className,
+}) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-label="Zitadel Icon"
+  >
+    {/* Minimal shield + keyhole mark for the self-hosted Zitadel OIDC IdP */}
+    <path
+      d="M12 1.5 3 5.25v6c0 5.04 3.84 9.756 9 11.25 5.16-1.494 9-6.21 9-11.25v-6L12 1.5Z"
+      fill="#FF2467"
+    />
+    <path
+      d="M12 7a2.5 2.5 0 0 0-1 4.792V15a1 1 0 0 0 2 0v-3.208A2.5 2.5 0 0 0 12 7Z"
+      fill="#fff"
+    />
+  </svg>
+);
+
 export const LinkedInIcon: React.FC<{ className?: string }> = ({
   className,
 }) => (

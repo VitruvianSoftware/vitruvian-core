@@ -28,6 +28,7 @@ import type {
   ProviderGoogleUser,
   ProviderGitLabUser,
   ProviderAuth0User,
+  ProviderZitadelUser,
   ProviderLinkedInUser,
   EnhancedOAuthError,
 } from "./types";
@@ -97,6 +98,7 @@ const App: React.FC = () => {
             el.textContent?.trim() === "Google" ||
             el.textContent?.trim() === "GitLab" ||
             el.textContent?.trim() === "Auth0" ||
+            el.textContent?.trim() === "Zitadel" ||
             el.textContent?.trim() === "LinkedIn",
         );
         if (tabTriggers.length >= 2) {
@@ -214,6 +216,24 @@ const App: React.FC = () => {
             );
           }
           response = await fetch(`https://${auth0Domain}/userinfo`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        } else if (provider === "zitadel") {
+          // Zitadel's OIDC userinfo endpoint. Domain comes from stored
+          // auth_meta (request-supplied or hosted secret), defaulting to our
+          // self-hosted instance so it works out of the box.
+          const metaRaw = localStorage.getItem("auth_meta");
+          let zitadelDomain = "auth.ipv1337.dev";
+          if (metaRaw) {
+            try {
+              const meta = JSON.parse(metaRaw);
+              zitadelDomain =
+                meta.zitadel_domain || meta.zitadelDomain || zitadelDomain;
+            } catch {}
+          }
+          response = await fetch(`https://${zitadelDomain}/oidc/v1/userinfo`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -352,6 +372,28 @@ const App: React.FC = () => {
             tokenExpiresAt,
             jwtPayload,
           };
+        } else if (provider === "zitadel") {
+          const zitadelUser = rawData as ProviderZitadelUser;
+          appUser = {
+            provider: "zitadel",
+            avatarUrl: zitadelUser.picture || "",
+            name: zitadelUser.name,
+            email: zitadelUser.email,
+            profileUrl: zitadelUser.profile || "",
+            username:
+              zitadelUser.preferred_username ||
+              zitadelUser.nickname ||
+              zitadelUser.email ||
+              zitadelUser.sub,
+            rawData: zitadelUser,
+            accessToken: token,
+            refreshToken,
+            idToken,
+            scopes,
+            tokenType,
+            tokenExpiresAt,
+            jwtPayload,
+          };
         } else if (provider === "linkedin") {
           const linkedinUser = rawData as ProviderLinkedInUser;
           const firstName =
@@ -438,6 +480,9 @@ const App: React.FC = () => {
           if (creds.auth0Domain) {
             requestBody.auth0Domain = creds.auth0Domain;
           }
+          if (creds.zitadelDomain) {
+            requestBody.zitadelDomain = creds.zitadelDomain;
+          }
         }
 
         const response = await fetch("/api/oauth/token", {
@@ -490,6 +535,7 @@ const App: React.FC = () => {
           id_token,
           refresh_token,
           auth0_domain,
+          zitadel_domain,
         } = data;
         if (!access_token) {
           throw new Error("Access token not found in server response.");
@@ -509,6 +555,7 @@ const App: React.FC = () => {
             refresh_token,
             fetched_at: Date.now(),
             auth0_domain,
+            zitadel_domain,
           }),
         );
         await fetchUser(access_token, provider);
@@ -563,22 +610,29 @@ const App: React.FC = () => {
     provider: AuthProvider,
     clientId: string,
     clientSecret: string,
-    auth0Domain?: string,
+    domain?: string,
     scopes?: string,
   ) => {
     if (!clientId || !clientSecret) {
       setError(`Please provide a Client ID and Client Secret for ${provider}.`);
       return;
     }
-    if (provider === "auth0" && !auth0Domain) {
+    if (provider === "auth0" && !domain) {
       setError("Please provide an Auth0 domain.");
       return;
     }
     setError(null);
 
+    // Zitadel uses a configurable domain that defaults to our self-hosted
+    // instance, so it works without the user entering one (mirrors Auth0's
+    // domain handling, but with a default).
+    const zitadelDomain =
+      provider === "zitadel" ? domain || "auth.ipv1337.dev" : undefined;
+
     // Store credentials in sessionStorage to retrieve after redirect
     const credentials: any = { clientId, clientSecret };
-    if (auth0Domain) credentials.auth0Domain = auth0Domain;
+    if (provider === "auth0" && domain) credentials.auth0Domain = domain;
+    if (provider === "zitadel") credentials.zitadelDomain = zitadelDomain;
     sessionStorage.setItem("oauth_credentials", JSON.stringify(credentials));
 
     let authUrl = "";
@@ -597,7 +651,12 @@ const App: React.FC = () => {
       authUrl = `https://gitlab.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=gitlab`;
     } else if (provider === "auth0") {
       const scope = scopes || "openid profile email";
-      authUrl = `https://${auth0Domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=auth0`;
+      authUrl = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=auth0`;
+    } else if (provider === "zitadel") {
+      const scope = scopes || "openid profile email offline_access";
+      authUrl = `https://${zitadelDomain}/oauth/v2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodeURIComponent(
+        scope,
+      )}&state=zitadel`;
     } else if (provider === "linkedin") {
       const scope = scopes || "r_liteprofile r_emailaddress";
       authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=linkedin`;
@@ -720,6 +779,7 @@ const App: React.FC = () => {
             clientId: creds.clientId,
             clientSecret: creds.clientSecret,
             auth0Domain: creds.auth0Domain,
+            zitadelDomain: creds.zitadelDomain,
           }),
         });
 
@@ -845,6 +905,7 @@ const App: React.FC = () => {
             clientId: creds.clientId,
             clientSecret: creds.clientSecret,
             auth0Domain: creds.auth0Domain,
+            zitadelDomain: creds.zitadelDomain,
           }),
         });
 

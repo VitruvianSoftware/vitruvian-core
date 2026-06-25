@@ -131,6 +131,33 @@ export interface ProviderAuth0User {
   [key: string]: any; // Auth0 can have custom claims
 }
 
+// This is the raw user object returned by the Zitadel OIDC userinfo endpoint.
+// Zitadel is standard OIDC (like Auth0), so it returns the same standard claims
+// plus optional Zitadel-specific custom claims.
+export interface ProviderZitadelUser {
+  sub: string;
+  name: string;
+  given_name?: string;
+  family_name?: string;
+  middle_name?: string;
+  nickname?: string;
+  preferred_username?: string;
+  profile?: string;
+  picture?: string;
+  website?: string;
+  email?: string;
+  email_verified?: boolean;
+  gender?: string;
+  birthdate?: string;
+  zoneinfo?: string;
+  locale?: string;
+  phone_number?: string;
+  phone_number_verified?: boolean;
+  address?: object;
+  updated_at?: string;
+  [key: string]: any; // Zitadel can have custom claims
+}
+
 // This is the raw user object returned by the LinkedIn API
 export interface ProviderLinkedInUser {
   id: string;
@@ -153,6 +180,7 @@ export type AuthProvider =
   | "google"
   | "gitlab"
   | "auth0"
+  | "zitadel"
   | "linkedin";
 
 // This is the unified user object used throughout the application
@@ -181,6 +209,7 @@ export interface TokenRefreshRequest {
   clientSecret?: string;
   isHosted?: boolean;
   auth0Domain?: string;
+  zitadelDomain?: string;
 }
 
 export interface TokenRefreshResponse {
@@ -201,6 +230,7 @@ export interface TokenRevocationRequest {
   clientSecret?: string;
   isHosted?: boolean;
   auth0Domain?: string;
+  zitadelDomain?: string;
 }
 
 export interface TokenRevocationResponse {

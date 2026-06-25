@@ -71,6 +71,7 @@ const DEFAULT_SCOPES: Record<AuthProvider, string[]> = {
     "read:current_user",
     "update:current_user_metadata",
   ],
+  zitadel: ["openid", "profile", "email", "offline_access", "address", "phone"],
   linkedin: [
     "r_liteprofile",
     "r_emailaddress",
@@ -89,6 +90,7 @@ const PROVIDER_DEFAULTS: Record<AuthProvider, string> = {
     "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email",
   gitlab: "read_user",
   auth0: "openid profile email",
+  zitadel: "openid profile email offline_access",
   linkedin: "r_liteprofile r_emailaddress",
 };
 
@@ -105,8 +107,8 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   useEffect(() => {
     const scopes = initialScopes || PROVIDER_DEFAULTS[provider];
     const scopeArray =
-      provider === "google"
-        ? scopes.split(" ")
+      provider === "google" || provider === "zitadel"
+        ? scopes.split(" ").filter(Boolean)
         : scopes.split(/[, ]+/).filter(Boolean);
 
     setSelectedScopes(scopeArray);
@@ -125,7 +127,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
     const scopeString =
       mode === "custom"
         ? customInput
-        : provider === "google"
+        : provider === "google" || provider === "zitadel"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
 
@@ -147,14 +149,14 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
     if (newMode === "preset") {
       // Reset to current selected scopes
       const scopeString =
-        provider === "google"
+        provider === "google" || provider === "zitadel"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
       setCustomInput(scopeString);
     } else {
       // Switch to custom mode with current scope string
       const currentString =
-        provider === "google"
+        provider === "google" || provider === "zitadel"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
       setCustomInput(currentString);
@@ -166,7 +168,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
 
     // Update selectedScopes to reflect custom input for consistency
     const scopeArray =
-      provider === "google"
+      provider === "google" || provider === "zitadel"
         ? value.split(" ").filter(Boolean)
         : value.split(/[, ]+/).filter(Boolean);
     setSelectedScopes(scopeArray);
@@ -175,8 +177,8 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   const resetToDefault = () => {
     const defaultScopes = PROVIDER_DEFAULTS[provider];
     const scopeArray =
-      provider === "google"
-        ? defaultScopes.split(" ")
+      provider === "google" || provider === "zitadel"
+        ? defaultScopes.split(" ").filter(Boolean)
         : defaultScopes.split(/[, ]+/).filter(Boolean);
 
     setSelectedScopes(scopeArray);
@@ -257,13 +259,13 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
           <textarea
             value={customInput}
             onChange={(e) => handleCustomInputChange(e.target.value)}
-            placeholder={`Enter scopes separated by ${provider === "google" ? "spaces" : "commas or spaces"}`}
+            placeholder={`Enter scopes separated by ${provider === "google" || provider === "zitadel" ? "spaces" : "commas or spaces"}`}
             className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono text-sm"
             rows={3}
           />
           <p className="mt-1 text-xs text-slate-400">
-            {provider === "google"
-              ? "Separate Google scopes with spaces"
+            {provider === "google" || provider === "zitadel"
+              ? "Separate scopes with spaces"
               : "Separate scopes with commas or spaces"}
           </p>
         </div>
