@@ -20,3 +20,6 @@ Pulumi.*.yaml
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
 /pulumi
+# Per-project program binary left behind by a stray `go build .` in the project
+# dir (named after that module's last path element).
+/zitadel-apps/zitadel-apps
