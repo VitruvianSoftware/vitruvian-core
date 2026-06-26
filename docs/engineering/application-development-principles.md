@@ -164,6 +164,22 @@ Everything else — provisioning a secret, resolving an ID, granting a scope, mi
 
 A human seed is legitimate **only** when no existing anchor reaches the new domain — and then it is one credential, seeded once via §2.14's bootstrap stacks, never a recurring ask.
 
+### 2.18 Every change ships as code — IaC, GitOps, or a pipeline; never an imperative one-off
+
+**Why:** §2.1 says state is declared as code and §2.14 says the pipeline applies it — the gap between them is where work escapes into click-ops: a `gh secret set` here, a `kubectl apply` there, a `pulumi up` from a laptop "just to unblock myself." Each is invisible, unreviewed, and drift the moment it runs. And §2.16 ("additive changes are yours to do") is easily misread as license to do them *imperatively* — it is not. §2.16 grants the **authority** to make the change; this section fixes the **mechanism**: you make it as code.
+
+**In practice:** Every change to infrastructure, identity, secrets, config, repo settings, a shipped artifact, or live cluster/cloud state is effected through exactly one of three sanctioned mechanisms, chosen by *what* is changing:
+
+| What's changing | Mechanism | Home |
+|---|---|---|
+| Cloud/identity/repo/env infra, GitHub Actions **secrets & variables**, deploy footprint | **IaC** — Pulumi-in-Go | `infrastructure/pulumi/*` (CI & repo config in `repo_config`) |
+| dev-local cluster workloads, platform services, k8s secrets | **GitOps** — ArgoCD reconciling git | `gitops/argocd/*` + sealed-secrets |
+| Build, test, package, IaC apply, GitOps nudge, promotion, verification | **Pipeline** — GitHub Actions | `.github/workflows/*` (push/merge / `merge_group`) |
+
+There is **no fourth path.** An imperative one-off — `gh secret set` / `gh variable set`, a console/SaaS click, ad-hoc `kubectl apply`, `pulumi up` from a shell — is only ever a break-glass *preview* (§2.2) or the act of *running* an already-codified change. It is **never the source of truth.** If you reached for one to move fast, the work is **not done until it is reconciled into code** — the secret declared in `repo_config` via `cfg.RequireSecret` (§2.4), the cluster object committed for ArgoCD, the apply wired into a workflow. "I had the access and it was additive" answers *who* may change it (§2.16), never *how*; the how is always code. If none of the three mechanisms obviously fits the work, that is a question to raise (§2.13), not a license to click.
+
+**(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` secrets were set with `gh` during bring-up and are not yet declared in `repo_config` — the first debt to repay under this rule.
+
 ---
 
 ## 3. Per-category playbook
