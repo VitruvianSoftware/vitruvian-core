@@ -18,34 +18,80 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Release Please
+# Publish-on-version-bump. The monorepo (vitruvian-core) authors nexus-agent's
+# version bump via release-please (bumping .release-please-manifest.json AND
+# macos/Sources/NexusAgent/Version.swift via extra-files), exported here. When
+# the exported version has no matching tag yet, this is a new release: tag the
+# exported commit, build the universal macOS app, publish the DMGs/ZIP, and
+# update the Homebrew cask -- all with the mirror's existing RELEASE_AUTOMATION_
+# TOKEN. Replaces the in-mirror release-please job (now in the monorepo).
+#
+# TAG SCHEME: this tags plain `vX.Y.Z` (matching the cask URL, which fixes the
+# old bug where releases were tagged `nexus-agent-vX.Y.Z` but the cask pointed
+# at `vX.Y.Z` -> brew install 404). The detect step also treats the LEGACY
+# `nexus-agent-v$V` tag as "already released" so the cutover (current version
+# 1.10.2, tagged nexus-agent-v1.10.2) is a NO-OP instead of a spurious rebuild.
+name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
-  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release-please:
+  detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
+      version: ${{ steps.detect.outputs.version }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
+      - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
 
+      - id: detect
+        name: Detect a new release from the exported manifest
+        run: |
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No manifest yet -- monorepo release-please has not cut a release."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          if [ -z "$V" ] || [ "$V" = "null" ]; then
+            echo "No version in manifest."
+            exit 0
+          fi
+          # New plain tag OR the legacy component-prefixed tag => already released.
+          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "nexus-agent-v$V" >/dev/null 2>&1; then
+            echo "v$V (or legacy nexus-agent-v$V) already released -- nothing to do."
+          else
+            echo "version=$V" >> "$GITHUB_OUTPUT"
+            echo "Detected new release v$V."
+          fi
+
+      - name: Tag the exported commit + create the release
+        if: steps.detect.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          V="${{ steps.detect.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$V" -m "Release v$V"
+          git push origin "v$V"
+          gh release create "v$V" --title "v$V" --generate-notes
+
   build-macos:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    needs: detect
+    if: needs.detect.outputs.version
     runs-on: macos-15
     timeout-minutes: 45
     strategy:
@@ -66,8 +112,8 @@ jobs:
           path: macos/.build/release/NexusAgent
 
   package:
-    needs: [release-please, build-macos]
-    if: ${{ needs.release-please.outputs.release_created }}
+    needs: [detect, build-macos]
+    if: needs.detect.outputs.version
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -97,7 +143,7 @@ jobs:
 
       - name: Assemble .app bundles
         run: |
-          VERSION="${{ needs.release-please.outputs.version }}"
+          VERSION="${{ needs.detect.outputs.version }}"
           chmod +x macos/scripts/bundle.sh
 
           # Universal
@@ -117,7 +163,7 @@ jobs:
 
       - name: Create DMGs
         run: |
-          VERSION="${{ needs.release-please.outputs.version }}"
+          VERSION="${{ needs.detect.outputs.version }}"
 
           for arch in universal arm64 x86_64; do
             create-dmg \
@@ -136,7 +182,7 @@ jobs:
 
       - name: Create ZIP for auto-updater
         run: |
-          VERSION="${{ needs.release-please.outputs.version }}"
+          VERSION="${{ needs.detect.outputs.version }}"
           cd /tmp/dist-universal
           zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
           cd "${GITHUB_WORKSPACE}"
@@ -146,8 +192,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          VERSION="${{ needs.release-please.outputs.version }}"
-          TAG="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${{ needs.detect.outputs.version }}"
+          TAG="v${VERSION}"
 
           for f in *.dmg *.zip; do
             echo "Uploading $f..."
@@ -158,34 +204,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          VERSION="${{ needs.release-please.outputs.version }}"
+          VERSION="${{ needs.detect.outputs.version }}"
           DMG_FILE="NexusAgent-${VERSION}-universal.dmg"
-          
+
           # Calculate SHA256 of the universal dmg
           SHA256=$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')
-          
+
           # Clone the tap repository
           git clone https://x-access-token:${GH_TOKEN}@github.com/VitruvianSoftware/homebrew-tap.git tap-repo
           cd tap-repo
-          
+
           # Ensure Casks directory exists
           mkdir -p Casks
-          
-          # Write the Cask formula
+
+          # Write the Cask formula. The url tag (vX.Y.Z) now matches the release
+          # tag created above -- this is the fix for the old 404 (releases were
+          # tagged nexus-agent-vX while the cask pointed at vX).
           cat > Casks/nexus-agent.rb << EOF
           cask "nexus-agent" do
             version "${VERSION}"
             sha256 "${SHA256}"
-          
+
             url "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v${VERSION}/${DMG_FILE}"
             name "NexusAgent"
             desc "Advanced multi-provider agent GUI"
             homepage "https://github.com/VitruvianSoftware/nexus-agent"
-          
+
             app "NexusAgent.app"
           end
           EOF
-          
+
           # Commit and push
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -1,10 +1,15 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "node",
+  "bootstrap-sha": "5b9da8f2e5014affda714215f09f0de7b0188c73",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
   "packages": {
-    ".": {
-      "changelog-path": "CHANGELOG.md",
+    "nexus-agent": {
       "release-type": "node",
+      "package-name": "nexus-agent",
+      "component": "nexus-agent",
+      "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "extra-files": [
         {
