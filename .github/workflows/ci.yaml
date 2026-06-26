@@ -37,6 +37,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Least-privilege GITHUB_TOKEN: every job here only checks out and builds/tests
+# (build-test, build-macos, license-check) -- none writes to the repo or API.
+# Pin contents: read explicitly so the floor is independent of the repo/org
+# default-permissions setting (which can change out from under the workflow).
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
