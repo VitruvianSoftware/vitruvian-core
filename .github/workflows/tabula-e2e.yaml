@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free up runner disk space
         # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Free up runner disk space
         # Coverage instrumentation is disk-heavy; reclaim the same unused SDKs as
