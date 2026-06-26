@@ -33,9 +33,25 @@ config:
     - https://oauth-inspector.ipv1337.dev/
   zitadel-apps:postLogoutRedirectUris:
     - https://oauth-inspector.ipv1337.dev/
-  # Fill these in, then flip ZITADEL_APPS_AUTO_APPLY=true:
-  # zitadel-apps:projectId: "<zitadel-project-id>"
-  # zitadel-apps:orgId: "<zitadel-org-id>"                  # optional; defaults to the service user's org
+  # Seeded 2026-06-26 (verified against the live instance via the iam-admin PAT):
+  zitadel-apps:projectId: "378961731155658332"
+  zitadel-apps:orgId: "378818267051001367"                  # the "Vitruvian" FirstInstance org
   # Adopt the EXISTING application so its Client ID/Secret in GCP Secret Manager
   # stay valid (format: "<org_id>:<project_id>:<app_id>"):
-  # zitadel-apps:importId: "<org_id>:<project_id>:<app_id>"
+  zitadel-apps:importId: "378818267051001367:378961731155658332:378961731390539356"
+  #
+  # ⚠️ DO NOT flip ZITADEL_APPS_AUTO_APPLY=true until main.go is reconciled with
+  # the LIVE client — verified 2026-06-26 (API) that applying as-is would BREAK
+  # the live login:
+  #   • authMethodType: main.go=BASIC vs LIVE=POST (the backend uses
+  #     client_secret_post). BASIC would break the code→token exchange everywhere.
+  #     -> fix main.go to OIDC_AUTH_METHOD_TYPE_POST.
+  #   • redirectUris (above) currently REPLACE the live set
+  #     ([http://localhost:8080/, the *.run.app URL]) with only
+  #     oauth-inspector.ipv1337.dev — which is served but whose login is broken
+  #     today because that redirect isn't registered yet. EXPAND (add it, keep the
+  #     working ones), don't replace, per §2.15; devMode must stay true while
+  #     http://localhost is in the set.
+  # The machine-user key (ZITADEL_MACHINE_KEY_JSON env secret) + these IDs are
+  # already seeded, so once main.go is reconciled the first apply adopts in-place
+  # and only ADDS the oauth-inspector.ipv1337.dev redirect (fixing that login).
