@@ -46,16 +46,16 @@ Author version/changelog/tag in the monorepo; publish the artifact outward to th
 
 **2a. release-please in the monorepo.** Extend the tabula pattern: a monorepo workflow runs release-please with `devx`, `homelab`, `mcp-slack`, `nexus-agent` as components. The version-bump + changelog PR opens in the **monorepo**; on merge it creates a namespaced tag (e.g. `devx-vX.Y.Z`). The per-app `release-please-config.json` / `.release-please-manifest.json` move from the mirror subtrees into the monorepo's release-please config.
 
-**2b. Publish stays in the mirror, re-triggered by a monorepo-pushed tag.** Each mirror release workflow today is **two jobs**: a `release-please` job (authors the version/changelog — the drift source) and a publish job gated on `release_created`. The migration **splits** them rather than relocating the publish:
+**2b. Publish stays in the mirror, re-triggered by the exported manifest bump (publish-on-version-bump).** Each mirror release workflow today is **two jobs**: a `release-please` job (authors the version/changelog — the drift source) and a publish job gated on `release_created`. The migration **splits** them rather than relocating the publish:
 
-- The **`release-please` job is removed** from the mirror and recreated in the monorepo (2a).
-- The **publish job stays in the mirror**, re-triggered by `on: push: tags: ['v*']` instead of `needs: release-please` / `if: release_created`. It keeps using the mirror's **existing** tokens — nothing moves. Per app, unchanged in substance: GoReleaser (devx, homelab; `RELEASE_AUTOMATION_TOKEN`), `npm publish` (mcp-slack; `NPM_RELEASE_TOKEN`), build-macos→package→DMG+release-upload+Homebrew-cask (nexus; `RELEASE_AUTOMATION_TOKEN`).
-- On a monorepo release, a monorepo job uses the **`vitruvian-copybara-sync` App** to push the semver tag `vX.Y.Z` to the mirror. Because the tag is pushed with the **App token (not `GITHUB_TOKEN`)** it *triggers* the mirror's publish-on-tag run (same mechanism as today's copybara export and the Dependabot auto-merge fan-out). The tag also satisfies `go install github.com/VitruvianSoftware/<app>@vX.Y.Z` and Homebrew.
+- The **`release-please` job is removed** from the mirror and recreated in the monorepo (2a). The monorepo manifest lives at `<app>/.release-please-manifest.json`, which **copybara exports to the mirror** (`_monorepo_only` excludes only BUILD files, so the manifest/config/CHANGELOG all export).
+- The **publish job stays in the mirror** as `release.yml`, re-triggered by `on: push: branches: [main]` (the export push). On every export it reads the exported `.release-please-manifest.json` version (`jq -r 'to_entries[0].value'`); when that version has **no matching git tag yet** (i.e. the monorepo just cut a release) it tags the exported commit `v<version>` + publishes; otherwise it is a ~9 s no-op. It keeps the mirror's **existing** tokens — nothing moves. Per app, unchanged in substance: GoReleaser (devx, homelab; `RELEASE_AUTOMATION_TOKEN`), `npm publish` (mcp-slack; `NPM_RELEASE_TOKEN`), build-macos→package→DMG+release-upload+Homebrew-cask (nexus; `RELEASE_AUTOMATION_TOKEN`).
+- This **manifest-detection** approach was chosen over an earlier "monorepo pushes the tag via the sync App" idea: the mirror's commit graph differs from the monorepo's (copybara rewrites SHAs), so the release tag must land on the *exported* mirror commit. Having the mirror self-tag off the version it just received sidesteps the commit-graph mapping entirely (and still needs no secret migration).
 - **`devx` `bridge-agent.yml` (GHCR) and `deploy-docs.yml` (gh-pages)** are push-triggered *publishes* using the mirror's `GITHUB_TOKEN` — they don't author source, so they **stay in the mirror** unchanged.
 
-**No secret migration:** the publish tokens stay in the mirrors where they already are; the monorepo only needs the existing sync App to push the tag. This removes the one human-gated step and is *more* aligned with how Google's mirrors run publish CI on the GitHub side.
+**No secret migration:** the publish tokens stay in the mirrors where they already are; the monorepo only authors the version (via release-please). This removes the one human-gated step and is *more* aligned with how Google's mirrors run publish CI on the GitHub side.
 
-**Loop-safety:** the monorepo pushes only a **tag** to the mirror, never a source commit (source still flows one-way via the copybara export). A tag is not authoritative source, so no new drift is introduced.
+**Loop-safety:** the monorepo never pushes anything to the mirror except via the normal one-way copybara export of source; the mirror only *tags + publishes* in reaction to a version it received. A tag is not authoritative source, so no new drift is introduced. (The mirror's tag-push uses its own token and the workflow triggers on branch push, not tag push, so tagging never re-triggers the workflow.)
 
 ## Phase 3 — Strip the mirrors (cleanup, after 1 + 2 per app)
 
@@ -66,7 +66,7 @@ Delete from each app's **monorepo subtree** (the export then removes it from the
 - `build.yml` (nexus) — the monorepo Bazel builds the Swift (`swift_library`/`macos_application`) and the node bridge (`js_*`).
 - `dependabot.yml` (devx, homelab, mcp-slack, nexus — these live in the subtrees and export) — Dependabot now runs only in the monorepo.
 
-**Convert (not delete)** the release workflow in each subtree: drop its `release-please` job; leave the publish job, re-triggered by `on: push: tags` (2b).
+**Convert (not delete)** the release workflow in each subtree: drop its `release-please` job; leave the publish job as `release.yml`, re-triggered by `on: push: branches: [main]` and gated on the exported manifest version being newly bumped (publish-on-version-bump, 2b).
 
 **Keep** in each subtree (still exported to the mirror):
 - **`cla.yml`** — the CLA gate on contributor PRs; runs in the mirror's own trusted context with only `GITHUB_TOKEN`, does not author source.
@@ -78,7 +78,7 @@ Delete from each app's **monorepo subtree** (the export then removes it from the
 
 - **No secret migration** — publish stays in the mirror with its existing tokens; the monorepo only pushes the tag via the existing sync App. (This replaces the earlier "move secrets to the monorepo" gate.)
 - **Double-release window** — for each app the cutover must be atomic: the same change that adds the app to the monorepo release-please must convert the mirror workflow to publish-on-tag, so the mirror stops opening its own release PRs. Sequence carefully; verify the mirror's old release-please no longer runs after the export lands.
-- **App-token-triggers-workflow** — the monorepo's tag push MUST use the sync App token (not `GITHUB_TOKEN`), or the mirror's `on: push: tags` run won't fire. Verified mechanism (copybara export + Dependabot fan-out already rely on it).
+- **Manifest must export** — the mirror detects releases from the exported `<app>/.release-please-manifest.json`, so that file must reach the mirror. Verified: copybara's `_monorepo_only` exclude list is BUILD files only, and the mirror already carries CHANGELOG.md, so the manifest exports too.
 - **First real release per app** — full E2E validates only on a real release; do **devx first as the canary**, watch the mirror `vX.Y.Z` tag + GH release land and `go install …@vX.Y.Z` resolve before cutting the others.
 - **mcp-slack release-please** already migrated to `googleapis/*@v5` (#316); reuse its config when moving it to the monorepo.
 
