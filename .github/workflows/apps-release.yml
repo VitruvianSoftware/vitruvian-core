@@ -37,20 +37,26 @@ on:
     branches: [main]
     paths:
       - "devx/**"
+      - "homelab/**"
+      - "mcp-slack/**"
 
 permissions:
   contents: write
   pull-requests: write
 
-# Never cancel a release-please run; serialize per branch.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  devx:
+  release-please:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Per-app concurrency: never cancel a release run; serialize each app's runs
+    # independently (one app's release must not block another's).
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.app }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [devx, homelab, mcp-slack]
     steps:
       # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
       # PR triggers the merge queue's required checks -- same as tabula-release.
@@ -63,6 +69,6 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: devx/release-please-config.json
-          manifest-file: devx/.release-please-manifest.json
+          config-file: ${{ matrix.app }}/release-please-config.json
+          manifest-file: ${{ matrix.app }}/.release-please-manifest.json
           target-branch: main
