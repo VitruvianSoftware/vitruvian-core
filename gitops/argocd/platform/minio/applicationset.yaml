@@ -111,20 +111,26 @@ spec:
               - name: zitadel-db-backups
                 policy: none
                 purge: false
-            # Longhorn-backed, relocatable drives: a failed node's drive
-            # reschedules onto a surviving arm64 node and heals. PVC spec
+            # local-path (node-pinned) drives — NOT relocatable: a drive does not
+            # follow its pod across nodes. To move one, delete its PVC+pod and let
+            # MinIO erasure-heal the fresh drive from the other 3. PVC spec
             # (size + storageClass) is immutable — must match the live volumes.
             persistence:
               enabled: true
               storageClass: local-path
               size: 10Gi
-            # Distributed MinIO requires an identical binary (same CPU arch) on
-            # every node; pin all 4 drives to arm64.
-            nodeSelector:
-              kubernetes.io/arch: arm64
-            # Only 3 arm64 nodes exist, so anti-affinity is PREFERRED (4 drives
-            # cannot occupy 4 distinct arm64 nodes); Longhorn makes the
-            # 2-on-one-node case survivable.
+            # NO arch pin: distributed MinIO needs an identical VERSION across nodes,
+            # NOT an identical CPU arch — the image is multi-arch (amd64+arm64) and the
+            # on-disk/erasure format is byte-portable. The old kubernetes.io/arch=arm64
+            # pin was unnecessary and crammed all 4 drives onto the 3 arm64 nodes (so 2
+            # land on one node). Dropping it lets the drives spread across all 6 nodes
+            # via the anti-affinity below. link=wired is intentionally NOT pinned: the
+            # drives are node-pinned to their local-path PVCs, so a hard wired selector
+            # would strand the 2 drives currently on the WiFi node james-mbp16 (they go
+            # wired automatically once mbp16 gets its Ethernet adapter). WAL archiving
+            # was never a MinIO-placement issue — that was #271, now fixed.
+            # Spread the 4 drives 1-per-node (PREFERRED, not required — a transient node
+            # loss can still reschedule; erasure parity tolerates one drive down).
             affinity:
               podAntiAffinity:
                 preferredDuringSchedulingIgnoredDuringExecution:
