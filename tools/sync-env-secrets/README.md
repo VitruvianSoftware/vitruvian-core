@@ -13,12 +13,23 @@ imperative one-off) and **§2.4** (secrets never live in git). It replaces ad-ho
 
 Non-secret environment **variables** (project id, region, deploy SA, WIF provider)
 _are_ managed as code in `infrastructure/pulumi/repo_config` (`oauthEnvironment`).
-The **secrets** can't go there: `repo_config` is applied by both a maintainer
-locally and CI against **one shared Pulumi state**. A secret whose value exists
-only in a local store would be set by a local apply but, being absent in CI,
-**deleted by the next CI apply**. Keeping these secrets out of Pulumi state and
-syncing them with this idempotent tool (GitHub's secret API is a `PUT`/upsert)
-avoids that flip-flop — while still being code, reviewed, and reproducible.
+
+The **secrets** _could_ be Pulumi-managed too — `repo_config`'s `dependabotSecrets`
+manages `BUILDBUDDY_API_KEY` via a committed `secure:`-encrypted config value that
+the Pulumi Cloud backend decrypts in both local and CI applies. We **deliberately**
+keep these out of that path:
+
+- Committing the value — **even Pulumi-encrypted** — is a secret in git history
+  forever, which **§2.4** forbids. (That `BUILDBUDDY_API_KEY` line is the doc's own
+  acknowledged `(target)` debt, not a model to copy.)
+- The alternative — reading the value from an env var with no committed config —
+  would **flip-flop**: a local apply sets the secret, then the next CI apply,
+  lacking the value, **deletes** it from the shared Pulumi state.
+- A multiline RSA/JSON machine key is awkward as a Pulumi config secret anyway.
+
+So the raw bytes live in a **gitignored, Bitwarden-backed** store — out of git
+entirely — and this idempotent tool `PUT`s them into GitHub (GitHub's secret API
+is upsert). Still code, reviewed, and reproducible.
 
 The alternative homes, and when they win:
 
