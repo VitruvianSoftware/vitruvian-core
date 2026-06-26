@@ -248,3 +248,41 @@ jobs:
         with:
           version: v2.12.1
           working-directory: ${{ matrix.module }}
+
+  go-test:
+    # Race-detector tests for the Go apps. The monorepo Bazel runs these tests
+    # but NOT under `-race` (no race config in the bazelrc); the retired mirror
+    # CI ran `go test -race`, so this preserves that coverage -- standalone per
+    # module (GOWORK=off), exactly as it ran in each mirror.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [devx, homelab]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - name: go test -race (${{ matrix.module }})
+        working-directory: ${{ matrix.module }}
+        run: go test -race -cover ./...
+
+  validate-butane:
+    # devx's Fedora CoreOS Butane template must render to valid Ignition. There
+    # is no Bazel target for this -- it is a devx-specific check ported verbatim
+    # from the retired devx mirror CI so the coverage is not lost.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Butane template
+        working-directory: devx
+        run: |
+          CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
+            envsubst < dev-machine.template.bu | \
+            docker run --rm -i quay.io/coreos/butane:release --strict
