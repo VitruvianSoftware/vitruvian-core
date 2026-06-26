@@ -282,7 +282,7 @@ use_repo(ruby, "bundle")
 #########################
 # Java and other JVM languages
 bazel_dep(name = "rules_java", version = "9.6.1")
-bazel_dep(name = "rules_jvm_external", version = "6.9")
+bazel_dep(name = "rules_jvm_external", version = "7.0")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 
