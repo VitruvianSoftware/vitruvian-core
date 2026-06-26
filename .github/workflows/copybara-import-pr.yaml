@@ -21,7 +21,8 @@
 name: Copybara Import PR
 
 # ONE-WAY PR-import for EVERY mirrored component (devx, homelab, mcp-slack,
-# nexus-agent) -- SCHEDULED-POLL variant. One matrix leg per component.
+# nexus-agent, oauth-user-inspector) -- SCHEDULED-POLL variant. One matrix leg
+# per component (the authoritative list is the `component:` matrix below).
 #
 # The MONOREPO polls VitruvianSoftware/<component> for open PRs labelled
 # 'import-to-monorepo' and, for EACH match, opens/updates a MONOREPO PR under
