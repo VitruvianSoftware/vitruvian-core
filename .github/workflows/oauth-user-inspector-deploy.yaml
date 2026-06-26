@@ -84,6 +84,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The Zitadel management API is reached over TAILNET (the Envoy gateway LB
+      # 10.44.86.211, advertised by the `fedora` node) — NOT the public Cloudflare
+      # edge, whose bot-protection (HTTP 1010) blocks the provider's Go client.
+      # See infrastructure/pulumi/zitadel-apps/APPLYING-FROM-CI.md.
+      - name: Join the tailnet (ephemeral, tag:ci)
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          args: --accept-routes
+
+      - name: Prepare the internal TLS route to the Envoy gateway
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq socat
+          # Zitadel ties the JWT-profile audience to the connection scheme and only
+          # accepts the https issuer, so the provider must see HTTPS. Terminate TLS
+          # locally with a trusted self-signed cert for the host, forwarding the
+          # decrypted HTTP (Host preserved) to the internal Envoy on :80.
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem \
+            -days 1 -subj "/CN=auth.ipv1337.dev" -addext "subjectAltName=DNS:auth.ipv1337.dev"
+          sudo cp /tmp/c.pem /usr/local/share/ca-certificates/auth-internal.crt
+          sudo update-ca-certificates >/dev/null
+          cat /tmp/c.pem /tmp/k.pem | sudo tee /etc/auth-internal-ck.pem >/dev/null
+          echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts >/dev/null
+
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
@@ -96,6 +121,18 @@ jobs:
           GOWORK: off
         working-directory: infrastructure/pulumi/zitadel-apps
         run: |
+          set -euo pipefail
+          # TLS terminator must live for this step (backgrounded processes don't
+          # survive across steps): :443 -> internal Envoy :80, Host preserved.
+          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+            TCP:10.44.86.211:80 &
+          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
+          # confirm the internal path is up before applying (fail loudly otherwise)
+          for _ in $(seq 1 15); do
+            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
           pulumi stack select "$DEPLOY_ENV" --create
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
           pulumi up --yes
