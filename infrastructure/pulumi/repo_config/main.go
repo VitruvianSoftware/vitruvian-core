@@ -232,6 +232,10 @@ func main() {
 			return err
 		}
 
+		if err := oauthEnvironment(ctx, cfg, repo); err != nil {
+			return err
+		}
+
 		if err := dependabotSecrets(ctx, cfg, repo); err != nil {
 			return err
 		}
@@ -326,6 +330,75 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			if err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// oauthEnvironment manages the GitHub Environment + repo-level gate for the
+// oauth-user-inspector deploy pipeline (.github/workflows/oauth-user-inspector-
+// deploy.yaml).
+//
+// As in tabulaEnvironments, only NON-credential identifiers live here as Actions
+// VARIABLES — the deploy authenticates to GCP with keyless WIF, so project id,
+// region, deploy SA, and the WIF provider path are config-as-code, not secrets.
+//
+// The deploy's GitHub-side SECRETS (ZITADEL_MACHINE_KEY_JSON and the Tailscale
+// on-ramp TS_OAUTH_CLIENT_ID/TS_OAUTH_SECRET) are deliberately NOT managed here.
+// repo_config is applied by BOTH a maintainer locally and CI (_repo-config-
+// apply.yaml) against one shared Pulumi state; a secret whose value lived only in
+// a gitignored local file would be set by the local apply but, absent in CI,
+// DELETED by the next CI apply. Those secrets are synced from a gitignored,
+// Bitwarden-backed store by //tools/sync-env-secrets instead (§2.4, §2.18).
+//
+// These resources were created out-of-band during bring-up, so each is ADOPTED
+// via pulumi.Import. The provider's variable Create is a create-only POST that
+// 409s when the name already exists, so declare-and-overwrite is unsafe — import
+// is mandatory for the variables (and clean for the environment).
+//
+// Variable values are committed config (identifiers, not secrets):
+//
+//	pulumi config set --path 'oauthVars["GCP_PROJECT_ID"]' '<value>' --stack dev
+func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	nm := repoName(cfg)
+
+	// Repo-level gate the zitadel-infra job reads to decide whether to apply the
+	// Zitadel application stack. It must be repo-scoped: a job-level `if:` cannot
+	// see an environment-scoped variable.
+	if _, err := github.NewActionsVariable(ctx, "zitadel-apps-auto-apply", &github.ActionsVariableArgs{
+		Repository:   repo.Name,
+		VariableName: pulumi.String("ZITADEL_APPS_AUTO_APPLY"),
+		Value:        pulumi.String("true"),
+	}, pulumi.Import(pulumi.ID(nm+":ZITADEL_APPS_AUTO_APPLY"))); err != nil {
+		return err
+	}
+
+	const envName = "oauth-user-inspector-development"
+	envRes, err := github.NewRepositoryEnvironment(ctx, envName, &github.RepositoryEnvironmentArgs{
+		Repository:  repo.Name,
+		Environment: pulumi.String(envName),
+	}, pulumi.Import(pulumi.ID(nm+":"+envName)))
+	if err != nil {
+		return err
+	}
+
+	var oauthVars map[string]string
+	_ = cfg.GetObject("oauthVars", &oauthVars)
+
+	// Deterministic resource names: iterate variables in sorted order.
+	keys := make([]string, 0, len(oauthVars))
+	for k := range oauthVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if _, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", envName, k), &github.ActionsEnvironmentVariableArgs{
+			Repository:   repo.Name,
+			Environment:  envRes.Environment,
+			VariableName: pulumi.String(k),
+			Value:        pulumi.String(oauthVars[k]),
+		}, pulumi.Import(pulumi.ID(fmt.Sprintf("%s:%s:%s", nm, envName, k)))); err != nil {
+			return err
 		}
 	}
 	return nil

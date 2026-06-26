@@ -14,5 +14,13 @@ config:
       GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
       GCP_PROJECT_ID: tabula-dev-0001
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
+  # oauth-user-inspector deploy environment — non-secret identifiers only (keyless
+  # WIF). The matching GitHub-side SECRETS are NOT here; they are synced from a
+  # gitignored, Bitwarden-backed store by //tools/sync-env-secrets (§2.4, §2.18).
+  vitruvian-core-repo-config:oauthVars:
+    GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@gen-lang-client-0352693779.iam.gserviceaccount.com
+    GCP_PROJECT_ID: gen-lang-client-0352693779
+    GCP_REGION: us-west1
+    GCP_WORKLOAD_IDENTITY_PROVIDER: projects/724518326928/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
   vitruvian-core-repo-config:buildbuddyApiKey:
     secure: AAABANxGwYCd5LRF4k2asEqPdOZXJzVWZJINz+uxv8YJlQvR6lEt1qvgysWvg1LL73q47A==
