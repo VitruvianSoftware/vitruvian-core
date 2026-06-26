@@ -44,7 +44,7 @@ These apply to **every** application in the repo — a Go CLI, a Cloud Run servi
 
 **Why:** Ambient `kubectl`/`pulumi`/`helm`/`gcloud` runs with whatever identity and version your shell happens to have — a recipe for "works on my machine" and wrong-project mistakes.
 
-**In practice:** All Pulumi and GitOps operations go through `bazel run //tools/pulumi:*` and `bazel run //tools/gitops:*`. The Pulumi wrapper injects the correct per-project GCP identity from `infrastructure/gcp-identities.tsv` and a short-lived `GOOGLE_OAUTH_ACCESS_TOKEN` — **never rely on ambient `gcloud`**. No ad-hoc `kubectl apply`, `helm install`, or `pulumi up` from a laptop.
+**In practice:** All Pulumi and GitOps operations go through `bazel run //tools/pulumi:*` and `bazel run //tools/gitops:*`. The Pulumi wrapper injects the correct per-project GCP identity from `infrastructure/gcp-identities.tsv` and a short-lived `GOOGLE_OAUTH_ACCESS_TOKEN` — **never rely on ambient `gcloud`**. No ad-hoc `kubectl apply`, `helm install`, or `pulumi up` from a laptop. These wrappers are for local *preview* and break-glass; the authoritative *trigger* for any apply is the pipeline, not a laptop (§2.14).
 
 ### 2.3 GitOps closed-loop for the platform
 
@@ -121,6 +121,24 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 **Why:** Every tool the repo adopts is a permanent tax — one more thing to install, version-pin, secure, wire into CI, and teach. A second tool that does a job a sanctioned one already does fragments knowledge and invites drift, and reaching for an unfamiliar-but-comfortable tool is how that tax gets paid by accident.
 
 **In practice:** Build on the toolchain the repo has already standardized on — **Pulumi-in-Go for all IaC** (never Terraform/OpenTofu/CDK), **Bazel** for the build graph, **ArgoCD + Helm** for the cluster, **pnpm** for Node, **Copybara** for mirroring. Solving a problem *inside* the sanctioned tool is the default even when another tool looks marginally easier for the case at hand (e.g. a one-off Zitadel application belongs in a Pulumi program under `infrastructure/pulumi/*`, not a new `*.tf`). Introducing a **new** tool, language runtime, or IaC system is a deliberate, maintainer-approved decision: propose it explicitly — what it adds, what it replaces, and why the sanctioned tool can't do the job — and get sign-off **before** it lands, never slipped into the tree alongside a feature. When you are unsure whether something counts as "new," ask first.
+
+### 2.14 The pipeline is the only trigger; nothing waits on a human's keystroke
+
+**Why:** A step that "just needs someone to run X locally" is the step that silently doesn't happen — it rots, drifts, and blocks both human developers and coding agents, who can't reach a credentialed shell. An SDLC that depends on a local trigger is a runbook, not a pipeline. The goal is a harness that *serves* developers and agents, not a pile of steps they must remember to run.
+
+**In practice:** Every operation that changes a shipped artifact or live state — build, test, package, **IaC apply**, GitOps reconcile, promotion, and post-deploy verification — is initiated by the pipeline (push/merge → GitHub Actions, or git → ArgoCD), never by a person or agent running a command on a laptop. The Bazel wrappers (§2.2) are for local **preview** and break-glass, not the path to prod; a stack that can only be applied by `bazel run …:up` from someone's shell is *unfinished*. The single thing seeded out-of-band is a **root credential the pipeline then uses** — a WIF binding, or a machine-user key stored as a pipeline secret — and that seeding is a one-time, documented bootstrap (the `…-deploy-identity` and `dev-local` Pulumi stacks are the legitimate manual bootstraps; they create the very identities the automated pipelines authenticate with). Until a credential is seeded, gate the automated job so it cleanly no-ops rather than failing the pipeline (the `vars.*_AUTO_APPLY` flag on `copybara-sync-auth-apply` is the pattern). New work that ends in "then run X to apply" is incomplete: wire the trigger.
+
+### 2.15 Infra lands before the app that needs it — expand, deploy, contract
+
+**Why:** A new app revision that reaches for infrastructure not yet in place fails on arrival; a *destructive* infra change applied before the old revision drains breaks what is still serving. Deploy ordering is correctness, not politeness — and it belongs in the pipeline's job graph, not a human's memory.
+
+**In practice:** Sequence infra and app via **expand/contract (parallel change)**, encoded as pipeline ordering:
+
+1. **Expand** — apply *additive, backward-compatible* infra first (a new secret, env var, expand-only DB migration, OAuth redirect URI), with the app deploy **gated** to proceed only on its success. Cross-job `needs:` (or an ordered step) is the mechanism; `tabula-deploy` is the reference — Prisma `migrate deploy` and a no-traffic candidate land before any traffic shifts.
+2. **Deploy** the app against the now-present infra.
+3. **Contract** — remove the old infra (drop a column, delete a redirect URI, tighten a binding) only **after** the old revision is gone, in a *later* run. Never contract ahead of the rollover; expand changes must stay backward-compatible so a half-applied pipeline (infra ahead of app) is always safe.
+
+Edge cases the sequence must respect: **(a) circular dependency on the app's own URL** — when the infra is "register the app's public URL," that URL must be a **stable, pre-known domain**, not a deploy-minted `*.run.app`, or infra cannot precede the app; provision the stable host first. **(b) Two infra planes order differently** — Pulumi infra chains in the deploy workflow via `needs:`, while ArgoCD-managed infra orders via sync-waves + reconcile and cannot be awaited from an Actions job. **(c) Additive-and-independent infra** the app does not consume at deploy time (e.g. a Zitadel redirect URI — runtime login needs it, the deploy does not) is still expand-first and still pipeline-triggered, but may run as a gated sibling job/workflow rather than hard-blocking the app deploy.
 
 ---
 

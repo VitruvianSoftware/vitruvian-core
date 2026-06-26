@@ -361,6 +361,18 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 ---
 
+### 3.23 IaC steps that need a local trigger; deploy-ordering not codified
+
+**Priority: P1 · Effort: S (partially addressed in this PR)**
+
+**Current state.** Most state-changing ops are pipeline-triggered (Cloud Run deploys on push, the `repo_config` / `sync-auth` apply workflows, ArgoCD reconcile) — but not all. The `zitadel-apps` Pulumi stack (the hosted OAuth applications) was applied **only** by a local `bazel run …:up`, exactly the "then run X locally" rot principle **§2.14** forbids. Separately, infra→app **ordering** was implicit: `tabula-deploy` correctly *expands* (Prisma `migrate deploy` + a no-traffic candidate) before shifting traffic, but nothing named the rule, so a new deploy could just as easily apply infra *after* the app (**§2.15**).
+
+**Addressed in this PR.** Principles **§2.14** (the pipeline is the only trigger) and **§2.15** (expand → deploy → contract) are codified. The `zitadel-apps` apply is now wired as the gated **expand** job of `oauth-user-inspector-deploy` (runs before the app revision; `vars.ZITADEL_APPS_AUTO_APPLY`-gated so it cleanly no-ops until the machine-user key + org/project IDs are seeded once). The legitimate manual bootstraps (`…-deploy-identity`, `dev-local` — they seed the very identities the pipelines authenticate with) are the documented exception, not violations.
+
+**Remaining.** A maintainer seeds the `ZITADEL_MACHINE_KEY_JSON` secret + the org/project/import IDs (committed `Pulumi.development.yaml`) and flips `ZITADEL_APPS_AUTO_APPLY=true` to activate it. There is still no **reusable** "IaC-as-a-gated-expand-step" pattern — it is hand-wired into one workflow; fold it into the reusable Cloud Run deploy workflow ([3.12](#312-no-reusable-cloud-run-deploy-workflow)) and the scaffold ([3.21](#321-no-new-app-scaffold-covering-builddeploysecretsenv-the-meta-gap)) so every app's deploy inherits expand/contract ordering for free.
+
+---
+
 ## 4. What to standardize first
 
 Ordered by leverage (how many gaps a single fix closes) and by live-correctness/security risk. The first three are correctness/security issues that exist *today*; the rest are leverage plays.

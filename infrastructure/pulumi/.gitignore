@@ -16,6 +16,11 @@ Pulumi.*.yaml
 # bootstrap) likewise commits its dev stack config (project id, region) so
 # cfg.Require("project") resolves on a clean checkout.
 !oauth-user-inspector-deploy-identity/Pulumi.*.yaml
+# zitadel-apps commits its dev stack config (non-secret Zitadel org/project/app
+# identifiers + redirect URIs) so the deploy workflow resolves them on a clean
+# checkout. The Zitadel machine-user credential is injected from a pipeline
+# secret at apply time, never committed.
+!zitadel-apps/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
