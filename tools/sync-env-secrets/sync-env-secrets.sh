@@ -30,20 +30,36 @@
 #
 #   tools/sync-env-secrets/secrets/<github-environment>/<SECRET_NAME>   # raw value
 #
-# Usage:
-#   sync-env-secrets.sh apply   <github-environment>   # local store -> GitHub env secrets
-#   sync-env-secrets.sh bw-pull                         # Bitwarden -> local store
-#   sync-env-secrets.sh bw-push                         # local store -> Bitwarden
+# Usage (via bazel — preferred; never run the script by hand, see §2.2):
+#   bazel run //tools/sync-env-secrets:apply   -- <github-environment>   # store -> GitHub env secrets
+#   bazel run //tools/sync-env-secrets:bw-pull                            # Bitwarden -> store
+#   bazel run //tools/sync-env-secrets:bw-push                            # store -> Bitwarden
+#   bazel run //tools/sync-env-secrets:unlock                             # cache a bw session (run once)
+#   bazel run //tools/sync-env-secrets:lock                               # clear the cached session + lock
 #
-# Env overrides: REPO (default VitruvianSoftware/vitruvian-core), BW_ITEM.
-# Bitwarden ops need an unlocked session: export BW_SESSION="$(bw unlock --raw)".
+# Env overrides: REPO (default VitruvianSoftware/vitruvian-core), BW_ITEM, BW_PASSWORD.
+# Bitwarden unlock is folded in: `unlock` prompts once and caches the session
+# (0600) so later bw-push/bw-pull/apply runs work headless (an agent or CI) until
+# the vault relocks — no manual `export BW_SESSION` needed.
 set -euo pipefail
 
 REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STORE="$HERE/secrets"
+# Under `bazel run`, operate on the real workspace tree — the gitignored secret
+# store lives there, not in the read-only runfiles copy. Run directly, resolve
+# next to this script so it still works outside bazel.
+if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
+  BASE="$BUILD_WORKSPACE_DIRECTORY/tools/sync-env-secrets"
+else
+  BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+STORE="$BASE/secrets"
 BW_ITEM="${BW_ITEM:-vitruvian-core/deploy-env-secrets}"
 ARCHIVE_NAME="deploy-env-secrets.tar.gz"
+# A one-time `:unlock` caches the unlocked session here (0600) so an agent/CI can
+# drive bw-push/bw-pull/apply headless until the vault relocks; `:lock` clears it.
+# A persistent vault session on disk is the deliberate tradeoff for unattended
+# driving — lock it when you're done.
+SESS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vitruvian-core/bw-session"
 
 # Any temp dir holding plaintext secrets is registered here and removed on ANY
 # exit (including an errexit mid-sync), so a failed bw op never leaves the
@@ -73,16 +89,46 @@ cmd_apply() {
   echo "synced $count secret(s) to environment '$env' on $REPO"
 }
 
-require_bw() {
+bw_state() { bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown; }
+
+# Resolve an unlocked BW_SESSION, in priority order: already-exported -> cached
+# session file (lets an agent/CI drive headless) -> $BW_PASSWORD (non-interactive)
+# -> interactive master-password prompt (a TTY, i.e. `bazel run` from a terminal).
+ensure_bw_session() {
   command -v bw >/dev/null || die "bw (Bitwarden CLI) not installed: brew install bitwarden-cli"
   command -v jq >/dev/null || die "jq not installed"
-  [ -n "${BW_SESSION:-}" ] || die "vault locked — run: export BW_SESSION=\"\$(bw unlock --raw)\""
+  { [ -n "${BW_SESSION:-}" ] && [ "$(bw_state)" = unlocked ]; } && return 0
+  if [ -z "${BW_SESSION:-}" ] && [ -r "$SESS_CACHE" ]; then
+    BW_SESSION="$(cat "$SESS_CACHE")"
+    export BW_SESSION
+    [ "$(bw_state)" = unlocked ] && return 0
+    unset BW_SESSION # cached session is stale (vault relocked)
+  fi
+  [ "$(bw_state)" != unauthenticated ] || die "not logged in to Bitwarden — run 'bw login' once, then retry"
+  if [ -n "${BW_PASSWORD:-}" ]; then
+    BW_SESSION="$(bw unlock --passwordenv BW_PASSWORD --raw)" || die "bw unlock failed (BW_PASSWORD)"
+  elif [ -t 0 ]; then
+    echo "Unlocking Bitwarden — enter your master password:" >&2
+    BW_SESSION="$(bw unlock --raw)" || die "bw unlock failed"
+  else
+    die "Bitwarden locked and no usable cached session — run 'bazel run //tools/sync-env-secrets:unlock' once (it prompts), then retry headless"
+  fi
+  [ -n "${BW_SESSION:-}" ] || die "bw unlock returned an empty session"
+  export BW_SESSION
+}
+
+# Persist the unlocked session (0600) so subsequent headless runs reuse it.
+cache_session() {
+  umask 077
+  mkdir -p "$(dirname "$SESS_CACHE")"
+  printf '%s' "${BW_SESSION:?no session to cache}" >"$SESS_CACHE"
+  chmod 600 "$SESS_CACHE"
 }
 
 bw_item_id() { bw list items --search "$BW_ITEM" | jq -r '.[0].id // empty'; }
 
 cmd_bw_push() {
-  require_bw
+  ensure_bw_session
   [ -d "$STORE" ] || die "nothing to push: $STORE does not exist"
   bw sync >/dev/null
   local tmpdir tar id att_old
@@ -103,7 +149,7 @@ cmd_bw_push() {
 }
 
 cmd_bw_pull() {
-  require_bw
+  ensure_bw_session
   bw sync >/dev/null
   local id att tmpdir tar
   id="$(bw_item_id)"
@@ -119,6 +165,19 @@ cmd_bw_pull() {
   echo "pulled store from Bitwarden item '$BW_ITEM' into $STORE"
 }
 
+cmd_unlock() {
+  ensure_bw_session
+  cache_session
+  echo "✓ Bitwarden unlocked; session cached at $SESS_CACHE."
+  echo "  apply / bw-push / bw-pull now run headless (agent or CI) until the vault relocks. Run 'lock' to clear."
+}
+
+cmd_lock() {
+  rm -f "$SESS_CACHE"
+  command -v bw >/dev/null && bw lock >/dev/null 2>&1 || true
+  echo "✓ cleared the cached session and locked the vault."
+}
+
 case "${1:-}" in
   apply)
     shift
@@ -132,14 +191,22 @@ case "${1:-}" in
     shift
     cmd_bw_pull "$@"
     ;;
+  unlock)
+    cmd_unlock
+    ;;
+  lock)
+    cmd_lock
+    ;;
   *)
     cat >&2 <<EOF
-sync-env-secrets — manage non-GCP-SM deploy secrets as code (§2.18)
+sync-env-secrets — manage non-GCP-SM deploy secrets as code (§2.2, §2.18)
 
-usage:
-  $(basename "$0") apply   <github-environment>   # local store -> GitHub env secrets
-  $(basename "$0") bw-pull                         # Bitwarden -> local store
-  $(basename "$0") bw-push                         # local store -> Bitwarden
+Run via bazel (preferred):
+  bazel run //tools/sync-env-secrets:apply   -- <github-environment>   # store -> GitHub env secrets
+  bazel run //tools/sync-env-secrets:bw-pull                            # Bitwarden -> store
+  bazel run //tools/sync-env-secrets:bw-push                            # store -> Bitwarden
+  bazel run //tools/sync-env-secrets:unlock                             # cache a bw session (run once)
+  bazel run //tools/sync-env-secrets:lock                               # clear the cached session + lock
 
 store: $STORE/<github-environment>/<SECRET_NAME>   (gitignored; see secrets.example/)
 EOF

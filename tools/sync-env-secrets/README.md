@@ -52,21 +52,35 @@ See [`secrets.example/`](secrets.example/) for the shape (placeholder values).
 
 ## Usage
 
+Run it through Bazel (per §2.2 — never invoke the script by hand). The subcommands
+are discoverable with `bazel query //tools/sync-env-secrets/...`:
+
 ```sh
-# One-time / new machine: pull the store from Bitwarden (needs an unlocked vault)
-export BW_SESSION="$(bw unlock --raw)"
-./sync-env-secrets.sh bw-pull
+# Once per machine/session: unlock Bitwarden. Prompts for your master password and
+# CACHES the session (0600, ~/.cache/vitruvian-core/bw-session) so the commands
+# below — including ones an agent or CI runs headless — work until the vault relocks.
+bazel run //tools/sync-env-secrets:unlock
 
-# Push the local store into GitHub as environment secrets (idempotent)
-./sync-env-secrets.sh apply oauth-user-inspector-development
+# Pull the store from Bitwarden (new machine), push the store into GitHub as env
+# secrets (idempotent), and sync edits back up to Bitwarden:
+bazel run //tools/sync-env-secrets:bw-pull
+bazel run //tools/sync-env-secrets:apply -- oauth-user-inspector-development
+bazel run //tools/sync-env-secrets:bw-push
 
-# After editing a secret locally, sync the store back up to Bitwarden
-./sync-env-secrets.sh bw-push
+# When done, drop the cached session and lock the vault:
+bazel run //tools/sync-env-secrets:lock
 ```
 
-Overrides: `REPO` (default `VitruvianSoftware/vitruvian-core`), `BW_ITEM` (default
-`vitruvian-core/deploy-env-secrets`). The store is stored in Bitwarden as a single
-`deploy-env-secrets.tar.gz` attachment on that item.
+Overrides (env): `REPO` (default `VitruvianSoftware/vitruvian-core`), `BW_ITEM`
+(default `vitruvian-core/deploy-env-secrets`), `BW_PASSWORD` (non-interactive
+unlock). The store is held in Bitwarden as a single `deploy-env-secrets.tar.gz`
+attachment on that item.
+
+**Keeping it unlocked for unattended driving.** `:unlock` writes the live vault
+session to a `0600` file so headless callers reuse it — a deliberate
+convenience/security tradeoff; run `:lock` when you're done. If you prefer an
+in-memory agent over an on-disk session, `rbw` is the alternative (not wired here
+yet). The `apply` subcommand needs no Bitwarden at all (it only talks to GitHub).
 
 ## `oauth-user-inspector-development`
 
