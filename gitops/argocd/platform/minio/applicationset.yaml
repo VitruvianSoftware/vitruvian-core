@@ -129,17 +129,20 @@ spec:
             # would strand the 2 drives currently on the WiFi node james-mbp16 (they go
             # wired automatically once mbp16 gets its Ethernet adapter). WAL archiving
             # was never a MinIO-placement issue — that was #271, now fixed.
-            # Spread the 4 drives 1-per-node (PREFERRED, not required — a transient node
-            # loss can still reschedule; erasure parity tolerates one drive down).
+            # Spread the 4 drives strictly 1-per-node — REQUIRED (hard): the scheduler
+            # can NEVER place 2 MinIO pods on the same node, so a single node loss only
+            # ever costs 1 of 4 drives (parity tolerates 1 down; 2-on-a-node is
+            # zero-margin). Safe with the StatefulSet rolling update — a pod is
+            # terminated before its replacement reschedules onto the same PVC-pinned
+            # node, so the constraint is momentarily satisfiable. Requires all 4 drives
+            # already on distinct nodes before this lands (the off-WiFi migration).
             affinity:
               podAntiAffinity:
-                preferredDuringSchedulingIgnoredDuringExecution:
-                  - weight: 100
-                    podAffinityTerm:
-                      labelSelector:
-                        matchLabels:
-                          app: minio
-                      topologyKey: kubernetes.io/hostname
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app: minio
+                    topologyKey: kubernetes.io/hostname
             # minio chart 5.4.0 only honors maxUnavailable in its PDB template.
             podDisruptionBudget:
               enabled: true
