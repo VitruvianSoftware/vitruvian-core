@@ -90,11 +90,15 @@ func main() {
 				pulumi.String("OIDC_GRANT_TYPE_REFRESH_TOKEN"),
 			},
 			// Confidential web app: the backend exchanges the code with a client
-			// secret (BASIC auth), so it is a WEB app type with a client secret.
-			AppType:                  pulumi.String("OIDC_APP_TYPE_WEB"),
-			AuthMethodType:           pulumi.String("OIDC_AUTH_METHOD_TYPE_BASIC"),
-			Version:                  pulumi.String("OIDC_VERSION_1_0"),
-			DevMode:                  pulumi.Bool(false),
+			// secret. It sends client_id/secret in the token-request BODY
+			// (client_secret_post), so the client auth method is POST — this MUST
+			// match the live client; a BASIC mismatch breaks the code->token exchange.
+			AppType:        pulumi.String("OIDC_APP_TYPE_WEB"),
+			AuthMethodType: pulumi.String("OIDC_AUTH_METHOD_TYPE_POST"),
+			Version:        pulumi.String("OIDC_VERSION_1_0"),
+			// devMode allows the http://localhost dev redirect; the live client has
+			// it enabled and the redirect set keeps localhost.
+			DevMode:                  pulumi.Bool(true),
 			AccessTokenType:          pulumi.String("OIDC_TOKEN_TYPE_BEARER"),
 			AccessTokenRoleAssertion: pulumi.Bool(false),
 			IdTokenRoleAssertion:     pulumi.Bool(false),
@@ -107,7 +111,7 @@ func main() {
 		// Adopt the existing application instead of creating a new one, so the
 		// client_id/secret already stored in GCP Secret Manager stay valid. Set
 		// zitadel-apps:importId to the provider's import id for the existing app
-		// (format per the zitadel provider: "<org_id>:<project_id>:<app_id>").
+		// (provider import format: "<app_id>:<project_id>[:<org_id>]", app-id first).
 		// Leave unset to create a brand-new client (then re-sync the secrets).
 		opts := []pulumi.ResourceOption{}
 		if importID := cfg.Get("importId"); importID != "" {
