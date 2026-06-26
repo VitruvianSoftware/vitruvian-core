@@ -140,6 +140,30 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 Edge cases the sequence must respect: **(a) circular dependency on the app's own URL** — when the infra is "register the app's public URL," that URL must be a **stable, pre-known domain**, not a deploy-minted `*.run.app`, or infra cannot precede the app; provision the stable host first. **(b) Two infra planes order differently** — Pulumi infra chains in the deploy workflow via `needs:`, while ArgoCD-managed infra orders via sync-waves + reconcile and cannot be awaited from an Actions job. **(c) Additive-and-independent infra** the app does not consume at deploy time (e.g. a Zitadel redirect URI — runtime login needs it, the deploy does not) is still expand-first and still pipeline-triggered, but may run as a gated sibling job/workflow rather than hard-blocking the app deploy.
 
+### 2.16 A human is the last resort; "needs a person" is a claim to disprove
+
+**Why:** A developer or coding agent in this repo holds the **same tools and access** as the maintainer — `gh`, the cloud and IdP APIs, `kubectl`, Pulumi, and (for an agent) the maintainer's browser. Treating a step as "the human must do this" when the tooling can do it manufactures a false blocker that stalls delivery on someone who never needed to be involved. The asymmetry favors acting: a wrongly-automated *additive* step is cheap to undo; a wrongly-deferred one silently rots (§2.14).
+
+**In practice:** Default to **doing it**. Before writing "you need to…", attempt it with the tools at hand — the CLI, the service's own API, an existing admin credential, or the **browser** when an operation is genuinely UI-only (granting a third-party GitHub App access to a repo is the canonical case: the REST API 403s, the browser does not). A human is *genuinely* required only for a short, defensible set:
+
+- **A net-new root of trust no existing anchor can vouch for** — and even then only the first link (§2.17 shrinks this further).
+- **Irreversible or destructive** actions — data deletion, prod teardown, contracting infra ahead of rollover (§2.15). Confirm; don't perform.
+- **Legal, financial, or policy** calls a maintainer must own — licensing, spend, access policy.
+
+Everything else — provisioning a secret, resolving an ID, granting a scope, minting a credential into a reachable system, re-running a job — is **automatable and therefore yours to do**, with a follow-up note rather than a permission request. When no principle yet steers you to the automated path, the fix is to **add one** (as this section was), not to fall back on a person.
+
+### 2.17 Bootstrap credentials by chaining trust anchors, not by hand-carry
+
+**Why:** "Someone pastes a secret into each environment" is the step that makes a pipeline *feel* human-gated — and the one most apt to leak, drift, or be forgotten. The one-time manual seed §2.14 permits is legitimate but **far narrower than it looks**, because we already hold anchors that can mint the next credential automatically.
+
+**In practice:** To authenticate a pipeline into **any** trust domain — cloud, IdP, registry, cluster — derive the credential from an anchor we already trust, in this order:
+
+1. **Federate the CI's existing OIDC identity.** GitHub Actions OIDC is already trusted by GCP (WIF, §2.6); extend the same token-exchange pattern into the new domain so CI authenticates with **no stored secret**. A new IdP-as-code stack (e.g. Zitadel apps) federates GitHub OIDC → an IdP service user before reaching for a key.
+2. **Mint-and-store only if a static credential is unavoidable.** Generate it *programmatically* from an existing admin credential (e.g. the in-cluster, sealed-secret-managed `iam-admin-pat` called over the IdP's public API), write it to the **sanctioned store** (GCP Secret Manager / sealed-secrets / a per-app GitHub Environment, §2.4), and read it keylessly at deploy. Never hand-enter per run; never commit.
+3. **Resolve identifiers by name.** Project/app/resource IDs come from the provider's data sources (`getProject` / `getApplicationOidc` / equivalents) — nothing copied out of a console.
+
+A human seed is legitimate **only** when no existing anchor reaches the new domain — and then it is one credential, seeded once via §2.14's bootstrap stacks, never a recurring ask.
+
 ---
 
 ## 3. Per-category playbook
