@@ -46,17 +46,16 @@ Author version/changelog/tag in the monorepo; publish the artifact outward to th
 
 **2a. release-please in the monorepo.** Extend the tabula pattern: a monorepo workflow runs release-please with `devx`, `homelab`, `mcp-slack`, `nexus-agent` as components. The version-bump + changelog PR opens in the **monorepo**; on merge it creates a namespaced tag (e.g. `devx-vX.Y.Z`). The per-app `release-please-config.json` / `.release-please-manifest.json` move from the mirror subtrees into the monorepo's release-please config.
 
-**2b. Publish step (monorepo → mirror / registry), per artifact type:**
+**2b. Publish stays in the mirror, re-triggered by a monorepo-pushed tag.** Each mirror release workflow today is **two jobs**: a `release-please` job (authors the version/changelog — the drift source) and a publish job gated on `release_created`. The migration **splits** them rather than relocating the publish:
 
-- **Go (`devx`, `homelab`).** A monorepo workflow runs **GoReleaser** on the release: builds the cross-platform binaries and publishes the GitHub **Release to the MIRROR repo** (`release.github.owner/name = VitruvianSoftware/<app>`, token with mirror write). GoReleaser is given the semver from release-please; creating the `vX.Y.Z` release **creates the `vX.Y.Z` tag on the mirror** (satisfying `go install github.com/VitruvianSoftware/<app>@vX.Y.Z`) and updates the Homebrew tap formula.
-- **npm (`mcp-slack`).** A monorepo workflow runs `npm publish` to the npm registry on the release (NPM token in the monorepo). The package is built by the monorepo (`ts_project`).
-- **`nexus-agent`.** release-please cuts the version (stamping `macos/Sources/NexusAgent/Version.swift` via `extra-files`); the monorepo publishes the GitHub Release (binary/zip) to the nexus mirror + the Homebrew cask.
-- **`devx` bridge-agent (GHCR image).** Move the docker build+push into the monorepo (Bazel `rules_oci` build + push to `ghcr.io/vitruviansoftware/devx-bridge-agent`), driven on push to main — it's a publish, not source.
-- **`devx` deploy-docs (gh-pages).** Build the docs in the monorepo and deploy to the devx mirror's `gh-pages` via the App token. (Recommendation; alternative is hosting docs from the monorepo's own pages.)
+- The **`release-please` job is removed** from the mirror and recreated in the monorepo (2a).
+- The **publish job stays in the mirror**, re-triggered by `on: push: tags: ['v*']` instead of `needs: release-please` / `if: release_created`. It keeps using the mirror's **existing** tokens — nothing moves. Per app, unchanged in substance: GoReleaser (devx, homelab; `RELEASE_AUTOMATION_TOKEN`), `npm publish` (mcp-slack; `NPM_RELEASE_TOKEN`), build-macos→package→DMG+release-upload+Homebrew-cask (nexus; `RELEASE_AUTOMATION_TOKEN`).
+- On a monorepo release, a monorepo job uses the **`vitruvian-copybara-sync` App** to push the semver tag `vX.Y.Z` to the mirror. Because the tag is pushed with the **App token (not `GITHUB_TOKEN`)** it *triggers* the mirror's publish-on-tag run (same mechanism as today's copybara export and the Dependabot auto-merge fan-out). The tag also satisfies `go install github.com/VitruvianSoftware/<app>@vX.Y.Z` and Homebrew.
+- **`devx` `bridge-agent.yml` (GHCR) and `deploy-docs.yml` (gh-pages)** are push-triggered *publishes* using the mirror's `GITHUB_TOKEN` — they don't author source, so they **stay in the mirror** unchanged.
 
-**Secrets prerequisite (gates 2b):** the publish tokens currently live in the mirrors (`NPM_RELEASE_TOKEN`, `RELEASE_AUTOMATION_TOKEN`, Homebrew-tap write). They must be added as **monorepo** Actions secrets, or minted via the `vitruvian-copybara-sync` GitHub App where its scope allows. Verify each scope before cutting over.
+**No secret migration:** the publish tokens stay in the mirrors where they already are; the monorepo only needs the existing sync App to push the tag. This removes the one human-gated step and is *more* aligned with how Google's mirrors run publish CI on the GitHub side.
 
-**Loop-safety:** the publish pushes **tags/releases/artifacts** to the mirror, never **source commits** (source flows only via the copybara export). A tag/asset is not authoritative source, so no new drift is introduced.
+**Loop-safety:** the monorepo pushes only a **tag** to the mirror, never a source commit (source still flows one-way via the copybara export). A tag is not authoritative source, so no new drift is introduced.
 
 ## Phase 3 — Strip the mirrors (cleanup, after 1 + 2 per app)
 
@@ -65,19 +64,22 @@ Delete from each app's **monorepo subtree** (the export then removes it from the
 - `ci.yml` (devx, homelab, mcp-slack) — redundant with monorepo Bazel + the Phase-1 Go lint.
 - `license-check.yml` (nexus) — the monorepo has a whole-repo license-check job.
 - `build.yml` (nexus) — the monorepo Bazel builds the Swift (`swift_library`/`macos_application`) and the node bridge (`js_*`).
-- `release-please.yml` / `release.yml` (all) — moved to the monorepo in Phase 2.
 - `dependabot.yml` (devx, homelab, mcp-slack, nexus — these live in the subtrees and export) — Dependabot now runs only in the monorepo.
-- `bridge-agent.yml`, `deploy-docs.yml` (devx) — moved to the monorepo in Phase 2.
 
-**Keep** in each subtree (still exported to the mirror): **`cla.yml`** — the CLA gate that runs on contributor PRs to the mirror before they're imported. It runs in the mirror's own trusted context with only the mirror's `GITHUB_TOKEN`, posts status/signatures, and does not author source.
+**Convert (not delete)** the release workflow in each subtree: drop its `release-please` job; leave the publish job, re-triggered by `on: push: tags` (2b).
 
-**Net mirror state:** a read-only reflection of `<app>/`, plus `cla.yml`, plus release tags/assets pushed by the monorepo. No CI, no Dependabot, no source-authoring automation.
+**Keep** in each subtree (still exported to the mirror):
+- **`cla.yml`** — the CLA gate on contributor PRs; runs in the mirror's own trusted context with only `GITHUB_TOKEN`, does not author source.
+- the **publish-on-tag** release workflow (2b), and devx's **`bridge-agent.yml`** / **`deploy-docs.yml`** — all publishes, never source authors.
+
+**Net mirror state:** a read-only reflection of `<app>/`, plus `cla.yml`, plus publish workflows that react to monorepo-pushed tags / exported commits. No redundant CI, no Dependabot, no source-authoring automation.
 
 ## Risks & open items
 
-- **Secrets migration (2b)** — publish tokens must move to the monorepo; verify scopes. **Gating.**
-- **Homebrew tap** — confirm GoReleaser `brews:` + tap-repo write work when GoReleaser runs from the monorepo targeting the mirror.
-- **First real release per app** — the monorepo-driven release can't be fully validated until a real release is cut; do **devx first as the canary**, watch the mirror `vX.Y.Z` tag + GH release land and `go install …@vX.Y.Z` resolve before cutting the others.
+- **No secret migration** — publish stays in the mirror with its existing tokens; the monorepo only pushes the tag via the existing sync App. (This replaces the earlier "move secrets to the monorepo" gate.)
+- **Double-release window** — for each app the cutover must be atomic: the same change that adds the app to the monorepo release-please must convert the mirror workflow to publish-on-tag, so the mirror stops opening its own release PRs. Sequence carefully; verify the mirror's old release-please no longer runs after the export lands.
+- **App-token-triggers-workflow** — the monorepo's tag push MUST use the sync App token (not `GITHUB_TOKEN`), or the mirror's `on: push: tags` run won't fire. Verified mechanism (copybara export + Dependabot fan-out already rely on it).
+- **First real release per app** — full E2E validates only on a real release; do **devx first as the canary**, watch the mirror `vX.Y.Z` tag + GH release land and `go install …@vX.Y.Z` resolve before cutting the others.
 - **mcp-slack release-please** already migrated to `googleapis/*@v5` (#316); reuse its config when moving it to the monorepo.
 
 ## Sequencing
