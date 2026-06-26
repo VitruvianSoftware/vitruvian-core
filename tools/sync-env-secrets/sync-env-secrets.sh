@@ -10,11 +10,19 @@
 # as code) and §2.4 (secrets never live in git) — replacing ad-hoc `gh secret
 # set`.
 #
-# Why a script and not Pulumi (repo_config): repo_config is applied by BOTH a
-# maintainer locally and CI against ONE shared Pulumi state. A secret whose value
-# exists only in a local store would be set by a local apply but, being absent in
-# CI, deleted by the next CI apply. Keeping these secrets out of Pulumi state and
-# syncing them with this idempotent tool avoids that flip-flop. The non-secret
+# Why a tool and not Pulumi (repo_config): repo_config CAN manage a GitHub secret
+# in Pulumi — dependabotSecrets does, via a committed `secure:`-encrypted config
+# value that the Pulumi Cloud backend decrypts in both local and CI applies. We
+# deliberately keep these secrets out of that path:
+#   - committing the value, EVEN Pulumi-encrypted, is a secret in git history
+#     forever — what §2.4 forbids (that BUILDBUDDY_API_KEY line is the doc's own
+#     acknowledged "(target)" debt, not a model to copy);
+#   - the env-injected alternative (read from $ENV, nothing committed) would
+#     flip-flop: a local apply sets the secret, then the next CI apply — lacking
+#     the value — DELETES it from the shared Pulumi state;
+#   - a multiline RSA/JSON machine key is awkward as a Pulumi config secret anyway.
+# So the raw bytes live in a gitignored, Bitwarden-backed store — out of git
+# entirely — and this idempotent tool PUTs them into GitHub. The non-secret
 # environment VARIABLES it pairs with ARE in repo_config (oauthEnvironment).
 #
 # Store layout (gitignored; see secrets.example/ for the shape). One file per
@@ -36,6 +44,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STORE="$HERE/secrets"
 BW_ITEM="${BW_ITEM:-vitruvian-core/deploy-env-secrets}"
 ARCHIVE_NAME="deploy-env-secrets.tar.gz"
+
+# Any temp dir holding plaintext secrets is registered here and removed on ANY
+# exit (including an errexit mid-sync), so a failed bw op never leaves the
+# decrypted tarball behind in /tmp.
+_tmp_cleanup=""
+trap '[ -n "$_tmp_cleanup" ] && rm -rf "$_tmp_cleanup"' EXIT
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -73,6 +87,7 @@ cmd_bw_push() {
   bw sync >/dev/null
   local tmpdir tar id att_old
   tmpdir="$(mktemp -d)"
+  _tmp_cleanup="$tmpdir"
   tar="$tmpdir/$ARCHIVE_NAME"
   tar -czf "$tar" -C "$STORE" .
   id="$(bw_item_id)"
@@ -84,7 +99,6 @@ cmd_bw_push() {
     [ -z "$att_old" ] || bw delete attachment "$att_old" --itemid "$id" >/dev/null
   fi
   bw create attachment --itemid "$id" --file "$tar" >/dev/null
-  rm -rf "$tmpdir"
   echo "pushed $ARCHIVE_NAME to Bitwarden item '$BW_ITEM'"
 }
 
@@ -97,11 +111,11 @@ cmd_bw_pull() {
   att="$(bw get item "$id" | jq -r --arg n "$ARCHIVE_NAME" '.attachments[]? | select(.fileName==$n) | .id')"
   [ -n "$att" ] || die "no '$ARCHIVE_NAME' attachment on item '$BW_ITEM'"
   tmpdir="$(mktemp -d)"
+  _tmp_cleanup="$tmpdir"
   tar="$tmpdir/$ARCHIVE_NAME"
   bw get attachment "$att" --itemid "$id" --output "$tar" >/dev/null
   mkdir -p "$STORE"
   tar -xzf "$tar" -C "$STORE"
-  rm -rf "$tmpdir"
   echo "pulled store from Bitwarden item '$BW_ITEM' into $STORE"
 }
 
