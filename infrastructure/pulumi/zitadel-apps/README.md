@@ -43,22 +43,27 @@ variable so it cleanly no-ops until the one-time bootstrap below is done.
    **`ZITADEL_MACHINE_KEY_JSON`** GitHub Actions secret on the
    `oauth-user-inspector-development` environment. (This is the one root
    credential seeded out-of-band; the pipeline uses it from then on.)
-2. **Org / project / import IDs.** Fill the commented `zitadel-apps:projectId`
-   (and optionally `orgId`) in `Pulumi.development.yaml`, and set
-   `zitadel-apps:importId` to the existing application's import id — the
-   pulumiverse/zitadel provider format is **`"<app_id>:<project_id>[:<org_id>]"`**
-   (app-id first; from Project → Applications → the app)
-   so the apply **adopts** the existing client and its Client ID/Secret already
-   in GCP Secret Manager stay valid (rather than minting a new client).
+2. **Org / project IDs.** Fill `zitadel-apps:projectId` (and optionally `orgId`)
+   in `Pulumi.development.yaml` (read from the Zitadel console: Project → your
+   project). The stack **creates and owns** the OIDC client.
 3. **Enable.** Set the `ZITADEL_APPS_AUTO_APPLY` variable to `true`.
 
 From then on, every change to `infrastructure/pulumi/zitadel-apps/**` (or an
 oauth-user-inspector deploy) re-applies the stack automatically; redirect-URI
 changes are a code edit + merge, never a console click.
 
-> If you skip the import (no `importId`), Pulumi creates a **new** client — then
-> read `pulumi stack output clientId` / `clientSecret --show-secrets` and update
-> `ZITADEL_APP_OAUTH_CLIENT_ID` / `_SECRET` in GCP Secret Manager to match.
+> **Do NOT adopt an existing client via `pulumi.Import` / `importId`.** The
+> pulumiverse/zitadel provider marks `appType`/`version`/`accessTokenType`/… as
+> force-new and its import does not populate them, so an import plans a
+> *replacement* — which for this resource is "import replacement + delete
+> original" against the **same** app, i.e. it **deletes the live client**. (This
+> is exactly what broke hosted login on 2026-06-26: app `378961731390539356` was
+> replaced+deleted → `Errors.App.NotFound`.) There is no non-destructive adopt.
+>
+> **When the stack mints a new client** (first create, or any recreate), read
+> `pulumi stack output clientId` / `clientSecret --show-secrets` and update
+> `ZITADEL_APP_OAUTH_CLIENT_ID` / `_SECRET` in GCP Secret Manager to match (the
+> app reads them per-request, so no redeploy is needed).
 
 ## Break-glass / local preview
 

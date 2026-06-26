@@ -34,9 +34,10 @@
 // The Zitadel provider authenticates with a machine-user JWT profile key (set
 // via `zitadel:*` config — see the project README). The app's client_id/secret
 // are consumed by the running app from GCP Secret Manager
-// (ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET); to keep those valid, ADOPT the
-// existing application by setting zitadel-apps:importId rather than letting this
-// program create a new client. See the README.
+// (ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET). This program CREATES and owns the
+// client; whenever it mints a new one, re-sync those two GCP secrets. Do NOT try
+// to adopt an existing client via import — it is destructive on this provider and
+// deletes the live app (see the opts block below).
 //
 // Applied by CI as the "expand" step of the oauth-user-inspector-deploy workflow
 // (principles §2.14/§2.15), gated on ZITADEL_APPS_AUTO_APPLY. The Bazel run
@@ -108,14 +109,31 @@ func main() {
 			args.OrgId = pulumi.String(orgID)
 		}
 
-		// Adopt the existing application instead of creating a new one, so the
-		// client_id/secret already stored in GCP Secret Manager stay valid. Set
-		// zitadel-apps:importId to the provider's import id for the existing app
-		// (provider import format: "<app_id>:<project_id>[:<org_id>]", app-id first).
-		// Leave unset to create a brand-new client (then re-sync the secrets).
-		opts := []pulumi.ResourceOption{}
-		if importID := cfg.Get("importId"); importID != "" {
-			opts = append(opts, pulumi.Import(pulumi.ID(importID)))
+		// IMPORTANT — this app is CREATED and owned by Pulumi; do NOT adopt it via
+		// pulumi.Import. The pulumiverse/zitadel provider marks appType, version,
+		// accessTokenType, clockSkew and the *RoleAssertion / userinfoAssertion
+		// fields as replace-triggering, and its import does NOT populate them — so an
+		// import plans a *replacement*. For this resource a replacement is an "import
+		// replacement + delete original" against the SAME Zitadel app, which DELETES
+		// the live client. (Proven: the 2026-06-26 CI apply replaced+deleted app
+		// 378961731390539356, breaking hosted login with Errors.App.NotFound.) The
+		// recovery is always: create a fresh client here, then sync its
+		// clientId/clientSecret to GCP Secret Manager (ZITADEL_APP_OAUTH_CLIENT_ID /
+		// _SECRET) — there is no non-destructive adopt for this provider.
+		//
+		// IgnoreChanges on the force-new fields is belt-and-suspenders: it prevents a
+		// spurious provider diff (or a re-introduced import) from ever replacing — and
+		// thus deleting — the live client out from under the stored credentials.
+		opts := []pulumi.ResourceOption{
+			pulumi.IgnoreChanges([]string{
+				"appType",
+				"version",
+				"accessTokenType",
+				"accessTokenRoleAssertion",
+				"idTokenRoleAssertion",
+				"idTokenUserinfoAssertion",
+				"clockSkew",
+			}),
 		}
 
 		app, err := zitadel.NewApplicationOidc(ctx, "oauth-user-inspector", args, opts...)
