@@ -119,18 +119,30 @@ spec:
               enabled: true
               storageClass: local-path
               size: 10Gi
-            # NO arch pin: distributed MinIO needs an identical VERSION across nodes,
-            # NOT an identical CPU arch — the image is multi-arch (amd64+arm64) and the
-            # on-disk/erasure format is byte-portable. The old kubernetes.io/arch=arm64
-            # pin was unnecessary and crammed all 4 drives onto the 3 arm64 nodes (so 2
-            # land on one node). Dropping it lets the drives spread across all 6 nodes
-            # via the anti-affinity below. link=wired is intentionally NOT pinned: the
-            # drives are node-pinned to their local-path PVCs, so a hard wired selector
-            # would strand the 2 drives currently on the WiFi node james-mbp16 (they go
-            # wired automatically once mbp16 gets its Ethernet adapter). WAL archiving
-            # was never a MinIO-placement issue — that was #271, now fixed.
-            # Spread the 4 drives 1-per-node (PREFERRED, not required — a transient node
-            # loss can still reschedule; erasure parity tolerates one drive down).
+            # PIN to arm64 -- REQUIRED, do not remove. Distributed MinIO refuses to form
+            # a healthy erasure set across mixed CPU architectures: each peer advertises
+            # an MD5 of its own running binary and ServerSystemConfig.Diff() rejects any
+            # peer whose checksum differs ("Expected MinIO binary checksum ... seen ..."),
+            # so the amd64 binary (different bytes than arm64) is dropped from quorum -- a
+            # drive scheduled onto an amd64 node joins the StatefulSet but stays
+            # permanently OFFLINE (verified in minio source at the pinned image tag AND
+            # empirically -- a test drive on amd64 fedora went offline, healed only when
+            # moved back to arm64; no env/flag disables the check). This cluster's data
+            # was written by arm64, and the lab's only arm64 nodes are james-mbp32,
+            # james-macbook-pro, james-mbp16 -- so all 4 drives live on those 3 (one node
+            # necessarily carries 2). The pin guards the reschedule path (heal/recovery
+            # re-creates the PVC) from landing a drive on amd64 and breaking it. PR #312
+            # removed this pin on the WRONG premise "arch doesn't matter, image is
+            # multi-arch" -- it does; restored here. The original Pulumi source documented
+            # the same rule (infrastructure/pulumi/dev-local/.../minio.go). True 1-per-node
+            # / off-WiFi needs a 4TH wired arm64 node.
+            nodeSelector:
+              kubernetes.io/arch: arm64
+            # Spread the 4 drives 1-per-node -- PREFERRED, NOT required: only 3 arm64
+            # nodes exist for 4 drives, so a hard (required) 1-per-hostname rule is
+            # unsatisfiable and would leave the 4th pod permanently Pending. Preferred
+            # doubles 2 onto one node but always schedules. Flip to required ONLY after a
+            # 4th wired arm64 node exists (see #313, held as draft until then).
             affinity:
               podAntiAffinity:
                 preferredDuringSchedulingIgnoredDuringExecution:
