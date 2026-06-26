@@ -39,8 +39,9 @@ variable so it cleanly no-ops until the one-time bootstrap below is done.
    credential seeded out-of-band; the pipeline uses it from then on.)
 2. **Org / project / import IDs.** Fill the commented `zitadel-apps:projectId`
    (and optionally `orgId`) in `Pulumi.development.yaml`, and set
-   `zitadel-apps:importId` to the existing application's import id
-   (`"<org_id>:<project_id>:<app_id>"`, from Project → Applications → the app)
+   `zitadel-apps:importId` to the existing application's import id — the
+   pulumiverse/zitadel provider format is **`"<app_id>:<project_id>[:<org_id>]"`**
+   (app-id first; from Project → Applications → the app)
    so the apply **adopts** the existing client and its Client ID/Secret already
    in GCP Secret Manager stay valid (rather than minting a new client).
 3. **Enable.** Set the `ZITADEL_APPS_AUTO_APPLY` variable to `true`.
