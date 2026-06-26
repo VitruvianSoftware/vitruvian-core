@@ -92,7 +92,8 @@ jobs:
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          args: --accept-routes
+          # v4 already passes `--accept-routes`; passing it again in `args` errors
+          # with "accept-routes flag provided multiple times".
 
       - name: Prepare the internal TLS route to the Envoy gateway
         run: |
