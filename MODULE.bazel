@@ -34,7 +34,7 @@ module(
 # Currently bazel-lib is only load()ed when platforms is used.
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5", repo_name = None)  # force a recent version that works with v3
-bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "apple_support", version = "2.2.0")
 bazel_dep(name = "rules_swift", version = "3.6.1", repo_name = "build_bazel_rules_swift")
 bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rules_apple")
@@ -44,13 +44,13 @@ bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rule
 # Stay below 2.6.0, which moves clippy out of lint/ into a nested rules_rust
 # module and would churn tools/lint/linters.bzl.
 bazel_dep(name = "aspect_rules_lint", version = "2.5.2")
-bazel_dep(name = "buildifier_prebuilt", version = "8.2.1.1")
+bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_multitool", version = "1.11.1")
 
 # Aggregates //:gazelle (+ python manifest) and //tools/format into //:tidy.
 bazel_dep(name = "rules_multirun", version = "0.13.0")
-bazel_dep(name = "bazel_env.bzl", version = "0.5.0")
+bazel_dep(name = "bazel_env.bzl", version = "0.7.2")
 bazel_dep(name = "bazelrc-preset.bzl", version = "1.8.0")
 
 # We have to take a dependency on rules_python in order to set bootstrap=script
@@ -58,9 +58,9 @@ bazel_dep(name = "bazelrc-preset.bzl", version = "1.8.0")
 # See .bazelrc
 bazel_dep(name = "rules_python", version = "1.8.3")
 bazel_dep(name = "gazelle", version = "0.47.0")
-bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_oci", version = "2.2.7")
-bazel_dep(name = "tar.bzl", version = "0.8.1")
+bazel_dep(name = "tar.bzl", version = "0.10.5")
 
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
 multitool.hub(lockfile = "//tools:tools.lock.json")
@@ -281,7 +281,7 @@ use_repo(ruby, "bundle")
 
 #########################
 # Java and other JVM languages
-bazel_dep(name = "rules_java", version = "9.3.0")
+bazel_dep(name = "rules_java", version = "9.6.1")
 bazel_dep(name = "rules_jvm_external", version = "6.9")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
@@ -311,10 +311,10 @@ http_archive(
     url = "https://github.com/pmd/pmd/releases/download/pmd_releases/7.7.0/pmd-dist-7.7.0-bin.zip",
 )
 
-bazel_dep(name = "rules_kotlin", version = "2.2.2")
+bazel_dep(name = "rules_kotlin", version = "2.3.20")
 
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes
-bazel_dep(name = "rules_android", version = "0.7.1", repo_name = None)
+bazel_dep(name = "rules_android", version = "0.7.3")
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
 
