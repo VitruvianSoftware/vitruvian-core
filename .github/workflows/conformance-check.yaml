@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # The relevant-paths gate (below) diffs HEAD against the PR merge-base,
           # so the merge-base must be present locally; full history makes it

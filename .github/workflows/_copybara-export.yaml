@@ -57,7 +57,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 45
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               with:
                   fetch-depth: 0 # full history so the conflict pre-check can reach the rev-id baseline
 

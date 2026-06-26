@@ -47,7 +47,7 @@ jobs:
       # the key is the BUILDBUDDY_API_KEY repo secret.
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
           # merge-base with origin/main present locally. The default shallow
@@ -124,7 +124,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Need history so the PR path filter can diff against the merge-base.
           fetch-depth: 0
@@ -200,7 +200,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install addlicense
         run: go install github.com/google/addlicense@v1.2.0
       - name: Check license headers (whole repo)

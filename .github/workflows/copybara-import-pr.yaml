@@ -104,7 +104,7 @@ jobs:
         # concurrency queue (prevents overlapping tidy pushes to the same branch).
         timeout-minutes: 12
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               with:
                 fetch-depth: 0
                 # CRITICAL: without this, checkout injects an http extraheader
