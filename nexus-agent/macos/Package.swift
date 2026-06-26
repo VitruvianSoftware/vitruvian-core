@@ -1,3 +1,4 @@
+// swift-tools-version: 5.9
 // Copyright (c) 2026 VitruvianSoftware
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,7 +19,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
