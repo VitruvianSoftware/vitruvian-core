@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "mcp-slack": {
+      "release-type": "node",
+      "package-name": "@vitruviansoftware/mcp-slack",
+      "component": "mcp-slack",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

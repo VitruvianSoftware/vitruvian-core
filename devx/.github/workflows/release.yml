@@ -18,13 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Publish-on-version-bump. The monorepo (vitruvian-core) authors homelab's
+# Publish-on-version-bump. The monorepo (vitruvian-core) now authors devx's
 # version bump via release-please; the bumped .release-please-manifest.json is
-# exported here. When the version has no matching tag yet, this is a new release:
-# tag the exported commit and publish with GoReleaser using the mirror's existing
-# token. Replaces the in-mirror release-please job (now in the monorepo). Never
-# authors source; only tags + ships.
-name: Release
+# exported here by copybara. This workflow detects that bump (a manifest version
+# with no matching tag yet), tags the exported commit, and publishes with
+# GoReleaser using the mirror's existing token. It REPLACES the in-mirror
+# release-please job (which authored version/changelog commits here -- the drift
+# the one-way migration removed). It never authors source; it only tags + ships.
+name: release
 
 on:
   push:
@@ -40,10 +41,10 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
@@ -76,13 +77,15 @@ jobs:
           git tag -a "v$V" -m "Release v$V"
           git push origin "v$V"
 
-      - name: Setup environment with Mise
+      - uses: actions/setup-go@v6
         if: steps.detect.outputs.version
-        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Run GoReleaser
         if: steps.detect.outputs.version
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           distribution: goreleaser
           version: "~> v2"

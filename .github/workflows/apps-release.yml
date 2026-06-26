@@ -1,0 +1,74 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Monorepo-driven releases for the mirrored apps. release-please authors the
+# version bump + changelog HERE -- the monorepo is the source of truth. The
+# bumped <app>/.release-please-manifest.json + CHANGELOG.md export to the mirror
+# (copybara), whose publish-on-version-bump workflow then tags the exported
+# commit and publishes the artifact with its existing tokens. This replaces the
+# per-mirror release-please job, which authored version/changelog COMMITS in the
+# mirror -- the two-writable-copies drift the one-way migration removed.
+#
+# Onboarding is one app at a time (canary: devx). Each app added here must, in
+# the SAME change, have its mirror release workflow converted to publish-on-
+# version-bump, so the mirror stops opening its own release PRs (no double
+# release).
+name: apps-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "devx/**"
+      - "homelab/**"
+      - "mcp-slack/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Per-app concurrency: never cancel a release run; serialize each app's runs
+    # independently (one app's release must not block another's).
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.app }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [devx, homelab, mcp-slack]
+    steps:
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks -- same as tabula-release.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: ${{ matrix.app }}/release-please-config.json
+          manifest-file: ${{ matrix.app }}/.release-please-manifest.json
+          target-branch: main
