@@ -46,7 +46,10 @@ config:
   # Seeded 2026-06-26 (verified against the live instance via the iam-admin PAT):
   zitadel-apps:projectId: "378961731155658332"
   zitadel-apps:orgId: "378818267051001367" # the "Vitruvian" FirstInstance org
-  # Adopt the EXISTING application so its Client ID/Secret in GCP Secret Manager
-  # stay valid. The pulumiverse/zitadel provider import format is
-  # "<app_id>:<project_id>[:<org_id>]" (NOT org-first):
-  zitadel-apps:importId: "378961731390539356:378961731155658332:378818267051001367"
+  # NO importId — the app is CREATED and owned by Pulumi. Importing/adopting it is
+  # destructive on the pulumiverse/zitadel provider (force-new diff on
+  # appType/version/... → "import replacement + delete original" deletes the live
+  # client). The old importId pointed at app 378961731390539356, which a
+  # 2026-06-26 CI apply replaced+deleted (Errors.App.NotFound). After this stack
+  # creates a fresh client, sync its clientId/clientSecret to GCP Secret Manager
+  # (ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET). See main.go.
