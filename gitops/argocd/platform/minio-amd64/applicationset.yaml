@@ -1,0 +1,130 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# minio-amd64 -- the amd64 rebuild of the object store, deployed in PARALLEL to the
+# live arm64 `minio` for a blue-green migration (issue #318). Background: distributed
+# MinIO cannot mix CPU architectures (binary-checksum gate -- see the `minio` appset),
+# so the original 4-drive arm64 set can only live on the lab's arm64 nodes. The only
+# STABLE arm64 nodes are james-mbp32 + james-macbook-pro (2), which forced the 4th
+# drive onto james-mbp16 -- a ROAMING WiFi laptop that must be an ephemeral stateless
+# worker, not a stateful host. Fix: move the store to the 3 stable wired AMD64 nodes
+# (fedora, nuc9, james-mbp).
+#
+# Blue-green migration (old `minio` stays live + intact until the final teardown):
+#   1. This deploys an EMPTY amd64 cluster alongside the live arm64 one. Release-scoped
+#      Services ({app: minio, release: minio-amd64}) -> no cross-selection with `minio`.
+#   2. `mc mirror` copies all 4 buckets old -> new; object counts verified.
+#   3. The 4 consumers (tempo, grafana-db, cnpg-cluster, zitadel-db) repoint their
+#      endpoint to minio-amd64.minio.svc.cluster.local:9000.
+#   4. The old arm64 `minio` is decommissioned -> frees mbp16 + the arm64 nodes.
+#
+# Identical to `minio` except nodeSelector (amd64) -- same chart 5.4.0, mode, replicas,
+# buckets, and `minio-root` creds, so the erasure format + root auth match and the
+# consumers' existing creds keep working at cutover (no cred changes). 4 drives spread
+# 2+1+1 across the 3 amd64 nodes (preferred anti-affinity, always schedules); a 4th
+# wired amd64 node later gives true 1-per-node. Optional later cleanup: rename
+# minio-amd64 -> minio. nuc9 is the disk-tightest amd64 node (~12G free) -- watch it
+# as the store grows; the whole store is ~227 MiB today.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: minio-amd64
+  namespace: argocd
+  labels:
+    environment: minio
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: minio-amd64
+      labels:
+        app: minio-amd64
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://charts.min.io/
+        chart: minio
+        # Same pinned version as the live `minio` (byte-identical erasure format).
+        targetRevision: "5.4.0"
+        helm:
+          version: v3
+          values: |
+            # Distributed erasure-coded mode, fixed 4-drive set -- identical to `minio`.
+            mode: distributed
+            replicas: 4
+            # SAME root creds as `minio` (ns minio, keys rootUser/rootPassword), so the
+            # consumers' existing creds stay valid across the cutover. No plaintext (R8).
+            existingSecret: minio-root
+            # Same 4 buckets; created empty by the chart post-job, then mc-mirror filled.
+            buckets:
+              - name: tempo
+                policy: none
+                purge: false
+              - name: grafana-db-backups
+                policy: none
+                purge: false
+              - name: cnpg-cluster-backups
+                policy: none
+                purge: false
+              - name: zitadel-db-backups
+                policy: none
+                purge: false
+            persistence:
+              enabled: true
+              storageClass: local-path
+              size: 10Gi
+            # PIN to amd64 -- the stable wired tier (fedora, nuc9, james-mbp). Single-arch
+            # erasure set (same hard requirement as the arm64 original; mixing arch breaks
+            # quorum via the binary-checksum gate). This pins the store OFF the roaming
+            # arm64 laptop james-mbp16.
+            nodeSelector:
+              kubernetes.io/arch: amd64
+            # 4 drives across 3 amd64 nodes (2+1+1) -- PREFERRED (soft): always schedules.
+            # A 4th wired amd64 node later makes 1-per-node achievable (flip to required).
+            affinity:
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    podAffinityTerm:
+                      labelSelector:
+                        matchLabels:
+                          app: minio
+                      topologyKey: kubernetes.io/hostname
+            podDisruptionBudget:
+              enabled: true
+              maxUnavailable: 1
+            resources:
+              requests:
+                memory: 512Mi
+      destination:
+        server: '{{.server}}'
+        namespace: minio
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
