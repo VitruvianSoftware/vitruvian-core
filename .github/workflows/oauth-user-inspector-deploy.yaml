@@ -91,9 +91,13 @@ jobs:
       - name: Join the tailnet (ephemeral, tag:ci)
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
         with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-          # v4 already passes `--accept-routes`; passing it again in `args` errors
-          # with "accept-routes flag provided multiple times".
+          # OAuth client (no expiry) — mints a short-lived ephemeral tag:ci key per
+          # run, so there's no 90-day auth-key rotation chore. The client carries the
+          # `auth_keys` write scope tagged tag:ci; `tags:` is required with OAuth.
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          # v4 already passes `--accept-routes`; don't add it in args.
 
       - name: Prepare the internal TLS route to the Envoy gateway
         run: |
