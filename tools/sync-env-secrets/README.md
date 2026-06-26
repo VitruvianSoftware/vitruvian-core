@@ -76,6 +76,10 @@ Overrides (env): `REPO` (default `VitruvianSoftware/vitruvian-core`), `BW_ITEM`
 unlock). The store is held in Bitwarden as a single `deploy-env-secrets.tar.gz`
 attachment on that item.
 
+> **Note:** `bw-pull` is **additive** — it extracts the archive on top of the local
+> store, so a secret you removed from Bitwarden still lingers locally (and `apply`
+> would re-push it). To mirror exactly, clear `secrets/<env>/` before pulling.
+
 **Keeping it unlocked for unattended driving.** `:unlock` writes the live vault
 session to a `0600` file so headless callers reuse it — a deliberate
 convenience/security tradeoff; run `:lock` when you're done. If you prefer an
