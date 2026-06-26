@@ -48,6 +48,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege GITHUB_TOKEN: both jobs only check out and run the hermetic
+# Bazel stack (e2e + coverage); upload-artifact needs no token scope. Pin
+# contents: read explicitly so the floor does not rely on the repo/org
+# default-permissions setting.
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
