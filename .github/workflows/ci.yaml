@@ -201,28 +201,19 @@ jobs:
         run: bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
 
   license-check:
-    # Whole-repo MIT license-header check (addlicense). Generated/tool-managed
-    # files are ignored (BUILD = gazelle, lockfiles, baselines) so the tool never
-    # fights their regeneration. Catches a missing header on the PR, before fan-out.
+    # Whole-repo MIT license-header check, now hermetic via Bazel. The addlicense
+    # binary + the ignore set both live in //tools/license (BUILD.bazel), so the
+    # check runs identically here and locally (`bazel run //tools/license:check`);
+    # `bazel run //tools/license:add` fixes missing headers. Generated/tool-managed
+    # files are ignored there (BUILD = gazelle, lockfiles, baselines, etc.).
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - name: Install addlicense
-        run: go install github.com/google/addlicense@v1.2.0
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
       - name: Check license headers (whole repo)
-        run: |
-          # go install drops the binary in GOPATH/bin, which isn't on PATH on the runner.
-          "$(go env GOPATH)/bin/addlicense" -check -c "VitruvianSoftware" -l mit \
-            -ignore "**/BUILD" -ignore "**/BUILD.bazel" \
-            -ignore "**/docs/**" -ignore "**/internal/scaffold/templates/**" \
-            -ignore "pnpm-lock.yaml" -ignore "**/package-lock.json" -ignore "**/Cargo.lock" -ignore "MODULE.bazel.lock" \
-            -ignore "**/gazelle_python.yaml" -ignore "**/*-baseline.xml" -ignore "**/.release-please-manifest.json" \
-            -ignore "**/Pulumi.*.yaml" \
-            -ignore "**/dev-local/crds/**" -ignore "**/dev-local/values/**" -ignore "**/dev-local/dashboards/**" \
-            -ignore "**/prisma/migrations/**" \
-            -ignore "bazel-*/**" -ignore "**/node_modules/**" -ignore "**/*.venv/**" -ignore ".git/**" \
-            .
+        run: bazel run //tools/license:check
 
   go-lint:
     # Authoritative golangci-lint for the Go apps exported to standalone mirrors.
