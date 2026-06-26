@@ -29,6 +29,12 @@ for local **preview / break-glass only**, never the path to prod.
 The apply job is **gated** on the `ZITADEL_APPS_AUTO_APPLY` repo/environment
 variable so it cleanly no-ops until the one-time bootstrap below is done.
 
+> **Before enabling `ZITADEL_APPS_AUTO_APPLY`:** the apply must reach the Zitadel
+> management API over an **internal** path — Cloudflare's edge bot-protection
+> intermittently blocks the provider on the public `auth.ipv1337.dev` (HTTP 1010).
+> See [APPLYING-FROM-CI.md](APPLYING-FROM-CI.md) for the chosen approach (tailnet
+> internal routing, option **a**) and the future alternatives (b, c).
+
 ## One-time bootstrap (seed, then it's automated)
 
 1. **Machine user + key.** In the Zitadel console create a service (machine)
