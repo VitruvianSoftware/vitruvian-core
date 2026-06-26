@@ -119,13 +119,19 @@ ensure_bw_session() {
 
 # Persist the unlocked session (0600) so subsequent headless runs reuse it.
 cache_session() {
+  local old_umask
+  old_umask="$(umask)"
   umask 077
   mkdir -p "$(dirname "$SESS_CACHE")"
   printf '%s' "${BW_SESSION:?no session to cache}" >"$SESS_CACHE"
   chmod 600 "$SESS_CACHE"
+  umask "$old_umask"
 }
 
-bw_item_id() { bw list items --search "$BW_ITEM" | jq -r '.[0].id // empty'; }
+# Guarded like sealed_secrets_keys.sh's item_id: a missing item or a transient bw
+# error must not abort the caller under `set -o pipefail` before the not-found
+# branch (create) can run.
+bw_item_id() { bw list items --search "$BW_ITEM" 2>/dev/null | jq -r '.[0].id // empty' 2>/dev/null || true; }
 
 cmd_bw_push() {
   ensure_bw_session
@@ -141,8 +147,12 @@ cmd_bw_push() {
     id="$(printf '{"type":2,"name":"%s","notes":"gitignored deploy-time env secrets (managed by tools/sync-env-secrets)","secureNote":{"type":0}}' "$BW_ITEM" | bw encode | bw create item | jq -r '.id')"
     echo "  created Bitwarden item '$BW_ITEM' ($id)"
   else
-    att_old="$(bw get item "$id" | jq -r --arg n "$ARCHIVE_NAME" '.attachments[]? | select(.fileName==$n) | .id')"
-    [ -z "$att_old" ] || bw delete attachment "$att_old" --itemid "$id" >/dev/null
+    # Remove EVERY prior copy of the attachment, and make a failed delete fatal:
+    # a leftover duplicate would give bw-pull two same-named ids and break recovery.
+    for att_old in $(bw get item "$id" | jq -r --arg n "$ARCHIVE_NAME" '.attachments[]? | select(.fileName==$n) | .id'); do
+      bw delete attachment "$att_old" --itemid "$id" >/dev/null \
+        || die "failed to remove a stale '$ARCHIVE_NAME' attachment — re-run, or delete it in the Bitwarden UI"
+    done
   fi
   bw create attachment --itemid "$id" --file "$tar" >/dev/null
   echo "pushed $ARCHIVE_NAME to Bitwarden item '$BW_ITEM'"
@@ -154,7 +164,8 @@ cmd_bw_pull() {
   local id att tmpdir tar
   id="$(bw_item_id)"
   [ -n "$id" ] || die "no Bitwarden item '$BW_ITEM' — run 'bw-push' first"
-  att="$(bw get item "$id" | jq -r --arg n "$ARCHIVE_NAME" '.attachments[]? | select(.fileName==$n) | .id')"
+  # first(...) so a stray duplicate attachment can't yield a malformed multi-id.
+  att="$(bw get item "$id" | jq -r --arg n "$ARCHIVE_NAME" 'first(.attachments[]? | select(.fileName==$n) | .id) // empty')"
   [ -n "$att" ] || die "no '$ARCHIVE_NAME' attachment on item '$BW_ITEM'"
   tmpdir="$(mktemp -d)"
   _tmp_cleanup="$tmpdir"

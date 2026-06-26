@@ -8,6 +8,7 @@ sync-env-secrets.sh + README.md and docs/engineering/application-development-pri
   bazel run //tools/sync-env-secrets:unlock                            # once: caches a bw session so the rest run headless
   bazel run //tools/sync-env-secrets:apply -- oauth-user-inspector-development
   bazel run //tools/sync-env-secrets:bw-push
+  bazel run //tools/sync-env-secrets:bw-pull                           # Bitwarden -> store (e.g. on a new machine)
   bazel run //tools/sync-env-secrets:lock                              # clear the cached session + lock the vault
 """
 
