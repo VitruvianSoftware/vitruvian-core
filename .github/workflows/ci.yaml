@@ -223,3 +223,28 @@ jobs:
             -ignore "**/prisma/migrations/**" \
             -ignore "bazel-*/**" -ignore "**/node_modules/**" -ignore "**/*.venv/**" -ignore ".git/**" \
             .
+
+  go-lint:
+    # Authoritative golangci-lint for the Go apps exported to standalone mirrors.
+    # aspect_rules_lint has no golangci-lint aspect, and the per-app mirror CI is
+    # being retired (the monorepo is the single CI authority), so Go lint runs
+    # here as a matrix over each module -- standalone (GOWORK=off), exactly as it
+    # lints in its mirror today.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [devx, homelab]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+      - name: golangci-lint (${{ matrix.module }})
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
+        with:
+          version: v2.12.1
+          working-directory: ${{ matrix.module }}
