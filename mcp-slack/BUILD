@@ -1,4 +1,5 @@
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
 
@@ -30,7 +31,7 @@ ts_project(
     resolve_json_module = True,
     root_dir = "src",
     source_map = True,
-    transpiler = "tsc",
+    transpiler = swc,
     tsconfig = "tsconfig.json",
     visibility = ["//visibility:public"],
     deps = [

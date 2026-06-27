@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
+load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tabula/extension:@playwright/test/package_json.bzl", playwright = "bin")
@@ -93,7 +94,7 @@ ts_project(
     extends = "tsconfig.json",
     resolve_json_module = True,
     source_map = True,
-    transpiler = "tsc",
+    transpiler = swc,
     tsconfig = "tsconfig.test.json",
     deps = [
         ":node_modules/@dnd-kit/core",

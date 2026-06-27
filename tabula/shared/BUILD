@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
+load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 
 # @tabula/shared: types + utilities consumed by //tabula/extension and
@@ -42,7 +43,7 @@ ts_project(
     resolve_json_module = True,
     root_dir = "src",
     source_map = True,
-    transpiler = "tsc",
+    transpiler = swc,
     tsconfig = "tsconfig.json",
 )
 

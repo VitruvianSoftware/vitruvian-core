@@ -99,6 +99,9 @@ bazel_dep(name = "rules_nodejs", version = "6.7.4")
 bazel_dep(name = "aspect_rules_js", version = "3.2.2")
 bazel_dep(name = "aspect_rules_ts", version = "3.8.11")
 
+# SWC transpiler for ts_project (fast JS transpile; tsc still type-checks + emits .d.ts).
+bazel_dep(name = "aspect_rules_swc", version = "2.7.2")
+
 # JS test runner (//tabula unit tests).
 bazel_dep(name = "aspect_rules_jest", version = "0.25.2")
 
