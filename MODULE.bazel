@@ -412,13 +412,26 @@ http_file(
     url = "https://binaries.prisma.sh/all_commits/{}/darwin-arm64/schema-engine.gz".format(_PRISMA_ENGINES_HASH),
 )
 
-bazel_dep(name = "rules_scala", version = "7.1.6")
+#########################
+# Protobuf & gRPC. Dead config in vitruvian-core today (no first-party .proto;
+# the only protos/grpc are node_modules/maven transitives) — declared to match
+# the kitchen-sink so adding a .proto later Just Works and the divergence stays
+# closed. `--@protobuf//bazel/toolchains:prefer_prebuilt_protoc` (.bazelrc)
+# avoids building protoc from source. rules_foreign_cc is floored at 0.15.1:
+# protobuf pulls it transitively and the default (0.10.1) loads the Bazel-9-
+# removed CcInfo builtin and fails analysis.
+bazel_dep(name = "protobuf", version = "35.1")
+bazel_dep(name = "protovalidate", version = "1.2.0")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+bazel_dep(name = "grpc-java", version = "1.78.0")
+bazel_dep(name = "bazel_jar_jar", version = "0.1.12")
+bazel_dep(name = "rules_scala", version = "7.2.6")
 
 scala_config = use_extension(
     "@rules_scala//scala/extensions:config.bzl",
     "scala_config",
 )
-scala_config.settings(scala_version = "2.13.17")
+scala_config.settings(scala_version = "2.13.18")
 
 # See the `scala/extensions/deps.bzl` docstring for a high level description of
 # the tag classes exported by this module extension.
@@ -427,6 +440,9 @@ scala_deps = use_extension(
     "scala_deps",
 )
 scala_deps.scala()
+
+# ScalaTest toolchain — matches the kitchen-sink; unused until a scala_test lands.
+scala_deps.scalatest()
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 
