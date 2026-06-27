@@ -16,6 +16,8 @@
     "logger.ts",
     "safeFetch.ts",
     "apiEndpoints.server.ts",
+    "securityHeaders.ts",
+    "rateLimit.ts",
     "types/**/*"
   ]
 }

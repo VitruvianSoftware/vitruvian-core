@@ -33,9 +33,21 @@ import {
   resolveExploreTarget,
   UnknownExploreEndpointError,
 } from "./apiEndpoints.server.js";
+import { securityHeaders } from "./securityHeaders.js";
+import { RateLimitTier, rateLimitMiddleware } from "./rateLimit.js";
 
 const app = express();
 const port = parseInt(process.env.PORT || "8080", 10);
+
+// Behind Cloudflare Tunnel -> Cloud Run there is exactly one trusted proxy hop,
+// so `req.ip` reflects the immediate proxy and CF-Connecting-IP carries the real
+// client (see rateLimit.clientIp). trust proxy = 1 keeps Express from blindly
+// trusting an arbitrarily long X-Forwarded-For chain.
+app.set("trust proxy", 1);
+
+// Express advertises itself via X-Powered-By by default; strip it (don't leak
+// the stack, and it's free attack-surface signalling).
+app.disable("x-powered-by");
 
 // Initialize Google Secret Manager client
 const secretManagerClient = new SecretManagerServiceClient();
@@ -44,8 +56,23 @@ process.on("exit", (code) => {
   console.log(`About to exit with code: ${code}`);
 });
 
-// Helper function to retrieve secrets from Google Secret Manager
+// In-process TTL cache for Secret Manager reads. A single page load fans out to
+// many getSecret() calls (hosted creds + availability checks), each previously a
+// separate Secret Manager round-trip; caching collapses those to one read per
+// secret per TTL window. The app always reads the "latest" version, so a ROTATED
+// secret now takes up to SECRET_CACHE_TTL_MS to propagate to this instance —
+// acceptable for this tool (creds rotate rarely; a stale window of <=60s is
+// fine, and worst case a 401 on the next call self-heals once the TTL expires).
+const SECRET_CACHE_TTL_MS = 60_000;
+const secretCache = new Map<string, { value: string; expires: number }>();
+
+// Helper function to retrieve secrets from Google Secret Manager (TTL-cached).
 async function getSecret(secretName: string): Promise<string> {
+  const cached = secretCache.get(secretName);
+  if (cached && Date.now() < cached.expires) {
+    return cached.value;
+  }
+
   try {
     const projectId =
       process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
@@ -62,7 +89,12 @@ async function getSecret(secretName: string): Promise<string> {
       throw new Error(`No payload data found for secret: ${secretName}`);
     }
 
-    return version.payload.data.toString();
+    const value = version.payload.data.toString();
+    secretCache.set(secretName, {
+      value,
+      expires: Date.now() + SECRET_CACHE_TTL_MS,
+    });
+    return value;
   } catch (error: any) {
     logger.error("Failed to retrieve secret from Secret Manager", {
       secretName,
@@ -183,6 +215,12 @@ function collapseUpstreamError(
 }
 
 // --- Middleware ---
+// Security headers FIRST, before the request logger, so every response (incl.
+// early returns, 4xx/5xx, and static SPA assets) carries CSP/HSTS/etc. The CSP
+// is the load-bearing one: it contains an XSS so injected JS can't exfiltrate
+// the OAuth tokens this app keeps in the browser's localStorage.
+app.use(securityHeaders());
+
 // Request ID and logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   req.id = (req.headers["x-request-id"] as string) || uuidv4();
@@ -220,7 +258,50 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.use(express.json());
+// Bound the request body. These endpoints only ever receive small JSON
+// (tokens, a code, a provider, an endpoint id), so 64kb is generous; the limit
+// keeps a hostile client from spending our memory/CPU on a giant body.
+app.use(express.json({ limit: "64kb" }));
+
+// Tokens must not be cached by any intermediary. Mark every /api/* response
+// no-store so a proxy/CDN never retains an access/refresh token in a response.
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
+// --- Rate limiting (hand-written, in-memory, per client IP) ---
+// Tiers are per-IP fixed windows. Keyed on the REAL client IP via
+// CF-Connecting-IP (Cloudflare) falling back to req.ip. NOTE: this is fully
+// effective only once Cloud Run ingress is locked to the tunnel (separate infra
+// change) — until then CF-Connecting-IP is advisory/spoofable, so treat the
+// limiter as best-effort defense-in-depth.
+// Under Jest the app singleton is hammered by the broader handler suite far past
+// these production tiers; raise the ceiling there so the limiter never trips the
+// unrelated tests. The 429 + Retry-After behavior is proven directly against a
+// low-limit limiter instance in hardening.test.ts. (Same JEST_WORKER_ID gate the
+// app already uses to skip listen().)
+const RL = process.env.JEST_WORKER_ID ? 1_000_000 : undefined;
+const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
+  // Global /api/* floor: a coarse ceiling across all endpoints.
+  apiFloor: { bucket: "api-floor", limit: RL ?? 120, windowMs: 5 * 60_000 },
+  // The outbound-proxy endpoint (most abusable; drives upstream calls).
+  explore: { bucket: "explore", limit: RL ?? 30, windowMs: 60_000 },
+  // Token-bearing OAuth endpoints (exchange/refresh/revoke).
+  oauthToken: { bucket: "oauth-token", limit: RL ?? 20, windowMs: 60_000 },
+  // Hosted-OAuth helpers (init/availability) — higher, they're cheap & polled.
+  oauthHosted: { bucket: "oauth-hosted", limit: RL ?? 60, windowMs: 60_000 },
+};
+
+// Order matters: the global floor runs first on every /api/* request, then the
+// tighter per-route tiers stack on top of it.
+app.use("/api", rateLimitMiddleware(RATE_LIMIT_TIERS.apiFloor));
+app.use("/api/explore", rateLimitMiddleware(RATE_LIMIT_TIERS.explore));
+app.use(
+  ["/api/oauth/token", "/api/oauth/refresh", "/api/oauth/revoke"],
+  rateLimitMiddleware(RATE_LIMIT_TIERS.oauthToken),
+);
+app.use("/api/oauth-hosted", rateLimitMiddleware(RATE_LIMIT_TIERS.oauthHosted));
 
 // --- API Routes ---
 // API routes are defined before static file serving.
@@ -1522,6 +1603,24 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
   if (res.headersSent) {
     return next(err);
+  }
+
+  // Honor a status carried by the error (e.g. body-parser's 413 PayloadTooLarge
+  // from the express.json 64kb limit, or its 400 on malformed JSON). Only an
+  // error with no/invalid status falls through to a generic 500 — we never
+  // mask a 4xx client error as a 500.
+  const status =
+    (err as { status?: number; statusCode?: number }).status ??
+    (err as { statusCode?: number }).statusCode;
+  if (typeof status === "number" && status >= 400 && status < 600) {
+    res.status(status).json({
+      error:
+        status === 413
+          ? "Request body too large."
+          : "Request could not be processed.",
+      requestId: req.id,
+    });
+    return;
   }
 
   res.status(500).json({
