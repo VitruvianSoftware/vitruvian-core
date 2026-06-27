@@ -27,15 +27,58 @@ import { FetchMock } from "./fetch-mock.js";
 process.env.GOOGLE_CLOUD_PROJECT =
   process.env.GOOGLE_CLOUD_PROJECT || "test-project";
 
-// Shared mock-fetch registry. The server imports `node-fetch`; we replace that
-// module's default export with this registry's `fetch` so every outbound OAuth
-// provider call is intercepted in pure CJS (no msw/ESM transform needed).
+// Shared mock-fetch registry. All user-influenced outbound calls now go through
+// the server's `safeFetch` (node `https`, not node-fetch), so the previous
+// node-fetch mock no longer intercepts them. We mock `../safeFetch` instead and
+// drive it off this SAME url+method handler registry, returning the canned
+// `{ status, headers, body }` shape safeFetch promises. resolveAndPin is mocked
+// to a no-op pin so the handlers' issuer-domain validation passes offline (the
+// dedicated SSRF reject vectors live in ssrf.test.ts against the real module).
 const fetchMock = new FetchMock();
 
-jest.mock("node-fetch", () => ({
-  __esModule: true,
-  default: (...args: unknown[]) => (fetchMock.fetch as any)(...args),
-}));
+jest.mock("../safeFetch", () => {
+  const actual = jest.requireActual("../safeFetch");
+  return {
+    __esModule: true,
+    // Keep the real error class so `instanceof UpstreamError` still holds.
+    UpstreamError: actual.UpstreamError,
+    // No-op pin: the BYO-domain validation in the handlers calls resolveAndPin
+    // with a throwaway https URL; in these handler tests every domain is a
+    // trusted fixture, so we accept it. SSRF rejection is covered separately.
+    resolveAndPin: jest.fn(async (rawUrl: string) => {
+      const u = new URL(rawUrl);
+      return {
+        host: u.hostname,
+        port: u.port ? parseInt(u.port, 10) : 443,
+        pathSearch: `${u.pathname}${u.search}`,
+        pinnedIp: "93.184.216.34",
+        family: 4 as const,
+      };
+    }),
+    // safeFetch delegates to the URL+method handler registry and adapts the
+    // mock Response into safeFetch's flat { status, headers, body } result.
+    safeFetch: jest.fn(
+      async (
+        rawUrl: string,
+        options: { method?: string; body?: string } = {},
+      ) => {
+        const mockRes = await fetchMock.fetch(rawUrl, {
+          method: options.method ?? "GET",
+          body: options.body,
+        });
+        const headers: Record<string, string> = {};
+        for (const [k, v] of mockRes.headers.entries()) {
+          headers[k] = v;
+        }
+        return {
+          status: mockRes.status,
+          headers,
+          body: await mockRes.text(),
+        };
+      },
+    ),
+  };
+});
 
 // Mock Google Secret Manager
 jest.mock("@google-cloud/secret-manager", () => ({
@@ -961,20 +1004,45 @@ describe("/api/explore", () => {
     );
   });
 
-  it("should return 400 for invalid endpoint", async () => {
+  it("should return 400 for invalid endpoint (missing method)", async () => {
     const response = await request(app)
       .post("/api/explore")
       .send({
         provider: "github",
         accessToken: "test_token",
-        endpoint: { id: "test" }, // missing url and method
+        endpoint: { id: "user" }, // missing method
       });
 
     expect(response.status).toBe(400);
     expect(response.body).toHaveProperty(
       "error",
-      "Invalid endpoint: missing url or method",
+      "Invalid endpoint: missing id or method",
     );
+  });
+
+  it("fails closed: unknown endpoint id returns 400 and makes NO outbound call", async () => {
+    let called = false;
+    fetchMock.use("GET", /.*/, () => {
+      called = true;
+      return { json: {} };
+    });
+
+    const response = await request(app)
+      .post("/api/explore")
+      .send({
+        provider: "github",
+        accessToken: "test_token",
+        // `id` is not in the server-owned table; the client URL must NOT be used.
+        endpoint: {
+          id: "totally-made-up",
+          method: "GET",
+          url: "https://api.github.com/user",
+        },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toHaveProperty("error", "unknown endpoint");
+    expect(called).toBe(false);
   });
 
   it("should handle API calls for GitHub endpoints", async () => {
