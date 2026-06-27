@@ -498,6 +498,8 @@
     "https://bcr.bazel.build/modules/rules_robolectric/4.14.1.2/source.json": "37c10335f2361c337c5c1f34ed36d2da70534c23088062b33a8bdaab68aa9dea",
     "https://bcr.bazel.build/modules/rules_rs/0.0.26/MODULE.bazel": "9f9fdbef6704969f08d4a02d2427dbad971c1f8e605d5999faec26052f2104d2",
     "https://bcr.bazel.build/modules/rules_rs/0.0.26/source.json": "f6f70e49652fea6402ef6b87ec7b6cf33e646151402cecf633849f17ea7dae24",
+    "https://bcr.bazel.build/modules/rules_ruby/0.27.0/MODULE.bazel": "3c945acc1d758f9572da30a47f964ddc439fb9430dedff3b48d37cd2098fb051",
+    "https://bcr.bazel.build/modules/rules_ruby/0.27.0/source.json": "78670cee4496a4cb692d248440078c5d2ef2c130315b86a4ccabc0cd7016506c",
     "https://bcr.bazel.build/modules/rules_rust/0.45.1/MODULE.bazel": "a69d0db3a958fab2c6520961e1b2287afcc8b36690fd31bbc4f6f7391397150d",
     "https://bcr.bazel.build/modules/rules_rust/0.66.0/MODULE.bazel": "86ef763a582f4739a27029bdcc6c562258ed0ea6f8d58294b049e215ceb251b3",
     "https://bcr.bazel.build/modules/rules_rust/0.68.1/MODULE.bazel": "8d3332ef4079673385eb81f8bd68b012decc04ac00c9d5a01a40eff90301732c",
