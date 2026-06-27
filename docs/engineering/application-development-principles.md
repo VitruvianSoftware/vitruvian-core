@@ -182,6 +182,12 @@ There is **no fourth path.** An imperative one-off — `gh secret set` / `gh var
 
 **(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` secrets were set with `gh` during bring-up and are not yet declared in `repo_config` — the first debt to repay under this rule.
 
+### 2.19 Every fix ships with the test or check that would catch it again
+
+**Why:** A fix without a guard is one Dependabot bump, refactor, or redeploy away from silently regressing — and a green pipeline that never exercises the failure gives false confidence. Two prod outages shipped past green pipelines exactly this way: a `react`/`react-dom` 18-vs-19 mismatch that broke the SPA's mount (the test suite was backend-only), and a deploy smoke check that asserted HTTP 200 on a static shell which returns 200 even when the app is broken. A passing pipeline must *mean* "the thing works."
+
+**In practice:** When you fix anything testable, the regression guard is part of *done*, not a follow-up. Pick the cheapest layer that actually catches it: a parity/lint check at the source of truth (e.g. assert `react` and `react-dom` share a major in `package.json`), a unit/integration test in the existing CI suite, and — when the break only manifests at runtime — a real post-deploy verification (headless-render and assert a post-mount marker, never a bare `200`). Verify the guard *both* ways: it passes on the fix **and** fails on the original broken state — a check you never watched fail proves nothing. Layer prevention + detection when it's cheap (group the dependency so a bump can't split it, *and* test for the split, *and* catch it at the deploy gate). "It's a small fix" is not an exemption; "there's no way to test this" is a claim to justify, not assume.
+
 ---
 
 ## 3. Per-category playbook
