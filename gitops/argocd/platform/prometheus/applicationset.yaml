@@ -538,6 +538,13 @@ spec:
                   action: keep
                 - source_labels: [__meta_kubernetes_endpoint_node_name]
                   target_label: instance
+                # OpenLens/Lens node + cluster-overview CPU/mem panels aggregate
+                # node-exporter series by(kubernetes_node), but this chart only
+                # relabels the node name into `node`. Mirror it into kubernetes_node
+                # so Lens renders (detail pages work without it; the overview does
+                # not). Ref: lensapp/lens troubleshooting/custom-prometheus.md.
+                - source_labels: [__meta_kubernetes_endpoint_node_name]
+                  target_label: kubernetes_node
               - job_name: 'traefik'
                 kubernetes_sd_configs:
                   - role: endpoints
