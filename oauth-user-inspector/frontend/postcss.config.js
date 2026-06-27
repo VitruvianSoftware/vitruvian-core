@@ -22,7 +22,8 @@
 
 export default {
   plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
+    // Tailwind v4 moved its PostCSS plugin to a separate package and folds
+    // autoprefixing in (Lightning CSS), so this replaces tailwindcss+autoprefixer.
+    "@tailwindcss/postcss": {},
   },
 };
