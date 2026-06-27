@@ -28,12 +28,6 @@ load("@aspect_rules_lint//lint:pmd.bzl", "lint_pmd_aspect")
 load("@aspect_rules_lint//lint:ruff.bzl", "lint_ruff_aspect")
 load("@aspect_rules_lint//lint:shellcheck.bzl", "lint_shellcheck_aspect")
 load("@aspect_rules_lint//lint:ty.bzl", "lint_ty_aspect")
-load("@aspect_rules_lint_rust//:clippy.bzl", "lint_clippy_aspect")
-
-clippy = lint_clippy_aspect(
-    config = Label("//:.clippy.toml"),
-    clippy_flags = ["-Dwarnings"],
-)
 
 clang_tidy = lint_clang_tidy_aspect(
     binary = Label("//tools/lint:clang_tidy"),

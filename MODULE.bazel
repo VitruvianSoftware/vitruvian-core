@@ -40,9 +40,9 @@ bazel_dep(name = "rules_swift", version = "3.6.1", repo_name = "build_bazel_rule
 bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rules_apple")
 
 # Loads CcInfo from rules_cc (Bazel 9 removed the builtin). 2.6.0 moved the
-# clippy aspect into the separate aspect_rules_lint_rust module, which we now
-# take (see the Rust section) so clippy is wired again for any future rust_* —
-# matching the kitchen-sink.
+# clippy aspect out of lint/ into the separate aspect_rules_lint_rust module;
+# rather than take that module we dropped clippy from tools/lint/linters.bzl
+# (nothing to lint -- Cargo members=[], zero .rs files), so 2.7.1 is a clean bump.
 bazel_dep(name = "aspect_rules_lint", version = "2.7.1")
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
@@ -238,34 +238,15 @@ git_override(
 )
 
 #########################
-# Support for Rust via rules_rs (https://github.com/hermeticbuild/rules_rs).
-# rules_rs is the ONLY direct Rust dep: its rules_rust facade extension (below)
-# generates the @rules_rust repo (rules + toolchains), so the old direct
-# bazel_dep(rules_rust) + @rules_rust rust extension are dropped.
-bazel_dep(name = "rules_rs", version = "0.0.90")
+# Support for Rust, see https://github.com/bazelbuild/rules_rust
+bazel_dep(name = "rules_rust", version = "0.68.1")
+bazel_dep(name = "rules_rs", version = "0.0.26")
 
-# Clippy lint aspect for rust_{binary,library,test}, re-added via the dedicated
-# aspect_rules_lint_rust module (aspect_rules_lint 2.6.0 moved clippy out of
-# lint/). Wired into `--config=lint` through //tools/lint:linters.bzl%clippy.
-bazel_dep(name = "aspect_rules_lint_rust", version = "0.0.2")
-
-rules_rust = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")
-use_repo(rules_rust, "rules_rust")
-
-toolchains = use_extension("@rules_rs//rs/toolchains:module_extension.bzl", "toolchains")
-toolchains.toolchain(
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
     edition = "2021",
-    # Must match aspect_rules_lint_rust's pinned toolchain version: both
-    # contribute a toolchains.toolchain() tag to the same default_rust_toolchains
-    # repo, and rules_rs fails the build on a version mismatch.
-    version = "1.92.0",
+    versions = ["1.75.0"],
 )
-use_repo(toolchains, "default_rust_toolchains")
-
-# Register AFTER the hermetic @llvm_toolchain//:all above: aspect_rules_lint_rust
-# + rules_rs pull a minimal llvm (0.8.3) that can't link rules_rust's
-# process_wrapper; keeping the hermetic LLVM 19.1.7 registered first wins.
-register_toolchains("@default_rust_toolchains//:all")
 
 crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
 crate.from_cargo(
