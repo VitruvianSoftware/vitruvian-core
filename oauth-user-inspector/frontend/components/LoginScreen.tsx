@@ -882,6 +882,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholder="your-tenant.us.auth0.com"
                     className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Must be a public, internet-reachable domain. The hosted
+                    inspector cannot reach localhost or internal addresses.
+                  </p>
                 </div>
                 <div>
                   <label
@@ -1054,7 +1058,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   />
                   <p className="mt-1 text-xs text-slate-500">
                     Defaults to our self-hosted instance. Leave as-is unless you
-                    run your own Zitadel.
+                    run your own Zitadel. It must be a public,
+                    internet-reachable domain: the hosted inspector reaches it
+                    server-side, so a localhost or internal IdP only works if
+                    you run the inspector locally.
                   </p>
                 </div>
                 <div>
