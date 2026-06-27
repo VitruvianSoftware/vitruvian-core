@@ -22,13 +22,17 @@
 
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
-import fetch, { RequestInit } from "node-fetch";
 import { URLSearchParams } from "url";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import logger, { createRequestLogger, logTiming, logError } from "./logger.js";
 import { enhanceOAuthError } from "./oauth-error-guide.js";
+import { safeFetch, resolveAndPin, UpstreamError } from "./safeFetch.js";
+import {
+  resolveExploreTarget,
+  UnknownExploreEndpointError,
+} from "./apiEndpoints.server.js";
 
 const app = express();
 const port = parseInt(process.env.PORT || "8080", 10);
@@ -137,6 +141,45 @@ async function getHostedCredentials(
   } else {
     throw new Error(`Unsupported provider: ${provider}`);
   }
+}
+
+// Validate a client-supplied issuer domain (Auth0 tenant / Zitadel host) before
+// it is interpolated into any outbound URL. resolveAndPin throws UpstreamError
+// if the domain resolves to anything other than a public unicast address, which
+// is exactly the SSRF guard we want on a BYO host (CGNAT/metadata/private/etc.).
+// We feed it a throwaway https URL so only the host is exercised here; safeFetch
+// re-pins the *real* target URL at call time.
+async function validateIssuerDomain(domain: string): Promise<void> {
+  // `new URL` would mangle a domain that already contains a scheme or path; the
+  // explore/token flows only ever pass a bare hostname[:port], so build a
+  // minimal https URL around it and let resolveAndPin reject anything unsafe.
+  await resolveAndPin(`https://${domain}/`);
+}
+
+// Collapse ANY user-influenced outbound failure (DNS reject / refused / TLS /
+// timeout / redirect / size / unknown endpoint) into a single generic client
+// response, logging the real reason server-side only. Reflecting distinct
+// failure reasons for a user-supplied host is an SSRF recon oracle, so the
+// client always sees the same opaque message + a requestId for correlation.
+function collapseUpstreamError(
+  reqLogger: typeof logger,
+  res: Response,
+  requestId: string | undefined,
+  context: Record<string, unknown>,
+  err: unknown,
+): void {
+  const reason =
+    err instanceof UpstreamError
+      ? err.reason
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  reqLogger.warn("Upstream request failed (collapsed)", {
+    ...context,
+    reason,
+    requestId,
+  });
+  res.status(502).json({ error: "Upstream request failed", requestId });
 }
 
 // --- Middleware ---
@@ -253,7 +296,11 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
     }
 
     let tokenUrl: string;
-    const fetchOptions: RequestInit = {};
+    const fetchOptions: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+    } = { method: "POST", headers: {}, body: "" };
 
     if (provider === "github") {
       tokenUrl = "https://github.com/login/oauth/access_token";
@@ -263,15 +310,13 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       params.append("code", code);
       params.append("redirect_uri", redirectUri);
 
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
       };
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else if (provider === "google") {
       tokenUrl = "https://oauth2.googleapis.com/token";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -285,7 +330,6 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       });
     } else if (provider === "gitlab") {
       tokenUrl = "https://gitlab.com/oauth/token";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -301,8 +345,27 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       if (!auth0Domain) {
         return res.status(400).json({ error: "Auth0 domain is required." });
       }
+      // Validate the BYO/hosted Auth0 domain BEFORE interpolating it into the
+      // token URL — this POSTs the owner's client_secret, so the host must be
+      // a public unicast issuer, never an internal/CGNAT/metadata target.
+      try {
+        await validateIssuerDomain(auth0Domain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/token",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       tokenUrl = `https://${auth0Domain}/oauth/token`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -319,8 +382,24 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       // defaults to our self-hosted instance. Its token endpoint expects the
       // form-encoded code grant.
       zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      try {
+        await validateIssuerDomain(zitadelDomain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/token",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       tokenUrl = `https://${zitadelDomain}/oauth/v2/token`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -331,10 +410,9 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       params.append("redirect_uri", redirectUri);
       params.append("client_id", clientId);
       params.append("client_secret", clientSecret);
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else if (provider === "linkedin") {
       tokenUrl = "https://www.linkedin.com/oauth/v2/accessToken";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -345,7 +423,7 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       params.append("redirect_uri", redirectUri);
       params.append("client_id", clientId);
       params.append("client_secret", clientSecret);
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else {
       // This case is already handled above, but kept for safety.
       return res.status(400).json({ error: "Unsupported provider." });
@@ -357,15 +435,34 @@ app.post("/api/oauth/token", async (req: Request, res: Response) => {
       method: fetchOptions.method,
     });
 
-    const tokenResponse = await fetch(tokenUrl, fetchOptions);
-    const responseText = await tokenResponse.text();
+    // All token-exchange egress goes through safeFetch: it re-resolves+pins the
+    // host to a public unicast IP, validates TLS against the real hostname, and
+    // never follows redirects (so a malicious 3xx can't bounce the client_secret
+    // POST to an internal target).
+    let tokenResponse: { status: number; body: string };
+    try {
+      tokenResponse = await safeFetch(tokenUrl, fetchOptions);
+    } catch (err) {
+      collapseUpstreamError(
+        reqLogger,
+        res,
+        req.id,
+        { endpoint: "/api/oauth/token", provider, phase: "outbound" },
+        err,
+      );
+      endTimer();
+      return;
+    }
+    const responseText = tokenResponse.body;
+    const responseOk =
+      tokenResponse.status >= 200 && tokenResponse.status < 300;
 
     reqLogger.info("OAuth provider response received", {
       provider,
       statusCode: tokenResponse.status,
     });
 
-    if (!tokenResponse.ok) {
+    if (!responseOk) {
       reqLogger.error("OAuth provider error response", {
         provider,
         statusCode: tokenResponse.status,
@@ -487,7 +584,11 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
     }
 
     let refreshUrl: string;
-    const fetchOptions: RequestInit = {};
+    const fetchOptions: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+    } = { method: "POST", headers: {}, body: "" };
 
     if (provider === "github") {
       // Note: GitHub doesn't typically provide refresh tokens for OAuth apps
@@ -499,7 +600,6 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       });
     } else if (provider === "google") {
       refreshUrl = "https://oauth2.googleapis.com/token";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -512,7 +612,6 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       });
     } else if (provider === "gitlab") {
       refreshUrl = "https://gitlab.com/oauth/token";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -527,8 +626,24 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       if (!auth0Domain) {
         return res.status(400).json({ error: "Auth0 domain is required." });
       }
+      try {
+        await validateIssuerDomain(auth0Domain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/refresh",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       refreshUrl = `https://${auth0Domain}/oauth/token`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -541,8 +656,24 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       });
     } else if (provider === "zitadel") {
       zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      try {
+        await validateIssuerDomain(zitadelDomain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/refresh",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       refreshUrl = `https://${zitadelDomain}/oauth/v2/token`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -552,10 +683,9 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       params.append("refresh_token", refreshToken);
       params.append("client_id", clientId);
       params.append("client_secret", clientSecret);
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else if (provider === "linkedin") {
       refreshUrl = "https://www.linkedin.com/oauth/v2/accessToken";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -565,7 +695,7 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       params.append("refresh_token", refreshToken);
       params.append("client_id", clientId);
       params.append("client_secret", clientSecret);
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else {
       return res.status(400).json({ error: "Unsupported provider." });
     }
@@ -576,15 +706,30 @@ app.post("/api/oauth/refresh", async (req: Request, res: Response) => {
       method: fetchOptions.method,
     });
 
-    const refreshResponse = await fetch(refreshUrl, fetchOptions);
-    const responseText = await refreshResponse.text();
+    let refreshResponse: { status: number; body: string };
+    try {
+      refreshResponse = await safeFetch(refreshUrl, fetchOptions);
+    } catch (err) {
+      collapseUpstreamError(
+        reqLogger,
+        res,
+        req.id,
+        { endpoint: "/api/oauth/refresh", provider, phase: "outbound" },
+        err,
+      );
+      endTimer();
+      return;
+    }
+    const responseText = refreshResponse.body;
+    const refreshOk =
+      refreshResponse.status >= 200 && refreshResponse.status < 300;
 
     reqLogger.info("OAuth provider refresh response received", {
       provider,
       statusCode: refreshResponse.status,
     });
 
-    if (!refreshResponse.ok) {
+    if (!refreshOk) {
       reqLogger.error("OAuth provider refresh error response", {
         provider,
         statusCode: refreshResponse.status,
@@ -694,7 +839,11 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
     }
 
     let revokeUrl: string;
-    const fetchOptions: RequestInit = {};
+    const fetchOptions: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+    } = { method: "POST", headers: {}, body: "" };
 
     if (provider === "github") {
       // GitHub uses Basic Auth for revocation
@@ -710,7 +859,6 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       });
     } else if (provider === "google") {
       revokeUrl = "https://oauth2.googleapis.com/revoke";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
       };
@@ -719,10 +867,9 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       if (tokenTypeHint) {
         params.append("token_type_hint", tokenTypeHint);
       }
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else if (provider === "gitlab") {
       revokeUrl = "https://gitlab.com/oauth/revoke";
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -736,8 +883,24 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       if (!auth0Domain) {
         return res.status(400).json({ error: "Auth0 domain is required." });
       }
+      try {
+        await validateIssuerDomain(auth0Domain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/revoke",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       revokeUrl = `https://${auth0Domain}/oauth/revoke`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -750,8 +913,24 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       });
     } else if (provider === "zitadel") {
       zitadelDomain = zitadelDomain || (await resolveZitadelDomain());
+      try {
+        await validateIssuerDomain(zitadelDomain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          {
+            endpoint: "/api/oauth/revoke",
+            provider,
+            phase: "domain-validation",
+          },
+          err,
+        );
+        endTimer();
+        return;
+      }
       revokeUrl = `https://${zitadelDomain}/oauth/v2/revoke`;
-      fetchOptions.method = "POST";
       fetchOptions.headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
@@ -761,7 +940,7 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       params.append("client_id", clientId);
       params.append("client_secret", clientSecret);
       params.append("token_type_hint", tokenTypeHint || "access_token");
-      fetchOptions.body = params;
+      fetchOptions.body = params.toString();
     } else if (provider === "linkedin") {
       // LinkedIn doesn't have a standard revoke endpoint, but we can simulate it
       // by making an API call with the token to verify it's still valid
@@ -781,7 +960,24 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       method: fetchOptions.method,
     });
 
-    const revokeResponse = await fetch(revokeUrl, fetchOptions);
+    let revokeResponse: {
+      status: number;
+      headers: Record<string, string | string[] | undefined>;
+      body: string;
+    };
+    try {
+      revokeResponse = await safeFetch(revokeUrl, fetchOptions);
+    } catch (err) {
+      collapseUpstreamError(
+        reqLogger,
+        res,
+        req.id,
+        { endpoint: "/api/oauth/revoke", provider, phase: "outbound" },
+        err,
+      );
+      endTimer();
+      return;
+    }
 
     // Different providers handle revocation responses differently
     let success = false;
@@ -798,11 +994,14 @@ app.post("/api/oauth/revoke", async (req: Request, res: Response) => {
       success = revokeResponse.status >= 200 && revokeResponse.status < 300;
     }
 
-    if (
-      revokeResponse.headers.get("content-type")?.includes("application/json")
-    ) {
+    // safeFetch returns headers as a plain object (node https res.headers).
+    const contentType = revokeResponse.headers["content-type"];
+    const contentTypeStr = Array.isArray(contentType)
+      ? contentType.join(",")
+      : (contentType ?? "");
+    if (contentTypeStr.includes("application/json")) {
       try {
-        const responseText = await revokeResponse.text();
+        const responseText = revokeResponse.body;
         if (responseText.trim()) {
           responseData = JSON.parse(responseText);
         }
@@ -1071,41 +1270,81 @@ app.post("/api/explore", async (req: Request, res: Response) => {
       return;
     }
 
-    if (!endpoint.url || !endpoint.method) {
+    // FAIL CLOSED: the server NEVER trusts the client-supplied endpoint.url.
+    // We resolve the target from a server-owned table keyed by
+    // (provider, endpoint.id). An unknown pair is a hard 400 with NO outbound
+    // call — there is no fallback to the client URL, which is what made the old
+    // `fetch(endpoint.url)` an open SSRF relay.
+    const endpointId = endpoint.id;
+    if (!endpointId || !endpoint.method) {
       res.status(400).json({
-        error: "Invalid endpoint: missing url or method",
+        error: "Invalid endpoint: missing id or method",
       });
       return;
     }
 
     reqLogger.info("API explore request", {
       provider,
-      endpointId: endpoint.id,
-      url: endpoint.url,
+      endpointId,
       method: endpoint.method,
     });
 
-    // Handle Auth0 special case - construct full URL with domain
-    let targetUrl = endpoint.url;
-    if (provider === "auth0" && endpoint.url.startsWith("/")) {
-      // Get Auth0 domain from stored metadata
-      const metaRaw = req.body.auth0Domain;
-      if (!metaRaw) {
+    // For issuer providers (auth0/zitadel) the host is the user's IdP domain;
+    // resolve it and validate it via resolveAndPin BEFORE building the target,
+    // so a BYO domain pointing at an internal/CGNAT/metadata host is rejected.
+    let issuerDomain: string | undefined;
+    if (provider === "auth0") {
+      issuerDomain = req.body.auth0Domain;
+      if (!issuerDomain) {
         res.status(400).json({
           error: "Auth0 domain required for Auth0 API calls",
         });
         return;
       }
-      targetUrl = `https://${metaRaw}${endpoint.url}`;
-    }
-    // Handle Zitadel relative URLs - construct full URL with the resolved
-    // domain (request-supplied, secret, or default).
-    if (provider === "zitadel" && endpoint.url.startsWith("/")) {
-      const zitadelDomain = await resolveZitadelDomain(req.body.zitadelDomain);
-      targetUrl = `https://${zitadelDomain}${endpoint.url}`;
+    } else if (provider === "zitadel") {
+      issuerDomain = await resolveZitadelDomain(req.body.zitadelDomain);
     }
 
-    // Prepare headers
+    // Resolve the absolute target from the server-owned table. Unknown
+    // provider/endpoint id → 400, never an outbound call.
+    let targetUrl: string;
+    try {
+      targetUrl = resolveExploreTarget(provider, endpointId, issuerDomain);
+    } catch (err) {
+      if (err instanceof UnknownExploreEndpointError) {
+        reqLogger.warn("API explore rejected - unknown endpoint", {
+          provider,
+          endpointId,
+          reason: err.message,
+        });
+        res.status(400).json({ error: "unknown endpoint" });
+        endTimer();
+        return;
+      }
+      throw err;
+    }
+
+    // Validate the issuer domain host now that we know we will call it. (For
+    // fixed providers the host is a hardcoded constant, so no validation is
+    // needed; safeFetch still pins + vets it on the way out.)
+    if (issuerDomain) {
+      try {
+        await validateIssuerDomain(issuerDomain);
+      } catch (err) {
+        collapseUpstreamError(
+          reqLogger,
+          res,
+          req.id,
+          { endpoint: "/api/explore", provider, phase: "domain-validation" },
+          err,
+        );
+        endTimer();
+        return;
+      }
+    }
+
+    // Prepare headers. The Authorization bearer is attached ONLY to the
+    // server-resolved target host — never to a client-supplied URL.
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       "User-Agent": "OAuth-User-Inspector/1.0",
@@ -1117,31 +1356,55 @@ app.post("/api/explore", async (req: Request, res: Response) => {
       headers["Accept"] = "application/vnd.github+json";
     }
 
-    // Make the API call
-    const fetchOptions: RequestInit = {
-      method: endpoint.method,
-      headers,
+    // Outbound via safeFetch: resolve+pin to a public unicast IP, TLS-validate
+    // against the real host, no redirect follow, size/time bounded.
+    let apiResponse: {
+      status: number;
+      headers: Record<string, string | string[] | undefined>;
+      body: string;
     };
+    try {
+      apiResponse = await safeFetch(targetUrl, {
+        method: endpoint.method,
+        headers,
+      });
+    } catch (err) {
+      collapseUpstreamError(
+        reqLogger,
+        res,
+        req.id,
+        { endpoint: "/api/explore", provider, endpointId, phase: "outbound" },
+        err,
+      );
+      endTimer();
+      return;
+    }
 
-    const apiResponse = await fetch(targetUrl, fetchOptions);
-    const responseData = await apiResponse.json();
+    const apiOk = apiResponse.status >= 200 && apiResponse.status < 300;
+    let responseData: any;
+    try {
+      responseData = apiResponse.body ? JSON.parse(apiResponse.body) : {};
+    } catch {
+      // Upstream returned non-JSON; surface the raw text so callers still see it.
+      responseData = { raw: apiResponse.body };
+    }
 
     reqLogger.info("API explore response", {
       provider,
-      endpointId: endpoint.id,
+      endpointId,
       status: apiResponse.status,
-      success: apiResponse.ok,
+      success: apiOk,
     });
 
     // Return response data and metadata
     res.json({
-      success: apiResponse.ok,
+      success: apiOk,
       status: apiResponse.status,
       data: responseData,
-      error: apiResponse.ok
+      error: apiOk
         ? undefined
-        : responseData.message || responseData.error || "API call failed",
-      headers: Object.fromEntries(apiResponse.headers.entries()),
+        : responseData?.message || responseData?.error || "API call failed",
+      headers: apiResponse.headers,
     });
 
     endTimer();
