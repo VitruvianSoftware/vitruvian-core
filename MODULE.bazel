@@ -182,28 +182,24 @@ pip.parse(
 )
 use_repo(pip, "pip")
 
-bazel_dep(name = "rules_cc", version = "0.2.16")
-bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+# toolchains_llvm 1.8.0's generated cc_toolchain selects on the rules_cc target
+# `//cc/toolchains/args/archiver_flags:use_libtool_on_macos_setting`, which
+# rules_cc 0.2.19 renamed away — so 0.2.18 is the newest compatible version
+# (a HARD ceiling: do not bump rules_cc past 0.2.18 while on toolchains_llvm 1.8.x).
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "toolchains_llvm", version = "1.8.0")
 
 #########################
 # Hermetic C++ toolchain, to relieve the dependency on a locally installed CC etc.
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
 llvm.toolchain(
-    # NB: llvm doesn't release for all platforms on every patch release
+    # clang 19 — clang 15's bundled `ld64.lld` couldn't parse recent macOS SDK
+    # `.tbd` stubs (the old reason for a per-platform darwin override) and clang
+    # 15 can't parse the macOS 15 SDK's libc++ headers. 19.1.7 is the last 19.1.x
+    # that ships linux-x64 + darwin-arm64 + darwin-x64, so one entry covers every
+    # platform — no per-platform map needed anymore.
     llvm_versions = {
-        "": "15.0.6",
-        # macOS arm64: LLVM 15's bundled `ld64.lld` cannot parse the text-based
-        # dylib (.tbd) stubs shipped by recent macOS SDKs (e.g. macOS 15/26),
-        # so linking rules_rust's bootstrap `process_wrapper` (and any other
-        # darwin link that pulls in libSystem) fails with errors like
-        # "libSystem.tbd ... is incompatible with arm64 (macOS)" and a cascade
-        # of undefined POSIX symbols (_mmap, _pthread_*, ...). LLVM 17's
-        # `ld64.lld` understands these stubs. Linux stays on 15.0.6 (unaffected).
-        # NB: toolchains_llvm 1.6.0 only ships LLVM 16/17 for arm64-apple-darwin;
-        # x86_64-apple-darwin has no build newer than 15.0.7, so Intel macOS keeps
-        # 15.0.7 (its newest available; same value the template already used).
-        "darwin-aarch64": "17.0.6",
-        "darwin-x86_64": "15.0.7",
+        "": "19.1.7",
     },
 )
 use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
