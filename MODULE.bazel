@@ -39,11 +39,11 @@ bazel_dep(name = "apple_support", version = "2.2.0")
 bazel_dep(name = "rules_swift", version = "3.6.1", repo_name = "build_bazel_rules_swift")
 bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rules_apple")
 
-# 2.5.2: loads CcInfo from rules_cc (Bazel 9 removed the builtin; older
-# versions fail analysis of the clang-tidy linter aspect on Bazel >= 9.0.1).
-# Stay below 2.6.0, which moves clippy out of lint/ into a nested rules_rust
-# module and would churn tools/lint/linters.bzl.
-bazel_dep(name = "aspect_rules_lint", version = "2.5.2")
+# Loads CcInfo from rules_cc (Bazel 9 removed the builtin). 2.6.0 moved the
+# clippy aspect out of lint/ into the separate aspect_rules_lint_rust module;
+# rather than take that module we dropped clippy from tools/lint/linters.bzl
+# (nothing to lint -- Cargo members=[], zero .rs files), so 2.7.1 is a clean bump.
+bazel_dep(name = "aspect_rules_lint", version = "2.7.1")
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_multitool", version = "1.11.1")

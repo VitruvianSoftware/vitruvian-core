@@ -96,13 +96,14 @@ func main() {
 		// (the image push happens before pulumi up — bootstrap ordering), so
 		// by the time this program runs the repo exists in every environment.
 		// Pulumi ignores the import option once the resource is in state.
-		repo, err := artifactregistry.NewRepository(ctx, "tabula-images", &artifactregistry.RepositoryArgs{
-			Project:      pulumi.String(project),
-			Location:     pulumi.String(region),
-			RepositoryId: pulumi.String("tabula"),
-			Format:       pulumi.String("DOCKER"),
-			Description:  pulumi.String("Tabula container images (pushed by bazel run //tabula/api:image_push)"),
-		},
+		repo, err := artifactregistry.NewRepository(
+			ctx, "tabula-images", &artifactregistry.RepositoryArgs{
+				Project:      pulumi.String(project),
+				Location:     pulumi.String(region),
+				RepositoryId: pulumi.String("tabula"),
+				Format:       pulumi.String("DOCKER"),
+				Description:  pulumi.String("Tabula container images (pushed by bazel run //tabula/api:image_push)"),
+			},
 			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/repositories/tabula", project, region))),
 			pulumi.IgnoreChanges([]string{"description", "labels"}),
 		)
@@ -131,7 +132,8 @@ func main() {
 			}
 			if adoptExistingSecrets {
 				secretOpts = append(secretOpts, pulumi.Import(pulumi.ID(
-					fmt.Sprintf("projects/%s/secrets/%s", project, name))))
+					fmt.Sprintf("projects/%s/secrets/%s", project, name),
+				)))
 			}
 			secret, err := secretmanager.NewSecret(ctx, name, &secretmanager.SecretArgs{
 				Project:  pulumi.String(project),
@@ -248,22 +250,23 @@ func main() {
 			}
 		}
 
-		service, err := cloudrunv2.NewService(ctx, "tabula-api", &cloudrunv2.ServiceArgs{
-			Project:  pulumi.String(project),
-			Location: pulumi.String(region),
-			Name:     pulumi.Sprintf("tabula-api-%s", env),
-			Template: &cloudrunv2.ServiceTemplateArgs{
-				Revision:       revisionName,
-				ServiceAccount: sa.Email,
-				Containers: cloudrunv2.ServiceTemplateContainerArray{
-					&cloudrunv2.ServiceTemplateContainerArgs{
-						Image: image,
-						Envs:  envs,
+		service, err := cloudrunv2.NewService(
+			ctx, "tabula-api", &cloudrunv2.ServiceArgs{
+				Project:  pulumi.String(project),
+				Location: pulumi.String(region),
+				Name:     pulumi.Sprintf("tabula-api-%s", env),
+				Template: &cloudrunv2.ServiceTemplateArgs{
+					Revision:       revisionName,
+					ServiceAccount: sa.Email,
+					Containers: cloudrunv2.ServiceTemplateContainerArray{
+						&cloudrunv2.ServiceTemplateContainerArgs{
+							Image: image,
+							Envs:  envs,
+						},
 					},
 				},
+				Traffics: traffics,
 			},
-			Traffics: traffics,
-		},
 			pulumi.DependsOn([]pulumi.Resource{repo}),
 			// Ports are left at the Cloud Run default (8080, matching the
 			// API server). The imported live state's ports shape trips a

@@ -61,7 +61,8 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 	}
 
 	// Phase 1: Deploy CRDs
-	cnpgCrds, err := yaml.NewConfigFile(ctx, "cnpg-crds",
+	cnpgCrds, err := yaml.NewConfigFile(
+		ctx, "cnpg-crds",
 		&yaml.ConfigFileArgs{
 			File: "crds/cnpg.crds.yaml",
 		}, pulumi.Provider(provider),

@@ -77,7 +77,8 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 	}
 
 	// Phase 1: Deploy CRDs
-	externalSecretsCrds, err := yaml.NewConfigFile(ctx, "external-secrets-crds",
+	externalSecretsCrds, err := yaml.NewConfigFile(
+		ctx, "external-secrets-crds",
 		&yaml.ConfigFileArgs{
 			File: "crds/external-secrets.crds.yaml",
 		}, pulumi.Provider(provider),
