@@ -225,4 +225,22 @@ jobs:
           pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
           URL="$(pulumi stack output serviceUrl)"
           echo "Smoke-checking ${URL}/"
-          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${URL}/"
+          # 1) Reachable (HTTP 2xx).
+          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${URL}/" >/dev/null
+          # 2) The SPA actually MOUNTS. index.html is a static shell that returns
+          #    200 even when the React bundle throws on mount — exactly how the
+          #    2026-06-27 react/react-dom mismatch reached prod past the old
+          #    HTTP-200-only check. Headless-render and assert a marker that only
+          #    exists once React has rendered (not in the static #root fallback).
+          CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
+          fi
+          DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${URL}/" 2>/dev/null || true)"
+          if printf '%s' "$DOM" | grep -q "Select a provider"; then
+            echo "Smoke OK: React app mounted."
+          else
+            echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
+            printf '%s' "$DOM" | head -c 800
+            exit 1
+          fi

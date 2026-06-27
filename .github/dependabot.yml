@@ -114,6 +114,17 @@ updates:
       prefix: "chore(deps)"
       include: "scope"
     groups:
+      # react + react-dom MUST share a major version or the app fails to mount at
+      # runtime (react 19 + react-dom 18 broke prod 2026-06-27). Group them (+ their
+      # types) across ALL update-types so a bump can never split them. This group
+      # isn't *-minor-patch, so a react major lands as a single non-auto-merged PR
+      # for deliberate review — exactly what a framework major warrants.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       npm-minor-patch:
         update-types:
           - "minor"
