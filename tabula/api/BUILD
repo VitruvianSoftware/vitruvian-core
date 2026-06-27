@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
-load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_run_binary")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
@@ -77,9 +77,19 @@ js_run_binary(
     tool = ":prisma_client_gen_tool",
 )
 
+# rules_ts 3.8.8+ forbids a directory (TreeArtifact) in ts_project(srcs). Wrap the
+# generated Prisma client dir in a js_library (yields JsInfo, which 3.8.11's deps
+# requires) and consume it via deps; js_library copies it to the bin tree at the
+# same package-relative path (src/generated/prisma/), so the relative imports
+# (../generated/prisma/...) still resolve for tsc.
+js_library(
+    name = "prisma_client_lib",
+    srcs = [":prisma_client"],
+)
+
 ts_project(
     name = "lib",
-    srcs = glob(["src/**/*.ts"]) + [":prisma_client"],
+    srcs = glob(["src/**/*.ts"]),
     declaration = True,
     declaration_map = True,
     resolve_json_module = True,
@@ -105,6 +115,7 @@ ts_project(
         ":node_modules/jsonwebtoken",
         ":node_modules/pg",
         ":node_modules/zod",
+        ":prisma_client_lib",
     ],
 )
 
@@ -119,7 +130,7 @@ ts_project(
         ],
         allow_empty = True,
         exclude = ["prisma/generate-client.cjs"],
-    ) + [":prisma_client"],
+    ),
     declaration = True,
     declaration_map = True,
     resolve_json_module = True,
@@ -131,6 +142,7 @@ ts_project(
         ":node_modules/@types/node",
         ":node_modules/bcryptjs",
         ":node_modules/dotenv",
+        ":prisma_client_lib",
     ],
 )
 
