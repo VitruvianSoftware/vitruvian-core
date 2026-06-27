@@ -72,14 +72,15 @@ func main() {
 		// the bare repo name (the GitHub provider derives the owner from the
 		// token / provider config). IgnoreChanges keeps Pulumi from touching the
 		// attributes the developer owns; we only manage DeleteBranchOnMerge.
-		repo, err := github.NewRepository(ctx, repoName, &github.RepositoryArgs{
-			Name:                pulumi.String(repoName),
-			DeleteBranchOnMerge: pulumi.Bool(true),
-			// Required by the merge-queue ruleset (#83): GitHub adds PRs to the
-			// merge queue via the auto-merge mechanism, so "Allow auto-merge"
-			// must be enabled for the queue to function.
-			AllowAutoMerge: pulumi.Bool(true),
-		},
+		repo, err := github.NewRepository(
+			ctx, repoName, &github.RepositoryArgs{
+				Name:                pulumi.String(repoName),
+				DeleteBranchOnMerge: pulumi.Bool(true),
+				// Required by the merge-queue ruleset (#83): GitHub adds PRs to the
+				// merge queue via the auto-merge mechanism, so "Allow auto-merge"
+				// must be enabled for the queue to function.
+				AllowAutoMerge: pulumi.Bool(true),
+			},
 			pulumi.Import(pulumi.ID(repoName)),
 			pulumi.IgnoreChanges([]string{
 				// We manage DeleteBranchOnMerge + AllowAutoMerge; ignore drift on every other
@@ -495,7 +496,8 @@ func productionReviewerIds(ctx *pulumi.Context, cfg *config.Config) ([]int, erro
 	me, err := github.GetUser(ctx, &github.GetUserArgs{Username: ""})
 	if err != nil {
 		return nil, fmt.Errorf(
-			"resolving authenticated user for production reviewers (integration tokens cannot call GET /user; set tabulaProductionReviewers in the stack config): %w", err)
+			"resolving authenticated user for production reviewers (integration tokens cannot call GET /user; set tabulaProductionReviewers in the stack config): %w", err,
+		)
 	}
 	id, err := strconv.Atoi(me.Id)
 	if err != nil {

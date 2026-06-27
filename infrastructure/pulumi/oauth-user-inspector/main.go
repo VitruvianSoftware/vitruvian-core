@@ -66,13 +66,14 @@ func main() {
 		// (the image push happens before pulumi up — bootstrap ordering), so
 		// by the time this program runs the repo exists. Pulumi ignores the
 		// import option once the resource is in state.
-		repo, err := artifactregistry.NewRepository(ctx, "oauth-user-inspector-images", &artifactregistry.RepositoryArgs{
-			Project:      pulumi.String(project),
-			Location:     pulumi.String(region),
-			RepositoryId: pulumi.String("oauth-user-inspector"),
-			Format:       pulumi.String("DOCKER"),
-			Description:  pulumi.String("OAuth User Inspector container images (pushed by docker buildx from the deploy workflow)"),
-		},
+		repo, err := artifactregistry.NewRepository(
+			ctx, "oauth-user-inspector-images", &artifactregistry.RepositoryArgs{
+				Project:      pulumi.String(project),
+				Location:     pulumi.String(region),
+				RepositoryId: pulumi.String("oauth-user-inspector"),
+				Format:       pulumi.String("DOCKER"),
+				Description:  pulumi.String("OAuth User Inspector container images (pushed by docker buildx from the deploy workflow)"),
+			},
 			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/repositories/oauth-user-inspector", project, region))),
 			pulumi.IgnoreChanges([]string{"description", "labels"}),
 		)
@@ -96,34 +97,35 @@ func main() {
 			},
 		}
 
-		service, err := cloudrunv2.NewService(ctx, "oauth-user-inspector", &cloudrunv2.ServiceArgs{
-			Project:  pulumi.String(project),
-			Location: pulumi.String(region),
-			Name:     pulumi.String("oauth-user-inspector"),
-			Template: &cloudrunv2.ServiceTemplateArgs{
-				ServiceAccount: pulumi.String(runtimeSA),
-				Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
-					MaxInstanceCount: pulumi.Int(10),
-				},
-				Containers: cloudrunv2.ServiceTemplateContainerArray{
-					&cloudrunv2.ServiceTemplateContainerArgs{
-						Image: image,
-						Envs:  envs,
-						Ports: cloudrunv2.ServiceTemplateContainerPortArray{
-							&cloudrunv2.ServiceTemplateContainerPortArgs{
-								ContainerPort: pulumi.Int(8080),
+		service, err := cloudrunv2.NewService(
+			ctx, "oauth-user-inspector", &cloudrunv2.ServiceArgs{
+				Project:  pulumi.String(project),
+				Location: pulumi.String(region),
+				Name:     pulumi.String("oauth-user-inspector"),
+				Template: &cloudrunv2.ServiceTemplateArgs{
+					ServiceAccount: pulumi.String(runtimeSA),
+					Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
+						MaxInstanceCount: pulumi.Int(10),
+					},
+					Containers: cloudrunv2.ServiceTemplateContainerArray{
+						&cloudrunv2.ServiceTemplateContainerArgs{
+							Image: image,
+							Envs:  envs,
+							Ports: cloudrunv2.ServiceTemplateContainerPortArray{
+								&cloudrunv2.ServiceTemplateContainerPortArgs{
+									ContainerPort: pulumi.Int(8080),
+								},
 							},
-						},
-						Resources: &cloudrunv2.ServiceTemplateContainerResourcesArgs{
-							Limits: pulumi.StringMap{
-								"cpu":    pulumi.String("1"),
-								"memory": pulumi.String("512Mi"),
+							Resources: &cloudrunv2.ServiceTemplateContainerResourcesArgs{
+								Limits: pulumi.StringMap{
+									"cpu":    pulumi.String("1"),
+									"memory": pulumi.String("512Mi"),
+								},
 							},
 						},
 					},
 				},
 			},
-		},
 			// The Cloud Run service already exists (created by the old Cloud
 			// Build deploy), so adopt it on first run.
 			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/services/oauth-user-inspector", project, region))),

@@ -54,8 +54,8 @@
     "https://bcr.bazel.build/modules/aspect_rules_js/3.2.2/MODULE.bazel": "e844196321b64537cfade338f361633e7d5fe084eee3214fc531b9e7b9838813",
     "https://bcr.bazel.build/modules/aspect_rules_js/3.2.2/source.json": "0e650e493b3bc784dc3f8240ff00b4b32258cde6d021ef6b1db4e387bcfd6a9a",
     "https://bcr.bazel.build/modules/aspect_rules_lint/0.12.0/MODULE.bazel": "e767c5dbfeb254ec03275a7701b5cfde2c4d2873676804bc7cb27ddff3728fed",
-    "https://bcr.bazel.build/modules/aspect_rules_lint/2.5.2/MODULE.bazel": "50d9a42d387ed065f41cdf515cad200e0d95bf3daaa8fd7b5470a72a5a51742b",
-    "https://bcr.bazel.build/modules/aspect_rules_lint/2.5.2/source.json": "243edc336b5a01ea54d001a54608128a8b2385650be9b734a3765d7380f40ee0",
+    "https://bcr.bazel.build/modules/aspect_rules_lint/2.7.1/MODULE.bazel": "52f070e52379d262523676b6c5db430b6615849c68c001c3e16d72c6ac411b18",
+    "https://bcr.bazel.build/modules/aspect_rules_lint/2.7.1/source.json": "afc63f90e4fbcdcb9ec01a472609b8b778efb86156ae34ff4a58a1a2262489d7",
     "https://bcr.bazel.build/modules/aspect_rules_py/1.8.4/MODULE.bazel": "4ab4a78e9d65cf15e755807f7ae504655e1771cefd7c3343ad34dbbb625b9564",
     "https://bcr.bazel.build/modules/aspect_rules_py/1.8.4/source.json": "7cd80ad811f0c2b3aad3c878506ae602fce2fe53b78487ecfbcc8bcde07d220e",
     "https://bcr.bazel.build/modules/aspect_rules_ts/3.8.11/MODULE.bazel": "85cefd3b02fa62c1572d8a39cc463ce7e42f0d40609a9bb0e32c51fade019d16",
@@ -391,7 +391,6 @@
     "https://bcr.bazel.build/modules/rules_rs/0.0.26/source.json": "f6f70e49652fea6402ef6b87ec7b6cf33e646151402cecf633849f17ea7dae24",
     "https://bcr.bazel.build/modules/rules_rust/0.45.1/MODULE.bazel": "a69d0db3a958fab2c6520961e1b2287afcc8b36690fd31bbc4f6f7391397150d",
     "https://bcr.bazel.build/modules/rules_rust/0.66.0/MODULE.bazel": "86ef763a582f4739a27029bdcc6c562258ed0ea6f8d58294b049e215ceb251b3",
-    "https://bcr.bazel.build/modules/rules_rust/0.67.0/MODULE.bazel": "87c3816c4321352dcfd9e9e26b58e84efc5b21351ae3ef8fb5d0d57bde7237f5",
     "https://bcr.bazel.build/modules/rules_rust/0.68.1/MODULE.bazel": "8d3332ef4079673385eb81f8bd68b012decc04ac00c9d5a01a40eff90301732c",
     "https://bcr.bazel.build/modules/rules_rust/0.68.1/source.json": "3378e746f81b62457fdfd37391244fa8ff075ba85c05931ee4f3a20ac1efe963",
     "https://bcr.bazel.build/modules/rules_scala/7.1.6/MODULE.bazel": "ac55116990d1dc592560367e7b15b4a7f08b44ec9e4673249b770350bf1d8470",
@@ -579,7 +578,7 @@
     "@@aspect_tools_telemetry+//:extension.bzl%telemetry": {
       "general": {
         "bzlTransitiveDigest": "cl5A2O84vDL6Tt+Qga8FCj1DUDGqn+e7ly5rZ+4xvcc=",
-        "usagesDigest": "4FKijgmr4HzWi/PkRXzhcA7J7/OiseD3BMNHVuOfKQw=",
+        "usagesDigest": "wkYfRkKs6LwsLLMVGlZm9IETAaP2tWx41iM6sUeg510=",
         "recordedInputs": [
           "REPO_MAPPING:aspect_tools_telemetry+,bazel_lib bazel_lib+",
           "REPO_MAPPING:aspect_tools_telemetry+,bazel_skylib bazel_skylib+"
@@ -589,7 +588,7 @@
             "repoRuleId": "@@aspect_tools_telemetry+//:extension.bzl%tel_repository",
             "attributes": {
               "deps": {
-                "aspect_rules_lint": "2.5.2",
+                "aspect_rules_lint": "2.7.1",
                 "aspect_rules_js": "3.2.2",
                 "aspect_rules_ts": "3.8.11",
                 "aspect_rules_jest": "0.25.2",

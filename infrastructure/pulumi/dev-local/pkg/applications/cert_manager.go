@@ -49,7 +49,8 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 	namespace := conf.GetString("cert_manager_namespace", "cert-manager")
 
 	// Phase 1: Deploy CRDs
-	certManagerCrds, err := yaml.NewConfigFile(ctx, "cert-manager-crds",
+	certManagerCrds, err := yaml.NewConfigFile(
+		ctx, "cert-manager-crds",
 		&yaml.ConfigFileArgs{
 			File: "crds/cert-manager.crds.yaml",
 		}, pulumi.Provider(provider),

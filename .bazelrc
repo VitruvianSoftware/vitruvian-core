@@ -43,7 +43,6 @@ common:lint --aspects=//tools/lint:linters.bzl%ty
 common:lint --aspects=//tools/lint:linters.bzl%clang_tidy
 common:lint --aspects=//tools/lint:linters.bzl%ktlint
 common:lint --aspects=//tools/lint:linters.bzl%pmd
-common:lint --aspects=//tools/lint:linters.bzl%clippy
 # Load any settings & overrides specific to the current user from `.aspect/bazelrc/user.bazelrc`.
 # This file should appear in `.gitignore` so that settings are not shared with team members. This
 # should be last statement in this config so the user configuration is able to overwrite flags from
