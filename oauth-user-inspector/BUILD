@@ -50,6 +50,9 @@ jest_test(
         ],
         allow_empty = True,
     ) + [
+        # Read at runtime by explore-endpoints-parity.test.ts to assert the UI
+        # endpoint catalog matches the server's fail-closed /api/explore table.
+        "frontend/utils/apiEndpoints.ts",
         "jest.config.cjs",
         "package.json",
         "server/tsconfig.server.json",
