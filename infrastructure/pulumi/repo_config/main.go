@@ -166,14 +166,25 @@ func main() {
 		// `merge_group` event so the queue has checks to wait on.
 		if mergeQueueEnabled(cfg) {
 			// Required checks default to the merge-queue gate set — the job names
-			// across ci.yaml (build-test, build-macos, license-check), tidy-check.yaml
-			// and conformance-check.yaml. Each of those workflows triggers on the
-			// `merge_group` event so the queue has a result to wait on. Override via
-			// the `mergeQueueRequiredChecks` JSON-list config.
+			// across ci.yaml (build-test, build-macos, license-check, go-lint,
+			// go-test, validate-butane), tidy-check.yaml and conformance-check.yaml.
+			// Each of those workflows triggers on the `merge_group` event so the
+			// queue has a result to wait on. The go-lint/go-test jobs are matrix'd
+			// over the standalone-mirror modules, so their check contexts are the
+			// per-matrix names ("go-lint (devx)", …), not the bare job name —
+			// listing the bare name would never report and wedge the queue pending.
+			// go-lint/go-test/validate-butane were added when the monorepo became
+			// the single CI authority and the per-app mirror CI was retired; they
+			// ran on every PR but were never in the gate set, so a lint/race/Butane
+			// regression could still merge. Override via the
+			// `mergeQueueRequiredChecks` JSON-list config.
 			var checks []string
 			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
 			if len(checks) == 0 {
-				checks = []string{"build-test", "build-macos", "license-check", "tidy-check", "conformance-check"}
+				checks = []string{
+					"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
+					"go-lint (devx)", "go-lint (homelab)", "go-test (devx)", "go-test (homelab)", "validate-butane",
+				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
 			for _, c := range checks {
