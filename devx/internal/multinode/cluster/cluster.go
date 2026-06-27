@@ -62,6 +62,12 @@ func Init(ctx context.Context, cfg *config.Config, opts InitOptions) error {
 		return nil
 	}
 
+	lock, err := acquireClusterLock()
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+
 	// Phase 0: Ensure prerequisites on all hosts (parallel).
 	fmt.Println("🔍 Phase 0: Checking prerequisites...")
 	g, gctx := errgroup.WithContext(ctx)
@@ -256,6 +262,14 @@ func Init(ctx context.Context, cfg *config.Config, opts InitOptions) error {
 func Join(ctx context.Context, cfg *config.Config, dryRun bool) error {
 	slog.Info("joining new nodes to cluster", "name", cfg.Cluster.Name, "dry_run", dryRun)
 
+	if !dryRun {
+		lock, err := acquireClusterLock()
+		if err != nil {
+			return err
+		}
+		defer lock.release()
+	}
+
 	// Find a healthy server to read the join token + the API endpoint to join against.
 	var serverURL, token string
 	for _, n := range cfg.ServerNodes() {
@@ -378,6 +392,12 @@ func Reconcile(ctx context.Context, cfg *config.Config, dryRun bool) error {
 		return nil
 	}
 
+	lock, err := acquireClusterLock()
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+
 	fmt.Printf("🔧 Reconciling %d node(s) via their providers (native: host prereqs; lima: node packages)...\n", len(cfg.Nodes))
 	if err := reconcileNodes(ctx, cfg); err != nil {
 		return fmt.Errorf("node reconciliation failed: %w", err)
@@ -493,6 +513,12 @@ func Remove(ctx context.Context, cfg *config.Config, hostName string, dryRun boo
 		return nil
 	}
 
+	lock, err := acquireClusterLock()
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+
 	// Drain + delete the node from the cluster via the init (server) node.
 	initProv := provider.For(cfg.InitNode(), cfg)
 	if err := initProv.Drain(ctx, hostName); err != nil {
@@ -522,6 +548,12 @@ func Destroy(ctx context.Context, cfg *config.Config, force, dryRun bool) error 
 		}
 		return nil
 	}
+
+	lock, err := acquireClusterLock()
+	if err != nil {
+		return err
+	}
+	defer lock.release()
 
 	if !force {
 		fmt.Printf("⚠️  This will destroy the entire cluster %q. Are you sure? [y/N] ", cfg.Cluster.Name)
