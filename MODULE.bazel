@@ -57,6 +57,15 @@ bazel_dep(name = "bazelrc-preset.bzl", version = "1.9.2")
 # for transitive dependencies, even if there are no Python rules used in this repo.
 # See .bazelrc
 bazel_dep(name = "rules_python", version = "1.8.3")
+
+# Prebuilt Aspect gazelle binary, matching the kitchen-sink. vc ALREADY runs this
+# exact binary for BUILD generation via @multitool//tools/gazelle (tools.lock.json
+# pins aspect-gazelle); declaring it as an explicit module dep closes the
+# divergence list. The //:gazelle runner is intentionally NOT rewired to this
+# module's bundled binary (a different build) — BUILD output stays byte-identical.
+bazel_dep(name = "aspect_gazelle_prebuilt", version = "0.0.20")
+
+# Bare gazelle stays for the go_deps extension (Go dependency resolution).
 bazel_dep(name = "gazelle", version = "0.51.3")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_oci", version = "2.3.0")
