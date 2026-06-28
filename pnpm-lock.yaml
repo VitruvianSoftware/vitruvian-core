@@ -4,6 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@swc/core':
+      specifier: ^1.13.0
+      version: 1.15.41
+    '@swc/jest':
+      specifier: ^0.2.39
+      version: 0.2.39
+    jest:
+      specifier: ^29.7.0
+      version: 29.7.0
+
 packageExtensionsChecksum: sha256-BPVJbEYJtB2Q9+PmqCEirAsrktaj+JRbX9YCpHBaTQ4=
 
 importers:
@@ -112,7 +124,7 @@ importers:
         specifier: ^9.2.1
         version: 9.2.3
       jest:
-        specifier: ^29.7.0
+        specifier: 'catalog:'
         version: 29.7.0(@types/node@20.19.43)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@20.19.43)(typescript@5.9.3))
       jest-cli:
         specifier: ^29.7.0
@@ -191,10 +203,10 @@ importers:
         version: 3.25.76
     devDependencies:
       '@swc/core':
-        specifier: ^1.13.0
+        specifier: 'catalog:'
         version: 1.15.41
       '@swc/jest':
-        specifier: ^0.2.39
+        specifier: 'catalog:'
         version: 0.2.39(@swc/core@1.15.41)
       '@types/bcryptjs':
         specifier: ^2.4.6
@@ -215,7 +227,7 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
       jest:
-        specifier: ^29.7.0
+        specifier: 'catalog:'
         version: 29.7.0(@types/node@20.19.43)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@20.19.43)(typescript@6.0.3))
       jest-cli:
         specifier: ^29.7.0
@@ -252,10 +264,10 @@ importers:
         version: 6.9.0
     devDependencies:
       '@swc/core':
-        specifier: ^1.13.0
+        specifier: 'catalog:'
         version: 1.15.41
       '@swc/jest':
-        specifier: ^0.2.39
+        specifier: 'catalog:'
         version: 0.2.39(@swc/core@1.15.41)
       '@types/inquirer':
         specifier: ^8.2.10
@@ -267,7 +279,7 @@ importers:
         specifier: ^20.11.17
         version: 20.19.43
       jest:
-        specifier: ^29.7.0
+        specifier: 'catalog:'
         version: 29.7.0(@types/node@20.19.43)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@20.19.43)(typescript@6.0.3))
       jest-cli:
         specifier: ^29.7.0
@@ -307,10 +319,10 @@ importers:
         specifier: 1.57.0
         version: 1.57.0
       '@swc/core':
-        specifier: ^1.13.0
+        specifier: 'catalog:'
         version: 1.15.41
       '@swc/jest':
-        specifier: ^0.2.39
+        specifier: 'catalog:'
         version: 0.2.39(@swc/core@1.15.41)
       '@testing-library/jest-dom':
         specifier: ^6.9.1
@@ -352,7 +364,7 @@ importers:
         specifier: ^5.6.0
         version: 5.6.7(webpack@5.107.2)
       jest:
-        specifier: ^29.7.0
+        specifier: 'catalog:'
         version: 29.7.0(@types/node@25.9.1)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.1)(typescript@5.9.3))
       jest-cli:
         specifier: ^29.7.0
@@ -433,7 +445,7 @@ importers:
         specifier: ^18
         version: 18.3.7(@types/react@18.3.31)
       jest:
-        specifier: ^29.7.0
+        specifier: 'catalog:'
         version: 29.7.0(@types/node@20.19.43)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@20.19.43)(typescript@5.9.3))
       jest-cli:
         specifier: ^29.7.0

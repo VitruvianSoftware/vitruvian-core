@@ -110,6 +110,27 @@ language-specific — each per-language page lists it (`pnpm why`, `go mod why`,
 `bundle why`, the Maven dependency tree, etc.). In every case the goal is the same: find the
 *laggard* constraint, then decide converge vs. isolate using the tree above.
 
+## Where each ecosystem declares its versions
+
+1VR is about *resolution* — one resolved version per hub. Its companion is *declaration*: the
+one place you edit to bump a version, so the same dependency can't be pinned at drifting ranges
+across projects. Every ecosystem here has a single declaration hub; this table is the source of
+truth for "where do I change a version."
+
+| Ecosystem | Declaration hub | Mechanism | Status |
+|---|---|---|---|
+| Bazel modules | `MODULE.bazel` | one `bazel_dep(name, version)` per dep | centralized by construction |
+| Python | `requirements/*.in` → `requirements/all.txt` | one compiled `pip.parse` lock | centralized by construction |
+| Rust | root `Cargo.toml` | `[workspace.dependencies]` + `Cargo.lock` | centralized by construction (workspace currently empty) |
+| Go | `go.work` members' `go.mod` | MVS over the workspace; Bazel reads `//:go.work` | resolution centralized; declarations per-module — keep shared deps converged |
+| JavaScript / TypeScript | `pnpm-workspace.yaml` `catalog:` | catalog entries referenced as `"catalog:"` | adopting — migrate shared deps off per-`package.json` ranges |
+
+Bazel, Python, and Rust centralize declaration by design. Go centralizes *resolution* through
+`go.work` but still declares versions per-module, so converge shared dependencies across members
+rather than letting them drift. JavaScript centralizes declaration with pnpm **catalogs** (see
+[javascript.md](javascript.md)); the migration is incremental — uniform tooling first, then
+shared frameworks via named catalogs.
+
 ## Per-language guides
 
 - [Python](python.md) — `rules_python` `pip.parse` hubs (flat)
