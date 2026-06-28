@@ -167,6 +167,7 @@ go_library(
         "//devx/internal/orchestrator",
         "//devx/internal/prereqs",
         "//devx/internal/preview",
+        "//devx/internal/projectcfg",
         "//devx/internal/provider",
         "//devx/internal/scaffold",
         "//devx/internal/secrets",
