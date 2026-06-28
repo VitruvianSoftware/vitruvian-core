@@ -63,6 +63,13 @@ tooling (`jest`, `@swc/*`), linters, a framework together with its types (`react
 one project uses (a catalog entry buys nothing), or one where divergence is *intentional* — for
 that, see the next section.
 
+**Enforced, not just encouraged.** Like Bazel's one-version rule, the catalog is a guardrail, not
+a convention you can quietly bypass. The required `conformance-check` gate
+(`bazel run //tools/conformance:check`) fails the build when a cataloged dependency is declared
+as a literal range in any workspace, or when a catalog entry is used by no workspace (dead
+config). It also lists, as non-failing advisories, dependencies that already drift across
+workspaces — your worklist for what to migrate into the catalog next.
+
 ## Two apps, different versions
 
 This is the easy case — it just works. If `app-a/package.json` pins `lodash@4` and
