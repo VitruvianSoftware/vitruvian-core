@@ -101,13 +101,17 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   };
 
   const generateNodeJSSnippet = (endpoint: ApiEndpoint): string => {
-    const fetchOptions = {
+    const fetchOptions: {
+      method: ApiEndpoint["method"];
+      headers: any;
+      body?: string;
+    } = {
       method: endpoint.method,
       headers: {
         Authorization: `Bearer ${displayToken}`,
         Accept: "application/json",
         "User-Agent": "YourAppName/1.0",
-      } as any,
+      },
     };
 
     if (endpoint.method !== "GET") {
@@ -119,7 +123,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
       endpoint.method === "PUT" ||
       endpoint.method === "PATCH"
     ) {
-      (fetchOptions as any).body = "JSON.stringify({})";
+      fetchOptions.body = "JSON.stringify({})";
     }
 
     let snippet = `// Using fetch API\n`;

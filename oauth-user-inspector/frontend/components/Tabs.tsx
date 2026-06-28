@@ -25,7 +25,7 @@ import React, { useState, ReactNode, useEffect } from "react";
 interface TabProps {
   label: string;
   children: ReactNode;
-  icon?: JSX.Element;
+  icon?: React.JSX.Element;
 }
 
 export const Tab: React.FC<TabProps> = ({ children }) => {

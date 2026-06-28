@@ -154,6 +154,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
             // No runtime effect; used to co-locate classnames for readability.
             // itemBtn: unified neutral pill button style
             // dangerBtn: red-accented diagnostic button
+            return null;
           })()}
 
           <div

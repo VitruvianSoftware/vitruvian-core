@@ -246,11 +246,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
                     </h5>
                   </div>
                   <div className="p-3">
-                    <JsonTree
-                      data={response.data}
-                      maxDepth={3}
-                      showCopyButtons={true}
-                    />
+                    <JsonTree data={response.data} />
                   </div>
                 </div>
               )}
