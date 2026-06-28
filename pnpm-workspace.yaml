@@ -31,6 +31,18 @@ packages:
  - tabula/web
  - tabula/cli
 
+# Catalog: the single source of truth for versions of dependencies meant to be
+# uniform across every workspace — the JS arm of the repo's One Version Rule
+# (see docs/dependency-versioning/javascript.md). A package references an entry
+# with `"<dep>": "catalog:"` instead of a literal range, so a bump is one edit
+# here rather than one per package.json, and the versions cannot silently drift
+# apart. Deliberately divergent versions (e.g. apps on different React majors)
+# stay as explicit ranges, or move to a *named* catalog when intended.
+catalog:
+  '@swc/core': ^1.13.0
+  '@swc/jest': ^0.2.39
+  jest: ^29.7.0
+
 # The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
 # don't declare it as a peer dependency upstream). Under the strict rules_js /
 # hoist=false layout that breaks their `declare module 'fastify'` type
