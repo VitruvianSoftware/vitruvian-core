@@ -20,7 +20,11 @@
  * SOFTWARE.
  */
 
-import { withDefaultUserAgent, SAFE_FETCH_USER_AGENT } from "../safeFetch.js";
+import {
+  withDefaultUserAgent,
+  withContentLength,
+  SAFE_FETCH_USER_AGENT,
+} from "../safeFetch.js";
 
 /**
  * Guards the User-Agent default that safeFetch applies to every outbound
@@ -52,6 +56,42 @@ describe("withDefaultUserAgent", () => {
   it("does not mutate the caller's headers object", () => {
     const input: Record<string, string> = { Accept: "x" };
     withDefaultUserAgent(input);
+    expect(input).toEqual({ Accept: "x" });
+  });
+});
+
+/**
+ * Guards the Content-Length default. With no Content-Length, Node frames a
+ * written body as `Transfer-Encoding: chunked`, which GitHub's api.github.com
+ * token revoke rejects with HTTP 422 ("Invalid request ... nil is not an
+ * object"). safeFetch must set an explicit, byte-accurate Content-Length.
+ */
+describe("withContentLength", () => {
+  it("adds a byte-accurate Content-Length when a body is present and none is set", () => {
+    // include a multi-byte char so the byte count differs from string length
+    const body = JSON.stringify({ access_token: "gho_x", note: "é" });
+    const out = withContentLength({ "Content-Type": "application/json" }, body);
+    expect(out["Content-Length"]).toBe(String(Buffer.byteLength(body)));
+    expect(Number(out["Content-Length"])).toBe(Buffer.byteLength(body));
+    expect(Number(out["Content-Length"])).not.toBe(body.length);
+    expect(out["Content-Type"]).toBe("application/json");
+  });
+
+  it("adds nothing when there is no body", () => {
+    expect(withContentLength({ Accept: "x" }, undefined)).toEqual({
+      Accept: "x",
+    });
+  });
+
+  it("preserves a caller-supplied Content-Length (case-insensitive)", () => {
+    const out = withContentLength({ "content-length": "5" }, "abcdefghij");
+    expect(out["content-length"]).toBe("5");
+    expect(out["Content-Length"]).toBeUndefined();
+  });
+
+  it("does not mutate the caller's headers object", () => {
+    const input: Record<string, string> = { Accept: "x" };
+    withContentLength(input, "body");
     expect(input).toEqual({ Accept: "x" });
   });
 });

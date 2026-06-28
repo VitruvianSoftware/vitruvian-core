@@ -245,6 +245,12 @@ export interface SafeFetchResult {
  */
 export const SAFE_FETCH_USER_AGENT = "oauth-user-inspector";
 
+/** Case-insensitive header presence check (HTTP header names are case-insensitive). */
+function hasHeaderCI(headers: Record<string, string>, name: string): boolean {
+  const lower = name.toLowerCase();
+  return Object.keys(headers).some((k) => k.toLowerCase() === lower);
+}
+
 /**
  * Return `headers` with a default `User-Agent` added iff the caller did not
  * already set one (case-insensitive). Pure + exported so the behavior is
@@ -253,12 +259,31 @@ export const SAFE_FETCH_USER_AGENT = "oauth-user-inspector";
 export function withDefaultUserAgent(
   headers: Record<string, string>,
 ): Record<string, string> {
-  const hasUserAgent = Object.keys(headers).some(
-    (k) => k.toLowerCase() === "user-agent",
-  );
-  return hasUserAgent
+  return hasHeaderCI(headers, "user-agent")
     ? headers
     : { ...headers, "User-Agent": SAFE_FETCH_USER_AGENT };
+}
+
+/**
+ * Return `headers` with an explicit `Content-Length` for `body` iff a body is
+ * present and the caller did not already set one (case-insensitive).
+ *
+ * Why this matters: Node's http(s) client, given a written body with NO
+ * Content-Length, frames the request with `Transfer-Encoding: chunked`. Some
+ * upstreams reject a chunked REQUEST body outright -- notably GitHub's
+ * `api.github.com` token revoke (`DELETE /applications/{id}/token`), which
+ * returns HTTP 422 ("Invalid request ... nil is not an object") because it
+ * never parses the chunked `{access_token}` payload. An explicit Content-Length
+ * frames the body normally so every upstream can read it.
+ */
+export function withContentLength(
+  headers: Record<string, string>,
+  body: string | undefined,
+): Record<string, string> {
+  if (body === undefined || hasHeaderCI(headers, "content-length")) {
+    return headers;
+  }
+  return { ...headers, "Content-Length": String(Buffer.byteLength(body)) };
 }
 
 /**
@@ -295,7 +320,10 @@ export async function safeFetch(
       port: pin.port,
       path: pin.pathSearch,
       method,
-      headers: withDefaultUserAgent({ ...headers, host: pin.host }),
+      headers: withContentLength(
+        withDefaultUserAgent({ ...headers, host: pin.host }),
+        body,
+      ),
       timeout: timeoutMs,
       rejectUnauthorized: true,
       // Pin the connect-time address family to the one we vetted.
