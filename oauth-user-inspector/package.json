@@ -28,7 +28,7 @@
     "jwt-decode": "^4.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "uuid": "^9.0.1",
+    "uuid": "^14.0.1",
     "winston": "^3.11.0"
   },
   "devDependencies": {
