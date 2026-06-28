@@ -335,7 +335,7 @@ const App: React.FC = () => {
             provider: "auth0",
             avatarUrl: auth0User.picture || "",
             name: auth0User.name,
-            email: auth0User.email,
+            email: auth0User.email ?? null,
             profileUrl: auth0User.profile || "",
             username:
               auth0User.preferred_username ||
@@ -357,7 +357,7 @@ const App: React.FC = () => {
             provider: "zitadel",
             avatarUrl: zitadelUser.picture || "",
             name: zitadelUser.name,
-            email: zitadelUser.email,
+            email: zitadelUser.email ?? null,
             profileUrl: zitadelUser.profile || "",
             username:
               zitadelUser.preferred_username ||

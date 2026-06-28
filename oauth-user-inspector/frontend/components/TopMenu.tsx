@@ -102,7 +102,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
         const focusables = Array.from(
           containerRef.current?.querySelectorAll<HTMLElement>(
             "[data-focusable='true']",
-          ),
+          ) ?? [],
         ).filter((el) => !el.hasAttribute("disabled"));
         if (focusables.length === 0) return;
         const first = focusables[0];
