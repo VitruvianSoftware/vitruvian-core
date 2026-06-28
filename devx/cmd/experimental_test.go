@@ -21,7 +21,6 @@
 package cmd
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -32,15 +31,7 @@ import (
 // DEVX_EXPERIMENTAL so the GA core isn't diluted by accidental invocation.
 func TestExperimentalGate(t *testing.T) {
 	orig := Experimental
-	origEnv, hadEnv := os.LookupEnv("DEVX_EXPERIMENTAL")
-	t.Cleanup(func() {
-		Experimental = orig
-		if hadEnv {
-			os.Setenv("DEVX_EXPERIMENTAL", origEnv)
-		} else {
-			os.Unsetenv("DEVX_EXPERIMENTAL")
-		}
-	})
+	t.Cleanup(func() { Experimental = orig })
 
 	c := &cobra.Command{Use: "x", Short: "do x"}
 	markExperimental(c, "devx x")
@@ -49,11 +40,11 @@ func TestExperimentalGate(t *testing.T) {
 		t.Errorf("Short should be tagged [experimental], got %q", c.Short)
 	}
 
-	// Off by default → gated.
+	// Off by default → gated. (t.Setenv auto-restores the env after the test.)
 	Experimental = false
-	os.Unsetenv("DEVX_EXPERIMENTAL")
+	t.Setenv("DEVX_EXPERIMENTAL", "")
 	if err := c.PersistentPreRunE(c, nil); err == nil {
-		t.Error("must be gated when --experimental is off and env unset")
+		t.Error("must be gated when --experimental is off and env empty")
 	}
 
 	// --experimental flag unlocks.
@@ -64,13 +55,13 @@ func TestExperimentalGate(t *testing.T) {
 
 	// DEVX_EXPERIMENTAL truthy unlocks.
 	Experimental = false
-	os.Setenv("DEVX_EXPERIMENTAL", "1")
+	t.Setenv("DEVX_EXPERIMENTAL", "1")
 	if err := c.PersistentPreRunE(c, nil); err != nil {
 		t.Errorf("DEVX_EXPERIMENTAL=1 must unlock: %v", err)
 	}
 
 	// DEVX_EXPERIMENTAL=0 stays gated.
-	os.Setenv("DEVX_EXPERIMENTAL", "0")
+	t.Setenv("DEVX_EXPERIMENTAL", "0")
 	if err := c.PersistentPreRunE(c, nil); err == nil {
 		t.Error("DEVX_EXPERIMENTAL=0 must stay gated")
 	}

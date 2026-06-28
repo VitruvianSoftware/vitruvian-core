@@ -56,6 +56,7 @@ go_library(
         "devxconfig.go",
         "doctor.go",
         "exec.go",
+        "experimental.go",
         "expose.go",
         "exposures.go",
         "hook.go",
@@ -194,6 +195,7 @@ go_test(
     name = "cmd_test",
     srcs = [
         "devxconfig_test.go",
+        "experimental_test.go",
         "map_test.go",
         "mcp_test.go",
         "profile_test.go",
@@ -206,5 +208,6 @@ go_test(
     deps = [
         "//devx/internal/image",
         "//devx/internal/testutil",
+        "@com_github_spf13_cobra//:cobra",
     ],
 )
