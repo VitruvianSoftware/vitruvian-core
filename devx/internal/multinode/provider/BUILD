@@ -24,6 +24,7 @@ go_test(
         "native_loud_test.go",
         "native_test.go",
         "provider_test.go",
+        "spec_test.go",
     ],
     embed = [":provider"],
     deps = ["//devx/internal/multinode/config"],
