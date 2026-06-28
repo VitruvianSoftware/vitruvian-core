@@ -55,7 +55,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
         auth0Domain?: string;
       } = {
         provider: user.provider,
-        accessToken: user.accessToken,
+        accessToken: user.accessToken ?? "",
         endpoint,
       };
 

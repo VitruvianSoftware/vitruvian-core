@@ -43,6 +43,12 @@ COPY package.json ./
 COPY tsconfig.json ./
 COPY frontend/ ./frontend/
 COPY server/ ./server/
+# This image builds the app STANDALONE: the Docker context is just
+# oauth-user-inspector/ (also all the copybara mirror has), with no monorepo root
+# pnpm-workspace.yaml, so pnpm cannot resolve `catalog:` references. Pin them to a
+# concrete version before install. These are dev-only deps (jest) the build never
+# runs, so the exact version is immaterial — only that pnpm can resolve it.
+RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 
@@ -56,6 +62,9 @@ RUN corepack enable \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json ./
+# Same standalone-build catalog neutralization as the build stage (see above);
+# --prod skips devDeps but pnpm still parses every spec, including `catalog:`.
+RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server
