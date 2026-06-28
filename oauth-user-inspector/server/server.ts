@@ -1223,8 +1223,18 @@ app.post("/api/oauth-hosted/init", async (req: Request, res: Response) => {
         scope,
       )}&state=zitadel-hosted`;
     } else if (provider === "linkedin") {
-      const scope = "r_liteprofile r_emailaddress";
-      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=linkedin-hosted`;
+      // "Sign In with LinkedIn using OpenID Connect" — the legacy
+      // r_liteprofile/r_emailaddress scopes were retired in 2023 and are no
+      // longer grantable to newly-created LinkedIn apps. honor user-selected
+      // scopes from the hosted LinkedIn card (ScopeSelector), falling back to
+      // the OIDC default.
+      const scope =
+        typeof scopes === "string" && scopes.trim()
+          ? scopes
+          : "openid profile email";
+      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${encodeURIComponent(
+        scope,
+      )}&state=linkedin-hosted`;
     }
 
     reqLogger.info("Hosted OAuth authorization URL generated", {

@@ -72,15 +72,10 @@ const DEFAULT_SCOPES: Record<AuthProvider, string[]> = {
     "update:current_user_metadata",
   ],
   zitadel: ["openid", "profile", "email", "offline_access", "address", "phone"],
-  linkedin: [
-    "r_liteprofile",
-    "r_emailaddress",
-    "w_member_social",
-    "r_ads",
-    "r_ads_reporting",
-    "rw_ads",
-    "r_organization_social",
-  ],
+  // "Sign In with LinkedIn using OpenID Connect" scopes. The legacy
+  // r_liteprofile/r_emailaddress scopes were retired in 2023 and are no longer
+  // grantable to newly-created LinkedIn apps.
+  linkedin: ["openid", "profile", "email"],
 };
 
 // Default scope combinations that work out of the box
@@ -91,7 +86,7 @@ const PROVIDER_DEFAULTS: Record<AuthProvider, string> = {
   gitlab: "read_user",
   auth0: "openid profile email",
   zitadel: "openid profile email offline_access",
-  linkedin: "r_liteprofile r_emailaddress",
+  linkedin: "openid profile email",
 };
 
 const ScopeSelector: React.FC<ScopeSelectorProps> = ({
@@ -107,7 +102,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   useEffect(() => {
     const scopes = initialScopes || PROVIDER_DEFAULTS[provider];
     const scopeArray =
-      provider === "google" || provider === "zitadel"
+      provider === "google" || provider === "zitadel" || provider === "linkedin"
         ? scopes.split(" ").filter(Boolean)
         : scopes.split(/[, ]+/).filter(Boolean);
 
@@ -127,7 +122,9 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
     const scopeString =
       mode === "custom"
         ? customInput
-        : provider === "google" || provider === "zitadel"
+        : provider === "google" ||
+            provider === "zitadel" ||
+            provider === "linkedin"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
 
@@ -149,14 +146,18 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
     if (newMode === "preset") {
       // Reset to current selected scopes
       const scopeString =
-        provider === "google" || provider === "zitadel"
+        provider === "google" ||
+        provider === "zitadel" ||
+        provider === "linkedin"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
       setCustomInput(scopeString);
     } else {
       // Switch to custom mode with current scope string
       const currentString =
-        provider === "google" || provider === "zitadel"
+        provider === "google" ||
+        provider === "zitadel" ||
+        provider === "linkedin"
           ? selectedScopes.join(" ")
           : selectedScopes.join(",");
       setCustomInput(currentString);
@@ -168,7 +169,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
 
     // Update selectedScopes to reflect custom input for consistency
     const scopeArray =
-      provider === "google" || provider === "zitadel"
+      provider === "google" || provider === "zitadel" || provider === "linkedin"
         ? value.split(" ").filter(Boolean)
         : value.split(/[, ]+/).filter(Boolean);
     setSelectedScopes(scopeArray);
@@ -177,7 +178,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   const resetToDefault = () => {
     const defaultScopes = PROVIDER_DEFAULTS[provider];
     const scopeArray =
-      provider === "google" || provider === "zitadel"
+      provider === "google" || provider === "zitadel" || provider === "linkedin"
         ? defaultScopes.split(" ").filter(Boolean)
         : defaultScopes.split(/[, ]+/).filter(Boolean);
 
@@ -259,12 +260,20 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
           <textarea
             value={customInput}
             onChange={(e) => handleCustomInputChange(e.target.value)}
-            placeholder={`Enter scopes separated by ${provider === "google" || provider === "zitadel" ? "spaces" : "commas or spaces"}`}
+            placeholder={`Enter scopes separated by ${
+              provider === "google" ||
+              provider === "zitadel" ||
+              provider === "linkedin"
+                ? "spaces"
+                : "commas or spaces"
+            }`}
             className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono text-sm"
             rows={3}
           />
           <p className="mt-1 text-xs text-slate-400">
-            {provider === "google" || provider === "zitadel"
+            {provider === "google" ||
+            provider === "zitadel" ||
+            provider === "linkedin"
               ? "Separate scopes with spaces"
               : "Separate scopes with commas or spaces"}
           </p>

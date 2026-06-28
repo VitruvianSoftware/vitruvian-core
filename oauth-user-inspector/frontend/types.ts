@@ -158,21 +158,21 @@ export interface ProviderZitadelUser {
   [key: string]: any; // Zitadel can have custom claims
 }
 
-// This is the raw user object returned by the LinkedIn API
+// This is the raw user object returned by LinkedIn's OIDC userinfo endpoint
+// ("Sign In with LinkedIn using OpenID Connect"). LinkedIn retired the legacy
+// /v2/people/~ + /v2/emailAddress (r_liteprofile/r_emailaddress) endpoints in
+// 2023; new apps only get OIDC, which returns standard claims from a single
+// userinfo GET. NOTE: `locale` is an object here, not a string.
 export interface ProviderLinkedInUser {
-  id: string;
-  firstName: {
-    localized: { [key: string]: string };
-    preferredLocale: { country: string; language: string };
-  };
-  lastName: {
-    localized: { [key: string]: string };
-    preferredLocale: { country: string; language: string };
-  };
-  profilePicture?: {
-    displayImage: string;
-  };
-  emailAddress?: string; // This comes from a separate API call
+  sub: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+  email?: string;
+  email_verified?: boolean;
+  locale?: { country: string; language: string } | string;
+  [key: string]: any; // LinkedIn may include additional claims
 }
 
 export type AuthProvider =

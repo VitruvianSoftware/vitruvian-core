@@ -146,15 +146,13 @@ export const EXPLORE_ENDPOINTS: Record<
     userinfo: { method: "GET", kind: "issuer", path: "/oidc/v1/userinfo" },
   },
   linkedin: {
-    people_me: {
+    // "Sign In with LinkedIn using OpenID Connect": a single userinfo GET
+    // returns the profile + email. The legacy /v2/people/~ + /v2/emailAddress
+    // endpoints (r_liteprofile/r_emailaddress) were retired in 2023.
+    userinfo: {
       method: "GET",
       kind: "fixed",
-      url: "https://api.linkedin.com/v2/people/~",
-    },
-    email_address: {
-      method: "GET",
-      kind: "fixed",
-      url: "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
+      url: "https://api.linkedin.com/v2/userinfo",
     },
   },
 };
