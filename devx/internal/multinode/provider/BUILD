@@ -21,6 +21,7 @@ go_library(
 go_test(
     name = "provider_test",
     srcs = [
+        "native_loud_test.go",
         "native_test.go",
         "provider_test.go",
     ],
