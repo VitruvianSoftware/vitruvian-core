@@ -115,6 +115,14 @@ describe("security headers", () => {
       "script-src 'self' 'unsafe-inline'",
     );
 
+    // connect-src MUST permit https: — the SPA loads the post-login profile by
+    // fetching provider APIs (and arbitrary BYO issuer hosts) DIRECTLY from the
+    // browser. Tightening this to 'self' broke every provider's post-login fetch
+    // (#381). This guards against re-tightening it.
+    expect(res.headers["content-security-policy"]).toContain(
+      "connect-src 'self' https:",
+    );
+
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
     expect(res.headers["strict-transport-security"]).toBe(
       "max-age=31536000; includeSubDomains",
