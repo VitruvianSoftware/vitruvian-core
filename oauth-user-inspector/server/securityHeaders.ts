@@ -50,11 +50,18 @@ import { Request, Response, NextFunction } from "express";
  *                                    https hosts (GitHub/Google/Gitlab CDNs) and
  *                                    some are inline data: URIs.
  *  - font-src 'self'              — fonts ship with the bundle.
- *  - connect-src 'self'           — the browser only ever calls our own /api/*;
- *                                    all provider traffic goes through the
- *                                    server-side proxy. (Top-level OAuth
- *                                    redirects are window.location navigations,
- *                                    which CSP connect-src does NOT govern.)
+ *  - connect-src 'self' https:    — the SPA loads the post-login profile /
+ *                                    userinfo by fetching provider APIs DIRECTLY
+ *                                    from the browser (api.github.com,
+ *                                    www.googleapis.com, gitlab.com, and the
+ *                                    user's own auth0/zitadel issuer host for
+ *                                    BYO), so arbitrary https hosts must be
+ *                                    allowed. 'self' https: still blocks http/ws;
+ *                                    the XSS containment is script-src 'self' (an
+ *                                    injected script can't run, so it cannot
+ *                                    issue a fetch to abuse connect-src).
+ *                                    [connect-src 'self' alone broke every
+ *                                    provider's post-login fetch — see #381.]
  *  - frame-ancestors 'none'       — cannot be framed (clickjacking).
  *  - base-uri 'self'              — block <base> tag hijacking of relative URLs.
  *  - form-action 'self'          — forms can only post back to us.
@@ -66,7 +73,7 @@ export const CONTENT_SECURITY_POLICY =
   "style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' https: data:; " +
   "font-src 'self'; " +
-  "connect-src 'self'; " +
+  "connect-src 'self' https:; " +
   "frame-ancestors 'none'; " +
   "base-uri 'self'; " +
   "form-action 'self'; " +
