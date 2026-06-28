@@ -246,8 +246,10 @@ const App: React.FC = () => {
             },
           });
         } else if (provider === "linkedin") {
-          // LinkedIn requires separate calls for profile and email
-          response = await fetch("https://api.linkedin.com/v2/people/~", {
+          // "Sign In with LinkedIn using OpenID Connect": a single userinfo GET
+          // returns the profile + email (the legacy /v2/people/~ +
+          // /v2/emailAddress endpoints were retired in 2023).
+          response = await fetch("https://api.linkedin.com/v2/userinfo", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -402,42 +404,22 @@ const App: React.FC = () => {
             jwtPayload,
           };
         } else if (provider === "linkedin") {
+          // OIDC userinfo: profile + email come back in one response, mapped
+          // from the standard claims (sub/name/email/picture). No separate
+          // email fetch and no v1 localized-name parsing.
           const linkedinUser = rawData as ProviderLinkedInUser;
-          const firstName =
-            Object.values(linkedinUser.firstName.localized)[0] || "";
-          const lastName =
-            Object.values(linkedinUser.lastName.localized)[0] || "";
-
-          // Fetch email separately for LinkedIn
-          let email: string | null = null;
-          try {
-            const emailResponse = await fetch(
-              "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              },
-            );
-            if (emailResponse.ok) {
-              const emailData = await emailResponse.json();
-              if (emailData.elements && emailData.elements.length > 0) {
-                email = emailData.elements[0]["handle~"]?.emailAddress || null;
-              }
-            }
-          } catch (emailError) {
-            // Email fetch failed, continue without email
-            console.warn("Failed to fetch LinkedIn email:", emailError);
-          }
+          const name =
+            linkedinUser.name ||
+            `${linkedinUser.given_name || ""} ${linkedinUser.family_name || ""}`.trim();
 
           appUser = {
             provider: "linkedin",
-            avatarUrl: linkedinUser.profilePicture?.displayImage || "",
-            name: `${firstName} ${lastName}`.trim(),
-            email: email,
-            profileUrl: `https://www.linkedin.com/in/profile-${linkedinUser.id}`,
-            username: linkedinUser.id,
-            rawData: { ...linkedinUser, emailAddress: email },
+            avatarUrl: linkedinUser.picture || "",
+            name,
+            email: linkedinUser.email ?? null,
+            profileUrl: `https://www.linkedin.com/in/profile-${linkedinUser.sub}`,
+            username: linkedinUser.sub,
+            rawData: linkedinUser,
             accessToken: token,
             refreshToken,
             idToken,
@@ -661,8 +643,12 @@ const App: React.FC = () => {
         scope,
       )}&state=zitadel`;
     } else if (provider === "linkedin") {
-      const scope = scopes || "r_liteprofile r_emailaddress";
-      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${scope}&state=linkedin`;
+      // "Sign In with LinkedIn using OpenID Connect" scopes (the legacy
+      // r_liteprofile/r_emailaddress were retired in 2023).
+      const scope = scopes || "openid profile email";
+      authUrl = `https://www.linkedin.com/oauth/v2/authorization?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=${encodeURIComponent(
+        scope,
+      )}&state=linkedin`;
     }
     window.location.href = authUrl;
   };

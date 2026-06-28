@@ -180,20 +180,12 @@ export const getProviderEndpoints = (
     case "linkedin":
       return [
         {
-          id: "people_me",
-          name: "Profile Info",
-          description: "Get the authenticated user's profile",
-          url: "https://api.linkedin.com/v2/people/~",
+          id: "userinfo",
+          name: "User Info",
+          description: "OpenID Connect userinfo (profile + email)",
+          url: "https://api.linkedin.com/v2/userinfo",
           method: "GET",
-          requiredScopes: ["r_liteprofile"],
-        },
-        {
-          id: "email_address",
-          name: "Email Address",
-          description: "Get the authenticated user's email address",
-          url: "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
-          method: "GET",
-          requiredScopes: ["r_emailaddress"],
+          requiredScopes: ["openid", "profile", "email"],
         },
       ];
 
