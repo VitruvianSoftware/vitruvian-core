@@ -21,11 +21,13 @@
 name: Conformance Check
 
 # Fails the PR when version pins drift across the repo's source-of-truth files —
-# e.g. a `go.mod` that no longer matches `go.work`, or a Dockerfile `FROM node:`
-# that disagrees with `.nvmrc`. Unlike `//:doctor` (which checks a developer's
-# machine), this runs on the source tree, so drift is caught automatically. The
-# single remediation is `bazel run //tools/conformance:check` (read its output).
-# Deviations are tracked as temporary, justified rows in tools/conformance/version-pins.tsv.
+# e.g. a `go.mod` that no longer matches `go.work`, a Dockerfile `FROM node:`
+# that disagrees with `.nvmrc`, or a `package.json` that declares a cataloged
+# dependency as a literal range instead of `catalog:`. Unlike `//:doctor` (which
+# checks a developer's machine), this runs on the source tree, so drift is caught
+# automatically. The single remediation is `bazel run //tools/conformance:check`
+# (read its output). Deviations are tracked as temporary, justified rows in
+# tools/conformance/version-pins.tsv.
 on:
   push:
     branches: [main]

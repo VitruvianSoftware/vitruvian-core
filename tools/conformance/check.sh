@@ -36,6 +36,16 @@
 # on a registry row that disagrees with the file it names, and on a malformed row.
 # So the check both BLOCKS silent drift AND nags every pin toward removal.
 #
+# It ALSO enforces the JS dependency CATALOG (the `catalog:` block in
+# pnpm-workspace.yaml — the single declaration hub for versions meant to be
+# uniform across workspaces, the JS arm of the One Version Rule). Once a dep is in
+# the catalog, every workspace package.json that declares it MUST reference it as
+# "catalog:" (or a named "catalog:<group>"), never a literal range — otherwise the
+# version can silently drift back out of the hub. A literal-range declaration of a
+# cataloged dep is a ✗; a catalog entry no workspace uses is a ✗ (dead config);
+# and a dep declared in 2+ workspaces with differing ranges is a ⚠ advisory
+# (a catalog candidate). See docs/dependency-versioning/javascript.md.
+#
 # Per (file,tool) it prints a status glyph (✓ ok / ✗ fail / ⊘ pinned / ⚠ advisory),
 # the found vs canonical version, and a `→ fix:` hint on ✗. The process exits
 # NON-ZERO iff any ✗ — so this is a reliable CI gate.
@@ -53,6 +63,7 @@ set -u
 ROOT="${BUILD_WORKSPACE_DIRECTORY:-$PWD}"
 REGISTRY="$ROOT/tools/conformance/version-pins.tsv"
 EXCEPTIONS_DOC="$ROOT/docs/engineering/version-pin-exceptions.md"
+WORKSPACE_YAML="$ROOT/pnpm-workspace.yaml"
 TODAY="$(date +%Y-%m-%d)"
 
 # ---------------------------------------------------------------------------
@@ -215,6 +226,31 @@ canonical_pnpm() {
     | head -1
 }
 
+# Dependency NAMES that live in the pnpm catalog — both the default `catalog:`
+# block and any `catalogs:` named groups in pnpm-workspace.yaml. These are the
+# deps whose version is declared once; every workspace must reference them as
+# "catalog:" rather than a literal range.
+catalog_names() {
+  [ -f "$WORKSPACE_YAML" ] || return 0
+  awk '
+    # A column-0 key line decides whether the following indented block is a
+    # catalog block (default `catalog:` or named `catalogs:`); any other
+    # top-level key (e.g. packageExtensions:) turns extraction back off.
+    /^[^[:space:]#]/ {
+      incat = ($0 ~ /^catalog:[[:space:]]*$/ || $0 ~ /^catalogs:[[:space:]]*$/) ? 1 : 0
+      next
+    }
+    # Inside a catalog block a dependency entry is "<indent>key: value" with a
+    # non-empty value; a named-group header ("  react18:") has no value -> skip.
+    incat && match($0, /:[[:space:]]*[^[:space:]]/) {
+      key = $0
+      sub(/:[[:space:]]*[^[:space:]].*$/, "", key)
+      gsub(/^[[:space:]]+/, "", key)
+      print key
+    }
+  ' "$WORKSPACE_YAML" | sed -e 's/["'"'"']//g' | LC_ALL=C sort -u
+}
+
 # ---------------------------------------------------------------------------
 # Discovery. Walk $ROOT excluding any path containing /node_modules/ or /bazel-,
 # or starting with bazel-. Scaffold templates under internal/scaffold/templates/
@@ -302,16 +338,20 @@ df_node_majors() {
 ROWS_GO=""
 ROWS_NODE=""
 ROWS_PNPM=""
+ROWS_CATALOG=""
 ROWS_ADVISORY=""
+ROWS_CAT_ADVISORY=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
   _row="$2${US}$3${US}$4${US}$5${US}$6${US}$7${US}${8:-}${RS}"
   case "$1" in
-    go)       ROWS_GO="${ROWS_GO}${_row}" ;;
-    node)     ROWS_NODE="${ROWS_NODE}${_row}" ;;
-    pnpm)     ROWS_PNPM="${ROWS_PNPM}${_row}" ;;
-    advisory) ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
+    go)           ROWS_GO="${ROWS_GO}${_row}" ;;
+    node)         ROWS_NODE="${ROWS_NODE}${_row}" ;;
+    pnpm)         ROWS_PNPM="${ROWS_PNPM}${_row}" ;;
+    catalog)      ROWS_CATALOG="${ROWS_CATALOG}${_row}" ;;
+    advisory)     ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
+    cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
   esac
 }
 
@@ -533,6 +573,121 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: catalog adherence. Once a dependency is in the pnpm catalog, EVERY
+# workspace package.json that declares it MUST reference it as "catalog:" (or a
+# named "catalog:<group>"), never a literal range — otherwise the version can
+# silently drift back out of the single declaration hub. A ✓ row is emitted for
+# each correct reference, a ✗ for a literal-range bypass. CATALOG_NAMES_FILE holds
+# the cataloged dep names (one per line), populated in MAIN.
+# ---------------------------------------------------------------------------
+check_catalog() {
+  [ -s "$CATALOG_NAMES_FILE" ] || return 0   # no catalog -> nothing to enforce
+  _list="$(discover "package.json")"
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    _rel="$(rel "$pkg")"
+    # Every cataloged-dep declaration in this file, as "name<TAB>value". The
+    # name must equal a cataloged dep, so script lines like "test": "jest" (name
+    # is "test") and a "jest": { ... } config object (value is not a string) are
+    # not matched.
+    _decls="$(
+      awk '
+        FNR==NR { if ($0 != "") iscat[$0]=1; next }
+        match($0, /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+          name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*$/,"",name)
+          val=$0;  sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/,"",val); sub(/".*$/,"",val)
+          if (name in iscat) print name "\t" val
+        }
+      ' "$CATALOG_NAMES_FILE" "$pkg"
+    )"
+    [ -n "$_decls" ] || continue
+    while IFS="$(printf '\t')" read -r dep val; do
+      [ -n "$dep" ] || continue
+      case "$val" in
+        catalog:*)
+          emit "catalog" "$GLYPH_OK" "$C_GREEN" "$_rel" "$val" "catalog:" "$dep" ""
+          OK_COUNT=$((OK_COUNT + 1)) ;;
+        *)
+          emit "catalog" "$GLYPH_FAIL" "$C_RED" "$_rel" "$val" "catalog:" \
+            "'$dep' is in the catalog but declared as a literal range here" \
+            "set \"$dep\": \"catalog:\" in $_rel (or a named \"catalog:<group>\" for intentional divergence)"
+          OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+      esac
+    done <<EOF
+$_decls
+EOF
+  done <<EOF
+$_list
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# CATALOG ORPHAN SWEEP. A catalog entry that NO workspace package.json declares
+# is dead config -> ✗ (mirrors the stale-pin sweep). Keeps the catalog honest:
+# it only carries deps actually in use.
+# ---------------------------------------------------------------------------
+catalog_orphan_sweep() {
+  [ -s "$CATALOG_NAMES_FILE" ] || return 0
+  _pkgs="$(discover "package.json" | tr '\n' ' ')"
+  # Names declared by some package.json (any value), as a sorted unique list.
+  _declared="$(
+    awk '
+      match($0, /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+        name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*$/,"",name); print name
+      }
+    ' $_pkgs 2>/dev/null | LC_ALL=C sort -u
+  )"
+  while IFS= read -r dep; do
+    [ -n "$dep" ] || continue
+    if ! printf '%s\n' "$_declared" | grep -qx "$dep"; then
+      emit "catalog" "$GLYPH_FAIL" "$C_RED" "pnpm-workspace.yaml" "(unused)" "" \
+        "catalog entry '$dep' is declared by no workspace" \
+        "remove '$dep' from the catalog in pnpm-workspace.yaml"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done < "$CATALOG_NAMES_FILE"
+}
+
+# ---------------------------------------------------------------------------
+# ADVISORY (⚠, NEVER fails): a dependency NOT in the catalog that is declared by
+# 2+ workspaces with 2+ distinct ranges. That divergence is exactly what the
+# catalog exists to prevent -> surface it as a migration candidate. Only scans
+# the dependency blocks (so a "scripts" entry can't masquerade as a dep).
+# ---------------------------------------------------------------------------
+advisory_catalog() {
+  _pkgs="$(discover "package.json" | tr '\n' ' ')"
+  _cands="$(
+    awk '
+      FNR==NR { if ($0 != "") iscat[$0]=1; next }
+      FNR==1  { indeps=0 }
+      /^[[:space:]]*"(dependencies|devDependencies|optionalDependencies|peerDependencies)"[[:space:]]*:[[:space:]]*\{/ { indeps=1; next }
+      indeps && /^[[:space:]]*\}/ { indeps=0; next }
+      indeps && match($0, /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+        name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*$/,"",name)
+        val=$0;  sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/,"",val); sub(/".*$/,"",val)
+        if (name in iscat) next
+        if (val ~ /^(workspace:|catalog:)/) next
+        pk = name SUBSEP val
+        if (!(pk in seenpair)) { seenpair[pk]=1; rcount[name]++; rlist[name]=rlist[name] (rlist[name]==""?"":", ") val }
+        fk = name SUBSEP FILENAME
+        if (!(fk in seenfile)) { seenfile[fk]=1; fcount[name]++ }
+      }
+      END { for (nm in rcount) if (rcount[nm] >= 2 && fcount[nm] >= 2) print nm "\t" rlist[nm] }
+    ' "$CATALOG_NAMES_FILE" $_pkgs 2>/dev/null | LC_ALL=C sort
+  )"
+  [ -n "$_cands" ] || return 0
+  while IFS="$(printf '\t')" read -r dep ranges; do
+    [ -n "$dep" ] || continue
+    emit "cat_advisory" "$GLYPH_WARN" "$C_YELLOW" "$dep" "" "" \
+      "declared in 2+ workspaces with differing ranges: $ranges" \
+      "converge and add '$dep' to the catalog (or a named catalog if the split is intentional)"
+    WARN_COUNT=$((WARN_COUNT + 1))
+  done <<EOF
+$_cands
+EOF
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -581,12 +736,20 @@ print_group() {
 # ===========================================================================
 parse_registry
 
+# Cataloged dep names (default + named catalogs) used by the catalog checks.
+# Built once; removed at the end of MAIN.
+CATALOG_NAMES_FILE="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/conf-catnames.$$")"
+catalog_names > "$CATALOG_NAMES_FILE" 2>/dev/null || true
+
 check_go
 check_node
 check_pnpm
 stale_sweep
 doc_sync
 advisory_pnpm
+check_catalog
+catalog_orphan_sweep
+advisory_catalog
 
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -596,7 +759,11 @@ printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.jso
 print_group "Go (go.mod → go.work)" "$ROWS_GO"
 print_group "Node (Dockerfile FROM node → .nvmrc major)" "$ROWS_NODE"
 print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
+print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
+print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
+
+rm -f "$CATALOG_NAMES_FILE"
 
 # Count active (non-expired, sanctioned) pin rows in the registry for the summary.
 ACTIVE_PINS=0
