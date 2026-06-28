@@ -76,14 +76,3 @@ func (l *clusterLock) release() {
 	_ = l.f.Close()
 	l.f = nil
 }
-
-// withClusterLock acquires the advisory lock, runs fn, and releases it. Mutating
-// cluster operations wrap their body in this so they are mutually exclusive.
-func withClusterLock(fn func() error) error {
-	lock, err := acquireClusterLock()
-	if err != nil {
-		return err
-	}
-	defer lock.release()
-	return fn()
-}

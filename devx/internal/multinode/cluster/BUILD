@@ -6,6 +6,7 @@ go_library(
         "advanced.go",
         "apply.go",
         "cluster.go",
+        "lock.go",
     ],
     importpath = "github.com/VitruvianSoftware/devx/internal/multinode/cluster",
     visibility = ["//devx:__subpackages__"],
@@ -22,10 +23,16 @@ go_library(
 
 go_test(
     name = "cluster_test",
-    srcs = ["cluster_reconcile_test.go"],
+    srcs = [
+        "apply_hardening_test.go",
+        "cluster_reconcile_test.go",
+        "lock_test.go",
+        "reconcile_dispatch_test.go",
+    ],
     embed = [":cluster"],
     deps = [
         "//devx/internal/multinode/config",
         "//devx/internal/multinode/lima",
+        "//devx/internal/multinode/provider",
     ],
 )
