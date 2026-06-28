@@ -196,6 +196,24 @@ ts_project(
 # Real PostgreSQL 16 + redis-server as health-checked test services; prisma
 # migrate runs as a setup task with the vendored schema-engine. The jest
 # suite (unit + integration) executes only once the stack is healthy.
+#
+# Port hygiene (intermittent CI flake; observed on #377): the locally-run
+# (no-remote-exec) service_tests below are tagged "exclusive-if-local" so Bazel
+# runs them one at a time. rules_itest's svcinit assigns each autoassigned port
+# by binding 127.0.0.1:0, recording it, then CLOSING that listener (assignPorts)
+# -- the service itself binds the port only later (postgres after initdb, ~0.75s
+# in the failing log). Two svcinit processes that share a network namespace can
+# be handed the same just-freed port in that window; the loser's postgres dies
+# "could not bind ... Address already in use" and svcinit panics during setup
+# (`panic: exit status 1`). These local tests DO share the host netns: Bazel
+# runs them under processwrapper-sandbox, which -- unlike linux-sandbox --
+# creates no network namespace, so --nosandbox_default_allow_network (preset
+# .bazelrc) silently does not isolate them. Serializing the local actions
+# removes the concurrency the race needs. This is a no-op on RBE (each remote
+# action already gets its own netns) and for cached results. The deeper fix is
+# atomic port reservation in svcinit (hold the listener until the service binds)
+# -- not possible for postgres/redis, which don't support SO_REUSEPORT, and not
+# yet in upstream rules_itest 0.0.56 (the latest); tracked for a follow-up.
 
 genrule(
     name = "schema_engine",
@@ -245,6 +263,9 @@ itest_service(
         # PostgreSQL refuses to run as root and BuildBuddy RBE containers
         # execute as root; these run locally on the (non-root) CI runner.
         "no-remote-exec",
+        # Run one-at-a-time locally: svcinit's assign-then-close port
+        # reservation races across concurrent svcinit (see stack header).
+        "exclusive-if-local",
     ],
     visibility = ["//tabula:__subpackages__"],
 )
@@ -258,6 +279,10 @@ itest_service(
         "$${TMPDIR}",
     ],
     autoassign_port = True,
+    # No "exclusive-if-local" here (cf. the other services): redis runs as root,
+    # so redis_hygiene_test executes on RBE in its own network namespace and
+    # can't collide. As a dependency of api_service/integration_tests it comes
+    # up inside their svcinit, which the serialization of those tests covers.
     exe = "@redis//:redis-server",
     health_check = "@redis//:redis-cli",
     health_check_args = [
@@ -286,6 +311,9 @@ itest_task(
         # Depends on postgres, which cannot run as root (BuildBuddy RBE
         # containers are root); runs locally on the (non-root) CI runner.
         "no-remote-exec",
+        # Run one-at-a-time locally: svcinit's assign-then-close port
+        # reservation races across concurrent svcinit (see stack header).
+        "exclusive-if-local",
     ],
     visibility = ["//tabula:__subpackages__"],
     deps = [":postgres"],
@@ -344,6 +372,9 @@ service_test(
         # PostgreSQL refuses to run as root and BuildBuddy RBE containers
         # execute as root; runs locally on the (non-root) CI runner.
         "no-remote-exec",
+        # Run one-at-a-time locally: svcinit's assign-then-close port
+        # reservation races across concurrent svcinit (see stack header).
+        "exclusive-if-local",
     ],
     test = ":jest_suite",
 )
@@ -361,6 +392,9 @@ itest_task(
         # Depends on postgres, which cannot run as root (BuildBuddy RBE
         # containers are root); runs locally on the (non-root) CI runner.
         "no-remote-exec",
+        # Run one-at-a-time locally: svcinit's assign-then-close port
+        # reservation races across concurrent svcinit (see stack header).
+        "exclusive-if-local",
     ],
     visibility = ["//tabula:__subpackages__"],
     deps = [":migrate"],
@@ -394,6 +428,10 @@ itest_service(
         # Depends on postgres, which cannot run as root (BuildBuddy RBE
         # containers are root); runs locally on the (non-root) CI runner.
         "no-remote-exec",
+        # Run one-at-a-time locally: svcinit's assign-then-close port
+        # reservation races across concurrent svcinit (see stack header).
+        # This is the target that flaked on #377 (postgres :43595 collision).
+        "exclusive-if-local",
     ],
     visibility = ["//tabula:__subpackages__"],
     deps = [
