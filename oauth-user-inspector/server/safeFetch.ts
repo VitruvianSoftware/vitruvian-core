@@ -232,6 +232,36 @@ export interface SafeFetchResult {
 }
 
 /**
+ * Default User-Agent for ALL server-side egress.
+ *
+ * GitHub's REST API (`api.github.com`) REJECTS requests that carry no
+ * User-Agent with HTTP 403 ("Request forbidden by administrative rules ... make
+ * sure your request has a User-Agent header"). Because safeFetch sent none,
+ * the server-side token **revoke** (`DELETE /applications/{id}/token`) and the
+ * GitHub API Explorer silently failed with a 403 — while login still worked,
+ * since the token exchange hits the more lenient `github.com` host and the
+ * profile fetch happens browser-side (the browser supplies a UA). safeFetch is
+ * the single outbound chokepoint, so we default a UA here for every request.
+ */
+export const SAFE_FETCH_USER_AGENT = "oauth-user-inspector";
+
+/**
+ * Return `headers` with a default `User-Agent` added iff the caller did not
+ * already set one (case-insensitive). Pure + exported so the behavior is
+ * unit-testable without a live socket.
+ */
+export function withDefaultUserAgent(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const hasUserAgent = Object.keys(headers).some(
+    (k) => k.toLowerCase() === "user-agent",
+  );
+  return hasUserAgent
+    ? headers
+    : { ...headers, "User-Agent": SAFE_FETCH_USER_AGENT };
+}
+
+/**
  * Make a single user-influenced outbound HTTPS request, safely.
  *
  * - Resolves + pins the host (resolveAndPin) so we only ever connect to a
@@ -265,7 +295,7 @@ export async function safeFetch(
       port: pin.port,
       path: pin.pathSearch,
       method,
-      headers: { ...headers, host: pin.host },
+      headers: withDefaultUserAgent({ ...headers, host: pin.host }),
       timeout: timeoutMs,
       rejectUnauthorized: true,
       // Pin the connect-time address family to the one we vetted.
