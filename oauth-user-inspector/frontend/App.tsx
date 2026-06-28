@@ -45,6 +45,7 @@ import UserInfoDisplay from "./components/UserInfoDisplay";
 import HelpModal from "./components/HelpModal";
 import LoginScreen from "./components/LoginScreen";
 import EnhancedErrorDisplay from "./components/EnhancedErrorDisplay";
+import { buildUserinfoRequest } from "./utils/userinfoRequest";
 
 const getRedirectUri = () => window.location.origin + window.location.pathname;
 
@@ -184,94 +185,63 @@ const App: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        let response: Response;
-        if (provider === "github") {
-          response = await fetch("https://api.github.com/user", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          });
-        } else if (provider === "google") {
-          response = await fetch(
-            "https://www.googleapis.com/oauth2/v1/userinfo?alt=json",
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            },
-          );
-        } else if (provider === "gitlab") {
-          response = await fetch("https://gitlab.com/api/v4/user", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-        } else if (provider === "auth0") {
-          // For Auth0, get the domain from previously stored auth_meta
-          const metaRaw = localStorage.getItem("auth_meta");
-          let auth0Domain = "";
-          if (metaRaw) {
-            try {
-              const meta = JSON.parse(metaRaw);
-              auth0Domain = meta.auth0_domain || meta.auth0Domain || "";
-            } catch {}
-          }
-          if (!auth0Domain) {
-            throw new Error(
-              "Auth0 domain not found. Please log in again with your Auth0 domain.",
-            );
-          }
-          response = await fetch(`https://${auth0Domain}/userinfo`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-        } else if (provider === "zitadel") {
-          // Zitadel's OIDC userinfo endpoint. Domain comes from stored
-          // auth_meta (request-supplied or hosted secret), defaulting to our
-          // self-hosted instance so it works out of the box.
-          const metaRaw = localStorage.getItem("auth_meta");
-          let zitadelDomain = "auth.ipv1337.dev";
-          if (metaRaw) {
-            try {
-              const meta = JSON.parse(metaRaw);
-              zitadelDomain =
-                meta.zitadel_domain || meta.zitadelDomain || zitadelDomain;
-            } catch {}
-          }
-          response = await fetch(`https://${zitadelDomain}/oidc/v1/userinfo`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-        } else if (provider === "linkedin") {
-          // "Sign In with LinkedIn using OpenID Connect": a single userinfo GET
-          // returns the profile + email (the legacy /v2/people/~ +
-          // /v2/emailAddress endpoints were retired in 2023).
-          response = await fetch("https://api.linkedin.com/v2/userinfo", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-        } else {
-          throw new Error("Unsupported provider");
+        // Resolve the BYO issuer domains (auth0 / zitadel) from the stored
+        // auth_meta, then delegate the routing decision to buildUserinfoRequest.
+        // LinkedIn goes through our same-origin /api/explore proxy because
+        // api.linkedin.com sends no CORS headers (a direct browser fetch fails
+        // as "Failed to fetch"); every other provider is fetched directly.
+        let auth0Domain = "";
+        let zitadelDomain = "auth.ipv1337.dev";
+        const domainMetaRaw = localStorage.getItem("auth_meta");
+        if (domainMetaRaw) {
+          try {
+            const meta = JSON.parse(domainMetaRaw);
+            auth0Domain = meta.auth0_domain || meta.auth0Domain || "";
+            zitadelDomain =
+              meta.zitadel_domain || meta.zitadelDomain || zitadelDomain;
+          } catch {}
         }
 
-        if (!response.ok) {
-          if (response.status === 401) {
+        const { url, init, mode } = buildUserinfoRequest(provider, token, {
+          auth0Domain,
+          zitadelDomain,
+        });
+        const response = await fetch(url, init);
+
+        // Normalize the result. The /api/explore proxy wraps the upstream
+        // response as { success, status, data }; a direct provider fetch
+        // returns the userinfo body as-is.
+        let upstreamOk: boolean;
+        let upstreamStatus: number;
+        let rawData: any;
+        if (mode === "proxy") {
+          if (!response.ok) {
+            const proxyErr = await response.json().catch(() => ({}) as any);
+            throw new Error(
+              proxyErr.error || `Error fetching user: ${response.status}`,
+            );
+          }
+          const envelope = await response.json();
+          upstreamOk = !!envelope.success;
+          upstreamStatus = envelope.status ?? (upstreamOk ? 200 : 502);
+          rawData = envelope.data ?? {};
+        } else {
+          upstreamOk = response.ok;
+          upstreamStatus = response.status;
+          rawData = await response.json().catch(() => ({}) as any);
+        }
+
+        if (!upstreamOk) {
+          if (upstreamStatus === 401) {
             handleLogout();
             throw new Error(
               "Your token is invalid or has expired. Please log in again.",
             );
           }
-          const errorData = await response.json();
           throw new Error(
-            errorData.message || `Error fetching user: ${response.status}`,
+            rawData?.message || `Error fetching user: ${upstreamStatus}`,
           );
         }
-
-        const rawData = await response.json();
         let appUser: AppUser;
 
         // Token metadata (if previously stored)

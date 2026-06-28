@@ -53,6 +53,11 @@ jest_test(
         # Read at runtime by explore-endpoints-parity.test.ts to assert the UI
         # endpoint catalog matches the server's fail-closed /api/explore table.
         "frontend/utils/apiEndpoints.ts",
+        # Pure userinfo-routing helper + its suite: guards that LinkedIn's
+        # userinfo is fetched via the same-origin /api/explore proxy and never a
+        # CORS-blocked direct api.linkedin.com browser call.
+        "frontend/utils/userinfoRequest.ts",
+        "frontend/__tests__/userinfoRequest.test.ts",
         "jest.config.cjs",
         "package.json",
         "server/tsconfig.server.json",
