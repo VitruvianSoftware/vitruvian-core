@@ -54,7 +54,7 @@
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
-    "vite": "^6.3.5"
+    "vite": "^8.1.0"
   },
   "engines": {
     "node": ">=22"
