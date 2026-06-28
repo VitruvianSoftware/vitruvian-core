@@ -124,7 +124,7 @@ importers:
         specifier: ^9.2.1
         version: 9.2.3
       jest:
-        specifier: 'catalog:'
+        specifier: ^29.7.0
         version: 29.7.0(@types/node@20.19.43)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@20.19.43)(typescript@5.9.3))
       jest-cli:
         specifier: ^29.7.0

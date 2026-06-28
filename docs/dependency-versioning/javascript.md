@@ -63,6 +63,15 @@ tooling (`jest`, `@swc/*`), linters, a framework together with its types (`react
 one project uses (a catalog entry buys nothing), or one where divergence is *intentional* — for
 that, see the next section.
 
+**Standalone-built apps cannot use the catalog.** `catalog:` only resolves when `pnpm install`
+can see the monorepo `pnpm-workspace.yaml`. A workspace that builds on its own — `oauth-user-inspector`,
+whose `Dockerfile` runs `pnpm install` against just its own `package.json`, and which is also
+Copybara-mirrored to a standalone repo with no monorepo root — has no catalog at build time, so a
+`catalog:` reference there fails with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. These workspaces
+must declare concrete versions and are listed in `CATALOG_EXEMPT` in
+`tools/conformance/check.sh`; for them the conformance gate inverts — a concrete version is correct
+and a `catalog:` reference is the failure.
+
 **Enforced, not just encouraged.** Like Bazel's one-version rule, the catalog is a guardrail, not
 a convention you can quietly bypass. The required `conformance-check` gate
 (`bazel run //tools/conformance:check`) fails the build when a cataloged dependency is declared

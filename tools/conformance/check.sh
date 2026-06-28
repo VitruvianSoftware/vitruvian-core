@@ -66,6 +66,15 @@ EXCEPTIONS_DOC="$ROOT/docs/engineering/version-pin-exceptions.md"
 WORKSPACE_YAML="$ROOT/pnpm-workspace.yaml"
 TODAY="$(date +%Y-%m-%d)"
 
+# Workspaces that build STANDALONE — their own `docker build <dir>` and/or a
+# Copybara one-way mirror — have no monorepo pnpm-workspace.yaml at build time,
+# so their package.json must resolve on its own and CANNOT use `catalog:`. They
+# are exempt from catalog adherence: a concrete version is correct (⊘), and a
+# `catalog:` reference is the FAILURE there (it breaks the standalone build —
+# this is the oauth-user-inspector deploy regression #391 caused). Space-separated
+# workspace directories.
+CATALOG_EXEMPT="oauth-user-inspector"
+
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
 # CI logs stay plain so the report greps cleanly.
@@ -579,6 +588,10 @@ EOF
 # silently drift back out of the single declaration hub. A ✓ row is emitted for
 # each correct reference, a ✗ for a literal-range bypass. CATALOG_NAMES_FILE holds
 # the cataloged dep names (one per line), populated in MAIN.
+#
+# CATALOG_EXEMPT workspaces (standalone-built) invert the rule: a concrete
+# version is correct (⊘ sanctioned) and a `catalog:` reference is the ✗, because
+# catalog: cannot resolve without the monorepo workspace file at build time.
 # ---------------------------------------------------------------------------
 check_catalog() {
   [ -s "$CATALOG_NAMES_FILE" ] || return 0   # no catalog -> nothing to enforce
@@ -601,8 +614,26 @@ check_catalog() {
       ' "$CATALOG_NAMES_FILE" "$pkg"
     )"
     [ -n "$_decls" ] || continue
+    # Exempt (standalone-built) workspaces invert the rule.
+    _ws="${_rel%%/*}"
+    _exempt=0
+    case " $CATALOG_EXEMPT " in *" $_ws "*) _exempt=1 ;; esac
     while IFS="$(printf '\t')" read -r dep val; do
       [ -n "$dep" ] || continue
+      if [ "$_exempt" = "1" ]; then
+        case "$val" in
+          catalog:*)
+            emit "catalog" "$GLYPH_FAIL" "$C_RED" "$_rel" "$val" "concrete" \
+              "'$dep' uses catalog: but $_ws builds standalone (no workspace catalog at build time)" \
+              "pin a concrete version of \"$dep\" in $_rel — catalog: cannot resolve in the standalone/Docker build"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+          *)
+            emit "catalog" "$GLYPH_PIN" "$C_CYAN" "$_rel" "$val" "concrete" \
+              "exempt: $_ws builds standalone, so a concrete version is required (catalog: would break it)" ""
+            PIN_COUNT=$((PIN_COUNT + 1)) ;;
+        esac
+        continue
+      fi
       case "$val" in
         catalog:*)
           emit "catalog" "$GLYPH_OK" "$C_GREEN" "$_rel" "$val" "catalog:" "$dep" ""
