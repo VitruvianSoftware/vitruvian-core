@@ -187,7 +187,10 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			"applicationSet": map[string]interface{}{
 				// ApplicationSet controller is leader-elected; 2 replicas give
 				// instant failover for AppSet generation.
-				"replicaCount": 2,
+				// NB: the argo-cd chart key is `replicas` (matching server /
+				// repoServer / controller) — NOT `replicaCount`, which the chart
+				// silently ignores, leaving the controller stuck at 1 replica.
+				"replicas": 2,
 			},
 			"repoServer": map[string]interface{}{
 				"replicas": 2,
