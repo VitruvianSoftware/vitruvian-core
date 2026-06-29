@@ -2,11 +2,18 @@
 cluster_cmd.sh). Complements //tools/gitops (ArgoCD-manifest oriented) with the
 live-cluster node operations it doesn't cover:
 
-    bazel run //tools/cluster:kubectl     -- get nodes -o wide
-    bazel run //tools/cluster:cordon      -- nuc9
-    bazel run //tools/cluster:drain       -- nuc9 --timeout=5m
-    bazel run //tools/cluster:delete-node -- nuc9
-    bazel run //tools/cluster:label-node  -- nuc9i5 node.ipv1337.dev/link=wired --overwrite
+    bazel run //tools/cluster:kubectl      -- get nodes -o wide
+    bazel run //tools/cluster:cordon       -- nuc9
+    bazel run //tools/cluster:drain        -- nuc9 --timeout=5m
+    bazel run //tools/cluster:delete-node  -- nuc9
+    bazel run //tools/cluster:label-node   -- nuc9i5 node.ipv1337.dev/link=wired --overwrite
+
+Read-only HA / node-balance diagnostics (the audits behind the cluster-balance
+and replica-spread reviews):
+
+    bazel run //tools/cluster:balance                 # pods-per-node distribution
+    bazel run //tools/cluster:placement    -- -n monitoring -l app.kubernetes.io/name=alertmanager
+    bazel run //tools/cluster:minio-status            # drive/heal health + PV-node pinning
 
 `:kubectl` is a general passthrough for anything the named ops don't cover
 (wait, exec, delete pod/pvc, patch, ...).
@@ -30,5 +37,8 @@ exports_files(["cluster_cmd.sh"])
         "drain",
         "delete-node",
         "label-node",
+        "balance",
+        "placement",
+        "minio-status",
     ]
 ]
