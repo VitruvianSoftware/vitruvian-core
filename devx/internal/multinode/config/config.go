@@ -86,9 +86,11 @@ type MetalLBConfig struct {
 	// all nodes (default MetalLB behaviour). Pinning stops the speaker VIP from
 	// flapping onto high-latency Mac nodes.
 	//
-	// Deprecated: prefer the backend-neutral cluster.loadBalancer.{ipRange,
-	// l2Hostnames}. These remain as a fallback (see ClusterConfig.LBIPRange /
-	// LBL2Hostnames) so existing configs keep working.
+	// Legacy: prefer the backend-neutral cluster.loadBalancer.{ipRange,l2Hostnames}.
+	// IPRange and L2Hostnames here remain a supported fallback (see
+	// ClusterConfig.LBIPRange / LBL2Hostnames) so existing configs keep working.
+	// (Not marked `Deprecated:` on purpose — the resolvers and their tests still
+	// read these fields intentionally.)
 	L2Hostnames []string `yaml:"l2Hostnames"`
 }
 
