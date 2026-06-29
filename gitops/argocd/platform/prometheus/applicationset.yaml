@@ -88,13 +88,76 @@ spec:
               - web.enable-lifecycle
               - web.enable-remote-write-receiver
               - storage.tsdb.retention.size=20GB
+              # Thanos sidecar requires local compaction DISABLED (min==max block
+              # duration) so it ships raw 2h blocks; the Thanos Compactor owns
+              # compaction/downsampling in object storage.
+              - storage.tsdb.min-block-duration=2h
+              - storage.tsdb.max-block-duration=2h
+              # Expand $(POD_NAME) inside external_labels (per-replica dedup label).
+              - enable-feature=expand-external-labels
               persistentVolume:
                 enabled: true
                 size: 25Gi
                 storageClass: local-path
-              replicaCount: 1
+              # HA: 2 independent replicas. Dedup happens at the Thanos Querier via
+              # the per-replica replica label, NOT at write time -- two replicas
+              # behind one round-robin Service would otherwise split-brain reads.
+              # (No literal backticks anywhere in this block -- it is a Go raw string.)
+              replicaCount: 2
               statefulSet:
-                enabled: false
+                enabled: true
+                # Expose the sidecar gRPC (10901) on the prometheus-server-headless
+                # Service so the Thanos Querier can dnssrv-discover both sidecars.
+                headless:
+                  gRPC:
+                    enabled: true
+              # Unique replica label per pod (expanded from POD_NAME) -> the Querier
+              # dedup key; cluster label tags the source.
+              global:
+                external_labels:
+                  cluster: lab
+                  replica: "$(POD_NAME)"
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              # Pod-level volume for the Thanos objstore config, consumed by the
+              # sidecar below (the SealedSecret created in Phase 1a).
+              extraVolumes:
+                - name: thanos-objstore
+                  secret:
+                    secretName: thanos-objstore-creds
+              # Thanos sidecar: serves the recent TSDB over StoreAPI (gRPC 10901)
+              # and uploads completed blocks to MinIO. Shares the prometheus data
+              # PVC (storage-volume -> /data, the chart's tsdb path).
+              sidecarContainers:
+                thanos-sidecar:
+                  image: quay.io/thanos/thanos:v0.39.2
+                  args:
+                    - sidecar
+                    - --tsdb.path=/data
+                    - --prometheus.url=http://127.0.0.1:9090
+                    - --objstore.config-file=/etc/thanos/objstore.yml
+                    - --grpc-address=0.0.0.0:10901
+                    - --http-address=0.0.0.0:10902
+                  ports:
+                    - name: grpc
+                      containerPort: 10901
+                    - name: http-sidecar
+                      containerPort: 10902
+                  volumeMounts:
+                    - name: storage-volume
+                      mountPath: /data
+                    - name: thanos-objstore
+                      mountPath: /etc/thanos
+                      readOnly: true
+                  resources:
+                    requests:
+                      cpu: 50m
+                      memory: 128Mi
+                    limits:
+                      memory: 256Mi
             serverFiles:
               recording_rules.yml:
                 groups:
