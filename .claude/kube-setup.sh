@@ -74,6 +74,11 @@ if [ -z "${LAB_SA_TOKEN:-}" ]; then
 	exit 0
 fi
 
+# Strip any stray whitespace/newlines from the token. A ServiceAccount JWT never
+# contains whitespace, so this is safe and guards against a trailing newline
+# accidentally captured when setting the env var (which yields a 401).
+sa_token="${LAB_SA_TOKEN//[$' \t\r\n']/}"
+
 # Write the kubeconfig with restrictive perms.
 mkdir -p "${HOME}/.kube"
 (
@@ -97,7 +102,7 @@ current-context: lab
 users:
   - name: claude-code
     user:
-      token: ${LAB_SA_TOKEN}
+      token: ${sa_token}
 KUBECONFIG
 )
 chmod 600 "${HOME}/.kube/config"
