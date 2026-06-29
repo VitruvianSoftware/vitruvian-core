@@ -110,7 +110,11 @@ spec:
             # ---- Store Gateway: serves historical blocks from MinIO ----
             storegateway:
               enabled: true
-              replicaCount: 1
+              # HA: 2 replicas so a node loss never blocks historical (object-store)
+              # queries. Store Gateway is read-only over the bucket (safe to run >1,
+              # unlike the Compactor); the Querier autogen-discovers both via DNS-SRV
+              # and load-balances. Each gets its own local index-cache PVC.
+              replicaCount: 2
               persistence:
                 enabled: true
                 size: 5Gi
@@ -125,6 +129,16 @@ spec:
             compactor:
               enabled: true
               replicaCount: 1
+              # Phase 3: retention/downsampling tuning. Downsampling is on by default,
+              # so the Compactor produces 5m and 1h resolutions; these set how long
+              # each is kept in MinIO. Raw is the disk driver (full-resolution blocks)
+              # -> bounded to 15d for the homelab; downsampled data is tiny, so 5m/1h
+              # keep long trend history cheaply. An empty value would disable retention
+              # for that resolution (keep forever). Tune up if MinIO has room.
+              retention:
+                resolutionRaw: 15d
+                resolution5m: 90d
+                resolution1h: 365d
               persistence:
                 enabled: true
                 size: 10Gi
