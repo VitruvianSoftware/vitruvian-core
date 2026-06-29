@@ -150,6 +150,18 @@ spec:
       destination:
         server: '{{.server}}'
         namespace: monitoring
+      # The chart's StatefulSets (compactor, storegateway) carry volumeClaimTemplates;
+      # the k8s API injects defaults the chart doesn't render (apiVersion/kind,
+      # spec.volumeMode=Filesystem, status) so ArgoCD reports a permanent OutOfSync
+      # even though sync Succeeds and the app is Healthy -- and selfHeal then re-syncs
+      # (a no-op) every reconcile. volumeClaimTemplates are immutable on an existing
+      # StatefulSet anyway, so ignore that subtree to keep the app cleanly Synced and
+      # stop the churn. (Storage size changes still require a manual STS recreate.)
+      ignoreDifferences:
+        - group: apps
+          kind: StatefulSet
+          jsonPointers:
+            - /spec/volumeClaimTemplates
       syncPolicy:
         automated:
           prune: true
@@ -157,3 +169,4 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
