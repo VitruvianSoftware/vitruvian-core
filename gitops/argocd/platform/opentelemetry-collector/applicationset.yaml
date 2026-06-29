@@ -104,14 +104,24 @@ spec:
                   endpoint: tempo:4317
                   tls:
                     insecure: true
-                prometheusremotewrite:
-                  endpoint: http://prometheus-server.monitoring.svc.cluster.local:80/api/v1/write
+                # Phase 2: remote-write is a RECEIVER path, so it must be MIRRORED to
+                # both prometheus replicas (writing to the round-robin Service would
+                # land each sample on only one replica -> gaps the Querier can't
+                # dedup away). Two exporters target the StatefulSet per-pod headless
+                # DNS; the Thanos Querier dedups the duplicated series via the replica
+                # label.
+                prometheusremotewrite/replica0:
+                  endpoint: http://prometheus-server-0.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
+                  timeout: 30s
+                prometheusremotewrite/replica1:
+                  endpoint: http://prometheus-server-1.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
                   timeout: 30s
               service:
                 pipelines:
                   metrics:
                     exporters:
-                      - prometheusremotewrite
+                      - prometheusremotewrite/replica0
+                      - prometheusremotewrite/replica1
                   traces:
                     exporters:
                       - otlp
