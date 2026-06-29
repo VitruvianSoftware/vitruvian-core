@@ -79,7 +79,8 @@ spec:
             # SAME root creds as `minio` (ns minio, keys rootUser/rootPassword), so the
             # consumers' existing creds stay valid across the cutover. No plaintext (R8).
             existingSecret: minio-root
-            # Same 4 buckets; created empty by the chart post-job, then mc-mirror filled.
+            # Buckets created empty by the chart post-job (the original 4 were then
+            # mc-mirror filled at the arm64->amd64 cutover; `thanos` is net-new).
             buckets:
               - name: tempo
                 policy: none
@@ -91,6 +92,12 @@ spec:
                 policy: none
                 purge: false
               - name: zitadel-db-backups
+                policy: none
+                purge: false
+              # Thanos TSDB block storage for the HA Prometheus migration (sidecar
+              # upload + Store Gateway reads + Compactor). See
+              # docs/design/prometheus-thanos-ha.md.
+              - name: thanos
                 policy: none
                 purge: false
             persistence:
