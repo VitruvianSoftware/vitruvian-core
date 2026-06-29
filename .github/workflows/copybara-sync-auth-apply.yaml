@@ -57,6 +57,11 @@ jobs:
         # Manual runs always proceed; push-triggered runs are opt-in.
         if: ${{ github.event_name == 'workflow_dispatch' || vars.SYNC_AUTH_AUTO_APPLY == 'true' }}
         runs-on: ubuntu-latest
+        # Bound the Pulumi apply (matches _repo-config-apply / dependabot-bazel-
+        # reconcile, both 45). Without this the job defaults to 360 min, and a
+        # wedged `pulumi up` would also hold the cancel-in-progress:false
+        # concurrency lock for that whole window, blocking later runs.
+        timeout-minutes: 45
         steps:
             - uses: actions/checkout@v7
 
