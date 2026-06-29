@@ -100,6 +100,12 @@ spec:
               - name: thanos
                 policy: none
                 purge: false
+              # devx in-cluster registry storage (S3 driver) -- lets the registry run
+              # 2 replicas active-active instead of a single RWO-PVC pod. devx ensures
+              # this bucket idempotently too (mc mb) for fresh-cluster ordering.
+              - name: registry
+                policy: none
+                purge: false
             persistence:
               enabled: true
               storageClass: local-path
