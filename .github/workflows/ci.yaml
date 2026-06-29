@@ -64,13 +64,28 @@ jobs:
           # worktree, which needs the full object graph.
           fetch-depth: 0
 
-      - name: Set up Go (for target-determinator)
-        # target-determinator's module is `go 1.24`; pin >= 1.24. The binary
-        # lands in $(go env GOPATH)/bin, not on PATH (same as addlicense below).
-        # Only meaningfully used on pull_request; harmless on push.
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
+      # Free disk BEFORE any Bazel work. PR #404 hit "No space left on device"
+      # fetching the LLVM/clang-format toolchain (//tools/format) during a full
+      # //... sweep; #374 saw the same. Reclaim large preinstalled SDKs this build
+      # never touches (~13GB), mirroring the tabula-e2e lane, so the full sweep
+      # that still runs on postsubmit / merge queue / global-impact PRs has
+      # headroom. Runs on every event so all lanes benefit.
+      #
+      # Do NOT remove /usr/local/lib/android: rules_android (in the module graph
+      # for //tabula) fetches an android_sdk_repository at analysis time and
+      # aborts the build if the SDK is gone ("No Android SDK apis found"), even
+      # though no Android target is built here. Only CodeQL is pruned from the
+      # toolcache (its Go/Node/Python are used by other jobs). `|| true` so a
+      # missing path is never fatal to this required check.
+      - name: Free up runner disk space
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
