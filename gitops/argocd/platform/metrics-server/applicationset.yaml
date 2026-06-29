@@ -1,0 +1,93 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# metrics-server -- HA replacement for k3s's bundled single-replica metrics-server.
+# PHASE 2 of the metrics-server HA cutover: k3s ships metrics-server as a built-in
+# addon (objectset-managed, 1 replica). Phase 1 added `--disable metrics-server` to
+# the k3s servers (devx recipe, gated on Cilium/platform clusters); once that has
+# been reconciled and the bundled copy removed, this appset deploys a 2-replica HA
+# metrics-server in its place.
+#
+# ORDERING: do NOT sync this before the k3s bundled metrics-server is disabled +
+# gone, or the two controllers fight the same kube-system/metrics-server Deployment
+# and the single v1beta1.metrics.k8s.io APIService. Merge Phase 1, run
+# `devx cluster reconcile`, confirm the bundled one is gone, THEN merge this.
+#
+# Chart metrics-server 3.13.1 (kubernetes-sigs), app 0.8.1, ns kube-system. k3s
+# kubelets serve metrics over a self-signed cert, so --kubelet-insecure-tls is
+# required (appended to the chart's defaultArgs, which already set
+# --kubelet-preferred-address-types=InternalIP,... for k3s).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: metrics-server
+  namespace: argocd
+  labels:
+    environment: metrics-server
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: metrics-server
+      labels:
+        app: metrics-server
+      annotations:
+        # Foundational kube-system addon (kubectl top / HPA); land early.
+        argocd.argoproj.io/sync-wave: "-3"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://kubernetes-sigs.github.io/metrics-server/
+        chart: metrics-server
+        targetRevision: "3.13.1"
+        helm:
+          version: v3
+          values: |
+            # HA: 2 replicas spread 1-per-node so a node loss never drops the
+            # metrics API (kubectl top / HPA). The Deployment leader-elects for the
+            # scrape, so 2 replicas is the supported HA topology.
+            replicas: 2
+            # k3s kubelet serving certs are self-signed -> insecure-tls. Appended to
+            # the chart defaultArgs (which already carry the k3s-friendly
+            # --kubelet-preferred-address-types + --kubelet-use-node-status-port).
+            args:
+              - --kubelet-insecure-tls
+            podDisruptionBudget:
+              enabled: true
+              minAvailable: 1
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: kubernetes.io/hostname
+                whenUnsatisfiable: DoNotSchedule
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: metrics-server
+      destination:
+        server: '{{.server}}'
+        namespace: kube-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
