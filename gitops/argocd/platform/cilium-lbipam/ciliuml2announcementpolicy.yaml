@@ -1,0 +1,48 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Cilium L2 (ARP) announcement for LoadBalancer VIPs — the Cilium-native replacement
+# for the MetalLB L2Advertisement. ARP is L2 broadcast, so it MUST egress a physical
+# LAN NIC on the 10.44.86.0/24 segment, never tailscale0 (an L3 TUN with no broadcast
+# domain). Announce only from the wired native nodes that are on the LAN:
+# fedora, nuc9i5, nuc9i9. (This also fixes the prior MetalLB SPOF, whose
+# L2Advertisement was pinned to fedora + a stale, non-existent `nuc9` node, so only
+# fedora actually announced.)
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: default-l2
+spec:
+  # Announce LoadBalancer IPs (the LB-IPAM-assigned VIPs). externalIPs not used here.
+  loadBalancerIPs: true
+  # Physical LAN NICs only — match the wired interface families, never tailscale0/cilium_*.
+  interfaces:
+    - "^enp[0-9]+"
+    - "^eno[0-9]+"
+    - "^eth[0-9]+"
+  # Only wired native nodes physically attached to 10.44.86.0/24 may answer ARP.
+  nodeSelector:
+    matchExpressions:
+      - key: kubernetes.io/hostname
+        operator: In
+        values:
+          - fedora
+          - nuc9i5
+          - nuc9i9
