@@ -94,11 +94,13 @@ spec:
                 # Auto-build dnssrv endpoints for the in-chart Store Gateway.
                 autogen:
                   enabled: true
-                # The Prometheus Thanos sidecars (headless svc, gRPC 10901).
-                # Unresolved until Phase 1b creates the StatefulSet + sidecar svc;
-                # the Querier tolerates a store entry that resolves to nothing.
+                # The Prometheus Thanos sidecars, discovered via the chart's
+                # prometheus-server-headless Service (gRPC 10901, enabled by
+                # server.statefulSet.headless.gRPC in the prometheus appset, Phase
+                # 1b). The _grpc._tcp SRV name requires that gRPC port; the Querier
+                # tolerates zero resolved endpoints before 1b lands.
                 static:
-                  - dnssrv+_grpc._tcp.prometheus-server-thanos-sidecar.monitoring.svc.cluster.local
+                  - dnssrv+_grpc._tcp.prometheus-server-headless.monitoring.svc.cluster.local
               resources:
                 requests:
                   cpu: 100m
