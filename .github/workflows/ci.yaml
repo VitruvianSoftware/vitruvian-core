@@ -65,19 +65,27 @@ jobs:
           fetch-depth: 0
 
       # Free disk BEFORE any Bazel work. PR #404 hit "No space left on device"
-      # extracting the LLVM/clang-format toolchain (//tools/format) during a full
-      # //... build; #374 saw the same. GitHub's ubuntu image preinstalls tens of
-      # GB of SDKs this build never uses (.NET, Android, GHC/Haskell, CodeQL);
-      # removing them gives Bazel + the LLVM toolchain headroom so even a full
-      # sweep (postsubmit / merge queue / a global-impact PR) can't OOM on disk.
-      # Best-effort: an already-absent path or a docker prune must never fail the
-      # required check, hence `|| true`. Runs on every event so all lanes benefit.
+      # fetching the LLVM/clang-format toolchain (//tools/format) during a full
+      # //... sweep; #374 saw the same. Reclaim large preinstalled SDKs this build
+      # never touches (~13GB), mirroring the tabula-e2e lane, so the full sweep
+      # that still runs on postsubmit / merge queue / global-impact PRs has
+      # headroom. Runs on every event so all lanes benefit.
+      #
+      # Do NOT remove /usr/local/lib/android: rules_android (in the module graph
+      # for //tabula) fetches an android_sdk_repository at analysis time and
+      # aborts the build if the SDK is gone ("No Android SDK apis found"), even
+      # though no Android target is built here. Only CodeQL is pruned from the
+      # toolcache (its Go/Node/Python are used by other jobs). `|| true` so a
+      # missing path is never fatal to this required check.
       - name: Free up runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-            /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
-          sudo docker image prune --all --force || true
-          df -h /
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
