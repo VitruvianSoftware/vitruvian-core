@@ -124,6 +124,10 @@ spec:
               enabled: true
               relay:
                 enabled: true
+                # HA: 2 replicas (stateless flow aggregator) so a node loss doesn't
+                # drop Hubble observability. ui stays single (stateless viewer that
+                # reschedules fine).
+                replicas: 2
               ui:
                 enabled: true
             envoy:
