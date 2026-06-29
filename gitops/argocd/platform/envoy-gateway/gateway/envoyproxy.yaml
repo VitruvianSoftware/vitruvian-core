@@ -19,16 +19,19 @@
 # SOFTWARE.
 #
 # EnvoyProxy `platform` — data-plane config referenced by the `envoy` GatewayClass.
-# Provisions the proxy Service as a LoadBalancer so MetalLB assigns the next free
-# default-pool IP (10.44.86.211, after Traefik's .210), reachable over tailscale via
-# the existing 10.44.86.0/24 subnet route — same reachability as the current Traefik
-# ingress.
+# Provisions the proxy Service as a LoadBalancer pinned to 10.44.86.211 via Cilium
+# LB-IPAM (lbipam.cilium.io/ips on envoyService, below). 10.44.86.211 is a hard
+# external dependency: cloudflared's tunnel ingress targets http://10.44.86.211:80,
+# so the public edge breaks if this VIP moves. The IP is reachable over tailscale via
+# the existing 10.44.86.0/24 subnet route. (Until the MetalLB->Cilium LB-IPAM cutover
+# this VIP was served by MetalLB, which auto-assigned .211 after Traefik's .210; the
+# pin annotation is inert to MetalLB and consumed by Cilium LB-IPAM post-cutover.)
 #
 # HA: the proxy is the user-facing ingress data plane — a single replica made it a
 # single point of failure (a node reboot dropped all Gateway API ingress until the
 # pod rescheduled). Run 2 replicas, spread 1-per-node via a hard topology spread on
 # hostname (DoNotSchedule), so a single node loss never takes the whole data plane.
-# The LoadBalancer Service fronts both pods, so MetalLB keeps one VIP and cilium
+# The LoadBalancer Service fronts both pods, so the LB keeps one VIP and cilium
 # load-balances across the two endpoints. 2 replicas / 7 nodes — the hard constraint
 # always schedules.
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -42,6 +45,10 @@ spec:
     kubernetes:
       envoyService:
         type: LoadBalancer
+        # Pin the edge VIP so Cilium LB-IPAM assigns exactly 10.44.86.211 (the address
+        # cloudflared's tunnel ingress targets). Inert to MetalLB pre-cutover.
+        annotations:
+          lbipam.cilium.io/ips: "10.44.86.211"
       envoyDeployment:
         replicas: 2
         pod:

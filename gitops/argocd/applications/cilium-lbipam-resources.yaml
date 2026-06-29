@@ -1,0 +1,54 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# cilium-lbipam-resources — Cilium LB-IPAM pool + L2 announcement policy (cluster-scoped
+# Cilium CRs). Raw manifests, so they ride a git-source Application (the cilium AppSet's
+# root-platform include is applicationset-only).
+#
+# ⚠️ INTENTIONALLY MANUAL SYNC (no automated block) for the initial MetalLB→Cilium
+# LB-IPAM cutover. While MetalLB still owns the VIPs, syncing this would create a second
+# L2 announcer for 10.44.86.211 → ARP/MAC flap on the public edge. The pool/policy must
+# stay dormant until MetalLB is removed, then this app is synced once by hand at cutover.
+# A follow-up commit flips this to automated:{prune,selfHeal} once verified.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium-lbipam-resources
+  namespace: argocd
+  annotations:
+    # After the Cilium AppSet (which installs the CRDs + enables lb-ipam/l2-announcements).
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/cilium-lbipam
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    # Cluster-scoped CRs; namespace is required by Argo but otherwise inert.
+    namespace: kube-system
+  syncPolicy:
+    # NOTE: no `automated:` block on purpose — see the cutover note above. Flip to
+    # automated:{prune:true,selfHeal:true} in the post-cutover follow-up.
+    syncOptions:
+      - ServerSideApply=true
