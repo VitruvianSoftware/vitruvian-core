@@ -165,6 +165,25 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 512Mi
+            # Probe tuning for this homelab (laptop nodes + Tailscale/cilium mesh).
+            # The chart bakes in the kubelet default timeoutSeconds: 1 and does NOT
+            # expose it as a value (chart 10.0.4 templates only periodSeconds /
+            # failureThreshold / initialDelaySeconds). /debug/{ready,healthz}
+            # occasionally answers in >1s on a transient mesh/GC blip — even though
+            # the app itself serves in ~15ms — so the kubelet logs spurious Unhealthy
+            # events. We can't widen the per-probe timeout here, so instead probe
+            # less often (periodSeconds 5->15: ~3x fewer false Unhealthy events) and
+            # tolerate more consecutive misses (failureThreshold 3->4: ~60s of
+            # SUSTAINED failure before a readiness flip or liveness restart), so a
+            # brief node blip never flaps or restarts an otherwise-healthy pod. A
+            # real fix (an actual timeoutSeconds) needs a post-render patch or an
+            # upstream change to expose it.
+            readinessProbe:
+              periodSeconds: 15
+              failureThreshold: 4
+            livenessProbe:
+              periodSeconds: 15
+              failureThreshold: 4
             # Public edge: Cloudflare Tunnel (a single catch-all) -> the platform
             # Envoy Gateway -> the HTTPRoute below. NO Traefik ingress and NO
             # cert-manager — Cloudflare terminates TLS at its edge for the proxied
@@ -249,6 +268,14 @@ spec:
                         matchLabels:
                           app.kubernetes.io/component: login
                       topologyKey: kubernetes.io/hostname
+              # Same probe tuning as the API/console pods above (the v2-login pods
+              # flap identically) — see that comment for the chart-timeout rationale.
+              readinessProbe:
+                periodSeconds: 15
+                failureThreshold: 4
+              livenessProbe:
+                periodSeconds: 15
+                failureThreshold: 4
               # Login routing (/ui/v2/login) is handled by the shared HTTPRoute in
               # extraManifests above; the chart's own login ingress stays off.
               ingress:
