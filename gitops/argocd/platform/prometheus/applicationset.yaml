@@ -561,6 +561,15 @@ spec:
                   regex: 'minio'
                   action: keep
             alertmanager:
+              # HA: 2-replica gossip cluster. The subchart auto-wires clustering
+              # when replicaCount>1 (--cluster.listen-address + a --cluster.peer per
+              # replica via the headless service), so silences/nflog/dedup survive a
+              # single node loss and Prometheus fans alerts out to both. podAntiAffinity
+              # `hard` pins the two onto different nodes (topologyKey hostname; 2
+              # replicas / 7 nodes always schedules). replica-0 keeps its existing
+              # 2Gi PVC; replica-1 gets a new one from the same volumeClaimTemplate.
+              replicaCount: 2
+              podAntiAffinity: hard
               persistence:
                 enabled: true
                 size: 2Gi

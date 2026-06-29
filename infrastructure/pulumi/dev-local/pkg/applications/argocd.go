@@ -163,13 +163,30 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 					"scopes":         "[groups, email]",
 				},
 			},
+			// HA: run the stateless control-plane components with 2 replicas so a
+			// single node loss (a sleeping/rebooting laptop) does not take ArgoCD
+			// offline. The chart's default global.affinity.podAntiAffinity is "soft",
+			// so the replicas already spread across nodes without extra config.
+			// Deliberately NOT touched here (need a heavier redesign, not a replica
+			// bump — see the HA note in the PR): the application-controller (a
+			// StatefulSet that requires shard-count env wiring to run >1) and redis
+			// (single instance — true HA needs the redis-ha subchart with sentinel +
+			// haproxy, a much larger footprint). Both reschedule on node loss; the
+			// brief gap only pauses reconciliation, it does not affect running apps.
 			"server": map[string]interface{}{
+				"replicas": 2,
 				"service": map[string]interface{}{
 					"type": "ClusterIP",
 				},
 				"ingress": ingress,
 			},
+			"applicationSet": map[string]interface{}{
+				// ApplicationSet controller is leader-elected; 2 replicas give
+				// instant failover for AppSet generation.
+				"replicaCount": 2,
+			},
 			"repoServer": map[string]interface{}{
+				"replicas": 2,
 				"autoscaling": map[string]interface{}{
 					"enabled": false,
 				},

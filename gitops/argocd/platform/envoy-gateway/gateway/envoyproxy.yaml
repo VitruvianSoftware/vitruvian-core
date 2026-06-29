@@ -23,6 +23,14 @@
 # default-pool IP (10.44.86.211, after Traefik's .210), reachable over tailscale via
 # the existing 10.44.86.0/24 subnet route — same reachability as the current Traefik
 # ingress.
+#
+# HA: the proxy is the user-facing ingress data plane — a single replica made it a
+# single point of failure (a node reboot dropped all Gateway API ingress until the
+# pod rescheduled). Run 2 replicas, spread 1-per-node via a hard topology spread on
+# hostname (DoNotSchedule), so a single node loss never takes the whole data plane.
+# The LoadBalancer Service fronts both pods, so MetalLB keeps one VIP and cilium
+# load-balances across the two endpoints. 2 replicas / 7 nodes — the hard constraint
+# always schedules.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -34,3 +42,14 @@ spec:
     kubernetes:
       envoyService:
         type: LoadBalancer
+      envoyDeployment:
+        replicas: 2
+        pod:
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: platform
+                  gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
