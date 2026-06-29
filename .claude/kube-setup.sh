@@ -20,11 +20,13 @@
 # SOFTWARE.
 
 # Bootstrap kubectl access to the homelab k3s cluster from a Claude Code *cloud*
-# session. Companion to tailscale-up.sh: that joins the tailnet using userspace
+# session, and ensure the OpenSSH client is present for `tailscale ssh`.
+# Companion to tailscale-up.sh: that joins the tailnet using userspace
 # networking and exposes a SOCKS5 proxy on localhost:1055; this installs kubectl
 # (if absent) and writes a kubeconfig that dials the apiserver *through* that
 # SOCKS5 proxy (cluster.proxy-url), so it works whether or not the sandbox has a
-# TUN device.
+# TUN device. It also installs openssh-client if missing, since `tailscale ssh`
+# shells out to the system ssh and the base image ships without it.
 #
 # Best-effort by design: a setup hiccup must never block the Claude session, so
 # every failure path exits 0 (mirrors tailscale-up.sh).
@@ -49,6 +51,16 @@ set -uo pipefail
 priv=()
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
 	priv=(sudo)
+fi
+
+# Ensure the OpenSSH client — `tailscale ssh <host>` execs the system `ssh`, and
+# the base sandbox image ships without it. Cached into the snapshot after first run.
+if ! command -v ssh >/dev/null 2>&1; then
+	if ! "${priv[@]}" apt-get install -y openssh-client >/dev/null 2>&1; then
+		"${priv[@]}" apt-get update >/dev/null 2>&1 &&
+			"${priv[@]}" apt-get install -y openssh-client >/dev/null 2>&1 ||
+			echo "kube-setup: openssh-client install failed — 'tailscale ssh' won't work" >&2
+	fi
 fi
 
 # Install kubectl if missing. Cached into the container snapshot after the first
