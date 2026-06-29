@@ -74,6 +74,11 @@ if [ -z "${LAB_SA_TOKEN:-}" ]; then
 	exit 0
 fi
 
+# Strip any stray whitespace/newlines from the token. A ServiceAccount JWT never
+# contains whitespace, so this is safe and guards against a trailing newline
+# accidentally captured when setting the env var (which yields a 401).
+sa_token="${LAB_SA_TOKEN//[$' \t\r\n']/}"
+
 # Write the kubeconfig with restrictive perms.
 mkdir -p "${HOME}/.kube"
 (
@@ -86,7 +91,7 @@ clusters:
     cluster:
       server: https://k8s-api.lab.ipv1337.dev:6443
       certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJkekNDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdGMyVnkKZG1WeUxXTmhRREUzTnpnek56a3dNakF3SGhjTk1qWXdOVEV3TURFeE1ESXdXaGNOTXpZd05UQTNNREV4TURJdwpXakFqTVNFd0h3WURWUVFEREJock0zTXRjMlZ5ZG1WeUxXTmhRREUzTnpnek56a3dNakF3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFRMGg0S21MeWtDd1F2dno0YWNKayt6UjRDSEhCRVZ1Z2pQbUcvMHprZHIKREliVERHSk5XR2xMZkVKMDlSWm9DUzVBWEVDZ3FvRDNzak9NVk1qWkFiWVdvMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVUZTeXpxTjZvaHhmSHk1QnN3YUkxClVXOU5PQUV3Q2dZSUtvWkl6ajBFQXdJRFNBQXdSUUlnWWpIb3NKa0JlNmZHVTVjY2k5WlhkRWM1NGljMmUvOXEKMWZHVEhNQTJReHNDSVFERGpyYzRYREc2WVhOOGJIUE5aQjVPK2xuOUVnczJPK2g5L0xoa01JaW10Zz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
-      proxy-url: socks5h://localhost:1055
+      proxy-url: socks5://localhost:1055
 contexts:
   - name: lab
     context:
@@ -97,7 +102,7 @@ current-context: lab
 users:
   - name: claude-code
     user:
-      token: ${LAB_SA_TOKEN}
+      token: ${sa_token}
 KUBECONFIG
 )
 chmod 600 "${HOME}/.kube/config"
