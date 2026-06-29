@@ -198,13 +198,21 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 					"enabled": false,
 				},
 				"resources": map[string]interface{}{
+					// Right-sized after an OOMKill incident (2026-06-29): the 256Mi
+					// limit was too small to render the platform's Helm charts (cilium,
+					// envoy-gateway, cnpg, prometheus, the new thanos chart, ...),
+					// especially when an app-of-apps hard-refresh re-renders all ~18
+					// ApplicationSets uncached at once -> repo-server OOMKilled (137) ->
+					// CrashLoopBackOff -> ALL gitops reconciliation stalls. 4x the
+					// memory headroom (mirrors the controller REC-11 right-sizing) +
+					// more CPU so concurrent `helm template` renders aren't throttled.
 					"limits": map[string]interface{}{
-						"cpu":    "100m",
-						"memory": "256Mi",
+						"cpu":    "500m",
+						"memory": "1Gi",
 					},
 					"requests": map[string]interface{}{
-						"cpu":    "50m",
-						"memory": "128Mi",
+						"cpu":    "100m",
+						"memory": "256Mi",
 					},
 				},
 			},
