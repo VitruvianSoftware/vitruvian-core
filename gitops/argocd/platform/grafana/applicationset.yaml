@@ -121,13 +121,17 @@ spec:
                     uid: Prometheus-Data
                     access: proxy
                     isDefault: true
-                    url: http://prometheus-server.monitoring.svc.cluster.local:80
+                    # Phase 2: read through the Thanos Querier (HA dedup across both
+                    # prometheus replicas), not a single prometheus-server pod.
+                    url: http://thanos-query.monitoring.svc.cluster.local:9090
                   - name: Prometheus-Fallback-1
                     type: prometheus
                     uid: Prometheus
                     access: proxy
                     isDefault: false
-                    url: http://prometheus-server.monitoring.svc.cluster.local:80
+                    # Phase 2: read through the Thanos Querier (HA dedup across both
+                    # prometheus replicas), not a single prometheus-server pod.
+                    url: http://thanos-query.monitoring.svc.cluster.local:9090
             ingress:
               enabled: true
               ingressClassName: traefik
