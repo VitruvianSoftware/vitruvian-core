@@ -79,11 +79,12 @@ for _ in $(seq 1 20); do
 done
 
 # --accept-routes=false: scope is tailnet devices only, not subnets behind a
-# router. Key must be ephemeral + pre-authorized for tag:claude-cloud.
+# router. The node joins untagged (a personal device) so it inherits the
+# owner's access to their own devices — no tailnet ACL grant required.
+# TS_AUTHKEY must be reusable and permit untagged device registration.
 up_args=(
 	--authkey="${TS_AUTHKEY}"
 	--hostname="claude-cloud-$(hostname -s 2>/dev/null || echo sandbox)"
-	--advertise-tags=tag:claude-cloud
 	--accept-routes=false
 	--timeout=30s
 )
