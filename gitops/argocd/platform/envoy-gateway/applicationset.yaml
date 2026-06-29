@@ -61,6 +61,24 @@ spec:
             # Controller-only install; defaults suit a homelab. The Gateway
             # data-plane (proxy) Service type + LB IP are set per-Gateway via the
             # EnvoyProxy CR in gateway-resources, not here.
+            #
+            # HA: 2 controller replicas. Envoy Gateway is leader-elected, so only
+            # one reconciles at a time, but a standby gives instant failover when
+            # the active node sleeps/reboots (xDS to the proxies keeps serving from
+            # the surviving replica). Soft hostname anti-affinity keeps the two off
+            # the same node without risking Pending if scheduling is tight.
+            deployment:
+              replicas: 2
+              pod:
+                affinity:
+                  podAntiAffinity:
+                    preferredDuringSchedulingIgnoredDuringExecution:
+                      - weight: 100
+                        podAffinityTerm:
+                          topologyKey: kubernetes.io/hostname
+                          labelSelector:
+                            matchLabels:
+                              control-plane: envoy-gateway
       destination:
         server: '{{.server}}'
         namespace: envoy-gateway-system
