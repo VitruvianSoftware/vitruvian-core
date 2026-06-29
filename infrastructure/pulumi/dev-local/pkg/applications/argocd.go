@@ -163,16 +163,20 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 					"scopes":         "[groups, email]",
 				},
 			},
-			// HA: run the stateless control-plane components with 2 replicas so a
-			// single node loss (a sleeping/rebooting laptop) does not take ArgoCD
-			// offline. The chart's default global.affinity.podAntiAffinity is "soft",
-			// so the replicas already spread across nodes without extra config.
-			// Deliberately NOT touched here (need a heavier redesign, not a replica
-			// bump — see the HA note in the PR): the application-controller (a
-			// StatefulSet that requires shard-count env wiring to run >1) and redis
-			// (single instance — true HA needs the redis-ha subchart with sentinel +
-			// haproxy, a much larger footprint). Both reschedule on node loss; the
-			// brief gap only pauses reconciliation, it does not affect running apps.
+			// HA: the whole ArgoCD control plane runs multi-replica so a single node
+			// loss (a sleeping/rebooting laptop) cannot take it offline. The chart's
+			// default global.affinity.podAntiAffinity is "soft", so replicas spread
+			// across nodes without extra config.
+			//   - server / repoServer / applicationSet: 2 stateless replicas each.
+			//   - application-controller: 2 replicas (see controller block) — the
+			//     chart auto-sets ARGOCD_CONTROLLER_REPLICAS from controller.replicas
+			//     so the shards stay consistent; with a single in-cluster target one
+			//     shard is active and the other is a hot standby that takes over the
+			//     shard on node loss (running >1 WITHOUT that env makes both reconcile
+			//     everything and thrash — the chart wiring is what makes this safe).
+			//   - redis: the redis-ha subchart (3x redis + sentinel + HAProxy)
+			//     replaces the single bundled redis (see the redis / redis-ha blocks),
+			//     removing the last control-plane SPOF.
 			"server": map[string]interface{}{
 				"replicas": 2,
 				"service": map[string]interface{}{
@@ -202,6 +206,10 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 				},
 			},
 			"controller": map[string]interface{}{
+				// 2 replicas for failover HA. The chart sets ARGOCD_CONTROLLER_REPLICAS
+				// from this value, so sharding is consistent (one shard active, one hot
+				// standby for the single in-cluster target).
+				"replicas": 2,
 				"resources": map[string]interface{}{
 					// Right-sized 2026-06-21 (REC-11): the controller was pegged at
 					// the old 500m CPU limit (100% throttled) and near the 512Mi mem
@@ -222,17 +230,18 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			"dex": map[string]interface{}{
 				"enabled": false,
 			},
+			// Redis HA: 3x redis + sentinel fronted by HAProxy, replacing the single
+			// bundled redis. The subchart's default hardAntiAffinity spreads the 3
+			// redis pods onto distinct nodes (the lab has well over 3, so quorum
+			// survives a node loss). ArgoCD's redis is a cache only, so the one-time
+			// cutover from the single redis (repopulated on demand) is safe; expect a
+			// brief reconcile/UI hiccup during `pulumi up` as the topology switches.
+			"redis-ha": map[string]interface{}{
+				"enabled": true,
+			},
 			"redis": map[string]interface{}{
-				"resources": map[string]interface{}{
-					"limits": map[string]interface{}{
-						"cpu":    "100m",
-						"memory": "128Mi",
-					},
-					"requests": map[string]interface{}{
-						"cpu":    "50m",
-						"memory": "64Mi",
-					},
-				},
+				// Disabled — mutually exclusive with redis-ha above.
+				"enabled": false,
 			},
 		},
 		Wait:    true,
