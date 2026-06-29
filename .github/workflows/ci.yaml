@@ -64,13 +64,20 @@ jobs:
           # worktree, which needs the full object graph.
           fetch-depth: 0
 
-      - name: Set up Go (for target-determinator)
-        # target-determinator's module is `go 1.24`; pin >= 1.24. The binary
-        # lands in $(go env GOPATH)/bin, not on PATH (same as addlicense below).
-        # Only meaningfully used on pull_request; harmless on push.
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
+      # Free disk BEFORE any Bazel work. PR #404 hit "No space left on device"
+      # extracting the LLVM/clang-format toolchain (//tools/format) during a full
+      # //... build; #374 saw the same. GitHub's ubuntu image preinstalls tens of
+      # GB of SDKs this build never uses (.NET, Android, GHC/Haskell, CodeQL);
+      # removing them gives Bazel + the LLVM toolchain headroom so even a full
+      # sweep (postsubmit / merge queue / a global-impact PR) can't OOM on disk.
+      # Best-effort: an already-absent path or a docker prune must never fail the
+      # required check, hence `|| true`. Runs on every event so all lanes benefit.
+      - name: Free up runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+          df -h /
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
