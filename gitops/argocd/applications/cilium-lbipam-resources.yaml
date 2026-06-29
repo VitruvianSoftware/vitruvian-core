@@ -22,11 +22,9 @@
 # Cilium CRs). Raw manifests, so they ride a git-source Application (the cilium AppSet's
 # root-platform include is applicationset-only).
 #
-# ⚠️ INTENTIONALLY MANUAL SYNC (no automated block) for the initial MetalLB→Cilium
-# LB-IPAM cutover. While MetalLB still owns the VIPs, syncing this would create a second
-# L2 announcer for 10.44.86.211 → ARP/MAC flap on the public edge. The pool/policy must
-# stay dormant until MetalLB is removed, then this app is synced once by hand at cutover.
-# A follow-up commit flips this to automated:{prune,selfHeal} once verified.
+# MetalLB→Cilium LB-IPAM cutover is complete (MetalLB removed 2026-06-29), so this is now
+# automated with self-heal: ArgoCD keeps the pool/policy converged. (It was intentionally
+# manual-sync during the cutover to avoid a dual-announce ARP flap with MetalLB on .211.)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -48,7 +46,8 @@ spec:
     # Cluster-scoped CRs; namespace is required by Argo but otherwise inert.
     namespace: kube-system
   syncPolicy:
-    # NOTE: no `automated:` block on purpose — see the cutover note above. Flip to
-    # automated:{prune:true,selfHeal:true} in the post-cutover follow-up.
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - ServerSideApply=true
