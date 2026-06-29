@@ -37,11 +37,13 @@
 #
 # Identical to `minio` except nodeSelector (amd64) -- same chart 5.4.0, mode, replicas,
 # buckets, and `minio-root` creds, so the erasure format + root auth match and the
-# consumers' existing creds keep working at cutover (no cred changes). 4 drives spread
-# 2+1+1 across the 3 amd64 nodes (preferred anti-affinity, always schedules); a 4th
-# wired amd64 node later gives true 1-per-node. Optional later cleanup: rename
-# minio-amd64 -> minio. nuc9 is the disk-tightest amd64 node (~12G free) -- watch it
-# as the store grows; the whole store is ~227 MiB today.
+# consumers' existing creds keep working at cutover (no cred changes). 4 drives now
+# spread 1-per-node across the 4 wired amd64 nodes (fedora, james-mbp, nuc9i5,
+# nuc9i9) via REQUIRED (hard) anti-affinity -- the 4th wired amd64 node (the second
+# NUC) now exists, so we flipped off the soft 2+1+1 fallback that piled two drives on
+# fedora. Optional later cleanup: rename minio-amd64 -> minio. The NUCs are the
+# disk-tightest amd64 nodes -- watch them as the store grows; the whole store is
+# ~227 MiB today.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -101,17 +103,23 @@ spec:
             # arm64 laptop james-mbp16.
             nodeSelector:
               kubernetes.io/arch: amd64
-            # 4 drives across 3 amd64 nodes (2+1+1) -- PREFERRED (soft): always schedules.
-            # A 4th wired amd64 node later makes 1-per-node achievable (flip to required).
+            # 4 drives across 4 wired amd64 nodes (fedora, james-mbp, nuc9i5, nuc9i9)
+            # -- REQUIRED (hard): exactly 1 drive per node, no co-location. The 4th
+            # wired amd64 node (the second NUC) now exists, so the soft rule that
+            # previously allowed a 2+1+1 pile-up on fedora is upgraded to hard
+            # 1-per-node per the original plan. With 4 replicas and 4 amd64 nodes the
+            # fit is exact; the StatefulSet rolling update converges to 1-per-node
+            # (each recreated pod has exactly one free amd64 node). Trade-off: if an
+            # amd64 node is down its drive stays Pending until the node returns
+            # (acceptable -- the 4-drive erasure set already tolerates 1 lost drive,
+            # and PDB maxUnavailable:1 caps voluntary disruption).
             affinity:
               podAntiAffinity:
-                preferredDuringSchedulingIgnoredDuringExecution:
-                  - weight: 100
-                    podAffinityTerm:
-                      labelSelector:
-                        matchLabels:
-                          app: minio
-                      topologyKey: kubernetes.io/hostname
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                      matchLabels:
+                        app: minio
+                    topologyKey: kubernetes.io/hostname
             podDisruptionBudget:
               enabled: true
               maxUnavailable: 1

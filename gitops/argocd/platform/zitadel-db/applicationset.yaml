@@ -79,15 +79,17 @@ spec:
           values: |
             cluster:
               # ---- HA TOGGLE -------------------------------------------------
-              # Set to 3 for a 3-node streaming-replication HA cluster (needs 3+
-              # nodes labelled node.ipv1337.dev/link=wired). Until the WiFi nodes
-              # are on Ethernet we run a SINGLE instance: a replica's initial
-              # pg_basebackup is a sustained high-throughput stream that the homelab
-              # WiFi path (~230ms RTT + packet loss) drops mid-stream, so the join
-              # thrashes the primary. Single instance + WAL/base backups to MinIO
-              # give durability now; flip to 3 once enough wired nodes exist and the
-              # nodeSelector below lands the replicas on them automatically.
-              instances: 1
+              # 3-node streaming-replication HA cluster. Flipped from 1 -> 3 now that
+              # the gating condition is met: there are 6 nodes labelled
+              # node.ipv1337.dev/link=wired (fedora, james-mbp, james-mbp32,
+              # james-macbook-pro, nuc9i5, nuc9i9), well above the 3 needed, so the
+              # hostname-spread affinity + wired nodeSelector below land the two new
+              # standbys on distinct wired nodes automatically. The WiFi-path stall
+              # that forced the single instance is avoided: standbys only schedule on
+              # wired nodes (the new NUCs are ~1-3ms wired), and wal_sender_timeout is
+              # already raised to 600s so a fresh pg_basebackup survives the laggy
+              # mesh window. WAL/base backups to MinIO remain the durability floor.
+              instances: 3
               # ----------------------------------------------------------------
               # Spread 1-per-node (matters at instances>1); overrides the chart
               # default topology.kubernetes.io/zone (a no-op on this homelab).
