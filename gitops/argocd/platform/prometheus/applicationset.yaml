@@ -111,12 +111,15 @@ spec:
                 headless:
                   gRPC:
                     enabled: true
-              # Unique replica label per pod (expanded from POD_NAME) -> the Querier
-              # dedup key; cluster label tags the source.
+              # Unique replica label per pod -> the Querier dedup key; cluster label
+              # tags the source. Prometheus expand-external-labels uses os.Expand
+              # (shell-style ${VAR}/$VAR), NOT the k8s $(VAR) form -- $(POD_NAME)
+              # is left literal, giving both replicas IDENTICAL labels (breaks dedup
+              # and halts the Compactor on overlapping blocks). Use ${POD_NAME}.
               global:
                 external_labels:
                   cluster: lab
-                  replica: "$(POD_NAME)"
+                  replica: "${POD_NAME}"
               env:
                 - name: POD_NAME
                   valueFrom:
