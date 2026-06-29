@@ -50,6 +50,38 @@ The mapping of infrastructure → GCP account is in
 - **Build cache:** both a local `--disk_cache` (opt-in; see `user.bazelrc.example`) and remote
   RBE via `--config=remote` (BuildBuddy, needs a key) are available — no vendor is forced.
 
+## Homelab Kubernetes access (Claude Code cloud sessions)
+Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
+Two `SessionStart` hooks wire this up automatically (registered in
+`.claude/settings.json`):
+- `.claude/tailscale-up.sh` — joins the tailnet (userspace networking; exposes a
+  SOCKS5 proxy on `localhost:1055`, since the sandbox has no TUN device).
+- `.claude/kube-setup.sh` — installs `kubectl` and writes `~/.kube/config`
+  (context `lab`) pointed at `https://k8s-api.lab.ipv1337.dev:6443`, dialing the
+  apiserver through that SOCKS5 proxy.
+
+Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
+
+**Prerequisites (set once, outside this repo):**
+- Env vars on the cloud environment: `TS_AUTHKEY` (reusable, pre-authorized for
+  `tag:claude-cloud`) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
+  token — `kubectl -n claude-code get secret claude-code-token -o
+  jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which
+  expires).
+- Tailnet policy: `tag:claude-cloud` must have an ACL grant to the control-plane
+  nodes on `6443`, or the node joins able to *see* the netmap but not *touch* it
+  (every TCP connection is silently dropped).
+
+**Troubleshooting:**
+- `unsupported scheme "socks5h"` → kubeconfig must use `proxy-url: socks5://`
+  (kubectl/client-go reject `socks5h`; only `curl` accepts it).
+- `Unauthorized` (401) → `LAB_SA_TOKEN` is wrong/expired; transport is fine.
+- `i/o timeout` / connection refused to `100.x` → tailnet ACL is not granting
+  `tag:claude-cloud`, or `tailscaled`/the SOCKS5 proxy isn't running.
+- The cluster API is the HA name `k8s-api.lab.ipv1337.dev` (Cloudflare A record →
+  the 3 control-plane tailnet IPs); the apiserver serving cert carries it as a
+  `tls-san`, so TLS validates against whichever control plane answers.
+
 ## Copybara (component sync)
 Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
 repos. Never delete standalone-only files or import monorepo-only ones — respect `standalone_only`
