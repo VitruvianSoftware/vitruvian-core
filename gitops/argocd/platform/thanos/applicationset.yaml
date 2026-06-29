@@ -1,0 +1,159 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# thanos -- the HA query/dedup + durable-storage layer for the Prometheus->Thanos
+# migration (docs/design/prometheus-thanos-ha.md). PHASE 1a: deploy Query + Store
+# Gateway + Compactor ONLY. This is purely ADDITIVE -- it does not touch the live
+# single Prometheus. The Store Gateway / Compactor read the (currently empty)
+# `thanos` MinIO bucket (Phase 0); the Querier already dedups, but has no sidecars
+# to fan out to until Phase 1b converts Prometheus to 2 replicas + sidecars. The
+# `static` sidecar endpoint below is therefore intentionally unresolved in 1a (the
+# Querier tolerates a store with zero resolved endpoints) and goes live in 1b.
+#
+# Chart: thanos-community/helm-charts (NOT bitnami/thanos -- bitnami's 2026 images
+# moved to a paid/legacy registry and the chart is unmaintained; thanos-community
+# defaults to the official quay.io/thanos/thanos images). Scheme-less OCI repoURL,
+# same convention as the envoy-gateway appset.
+#
+# Object storage creds: the existing `thanos-objstore-creds` SealedSecret (ns
+# monitoring, key objstore.yml) created in Phase 1a; createSecret:false so the chart
+# consumes it instead of minting its own. Compactor is a SINGLETON (replicaCount 1)
+# -- it must be the only writer to the bucket; never scale it.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: thanos
+  namespace: argocd
+  labels:
+    environment: monitoring
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: thanos
+      labels:
+        app: thanos
+      annotations:
+        # Peer of the prometheus datastore (wave 0); reads the thanos bucket and
+        # (from 1b) the Prometheus sidecars.
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: ghcr.io/thanos-community/helm-charts
+        chart: thanos
+        targetRevision: "0.23.1"
+        helm:
+          version: v3
+          values: |
+            global:
+              image:
+                registry: quay.io
+                repository: thanos/thanos
+                tag: "v0.39.2"
+              # Consume the existing SealedSecret; do NOT let the chart create one.
+              objstore:
+                createSecret: false
+                secretName: thanos-objstore-creds
+                secretKey: objstore.yml
+              # The chart's built-in Thanos alert rules render a PrometheusRule CRD,
+              # which requires the Prometheus Operator. This cluster runs the PLAIN
+              # prometheus chart (no operator / no PrometheusRule CRD), so the
+              # resource would fail to apply -- disable it. (serviceMonitor is already
+              # disabled by chart default for the same reason.) Thanos alerting can be
+              # added later as plain rules in the prometheus appset's serverFiles.
+              thanosRules:
+                enabled: false
+            # ---- Querier: HA, dedup on the Prometheus per-replica label ----
+            query:
+              enabled: true
+              replicaCount: 2
+              replicaLabels:
+                - replica
+              endpoints:
+                # Auto-build dnssrv endpoints for the in-chart Store Gateway.
+                autogen:
+                  enabled: true
+                # The Prometheus Thanos sidecars (headless svc, gRPC 10901).
+                # Unresolved until Phase 1b creates the StatefulSet + sidecar svc;
+                # the Querier tolerates a store entry that resolves to nothing.
+                static:
+                  - dnssrv+_grpc._tcp.prometheus-server-thanos-sidecar.monitoring.svc.cluster.local
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+            # ---- Store Gateway: serves historical blocks from MinIO ----
+            storegateway:
+              enabled: true
+              replicaCount: 1
+              persistence:
+                enabled: true
+                size: 5Gi
+                storageClass: local-path
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  memory: 1Gi
+            # ---- Compactor: SINGLETON (only writer to the bucket) ----
+            compactor:
+              enabled: true
+              replicaCount: 1
+              persistence:
+                enabled: true
+                size: 10Gi
+                storageClass: local-path
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  memory: 1Gi
+            # ---- Components we explicitly do NOT want ----
+            # receive defaults to TRUE in this chart -- must disable.
+            receive:
+              enabled: false
+            ruler:
+              enabled: false
+            queryFrontend:
+              enabled: false
+            bucket:
+              enabled: false
+            rustfs:
+              enabled: false
+            kube-prometheus-stack:
+              enabled: false
+      destination:
+        server: '{{.server}}'
+        namespace: monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
