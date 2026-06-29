@@ -564,10 +564,15 @@ spec:
               # HA: 2-replica gossip cluster. The subchart auto-wires clustering
               # when replicaCount>1 (--cluster.listen-address + a --cluster.peer per
               # replica via the headless service), so silences/nflog/dedup survive a
-              # single node loss and Prometheus fans alerts out to both. podAntiAffinity
-              # `hard` pins the two onto different nodes (topologyKey hostname; 2
-              # replicas / 7 nodes always schedules). replica-0 keeps its existing
-              # 2Gi PVC; replica-1 gets a new one from the same volumeClaimTemplate.
+              # single node loss and Prometheus fans alerts out to both. The
+              # podAntiAffinity "hard" value pins the two onto different nodes
+              # (topologyKey hostname; 2 replicas / 7 nodes always schedules).
+              # replica-0 keeps its existing 2Gi PVC; replica-1 gets a new one from
+              # the same volumeClaimTemplate. NOTE: this whole values block is a Go
+              # raw-string literal (opened/closed by the brace-brace-backtick
+              # delimiters at the very top and bottom of the block). Do NOT use a
+              # literal backtick anywhere inside it — a stray backtick closes the
+              # raw string early and breaks ApplicationSet goTemplate parsing.
               replicaCount: 2
               podAntiAffinity: hard
               persistence:
