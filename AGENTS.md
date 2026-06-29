@@ -82,6 +82,34 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
   the 3 control-plane tailnet IPs); the apiserver serving cert carries it as a
   `tls-san`, so TLS validates against whichever control plane answers.
 
+## Homelab SSH access (Claude Code cloud sessions)
+Cloud sessions can SSH to the homelab's **Linux** hosts over Tailscale using
+**Tailscale SSH** — keyless: auth is the tailnet identity + the tailnet ACL, so
+there is no SSH key to store on the ephemeral sandbox.
+
+```bash
+tailscale ssh root@fedora                 # interactive
+tailscale ssh <user>@<host> '<command>'   # one-shot
+```
+
+Reachable Linux hosts (Tailscale device names): `fedora`, `nuc9i5`, `nuc9i9`,
+`springwood-nas`. The macOS nodes (`james-mbp`, `James-MacBook-Pro`) don't run a
+Tailscale SSH server — use plain `ssh` over the tailnet for those if ever needed.
+
+**Prerequisites (set once, outside this repo):**
+- `kube-setup.sh` installs the OpenSSH client each session — `tailscale ssh` execs
+  the system `ssh`, which the base image lacks. No action needed.
+- Each target host must have Tailscale SSH enabled: `tailscale up --ssh`.
+- The tailnet ACL must carry an `ssh` rule that includes this node in `src` — e.g.
+  `{src: [autogroup:member], dst: [autogroup:self], users: [autogroup:nonroot, root]}`.
+
+**Troubleshooting:**
+- `no system 'ssh' command found` → OpenSSH client missing (`apt-get install -y
+  openssh-client`; kube-setup normally handles it).
+- `Host key verification failed` / it fell back to regular `ssh` → the target has
+  no `tailscale up --ssh`, so Tailscale SSH isn't active on it.
+- connection closed / `not permitted` → the tailnet ACL has no `ssh` rule for this node.
+
 ## Copybara (component sync)
 Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
 repos. Never delete standalone-only files or import monorepo-only ones — respect `standalone_only`
