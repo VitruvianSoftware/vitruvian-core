@@ -110,7 +110,11 @@ spec:
             # ---- Store Gateway: serves historical blocks from MinIO ----
             storegateway:
               enabled: true
-              replicaCount: 1
+              # HA: 2 replicas so a node loss never blocks historical (object-store)
+              # queries. Store Gateway is read-only over the bucket (safe to run >1,
+              # unlike the Compactor); the Querier autogen-discovers both via DNS-SRV
+              # and load-balances. Each gets its own local index-cache PVC.
+              replicaCount: 2
               persistence:
                 enabled: true
                 size: 5Gi
