@@ -56,9 +56,9 @@ fi
 if ! command -v kubectl >/dev/null 2>&1; then
 	ver="$(curl -fsSL https://dl.k8s.io/release/stable.txt 2>/dev/null || echo v1.31.0)"
 	case "$(uname -m)" in
-		x86_64) karch=amd64 ;;
-		aarch64 | arm64) karch=arm64 ;;
-		*) karch=amd64 ;;
+	x86_64) karch=amd64 ;;
+	aarch64 | arm64) karch=arm64 ;;
+	*) karch=amd64 ;;
 	esac
 	if curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/${ver}/bin/linux/${karch}/kubectl"; then
 		chmod +x /tmp/kubectl
