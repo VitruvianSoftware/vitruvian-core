@@ -192,8 +192,13 @@ func (p *NativeProvider) ensureHostPrereqs(ctx context.Context) error {
 		_, _ = p.run(ctx, "systemctl start firewalld 2>/dev/null || true")
 		// Load-bearing: a failure here leaves pod/service traffic REJECTed, so
 		// surface it instead of silently "succeeding" with broken networking.
+		// --add-interface and --add-source must be in SEPARATE firewall-cmd calls:
+		// newer firewall-cmd rejects mixing them in one invocation ("--add-source: not
+		// allowed with argument --add-interface"). Add the interfaces, then the
+		// pod/service source CIDRs, then reload. Both adds are idempotent.
 		if _, err := p.run(ctx, fmt.Sprintf(
-			"firewall-cmd --permanent --zone=trusted --add-interface=tailscale0 --add-interface=cni0 --add-interface=flannel.1 --add-source=%s --add-source=%s && firewall-cmd --reload",
+			"firewall-cmd --permanent --zone=trusted --add-interface=tailscale0 --add-interface=cni0 --add-interface=flannel.1 && "+
+				"firewall-cmd --permanent --zone=trusted --add-source=%s --add-source=%s && firewall-cmd --reload",
 			k3sClusterCIDR, k3sServiceCIDR)); err != nil {
 			return fmt.Errorf("[%s] trusting k3s pod/service networks in firewalld: %w", p.spec.Host, err)
 		}

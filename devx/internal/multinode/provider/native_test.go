@@ -325,6 +325,11 @@ func TestNative_EnsureRuntime_FirewalldTrustsPodNetwork(t *testing.T) {
 			t.Errorf("firewalld trust missing %q in:\n%s", want, joined)
 		}
 	}
+	// Regression: --add-interface and --add-source must NOT share one firewall-cmd
+	// call — newer firewall-cmd rejects "--add-source not allowed with --add-interface".
+	if strings.Contains(joined, "--add-interface=flannel.1 --add-source") {
+		t.Errorf("interfaces and sources must be separate firewall-cmd calls:\n%s", joined)
+	}
 }
 
 func TestNative_EnsureRuntime_SkipsFirewalldWhenAbsent(t *testing.T) {
