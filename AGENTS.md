@@ -83,40 +83,38 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
   `tls-san`, so TLS validates against whichever control plane answers.
 
 ## Homelab SSH access (Claude Code cloud sessions)
-Cloud sessions can SSH to the homelab's **Linux** hosts over Tailscale using
-**Tailscale SSH** — keyless: auth is the tailnet identity + the tailnet ACL, so
-there is no SSH key to store on the ephemeral sandbox.
+A cloud session has **passwordless SSH into every homelab node** — use it to
+configure or troubleshoot a node directly when needed. Auth is a dedicated agent
+**key**, NOT Tailscale SSH: Tailscale SSH is *not* enabled on these hosts, so
+`tailscale ssh` falls back to regular ssh and fails on host keys — use the key
+path below.
+
+Wiring (automatic via the merged `SessionStart` hooks):
+- `kube-setup.sh` installs the private key from the `CLAUDE_SSH_KEY` env var into
+  `~/.ssh/id_ed25519` each session, regenerates `id_ed25519.pub` from it, and writes
+  `~/.ssh/config` (`StrictHostKeyChecking accept-new`, `GSSAPIAuthentication no`).
+  It also installs `openssh-client`.
+- The matching public key is in `~/.ssh/authorized_keys` for user **`james`** on each host.
+
+Userspace networking means there's no kernel route to `100.x`, so ssh must dial
+through the SOCKS5 proxy `tailscale-up.sh` exposes on `localhost:1055` (needs
+`netcat-openbsd`):
 
 ```bash
-tailscale ssh root@fedora                 # interactive
-tailscale ssh <user>@<host> '<command>'   # one-shot
+ssh -o ProxyCommand='nc -X 5 -x localhost:1055 %h %p' james@<tailnet-ip> '<cmd>'
 ```
 
-Reachable Linux hosts (Tailscale device names): `fedora`, `nuc9i5`, `nuc9i9`,
-`springwood-nas`. The macOS nodes (`james-mbp`, `James-MacBook-Pro`) don't run a
-Tailscale SSH server — use plain `ssh` over the tailnet for those if ever needed.
+Nodes (k3s cluster; run `tailscale status` for live IPs): `fedora` control-plane,
+`nuc9i5` + `nuc9i9` workers, and the macOS nodes (`james-macbook-pro`, …).
 
-**Prerequisites (set once, outside this repo):**
-- `kube-setup.sh` installs the OpenSSH client each session — `tailscale ssh` execs
-  the system `ssh`, which the base image lacks. No action needed.
-- Each target host must have Tailscale SSH enabled: `tailscale up --ssh`.
-- The tailnet ACL must carry an `ssh` rule that includes this node in `src` — e.g.
-  `{src: [autogroup:member], dst: [autogroup:self], users: [autogroup:nonroot, root]}`.
+If it breaks (the hooks normally prevent these):
+- `Permission denied (publickey)` with a correct private key → a stale `.pub` is
+  advertising the wrong key: `ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub`.
+- `Connection closed` over the proxy → ssh tried GSSAPI first; add
+  `-o GSSAPIAuthentication=no -o PreferredAuthentications=publickey`.
+- missing tools → `apt-get install -y openssh-client netcat-openbsd`.
 
-**Troubleshooting:**
-- `no system 'ssh' command found` → OpenSSH client missing (`apt-get install -y
-  openssh-client`; kube-setup normally handles it).
-- `Host key verification failed` / it fell back to regular `ssh` → the target has
-  no `tailscale up --ssh`, so Tailscale SSH isn't active on it.
-- connection closed / `not permitted` → the tailnet ACL has no `ssh` rule for this node.
-
-**Key-based fallback (any host, incl. macOS).** Tailscale SSH is Linux/BSD-only; to
-reach the Mac nodes — or any host without `tailscale up --ssh` — there's a regular
-SSH key. `kube-setup.sh` installs it each session from the base64-encoded
-`CLAUDE_SSH_KEY` env var into `~/.ssh/id_ed25519` (+ an `~/.ssh/config` with
-`accept-new`). Add the matching public key to the host's `authorized_keys` (on macOS
-enable Remote Login first), then `ssh`/`tailscale ssh <user>@<host>` authenticates
-with the key. Rotate by regenerating the pair and updating the env var + authorized_keys.
+Rotate by regenerating the pair and updating `CLAUDE_SSH_KEY` + each `authorized_keys`.
 
 ## Copybara (component sync)
 Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
