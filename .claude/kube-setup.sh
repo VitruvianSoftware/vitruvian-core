@@ -64,13 +64,20 @@ if ! command -v ssh >/dev/null 2>&1; then
 fi
 
 # Install the agent SSH key for passwordless ssh to ANY tailnet host (Linux or
-# macOS), beyond keyless Tailscale SSH (which is Linux/BSD-only). The private key
-# is supplied base64-encoded via CLAUDE_SSH_KEY (same persistence model as
-# TS_AUTHKEY; base64 sidesteps multiline-.env quoting); its public half goes in
-# each host's authorized_keys. No-op if the var is unset.
+# macOS), beyond keyless Tailscale SSH (which is Linux/BSD-only). CLAUDE_SSH_KEY
+# may hold the private key EITHER as raw PEM (the whole -----BEGIN... block) or as
+# base64-of-PEM; we tolerate CRs and line-wrapping either way (a wrapped/truncated
+# paste is the usual corruption). Its public half goes in each host's
+# authorized_keys. No-op if the var is unset.
 if [ -n "${CLAUDE_SSH_KEY:-}" ] && [ ! -s "$HOME/.ssh/id_ed25519" ]; then
 	mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-	printf '%s' "$CLAUDE_SSH_KEY" | base64 -d >"$HOME/.ssh/id_ed25519" 2>/dev/null
+	if printf '%s' "$CLAUDE_SSH_KEY" | grep -q 'PRIVATE KEY'; then
+		# Already PEM — write verbatim, just strip CRs.
+		printf '%s\n' "$CLAUDE_SSH_KEY" | tr -d '\r' >"$HOME/.ssh/id_ed25519"
+	else
+		# base64 — drop any whitespace/wrapping before decoding.
+		printf '%s' "$CLAUDE_SSH_KEY" | tr -d '[:space:]' | base64 -d >"$HOME/.ssh/id_ed25519" 2>/dev/null
+	fi
 	chmod 600 "$HOME/.ssh/id_ed25519"
 	if ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null 2>&1; then
 		# tailscale ssh / ssh pick up this identity; accept-new avoids interactive
@@ -80,7 +87,7 @@ if [ -n "${CLAUDE_SSH_KEY:-}" ] && [ ! -s "$HOME/.ssh/id_ed25519" ]; then
 			chmod 600 "$HOME/.ssh/config"
 		fi
 	else
-		echo "kube-setup: CLAUDE_SSH_KEY did not decode to a valid key (expect base64 of the private key)" >&2
+		echo "kube-setup: CLAUDE_SSH_KEY is not a valid SSH private key — give it as raw PEM or single-line base64, and check it wasn't truncated or line-wrapped" >&2
 		rm -f "$HOME/.ssh/id_ed25519"
 	fi
 fi
