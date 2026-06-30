@@ -49,6 +49,9 @@ configMapGenerator:
   - name: grafana-dashboard-node-exporter
     files:
       - node-exporter.json
+  - name: grafana-dashboard-node-power
+    files:
+      - node-power.json
   - name: grafana-dashboard-traefik
     files:
       - traefik.json
