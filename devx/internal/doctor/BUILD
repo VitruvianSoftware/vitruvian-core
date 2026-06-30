@@ -13,6 +13,9 @@ go_library(
 
 go_test(
     name = "doctor_test",
-    srcs = ["check_test.go"],
+    srcs = [
+        "check_test.go",
+        "install_test.go",
+    ],
     embed = [":doctor"],
 )
