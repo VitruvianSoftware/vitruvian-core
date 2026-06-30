@@ -1,6 +1,6 @@
 # Design: Prometheus HA via Thanos (Full Thanos + MinIO)
 
-Status: **approved, in progress** · Owner: James · Started 2026-06-29
+Status: **complete** · Owner: James · Started 2026-06-29 · Completed 2026-06-30
 
 ## Goal
 
@@ -179,9 +179,44 @@ validated and Grafana is cut over. Nothing user-facing changes until Phase 2.
 
 - **Full Thanos + MinIO** (durable long-term storage), not dedup-only — chosen
   2026-06-29.
-- **Dedup label**: `replica` (expanded from `$(POD_NAME)`); cluster label
-  `cluster: lab`.
+- **Dedup label**: `replica`, expanded per-pod via Prometheus
+  `expand-external-labels` from `${POD_NAME}` (shell-style `os.Expand`, NOT the
+  k8s `$(POD_NAME)` form — see the completion note); cluster label `cluster: lab`.
 - **Sidecar upload** (not a separate shipper); Compactor owns retention so the
   Prometheus `--storage.tsdb.retention.size=20GB` stays as the local cache bound.
 - **Object store**: reuse MinIO (`minio-amd64`), new `thanos` bucket, creds via
   SealedSecret like every other MinIO consumer.
+
+## Completion (2026-06-30)
+
+All phases shipped and verified live:
+
+| Phase | PR(s) | Notes |
+|---|---|---|
+| 0 — foundation | #413 | design doc + MinIO `thanos` bucket |
+| 1a — Querier/Store/Compactor | #416 | objstore SealedSecret + thanos-community chart (NOT bitnami) |
+| 1b — Prometheus → StatefulSet + sidecar | #418 | 2 replicas, per-replica `replica` label |
+| 2 — cutover | #427 | Grafana → Querier; OTel + Tempo remote-write mirrored to both replicas |
+| 3 — retention + Store Gateway HA | #429 | Compactor retention 15d/90d/365d; Store Gateway → 2 replicas |
+
+Deviations / fixes found during rollout (all merged):
+
+- **Dedup label syntax** (#421): the label was first set as `$(POD_NAME)` (k8s
+  form), which Prometheus `expand-external-labels` (os.Expand) leaves literal —
+  both replicas got identical labels, defeating dedup and risking a Compactor
+  halt on overlapping blocks. Fixed to `${POD_NAME}`. Caught by live verification
+  before any blocks uploaded.
+- **ApplicationSet goTemplate** (#414): a literal backtick in a values-block
+  comment closed the Go raw-string early and broke rendering of the prometheus
+  appset (which also blocked the Alertmanager HA from #410). No backticks inside
+  the `{{` ... `}}` values block.
+- **repo-server OOM** (#422): rendering all the platform Helm charts (incl. the
+  new thanos chart) exceeded the argocd repo-server's 256Mi limit under a
+  concurrent re-render, stalling all reconciliation. Raised to 1Gi.
+- **Store Gateway OutOfSync** (#417): ignoreDifferences on StatefulSet
+  volumeClaimTemplates (k8s injects defaults the chart doesn't render).
+
+Real-world validation: on 2026-06-30 the `fedora` node (a control-plane voter and
+the original SPOF) napped. etcd held 2/3 quorum; Prometheus/Alertmanager/Store
+Gateway kept a surviving replica; Thanos Querier dedup masked the gap; MinIO ran
+3/4 then self-healed to 4/4 on rejoin. The HA design held under a real node loss.
