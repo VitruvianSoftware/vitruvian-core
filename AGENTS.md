@@ -110,6 +110,14 @@ Tailscale SSH server — use plain `ssh` over the tailnet for those if ever need
   no `tailscale up --ssh`, so Tailscale SSH isn't active on it.
 - connection closed / `not permitted` → the tailnet ACL has no `ssh` rule for this node.
 
+**Key-based fallback (any host, incl. macOS).** Tailscale SSH is Linux/BSD-only; to
+reach the Mac nodes — or any host without `tailscale up --ssh` — there's a regular
+SSH key. `kube-setup.sh` installs it each session from the base64-encoded
+`CLAUDE_SSH_KEY` env var into `~/.ssh/id_ed25519` (+ an `~/.ssh/config` with
+`accept-new`). Add the matching public key to the host's `authorized_keys` (on macOS
+enable Remote Login first), then `ssh`/`tailscale ssh <user>@<host>` authenticates
+with the key. Rotate by regenerating the pair and updating the env var + authorized_keys.
+
 ## Copybara (component sync)
 Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
 repos. Never delete standalone-only files or import monorepo-only ones — respect `standalone_only`
