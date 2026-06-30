@@ -80,10 +80,15 @@ if [ -n "${CLAUDE_SSH_KEY:-}" ] && [ ! -s "$HOME/.ssh/id_ed25519" ]; then
 	fi
 	chmod 600 "$HOME/.ssh/id_ed25519"
 	if ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null 2>&1; then
+		# Always regenerate the .pub FROM the private key: ssh decides which key to
+		# OFFER from id_ed25519.pub, so a stale/mismatched .pub silently advertises
+		# the wrong key (publickey denied even though the private key is correct).
+		ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >"$HOME/.ssh/id_ed25519.pub" 2>/dev/null
 		# tailscale ssh / ssh pick up this identity; accept-new avoids interactive
-		# host-key prompts (the userspace sandbox starts with no known_hosts).
+		# host-key prompts (no known_hosts yet); GSSAPI off skips auth methods that
+		# stall over the SOCKS proxy before publickey is tried.
 		if ! grep -qs id_ed25519 "$HOME/.ssh/config"; then
-			printf 'Host *\n\tIdentityFile ~/.ssh/id_ed25519\n\tIdentitiesOnly yes\n\tStrictHostKeyChecking accept-new\n' >>"$HOME/.ssh/config"
+			printf 'Host *\n\tIdentityFile ~/.ssh/id_ed25519\n\tIdentitiesOnly yes\n\tStrictHostKeyChecking accept-new\n\tGSSAPIAuthentication no\n' >>"$HOME/.ssh/config"
 			chmod 600 "$HOME/.ssh/config"
 		fi
 	else
