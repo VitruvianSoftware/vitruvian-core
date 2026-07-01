@@ -28,19 +28,19 @@ name: gitops-validate
 
 on:
   workflow_dispatch: {}
+  # NB: NO workflow-level `paths` filter. This is a REQUIRED merge-queue check,
+  # so it must REPORT on every pull_request and merge_group — a path-filtered
+  # workflow simply doesn't run (and never reports) on a PR outside its paths,
+  # which blocks that PR from ever becoming mergeable (it wedged the whole repo
+  # once, before this was removed). kubeconform over the whole gitops tree is
+  # fast (~20s) and validates the full tree regardless of the diff, so running it
+  # unconditionally is both correct and cheap. The required-check context is the
+  # job name `gitops-validate`, wired into the ruleset in
+  # infrastructure/pulumi/repo_config/main.go (guarded by //tools/conformance:check).
   pull_request:
     branches: [main]
-    paths: ["gitops/**"]
   push:
     branches: [main]
-    paths: ["gitops/**"]
-  # Required merge-queue check: gitops/** reconciles to the LIVE cluster, so a
-  # malformed manifest must not be mergeable. merge_group takes no `paths` filter,
-  # so this runs on every queued commit; kubeconform over the whole gitops tree is
-  # fast and always reports, which is exactly what a required gate needs. The
-  # required-check context is the job name `gitops-validate`, wired into the
-  # ruleset in infrastructure/pulumi/repo_config/main.go (guarded by
-  # //tools/conformance:check, #458).
   merge_group:
 
 # Least privilege: this job only reads the tree and validates it.
