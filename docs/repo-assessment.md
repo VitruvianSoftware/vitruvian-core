@@ -4,7 +4,7 @@
 >
 > **Revision 5 (consolidated final):** Reconciled against an independent full-repo analysis and a review pass. Every disputed claim was verified against the working tree (including an empirical test of the license gate); corrections and prioritization are baked in. Per-revision change-markers and the review audit-trail were removed for readability — the full history lives in git.
 >
-> **Related:** [CI/CD Terminology Reference](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.github/CI_DEFINITIONS.md)
+> **Related:** [CI/CD Terminology Reference](/.github/CI_DEFINITIONS.md)
 
 ---
 
@@ -24,7 +24,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | Code sync | Copybara (one-way export + PR-import for 5 components) |
 | Package managers | pnpm (JS), go.work (Go), uv (Python); Cargo (Rust) & Bundler (Ruby) toolchains are **wired but dormant** (no in-tree consumers) |
 | Dependency policy | One Version Rule per ecosystem |
-| Config management | Homelab cluster provisioned via [homelab CLI](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/homelab) (Lima VZ + K3s) — **no Ansible** |
+| Config management | Homelab cluster provisioned via [homelab CLI](/homelab) (Lima VZ + K3s) — **no Ansible** |
 
 ---
 
@@ -67,12 +67,12 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 
 | App | Type | Language(s) | Ship Model | Deploy Target |
 |-----|------|-------------|------------|---------------|
-| [tabula](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/tabula) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
-| [oauth-user-inspector](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/oauth-user-inspector) | SaaS web app | TypeScript/React + Express | Continuous deploy | Cloud Run (blue-green — to be aligned) |
-| [devx](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/devx) | CLI tool | Go | Bazel build → GoReleaser (distribution) | N/A (released) |
-| [homelab](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/homelab) | CLI (k3s/Lima provisioner) | Go | Bazel build → GoReleaser (distribution) | N/A — *provisions* the cluster; not deployed to it |
-| [mcp-slack](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack) | MCP server | TypeScript | npm publish | N/A (released) |
-| [nexus-agent](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/nexus-agent) | macOS app + bot | Swift, Node.js | DMG via GitHub Releases + npm | N/A — released (local bot + macOS app); no hosted deploy |
+| [tabula](/tabula) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
+| [oauth-user-inspector](/oauth-user-inspector) | SaaS web app | TypeScript/React + Express | Continuous deploy | Cloud Run (blue-green — to be aligned) |
+| [devx](/devx) | CLI tool | Go | Bazel build → GoReleaser (distribution) | N/A (released) |
+| [homelab](/homelab) | CLI (k3s/Lima provisioner) | Go | Bazel build → GoReleaser (distribution) | N/A — *provisions* the cluster; not deployed to it |
+| [mcp-slack](/mcp-slack) | MCP server | TypeScript | npm publish | N/A (released) |
+| [nexus-agent](/nexus-agent) | macOS app + bot | Swift, Node.js | DMG via GitHub Releases + npm | N/A — released (local bot + macOS app); no hosted deploy |
 
 ---
 
