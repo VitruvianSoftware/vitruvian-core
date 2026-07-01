@@ -40,13 +40,14 @@ package copybara_sync
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi-tls/sdk/v5/go/tls"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets"
 )
 
 // monorepoRepoName is the GitHub repository name of the monorepo. The export
@@ -117,19 +118,8 @@ func secretPrefix(projectName string) string {
 // pipeline secrets (env); locally they fall back to the gitignored Pulumi stack
 // config (syncAppId / syncAppPrivateKey). The secret never lives in git.
 func syncAppCreds(cfg *config.Config) (pulumi.StringInput, pulumi.StringInput) {
-	return envOrConfigSecret(cfg, "SYNC_APP_ID", "syncAppId"),
-		envOrConfigSecret(cfg, "SYNC_APP_PRIVATE_KEY", "syncAppPrivateKey")
-}
-
-// envOrConfigSecret reads a secret from the named environment variable (CI, where
-// pipeline secrets are injected as env) or, when unset, from the Pulumi stack
-// config (local dev). The env value is marked secret so it is encrypted in state
-// and masked in logs, matching cfg.RequireSecret.
-func envOrConfigSecret(cfg *config.Config, envName, cfgKey string) pulumi.StringInput {
-	if v := os.Getenv(envName); v != "" {
-		return pulumi.ToSecret(pulumi.String(v)).(pulumi.StringOutput)
-	}
-	return cfg.RequireSecret(cfgKey)
+	return secrets.EnvOrConfig(cfg, "SYNC_APP_ID", "syncAppId"),
+		secrets.EnvOrConfig(cfg, "SYNC_APP_PRIVATE_KEY", "syncAppPrivateKey")
 }
 
 // ManageSyncAuth provisions the sync-auth resources for every synced project.
