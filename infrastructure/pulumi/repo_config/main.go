@@ -39,6 +39,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 
@@ -439,15 +440,34 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 // the program (and its auto-apply on merge) stays green until the key is wired
 // up — the same defensive pattern as tabulaVars.
 func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
-	if cfg.Get("buildbuddyApiKey") == "" {
+	key := buildbuddyKey(cfg)
+	if key == nil {
 		return nil
 	}
 	_, err := github.NewDependabotSecret(ctx, "buildbuddy-api-key-dependabot", &github.DependabotSecretArgs{
 		Repository:     repo.Name,
 		SecretName:     pulumi.String("BUILDBUDDY_API_KEY"),
-		PlaintextValue: cfg.RequireSecret("buildbuddyApiKey"),
+		PlaintextValue: key,
 	})
 	return err
+}
+
+// buildbuddyKey resolves the BuildBuddy API key WITHOUT committing it to git
+// (issue #456 / secrets-model §2.4): the CI pipeline injects it as the
+// BUILDBUDDY_API_KEY env var (the same value CI already uses for RBE); a local
+// run may fall back to a gitignored `pulumi config set --secret buildbuddyApiKey`.
+// Returns nil when neither is set, so the Dependabot secret is simply not managed
+// and the auto-apply stays green until the key is wired — the prior behavior.
+// NB: rotating the actual key is a separate BuildBuddy-console action; this only
+// changes WHERE the value comes from (never git).
+func buildbuddyKey(cfg *config.Config) pulumi.StringInput {
+	if v := os.Getenv("BUILDBUDDY_API_KEY"); v != "" {
+		return pulumi.ToSecret(pulumi.String(v)).(pulumi.StringOutput)
+	}
+	if cfg.Get("buildbuddyApiKey") != "" {
+		return cfg.RequireSecret("buildbuddyApiKey")
+	}
+	return nil
 }
 
 // dependabotLabels creates the issue labels that .github/dependabot.yml applies

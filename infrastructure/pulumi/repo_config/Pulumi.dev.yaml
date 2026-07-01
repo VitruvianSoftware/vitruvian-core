@@ -22,5 +22,7 @@ config:
     GCP_PROJECT_ID: gen-lang-client-0352693779
     GCP_REGION: us-west1
     GCP_WORKLOAD_IDENTITY_PROVIDER: projects/724518326928/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
-  vitruvian-core-repo-config:buildbuddyApiKey:
-    secure: AAABANxGwYCd5LRF4k2asEqPdOZXJzVWZJINz+uxv8YJlQvR6lEt1qvgysWvg1LL73q47A==
+  # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
+  # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline
+  # secret; a local run may `pulumi config set --secret buildbuddyApiKey`
+  # (gitignored). See buildbuddyKey() in main.go.
