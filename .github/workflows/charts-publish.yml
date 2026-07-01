@@ -34,6 +34,13 @@ permissions:
   contents: read
   packages: write
 
+# Serialize publishes: two rapid merges (or a dispatch racing a push) must not
+# race the OCI push to ghcr.io/vitruviansoftware/charts. Non-cancelling so an
+# in-flight package/push completes before the next runs (issue #461).
+concurrency:
+  group: charts-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
