@@ -46,6 +46,14 @@
 # and a dep declared in 2+ workspaces with differing ranges is a ⚠ advisory
 # (a catalog candidate). See docs/dependency-versioning/javascript.md.
 #
+# It ALSO enforces MERGE-QUEUE required-check consistency (#458): every required
+# status check that `repo_config` gates the merge queue on (its default
+# `checks = []string{...}` list) MUST be produced by a job in a workflow that
+# triggers on the `merge_group` event — else GitHub wedges the queue "pending"
+# forever waiting on a check that never reports. A phantom/renamed required check
+# is a ✗; a matrix value that can't be confirmed for an existing merge_group job
+# is a ⚠ advisory.
+#
 # Per (file,tool) it prints a status glyph (✓ ok / ✗ fail / ⊘ pinned / ⚠ advisory),
 # the found vs canonical version, and a `→ fix:` hint on ✗. The process exits
 # NON-ZERO iff any ✗ — so this is a reliable CI gate.
@@ -64,6 +72,8 @@ ROOT="${BUILD_WORKSPACE_DIRECTORY:-$PWD}"
 REGISTRY="$ROOT/tools/conformance/version-pins.tsv"
 EXCEPTIONS_DOC="$ROOT/docs/engineering/version-pin-exceptions.md"
 WORKSPACE_YAML="$ROOT/pnpm-workspace.yaml"
+REPO_CONFIG_MAIN="$ROOT/infrastructure/pulumi/repo_config/main.go"
+WORKFLOWS_DIR="$ROOT/.github/workflows"
 TODAY="$(date +%Y-%m-%d)"
 
 # Workspaces that build STANDALONE — their own `docker build <dir>` and/or a
@@ -350,6 +360,7 @@ ROWS_PNPM=""
 ROWS_CATALOG=""
 ROWS_ADVISORY=""
 ROWS_CAT_ADVISORY=""
+ROWS_MERGEQ=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -361,6 +372,7 @@ emit() {
     catalog)      ROWS_CATALOG="${ROWS_CATALOG}${_row}" ;;
     advisory)     ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
     cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
+    mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
   esac
 }
 
@@ -719,6 +731,103 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: merge-queue required-check name consistency (#458 / §7.1-E).
+#
+# repo_config/main.go declares the merge-queue ruleset's REQUIRED status checks
+# (the default `checks = []string{...}` gate set). GitHub wedges the queue
+# "pending" forever if a required check NAME doesn't match a job that actually
+# reports on the `merge_group` event — a rename on either side is a silent trap.
+# This asserts every required check is produced by some job in a workflow that
+# triggers on merge_group:
+#   ✓  exact match to a producible context
+#   ⚠  base job runs on merge_group but the matrix value is unconfirmed (advisory)
+#   ✗  no merge_group job produces this check (the queue would wedge) — fail
+# The producible set is parsed from the workflows: a job's context is its `name:`
+# (or job-id), with single-dimension matrices (inline `[a,b]` or block list)
+# expanded to "<base> (<value>)". POSIX awk only; single-dim matrices.
+# ---------------------------------------------------------------------------
+check_merge_queue() {
+  [ -f "$REPO_CONFIG_MAIN" ] || return 0
+  [ -d "$WORKFLOWS_DIR" ] || return 0
+
+  # Required-check names: the quoted strings in the default `checks = []string{...}`.
+  required="$(awk '
+    /checks = \[\]string\{/ { grab=1 }
+    grab {
+      s=$0
+      while (match(s, /"[^"]*"/)) { print substr(s, RSTART+1, RLENGTH-2); s=substr(s, RSTART+RLENGTH) }
+      if (index($0,"}")>0) exit
+    }' "$REPO_CONFIG_MAIN")"
+  [ -n "$required" ] || return 0   # no declared gate set -> nothing to assert
+
+  # Producible check contexts across every workflow triggering on merge_group.
+  producible="$(
+    for wf in "$WORKFLOWS_DIR"/*.yml "$WORKFLOWS_DIR"/*.yaml; do
+      [ -f "$wf" ] || continue
+      awk '
+        BEGIN{in_on=0;has_mg=0;in_jobs=0;jobid="";jobname="";nvals=0;cb=0;nout=0}
+        function strip(s){gsub(/^[ \t]+|[ \t\r]+$/,"",s);return s}
+        function unq(s){gsub(/^[\047"]+|[\047"]+$/,"",s);return s}
+        function ind(l,  i){i=0;while(substr(l,i+1,1)==" ")i++;return i}
+        function flush(  i,disp){
+          if(jobid=="")return
+          disp=(jobname!=""?jobname:jobid)
+          if(nvals>0){for(i=1;i<=nvals;i++)out[++nout]=disp" ("vals[i]")"}else out[++nout]=disp
+          jobid="";jobname="";nvals=0;cb=0}
+        {line=$0;sub(/\r$/,"",line);I=ind(line);k=strip(line)}
+        /^on:[ \t]*\[/{if(line ~ /merge_group/)has_mg=1}
+        /^on:[ \t]*$/{in_on=1;next}
+        in_on==1{if(I==0&&k!=""){in_on=0}else if(k ~ /^merge_group:/)has_mg=1}
+        /^jobs:[ \t]*$/{in_jobs=1;next}
+        in_jobs==1&&I==0&&k!=""&&k !~ /^#/{flush();in_jobs=0}
+        in_jobs==1{
+          if(I==2&&k ~ /:$/&&k !~ /^#/){flush();j=k;sub(/:.*$/,"",j);jobid=strip(j);next}
+          if(I==4&&k ~ /^name:/){v=k;sub(/^name:[ \t]*/,"",v);jobname=unq(strip(v));next}
+          if(I==8&&k ~ /:[ \t]*\[/){lv=k;sub(/^[^:]*:[ \t]*\[/,"",lv);sub(/\].*$/,"",lv);n=split(lv,a,",");for(i=1;i<=n;i++){x=unq(strip(a[i]));if(x!="")vals[++nvals]=x};next}
+          if(I==8&&k ~ /:$/&&k !~ /^(include|exclude):$/){cb=1;next}
+          if(cb==1){if(I>=10&&k ~ /^-[ \t]*/){x=k;sub(/^-[ \t]*/,"",x);x=unq(strip(x));if(x!="")vals[++nvals]=x;next}else if(k!="")cb=0}
+        }
+        END{flush();if(!has_mg)exit 3;for(i=1;i<=nout;i++)print out[i]}
+      ' "$wf" 2>/dev/null
+    done | LC_ALL=C sort -u
+  )"
+
+  # Fail LOUD (not 10 confusing MISSING rows) if extraction yielded nothing while
+  # a gate set is declared — means the workflows or this parser changed.
+  if [ -z "$producible" ]; then
+    emit "mergeq" "$GLYPH_FAIL" "$C_RED" "(all)" "required" "MISSING" \
+      "extracted 0 merge_group check contexts from .github/workflows — workflows or parser changed" \
+      "confirm ci.yaml/tidy-check.yaml/conformance-check.yaml still trigger on merge_group with the expected jobs"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return
+  fi
+
+  # Bases = producible contexts with any " (value)" suffix stripped.
+  bases="$(printf '%s\n' "$producible" | sed 's/ (.*)$//' | LC_ALL=C sort -u)"
+
+  while IFS= read -r rc; do
+    [ -n "$rc" ] || continue
+    if printf '%s\n' "$producible" | grep -qxF "$rc"; then
+      emit "mergeq" "$GLYPH_OK" "$C_GREEN" "$rc" "required" "producible" "reports on merge_group" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    else
+      rcbase="$(printf '%s' "$rc" | sed 's/ (.*)$//')"
+      if [ "$rcbase" != "$rc" ] && printf '%s\n' "$bases" | grep -qxF "$rcbase"; then
+        emit "mergeq" "$GLYPH_WARN" "$C_YELLOW" "$rc" "required" "job ok" \
+          "job '$rcbase' runs on merge_group but its matrix value is unconfirmed — verify the matrix still emits this context" ""
+        WARN_COUNT=$((WARN_COUNT + 1))
+      else
+        emit "mergeq" "$GLYPH_FAIL" "$C_RED" "$rc" "required" "MISSING" \
+          "no job produces this required check on the merge_group event — the queue will wedge pending" \
+          "align repo_config/main.go's required-check list or the workflow job name so they match"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    fi
+  done <<EOF
+$required
+EOF
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -781,6 +890,7 @@ advisory_pnpm
 check_catalog
 catalog_orphan_sweep
 advisory_catalog
+check_merge_queue
 
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -791,6 +901,7 @@ print_group "Go (go.mod → go.work)" "$ROWS_GO"
 print_group "Node (Dockerfile FROM node → .nvmrc major)" "$ROWS_NODE"
 print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
+print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
