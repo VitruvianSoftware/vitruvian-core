@@ -152,17 +152,16 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 
 ### 3.7 Live secrets-model violation: a Pulumi-encrypted key committed to git
 
-**Priority: P0 · Effort: S (code) + rotation**
+**Priority: P0 · Effort: S (code) + rotation · Status: code done (#456), rotation pending**
 
-**Current state.** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` contains `buildbuddyApiKey: secure: AAAB...` and `main.go` reads it via `cfg.RequireSecret` with **no env-injection fallback**. This is the single live violation of the formalized invariant — *secrets never in git, **not even Pulumi `secure:`-encrypted*** — and it's the only Pulumi stack still not CI-reproducible the formalized way. The canonical pattern already exists: `envOrConfigSecret()` in `infrastructure/pulumi/pkg/copybara_sync/sync.go` (reads from env in CI, falls back to `cfg.RequireSecret` locally). `repo_config` simply doesn't use it.
-
-A secondary structural issue: `envOrConfigSecret` is **private to one package**, so every new secret-bearing stack re-decides how to handle secrets (and `repo_config` got it wrong).
+**Original state.** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` contained `buildbuddyApiKey: secure: AAAB...` and `main.go` read it via `cfg.RequireSecret` with **no env-injection fallback** — the single live violation of the formalized invariant (*secrets never in git, not even Pulumi `secure:`-encrypted*), and the only Pulumi stack not CI-reproducible the formalized way. The env-or-config pattern existed only as the private `envOrConfigSecret()` in `pkg/copybara_sync`, so every new secret-bearing stack re-decided how to handle secrets (and `repo_config` got it wrong).
 
 **Target (Principles doc).** Tier-3 Pulumi secrets follow "env in CI / gitignored config locally, value never in git," routed through one shared helper.
 
-**Recommended action.**
-1. Remove the `secure:` blob from the committed file; **rotate the BuildBuddy key** (it has been in git history); store it as a GitHub pipeline secret.
-2. Promote `envOrConfigSecret` into a shared `infrastructure/pulumi/pkg/secrets` (or `pkg/config`) package and route `repo_config` (and all future secret-bearing stacks) through it. Non-secret values (project IDs, SA emails, WIF provider, flags) stay committed as config-as-code.
+**Resolution.**
+1. ✅ The `secure:` blob is removed from the committed file; `repo_config` reads the key from the `BUILDBUDDY_API_KEY` env (CI pipeline secret) with a gitignored config fallback locally (#484).
+2. ✅ The helper is promoted to a shared library module `infrastructure/pulumi/pkg/secrets` — `EnvOrConfig` (required) and `EnvOrConfigOptional` (nil when absent) — and both `copybara_sync` and `repo_config` route through it via a local `replace` (#486). Non-secret values stay committed as config-as-code.
+3. ⏳ **Remaining:** rotate the BuildBuddy key (it has been in git history) and update the pipeline secret. This is an operator action at the BuildBuddy console, guided by `bazel run //tools/rotate-buildbuddy-key`.
 
 ### 3.8 tabula's WIF deploy identity is click-ops
 
@@ -307,13 +306,13 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 ### 3.18 IaC reproducibility: gitignored Pulumi stack config
 
-**Priority: P1 · Effort: S (already mostly patterned)**
+**Priority: P1 · Effort: S (already mostly patterned) · Status: resolved (#486)**
 
-**Current state.** `Pulumi.<stack>.yaml` is gitignored for secret-bearing stacks, so a stack can't be applied in CI without injecting config from pipeline secrets. The `envOrConfigSecret` pattern (CI env / local config / value never in git) **solves this**, but it's implemented only in `copybara_sync`. The Cloud Run deploy stacks dodge the problem differently (runtime secrets live in GCP Secret Manager; their committed `Pulumi.development.yaml` holds only non-secret identifiers) — which is fine, but there's no shared helper or documented rule, so each new stack re-decides (and `repo_config` decided wrong — see 3.7).
+**Original state.** `Pulumi.<stack>.yaml` is gitignored for secret-bearing stacks, so a stack can't be applied in CI without injecting config from pipeline secrets. The env-or-config pattern (CI env / local config / value never in git) **solves this**, but it was implemented only as a private helper in `copybara_sync`. The Cloud Run deploy stacks dodge the problem differently (runtime secrets live in GCP Secret Manager; their committed `Pulumi.development.yaml` holds only non-secret identifiers) — which is fine, but there was no shared helper or documented rule, so each new stack re-decided (and `repo_config` decided wrong — see 3.7).
 
 **Target.** One documented Tier-3 rule and one shared helper; every secret-bearing stack reproducible in CI.
 
-**Recommended action.** Same fix as 3.7 — promote `envOrConfigSecret` to a shared package and document the rule next to it. This gap and 3.7 close together.
+**Resolution.** ✅ Same fix as 3.7 — the helper is now the shared `infrastructure/pulumi/pkg/secrets` module (`EnvOrConfig` / `EnvOrConfigOptional`), routed through by `copybara_sync` and `repo_config` and documented in the Principles doc and CONTRIBUTING (#486). This gap and 3.7's code half close together; only 3.7's key rotation remains.
 
 ### 3.19 The local gitignored-`.env` convention is undocumented for half the apps
 
@@ -379,7 +378,7 @@ Ordered by leverage (how many gaps a single fix closes) and by live-correctness/
 
 | # | Action | Closes / unblocks | Priority |
 |---|---|---|---|
-| 1 | **Remove the committed `secure:` BuildBuddy key, rotate it, route `repo_config` through a shared `envOrConfigSecret`** | 3.7, 3.18 (and the secrets-model invariant) — *a key is in git history now* | P0 |
+| 1 | ✅ **Removed the committed `secure:` BuildBuddy key and routed `repo_config` through the shared `pkg/secrets` helper** (#456 code / #484 / #486) — ⏳ only the operator key rotation remains (`bazel run //tools/rotate-buildbuddy-key`) | 3.7, 3.18 (and the secrets-model invariant) — *a key is in git history now* | P0 |
 | 2 | **Codify the dev-local Alertmanager routing/receivers in git** (sealed-secret healthchecks.io URL) | 3.17 — the long-open R3 alerting gap; restores the GitOps closed loop | P0 |
 | 3 | **Make license-check actually enforce MIT + holder**, then relicense homelab/mcp-slack/nexus-agent and fix tabula's holder | 3.14 — a claimed invariant is currently fake | P0 |
 | 4 | **Extend `devx scaffold` to emit a fully-aligned app** (Bazel BUILD + reusable deploy workflow caller + Pulumi deploy-identity + `devx.yaml` + `.env.example` + governance quartet + mirror CI) | 3.3, 3.4, 3.8–3.13, 3.15, 3.19, 3.21 — stops new apps reopening every gap | P0 |
