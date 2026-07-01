@@ -28,9 +28,11 @@ spec:
   description: First-party applications from the vitruvian-core monorepo
   orphanedResources:
     warn: false
-  clusterResourceWhitelist:
-    - group: '*'
-      kind: '*'
+  # App-layer apps must not manage cluster-scoped resources — that is the
+  # platform's job. Empty whitelist retires the '*'/'*' wildcard entirely
+  # (issue #459). This project has no members today, so this is zero-risk; new
+  # first-party apps join here (see whoami-project for the per-app pattern).
+  clusterResourceWhitelist: []
   sourceRepos:
     - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
     - 'ghcr.io/vitruviansoftware/charts/*'
