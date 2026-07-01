@@ -157,7 +157,6 @@ js_binary(
         ":prisma_client",
     ],
     entry_point = "src/app.js",
-    visibility = ["//visibility:public"],
 )
 
 js_binary(

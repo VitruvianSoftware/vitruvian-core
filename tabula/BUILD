@@ -25,6 +25,12 @@
 
 load("//tools/doctor:defs.bzl", "doctor")
 
+# Inter-app boundary (#82): targets in this package default to tabula-internal
+# visibility so other top-level apps can't depend on tabula internals -- the
+# same firewall the other five app roots already declare. The subpackages
+# (api/cli/extension/shared/web) each carry their own matching default.
+package(default_visibility = ["//tabula:__subpackages__"])
+
 # Developer-environment check: `bazel run //tabula:doctor`.
 doctor(
     name = "doctor",

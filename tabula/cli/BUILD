@@ -66,7 +66,6 @@ js_binary(
     name = "tabcli",
     data = [":lib"],
     entry_point = "src/index.js",
-    visibility = ["//visibility:public"],
 )
 
 # Type gate for tests: jest runs swc-transpiled TS without type-checking, so

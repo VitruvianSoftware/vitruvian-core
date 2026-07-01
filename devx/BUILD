@@ -9,10 +9,15 @@ load("//tools/doctor:defs.bzl", "doctor")
 # gazelle:exclude internal/scaffold/templates/node-api
 # gazelle:exclude internal/scaffold/templates/next-app
 # gazelle:exclude internal/scaffold/templates/python-api
+# Inter-app boundary (#82): gazelle-generated packages OUTSIDE internal/ (e.g.
+# //devx/cmd) would otherwise default to //visibility:public -- pin generated
+# visibility to the app boundary so regeneration can't reopen the firewall.
+# gazelle:go_visibility //devx:__subpackages__
 
 # Inter-app boundary (#82): targets in this package default to devx-internal
 # visibility so other top-level apps can't depend on devx internals. The
-# targets below keep their explicit visibility (private lib, public binary).
+# binary needs no wider visibility: `bazel run/build //devx` from the CLI,
+# workflows, and GoReleaser ignores visibility (it gates dep EDGES only).
 package(default_visibility = ["//devx:__subpackages__"])
 
 go_library(
@@ -26,7 +31,6 @@ go_library(
 go_binary(
     name = "devx",
     embed = [":devx_lib"],
-    visibility = ["//visibility:public"],
 )
 
 # Developer-environment check: `bazel run //devx:doctor`. Go is pinned to this

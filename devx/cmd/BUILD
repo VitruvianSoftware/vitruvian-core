@@ -131,7 +131,7 @@ go_library(
         "webhook_catch.go",
     ],
     importpath = "github.com/VitruvianSoftware/devx/cmd",
-    visibility = ["//visibility:public"],
+    visibility = ["//devx:__subpackages__"],
     deps = [
         "//devx/internal/agent",
         "//devx/internal/ai",

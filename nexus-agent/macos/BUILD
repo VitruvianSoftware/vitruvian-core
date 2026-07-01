@@ -36,6 +36,8 @@ macos_application(
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
     tags = ["manual"],
-    visibility = ["//visibility:public"],
+    # App-internal (#82): CI builds this by explicit label, which ignores
+    # visibility; nothing outside //nexus-agent may dep the bundle.
+    visibility = ["//nexus-agent:__subpackages__"],
     deps = [":NexusAgent_lib"],
 )
