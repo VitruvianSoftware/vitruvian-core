@@ -3,76 +3,66 @@
 # This file defines default code owners for vitruvian-core.
 # Location: .github/CODEOWNERS (GitHub's preferred path).
 #
-# CURRENT OWNERSHIP MODEL (Single Maintainer)
-# ===========================================
-# The VitruvianSoftware GitHub organization currently has a SINGLE maintainer
-# with login @ipv1337. All path ownership is assigned to this individual.
+# OWNERSHIP MODEL (per-app teams)
+# ===============================
+# Ownership routes to per-app / platform teams in the VitruvianSoftware org
+# (issue #460). Each team currently has a single member (@ipv1337); adding a
+# maintainer to an area is now a team-membership change, not a CODEOWNERS edit.
+# Teams (created + granted repo access, codified in
+# infrastructure/pulumi/repo_config):
+#    @VitruvianSoftware/platform-team              platform / build / infra
+#    @VitruvianSoftware/devx-team                  devx
+#    @VitruvianSoftware/homelab-team               homelab
+#    @VitruvianSoftware/mcp-slack-team             mcp-slack
+#    @VitruvianSoftware/nexus-agent-team           nexus-agent
+#    @VitruvianSoftware/tabula-team                tabula
+#    @VitruvianSoftware/oauth-user-inspector-team  oauth-user-inspector
 #
-# MIGRATION TO TEAM OWNERSHIP
-# =============================
-# When new team maintainers are added, transition ownership as follows:
-#
-# 1. Create teams in the VitruvianSoftware organization:
-#    - @VitruvianSoftware/devx-team        (for devx app)
-#    - @VitruvianSoftware/homelab-team     (for homelab app)
-#    - @VitruvianSoftware/mcp-slack-team   (for mcp-slack app)
-#    - @VitruvianSoftware/nexus-agent-team (for nexus-agent app)
-#    - @VitruvianSoftware/tabula-team      (for tabula app)
-#    - @VitruvianSoftware/platform-team    (for platform/build/infrastructure)
-#
-# 2. Update CODEOWNERS paths to use team handles instead of @ipv1337, e.g.:
-#    /devx/ @VitruvianSoftware/devx-team
-#
-# 3. For shared ownership, list multiple owners on a single line:
-#    /infrastructure/ @VitruvianSoftware/platform-team @ipv1337
-#
-# IMPORTANT: BRANCH PROTECTION WARNING
-# ======================================
-# DO NOT enable "Require review from Code Owners" branch protection
-# while there is only one maintainer (@ipv1337).
-#
-# Rationale: A solo code owner cannot approve their own pull requests.
-# This would block all PRs from merging, including critical hotfixes.
-# Enable it once a second maintainer / per-app team exists — which is also
-# when the external-contribution model in #76 makes it load-bearing.
+# IMPORTANT: "Require review from Code Owners" is deliberately STILL OFF.
+# ======================================================================
+# Every team has a single member today, so a solo code owner cannot approve
+# their own PR — requiring code-owner review would block ALL merges, including
+# hotfixes. CODEOWNERS therefore ROUTES review (suggested reviewers) but does
+# not GATE it. Enable required code-owner review per-area only once that team
+# has a second member (see the conformance guard proposed in #460 / #82).
 #
 # References:
-# - Issue #82: Add CODEOWNERS + enforce inter-app Bazel visibility boundaries
-# - Issue #76: External-contribution model (Copybara one-way + PR-import)
+# - Issue #460: Create per-app CODEOWNERS teams in repo-config
+# - Issue #82:  CODEOWNERS + inter-app Bazel visibility boundaries
+# - Issue #76:  External-contribution model (Copybara one-way + PR-import)
 #
 # See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-# for GitHub CODEOWNERS syntax and behavior.
 #
-# NOTE on pattern ordering and the build-config block below:
-# CODEOWNERS uses "last matching pattern wins". Build/module config patterns
-# are anchored with a leading "/" so they match ONLY the repo root and do not
-# accidentally re-own each app's own root BUILD file (which would otherwise be
-# reassigned away from the per-app owner when teams are introduced).
+# NOTE on pattern ordering: CODEOWNERS uses "last matching pattern wins".
+# Repo-root build/module config patterns are anchored with a leading "/" so they
+# match ONLY the repo root and do not re-own each app's nested BUILD file.
 
-# Default: catch-all for entire repository
-* @ipv1337
+# Default: catch-all for the whole repository
+* @VitruvianSoftware/platform-team
 
-# Application directories (per-app team scaffolding)
-# ==================================================
-/devx/ @ipv1337
-/homelab/ @ipv1337
-/mcp-slack/ @ipv1337
-/nexus-agent/ @ipv1337
-/tabula/ @ipv1337
+# Application directories (per-app teams)
+# =======================================
+/devx/ @VitruvianSoftware/devx-team
+/homelab/ @VitruvianSoftware/homelab-team
+/mcp-slack/ @VitruvianSoftware/mcp-slack-team
+/nexus-agent/ @VitruvianSoftware/nexus-agent-team
+/tabula/ @VitruvianSoftware/tabula-team
+/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team
 
 # Platform, build, and infrastructure paths
 # ==========================================
-/tools/ @ipv1337
-/infrastructure/ @ipv1337
-/githooks/ @ipv1337
-/.github/ @ipv1337
+/tools/ @VitruvianSoftware/platform-team
+/infrastructure/ @VitruvianSoftware/platform-team
+/gitops/ @VitruvianSoftware/platform-team
+/githooks/ @VitruvianSoftware/platform-team
+/.github/ @VitruvianSoftware/platform-team
 
 # Repo-root build and module configuration files
 # (leading "/" anchors these to the root only; nested per-app BUILD files
 #  remain owned by their app directory rule above)
 # ================================================
-/MODULE.bazel @ipv1337
-/MODULE.bazel.lock @ipv1337
-/.bazelrc @ipv1337
-/.bazelversion @ipv1337
-/BUILD @ipv1337
+/MODULE.bazel @VitruvianSoftware/platform-team
+/MODULE.bazel.lock @VitruvianSoftware/platform-team
+/.bazelrc @VitruvianSoftware/platform-team
+/.bazelversion @VitruvianSoftware/platform-team
+/BUILD @VitruvianSoftware/platform-team
