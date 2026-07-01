@@ -70,8 +70,11 @@ if gh auth status >/dev/null 2>&1; then ok "gh authenticated ($(gh api user --jq
 
 repo_root="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 devyaml="${repo_root}/infrastructure/pulumi/repo_config/Pulumi.dev.yaml"
-if [ -f "${devyaml}" ] && grep -q 'buildbuddyApiKey' "${devyaml}"; then
-  warn "repo_config/Pulumi.dev.yaml still references buildbuddyApiKey — expected it de-committed (#456 code half). Continuing."
+# Flag an ACTUAL committed key value only — a real `buildbuddyApiKey:` config key
+# or a `secure:` blob — not the comment lines that legitimately mention the key
+# name (those describe how the value is injected, and are expected to remain).
+if [ -f "${devyaml}" ] && grep -qE '^[[:space:]]*(buildbuddyApiKey[[:space:]]*:|secure:)' "${devyaml}"; then
+  warn "repo_config/Pulumi.dev.yaml still commits a buildbuddyApiKey value — expected it de-committed (#456 code half). Continuing."
 else
   ok "no committed BuildBuddy key in repo_config (#456 code half is in)"
 fi
