@@ -1572,7 +1572,11 @@ app.use(express.static(distDir, { index: false }));
 // DO NOT serve static files from root to avoid source index.html override
 
 // The SPA fallback route sends 'index.html' for any GET request that doesn't match a static file.
-app.get("*", (req, res) => {
+// NOTE: Express 5 (path-to-regexp v8) rejects the bare "*" string path and throws at startup
+// ("Missing parameter name at index 1: *"). A regex catch-all is the behavior-identical
+// replacement — it matches every path including "/", and this handler uses req.path/query, not
+// req.params, so no named wildcard is needed.
+app.get(/.*/, (req, res) => {
   const reqLogger = req.logger || logger;
 
   reqLogger.info("SPA fallback route triggered", {
