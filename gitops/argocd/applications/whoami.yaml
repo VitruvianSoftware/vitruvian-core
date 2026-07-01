@@ -28,7 +28,9 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
-  project: platform-project
+  # Migrated to the fully-scoped per-app project (issue #459); see
+  # gitops/argocd/projects/whoami-project.yaml.
+  project: whoami-project
   source:
     repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
     targetRevision: main
