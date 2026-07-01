@@ -37,6 +37,13 @@ permissions:
   contents: write
   pull-requests: write
 
+# Serialize release runs: two rapid merges to main must not race the
+# release-please PR / tag creation. Non-cancelling — every push is processed,
+# since a cancelled release-please run could drop a release (issue #461).
+concurrency:
+  group: tabula-release
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
