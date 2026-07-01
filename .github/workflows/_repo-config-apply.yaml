@@ -65,4 +65,7 @@ jobs:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   GITHUB_OWNER: ${{ github.repository_owner }}
                   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+                  # Injected (never committed) so repo_config can set the Dependabot
+                  # BUILDBUDDY_API_KEY secret without a secure: value in git (#456).
+                  BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
               run: bazel run //infrastructure/pulumi/repo_config:up -- --stack dev --yes

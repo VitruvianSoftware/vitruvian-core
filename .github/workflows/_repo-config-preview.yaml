@@ -68,6 +68,9 @@ jobs:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   GITHUB_OWNER: ${{ github.repository_owner }}
                   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+                  # Same value the apply injects (#456) so the preview resolves the
+                  # Dependabot secret from env, not a committed secure: value.
+                  BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
               run: |
                   set -o pipefail
                   # --color=no --curses=no stops Bazel from emitting ANSI color and
