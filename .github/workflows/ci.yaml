@@ -26,12 +26,14 @@ on:
   pull_request:
     branches: [main]
   # Merge queue (#83): GitHub runs CI on the would-be-merged commit before it
-  # fast-forwards main. Handled like postsubmit below -- a full //... sweep.
+  # fast-forwards main. Builds/tests the AFFECTED targets vs the queue base
+  # (same engine + fail-safe //... fallbacks as presubmit); the scheduled
+  # periodic-full-sweep.yaml is the whole-graph backstop.
   merge_group:
 
 # Cancel a PR's in-flight CI when it is superseded by a newer push to the same
-# PR. NEVER cancels push-to-main or merge_group runs (the postsubmit + merge
-# queue safety floor): cancellation is gated on the pull_request event, and
+# PR. NEVER cancels push-to-main or merge_group runs (their results gate/verify
+# what lands on main): cancellation is gated on the pull_request event, and
 # push / merge_group runs key into their own (non-cancelling) ref groups.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -67,9 +69,9 @@ jobs:
       # Free disk BEFORE any Bazel work. PR #404 hit "No space left on device"
       # fetching the LLVM/clang-format toolchain (//tools/format) during a full
       # //... sweep; #374 saw the same. Reclaim large preinstalled SDKs this build
-      # never touches (~13GB), mirroring the tabula-e2e lane, so the full sweep
-      # that still runs on postsubmit / merge queue / global-impact PRs has
-      # headroom. Runs on every event so all lanes benefit.
+      # never touches (~13GB), mirroring the tabula-e2e lane, so the full //...
+      # sweep that any lane can still fall back to (global-impact changes, any
+      # affected-selection uncertainty) has headroom. Runs on every event.
       #
       # Do NOT remove /usr/local/lib/android: rules_android (in the module graph
       # for //tabula) fetches an android_sdk_repository at analysis time and
@@ -99,9 +101,8 @@ jobs:
       # docs/gitops/markdown-only the affected-targets step below is skipped and
       # the job reports success fast. Native git diff -- no third-party action;
       # ci.yaml already checks out with fetch-depth: 0 so the merge-base is here.
-      # The push / merge_group full //... sweep below is left UNCONDITIONAL: this
-      # gate never touches it, so the postsubmit + merge-queue safety floor is
-      # exactly as strong as before.
+      # The push / merge_group lanes below never consult this gate: their
+      # affected-target runs decide scope themselves (and fail safe to //...).
       - name: Gate on changed paths (PR only)
         id: gate
         if: github.event_name == 'pull_request'
@@ -109,37 +110,51 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: bash tools/ci/relevant-paths.sh
 
-      # --- POSTSUBMIT (push to main) + MERGE QUEUE: ALWAYS the full sweep. ----
-      # This is the safety floor. The worst case must never be less safe than
-      # today: every commit that lands on main -- whether pushed directly or
-      # merged through the queue (#83) -- is built and tested over //...,
-      # unconditionally. Auth flags preserved byte-for-byte from the original.
-      - name: Build (full //... on main / merge queue)
-        if: github.event_name == 'push' || github.event_name == 'merge_group'
-        run: bazel build --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
+      # --- ALL LANES: AFFECTED targets, fall back to //... on any doubt. ------
+      # Every lane runs tools/ci/affected-targets.sh; only the diff BASE differs:
+      #   pull_request  merge-base vs origin/${{ github.base_ref }}
+      #   merge_group   the queue base (github.event.merge_group.base_sha) --
+      #                 exactly the main tip this group would land on
+      #   push (main)   the pre-push tip (github.event.before); forced pushes
+      #                 full-sweep (FORCED_PUSH) since history was rewritten
+      # All the logic (global-impact guard -> //..., target-determinator,
+      # empty-set skip, build-then-build_tests_only, tolerate exit 4) lives in
+      # the committed helper so it is reviewable and testable. Any error or
+      # uncertainty inside it falls back to a full //... build+test, so no lane
+      # is ever less safe than a full sweep.
+      #
+      # SAFETY PAIRING: the whole-graph correctness backstop for affected
+      # selection is the scheduled periodic-full-sweep.yaml (nightly //...,
+      # files a P0 issue on red). `bazel run //tools/conformance:check` FAILS if
+      # that workflow disappears while these lanes are affected-scoped -- do not
+      # remove one without the other.
 
-      - name: Test (full //... on main / merge queue)
-        if: github.event_name == 'push' || github.event_name == 'merge_group'
-        run: bazel test --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
-
-      # --- PRESUBMIT (pull_request): AFFECTED targets, fall back to //... . ---
-      # All the logic (merge-base before-rev, global-impact guard -> //...,
-      # target-determinator, empty-set skip, build-then-build_tests_only,
-      # tolerate exit 4) lives in the committed helper so it is reviewable and
-      # testable. Any error or uncertainty inside it falls back to a full
-      # //... build+test, so the PR lane is never less safe than the old one.
-      # Gated to pull_request ONLY: on push the full sweep above runs instead,
-      # and on any future trigger (e.g. merge_group, where github.base_ref is
-      # empty) this step is skipped rather than running with an unset BASE_REF.
-      # Gated additionally on the changed-paths result: skipped (job still green)
-      # when the PR is docs/gitops/markdown-only. `relevant` is empty on any
-      # non-pull_request event, but this step is already pull_request-only, so
-      # the extra clause only ever suppresses the docs-only case; the steps fail
-      # safe to running whenever the gate is uncertain (relevant != 'false').
+      # PRESUBMIT (pull_request). Additionally gated on the changed-paths
+      # result: skipped (job still green) when the PR is docs/gitops/markdown-
+      # only; fails safe to running whenever the gate is uncertain.
       - name: Build + test affected targets (PR)
         if: github.event_name == 'pull_request' && steps.gate.outputs.relevant != 'false'
         env:
           BASE_REF: ${{ github.base_ref }}
+        run: bash tools/ci/affected-targets.sh
+
+      # MERGE QUEUE (merge_group). base_sha is reachable because the checkout
+      # above uses fetch-depth: 0 (build-macos already relies on the same).
+      - name: Build + test affected targets (merge queue)
+        if: github.event_name == 'merge_group'
+        env:
+          BEFORE_REV: ${{ github.event.merge_group.base_sha }}
+        run: bash tools/ci/affected-targets.sh
+
+      # POSTSUBMIT (push to main). Verifies the landed commit; queue-merged
+      # commits were just tested as merge_group, so this is cheap re-verification
+      # of the same diff (plus coverage for admin/break-glass direct pushes).
+      # event.before is the zero SHA on ref creation -> script full-sweeps.
+      - name: Build + test affected targets (push to main)
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
         run: bash tools/ci/affected-targets.sh
 
   build-macos:
