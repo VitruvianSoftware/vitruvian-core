@@ -57,12 +57,14 @@ jobs:
         run: |
           set -euo pipefail
           base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
-          curl -fsSL -o kubeconform.tar.gz "${base}/kubeconform-linux-amd64.tar.gz"
+          # Keep the ORIGINAL filename (-O) so it matches the entry in CHECKSUMS
+          # that `sha256sum -c` verifies against.
+          curl -fsSL -O "${base}/kubeconform-linux-amd64.tar.gz"
           curl -fsSL -o CHECKSUMS "${base}/CHECKSUMS"
           grep 'kubeconform-linux-amd64.tar.gz' CHECKSUMS | sha256sum -c -
           mkdir -p "${HOME}/.local/bin"
-          tar -xzf kubeconform.tar.gz -C "${HOME}/.local/bin" kubeconform
-          rm -f kubeconform.tar.gz CHECKSUMS
+          tar -xzf kubeconform-linux-amd64.tar.gz -C "${HOME}/.local/bin" kubeconform
+          rm -f kubeconform-linux-amd64.tar.gz CHECKSUMS
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
       - name: Validate gitops manifests
