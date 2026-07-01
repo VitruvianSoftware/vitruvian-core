@@ -29,5 +29,4 @@ doctor(
         "node",
         "git",
     ],
-    visibility = ["//visibility:public"],
 )

@@ -49,6 +49,12 @@ ts_project(
 
 # Linked into consumers' node_modules by npm_translate_lock (pnpm workspace
 # package); rules_js 3.x expects the target to be named "pkg".
+#
+# PUBLIC on purpose (allowlisted in tools/conformance/public-targets.tsv): the
+# rules_js virtual store is rooted at the repo-root package (//:node_modules,
+# npm_link_all_packages in //:BUILD), so GENERATED store link targets for this
+# workspace package dep on :pkg from OUTSIDE //tabula. App-internal visibility
+# would break that generated edge at analysis time.
 npm_package(
     name = "pkg",
     srcs = [

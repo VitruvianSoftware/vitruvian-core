@@ -11,5 +11,5 @@ go_library(
 go_binary(
     name = "homelab",
     embed = [":homelab_lib"],
-    visibility = ["//visibility:public"],
+    visibility = ["//homelab:__subpackages__"],
 )

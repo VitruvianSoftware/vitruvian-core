@@ -46,5 +46,5 @@ js_binary(
         "//nexus-agent:node_modules/telegraf",
     ],
     entry_point = "bot.js",
-    visibility = ["//visibility:public"],
+    visibility = ["//nexus-agent:__subpackages__"],
 )

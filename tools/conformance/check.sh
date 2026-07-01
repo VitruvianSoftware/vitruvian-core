@@ -365,6 +365,7 @@ ROWS_PNPM=""
 ROWS_CATALOG=""
 ROWS_ADVISORY=""
 ROWS_CAT_ADVISORY=""
+ROWS_VIS=""
 ROWS_MERGEQ=""
 ROWS_SWEEP=""
 
@@ -378,6 +379,7 @@ emit() {
     catalog)      ROWS_CATALOG="${ROWS_CATALOG}${_row}" ;;
     advisory)     ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
     cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
+    vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
   esac
@@ -908,6 +910,112 @@ check_sweep_backstop() {
 }
 
 # ---------------------------------------------------------------------------
+# App visibility firewall (#82). Inter-app isolation rests on two invariants:
+#   1. every app root BUILD declares
+#      package(default_visibility = ["//<app>:__subpackages__"]), and
+#   2. NO target inside an app is "//visibility:public" unless it is a
+#      justified, reviewed exception in tools/conformance/public-targets.tsv
+#      (format: <BUILD-file-path>\t<target>\t<justification>).
+# Rationale: `bazel run`/`bazel build <label>` from the CLI, workflows, and
+# GoReleaser ignores visibility (it gates dependency EDGES only), so app
+# "products" (binaries, images, published packages) need no public visibility.
+# The only legitimate public targets are ones with GENERATED cross-app
+# consumers (e.g. pnpm workspace packages, whose rules_js store links dep on
+# them from the repo-root package). Widening the public surface must therefore
+# be a deliberate allowlist edit reviewed by the platform team, never a silent
+# BUILD change. A stale allowlist row (target no longer public) is a ✗ so dead
+# exceptions get cleaned up, mirroring the version-pins policy.
+# ---------------------------------------------------------------------------
+PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
+APP_DIRS="tabula devx homelab mcp-slack nexus-agent oauth-user-inspector"
+
+check_app_visibility() {
+  # --- 1. root boundary declaration per app. --------------------------------
+  for app in $APP_DIRS; do
+    rootbuild=""
+    for cand in "$ROOT/$app/BUILD" "$ROOT/$app/BUILD.bazel"; do
+      if [ -f "$cand" ]; then rootbuild="$cand"; break; fi
+    done
+    if [ -z "$rootbuild" ] || ! grep -F "package(default_visibility = [\"//$app:__subpackages__\"])" "$rootbuild" >/dev/null 2>&1; then
+      emit "vis" "$GLYPH_FAIL" "$C_RED" "$app/BUILD" "no boundary" "app-scoped default" \
+        "app root BUILD does not declare the inter-app boundary (#82)" \
+        "add package(default_visibility = [\"//$app:__subpackages__\"]) to $app/BUILD"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+      emit "vis" "$GLYPH_OK" "$C_GREEN" "$app/BUILD" "boundary" "app-scoped default" \
+        "package default_visibility scopes to //$app:__subpackages__" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    fi
+  done
+
+  # --- 2. public targets inside apps must be allowlisted. -------------------
+  # Collect "<relpath>\t<target>" for every literal "//visibility:public"
+  # inside an app BUILD file (nearest preceding `name = "..."` names the
+  # target; a package(default_visibility=public) would surface with an empty
+  # target name and correctly fail as unlisted).
+  # The awk program lives OUTSIDE the $(...) below: macOS /bin/bash 3.2's
+  # command-substitution parser naively counts parentheses even inside
+  # single-quoted strings, so the unbalanced "(" in the package\( pattern
+  # would be a syntax error if it appeared inside the substitution. A
+  # package() statement resets the attribution so a package-level public
+  # default is never blamed on the previous rule's name.
+  vis_awk='
+    /^package\(/ { n = "(package default)" }
+    /name = "/ { n = $0; sub(/.*name = "/, "", n); sub(/".*/, "", n) }
+    /"\/\/visibility:public"/ { print f "\t" n }
+  '
+  found_public="$(
+    for app in $APP_DIRS; do
+      find "$ROOT/$app" \( -name BUILD -o -name BUILD.bazel \) \
+        -not -path "*/node_modules/*" -not -path "*/bazel-*" 2>/dev/null \
+        | LC_ALL=C sort | while IFS= read -r bf; do
+            rel="${bf#"$ROOT"/}"
+            awk -v f="$rel" "$vis_awk" "$bf"
+          done
+    done
+  )"
+
+  seen_keys=""
+  if [ -n "$found_public" ]; then
+    while IFS="$(printf '\t')" read -r pfile ptarget; do
+      [ -n "$pfile" ] || continue
+      key="$pfile:$ptarget"
+      seen_keys="$seen_keys$key
+"
+      just=""
+      if [ -f "$PUBLIC_ALLOWLIST" ]; then
+        just="$(awk -F'\t' -v f="$pfile" -v t="$ptarget" \
+          '!/^#/ && $1 == f && $2 == t { print $3; exit }' "$PUBLIC_ALLOWLIST")"
+      fi
+      if [ -n "$just" ]; then
+        emit "vis" "$GLYPH_PIN" "$C_YELLOW" "$pfile" ":$ptarget" "allowlisted public" "$just" ""
+        PIN_COUNT=$((PIN_COUNT + 1))
+      else
+        emit "vis" "$GLYPH_FAIL" "$C_RED" "$pfile" ":$ptarget" "app-internal" \
+          "//visibility:public inside an app without an allowlist entry -- the inter-app firewall (#82) has a hole" \
+          "narrow to //<app>:__subpackages__ (CLI/workflow 'bazel run|build <label>' needs no visibility), or add a justified row to tools/conformance/public-targets.tsv"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    done <<EOF
+$found_public
+EOF
+  fi
+
+  # --- 3. stale allowlist rows (listed but no longer public) are failures. --
+  if [ -f "$PUBLIC_ALLOWLIST" ]; then
+    while IFS="$(printf '\t')" read -r afile atarget ajust; do
+      case "$afile" in ''|'#'*) continue ;; esac
+      if ! printf '%s' "$seen_keys" | grep -qxF "$afile:$atarget"; then
+        emit "vis" "$GLYPH_FAIL" "$C_RED" "$afile" ":$atarget" "allowlist row" \
+          "allowlisted target is no longer //visibility:public (or moved) -- stale exception" \
+          "remove the row from tools/conformance/public-targets.tsv"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    done < "$PUBLIC_ALLOWLIST"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -970,6 +1078,7 @@ advisory_pnpm
 check_catalog
 catalog_orphan_sweep
 advisory_catalog
+check_app_visibility
 check_merge_queue
 check_sweep_backstop
 
@@ -982,6 +1091,7 @@ print_group "Go (go.mod → go.work)" "$ROWS_GO"
 print_group "Node (Dockerfile FROM node → .nvmrc major)" "$ROWS_NODE"
 print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
+print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"

@@ -1,0 +1,6 @@
+# App-internal targets deliberately published as //visibility:public (#82).
+# Consumed by tools/conformance/check.sh (check_app_visibility): every literal
+# "//visibility:public" inside an app BUILD file must have a row here, and a
+# row whose target is no longer public FAILS the check (stale exception).
+# Columns (TAB-separated): BUILD-file path <TAB> target name <TAB> justification
+tabula/shared/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //tabula

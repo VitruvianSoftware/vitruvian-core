@@ -80,7 +80,6 @@ webpack_cli.webpack_cli(
     env = {"NODE_ENV": "production"},
     mnemonic = "WebpackBundle",
     out_dirs = ["dist"],
-    visibility = ["//visibility:public"],
 )
 
 ts_project(

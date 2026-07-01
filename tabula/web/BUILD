@@ -26,6 +26,10 @@
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 
+# Inter-app boundary (#82): tabula-internal by default, matching the sibling
+# tabula packages (api/cli/extension/shared).
+package(default_visibility = ["//tabula:__subpackages__"])
+
 npm_link_all_packages(name = "node_modules")
 
 jest_test(
