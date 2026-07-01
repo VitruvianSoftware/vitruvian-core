@@ -241,6 +241,13 @@ jobs:
     # being retired (the monorepo is the single CI authority), so Go lint runs
     # here as a matrix over each module -- standalone (GOWORK=off), exactly as it
     # lints in its mirror today.
+    #
+    # Each matrix leg is path-gated on presubmit lanes (same run-then-noop-green
+    # pattern as build-macos): a required check must ALWAYS report a result, so
+    # the JOB always runs and only the work inside is skipped when the diff
+    # can't affect this module. GOWORK=off makes the module fully standalone,
+    # so <module>/** (plus this workflow) is the complete input set. Push to
+    # main stays unconditional (the postsubmit floor).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -251,10 +258,35 @@ jobs:
         module: [devx, homelab]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # merge_group diffs need the base_sha reachable locally.
+          fetch-depth: 0
+      # Cheap name-only diff; never fails the job on its own. Fail-safe
+      # asymmetry mirrors build-macos: a PR runs the work only when the filter
+      # POSITIVELY matched, the merge queue runs it unless the filter is
+      # CERTAIN nothing relevant changed (uncertainty -> run).
+      - name: Detect ${{ matrix.module }}-relevant changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            module:
+              - '${{ matrix.module }}/**'
+              - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v6
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
           go-version-file: ${{ matrix.module }}/go.mod
       - name: golangci-lint (${{ matrix.module }})
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
@@ -265,6 +297,9 @@ jobs:
     # but NOT under `-race` (no race config in the bazelrc); the retired mirror
     # CI ran `go test -race`, so this preserves that coverage -- standalone per
     # module (GOWORK=off), exactly as it ran in each mirror.
+    #
+    # Path-gated per leg exactly like go-lint above (run-then-noop-green;
+    # GOWORK=off makes <module>/** the complete input set; push unconditional).
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -275,11 +310,31 @@ jobs:
         module: [devx, homelab]
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect ${{ matrix.module }}-relevant changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            module:
+              - '${{ matrix.module }}/**'
+              - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v6
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
           go-version-file: ${{ matrix.module }}/go.mod
           cache-dependency-path: ${{ matrix.module }}/go.sum
       - name: go test -race (${{ matrix.module }})
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         working-directory: ${{ matrix.module }}
         run: go test -race -cover ./...
 
@@ -287,11 +342,32 @@ jobs:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There
     # is no Bazel target for this -- it is a devx-specific check ported verbatim
     # from the retired devx mirror CI so the coverage is not lost.
+    #
+    # Path-gated on presubmit lanes (run-then-noop-green, like go-lint/go-test
+    # above). The check's only in-tree input is the template itself -- the
+    # envsubst vars are dummies and butane comes from a container image -- so
+    # the filter is exactly that file (plus this workflow). Push unconditional.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect Butane-relevant changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            butane:
+              - 'devx/dev-machine.template.bu'
+              - '.github/workflows/ci.yaml'
       - name: Validate Butane template
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
         working-directory: devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
