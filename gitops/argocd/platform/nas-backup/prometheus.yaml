@@ -17,13 +17,23 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-# File-level backup of the Prometheus TSDB to the NAS over NFS. The TSDB lives on
-# a single-replica, fedora-pinned local-path PVC (prometheus-server) — if fedora's
-# disk dies it's gone. This daily snapshot puts a copy on the NAS. The admin
-# snapshot API isn't enabled, so we tar the live /data dir: that's crash-
-# consistent, which Prometheus recovers from on restore (WAL replay). 7-day
-# retention. Pinned to fedora (where the local-path PVC physically resides; the
-# RWO PVC is co-mounted read-only alongside the running prometheus-server pod).
+# File-level backup of the Prometheus TSDB to the NAS over NFS. Prometheus now
+# runs as a 2-replica StatefulSet (prometheus-server-0/-1), each on a fedora-
+# /nuc9i9-pinned local-path PVC — if that node's disk dies its copy is gone.
+# Both replicas hold the same TSDB (HA scrape of the same targets), so backing
+# up ONE replica is a complete snapshot. We back up replica-0's PVC
+# (storage-volume-prometheus-server-0, StatefulSet-templated name), which is
+# pinned to fedora — so this job pins to fedora too and co-mounts that RWO PVC
+# read-only alongside the running prometheus-server-0 pod (same-node RWO mount).
+# The admin snapshot API isn't enabled, so we tar the live /data dir: that's
+# crash-consistent, which Prometheus recovers from on restore (WAL replay).
+# 7-day retention.
+#
+# NB: the claimName below is the StatefulSet volumeClaimTemplate name
+# (`storage-volume` + `prometheus-server` + ordinal). A prior single-instance
+# deploy used a PVC literally named `prometheus-server`; when the HA StatefulSet
+# replaced it (2026-06-29) that name vanished and this job failed to mount until
+# retargeted here.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -83,7 +93,7 @@ spec:
           volumes:
             - name: tsdb
               persistentVolumeClaim:
-                claimName: prometheus-server
+                claimName: storage-volume-prometheus-server-0
                 readOnly: true
             - name: nas
               persistentVolumeClaim:
