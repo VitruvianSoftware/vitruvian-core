@@ -34,18 +34,29 @@ on:
   push:
     branches: [main]
     paths: ["gitops/**"]
+  # Required merge-queue check: gitops/** reconciles to the LIVE cluster, so a
+  # malformed manifest must not be mergeable. merge_group takes no `paths` filter,
+  # so this runs on every queued commit; kubeconform over the whole gitops tree is
+  # fast and always reports, which is exactly what a required gate needs. The
+  # required-check context is the job name `gitops-validate`, wired into the
+  # ruleset in infrastructure/pulumi/repo_config/main.go (guarded by
+  # //tools/conformance:check, #458).
+  merge_group:
 
 # Least privilege: this job only reads the tree and validates it.
 permissions:
   contents: read
 
-# Cancel a superseded PR run; never cancel push-to-main.
+# Cancel a superseded PR run; never cancel push-to-main or a merge_group run.
 concurrency:
   group: gitops-validate-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  validate:
+  # Job name = the required-check context in the merge-queue ruleset. Named
+  # `gitops-validate` (not a bare `validate`) so the required context is
+  # unambiguous.
+  gitops-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

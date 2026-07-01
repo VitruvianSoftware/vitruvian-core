@@ -190,6 +190,12 @@ func main() {
 				checks = []string{
 					"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
 					"go-lint (devx)", "go-lint (homelab)", "go-test (devx)", "go-test (homelab)", "validate-butane",
+					// gitops-validate (kubeconform over gitops/**, which reconciles to
+					// the LIVE cluster) and actionlint (workflow lint) now also trigger
+					// on merge_group, so they gate the queue instead of only advising on
+					// PRs. Both validate their whole dir on every queued commit, so they
+					// always report — safe to require.
+					"gitops-validate", "actionlint",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}

@@ -37,6 +37,13 @@ on:
   push:
     branches: [main]
     paths: [".github/workflows/**", ".github/actions/**"]
+  # Required merge-queue check: a drifted/broken workflow must not be mergeable
+  # (a bad required-check name silently wedges the queue — the very failure this
+  # guards). merge_group takes no `paths` filter, so this runs on every queued
+  # commit; linting the workflow tree is fast and always reports. Required-check
+  # context is the job name `actionlint`, wired into the ruleset in
+  # infrastructure/pulumi/repo_config/main.go (guarded by //tools/conformance:check).
+  merge_group:
 
 permissions:
   contents: read
