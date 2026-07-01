@@ -953,15 +953,24 @@ check_app_visibility() {
   # inside an app BUILD file (nearest preceding `name = "..."` names the
   # target; a package(default_visibility=public) would surface with an empty
   # target name and correctly fail as unlisted).
+  # The awk program lives OUTSIDE the $(...) below: macOS /bin/bash 3.2's
+  # command-substitution parser naively counts parentheses even inside
+  # single-quoted strings, so the unbalanced "(" in the package\( pattern
+  # would be a syntax error if it appeared inside the substitution. A
+  # package() statement resets the attribution so a package-level public
+  # default is never blamed on the previous rule's name.
+  vis_awk='
+    /^package\(/ { n = "(package default)" }
+    /name = "/ { n = $0; sub(/.*name = "/, "", n); sub(/".*/, "", n) }
+    /"\/\/visibility:public"/ { print f "\t" n }
+  '
   found_public="$(
     for app in $APP_DIRS; do
-      find "$ROOT/$app" \( -name BUILD -o -name BUILD.bazel \) -not -path "*/node_modules/*" 2>/dev/null \
+      find "$ROOT/$app" \( -name BUILD -o -name BUILD.bazel \) \
+        -not -path "*/node_modules/*" -not -path "*/bazel-*" 2>/dev/null \
         | LC_ALL=C sort | while IFS= read -r bf; do
             rel="${bf#"$ROOT"/}"
-            awk -v f="$rel" '
-              /name = "/ { n = $0; sub(/.*name = "/, "", n); sub(/".*/, "", n) }
-              /"\/\/visibility:public"/ { print f "\t" n }
-            ' "$bf"
+            awk -v f="$rel" "$vis_awk" "$bf"
           done
     done
   )"

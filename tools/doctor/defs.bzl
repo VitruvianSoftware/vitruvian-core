@@ -56,7 +56,13 @@ def doctor(
         required = [],
         optional = [],
         gomod = None,
-        visibility = ["//visibility:public"]):
+        # Private by default (#82): doctor targets are only ever `bazel run`
+        # by label, which never checks visibility (it gates dep EDGES only).
+        # A public default here would silently punch six macro-generated holes
+        # in the inter-app firewall that the conformance literal-string scan
+        # (tools/conformance/check.sh check_app_visibility) cannot see --
+        # macro defaults never appear as "//visibility:public" in app BUILDs.
+        visibility = ["//visibility:private"]):
     """Declare a `bazel run //<pkg>:doctor` env-checker for a package.
 
     Generates an `sh_binary` that runs the shared `//tools/doctor:doctor.sh`

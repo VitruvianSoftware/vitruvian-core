@@ -1,10 +1,11 @@
 load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:prefix github.com/VitruvianSoftware/homelab
-# Inter-app boundary (#82): pin gazelle-generated visibility to the app
-# boundary so packages outside internal/ (e.g. //homelab/cmd/...) can't
-# regenerate as //visibility:public.
-# gazelle:go_visibility //homelab:__subpackages__
+# Inter-app boundary (#82) for gazelle-generated packages: the hand-set
+# app-scoped visibility on //homelab/cmd/homelab is PRESERVED by gazelle on
+# regeneration; any future non-internal package generating as
+# //visibility:public is caught by the conformance guard
+# (tools/conformance/check.sh check_app_visibility).
 
 # Inter-app boundary (#82): targets in this package default to homelab-internal
 # visibility so other top-level apps can't depend on homelab internals. Each
