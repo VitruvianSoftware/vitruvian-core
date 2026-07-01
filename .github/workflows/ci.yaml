@@ -227,8 +227,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
-      - name: Check license headers (whole repo)
+      - name: Check license headers present (whole repo)
         run: bazel run //tools/license:check
+      # addlicense -check above is PRESENCE-only (an Apache header with a wrong
+      # holder passes it). This CONTENT gate enforces MIT + VitruvianSoftware in
+      # every first-party LICENSE and any source header present (issue #457).
+      - name: Verify license content is MIT + VitruvianSoftware
+        run: bazel run //tools/license:verify
 
   go-lint:
     # Authoritative golangci-lint for the Go apps exported to standalone mirrors.

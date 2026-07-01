@@ -14,7 +14,7 @@
     "cli",
     "ai"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "telegraf": "^4.16.0",
