@@ -48,11 +48,16 @@
 #
 # It ALSO enforces MERGE-QUEUE required-check consistency (#458): every required
 # status check that `repo_config` gates the merge queue on (its default
-# `checks = []string{...}` list) MUST be produced by a job in a workflow that
-# triggers on the `merge_group` event — else GitHub wedges the queue "pending"
-# forever waiting on a check that never reports. A phantom/renamed required check
-# is a ✗; a matrix value that can't be confirmed for an existing merge_group job
-# is a ⚠ advisory.
+# `checks = []string{...}` list) MUST report in BOTH places a merge is gated:
+#   1. the `merge_group` event — else GitHub wedges the queue "pending" forever
+#      waiting on a check that never reports (a phantom/renamed check is a ✗); and
+#   2. every `pull_request` — a required check whose workflow carries a workflow-
+#      level `pull_request` `paths:`/`paths-ignore:` filter does NOT run (never
+#      reports) on a PR outside those paths, so that PR can never become mergeable
+#      (this wedged the whole repo once: promoting two path-filtered gates to
+#      required blocked every docs/Go PR). That is a ✗ PR-BLOCKED — drop the
+#      workflow-level paths filter and gate the WORK via a step instead.
+# A matrix value that can't be confirmed for an existing merge_group job is a ⚠.
 #
 # Per (file,tool) it prints a status glyph (✓ ok / ✗ fail / ⊘ pinned / ⚠ advisory),
 # the found vs canonical version, and a `→ fix:` hint on ✗. The process exits
@@ -760,12 +765,17 @@ check_merge_queue() {
     }' "$REPO_CONFIG_MAIN")"
   [ -n "$required" ] || return 0   # no declared gate set -> nothing to assert
 
-  # Producible check contexts across every workflow triggering on merge_group.
-  producible="$(
+  # Producible check contexts across every workflow triggering on merge_group,
+  # each tagged <context>\t<pr_paths> where pr_paths=1 iff that workflow's
+  # `pull_request` trigger carries a workflow-level `paths:`/`paths-ignore:`
+  # filter. A required check whose workflow is pr-paths-filtered does NOT report
+  # on a PR outside those paths, which blocks that PR from becoming mergeable —
+  # a different wedge from the merge_group one, so we detect both.
+  producible_raw="$(
     for wf in "$WORKFLOWS_DIR"/*.yml "$WORKFLOWS_DIR"/*.yaml; do
       [ -f "$wf" ] || continue
       awk '
-        BEGIN{in_on=0;has_mg=0;in_jobs=0;jobid="";jobname="";nvals=0;cb=0;nout=0}
+        BEGIN{in_on=0;has_mg=0;in_pr=0;pr_paths=0;in_jobs=0;jobid="";jobname="";nvals=0;cb=0;nout=0}
         function strip(s){gsub(/^[ \t]+|[ \t\r]+$/,"",s);return s}
         function unq(s){gsub(/^[\047"]+|[\047"]+$/,"",s);return s}
         function ind(l,  i){i=0;while(substr(l,i+1,1)==" ")i++;return i}
@@ -777,7 +787,15 @@ check_merge_queue() {
         {line=$0;sub(/\r$/,"",line);I=ind(line);k=strip(line)}
         /^on:[ \t]*\[/{if(line ~ /merge_group/)has_mg=1}
         /^on:[ \t]*$/{in_on=1;next}
-        in_on==1{if(I==0&&k!=""){in_on=0}else if(k ~ /^merge_group:/)has_mg=1}
+        in_on==1{
+          if(I==0&&k!=""){in_on=0;in_pr=0}
+          else{
+            if(k ~ /^merge_group:/)has_mg=1
+            if(I==2&&k ~ /^pull_request:/)in_pr=1
+            else if(I<=2&&k!=""&&k !~ /^pull_request:/)in_pr=0
+            if(in_pr==1&&I>=4&&(k ~ /^paths:/||k ~ /^paths-ignore:/))pr_paths=1
+          }
+        }
         /^jobs:[ \t]*$/{in_jobs=1;next}
         in_jobs==1&&I==0&&k!=""&&k !~ /^#/{flush();in_jobs=0}
         in_jobs==1{
@@ -787,10 +805,13 @@ check_merge_queue() {
           if(I==8&&k ~ /:$/&&k !~ /^(include|exclude):$/){cb=1;next}
           if(cb==1){if(I>=10&&k ~ /^-[ \t]*/){x=k;sub(/^-[ \t]*/,"",x);x=unq(strip(x));if(x!="")vals[++nvals]=x;next}else if(k!="")cb=0}
         }
-        END{flush();if(!has_mg)exit 3;for(i=1;i<=nout;i++)print out[i]}
+        END{flush();if(!has_mg)exit 3;for(i=1;i<=nout;i++)print out[i] "\t" pr_paths}
       ' "$wf" 2>/dev/null
     done | LC_ALL=C sort -u
   )"
+  producible="$(printf '%s\n' "$producible_raw" | awk -F'\t' 'NF{print $1}' | LC_ALL=C sort -u)"
+  # Bases (matrix suffix stripped) whose workflow has a pull_request paths filter.
+  prpaths_bases="$(printf '%s\n' "$producible_raw" | awk -F'\t' '$2==1{c=$1;sub(/ \(.*\)$/,"",c);print c}' | LC_ALL=C sort -u)"
 
   # Fail LOUD (not 10 confusing MISSING rows) if extraction yielded nothing while
   # a gate set is declared — means the workflows or this parser changed.
@@ -807,8 +828,18 @@ check_merge_queue() {
   while IFS= read -r rc; do
     [ -n "$rc" ] || continue
     if printf '%s\n' "$producible" | grep -qxF "$rc"; then
-      emit "mergeq" "$GLYPH_OK" "$C_GREEN" "$rc" "required" "producible" "reports on merge_group" ""
-      OK_COUNT=$((OK_COUNT + 1))
+      rcbase="$(printf '%s' "$rc" | sed 's/ (.*)$//')"
+      if printf '%s\n' "$prpaths_bases" | grep -qxF "$rcbase"; then
+        # Reports on merge_group, but its workflow won't report on PRs outside
+        # its pull_request `paths:` — so any such PR can never become mergeable.
+        emit "mergeq" "$GLYPH_FAIL" "$C_RED" "$rc" "required" "PR-BLOCKED" \
+          "workflow has a pull_request 'paths:' filter, so this required check does NOT report on PRs outside those paths — wedging their mergeability" \
+          "drop the workflow-level pull_request 'paths:' filter (gate the WORK via a step instead) so the check always reports"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      else
+        emit "mergeq" "$GLYPH_OK" "$C_GREEN" "$rc" "required" "producible" "reports on merge_group + every PR" ""
+        OK_COUNT=$((OK_COUNT + 1))
+      fi
     else
       rcbase="$(printf '%s' "$rc" | sed 's/ (.*)$//')"
       if [ "$rcbase" != "$rc" ] && printf '%s\n' "$bases" | grep -qxF "$rcbase"; then
