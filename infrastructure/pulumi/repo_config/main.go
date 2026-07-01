@@ -180,6 +180,10 @@ func main() {
 			// ran on every PR but were never in the gate set, so a lint/race/Butane
 			// regression could still merge. Override via the
 			// `mergeQueueRequiredChecks` JSON-list config.
+			//
+			// GUARDED: `bazel run //tools/conformance:check` (#458) asserts every
+			// name here is produced by a job that runs on the `merge_group` event —
+			// so a rename on either side can't silently wedge the queue "pending".
 			var checks []string
 			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
 			if len(checks) == 0 {
