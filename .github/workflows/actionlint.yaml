@@ -1,0 +1,78 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Lint the GitHub Actions workflows with actionlint. The workflow tree is large
+# and hand-tuned (the entire CI/merge-gate plumbing), and was previously
+# unlinted — a malformed expression, a bad `needs:` edge, or a drifted
+# required-check name could reach main. actionlint catches workflow syntax,
+# `${{ }}` expression errors, job/needs graph mistakes, deprecated action
+# versions, and (via shellcheck) issues in `run:` blocks. Issue #458.
+#
+# Advisory today; the intent is to add "actionlint" to the merge-queue required
+# set (repo-config `mergeQueueRequiredChecks`) once it has baked.
+name: actionlint
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths: [".github/workflows/**", ".github/actions/**"]
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", ".github/actions/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actionlint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: 1.7.7
+      # Controlled CI run-blocks: info-level shellcheck (e.g. SC2086 on a
+      # secret-key flag that carries no spaces/globs) is acceptable noise. Real
+      # shellcheck warnings/errors still fail, and every native actionlint check
+      # (job graph, expressions, deprecated actions, syntax) runs regardless.
+      SHELLCHECK_OPTS: --severity=warning
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install actionlint (pinned + checksum-verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -O "${base}/${asset}"
+          curl -fsSL -O "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          grep "${asset}" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
+          mkdir -p "${HOME}/.local/bin"
+          tar -xzf "${asset}" -C "${HOME}/.local/bin" actionlint
+          rm -f "${asset}" "actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      # actionlint auto-discovers .github/workflows/*.{yml,yaml} when run at the
+      # repo root; shellcheck is preinstalled on the runner.
+      - name: Lint workflows
+        run: actionlint -color
