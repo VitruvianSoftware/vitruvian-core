@@ -1,0 +1,113 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Periodic Full Sweep
+
+# The scheduled full-`//...` correctness backstop (docs/repo-assessment.md §5.5).
+#
+# WHY THIS EXISTS — the pairing invariant with ci.yaml:
+# The merge queue and push-to-main lanes in ci.yaml build/test AFFECTED targets
+# (target-determinator), not the whole repo. Affected-target selection can
+# under-attribute in rare cases (e.g. a touched-but-unreferenced data file
+# yields an empty affected set). This nightly sweep is the safety net that
+# bounds any such miss to <24h: it builds and tests the ENTIRE //... graph on
+# RBE and opens (or refreshes) a tracking issue on breakage.
+#
+# ci.yaml's merge_group/push lanes may ONLY stay affected-scoped while this
+# workflow exists — `bazel run //tools/conformance:check` enforces that pairing
+# and fails if this file is deleted, loses its schedule, or stops sweeping //...
+#
+# NOT a required check: it runs on a schedule from main, gating nothing. Red
+# here means "main is broken for a target the graph diff missed" — the failure
+# handler files/refreshes a P0 issue instead of blocking a queue.
+
+on:
+  schedule:
+    # Nightly 06:00 UTC — bounds a missed cross-app break to <24h (§5.5).
+    - cron: '0 6 * * *'
+  # Manual trigger for verifying the sweep after CI changes or suspected misses.
+  workflow_dispatch:
+
+# One sweep at a time; never cancel a running sweep (its result is the signal).
+concurrency:
+  group: periodic-full-sweep
+  cancel-in-progress: false
+
+# Least privilege: checkout + build, plus issue filing from the failure step.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  full-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # RBE auth for BuildBuddy — same remote config as ci.yaml's build-test.
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Free disk BEFORE any Bazel work — same reclaim set and rationale as
+      # ci.yaml's build-test (full //... sweeps hit "No space left on device"
+      # fetching the LLVM toolchain; PR #404/#374). Android SDK is kept:
+      # rules_android aborts analysis without it.
+      - name: Free up runner disk space
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build (full //...)
+        run: bazel build --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
+
+      - name: Test (full //...)
+        run: bazel test --config=remote --remote_header=x-buildbuddy-api-key=$BUILDBUDDY_API_KEY //...
+
+      # Red sweep -> file (or refresh) ONE tracking issue. Deduped by exact
+      # title so consecutive red nights comment on the same issue instead of
+      # piling up new ones; closing the issue re-arms creation.
+      - name: Open or refresh the breakage issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Periodic full sweep is red: bazel //... failing on main"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The scheduled full-\`//...\` sweep failed on \`main\`.
+
+          This is the backstop for affected-target CI (ci.yaml merge_group/push lanes
+          build only affected targets), so a red sweep means main is broken for a
+          target the graph diff missed — treat as P0 and fix or revert.
+
+          Failing run: ${run_url}"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red: ${run_url}"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

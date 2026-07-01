@@ -366,6 +366,7 @@ ROWS_CATALOG=""
 ROWS_ADVISORY=""
 ROWS_CAT_ADVISORY=""
 ROWS_MERGEQ=""
+ROWS_SWEEP=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -378,6 +379,7 @@ emit() {
     advisory)     ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
     cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
+    sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
   esac
 }
 
@@ -859,6 +861,53 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Scheduled full-sweep backstop pairing. ci.yaml's merge_group / push lanes
+# build only AFFECTED targets (target-determinator); that demotion from the old
+# unconditional per-merge //... sweep is safe ONLY while a scheduled whole-graph
+# sweep exists to catch under-attributed changes (e.g. an empty affected set
+# for a touched-but-unreferenced data file). This check makes the pairing
+# structural: deleting periodic-full-sweep.yaml, dropping its `schedule:`, or
+# narrowing it below //... FAILS conformance. Enforced unconditionally — the
+# repo has adopted affected-scoped merges, and a scheduled sweep is harmless
+# even if a lane is later reverted to a full sweep.
+# ---------------------------------------------------------------------------
+check_sweep_backstop() {
+  sweep="$WORKFLOWS_DIR/periodic-full-sweep.yaml"
+  sweep_rel=".github/workflows/periodic-full-sweep.yaml"
+
+  if [ ! -f "$sweep" ]; then
+    emit "sweep" "$GLYPH_FAIL" "$C_RED" "$sweep_rel" "missing" "scheduled //... sweep" \
+      "ci.yaml merge_group/push lanes are affected-scoped but the whole-graph backstop workflow is gone" \
+      "restore periodic-full-sweep.yaml (scheduled full bazel build+test //...) or revert the lanes to unconditional full sweeps"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return
+  fi
+
+  ok=1
+  # A real cron schedule: a `schedule:` block with a `- cron:` entry under it.
+  if ! grep -E '^[[:space:]]*schedule:' "$sweep" >/dev/null 2>&1 \
+     || ! grep -E '^[[:space:]]*-[[:space:]]*cron:' "$sweep" >/dev/null 2>&1; then
+    emit "sweep" "$GLYPH_FAIL" "$C_RED" "$sweep_rel" "no schedule" "cron schedule" \
+      "the backstop workflow exists but has no schedule/cron trigger — it would never run on its own" \
+      "restore the schedule: cron trigger (nightly) in periodic-full-sweep.yaml"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+  # Whole-graph scope: both a bazel build and a bazel test over //... .
+  if ! grep -E 'bazel[[:space:]]+build[[:space:]].*//\.\.\.' "$sweep" >/dev/null 2>&1 \
+     || ! grep -E 'bazel[[:space:]]+test[[:space:]].*//\.\.\.' "$sweep" >/dev/null 2>&1; then
+    emit "sweep" "$GLYPH_FAIL" "$C_RED" "$sweep_rel" "narrowed" "build+test //..." \
+      "the backstop workflow no longer builds AND tests the whole //... graph" \
+      "keep both 'bazel build //...' and 'bazel test //...' in periodic-full-sweep.yaml"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+
+  if [ "$ok" -eq 1 ]; then
+    emit "sweep" "$GLYPH_OK" "$C_GREEN" "$sweep_rel" "scheduled" "build+test //..." \
+      "whole-graph backstop present — affected-scoped merge_group/push lanes are covered" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -922,6 +971,7 @@ check_catalog
 catalog_orphan_sweep
 advisory_catalog
 check_merge_queue
+check_sweep_backstop
 
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -933,6 +983,7 @@ print_group "Node (Dockerfile FROM node → .nvmrc major)" "$ROWS_NODE"
 print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
+print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

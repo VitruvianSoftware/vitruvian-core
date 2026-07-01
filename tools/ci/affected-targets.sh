@@ -19,21 +19,32 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# affected-targets.sh — compute the Bazel targets affected by a PR diff, then
+# affected-targets.sh — compute the Bazel targets affected by a diff, then
 # build (and test) exactly those targets against the BuildBuddy remote.
 #
 # SAFETY INVARIANT (issue #81): the worst case must never be less safe than a
 # full `//...` sweep. Every uncertain or error path in here FALLS BACK to
-# `bazel build/test //...`. This script is only ever invoked on pull_request;
-# push-to-main (postsubmit) always runs the unconditional full sweep in the
-# workflow and never calls this script.
+# `bazel build/test //...`. Invoked on all three ci.yaml lanes:
+#   pull_request  BASE_REF set        -> before-rev = merge-base vs origin/base
+#   merge_group   BEFORE_REV set to github.event.merge_group.base_sha
+#   push (main)   BEFORE_REV set to github.event.before (the pre-push tip);
+#                 FORCED_PUSH=true -> full sweep (rewritten history has no
+#                 trustworthy diff base).
 #
-# Required environment (set by the workflow):
-#   BUILDBUDDY_API_KEY  RBE/remote-cache auth header value.
-#   BASE_REF            github.base_ref, e.g. "main" (the PR target branch).
+# The cross-lane backstop for affected-selection under-attribution (e.g. an
+# empty affected set for a touched-but-unreferenced data file) is the scheduled
+# periodic-full-sweep.yaml workflow; //tools/conformance:check enforces that it
+# exists for as long as merge_group/push run affected-scoped.
+#
+# Environment (set by the workflow):
+#   BUILDBUDDY_API_KEY  RBE/remote-cache auth header value (required).
+#   BASE_REF            github.base_ref (PR lane), e.g. "main"; OR
+#   BEFORE_REV          explicit before-revision (merge_group / push lanes).
+#   FORCED_PUSH         "true" on a forced push -> full sweep (push lane only).
 #
 # Flow:
-#   1. Determine BEFORE_REV = git merge-base origin/$BASE_REF HEAD.
+#   1. Determine BEFORE_REV: the explicit one if provided (verified to resolve
+#      to a commit), else git merge-base origin/$BASE_REF HEAD.
 #   2. If global-impact files changed (MODULE.bazel, lockfile, .bazelrc,
 #      .bazelversion, tools/**, root BUILD, gazelle_python.yaml, any
 #      .github/workflows/ file), short-circuit to //... .
@@ -48,7 +59,8 @@ set -euo pipefail
 # --- remote auth: preserved byte-for-byte from the original full-sweep job. ---
 REMOTE_ARGS=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
 
-# run_full_sweep: the safe fallback. Identical semantics to the postsubmit job.
+# run_full_sweep: the safe fallback. Identical semantics to the original
+# unconditional full-sweep lanes (and to periodic-full-sweep.yaml).
 run_full_sweep() {
   echo "::notice::affected-targets: falling back to full //... build+test ($1)"
   bazel build "${REMOTE_ARGS[@]}" //...
@@ -56,15 +68,35 @@ run_full_sweep() {
   exit 0
 }
 
-BASE_REF="${BASE_REF:?BASE_REF must be set (github.base_ref)}"
+BASE_REF="${BASE_REF:-}"
+BEFORE_REV="${BEFORE_REV:-}"
+FORCED_PUSH="${FORCED_PUSH:-false}"
 
-# --- 1. before-revision = merge-base of the PR against its target branch. ----
-# fetch-depth: 0 in the workflow guarantees the merge-base is present locally.
-# If we cannot compute it, we cannot trust the diff -> full sweep.
-if ! BEFORE_REV="$(git merge-base "origin/${BASE_REF}" HEAD)"; then
-  run_full_sweep "could not compute merge-base against origin/${BASE_REF}"
+# --- 1. before-revision. ------------------------------------------------------
+# merge_group / push lanes pass BEFORE_REV explicitly (merge_group.base_sha /
+# event.before); the PR lane passes BASE_REF and we compute the merge-base.
+# fetch-depth: 0 in the workflow guarantees the revisions are present locally.
+# Anything unresolvable or untrustworthy -> full sweep.
+if [ "${FORCED_PUSH}" = "true" ]; then
+  # A forced push rewrote history: event.before may not be an ancestor of HEAD,
+  # so a diff against it can misattribute. Only the full sweep is trustworthy.
+  run_full_sweep "forced push -- no trustworthy diff base"
 fi
-echo "affected-targets: before-rev (merge-base) = ${BEFORE_REV}"
+if [ -n "${BEFORE_REV}" ]; then
+  # Verify it resolves to a commit (a just-created ref reports the zero SHA,
+  # which does not resolve).
+  if ! git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" >/dev/null; then
+    run_full_sweep "BEFORE_REV '${BEFORE_REV}' does not resolve to a commit"
+  fi
+  echo "affected-targets: before-rev (explicit) = ${BEFORE_REV}"
+elif [ -n "${BASE_REF}" ]; then
+  if ! BEFORE_REV="$(git merge-base "origin/${BASE_REF}" HEAD)"; then
+    run_full_sweep "could not compute merge-base against origin/${BASE_REF}"
+  fi
+  echo "affected-targets: before-rev (merge-base) = ${BEFORE_REV}"
+else
+  run_full_sweep "neither BEFORE_REV nor BASE_REF is set"
+fi
 
 # --- 2. global-impact guard. -------------------------------------------------
 # These files change build semantics for (potentially) every target, in ways a
@@ -181,8 +213,8 @@ fi
 # NB: by the time we get here the global-impact guard has already force-swept on
 # any build-config change, so an empty set means a non-global diff that TD
 # attributes to zero targets (e.g. a touched-but-unreferenced data file). The
-# safety floor for such a change is the postsubmit //... sweep that runs when
-# the PR lands on main.
+# safety floor for such a change is the scheduled periodic-full-sweep.yaml
+# workflow (nightly full //...), which bounds any miss to <24h.
 if [ ! -s affected.txt ]; then
   echo "::notice::affected-targets: empty affected set -> nothing to build or test."
   exit 0
