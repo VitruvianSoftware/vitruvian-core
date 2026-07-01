@@ -129,3 +129,53 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # ─── tabula's pnpm-workspace members (issue #462 — previously uncovered).
+  #     They share the single root pnpm-lock.yaml; Dependabot updates each
+  #     member's package.json and reconciles the root lock. *-minor-patch group
+  #     so dependabot-auto-merge enqueues them like the other npm entries. ───
+  - package-ecosystem: "npm"
+    directories:
+      - "/tabula/api"
+      - "/tabula/cli"
+      - "/tabula/extension"
+      - "/tabula/shared"
+      - "/tabula/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+  # ─── infrastructure/pulumi Go modules (issue #462 — previously uncovered).
+  #     Each is its own go.mod (GOWORK=off); a bump PR that breaks a stack fails
+  #     CI and won't merge. ───
+  - package-ecosystem: "gomod"
+    directories:
+      - "/infrastructure/pulumi/dev-local"
+      - "/infrastructure/pulumi/lab-gmail"
+      - "/infrastructure/pulumi/oauth-user-inspector"
+      - "/infrastructure/pulumi/oauth-user-inspector-deploy-identity"
+      - "/infrastructure/pulumi/repo_config"
+      - "/infrastructure/pulumi/tabula"
+      - "/infrastructure/pulumi/zitadel-apps"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
