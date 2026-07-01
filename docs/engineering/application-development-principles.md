@@ -63,16 +63,16 @@ This is not just the big three CLIs — **all operational tooling** is a discove
 | Tier | Where it lives | Read by |
 |---|---|---|
 | App **runtime** secrets (Cloud Run) | Per-app **GCP Secret Manager** | The app at runtime (`secretKeyRef` / Secret Manager client). **Never transits CI.** |
-| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via the `envOrConfigSecret(cfg, "ENV_NAME", "configKey")` pattern in `infrastructure/pulumi/pkg/copybara_sync/sync.go` |
+| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via the shared `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` helper in `infrastructure/pulumi/pkg/secrets` (`EnvOrConfigOptional` when the secret may be absent) |
 | **k8s platform** secrets | **sealed-secrets** committed to git (encrypted), reconciled by ArgoCD | The cluster |
 
-Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. **(target):** the `envOrConfigSecret` env-injection helper should be shared and used by every secret-bearing stack; today one stack still reads a `secure:`-encrypted value with no env path — see the gaps doc.
+Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. The env-injection helper is now the shared `infrastructure/pulumi/pkg/secrets` module (`EnvOrConfig` / `EnvOrConfigOptional`), which `copybara_sync` and `repo_config` both route through (issue #456); new secret-bearing stacks should use it too.
 
 ### 2.5 Reproducibility: local matches CI
 
 **Why:** A pipeline that can't be run the same way locally is a black box; a local flow that CI can't reproduce isn't a build.
 
-**In practice:** The same Pulumi program runs locally (reading a gitignored config file) and in CI (reading the injected env) — that is the entire point of `envOrConfigSecret`. Builds and tests are the Bazel graph in both places, with BuildBuddy as remote cache. A stack must be **applyable in CI**: if its config is gitignored, the matching pipeline secrets must exist so CI can inject them.
+**In practice:** The same Pulumi program runs locally (reading a gitignored config file) and in CI (reading the injected env) — that is the entire point of the shared `secrets.EnvOrConfig` helper. Builds and tests are the Bazel graph in both places, with BuildBuddy as remote cache. A stack must be **applyable in CI**: if its config is gitignored, the matching pipeline secrets must exist so CI can inject them.
 
 ### 2.6 Keyless, least-privilege identity
 
@@ -264,7 +264,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Hosting & runtime** | The resources this code *creates* (Cloud Run, WIF, GitHub settings, the k3s platform). The Pulumi state is the runtime artifact. |
 | **Deploy / CI** | Pulumi stacks apply via their preview/apply workflows (`_repo-config-preview.yaml` / `_repo-config-apply.yaml` are the pattern); cluster state applies via ArgoCD reconciliation from git. A new deploy footprint **must** include a codified deploy-identity bootstrap (the `oauth-user-inspector-deploy-identity` pattern). |
 | **Environments & promotion** | Cloud Run deploy stacks follow the SaaS ladder (§3.1). The k8s platform promotes via **git → ArgoCD only** — no dev/staging/prod ladder; a change is promoted by being merged. Pin cluster chart images to an immutable SHA, never `latest`. |
-| **Secrets & config** | The `envOrConfigSecret` tier (§2.4): gitignored config locally, env in CI, value never in git. **(target):** promote `envOrConfigSecret` into a shared `pkg` and route every secret-bearing stack through it. k8s secrets via sealed-secrets. |
+| **Secrets & config** | The shared `pkg/secrets` tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional`, which `copybara_sync` and `repo_config` route through (issue #456). New secret-bearing stacks should use it. k8s secrets via sealed-secrets. |
 | **Observability** | The platform *is* the observability stack (Prometheus/Grafana/Loki/Tempo). Codify alerting routes/receivers in git **(target)** — Alertmanager routing is currently out-of-band. |
 | **Example apps** | `infrastructure/pulumi/oauth-user-inspector-deploy-identity` (reference WIF bootstrap), `infrastructure/pulumi/repo_config` (repo self-governance), `infrastructure/pulumi/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
 

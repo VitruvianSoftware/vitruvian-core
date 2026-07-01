@@ -25,4 +25,5 @@ config:
   # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
   # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline
   # secret; a local run may `pulumi config set --secret buildbuddyApiKey`
-  # (gitignored). See buildbuddyKey() in main.go.
+  # (gitignored). Resolved via secrets.EnvOrConfigOptional (pkg/secrets),
+  # called from dependabotSecrets() in main.go.

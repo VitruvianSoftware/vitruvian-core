@@ -246,16 +246,16 @@ Three storage tiers, each with a clear owner:
 
 1. **k8s platform secrets → sealed-secrets, committed to git.** `gitops/argocd/platform/sealed-secrets-manifests/*.sealedsecret.yaml` (cloudflare, cloudflared, zitadel masterkey/db, minio-root, grafana, cnpg, tempo). ArgoCD decrypts in-cluster. Re-seal/rotate via the `//tools/gitops` targets (`tools/gitops/sealed_secrets_keys.sh`). The **zitadel masterkey loss = total data loss** — back it up.
 2. **Cloud Run app *runtime* secrets → per-app GCP Secret Manager.** Created (empty) by the app's Pulumi program, granted to the runtime SA, read directly at runtime (`secretKeyRef` for `tabula`; `accessSecretVersion` for `oauth-user-inspector`). **They never transit CI.**
-3. **Pulumi-stack secrets → never in git; injected in CI as env, with a gitignored config-file fallback locally.** The canonical implementation is `envOrConfigSecret()` in `infrastructure/pulumi/pkg/copybara_sync/sync.go`: read `os.Getenv(...)` in CI, fall back to `cfg.RequireSecret(...)` locally so the same code runs both places. `Pulumi.<stack>.yaml` is gitignored; **non-secret** identifiers (project id, region, SA emails, WIF provider) are committed as config-as-code.
+3. **Pulumi-stack secrets → never in git; injected in CI as env, with a gitignored config-file fallback locally.** The canonical implementation is the shared `infrastructure/pulumi/pkg/secrets` module — `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` (and `EnvOrConfigOptional` for a secret that may be absent): read `os.Getenv(...)` in CI, fall back to `cfg.RequireSecret(...)` locally so the same code runs both places. `Pulumi.<stack>.yaml` is gitignored; **non-secret** identifiers (project id, region, SA emails, WIF provider) are committed as config-as-code.
 
 **Local vs CI:**
 
 - **Local:** uncommitted/gitignored files — `Pulumi.<stack>.yaml`, `~/.kube/<cluster>.yaml`, per-app GCP dev creds, the `.env` files in Section 3.4.
 - **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "tabula model": `tabula-development`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `tabula`'s Bazel build).
 
-> **Known live violation:** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` commits a `secure:`-encrypted BuildBuddy key and reads it via `cfg.RequireSecret` with **no env fallback** — the one stack still not CI-reproducible the formalized way. **🎯 Target:** route it through a shared `envOrConfigSecret` helper and rotate the key. See the Alignment Gaps doc.
+> **Former live violation (resolved in code):** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
 
-When you add a secret to any new Pulumi stack, **use the `envOrConfigSecret` pattern** — do not invent a per-stack mechanism, and never paste a `secure:` blob into a committed file.
+When you add a secret to any new Pulumi stack, **route it through `infrastructure/pulumi/pkg/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`)** — do not invent a per-stack mechanism, and never paste a `secure:` blob into a committed file.
 
 ---
 
