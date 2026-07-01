@@ -256,6 +256,10 @@ func main() {
 			return err
 		}
 
+		if err := manageTeams(ctx, repo, repoName); err != nil {
+			return err
+		}
+
 		// Surface the resolved owner so `pulumi stack output` records which
 		// account these settings were applied to.
 		ctx.Export("repoOwner", pulumi.String(repoOwner))
@@ -466,6 +470,61 @@ func dependabotLabels(ctx *pulumi.Context, repo *github.Repository) error {
 			Description: pulumi.String(l.description),
 		}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// manageTeams codifies the per-app + platform GitHub teams that CODEOWNERS
+// routes review to (issue #460). The teams were created in the org and granted
+// repo push access out-of-band, so they are ADOPTED here via pulumi.Import
+// (import id = the numeric team id) rather than created — a re-create would 409.
+// Each team seeds @ipv1337 as its sole maintainer today; ".github/CODEOWNERS"
+// routes review to these teams but does NOT require code-owner review (a solo
+// owner cannot approve their own PR), so this changes routing, not the gate.
+func manageTeams(ctx *pulumi.Context, repo *github.Repository, repoName string) error {
+	type teamDef struct {
+		slug string
+		id   string
+		desc string
+	}
+	// slug + numeric team id (from the org) + description (matches what was set
+	// at creation, so the import shows no drift).
+	teams := []teamDef{
+		{"platform-team", "18289391", "Platform, build, and infrastructure team"},
+		{"devx-team", "18289393", "devx CLI team"},
+		{"homelab-team", "18289394", "homelab CLI + k8s apps team"},
+		{"mcp-slack-team", "18289395", "mcp-slack MCP server team"},
+		{"nexus-agent-team", "18289397", "nexus-agent bot + macOS app team"},
+		{"tabula-team", "18289399", "tabula SaaS team"},
+		{"oauth-user-inspector-team", "18289401", "oauth-user-inspector SaaS team"},
+	}
+	for _, t := range teams {
+		team, err := github.NewTeam(ctx, t.slug, &github.TeamArgs{
+			Name:        pulumi.String(t.slug),
+			Description: pulumi.String(t.desc),
+			Privacy:     pulumi.String("closed"),
+		}, pulumi.Import(pulumi.ID(t.id)))
+		if err != nil {
+			return fmt.Errorf("team %q: %w", t.slug, err)
+		}
+
+		// @ipv1337 is the single member today (maintainer).
+		if _, err := github.NewTeamMembership(ctx, t.slug+"-ipv1337", &github.TeamMembershipArgs{
+			TeamId:   team.ID(),
+			Username: pulumi.String("ipv1337"),
+			Role:     pulumi.String("maintainer"),
+		}, pulumi.Import(pulumi.ID(t.id+":ipv1337"))); err != nil {
+			return fmt.Errorf("team %q membership: %w", t.slug, err)
+		}
+
+		// Push access — CODEOWNERS only accepts a team that can write the repo.
+		if _, err := github.NewTeamRepository(ctx, t.slug+"-repo", &github.TeamRepositoryArgs{
+			TeamId:     team.ID(),
+			Repository: repo.Name,
+			Permission: pulumi.String("push"),
+		}, pulumi.Import(pulumi.ID(t.id+":"+repoName))); err != nil {
+			return fmt.Errorf("team %q repo access: %w", t.slug, err)
 		}
 	}
 	return nil
