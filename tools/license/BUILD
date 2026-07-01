@@ -15,6 +15,7 @@
 # -c VitruvianSoftware -l mit), so `:check` is behavior-identical to the prior gate.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/license:defs.bzl", "addlicense_run_target")
 
 # Glob patterns passed as -ignore flags to addlicense — generated / tool-managed
@@ -76,6 +77,15 @@ addlicense_run_target(
     copyright = _COPYRIGHT,
     ignore_globs = _IGNORE_GLOBS,
     license_flag = _LICENSE_FLAG,
+    visibility = ["//visibility:public"],
+)
+
+# bazel run //tools/license:verify — CONTENT gate (issue #457): enforce MIT +
+# VitruvianSoftware in every first-party LICENSE and any source header present.
+# addlicense -check (:check above) is presence-only; this makes the invariant real.
+sh_binary(
+    name = "verify",
+    srcs = ["verify.sh"],
     visibility = ["//visibility:public"],
 )
 
