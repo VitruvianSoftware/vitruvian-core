@@ -393,21 +393,21 @@ http_archive(
 )
 
 # Prisma's `migrate deploy` is the one Prisma command that still executes the
-# native schema-engine on the 6.x line (the client itself is engine-free via
+# native schema-engine (6.x and 7.x lines alike) (the client itself is engine-free via
 # the `prisma-client` generator + driver adapters). Vendor the engine pinned to
-# the engines hash from @prisma/engines-version (prisma 6.19.3) so migrations
+# the engines hash from @prisma/engines-version (prisma 7.8.0) so migrations
 # run hermetically. See //tools/testinfra/prisma.
-_PRISMA_ENGINES_HASH = "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
+_PRISMA_ENGINES_HASH = "3c6e192761c0362d496ed980de936e2f3cebcd3a"
 
 http_file(
     name = "prisma_schema_engine_linux_gz",
-    sha256 = "6c1dfdfe34538487b088fd21b3152147e1bd3c9d0c00b4fc6ecae40ceba83d8a",
+    sha256 = "0ecfc780540a36beffdc20427e6f5214d91071cad97b56588134a412626209a4",
     url = "https://binaries.prisma.sh/all_commits/{}/debian-openssl-3.0.x/schema-engine.gz".format(_PRISMA_ENGINES_HASH),
 )
 
 http_file(
     name = "prisma_schema_engine_darwin_arm64_gz",
-    sha256 = "a951b600d83214e145bf7822a81ee31e5d5488a45d3890e68f1c5fd912f7d773",
+    sha256 = "a6a87b8b94569f58e27f052cde740939837ca071605892e53d2e07c8a55eaa01",
     url = "https://binaries.prisma.sh/all_commits/{}/darwin-arm64/schema-engine.gz".format(_PRISMA_ENGINES_HASH),
 )
 

@@ -50,10 +50,16 @@ if (env.PRISMA_QUERY_ENGINE_LIBRARY) {
   );
 }
 
+// Prisma 7 reads the migration datasource URL from prisma.config.ts (schema
+// files can no longer carry `url`). The config sits next to the prisma/ dir;
+// pass it explicitly because Bazel invokes this from the workspace root, not
+// the package dir where the CLI would auto-discover it.
+const config = path.join(path.dirname(schema), "..", "prisma.config.ts");
+
 const prismaCli = require.resolve("prisma/build/index.js");
 const res = spawnSync(
   process.execPath,
-  [prismaCli, "migrate", "deploy", `--schema=${schema}`],
+  [prismaCli, "migrate", "deploy", `--schema=${schema}`, `--config=${config}`],
   {
     stdio: "inherit",
     env,
