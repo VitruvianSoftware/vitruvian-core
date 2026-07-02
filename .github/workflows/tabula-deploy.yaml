@@ -38,17 +38,13 @@ name: tabula-deploy
 
 on:
   push:
+    # No `paths:` filter (#498): trigger scope is decided by the `gate` job
+    # below via the Bazel graph (target-determinator), not directory globs.
+    # Globs UNDER-trigger (a shared-library change outside tabula/** never
+    # redeployed the API -- the running service silently kept the stale
+    # dependency) and OVER-trigger (docs/cli-only changes under tabula/**
+    # rebuilt + redeployed the image needlessly).
     branches: [main]
-    paths:
-      # Union with tabula-dev-latest.yaml's trigger paths: the banner clears
-      # only when the published bundle's commit equals the deployed API's
-      # commit, so BOTH artifacts must re-stamp on any commit that moves either.
-      - "tabula/api/**"
-      - "tabula/shared/**"
-      - "infrastructure/pulumi/tabula/**"
-      - "tabula/extension/**"
-      - ".github/workflows/tabula-deploy.yaml"
-      - ".github/workflows/tabula-dev-latest.yaml"
   workflow_dispatch:
     inputs:
       environment:
@@ -70,7 +66,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Graph gate (#498): on push, deploy iff the diff affects a DEPLOYABLE
+  # artifact. The universe is the union of both stamped artifacts -- the API
+  # image AND the extension bundle -- because the dev banner clears only when
+  # the published bundle's commit equals the deployed API's commit, so both
+  # must re-stamp on any commit that moves either (the same coupling the old
+  # path union encoded). Non-graph inputs (the tabula Pulumi program -- a
+  # standalone Go module invisible to the Bazel graph -- and the two workflow
+  # files) gate by path inside the script. FAIL-OPEN: any uncertainty deploys
+  # (idempotent blue-green); only a confidently-unaffected diff skips.
+  gate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      affected: ${{ steps.decide.outputs.affected }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # TD diffs the pre-push tip; full history keeps it + the object
+          # graph reachable (same invariant as ci.yaml's build-test).
+          fetch-depth: 0
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Decide whether the deploy artifacts are affected
+        id: decide
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+          DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
+          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml"
+        run: bash tools/ci/deploy-affected.sh
+
   deploy:
+    # Push lane: when the gate says the artifacts are affected -- OR when the
+    # gate JOB itself failed (infra flake, timeout, runner death): the script
+    # is fail-open, and the job wrapping it must be too, or an infra hiccup
+    # silently skips a deploy that should have happened.
+    # Dispatch lane: always (the gate job itself is skipped on dispatch, so
+    # gate against `!cancelled()` rather than default needs-success).
+    needs: [gate]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: tabula-${{ inputs.environment || 'development' }}

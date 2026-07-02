@@ -33,17 +33,16 @@ name: tabula-dev-latest
 
 on:
   push:
+    # No `paths:` filter (#498): the `gate` job below decides via the Bazel
+    # graph, with the SAME artifact-pair universe as tabula-deploy.yaml -- the
+    # banner clears only when the published bundle's commit equals the
+    # deployed API's commit, so both workflows must agree, commit for commit,
+    # on what re-stamps. Two independent path unions could drift; one shared
+    # graph gate cannot.
     branches: [main]
-    paths:
-      # Union with tabula-deploy.yaml's trigger paths: the banner clears only
-      # when the published bundle's commit equals the deployed API's commit,
-      # so BOTH artifacts must re-stamp on any commit that moves either.
-      - "tabula/extension/**"
-      - "tabula/shared/**"
-      - "tabula/api/**"
-      - "infrastructure/pulumi/tabula/**"
-      - ".github/workflows/tabula-dev-latest.yaml"
-      - ".github/workflows/tabula-deploy.yaml"
+  # Manual re-publish (e.g. after a gate false-negative or a lost release
+  # asset) -- the gate is skipped and the bundle is stamped unconditionally.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -53,7 +52,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Same gate as tabula-deploy.yaml (#498): fail-open, deploy-artifact
+  # universe = API image + extension bundle, non-graph inputs by path.
+  gate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      affected: ${{ steps.decide.outputs.affected }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Decide whether the deploy artifacts are affected
+        id: decide
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+          DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
+          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml"
+        run: bash tools/ci/deploy-affected.sh
+
   publish:
+    needs: [gate]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

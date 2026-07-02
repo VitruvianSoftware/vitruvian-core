@@ -19,10 +19,16 @@
 # SOFTWARE.
 name: charts-publish
 
-# Packages every co-located Helm chart (**/deploy/chart) and pushes it as an OCI
-# artifact to GHCR (oci://ghcr.io/vitruviansoftware/charts/<name>). Versions are
-# driven by each Chart.yaml `version`. Charts are intended to be public so ArgoCD
-# can pull them without a credential.
+# Packages co-located Helm charts (**/deploy/chart) and pushes them as OCI
+# artifacts to GHCR (oci://ghcr.io/vitruviansoftware/charts/<name>). Versions
+# are driven by each Chart.yaml `version`. Charts are intended to be public so
+# ArgoCD can pull them without a credential.
+#
+# Scoped per chart (#498): a push publishes ONLY the charts whose directory
+# changed in that push (fail-open to ALL when the diff base is untrustworthy);
+# workflow_dispatch always publishes everything. Re-pushing an unchanged chart
+# version is a harmless overwrite, so fail-open is safe -- the scoping exists
+# so N apps' charts don't all republish on every one-chart change.
 on:
   workflow_dispatch: {}
   push:
@@ -47,18 +53,48 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The per-chart scoping below diffs against the pre-push tip.
+          fetch-depth: 0
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Package and push charts
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
         run: |
           set -euo pipefail
           ORG=vitruviansoftware
           mkdir -p /tmp/charts
+
+          # Scope (#498): on push, publish only charts whose dir changed.
+          # Fail-open to ALL charts on dispatch, forced push, or an
+          # unresolvable diff base (zero SHA on ref creation).
+          publish_all=0
+          changed=""
+          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            publish_all=1
+            echo "workflow_dispatch -> publishing all charts"
+          elif [ "${FORCED_PUSH:-false}" = "true" ] \
+            || [ -z "${BEFORE_REV:-}" ] \
+            || ! git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" >/dev/null; then
+            publish_all=1
+            echo "untrustworthy diff base -> publishing all charts (fail-open)"
+          else
+            changed="$(git diff --name-only "${BEFORE_REV}" HEAD -- || true)"
+          fi
+
           found=0
           while IFS= read -r chart; do
             dir="$(dirname "$chart")"
+            reldir="${dir#./}"
+            if [ "$publish_all" != 1 ] \
+               && ! printf '%s\n' "$changed" | grep -q "^${reldir}/"; then
+              echo "skipping ${reldir} (unchanged in this push)"
+              continue
+            fi
             name="$(awk -F': ' '/^name:/{print $2; exit}' "$chart")"
             echo "::group::Packaging ${name} from ${dir}"
             helm package "$dir" -d /tmp/charts
@@ -66,7 +102,7 @@ jobs:
             echo "::endgroup::"
             found=1
           done < <(find . -path '*/deploy/chart/Chart.yaml' -not -path './bazel-*/*')
-          [ "$found" = 1 ] || echo "No charts found under **/deploy/chart"
+          [ "$found" = 1 ] || echo "No charts (re)published this run"
       - name: Visibility note
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"
