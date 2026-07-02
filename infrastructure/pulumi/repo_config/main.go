@@ -41,6 +41,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -260,6 +261,10 @@ func main() {
 			return err
 		}
 
+		if err := pipelineGates(ctx, cfg, repo); err != nil {
+			return err
+		}
+
 		if err := dependabotSecrets(ctx, cfg, repo); err != nil {
 			return err
 		}
@@ -426,6 +431,71 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 			VariableName: pulumi.String(k),
 			Value:        pulumi.String(oauthVars[k]),
 		}, pulumi.Import(pulumi.ID(fmt.Sprintf("%s:%s:%s", nm, envName, k)))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pipelineGates codifies the repo-level Actions variables that gate the IaC
+// pipeline workflows (#499). These were previously hand-set (or absent), which
+// violated the everything-as-code rule for governance state: a variable that
+// exists only in the GitHub UI can drift, and a local hand-apply of the very
+// stacks these gates control is exactly the out-of-band mutation #499 exists
+// to eliminate.
+//
+//	REPO_CONFIG_AUTO_APPLY      _repo-config-apply.yaml applies repo_config on
+//	                            merge (CI is the sole steady-state writer).
+//	REPO_CONFIG_PREVIEW_ENABLED _repo-config-preview.yaml posts the diff on PRs.
+//	SYNC_AUTH_AUTO_APPLY        copybara-sync-auth-apply.yaml applies on merge
+//	                            (was OFF: sync-auth previously required a local
+//	                            hand-apply after every change).
+//	PULUMI_PREVIEW_ENABLED      pulumi-preview.yaml posts advisory app-stack
+//	                            previews (tabula / oauth-user-inspector) on PRs.
+//
+// The first two variables already exist (hand-set) and use the mandatory
+// import-then-manage pattern (the provider's variable Create is a create-only
+// POST that 409s on an existing name); the last two are created fresh.
+//
+// Values default to "true" (the #499 steady state: CI is the sole writer) but
+// each can be overridden AS CODE via the optional `pipelineGates` config map,
+// so a deliberate opt-out survives every future apply instead of being
+// silently clobbered back to "true":
+//
+//	pulumi config set --path 'pipelineGates["REPO_CONFIG_AUTO_APPLY"]' false --stack dev
+func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	nm := repoName(cfg)
+
+	imported := map[string]bool{
+		"REPO_CONFIG_AUTO_APPLY":      true,
+		"REPO_CONFIG_PREVIEW_ENABLED": true,
+		"SYNC_AUTH_AUTO_APPLY":        false,
+		"PULUMI_PREVIEW_ENABLED":      false,
+	}
+	var overrides map[string]string
+	_ = cfg.GetObject("pipelineGates", &overrides)
+
+	// Deterministic resource names: iterate in sorted order.
+	names := make([]string, 0, len(imported))
+	for k := range imported {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := "true"
+		if v, ok := overrides[name]; ok && v != "" {
+			value = v
+		}
+		opts := []pulumi.ResourceOption{}
+		if imported[name] {
+			opts = append(opts, pulumi.Import(pulumi.ID(nm+":"+name)))
+		}
+		resName := "pipeline-gate-" + strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+		if _, err := github.NewActionsVariable(ctx, resName, &github.ActionsVariableArgs{
+			Repository:   repo.Name,
+			VariableName: pulumi.String(name),
+			Value:        pulumi.String(value),
+		}, opts...); err != nil {
 			return err
 		}
 	}

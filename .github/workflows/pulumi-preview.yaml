@@ -1,0 +1,157 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Pulumi Preview
+
+# Advisory `pulumi preview` on PRs for the APP IaC stacks (#499), mirroring
+# _repo-config-preview.yaml. Destructive diffs (the class that deleted the live
+# zitadel OIDC client, PR #310) surface on the PR as a sticky comment instead
+# of post-merge at apply time.
+#
+# ADVISORY ONLY — deliberately NOT a merge-queue required check, so the
+# workflow-level `paths:` filter below is safe (the #493 conformance guard only
+# forbids paths filters on REQUIRED checks, which would wedge PR mergeability).
+#
+# Auth notes:
+#   * tabula / oauth-user-inspector authenticate to GCP via the same keyless
+#     WIF the deploy workflows use. The WIF pool's attribute condition is
+#     repository-scoped (assertion.repository == this repo), so pull_request
+#     refs authenticate fine; fork PRs never see the vars/secrets at all.
+#   * The bazel-run wrappers (//infrastructure/pulumi/<p>:preview) are NOT used
+#     here: tools/pulumi/pulumi_cmd.sh pins those projects to a HUMAN gcloud
+#     identity (infrastructure/gcp-identities.tsv) and hard-errors without it.
+#     Raw `pulumi` CLI + WIF is the established CI convention (both deploy
+#     workflows already do exactly this).
+#   * imageTag / promote / stableRevision are deploy-time inputs that are NOT
+#     in the committed stack config, so the service image/traffic lines in a
+#     preview are expected noise — the signal is adds/deletes/REPLACES.
+#
+# Gated on the PULUMI_PREVIEW_ENABLED repo variable (codified in repo_config's
+# pipelineGates). The zitadel-apps stack is NOT previewed here: reaching its
+# management API needs a tailnet join + TLS shim per run (see the zitadel-infra
+# job in oauth-user-inspector-deploy.yaml); its destructive-import class is
+# instead blocked statically by //tools/conformance:check (check_zitadel_import)
+# on every PR for free.
+
+on:
+  pull_request:
+    paths:
+      - "infrastructure/pulumi/tabula/**"
+      - "infrastructure/pulumi/oauth-user-inspector/**"
+      - "infrastructure/pulumi/pkg/**"
+      - ".github/workflows/pulumi-preview.yaml"
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+# Per-PR group: a superseding push cancels the stale preview (it is advisory;
+# unlike an apply there is nothing unsafe about cancelling it).
+concurrency:
+  group: pulumi-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: ${{ vars.PULUMI_PREVIEW_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: tabula
+            dir: infrastructure/pulumi/tabula
+            stack: development
+            environment: tabula-development
+          - app: oauth-user-inspector
+            dir: infrastructure/pulumi/oauth-user-inspector
+            stack: development
+            environment: oauth-user-inspector-development
+    environment: ${{ matrix.environment }}
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      # Per-leg scope: only preview the stack whose inputs changed (its own
+      # dir, the shared pkg/ library, or this workflow). The other leg reports
+      # green in seconds. Advisory job — filter uncertainty failing the job is
+      # acceptable and visible, never a queue wedge.
+      - name: Detect ${{ matrix.app }} stack changes
+        id: changes
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.base_ref }}
+          filters: |
+            stack:
+              - '${{ matrix.dir }}/**'
+              - 'infrastructure/pulumi/pkg/**'
+              - '.github/workflows/pulumi-preview.yaml'
+
+      - name: Authenticate to GCP (WIF, keyless)
+        if: steps.changes.outputs.stack == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        if: steps.changes.outputs.stack == 'true'
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
+        if: steps.changes.outputs.stack == 'true'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: ${{ matrix.dir }}
+        run: |
+          set -euo pipefail
+          pulumi stack select "${{ matrix.stack }}"
+          # Advisory: never fail the PR on a diff; DO fail (visibly) if the
+          # preview itself errors — that means the program no longer evaluates.
+          pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
+
+      - name: Format the preview comment
+        if: steps.changes.outputs.stack == 'true'
+        run: |
+          set -euo pipefail
+          # Strip ANSI escapes for a readable comment (mirrors
+          # _repo-config-preview.yaml's processing).
+          sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/\r//g' /tmp/preview-raw.txt > /tmp/preview-clean.txt
+          {
+            echo "## ${{ matrix.app }} — Pulumi preview (stack: ${{ matrix.stack }})"
+            echo
+            echo "> **Advisory.** \`imageTag\`/\`promote\`/\`stableRevision\` are deploy-time"
+            echo "> inputs not present in the committed stack config, so image/traffic update"
+            echo "> lines are expected noise. **The signal is creates, deletes, and REPLACES.**"
+            echo
+            echo '```'
+            tail -c 60000 /tmp/preview-clean.txt
+            echo '```'
+          } > /tmp/preview-comment.md
+
+      - name: Post the sticky PR comment
+        if: steps.changes.outputs.stack == 'true'
+        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3.0.4
+        with:
+          header: pulumi-preview-${{ matrix.app }}
+          path: /tmp/preview-comment.md

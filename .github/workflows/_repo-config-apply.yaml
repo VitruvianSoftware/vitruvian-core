@@ -38,13 +38,27 @@ on:
         # list to match.
         branches: ["main"]
         paths: ["infrastructure/pulumi/repo_config/**"]
+    # Manual apply: break-glass + the bootstrap run that first applies the
+    # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
+    # Bypasses the variable gate below — a dispatch is an explicit human act.
+    workflow_dispatch:
 
 permissions:
     contents: read
 
+# Serialize applies (#499): this stack owns the merge-queue / required-check /
+# branch-protection config everyone depends on. Without a concurrency group,
+# two rapid merges touching repo_config could race `pulumi up` — the Pulumi
+# backend lock makes the loser ERROR (it does not queue), leaving main's
+# governance config half-applied until someone notices. cancel-in-progress
+# stays false: an apply must never be killed mid-flight.
+concurrency:
+    group: repo-config-apply
+    cancel-in-progress: false
+
 jobs:
     apply:
-        if: ${{ vars.REPO_CONFIG_AUTO_APPLY == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || vars.REPO_CONFIG_AUTO_APPLY == 'true' }}
         runs-on: ubuntu-latest
         timeout-minutes: 45
         steps:
