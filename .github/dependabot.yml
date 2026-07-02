@@ -166,6 +166,11 @@ updates:
       # (FST_ERR_PLUGIN_VERSION_MISMATCH).
       - dependency-name: "@fastify/rate-limit"
         update-types: ["version-update:semver-major"]
+      # Same fastify-4 coupling (#530): every @fastify/jwt release above the
+      # 8.x line (9.x and 10.x alike) depends on fastify-plugin ^5 -> fastify 5
+      # only, so a major here is the same startup-fatal plugin mismatch.
+      - dependency-name: "@fastify/jwt"
+        update-types: ["version-update:semver-major"]
       # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
       # a client/CLI major without the engine re-vendor breaks migrate deploy
       # at deploy time, invisibly to CI.
