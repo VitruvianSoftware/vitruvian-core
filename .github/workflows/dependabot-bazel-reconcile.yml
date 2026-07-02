@@ -73,6 +73,14 @@ jobs:
             - name: Reconcile pnpm lock (hermetic pnpm, canonical form)
               run: |
                 bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
+            # After the lock settles, converge to exactly what the Tidy Check
+            # job demands: a tool bump can change generated/formatted output
+            # (a prettier minor reformatted 9 source files on dependabot PR
+            # #551), which only //:tidy -- running the PR's OWN tool versions
+            # from the fresh lock -- can reconcile.
+            - name: Reconcile generated files + formatting (//:tidy)
+              run: |
+                bazel run //:tidy
             - name: Commit reconcile if anything changed
               env:
                 HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -83,5 +91,5 @@ jobs:
                 git config user.name "VitruvianSoftware Sync"
                 git config user.email "sync@vitruviansoftware.com"
                 git add -A
-                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy + pnpm lock)"
+                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy + pnpm lock + //:tidy)"
                 git push origin "HEAD:${HEAD_REF}"
