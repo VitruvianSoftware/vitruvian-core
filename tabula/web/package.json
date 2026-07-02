@@ -8,15 +8,9 @@
     "@tabula/shared": "workspace:*",
     "geist": "^1.5.0",
     "next": "16.2.10",
-<<<<<<< HEAD
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zustand": "^5.0.14"
-=======
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "zustand": "^4.5.0"
->>>>>>> 3829ce2 (chore(deps)(deps): bump the react group with 4 updates)
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
