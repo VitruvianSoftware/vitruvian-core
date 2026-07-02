@@ -18,33 +18,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Repo-level catalog root (#500): the System plus a Location pointing at each
-# app's own catalog-info.yaml — the per-app files are the source of truth for
-# ownership/deploy metadata (enforced against .github/CODEOWNERS by
-# tools/conformance). This replaces the stale Aspect scaffold placeholder
-# ("javascript-generated-blueprint") that carried a wrong name, owner, and
-# repo URL.
+# Machine-readable app metadata (#500): the single per-app source for
+# ownership, deploy identity, and release model. Backstage-compatible
+# Component; consumed today by tools/conformance (owner must match
+# .github/CODEOWNERS) and by humans/agents doing impact analysis.
 apiVersion: backstage.io/v1alpha1
-kind: System
+kind: Component
 metadata:
-  name: vitruvian-core
-  description: VitruvianSoftware polyglot Bazel monorepo — apps, IaC, developer tooling, homelab platform
+  name: nexus-agent
+  description: macOS menu-bar agent (Swift) + Telegram bot (Node) — DMG via GitHub Releases + npm
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:.
+    vitruvian.dev/release-workflow: apps-release.yml
+    vitruvian.dev/release-model: dmg-github-releases npm-publish
+    vitruvian.dev/mirror: VitruvianSoftware/nexus-agent
 spec:
-  owner: platform-team
----
-apiVersion: backstage.io/v1alpha1
-kind: Location
-metadata:
-  name: vitruvian-core-apps
-  description: Per-app component metadata (one catalog-info.yaml per app directory)
-spec:
-  targets:
-    - ./devx/catalog-info.yaml
-    - ./homelab/catalog-info.yaml
-    - ./mcp-slack/catalog-info.yaml
-    - ./nexus-agent/catalog-info.yaml
-    - ./oauth-user-inspector/catalog-info.yaml
-    - ./tabula/catalog-info.yaml
+  type: application
+  lifecycle: production
+  owner: nexus-agent-team
+  system: vitruvian-core

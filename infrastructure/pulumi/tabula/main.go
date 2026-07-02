@@ -32,6 +32,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/artifactregistry"
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/cloudrunv2"
@@ -64,11 +66,7 @@ func main() {
 		// env code (dev / nonprod / prod) — a silent default here would let a
 		// misconfigured stack masquerade as another environment.
 		env := cfg.Require("environment")
-		imageTag := cfg.Get("imageTag")
-		if imageTag == "" {
-			imageTag = "latest"
-		}
-		// Blue-green rollout knobs, set per phase by the deploy workflow:
+		// Blue-green rollout knobs, set PER PHASE by the deploy workflow:
 		//   promote=false (default): publish the new revision at 0% behind a
 		//     `candidate` tag, keeping 100% on stableRevision, so the deploy can
 		//     smoke the candidate's own URL before any traffic shifts to it.
@@ -76,8 +74,22 @@ func main() {
 		// stableRevision is the revision currently serving 100% (the workflow
 		// reads it from the live service before rolling out); empty only on the
 		// first ever deploy, where traffic goes straight to the new revision.
-		promote := cfg.GetBool("promote")
-		stableRevision := cfg.Get("stableRevision")
+		//
+		// DE-RACED (#499): these are PER-INVOCATION deploy inputs read from the
+		// environment (TABULA_*), NOT persisted stack config. The workflow
+		// previously `pulumi config set` them across three sequential phases,
+		// so a local `bazel run :up` interleaving with CI's rollout — or two
+		// operators on one env — could read each other's half-written config
+		// and shift traffic to the wrong revision. Env vars are process-scoped:
+		// concurrent invocations cannot observe each other's values. The config
+		// keys remain as fallbacks so a deliberate `pulumi config set` in a
+		// committed stack file still works for break-glass runs.
+		imageTag := envOrConfig("TABULA_IMAGE_TAG", cfg, "imageTag")
+		if imageTag == "" {
+			imageTag = "latest"
+		}
+		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
+		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")
 		// adoptExistingSecrets imports pre-existing Secret Manager secrets
 		// (created by the standalone repo's Terraform/tabcli) into this
 		// stack's state instead of attempting a colliding create. One-time
@@ -297,4 +309,31 @@ func main() {
 		_ = fmt.Sprintf
 		return nil
 	})
+}
+
+// envOrConfig reads a per-invocation deploy input: the environment variable
+// wins (process-scoped, so concurrent invocations can't clobber each other --
+// #499); the stack-config key is the break-glass fallback. Non-secret values
+// only (identifiers/flags); secrets route through the shared
+// infrastructure/pulumi/pkg/secrets helpers instead.
+func envOrConfig(envName string, cfg *config.Config, cfgKey string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return cfg.Get(cfgKey)
+}
+
+// envOrConfigBool is envOrConfig for booleans. An UNPARSEABLE env value fails
+// loudly (panic aborts the update before any resource mutates) rather than
+// silently defaulting: promote=true vs false is the difference between
+// shifting 100% of traffic and shifting none.
+func envOrConfigBool(envName string, cfg *config.Config, cfgKey string) bool {
+	if v := os.Getenv(envName); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			panic(fmt.Sprintf("%s=%q is not a boolean", envName, v))
+		}
+		return b
+	}
+	return cfg.GetBool(cfgKey)
 }

@@ -369,6 +369,7 @@ ROWS_VIS=""
 ROWS_MERGEQ=""
 ROWS_SWEEP=""
 ROWS_IAC=""
+ROWS_META=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -384,6 +385,7 @@ emit() {
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
+    meta)         ROWS_META="${ROWS_META}${_row}" ;;
   esac
 }
 
@@ -1053,6 +1055,62 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# App metadata catalog (#500). Every app directory carries a machine-readable
+# catalog-info.yaml (Backstage Component) that is the single per-app source
+# for ownership + deploy identity. Enforced invariants:
+#   1. the file exists for every app in APP_DIRS;
+#   2. metadata.name equals the app directory name (no copy-paste drift);
+#   3. spec.owner equals the CODEOWNERS team for /<app>/ (stripped of the
+#      @VitruvianSoftware/ org prefix) — ownership is declared ONCE, in
+#      CODEOWNERS, and the catalog must agree with it;
+#   4. the repo-root catalog-info.yaml Location lists the app's file, so a
+#      catalog consumer discovers every app from the root.
+# ---------------------------------------------------------------------------
+CODEOWNERS_FILE="$ROOT/.github/CODEOWNERS"
+
+check_app_metadata() {
+  for app in $APP_DIRS; do
+    mf="$ROOT/$app/catalog-info.yaml"
+    if [ ! -f "$mf" ]; then
+      emit "meta" "$GLYPH_FAIL" "$C_RED" "$app/catalog-info.yaml" "missing" "app metadata" \
+        "app has no machine-readable metadata (#500)" \
+        "add $app/catalog-info.yaml (Component with owner = the CODEOWNERS team)"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); continue
+    fi
+
+    mname="$(awk '$1 == "name:" { print $2; exit }' "$mf")"
+    mowner="$(awk '$1 == "owner:" { print $2; exit }' "$mf")"
+    # CODEOWNERS line: "/<app>/ @VitruvianSoftware/<team>" -> "<team>".
+    coteam="$(awk -v p="/$app/" '$1 == p { sub(".*/", "", $2); print $2; exit }' "$CODEOWNERS_FILE" 2>/dev/null)"
+
+    if [ "$mname" != "$app" ]; then
+      emit "meta" "$GLYPH_FAIL" "$C_RED" "$app/catalog-info.yaml" "name:$mname" "name:$app" \
+        "metadata.name must equal the app directory name" \
+        "set metadata.name: $app"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif [ -z "$coteam" ]; then
+      emit "meta" "$GLYPH_WARN" "$C_YELLOW" "$app/catalog-info.yaml" "owner:$mowner" "(no CODEOWNERS row)" \
+        "no /$app/ line in .github/CODEOWNERS to validate the owner against" ""
+      WARN_COUNT=$((WARN_COUNT + 1))
+    elif [ "$mowner" != "$coteam" ]; then
+      emit "meta" "$GLYPH_FAIL" "$C_RED" "$app/catalog-info.yaml" "owner:$mowner" "owner:$coteam" \
+        "spec.owner disagrees with the CODEOWNERS team for /$app/ -- ownership is declared once, in CODEOWNERS" \
+        "set spec.owner: $coteam"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif ! grep -F "./$app/catalog-info.yaml" "$ROOT/catalog-info.yaml" >/dev/null 2>&1; then
+      emit "meta" "$GLYPH_FAIL" "$C_RED" "catalog-info.yaml" "missing target" "./$app/catalog-info.yaml" \
+        "the root Location does not list this app's catalog file -- consumers can't discover it" \
+        "add ./$app/catalog-info.yaml to the root catalog-info.yaml Location targets"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+      emit "meta" "$GLYPH_OK" "$C_GREEN" "$app/catalog-info.yaml" "owner:$mowner" "owner:$coteam" \
+        "name + owner match CODEOWNERS; listed in the root Location" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -1116,6 +1174,7 @@ check_catalog
 catalog_orphan_sweep
 advisory_catalog
 check_app_visibility
+check_app_metadata
 check_merge_queue
 check_sweep_backstop
 check_zitadel_import
@@ -1130,6 +1189,7 @@ print_group "Node (Dockerfile FROM node → .nvmrc major)" "$ROWS_NODE"
 print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
+print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
