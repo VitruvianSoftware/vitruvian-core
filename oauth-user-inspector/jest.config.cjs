@@ -39,9 +39,12 @@ module.exports = {
     "^(\.{1,2}/.*)\.js$": "$1",
   },
   transform: {
-    "^.+\\.ts$": [
+    "^.+\\.[tj]s$": [
       "ts-jest",
-      { tsconfig: path.resolve(__dirname, "server/tsconfig.server.json") },
+      { tsconfig: path.resolve(__dirname, "tsconfig.test.json") },
     ],
   },
+  // uuid >=11 ships ESM-only (no CJS export); let ts-jest transform it to CJS
+  // (allowJs in tsconfig.test.json) instead of jest choking on its `export`.
+  transformIgnorePatterns: ["/node_modules/(?!uuid/)"],
 };

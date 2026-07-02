@@ -1,0 +1,7 @@
+{
+  "extends": "./server/tsconfig.server.json",
+  "compilerOptions": {
+    "types": ["node", "jest"],
+    "allowJs": true
+  }
+}
