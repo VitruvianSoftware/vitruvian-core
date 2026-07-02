@@ -237,8 +237,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     const loadHistory = async () => {
       try {
         const result = await chrome.storage.local.get(SEARCH_HISTORY_KEY);
-        if (result[SEARCH_HISTORY_KEY]) {
-          setSearchHistory(result[SEARCH_HISTORY_KEY]);
+        const history = result[SEARCH_HISTORY_KEY] as string[] | undefined;
+        if (history) {
+          setSearchHistory(history);
         }
       } catch (error) {
         console.error("Failed to load search history:", error);

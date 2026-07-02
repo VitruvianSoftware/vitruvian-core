@@ -41,7 +41,7 @@ export class StorageService {
   static async getWorkspaces(): Promise<Workspace[]> {
     try {
       const result = await chrome.storage.local.get(this.WORKSPACES_KEY);
-      return result[this.WORKSPACES_KEY] || [];
+      return (result[this.WORKSPACES_KEY] as Workspace[] | undefined) || [];
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to get workspaces:", error);
@@ -76,7 +76,7 @@ export class StorageService {
   static async getActiveWorkspaceId(): Promise<string | null> {
     try {
       const result = await chrome.storage.local.get(this.ACTIVE_WORKSPACE_KEY);
-      return result[this.ACTIVE_WORKSPACE_KEY] || null;
+      return (result[this.ACTIVE_WORKSPACE_KEY] as string | undefined) || null;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to get active workspace:", error);
@@ -108,7 +108,7 @@ export class StorageService {
     try {
       const result = await chrome.storage.local.get(this.SETTINGS_KEY);
       return (
-        result[this.SETTINGS_KEY] || {
+        (result[this.SETTINGS_KEY] as ExtensionSettings | undefined) || {
           autoSuspend: false,
           suspendAfterMinutes: 30,
           syncEnabled: false,
@@ -152,7 +152,7 @@ export class StorageService {
   static async getSpaceGroups(): Promise<SpaceGroup[]> {
     try {
       const result = await chrome.storage.local.get(this.SPACE_GROUPS_KEY);
-      return result[this.SPACE_GROUPS_KEY] || [];
+      return (result[this.SPACE_GROUPS_KEY] as SpaceGroup[] | undefined) || [];
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to get space groups:", error);

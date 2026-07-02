@@ -66,7 +66,7 @@ async function withLock<T>(callback: () => Promise<T>): Promise<T> {
  */
 export async function getWindowOwnership(): Promise<WindowOwnershipRecord[]> {
   const result = await chrome.storage.local.get(STORAGE_KEY);
-  return result[STORAGE_KEY] || [];
+  return (result[STORAGE_KEY] as WindowOwnershipRecord[] | undefined) || [];
 }
 
 /**

@@ -68,6 +68,22 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: bash tools/ci/relevant-paths.sh
 
+      # Free disk BEFORE any Bazel work — same reclaim set + rationale as
+      # ci.yaml's build-test (#404/#374 hit "No space left on device" fetching
+      # the LLVM toolchain; this lane hit the identical failure extracting
+      # LLVM-19.1.7 once the resynced npm lock grew the fetch set). Android
+      # SDK is kept: rules_android aborts analysis without it.
+      - name: Free up runner disk space
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
+
       - name: Install Bazel
         if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
@@ -81,5 +97,23 @@ jobs:
             echo "::error::BUILD files are stale or unformatted. Run 'bazel run //:tidy' and commit the result."
             echo "$changed"
             git diff -- ':!MODULE.bazel.lock'
+            exit 1
+          fi
+
+      # Lockfile/manifest sync guard (#523 fallout). Dependabot PRs carry a
+      # pnpm-lock.yaml diff generated BEFORE the merge queue rebases them; when
+      # grouped/parallel dep PRs land in one queue window, main can end up with
+      # manifests the lock never resolved (it happened: @types/chrome ^0.2.2
+      # and @fastify/rate-limit ^11 in manifests while the lock pinned the old
+      # majors -- CI stayed green against the STALE lock, and the type/runtime
+      # breakage only detonated on the next innocent `pnpm install`). This
+      # step re-resolves with the SAME hermetic pnpm Bazel uses and fails when
+      # the committed lock does not match the manifests.
+      - name: pnpm lockfile is in sync with the manifests
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
+          if ! git diff --exit-code -- pnpm-lock.yaml; then
+            echo "::error::pnpm-lock.yaml is out of sync with the package.json manifests (a dependency PR merged with a stale lock diff). Run 'bazel run -- @pnpm//:pnpm install --dir . --lockfile-only' and commit the result -- and check whether the newly-resolved versions actually build (this skew has hidden real breakage before)."
             exit 1
           fi

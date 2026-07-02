@@ -46,5 +46,8 @@ module.exports = {
   },
   // uuid >=11 ships ESM-only (no CJS export); let ts-jest transform it to CJS
   // (allowJs in tsconfig.test.json) instead of jest choking on its `export`.
-  transformIgnorePatterns: ["/node_modules/(?!uuid/)"],
+  // Two path shapes must stay transformable: plain node_modules/uuid/ (npx
+  // jest / the standalone mirror) AND Bazel's rules_js virtual store
+  // (node_modules/.aspect_rules_js/uuid@<v>/node_modules/uuid/).
+  transformIgnorePatterns: ["/node_modules/(?!(\.aspect_rules_js/)?uuid[@/])"],
 };
