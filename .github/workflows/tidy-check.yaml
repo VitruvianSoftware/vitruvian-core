@@ -68,6 +68,22 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: bash tools/ci/relevant-paths.sh
 
+      # Free disk BEFORE any Bazel work — same reclaim set + rationale as
+      # ci.yaml's build-test (#404/#374 hit "No space left on device" fetching
+      # the LLVM toolchain; this lane hit the identical failure extracting
+      # LLVM-19.1.7 once the resynced npm lock grew the fetch set). Android
+      # SDK is kept: rules_android aborts analysis without it.
+      - name: Free up runner disk space
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
+
       - name: Install Bazel
         if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
