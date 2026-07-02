@@ -59,6 +59,10 @@ js_binary(
 
 js_run_binary(
     name = "prisma_client",
+    # prisma.config.ts is deliberately NOT in srcs: generate is schema-only
+    # (works without it), and the config's env("DATABASE_URL") would fail the
+    # hermetic sandbox, which has no database. Only Migrate consumes the
+    # config (see :migrate_deploy_bin).
     srcs = [
         "prisma/engine-placeholder",
         "prisma/schema.prisma",
@@ -230,6 +234,7 @@ genrule(
 js_binary(
     name = "migrate_deploy_bin",
     data = [
+        "prisma.config.ts",
         "prisma/engine-placeholder",
         "prisma/schema.prisma",
         ":node_modules/prisma",
