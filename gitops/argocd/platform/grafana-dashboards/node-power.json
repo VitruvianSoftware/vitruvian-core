@@ -1,0 +1,349 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Compute power trend across homelab nodes. Bare-metal Intel nodes report Intel RAPL CPU-package power via node-exporter; the macOS hosts report SoC package power (powermetrics) and battery state via the macos-power-agent push to Pushgateway. Figures are silicon/package power, not whole-system wall draw.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "description": "CPU/SoC package power per node over time. Intel nodes: rate of RAPL package joules (node-exporter). macOS hosts: powermetrics combined SoC power pushed by the agent.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "watts",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": 300000,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "max"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}} · CPU pkg (RAPL)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_soc_power_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · SoC (powermetrics)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "CPU / SoC package power",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "description": "Latest reported package/SoC power per node.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 15 },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 60 }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}} (RAPL)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_soc_power_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} (SoC)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Current draw by node",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "description": "Sum of all reported package/SoC power right now, and a rough daily energy estimate if held at the current rate. This is silicon power only — true wall draw is higher.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          },
+          "unit": "watt"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "unit", "value": "kwatth" },
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "purple" }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\"}[$__rate_interval])) + sum(mac_soc_power_watts{job=\"mac_power\"})",
+          "legendFormat": "Total compute power",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "(sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\"}[$__rate_interval])) + sum(mac_soc_power_watts{job=\"mac_power\"})) * 24 / 1000",
+          "legendFormat": "Est. energy / day",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Fleet total",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "description": "Per-domain SoC power on the macOS hosts (Apple Silicon reports CPU/GPU/ANE separately; Intel Macs report a single package figure).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "watts",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 25,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": 300000,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "min": 0,
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_cpu_power_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · CPU",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_gpu_power_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · GPU",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_ane_power_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · ANE",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "macOS SoC breakdown (CPU / GPU / ANE)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "description": "macOS host battery charge and battery power flow (discharge watts > 0 only when running off battery; ~0 on AC).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": 300000,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byFrameRefID", "options": "B" },
+            "properties": [
+              { "id": "unit", "value": "watt" },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.axisLabel", "value": "watts" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull"],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_battery_percent{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · charge %",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "mac_battery_discharge_watts{job=\"mac_power\"}",
+          "legendFormat": "{{instance}} · discharge W",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "macOS battery",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["power", "energy", "rapl", "nodes", "homelab"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Node Power",
+  "uid": "node-power",
+  "version": 1,
+  "weekStart": ""
+}

@@ -645,6 +645,44 @@ spec:
                 enabled: true
                 size: 2Gi
                 storageClass: local-path
+            # ── node-exporter: run as root so the RAPL collector can read ────
+            # CPU package energy. node-exporter exports node_rapl_*_joules_total
+            # from /host/sys/class/powercap/intel-rapl:*/energy_uj, but since
+            # CVE-2020-8694 that sysfs file is mode 0400 (root-only), so the
+            # chart-default nobody (uid 65534) reads nothing and the rapl series
+            # are silently absent. Running the DaemonSet as root lets the
+            # collector read it (the pod already host-mounts /, /sys, /proc).
+            # Only the bare-metal Intel nodes (fedora, nuc9i5, nuc9i9) have a
+            # powercap interface; the Lima VM nodes expose no rapl series, which
+            # is harmless. Powers the "Node Power" Grafana dashboard.
+            prometheus-node-exporter:
+              securityContext:
+                runAsUser: 0
+                runAsGroup: 0
+                runAsNonRoot: false
+                fsGroup: 0
+            # ── pushgateway: tailnet-reachable ingress for host push agents ──
+            # The bundled Pushgateway is ClusterIP-only. The macOS power agents
+            # run on the Lima VM HOSTS (the Macs, outside k8s) and push SoC /
+            # battery watts over the tailnet, so expose it through Traefik at a
+            # lab hostname (same pattern as grafana). The lab record resolves to
+            # the in-cluster Traefik LB, so this is reachable only from tailnet
+            # devices — no auth beyond that boundary. The existing
+            # prometheus-pushgateway scrape job already ingests it with
+            # honor_labels:true, so the pushed job/instance labels survive.
+            prometheus-pushgateway:
+              ingress:
+                enabled: true
+                className: traefik
+                annotations:
+                  cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+                  external-dns.alpha.kubernetes.io/sync-enabled: "true"
+                hosts:
+                  - pushgateway.lab.ipv1337.dev
+                tls:
+                  - hosts:
+                      - pushgateway.lab.ipv1337.dev
+                    secretName: pushgateway-tls
             `}}
       destination:
         server: '{{.server}}'
