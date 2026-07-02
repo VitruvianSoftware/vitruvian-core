@@ -30,6 +30,13 @@ module.exports = {
   testEnvironment: "node",
   testMatch: ["**/?(*.)+(test).ts"],
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  // chalk 5 is ESM-only: exempt it from the node_modules transform skip so
+  // @swc/jest converts it to CJS for the test runtime (the production CLI
+  // runs on node >= 22.12, where require(esm) is native). The optional
+  // .aspect_rules_js/ prefix matches the rules_js virtual store layout.
+  transformIgnorePatterns: [
+    "/node_modules/(?!(\\.aspect_rules_js/)?chalk[@/])",
+  ],
   transform: {
     "^.+\\.(t|j)s$": [
       "@swc/jest",
