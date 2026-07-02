@@ -380,6 +380,22 @@ for k in $OPTIONAL_KEYS; do
 done
 
 # ---------------------------------------------------------------------------
+# Shared build cache (#506) — informational, never gates. Local builds should
+# read AND write the BuildBuddy cache by default; a machine without the setup
+# cold-builds the whole polyglot repo and starves the shared cache.
+# ---------------------------------------------------------------------------
+_wsroot="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+if [ -f "$_wsroot/user.bazelrc" ] \
+   && grep -q '^# >>> build cache (managed by tools/remote:setup)' "$_wsroot/user.bazelrc" 2>/dev/null; then
+  add_row "$GLYPH_OK" "$C_GREEN" "build-cache" "configured" "shared default" ""
+  OK_COUNT=$((OK_COUNT + 1))
+else
+  add_row "$GLYPH_WARN" "$C_YELLOW" "build-cache" "not set up" "shared default" \
+    "run: bazel run //tools/remote:setup (makes the BuildBuddy cache the local default, #506)"
+  WARN_COUNT=$((WARN_COUNT + 1))
+fi
+
+# ---------------------------------------------------------------------------
 # Render the report. First pass computes column widths; second pass prints.
 # ---------------------------------------------------------------------------
 echo

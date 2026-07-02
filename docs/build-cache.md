@@ -23,6 +23,21 @@ Your choice is written to `user.bazelrc` (git-ignored, personal to you). Re-run 
 anytime to switch; pick **none** to turn caching off. If a remote cache is ever unreachable,
 Bazel falls back to building locally — it never blocks you.
 
+## BuildBuddy is the local *default* once configured (#506)
+
+Choosing **buildbuddy** makes the shared cache the default for **every plain
+`bazel build/run/test` on your machine** (`common --config=remotecache` in your
+`user.bazelrc`): cache-only — execution stays local, RBE remains an explicit
+`--config=remote` — and your local results **upload** so the whole team (and
+CI) reuses them. A stale/revoked key degrades gracefully to warnings + a local
+build; it never blocks you. Opt out with
+`bazel run //tools/remote:setup -- --no-local-default`.
+
+Worktrees created by `bazel run //tools/worktree` inherit your cache setup
+automatically (the managed block is copied into the worktree's
+`user.bazelrc`), and `bazel run //:doctor` warns when a machine has no cache
+configured.
+
 ## Or configure it by hand
 
 `user.bazelrc.example` lists the same options as copy-paste lines. Copy this repo's

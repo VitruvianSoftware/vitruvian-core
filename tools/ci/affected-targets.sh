@@ -61,8 +61,32 @@ REMOTE_ARGS=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_
 
 # run_full_sweep: the safe fallback. Identical semantics to the original
 # unconditional full-sweep lanes (and to periodic-full-sweep.yaml).
+#
+# Observability (#503): $2 classifies the fallback.
+#   expected  the DESIGNED full-sweep path (global-impact change, forced push,
+#             ref creation) -> ::notice::, business as usual.
+#   degraded  the fast path is BROKEN or unavailable (TD download/checksum
+#             failure, TD error, missing base info) -> ::warning:: with a
+#             stable title + a step-summary line, so a silently-broken fast
+#             path (e.g. a stale TD pin after a runner image change) is
+#             AUDIBLE in the run UI instead of full-sweeping every PR forever.
+# Default is degraded: an unclassified new call site should be loud, not quiet.
 run_full_sweep() {
-  echo "::notice::affected-targets: falling back to full //... build+test ($1)"
+  reason="$1" class="${2:-degraded}"
+  if [ "${class}" = "expected" ]; then
+    echo "::notice::affected-targets: full //... sweep (${reason})"
+  else
+    echo "::warning title=affected-selection-fallback::affected-targets fast path degraded -- full //... sweep (${reason})"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      {
+        echo "### ⚠ affected-selection fallback (degraded)"
+        echo ""
+        echo "- reason: ${reason}"
+        echo "- consequence: this run paid a full \`//...\` sweep instead of affected targets"
+        echo "- if this recurs across runs, the fast path is broken (see #503): check the TD pin in \`tools/ci/td-lib.sh\` and the runner platform"
+      } >> "${GITHUB_STEP_SUMMARY}"
+    fi
+  fi
   bazel build "${REMOTE_ARGS[@]}" //...
   bazel test "${REMOTE_ARGS[@]}" //...
   exit 0
@@ -80,22 +104,22 @@ FORCED_PUSH="${FORCED_PUSH:-false}"
 if [ "${FORCED_PUSH}" = "true" ]; then
   # A forced push rewrote history: event.before may not be an ancestor of HEAD,
   # so a diff against it can misattribute. Only the full sweep is trustworthy.
-  run_full_sweep "forced push -- no trustworthy diff base"
+  run_full_sweep "forced push -- no trustworthy diff base" expected
 fi
 if [ -n "${BEFORE_REV}" ]; then
   # Verify it resolves to a commit (a just-created ref reports the zero SHA,
   # which does not resolve).
   if ! git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" >/dev/null; then
-    run_full_sweep "BEFORE_REV '${BEFORE_REV}' does not resolve to a commit"
+    run_full_sweep "BEFORE_REV '${BEFORE_REV}' does not resolve to a commit" expected
   fi
   echo "affected-targets: before-rev (explicit) = ${BEFORE_REV}"
 elif [ -n "${BASE_REF}" ]; then
   if ! BEFORE_REV="$(git merge-base "origin/${BASE_REF}" HEAD)"; then
-    run_full_sweep "could not compute merge-base against origin/${BASE_REF}"
+    run_full_sweep "could not compute merge-base against origin/${BASE_REF}" degraded
   fi
   echo "affected-targets: before-rev (merge-base) = ${BEFORE_REV}"
 else
-  run_full_sweep "neither BEFORE_REV nor BASE_REF is set"
+  run_full_sweep "neither BEFORE_REV nor BASE_REF is set" degraded
 fi
 
 # --- 2. global-impact guard. -------------------------------------------------
@@ -137,7 +161,7 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 if echo "${CHANGED_FILES}" | grep -E \
   '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|tools/|BUILD$|gazelle_python\.yaml$)' \
   >/dev/null 2>&1; then
-  run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)"
+  run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
 # --- 3. fetch + run target-determinator. -------------------------------------
@@ -149,7 +173,7 @@ fi
 # shellcheck source=tools/ci/td-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/td-lib.sh"
 if ! fetch_td; then
-  run_full_sweep "${TD_FETCH_ERROR}"
+  run_full_sweep "${TD_FETCH_ERROR}" degraded
 fi
 
 # Run TD:
@@ -178,7 +202,7 @@ if ! "${TD}" \
       --ignore-file .github/workflows/ci.yaml \
       --ignore-file tools/ci/affected-targets.sh \
       "${BEFORE_REV}" > affected.txt; then
-  run_full_sweep "target-determinator returned non-zero"
+  run_full_sweep "target-determinator returned non-zero" degraded
 fi
 
 # --- 4 + 5. empty-set handling. ----------------------------------------------
