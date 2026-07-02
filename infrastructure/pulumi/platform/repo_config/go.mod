@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/pulumi/pulumi-github/sdk/v6 v6.14.0
-	github.com/pulumi/pulumi/sdk/v3 v3.248.0
+	github.com/pulumi/pulumi/sdk/v3 v3.250.0
 )
 
 require (
