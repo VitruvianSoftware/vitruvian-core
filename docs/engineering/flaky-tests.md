@@ -4,6 +4,16 @@ With the merge queue batching up to 5 PRs (`ALLGREEN`), one flaky test fails
 five unrelated PRs at once. This page defines the two mechanisms that keep
 flakes from taxing everyone and breakages from going unattributed.
 
+```mermaid
+flowchart LR
+    F["spec flakes in CI"] --> T["file tracking issue + tag the spec title with @quarantine"]
+    T --> BL["blocking lanes skip it: e2e target has grep-invert baked in"]
+    T --> NL["nightly lane runs ONLY quarantined specs: e2e_quarantine, 06:30 UTC"]
+    NL -->|"14 consecutive green nights AND root cause fixed"| U["remove the tag, close the issue"]
+    NL -->|still red| RC["keep root-causing on the tracking issue"]
+    RC -->|"30 days with no activity"| ESC["escalate: fix it or delete the test"]
+```
+
 ## Quarantine (Playwright e2e specs)
 
 The flaky unit in this repo's e2e suite is a *spec* inside one Bazel target

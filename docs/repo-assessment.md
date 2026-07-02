@@ -6,6 +6,9 @@
 >
 > **Related:** [CI/CD Terminology Reference](/.github/CI_DEFINITIONS.md)
 
+> [!NOTE]
+> **R6 status (2026-07-02): the P0 and P1 tiers of this roadmap are SHIPPED.** Beyond the §7.1 items (closed via #454–#462), the 2026-07-01 follow-up assessment's bottleneck list landed as: merge-queue/postsubmit **affected-target sharding + nightly full-sweep backstop** (#494), **aux-job path gating** (#495), **inter-app visibility firewalls** (#496), **worktree enforcement** (#508), **governance apply serialization + pipeline gates as code + zitadel import guard + advisory previews** (#509), **graph-gated deploys** (#510), **per-app metadata catalog + reusable `_deploy-cloud-run.yaml` + deploy de-race** (#511), and **flaky quarantine + culprit-finder** (#513). Sections below describing those as gaps/targets (§5.5–§5.7, parts of §7.1/Part II) are retained as design rationale; the *current* contributor-facing truth is [CONTRIBUTING.md](/CONTRIBUTING.md). Remaining open tier: P2 (#497 staging ladder, #503, #504, #506, #507).
+
 ---
 
 ## Part I: Current State (What Exists Today)

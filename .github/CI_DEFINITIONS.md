@@ -6,9 +6,9 @@
 
 | Term | When It Runs | Purpose | vitruvian-core Equivalent |
 |------|-------------|---------|--------------------------|
-| **Presubmit** | Before merge — on `pull_request` and `merge_group` events | Catch breakage _before_ it lands on `main` | `ci.yaml` jobs gated on `pull_request` / `merge_group` |
-| **Postsubmit** | After merge — on `push` to `main` | Verify the actual merged commit is clean (the **safety floor**) | `ci.yaml` jobs gated on `push` to `main` |
-| **Periodic** | On a cron schedule (e.g., nightly, weekly) | Catch flaky tests, dependency rot, configuration drift | Copybara drift check (every 30 min); weekly full `//...` sweep (planned) |
+| **Presubmit** | Before merge — on `pull_request` and `merge_group` events | Catch breakage _before_ it lands on `main` | `ci.yaml` jobs gated on `pull_request` / `merge_group` — **affected targets** on both |
+| **Postsubmit** | After merge — on `push` to `main` | Verify the actual merged commit is clean | `ci.yaml` jobs gated on `push` to `main` — **affected targets** (queue-merged commits were just tested as `merge_group`) |
+| **Periodic** | On a cron schedule | Catch what per-change selection can't: under-attributed diffs, flaky tests, drift | **Nightly full `//...` sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — the whole-graph backstop; files a P0 issue on red); **nightly quarantine lane** (`tabula-e2e.yaml` schedule, 06:30 UTC); Copybara drift check (every 30 min) |
 
 ## CI Concepts
 
@@ -16,7 +16,11 @@
 |------|-----------|
 | **Affected targets** | The subset of Bazel targets whose build or test behavior could change given a code diff. Computed by `target-determinator` using Bazel's dependency graph. See [affected-targets.sh](/tools/ci/affected-targets.sh). |
 | **Global-impact guard** | A check in `affected-targets.sh` that detects changes to files affecting _every_ target (e.g., `MODULE.bazel`, `.bazelrc`, `tools/`). When triggered, the affected-target optimization is bypassed and a full `//...` sweep runs instead. |
-| **Safety floor** | The guarantee that no code path is ever _less_ tested than a full `//...` build+test. Every optimization (affected-targets, path-filtering, docs-only skip) fails safe to the full sweep. The postsubmit full sweep is the ultimate safety floor. |
+| **Safety floor** | The guarantee that no code path is ever _less_ tested than a full `//...` build+test. Every optimization (affected-targets, path-filtering, docs-only skip) fails safe to the full sweep _within its run_, and the **nightly full sweep** is the whole-graph backstop that bounds any affected-selection miss to <24h. `//tools/conformance:check` enforces the pairing: the affected-scoped lanes may exist only while the scheduled sweep does. |
+| **Deploy gate (fail-open)** | The push-to-main decision in [deploy-affected.sh](/tools/ci/deploy-affected.sh): deploy iff the app's deployable targets are graph-affected or a non-graph input (Pulumi program, workflow file) changed. The mirror image of CI selection's fail-_closed_ sweep: any uncertainty **deploys** (idempotent blue-green), because a silently skipped deploy is the failure mode being fixed. |
+| **Quarantine lane** | The nightly run of `@quarantine`-tagged e2e specs (`//tabula/extension:e2e_quarantine`) — excluded from blocking lanes so one flake can't fail a merge batch, still exercised nightly for the un-quarantine evidence. See [flaky-tests.md](/docs/engineering/flaky-tests.md). |
+| **Culprit finder** | Mechanical bisection of a red nightly sweep ([culprit-finder.yaml](/.github/workflows/culprit-finder.yaml)): `git bisect run` driving `bazel test` on the failing targets over the last-green..red range; posts the first bad commit onto the breakage issue. |
+| **Pipeline gates** | The repo-level Actions variables (`REPO_CONFIG_AUTO_APPLY`, `SYNC_AUTH_AUTO_APPLY`, `PULUMI_PREVIEW_ENABLED`, ...) that switch IaC workflows between advisory and applying. Pulumi-managed in `repo_config` (`pipelineGates`) — never hand-set. |
 | **Full sweep (`//...`)** | `bazel build //... && bazel test //...` — builds and tests every target in the repository. Expensive but comprehensive. |
 | **Path filtering** | Skipping CI work when the diff only touches files that cannot affect the build (e.g., `docs/`, `*.md`, `gitops/`). See [relevant-paths.sh](/tools/ci/relevant-paths.sh). |
 | **Merge queue** | GitHub's mechanism that serializes PR merges. Each queued PR is tested on top of the latest `main` + all PRs ahead of it in the queue, preventing "merge skew" where two individually-green PRs break when combined. |

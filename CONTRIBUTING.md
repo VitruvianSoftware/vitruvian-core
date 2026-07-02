@@ -160,6 +160,21 @@ The default branch is **`main`**.
 
 PR bodies should be self-contained (what changed, why, how verified). Auto-delete of merged head branches is also managed by `repo_config`.
 
+**The whole loop at a glance:**
+
+```mermaid
+flowchart LR
+    A["bazel run //tools/worktree -- my-branch"] --> B["code + test in the worktree"]
+    B --> C["bazel run //:tidy"]
+    C --> D["bazel test //myapp/..."]
+    D --> E["git push + gh pr create"]
+    E --> F{"PR checks: affected targets only"}
+    F -->|red| B
+    F -->|green| G["merge queue: affected checks on the rebased result"]
+    G --> H["main"]
+    H --> I["postsubmit verify + deploy gates + nightly full-sweep backstop"]
+```
+
 ---
 
 ## 5. Build & test
@@ -167,7 +182,8 @@ PR bodies should be self-contained (what changed, why, how verified). Auto-delet
 **Bazel is the first-class entrypoint.** `pnpm`/`go` are fallbacks for editor flows and container builds.
 
 ```bash
-# Build / test everything (full sweep — what postsubmit & the merge queue run)
+# Build / test everything (the full sweep — what the NIGHTLY backstop runs;
+# PR / merge-queue / postsubmit lanes all run AFFECTED targets only)
 bazel build //...
 bazel test  //...
 
@@ -191,20 +207,48 @@ pnpm --filter <pkg> dev    # run one TS app's dev loop
 go test ./...              # inside devx/ or homelab/ (gazelle keeps go_test in the Bazel sweep)
 ```
 
-### CI checks that must pass
+### How CI decides what to run
 
-PRs run **affected-target** tests (`tools/ci/affected-targets.sh` via target-determinator, with a docs-only short-circuit); pushes to `main` and `merge_group` runs do a full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
+**Every lane is graph-selective.** PRs, the merge queue, and postsubmit all build/test only the **affected targets** (`tools/ci/affected-targets.sh` via target-determinator). The whole-graph correctness backstop is the **nightly full sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — files a P0 issue on red, and `culprit-finder.yaml` can bisect the range to the first bad commit). Every optimization **fails safe**: a global-impact file (`MODULE.bazel`, `.bazelrc`, `tools/**`, root `BUILD`) or *any* uncertainty inside the selection script forces the full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
+
+```mermaid
+flowchart TD
+    E["CI event"] --> PR["pull_request"]
+    E --> MG["merge_group"]
+    E --> PU["push to main"]
+    E --> CR["schedule"]
+    PR --> G1{"docs/gitops/md-only diff?"}
+    G1 -->|yes| S1["skip heavy work, report green fast"]
+    G1 -->|no| G2{"global-impact file changed? MODULE.bazel / .bazelrc / tools/ / root BUILD"}
+    MG --> G2
+    PU --> G2
+    G2 -->|yes| FS["full bazel build + test //..."]
+    G2 -->|no| TD["target-determinator: build + test AFFECTED targets only"]
+    TD -->|any error or uncertainty| FS
+    CR --> N["06:00 UTC nightly: full //... sweep backstop"]
+    CR --> Q["06:30 UTC nightly: quarantined e2e specs only"]
+    N -->|red| I["P0 issue filed, culprit-finder bisects to the first bad commit"]
+```
+
+### The required checks (merge-queue gate set)
+
+The authoritative list lives in `infrastructure/pulumi/repo_config/main.go` (`mergeQueueRequiredChecks`), and `//tools/conformance:check` asserts every name is produced by a job that reports on `merge_group` — so this table can't silently drift from reality without CI failing.
 
 | Check | Workflow | What it gates |
 |-------|----------|---------------|
-| **build-test** | `.github/workflows/ci.yaml` | `bazel test` on ubuntu (affected on PR, full on merge) |
-| **build-macos** | `.github/workflows/ci.yaml` | `bazel build` on macOS, incl. the `nexus-agent` macOS app (`--config=macos-app`), path-gated |
-| **license-check** | `.github/workflows/ci.yaml` | whole-repo `addlicense -check` (Section 6) |
-| **tidy-check** | `.github/workflows/tidy-check.yaml` | `bazel run //:tidy` produced no diff |
-| **reconcile** | `.github/workflows/dependabot-bazel-reconcile.yml` | Bazel lockfile/dep reconciliation on dependabot PRs |
-| **conformance-check** | `.github/workflows/conformance-check.yaml` | `bazel run //tools/conformance:check` — version pins consistent across the repo (no drift; deviations justified in `version-pins.tsv`) |
+| **build-test** | `ci.yaml` | `bazel test`, affected targets on every lane (full `//...` on global-impact/fallback) |
+| **build-macos** | `ci.yaml` | macOS build incl. the `nexus-agent` app (`--config=macos-app`), step-gated on macOS-relevant paths |
+| **license-check** | `ci.yaml` | whole-repo header presence (`//tools/license:check`) **and** MIT+holder content (`:verify`) |
+| **go-lint (devx\|homelab)** | `ci.yaml` | golangci-lint per Go module, step-gated on that module's paths |
+| **go-test (devx\|homelab)** | `ci.yaml` | `go test -race` per Go module (Bazel doesn't run `-race`), step-gated likewise |
+| **validate-butane** | `ci.yaml` | devx's Fedora CoreOS template renders to valid Ignition, step-gated on the template |
+| **tidy-check** | `tidy-check.yaml` | `bazel run //:tidy` produced no diff |
+| **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, the nightly-sweep pairing, and the zitadel import guard |
+| **gitops-validate** | `gitops-validate.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
+| **actionlint** | `actionlint.yaml` | the whole hand-tuned workflow tree is linted (workflow syntax, expressions, shellcheck on `run:` blocks) |
+| *(dependabot PRs)* **reconcile** | `dependabot-bazel-reconcile.yml` | Bazel lockfile/dep reconciliation |
 
-> **`actionlint` caveat:** it is *listed* as a standard check but **is not actually wired as a CI job** anywhere in `.github/workflows/`. It currently appears only as a manual pre-merge step in planning docs. **🎯 Target:** add a real `actionlint` job (the workflow tree is large and hand-tuned). Don't assume your workflow YAML is linted by CI today — run `actionlint` locally if you touch a workflow.
+> Required checks stay green-fast on unrelated PRs by design: the **job always runs and reports** (never a workflow-level `paths:` filter — that once wedged the whole repo, and conformance now forbids it for required checks); only the *work inside* is skipped when the diff can't affect it.
 
 > **Version policy.** The repo runs **one canonical version per tool** (`.bazelversion`, `go.work`, `.nvmrc`, root `packageManager`) and stays on the latest it has adopted. Every `go.mod`, Dockerfile `FROM node:`, and app `packageManager` must match canonical. To hold one back **temporarily**, add a justified row to [`tools/conformance/version-pins.tsv`](tools/conformance/version-pins.tsv) (`file`, `tool`, `pinned_value`, `review_by`, `owner`, `reason`) and delete it once the constraint clears — `conformance-check` fails on undeclared drift, on a pin whose file has caught up to canonical, and on a pin past its `review_by`.
 
@@ -272,10 +316,30 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 
 ### Cloud Run deploy (the two SaaS apps)
 
-- **`tabula`** — `.github/workflows/tabula-deploy.yaml`: builds the Bazel `oci` image (`//tabula/api:image_push`) → Artifact Registry → `prisma migrate deploy` → **blue-green** (deploy candidate revision at 0% behind a `candidate` tag, smoke its URL, then a second `pulumi up` with `promote=true` shifts 100%). Image tagged `:${GITHUB_SHA}` + `:latest`; Pulumi pins `imageTag`. `tabula-development` auto-deploys on push to `main`; `tabula-nonproduction`/`tabula-production` are `workflow_dispatch` with environment protection.
-- **`oauth-user-inspector`** — `.github/workflows/oauth-user-inspector-deploy.yaml`: builds its **Dockerfile** via buildx → Artifact Registry → straight `pulumi up` → curl smoke. `development` only, single-shot (no candidate/promote yet).
+**When does a deploy fire?** On push to `main`, a **graph gate** (`tools/ci/deploy-affected.sh`) decides: it deploys iff the app's *deployable Bazel targets* are affected by the diff, or a non-graph input changed (the app's Pulumi program, the workflow files) — and it **fails open** (any uncertainty deploys; blue-green re-deploys are idempotent). No directory path-glob triggers: a shared-library change outside the app's dir correctly redeploys it; a docs-only change inside it correctly doesn't.
 
-> **Two diverging build/deploy patterns for the same archetype** (Bazel `oci` + blue-green vs Dockerfile + single-shot) and **no promotion ladder beyond `development`** (only `development`/`dev` Pulumi stacks are committed anywhere). **🎯 Target:** one reusable Cloud-Run deploy workflow (the `oauth` shape as base + `tabula`'s blue-green as an opt-in input), and committed `Pulumi.<env>.yaml` for every environment slot the workflow exposes. See the Alignment Gaps doc.
+**How does it deploy?** Through the **reusable pipeline** `.github/workflows/_deploy-cloud-run.yaml` — extracted from tabula's production flow, parameterized per app via a thin caller. Deploy-time inputs (`imageTag`/`promote`/`stableRevision`) pass as **per-invocation env vars** (`TABULA_*`), never `pulumi config set` — so a local run interleaving with CI can't clobber a rollout mid-flight.
+
+```mermaid
+flowchart TD
+    P["push to main"] --> GATE{"deploy gate: tools/ci/deploy-affected.sh"}
+    GATE -->|"deploy targets affected in the Bazel graph, or pulumi program / workflow file changed, or ANY uncertainty (fail-open)"| RW["reusable _deploy-cloud-run.yaml"]
+    GATE -->|confidently unaffected| SKIP["skip deploy"]
+    WD["workflow_dispatch promotion: nonproduction / production"] --> RW
+    RW --> B1["bazel oci image push, tagged with the commit SHA"]
+    B1 --> M["prisma migrate deploy (optional, before traffic shifts)"]
+    M --> C0["pulumi up: new revision at 0% traffic behind a candidate tag"]
+    C0 --> SM{"smoke the candidate URL /health"}
+    SM -->|pass| PRO["pulumi up: shift 100% traffic"]
+    SM -->|fail| STOP["live revision keeps serving: nothing to roll back"]
+```
+
+- **`tabula`** — `tabula-deploy.yaml` is the thin caller (gate + identity inputs only; all mechanics live in the reusable workflow). `tabula-development` auto-deploys on gated push to `main`; `tabula-nonproduction`/`tabula-production` are `workflow_dispatch` with environment protection. `tabula-dev-latest.yaml` shares the *same* gate universe so the extension bundle and API always re-stamp together (the update-banner coupling).
+- **`oauth-user-inspector`** — `oauth-user-inspector-deploy.yaml`: builds its **Dockerfile** via buildx → Artifact Registry → `pulumi up` → curl smoke. Its directory path-glob triggers are **graph-correct as-is** (standalone build, self-contained deps — documented in the workflow); it adopts the gate + reusable pipeline when it migrates to Bazel `rules_oci`. `development` only, single-shot.
+- **Advisory Pulumi previews:** PRs touching `infrastructure/pulumi/{tabula,oauth-user-inspector,pkg}` get a `pulumi preview --diff` posted as a sticky PR comment (`pulumi-preview.yaml`). Image/traffic lines are expected noise (deploy-time inputs are absent at preview); **the signal is creates/deletes/REPLACES**.
+- **App metadata:** each app's `catalog-info.yaml` records its owner team, deploy/release workflow, targets, and environments — conformance enforces it exists and its owner matches CODEOWNERS.
+
+> **Remaining gap:** the promotion ladder beyond `development` needs committed `Pulumi.<env>.yaml` stacks (none exist for `nonproduction`/`production` yet) — tracked with the staging-environment work in issue #497. oauth's Dockerfile→`rules_oci` migration is the other alignment gap (Alignment Gaps doc).
 
 ### Deploy identity (WIF)
 
@@ -283,9 +347,8 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 
 ### Releases
 
-- `release-please` is configured for **`tabula` and `nexus-agent`** only today (not yet repo-wide).
-- `charts-publish.yml` publishes **OCI Helm charts to GHCR**; container images stay in **GCP Artifact Registry**.
-- `mcp-slack`/`nexus-agent` document `npx`/DMG installs but **have no publishing CI** (only copybara export runs). **🎯 Target:** add npm-publish / notarized-DMG release workflows.
+- **`apps-release.yml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
+- `charts-publish.yml` publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---
 
@@ -326,9 +389,8 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
 - **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `devx/docs/`, `nexus-agent/docs/`, `devx/FEATURES.md`/`IDEAS.md`.
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
+- **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 
 > ⚠️ **Doc-drift warning.** Some per-app docs are known-stale (notably `tabula`'s `getting-started`/`CONTRIBUTING` and `oauth-user-inspector`'s deploy section — see Sections 3 and 8). When an app's own docs conflict with this SOP, **this SOP and the merge queue's required checks win**, and please open a PR to fix the stale doc.
 
 ---
-
-The two most relevant files for this document are the repo-root **`/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/docs-survey/CONTRIBUTING.md`** (recommended destination) and the verified anchors it cites: `BUILD` (the `//:tidy` target), `.github/workflows/{ci.yaml,tidy-check.yaml}`, `tools/{pulumi,gitops}/`, `infrastructure/pulumi/` (incl. `pkg/copybara_sync/sync.go`, `gcp-identities.tsv`), `gitops/argocd/`, and `tools/copybara/copy.bara.sky`.
