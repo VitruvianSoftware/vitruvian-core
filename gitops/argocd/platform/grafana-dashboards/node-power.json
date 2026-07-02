@@ -179,7 +179,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
           "editorMode": "code",
-          "expr": "sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\",job=\"node-exporter\"}[$__rate_interval])) + sum(mac_soc_power_watts{job=\"mac_power\"})",
+          "expr": "(sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\",job=\"node-exporter\"}[$__rate_interval])) or vector(0)) + (sum(mac_soc_power_watts{job=\"mac_power\"}) or vector(0))",
           "legendFormat": "Total compute power",
           "range": true,
           "refId": "A"
@@ -187,7 +187,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
           "editorMode": "code",
-          "expr": "(sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\",job=\"node-exporter\"}[$__rate_interval])) + sum(mac_soc_power_watts{job=\"mac_power\"})) * 24 / 1000",
+          "expr": "((sum(rate({__name__=~\"node_rapl_package(_[0-9]+)?_joules_total\",job=\"node-exporter\"}[$__rate_interval])) or vector(0)) + (sum(mac_soc_power_watts{job=\"mac_power\"}) or vector(0))) * 24 / 1000",
           "legendFormat": "Est. energy / day",
           "range": true,
           "refId": "B"
