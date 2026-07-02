@@ -35,7 +35,7 @@ module.exports = {
   // runs on node >= 22.12, where require(esm) is native). The optional
   // .aspect_rules_js/ prefix matches the rules_js virtual store layout.
   transformIgnorePatterns: [
-    "/node_modules/(?!(\\.aspect_rules_js/)?chalk[@/])",
+    "/node_modules/(?!(\\.aspect_rules_js/)?(chalk|commander)[@/])",
   ],
   transform: {
     "^.+\\.(t|j)s$": [
