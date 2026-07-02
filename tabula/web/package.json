@@ -8,9 +8,15 @@
     "@tabula/shared": "workspace:*",
     "geist": "^1.5.0",
     "next": "16.2.10",
+<<<<<<< HEAD
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zustand": "^5.0.14"
+=======
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zustand": "^4.5.0"
+>>>>>>> 3829ce2 (chore(deps)(deps): bump the react group with 4 updates)
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -19,8 +25,8 @@
     "@types/chrome": "^0.2.2",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "jest": "catalog:",
     "jest-cli": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
