@@ -1,0 +1,226 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: _deploy-cloud-run
+
+# Reusable blue-green Cloud Run deploy (#500, docs/repo-assessment.md §5.3),
+# extracted verbatim from tabula's production pipeline (the reference
+# implementation): Bazel rules_oci image push -> optional Prisma migrations ->
+# Pulumi candidate at 0% traffic -> smoke the candidate's dedicated URL ->
+# shift 100%. A smoke failure exits before the shift, so the live revision
+# keeps serving and there is nothing to roll back.
+#
+# Deploy-phase inputs (image tag / stable revision / promote) pass to the
+# Pulumi program as per-invocation <ENV-PREFIX>_* environment variables, NOT
+# `pulumi config set` (#499): env is process-scoped, so a local run
+# interleaving with CI -- or two operators on one env -- can never read each
+# other's half-written config and shift traffic to the wrong revision.
+#
+# Caller contract:
+#   * job-level `environment: <app-name>-<environment>` supplies the WIF vars
+#     (GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOY_SERVICE_ACCOUNT,
+#     GCP_PROJECT_ID, GCP_REGION) -- pass `secrets: inherit`.
+#   * The Pulumi program reads <env-prefix>_IMAGE_TAG / _PROMOTE /
+#     _STABLE_REVISION (see infrastructure/pulumi/tabula/main.go envOrConfig).
+#   * Migrations (run-migrations: true) implement the vendored-Prisma pattern;
+#     an app with a different migration story extends this workflow rather
+#     than bolting steps around the call.
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: "App name; GitHub environment is <app-name>-<environment>"
+        required: true
+        type: string
+      environment:
+        description: "development | nonproduction | production"
+        required: true
+        type: string
+      bazel-image-target:
+        description: "oci_push label, e.g. //tabula/api:image_push"
+        required: true
+        type: string
+      image-repository-path:
+        description: "Artifact Registry path under the project, e.g. tabula/api"
+        required: true
+        type: string
+      artifact-repository:
+        description: "Artifact Registry repository name (first path segment), e.g. tabula"
+        required: true
+        type: string
+      service-name:
+        description: "Cloud Run service name pattern; '-<environment>' is appended, e.g. tabula-api"
+        required: true
+        type: string
+      pulumi-dir:
+        description: "Pulumi project dir, e.g. infrastructure/pulumi/tabula"
+        required: true
+        type: string
+      env-prefix:
+        description: "Env-var prefix the Pulumi program reads, e.g. TABULA"
+        required: true
+        type: string
+      run-migrations:
+        description: "Run the vendored-Prisma migration step before rollout"
+        required: false
+        type: boolean
+        default: false
+      smoke-url-path:
+        description: "Path curl-ed on the candidate before the traffic shift"
+        required: false
+        type: string
+        default: /health
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.app-name }}-${{ inputs.environment }}
+    env:
+      DEPLOY_ENV: ${{ inputs.environment }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      # Cache-only BuildBuddy access (--config=remotecache): reuse the image /
+      # schema-engine actions CI already cached instead of a cold rebuild on
+      # the deploy critical path. No RBE, so outputs stay local for the push.
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Ensure Artifact Registry repository
+        # Bootstrap ordering: the image push runs before `pulumi up`, but
+        # Pulumi owns the repository resource. Create it idempotently here;
+        # the Pulumi program adopts it (unconditional pulumi.Import — by the
+        # time pulumi runs, this repo always exists).
+        run: |
+          gcloud artifacts repositories describe "${{ inputs.artifact-repository }}" \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
+          gcloud artifacts repositories create "${{ inputs.artifact-repository }}" \
+            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
+            --repository-format=docker \
+            --description="${{ inputs.app-name }} container images (managed by ${{ inputs.pulumi-dir }})"
+
+      - name: Build and push image
+        run: |
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            ${{ inputs.bazel-image-target }} -- \
+            --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${{ inputs.image-repository-path }}" \
+            --tag "${GITHUB_SHA}" --tag latest
+
+      - name: Run database migrations
+        if: ${{ inputs.run-migrations }}
+        # Before the new revision takes traffic; vendored schema-engine keeps
+        # this hermetic apart from the database connection itself. (The
+        # vendored-Prisma pattern -- tabula's; see the caller-contract note.)
+        run: |
+          bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
+          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
+          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
+          # Plain assignment (not `export VAR=$(...)`): export would swallow
+          # the gcloud exit status and hand Prisma an empty DATABASE_URL.
+          DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret read returned empty (deployer SA needs secretAccessor on it)"
+            exit 1
+          fi
+          export DATABASE_URL
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      # Blue-green rollout (issue #204): deploy the new revision with NO
+      # traffic, smoke its dedicated candidate URL, then shift 100% only on
+      # success.
+      - name: Deploy the new revision without traffic (Pulumi)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Pulumi shells out to `go build`; the repo-root go.work does not
+          # include this module (same as tools/pulumi/pulumi_cmd.sh).
+          GOWORK: off
+        working-directory: ${{ inputs.pulumi-dir }}
+        run: |
+          pulumi stack select "$DEPLOY_ENV" --create
+          # Pin 100% to whatever serves now; the new revision publishes at 0%
+          # behind a `candidate` tag. Empty on the first ever deploy -> the
+          # program routes 100% straight to the new revision.
+          STABLE="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
+          echo "Current live revision: ${STABLE:-<none, first deploy>}"
+          # Per-invocation env, NOT `pulumi config set` (#499 de-race).
+          export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
+          export "${{ inputs.env-prefix }}_PROMOTE=false"
+          pulumi up --yes
+
+      - name: Smoke-check the candidate revision (before any traffic shift)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        working-directory: ${{ inputs.pulumi-dir }}
+        run: |
+          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
+          # The candidate's dedicated tag URL. On the first deploy there is no
+          # candidate (traffic went straight to the new revision), so fall back
+          # to the live service URL.
+          CAND="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format=json | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
+          if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
+            CAND="$(pulumi stack output serviceUrl)"
+          fi
+          echo "Smoke-checking ${CAND}${{ inputs.smoke-url-path }}"
+          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}${{ inputs.smoke-url-path }}"
+
+      - name: Shift 100% traffic to the new revision (Pulumi)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        working-directory: ${{ inputs.pulumi-dir }}
+        run: |
+          pulumi stack select "$DEPLOY_ENV"
+          # Re-pin the SAME stable revision + tag from the first phase so the
+          # promote update is self-consistent even if the service moved.
+          export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          STABLE="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
+          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
+          export "${{ inputs.env-prefix }}_PROMOTE=true"
+          pulumi up --yes

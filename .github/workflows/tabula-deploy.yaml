@@ -18,21 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tabula deploy: Bazel-built OCI image -> Artifact Registry -> prisma migrate
-# deploy (vendored schema-engine, before traffic shifts) -> Pulumi rollout.
-# Replaces the old buildpack-based `gcloud run deploy --source`.
+# Tabula deploy: a THIN CALLER of the reusable blue-green pipeline
+# (_deploy-cloud-run.yaml, #500) — Bazel rules_oci image -> Artifact Registry
+# -> prisma migrate (vendored schema-engine, before traffic shifts) -> Pulumi
+# candidate at 0% -> smoke -> promote to 100%. All pipeline mechanics live in
+# the reusable workflow; this file owns only tabula's identity (targets,
+# names, env prefix) and its trigger policy.
 #
 # One workflow, parameterized by GitHub Environment (managed as code in
 # //infrastructure/pulumi/repo_config): tabula-development deploys
 # automatically on push to main; tabula-nonproduction / tabula-production are
 # promoted via workflow_dispatch, with tabula-production additionally gated by
 # its environment protection rules (required reviewer, protected branches).
-#
-# Per-environment identifiers (GCP_PROJECT_ID, GCP_DEPLOY_SERVICE_ACCOUNT,
-# GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
-# Actions *variables* — keyless WIF means none of them is a credential. The
-# only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; runtime
-# secrets (DATABASE_URL, ...) live in GCP Secret Manager.
 
 name: tabula-deploy
 
@@ -97,140 +94,25 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml"
+          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   deploy:
-    # Push lane: when the gate says the artifacts are affected -- OR when the
-    # gate JOB itself failed (infra flake, timeout, runner death): the script
-    # is fail-open, and the job wrapping it must be too, or an infra hiccup
-    # silently skips a deploy that should have happened.
+    # Push lane: only when the gate says the artifacts are affected.
     # Dispatch lane: always (the gate job itself is skipped on dispatch, so
     # gate against `!cancelled()` rather than default needs-success).
     needs: [gate]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: tabula-${{ inputs.environment || 'development' }}
-    env:
-      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
-      # Cache-only BuildBuddy access (see --config=remotecache in tools/remote.bazelrc):
-      # reuse the image/schema-engine actions CI already cached instead of a cold
-      # rebuild on the deploy critical path. No RBE, so outputs stay local for the
-      # image push + the vendored schema-engine binary.
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      - name: Configure docker for Artifact Registry
-        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-
-      - name: Ensure Artifact Registry repository
-        # Bootstrap ordering: the image push runs before `pulumi up`, but
-        # Pulumi owns the repository resource. Create it idempotently here;
-        # the Pulumi program adopts it (unconditional pulumi.Import — by the
-        # time pulumi runs, this repo always exists).
-        run: |
-          gcloud artifacts repositories describe tabula \
-            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
-          gcloud artifacts repositories create tabula \
-            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
-            --repository-format=docker \
-            --description="Tabula container images (managed by //infrastructure/pulumi/tabula)"
-
-      - name: Build and push API image
-        run: |
-          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:image_push -- \
-            --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api" \
-            --tag "${GITHUB_SHA}" --tag latest
-
-      - name: Run database migrations
-        # Before the new revision takes traffic; vendored schema-engine keeps
-        # this hermetic apart from the database connection itself.
-        run: |
-          bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
-          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
-          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
-          # Plain assignment (not `export VAR=$(...)`): export would swallow
-          # the gcloud exit status and hand Prisma an empty DATABASE_URL.
-          DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
-          if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL secret read returned empty (deployer SA needs secretAccessor on it)"
-            exit 1
-          fi
-          export DATABASE_URL
-          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
-
-      - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
-
-      # Blue-green rollout (issue #204): deploy the new revision with NO traffic,
-      # smoke its dedicated candidate URL, then shift 100% only on success. A
-      # smoke failure exits before the shift, so the live revision keeps serving
-      # 100% and there is nothing to roll back.
-      - name: Deploy the new revision without traffic (Pulumi)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Pulumi shells out to `go build`; the repo-root go.work does not
-          # include this module (same as tools/pulumi/pulumi_cmd.sh).
-          GOWORK: off
-        working-directory: infrastructure/pulumi/tabula
-        run: |
-          pulumi stack select "$DEPLOY_ENV" --create
-          # Pin 100% to whatever serves now; the new revision publishes at 0%
-          # behind a `candidate` tag. Empty on the first ever deploy -> the
-          # program routes 100% straight to the new revision.
-          STABLE="$(gcloud run services describe "tabula-api-${DEPLOY_ENV}" \
-            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
-          echo "Current live revision: ${STABLE:-<none, first deploy>}"
-          pulumi config set tabula:imageTag "$GITHUB_SHA"
-          pulumi config set tabula:stableRevision "$STABLE"
-          pulumi config set tabula:promote false
-          pulumi up --yes
-
-      - name: Smoke-check the candidate revision (before any traffic shift)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          GOWORK: off
-        working-directory: infrastructure/pulumi/tabula
-        run: |
-          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
-          # The candidate's dedicated tag URL. On the first deploy there is no
-          # candidate (traffic went straight to the new revision), so fall back
-          # to the live service URL.
-          CAND="$(gcloud run services describe "tabula-api-${DEPLOY_ENV}" \
-            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --format=json | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
-          if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
-            CAND="$(pulumi stack output serviceUrl)"
-          fi
-          echo "Smoke-checking ${CAND}/health"
-          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/health"
-
-      - name: Shift 100% traffic to the new revision (Pulumi)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          GOWORK: off
-        working-directory: infrastructure/pulumi/tabula
-        run: |
-          pulumi stack select "$DEPLOY_ENV"
-          pulumi config set tabula:promote true
-          pulumi up --yes
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.outputs.affected == 'true') }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: ${{ inputs.environment || 'development' }}
+      bazel-image-target: //tabula/api:image_push
+      image-repository-path: tabula/api
+      artifact-repository: tabula
+      service-name: tabula-api
+      pulumi-dir: infrastructure/pulumi/tabula
+      env-prefix: TABULA
+      run-migrations: true
+      smoke-url-path: /health
+    secrets: inherit
