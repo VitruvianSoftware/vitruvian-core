@@ -28,7 +28,7 @@
 # `helm list -A` has no telepresence row; namespace NotFound). Unlike external-dns,
 # these values were NOT mirrored from a live release — they are reproduced verbatim
 # from the Pulumi values map in
-#   infrastructure/pulumi/dev-local/pkg/applications/telepresence.go
+#   infrastructure/pulumi/platform/dev-local/pkg/applications/telepresence.go
 # (chart telepresence 2.14.1, app.getambassador.io). If telepresence is ever enabled
 # via Pulumi before this cutover, re-run `helm get values telepresence -n telepresence -a`
 # and reconcile any drift before trusting this file.

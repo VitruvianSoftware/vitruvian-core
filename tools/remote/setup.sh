@@ -232,12 +232,9 @@ fi
 touch user.bazelrc
 # Idempotent: drop any prior header lines for this header before re-adding.
 # (strip_managed_block already ran at case entry, clearing the managed block.)
+# This also cleans up the config-scoped header lines older setups wrote.
 grep -v -- "--remote_header=$HEADER_NAME=" user.bazelrc | grep -v -- "--bes_header=$HEADER_NAME=" >user.bazelrc.tmp || true
 mv user.bazelrc.tmp user.bazelrc
-{
-  echo "common:remote --remote_header=$HEADER_NAME=$KEY"
-  echo "common:remote --bes_header=$HEADER_NAME=$KEY"
-} >>user.bazelrc
 # Local-default shared cache (#506): make every plain bazel invocation on this
 # machine read AND write the BuildBuddy cache (cache-only — execution stays
 # local; RBE remains an explicit --config=remote). Without the default, cache
@@ -245,13 +242,21 @@ mv user.bazelrc.tmp user.bazelrc
 # repo. A dead/stale key degrades gracefully: Bazel treats remote-cache errors
 # as warnings and the build continues locally. Opt out with
 # --no-local-default; `--cache none` removes everything.
+#
+# HEADER LINES ARE UNSCOPED (plain `common`) ON PURPOSE: writing them under
+# BOTH common:remote and common:remotecache doubled the header when a dev ran
+# the documented `bazel build --config=remote` on a machine with the
+# remotecache default — --remote_header values for the same name COMMA-JOIN
+# ("KEY,KEY"), corrupting auth. One unscoped line applies exactly once no
+# matter which config (or combination) expands, and is inert with no remote
+# endpoint configured.
 {
   echo "$MARK_BEGIN"
   if [ "$LOCAL_DEFAULT" -eq 1 ]; then
     echo "common --config=remotecache"
   fi
-  echo "common:remotecache --remote_header=$HEADER_NAME=$KEY"
-  echo "common:remotecache --bes_header=$HEADER_NAME=$KEY"
+  echo "common --remote_header=$HEADER_NAME=$KEY"
+  echo "common --bes_header=$HEADER_NAME=$KEY"
   echo "common:remotecache --remote_upload_local_results"
   echo "$MARK_END"
 } >>user.bazelrc
