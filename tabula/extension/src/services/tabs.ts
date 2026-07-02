@@ -122,10 +122,14 @@ export class TabService {
 
         let newWindow: chrome.windows.Window;
         try {
-          newWindow = await chrome.windows.create({
+          const createdWindow = await chrome.windows.create({
             url: firstTab.url,
             focused: true,
           });
+          if (!createdWindow) {
+            throw new Error("chrome.windows.create returned no window");
+          }
+          newWindow = createdWindow;
           created.push(newWindow.tabs?.[0] ?? null);
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -362,7 +366,11 @@ export class TabService {
       // chrome.tabs.move() can sometimes ungroup tabs, so we need to ensure they stay grouped
       if (originalGroupId && originalGroupId > 0) {
         // Re-add tabs to the same group to ensure they're still grouped together
-        await chrome.tabs.group({ tabIds, groupId: originalGroupId });
+        // (non-empty per the guard above, as the tuple type requires)
+        await chrome.tabs.group({
+          tabIds: tabIds as [number, ...number[]],
+          groupId: originalGroupId,
+        });
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -647,10 +655,13 @@ export class TabService {
           if (tabIds.length === 0) return;
           const metadata = groupMetadataMap.get(stableGroupId);
           if (!metadata) return;
-          const newChromeGroupId = await chrome.tabs.group({ tabIds });
+          // Non-empty per the length guard above, as the tuple type requires
+          const newChromeGroupId = await chrome.tabs.group({
+            tabIds: tabIds as [number, ...number[]],
+          });
           await chrome.tabGroups.update(newChromeGroupId, {
             title: metadata.title,
-            color: metadata.color as chrome.tabGroups.ColorEnum,
+            color: metadata.color as `${chrome.tabGroups.Color}`,
             collapsed: metadata.collapsed,
           });
         },
@@ -762,12 +773,15 @@ export class TabService {
             "metadata:",
             metadata,
           );
-          const newChromeGroupId = await chrome.tabs.group({ tabIds });
+          // Non-empty per the length guard above, as the tuple type requires
+          const newChromeGroupId = await chrome.tabs.group({
+            tabIds: tabIds as [number, ...number[]],
+          });
 
           // Apply the saved metadata (title, color, collapsed)
           await chrome.tabGroups.update(newChromeGroupId, {
             title: metadata.title,
-            color: metadata.color as chrome.tabGroups.ColorEnum,
+            color: metadata.color as `${chrome.tabGroups.Color}`,
             collapsed: metadata.collapsed,
           });
           // eslint-disable-next-line no-console

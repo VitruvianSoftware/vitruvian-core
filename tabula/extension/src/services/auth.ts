@@ -197,7 +197,7 @@ export class AuthService {
 
   static async getRefreshToken(): Promise<string | null> {
     const result = await chrome.storage.local.get(REFRESH_TOKEN_KEY);
-    return result[REFRESH_TOKEN_KEY] || null;
+    return (result[REFRESH_TOKEN_KEY] as string | undefined) || null;
   }
 
   /**
@@ -268,7 +268,7 @@ export class AuthService {
 
   static async getUser(): Promise<User | null> {
     const result = await chrome.storage.local.get(this.userKey);
-    return result[this.userKey] || null;
+    return (result[this.userKey] as User | undefined) || null;
   }
 
   /**
@@ -292,10 +292,11 @@ export class AuthService {
     const session = sessionStorage();
     if (session) {
       const result = await session.get(this.tokenKey);
-      if (result[this.tokenKey]) return result[this.tokenKey];
+      const sessionToken = result[this.tokenKey] as string | undefined;
+      if (sessionToken) return sessionToken;
     }
     const local = await chrome.storage.local.get(this.tokenKey);
-    return local[this.tokenKey] || null;
+    return (local[this.tokenKey] as string | undefined) || null;
   }
 
   /**

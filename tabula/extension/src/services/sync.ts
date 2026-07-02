@@ -804,7 +804,8 @@ export class SyncService {
   private static async loadQueue(): Promise<void> {
     try {
       const result = await chrome.storage.local.get(QUEUE_STORAGE_KEY);
-      this.queue = result[QUEUE_STORAGE_KEY] || [];
+      this.queue =
+        (result[QUEUE_STORAGE_KEY] as SyncOperation[] | undefined) || [];
       this.updateState({ pendingCount: this.queue.length });
     } catch (error) {
       // eslint-disable-next-line no-console

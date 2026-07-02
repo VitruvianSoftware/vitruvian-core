@@ -450,7 +450,7 @@ export const useTabSync = ({
   const handleTabUpdate = useCallback(
     (
       _tabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo,
+      changeInfo: chrome.tabs.OnUpdatedInfo,
       _tab: chrome.tabs.Tab,
     ) => {
       // Only sync on meaningful changes (including groupId and pinned changes)

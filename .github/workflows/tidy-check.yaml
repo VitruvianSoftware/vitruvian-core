@@ -83,3 +83,21 @@ jobs:
             git diff -- ':!MODULE.bazel.lock'
             exit 1
           fi
+
+      # Lockfile/manifest sync guard (#523 fallout). Dependabot PRs carry a
+      # pnpm-lock.yaml diff generated BEFORE the merge queue rebases them; when
+      # grouped/parallel dep PRs land in one queue window, main can end up with
+      # manifests the lock never resolved (it happened: @types/chrome ^0.2.2
+      # and @fastify/rate-limit ^11 in manifests while the lock pinned the old
+      # majors -- CI stayed green against the STALE lock, and the type/runtime
+      # breakage only detonated on the next innocent `pnpm install`). This
+      # step re-resolves with the SAME hermetic pnpm Bazel uses and fails when
+      # the committed lock does not match the manifests.
+      - name: pnpm lockfile is in sync with the manifests
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
+          if ! git diff --exit-code -- pnpm-lock.yaml; then
+            echo "::error::pnpm-lock.yaml is out of sync with the package.json manifests (a dependency PR merged with a stale lock diff). Run 'bazel run -- @pnpm//:pnpm install --dir . --lockfile-only' and commit the result -- and check whether the newly-resolved versions actually build (this skew has hidden real breakage before)."
+            exit 1
+          fi

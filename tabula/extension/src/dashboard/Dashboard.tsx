@@ -432,10 +432,12 @@ export const Dashboard: React.FC = () => {
     }) => {
       if (changes.tabula_workspaces) {
         if (changes.tabula_workspaces.newValue) {
+          const nextWorkspaces = changes.tabula_workspaces
+            .newValue as Workspace[];
           // Optimization: Update directly from payload to avoid async read delay
           // This fixes "Workspace does not show until refresh"
           useWorkspaceStore.setState({
-            workspaces: changes.tabula_workspaces.newValue,
+            workspaces: nextWorkspaces,
           });
           // Refresh THIS window's workspace from the payload. Must use the
           // effective (URL-pinned) id — the shared store id may belong to a
@@ -443,7 +445,7 @@ export const Dashboard: React.FC = () => {
           // activeWorkspaceRef and redirect tab syncs at the wrong workspace.
           const effectiveId = effectiveActiveWorkspaceIdRef.current;
           if (effectiveId) {
-            const ws = changes.tabula_workspaces.newValue.find(
+            const ws = nextWorkspaces.find(
               (w: Workspace) => w.id === effectiveId,
             );
             if (ws) setActiveWorkspaceData(ws);
@@ -454,7 +456,10 @@ export const Dashboard: React.FC = () => {
       if (changes.tabula_active_workspace) {
         // Handle external active workspace change (e.g. from sidebar/service)
         useWorkspaceStore.setState({
-          activeWorkspaceId: changes.tabula_active_workspace.newValue,
+          activeWorkspaceId: changes.tabula_active_workspace.newValue as
+            | string
+            | null
+            | undefined,
         });
       }
 
