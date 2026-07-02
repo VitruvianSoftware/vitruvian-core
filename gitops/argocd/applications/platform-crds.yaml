@@ -29,7 +29,7 @@ spec:
   source:
     repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
     targetRevision: main
-    path: infrastructure/pulumi/dev-local/crds
+    path: infrastructure/pulumi/platform/dev-local/crds
     directory:
       recurse: true
   destination:

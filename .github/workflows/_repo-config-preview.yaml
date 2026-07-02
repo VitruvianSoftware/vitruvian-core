@@ -34,7 +34,7 @@ name: Repo Config Preview
 # in the APP_PRIVATE_KEY secret, plus PULUMI_ACCESS_TOKEN for the Pulumi backend.
 on:
     pull_request:
-        paths: ["infrastructure/pulumi/repo_config/**"]
+        paths: ["infrastructure/pulumi/platform/repo_config/**"]
 
 permissions:
     contents: read
@@ -78,7 +78,7 @@ jobs:
                   # combined log is kept for the job output; the clean PR comment is
                   # built from it in the next step.
                   bazel run --color=no --curses=no \
-                      //infrastructure/pulumi/repo_config:preview -- --stack dev --diff \
+                      //infrastructure/pulumi/platform/repo_config:preview -- --stack dev --diff \
                       2>&1 | tee /tmp/preview-raw.txt
 
             - name: Build preview comment

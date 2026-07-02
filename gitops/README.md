@@ -1,7 +1,7 @@
 # GitOps (ArgoCD)
 
 App-of-Apps GitOps for the homelab cluster. ArgoCD is installed by Pulumi
-(`infrastructure/pulumi/dev-local`, `argocd_enabled: true`); from there it syncs
+(`infrastructure/pulumi/platform/dev-local`, `argocd_enabled: true`); from there it syncs
 this directory.
 
 ## Layout

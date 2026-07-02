@@ -26,7 +26,7 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 # tabcli: Tabula operations CLI (auth, workos, db, config, init, version).
 # Dev-loop and infra commands were retired in the monorepo migration: code
 # checks run via `bazel test //tabula/...`, deploys via the
-# //infrastructure/pulumi/tabula project.
+# //infrastructure/pulumi/apps/tabula project.
 # gazelle:ignore
 # gazelle:exclude src
 

@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Bazel monorepo: drive all tooling through bazel targets, never raw CLIs where a target exists (`//tools/gitops:*`, `//infrastructure/pulumi/dev-local:*`).
+- Bazel monorepo: drive all tooling through bazel targets, never raw CLIs where a target exists (`//tools/gitops:*`, `//infrastructure/pulumi/platform/dev-local:*`).
 - `KUBECONFIG=$HOME/.kube/cluster.yaml`, context `default` (the gitops/pulumi wrappers default to this; standalone `kubectl`/`argocd` calls must set it).
 - Sealed-secrets controller: name `sealed-secrets-controller`, namespace `sealed-secrets`. kubeseal must target it: `--controller-name sealed-secrets-controller --controller-namespace sealed-secrets --format yaml`.
 - NEVER commit plaintext secrets or the master key. Only `SealedSecret`s (encrypted) go in git. Bitwarden holds the master key and the `argocd-secret` backup.
@@ -25,8 +25,8 @@
 ### Task 0: Branch + commit the `mcp` account mechanism
 
 **Files:**
-- Modify (already edited in tree): `infrastructure/pulumi/dev-local/pkg/applications/argocd.go`
-- Modify (already edited in tree): `infrastructure/pulumi/dev-local/Pulumi.example.yaml`
+- Modify (already edited in tree): `infrastructure/pulumi/platform/dev-local/pkg/applications/argocd.go`
+- Modify (already edited in tree): `infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml`
 
 **Interfaces:**
 - Produces: argo-cd Helm values gain `configs.cm.accounts.<name>: apiKey` + RBAC `g, <name>, role:admin`, gated on `argocd_api_account` (default `""`). Enablement (`monorepo:argocd_api_account: mcp`) lives in the gitignored `Pulumi.local.yaml` on this machine — intentional; the repo convention gitignores `Pulumi.*.yaml`.
@@ -40,14 +40,14 @@ git checkout -b feat/mcp-reproducible-secrets
 
 - [ ] **Step 2: Verify the pulumi program still compiles**
 
-Run: `GOWORK=off go -C infrastructure/pulumi/dev-local build ./...`
+Run: `GOWORK=off go -C infrastructure/pulumi/platform/dev-local build ./...`
 Expected: no output, exit 0.
 
 - [ ] **Step 3: Commit the mechanism (not the gitignored stack config)**
 
 ```bash
-git add infrastructure/pulumi/dev-local/pkg/applications/argocd.go \
-        infrastructure/pulumi/dev-local/Pulumi.example.yaml
+git add infrastructure/pulumi/platform/dev-local/pkg/applications/argocd.go \
+        infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml
 git commit -m "feat(infra): config-driven argocd apiKey account for MCP access
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -55,7 +55,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 4: Confirm Pulumi.local.yaml is NOT staged (gitignored, local only)**
 
-Run: `git status --short infrastructure/pulumi/dev-local/Pulumi.local.yaml`
+Run: `git status --short infrastructure/pulumi/platform/dev-local/Pulumi.local.yaml`
 Expected: empty output (ignored).
 
 ---
@@ -432,7 +432,7 @@ kind delete cluster --name argocd-rehearsal
   - What the sealed-secrets master key is and why it lives in Bitwarden (item `dev-local sealed-secrets controller keys`).
   - The two Bitwarden-backed artifacts: master key + `argocd-secret`.
   - **Reinstall order** (exact commands):
-    1. `bazel run //infrastructure/pulumi/dev-local:up -- --stack local --yes` (with `KUBECONFIG=$HOME/.kube/cluster.yaml`)
+    1. `bazel run //infrastructure/pulumi/platform/dev-local:up -- --stack local --yes` (with `KUBECONFIG=$HOME/.kube/cluster.yaml`)
     2. `bazel run //tools/gitops:sealed-secrets-restore` (master key) → controller decrypts all SealedSecrets (incl. `grafana-admin-credentials`).
     3. Wait for ArgoCD to sync Grafana; confirm `grafana-admin-credentials` Secret exists.
     4. `bazel run //tools/gitops:argocd-secret-restore` → restart argocd-server.

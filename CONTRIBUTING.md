@@ -156,7 +156,7 @@ The default branch is **`main`**.
 2. **Conventional Commits.** Use `feat:`, `fix:`, `docs:`, `chore:`, scoped where helpful (`fix(gitops): …`). This feeds `release-please`.
 3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `devx/CONTRIBUTING.md`, the de-facto template).
 4. **Finish branches with a PR.** When a branch is done, **push and open a GitHub PR** (`gh pr create`) for review + CI. **Never merge locally.**
-5. **The merge queue is the single enforcement authority.** Branch protection, required reviews, and the merge queue are codified as IaC in `infrastructure/pulumi/repo_config` (merge queue on; `requireStatusChecks` intentionally `false` because the queue runs them). A PR merges by **entering the queue**, which runs the full required-check set against the rebased result.
+5. **The merge queue is the single enforcement authority.** Branch protection, required reviews, and the merge queue are codified as IaC in `infrastructure/pulumi/platform/repo_config` (merge queue on; `requireStatusChecks` intentionally `false` because the queue runs them). A PR merges by **entering the queue**, which runs the full required-check set against the rebased result.
 
 PR bodies should be self-contained (what changed, why, how verified). Auto-delete of merged head branches is also managed by `repo_config`.
 
@@ -232,7 +232,7 @@ flowchart TD
 
 ### The required checks (merge-queue gate set)
 
-The authoritative list lives in `infrastructure/pulumi/repo_config/main.go` (`mergeQueueRequiredChecks`), and `//tools/conformance:check` asserts every name is produced by a job that reports on `merge_group` — so this table can't silently drift from reality without CI failing.
+The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main.go` (`mergeQueueRequiredChecks`), and `//tools/conformance:check` asserts every name is produced by a job that reports on `merge_group` — so this table can't silently drift from reality without CI failing.
 
 | Check | Workflow | What it gates |
 |-------|----------|---------------|
@@ -297,7 +297,7 @@ Three storage tiers, each with a clear owner:
 - **Local:** uncommitted/gitignored files — `Pulumi.<stack>.yaml`, `~/.kube/<cluster>.yaml`, per-app GCP dev creds, the `.env` files in Section 3.4.
 - **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "tabula model": `tabula-development`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `tabula`'s Bazel build).
 
-> **Former live violation (resolved in code):** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
+> **Former live violation (resolved in code):** `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
 
 When you add a secret to any new Pulumi stack, **route it through `infrastructure/pulumi/pkg/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`)** — do not invent a per-stack mechanism, and never paste a `secure:` blob into a committed file.
 
@@ -343,7 +343,7 @@ flowchart TD
 
 ### Deploy identity (WIF)
 
-Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `infrastructure/pulumi/oauth-user-inspector-deploy-identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
+Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
 
 ### Releases
 

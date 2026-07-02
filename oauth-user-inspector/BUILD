@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # oauth-user-inspector: a Vite/React frontend + Express/TS backend served as one
-# container (see Dockerfile + infrastructure/pulumi/oauth-user-inspector for the
+# container (see Dockerfile + infrastructure/pulumi/apps/oauth-user-inspector for the
 # Cloud Run deploy). The production build runs via pnpm/vite/tsc (the monorepo
 # does not bazel-build frontends — cf. tabula/web); bazel runs the jest suite so
 # the server tests land in CI. gazelle:ignore stops the JS/TS extension from

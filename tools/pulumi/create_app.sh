@@ -208,5 +208,5 @@ fi
 echo
 echo "Done. Install the App on '$OWNER' (and the repos that should opt in):"
 echo "    https://github.com/apps/$APP_SLUG/installations/new"
-echo "Then per repo, run 'bazel run //infrastructure/pulumi/repo_config:setup' to"
+echo "Then per repo, run 'bazel run //infrastructure/pulumi/platform/repo_config:setup' to"
 echo "enable preview-on-PR / apply-on-merge."

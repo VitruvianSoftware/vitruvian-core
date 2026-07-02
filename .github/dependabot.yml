@@ -158,13 +158,13 @@ updates:
   #     CI and won't merge. ───
   - package-ecosystem: "gomod"
     directories:
-      - "/infrastructure/pulumi/dev-local"
-      - "/infrastructure/pulumi/lab-gmail"
-      - "/infrastructure/pulumi/oauth-user-inspector"
-      - "/infrastructure/pulumi/oauth-user-inspector-deploy-identity"
-      - "/infrastructure/pulumi/repo_config"
-      - "/infrastructure/pulumi/tabula"
-      - "/infrastructure/pulumi/zitadel-apps"
+      - "/infrastructure/pulumi/platform/dev-local"
+      - "/infrastructure/pulumi/accounts/personal"
+      - "/infrastructure/pulumi/apps/oauth-user-inspector"
+      - "/infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity"
+      - "/infrastructure/pulumi/platform/repo_config"
+      - "/infrastructure/pulumi/apps/tabula"
+      - "/infrastructure/pulumi/platform/zitadel-apps"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

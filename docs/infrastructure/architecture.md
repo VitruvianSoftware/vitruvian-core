@@ -175,7 +175,7 @@ credentials, supplied as config secrets. Onboarding another component is a
 one-line append to the `syncedProjects` list in
 [`sync.go`](../../infrastructure/pulumi/pkg/copybara_sync/sync.go).
 
-### dev-local (`infrastructure/pulumi/dev-local`)
+### dev-local (`infrastructure/pulumi/platform/dev-local`)
 
 Pulumi project `monorepo` (stack `local`, Pulumi Cloud backend). Brings up a local
 [k3s](https://k3s.io/) HA cluster on a [Lima](https://lima-vm.org/) VM and layers
@@ -198,13 +198,13 @@ flowchart TB
 ```
 
 Helm values live as YAML under
-[`dev-local/values/`](../../infrastructure/pulumi/dev-local/values) (separated
+[`dev-local/values/`](../../infrastructure/pulumi/platform/dev-local/values) (separated
 from deployment logic); each component is a Go file under `pkg/applications/`.
 Deep component details are documented next to the code in
-[`dev-local/docs/COMPONENTS.md`](../../infrastructure/pulumi/dev-local/docs/COMPONENTS.md)
-and the [dev-local README](../../infrastructure/pulumi/dev-local/README.md).
+[`dev-local/docs/COMPONENTS.md`](../../infrastructure/pulumi/platform/dev-local/docs/COMPONENTS.md)
+and the [dev-local README](../../infrastructure/pulumi/platform/dev-local/README.md).
 
-### lab-gmail (`infrastructure/pulumi/lab-gmail`)
+### lab-gmail (`infrastructure/pulumi/accounts/personal`)
 
 Pulumi project `pulumi_lab_gmail` (GCP project `personal-llc`). Provisions a
 personal Cloud Run footprint and the DNS to reach it.
@@ -230,9 +230,9 @@ An optional `multiServices` config array deploys additional Cloud Run services
 from one list. Cloudflare DNS automation is optional and guarded: if a custom
 domain is set with an API token but no zone, the deploy fails fast. This is the
 only **GCP** project, so it is the only row currently in the identity map. Full
-config reference: the [lab-gmail README](../../infrastructure/pulumi/lab-gmail/README.md).
+config reference: the [lab-gmail README](../../infrastructure/pulumi/accounts/personal/README.md).
 
-### repo_config (`infrastructure/pulumi/repo_config`)
+### repo_config (`infrastructure/pulumi/platform/repo_config`)
 
 Pulumi project `vitruvian-core-repo-config`. Manages **this** repository's own
 GitHub settings — and does so by **adopting** the existing repo via
@@ -257,7 +257,7 @@ flowchart TB
 Branch protection is fully config-driven (required reviews, status checks,
 enforce-admins, …). Force-pushes and branch deletions on the protected branch
 are **always** blocked. Config reference: the
-[repo_config README](../../infrastructure/pulumi/repo_config/README.md).
+[repo_config README](../../infrastructure/pulumi/platform/repo_config/README.md).
 
 ## CI/CD automation
 

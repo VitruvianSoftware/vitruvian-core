@@ -134,14 +134,14 @@ A new app has nothing authoritative to follow. tabula even straddles two targets
 
 **Priority: P0 · Effort: M**
 
-**Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `infrastructure/pulumi/tabula/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
+**Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `infrastructure/pulumi/apps/tabula/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
 
 ```
-infrastructure/pulumi/oauth-user-inspector/Pulumi.development.yaml
-infrastructure/pulumi/oauth-user-inspector-deploy-identity/Pulumi.development.yaml
-infrastructure/pulumi/tabula/Pulumi.development.yaml
-infrastructure/pulumi/repo_config/Pulumi.dev.yaml
-infrastructure/pulumi/dev-local/Pulumi.example.yaml
+infrastructure/pulumi/apps/oauth-user-inspector/Pulumi.development.yaml
+infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity/Pulumi.development.yaml
+infrastructure/pulumi/apps/tabula/Pulumi.development.yaml
+infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml
+infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml
 ```
 
 There are **zero `nonproduction`/`production` stacks**. So even the reference app cannot be promoted past development without first creating those stacks — the ladder is wired in CI and code but **not traversable**. `oauth-user-inspector` is worse: its `workflow_dispatch` choice list is `development`-only and its rollout is a straight cutover (no candidate/smoke/traffic-shift) vs tabula's real blue-green (no-traffic candidate → smoke → `promote=true` shift).
@@ -154,7 +154,7 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 
 **Priority: P0 · Effort: S (code) + rotation · Status: code done (#456), rotation pending**
 
-**Original state.** `infrastructure/pulumi/repo_config/Pulumi.dev.yaml` contained `buildbuddyApiKey: secure: AAAB...` and `main.go` read it via `cfg.RequireSecret` with **no env-injection fallback** — the single live violation of the formalized invariant (*secrets never in git, not even Pulumi `secure:`-encrypted*), and the only Pulumi stack not CI-reproducible the formalized way. The env-or-config pattern existed only as the private `envOrConfigSecret()` in `pkg/copybara_sync`, so every new secret-bearing stack re-decided how to handle secrets (and `repo_config` got it wrong).
+**Original state.** `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml` contained `buildbuddyApiKey: secure: AAAB...` and `main.go` read it via `cfg.RequireSecret` with **no env-injection fallback** — the single live violation of the formalized invariant (*secrets never in git, not even Pulumi `secure:`-encrypted*), and the only Pulumi stack not CI-reproducible the formalized way. The env-or-config pattern existed only as the private `envOrConfigSecret()` in `pkg/copybara_sync`, so every new secret-bearing stack re-decided how to handle secrets (and `repo_config` got it wrong).
 
 **Target (Principles doc).** Tier-3 Pulumi secrets follow "env in CI / gitignored config locally, value never in git," routed through one shared helper.
 
@@ -171,7 +171,7 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 
 **Target (Principles doc).** A codified per-app deploy-identity Pulumi bootstrap, modeled on `oauth-user-inspector-deploy-identity`, is mandatory for every Cloud Run app.
 
-**Recommended action.** Author `infrastructure/pulumi/tabula-deploy-identity` mirroring the reference pattern, **import** the existing click-ops resources into its state, and make *it* (not hand-entered `repo_config` values) the source of truth for tabula's WIF provider/SA identifiers.
+**Recommended action.** Author `infrastructure/pulumi/apps/tabula-deploy-identity` mirroring the reference pattern, **import** the existing click-ops resources into its state, and make *it* (not hand-entered `repo_config` values) the source of truth for tabula's WIF provider/SA identifiers.
 
 ### 3.9 oauth's GitHub Environment + Actions variables are click-ops
 

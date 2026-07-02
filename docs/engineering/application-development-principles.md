@@ -38,7 +38,7 @@ These apply to **every** application in the repo — a Go CLI, a Cloud Run servi
 
 **Why:** Click-ops state is invisible, unreviewable, and unreproducible — it rots and drifts.
 
-**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/repo_config`). The reference for a *new* deploy footprint is `infrastructure/pulumi/oauth-user-inspector-deploy-identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
+**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/platform/repo_config`). The reference for a *new* deploy footprint is `infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
 
 ### 2.2 Infra ops run only through the Bazel wrappers
 
@@ -266,7 +266,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Cloud Run deploy stacks follow the SaaS ladder (§3.1). The k8s platform promotes via **git → ArgoCD only** — no dev/staging/prod ladder; a change is promoted by being merged. Pin cluster chart images to an immutable SHA, never `latest`. |
 | **Secrets & config** | The shared `pkg/secrets` tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional`, which `copybara_sync` and `repo_config` route through (issue #456). New secret-bearing stacks should use it. k8s secrets via sealed-secrets. |
 | **Observability** | The platform *is* the observability stack (Prometheus/Grafana/Loki/Tempo). Codify alerting routes/receivers in git **(target)** — Alertmanager routing is currently out-of-band. |
-| **Example apps** | `infrastructure/pulumi/oauth-user-inspector-deploy-identity` (reference WIF bootstrap), `infrastructure/pulumi/repo_config` (repo self-governance), `infrastructure/pulumi/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
+| **Example apps** | `infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo_config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
 
 ---
 
@@ -358,4 +358,4 @@ Answer these in order. The first match is your category.
 
 ---
 
-The doc is at `docs/engineering/application-development-principles.md` (the `docs/engineering/` directory does not yet exist and will be created on write). All cited paths/workflows/identifiers were verified against the repo: `infrastructure/gcp-identities.tsv`, `infrastructure/pulumi/oauth-user-inspector-deploy-identity/`, the `envOrConfigSecret` helper at `infrastructure/pulumi/pkg/copybara_sync/sync.go:120`, the `//:tidy` target in `BUILD`, and the workflow filenames under `.github/workflows/`. Cross-references to the two companion docs use the names `docs/engineering/conventions.md` (CONTRIBUTING/SOP) and `docs/engineering/alignment-gaps.md` (the gaps doc) — confirm these match the filenames your other two subagents are using.
+The doc is at `docs/engineering/application-development-principles.md` (the `docs/engineering/` directory does not yet exist and will be created on write). All cited paths/workflows/identifiers were verified against the repo: `infrastructure/gcp-identities.tsv`, `infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity/`, the `envOrConfigSecret` helper at `infrastructure/pulumi/pkg/copybara_sync/sync.go:120`, the `//:tidy` target in `BUILD`, and the workflow filenames under `.github/workflows/`. Cross-references to the two companion docs use the names `docs/engineering/conventions.md` (CONTRIBUTING/SOP) and `docs/engineering/alignment-gaps.md` (the gaps doc) — confirm these match the filenames your other two subagents are using.

@@ -49,8 +49,8 @@ Anything after `--` is forwarded to `pulumi` verbatim, so the full CLI is still
 available, e.g.:
 
 ```bash
-bazel run //infrastructure/pulumi/lab-gmail:preview -- --diff --stack dev
-bazel run //infrastructure/pulumi/repo_config:up -- --yes
+bazel run //infrastructure/pulumi/accounts/personal:preview -- --diff --stack dev
+bazel run //infrastructure/pulumi/platform/repo_config:up -- --yes
 ```
 
 ### The normal workflow
@@ -76,13 +76,13 @@ the diff) before applying.
 For GCP-backed projects the wrapper prints the identity it injected:
 
 ```
-→ GCP identity: james.nguyen@gmail.com (project personal-llc) for infrastructure/pulumi/lab-gmail
+→ GCP identity: james.nguyen@gmail.com (project personal-llc) for infrastructure/pulumi/accounts/personal
 ```
 
 If the pinned account isn't logged in, it **fails fast** with the exact fix:
 
 ```
-ERROR: infrastructure/pulumi/lab-gmail is pinned to GCP identity 'james.nguyen@gmail.com'
+ERROR: infrastructure/pulumi/accounts/personal is pinned to GCP identity 'james.nguyen@gmail.com'
 (infrastructure/gcp-identities.tsv) but no valid credentials were found.
 Log in with:  gcloud auth login james.nguyen@gmail.com
 ```
@@ -95,7 +95,7 @@ account. (See [Troubleshooting](#troubleshooting) for the 403 case.)
 
 ### dev-local — local cluster
 
-1. `bazel run //infrastructure/pulumi/dev-local:setup` (stack `local`, Pulumi Cloud backend; source the project's gitignored `.env` for `PULUMI_CONFIG_PASSPHRASE`).
+1. `bazel run //infrastructure/pulumi/platform/dev-local:setup` (stack `local`, Pulumi Cloud backend; source the project's gitignored `.env` for `PULUMI_CONFIG_PASSPHRASE`).
 2. Choose components by setting `monorepo:<name>_enabled` flags (e.g.
    `cert_manager_enabled`, `istio_enabled`, `monitoring_enabled`) in your local
    `Pulumi.local.yaml`, or via `…:config -- set monorepo:istio_enabled true`.
@@ -105,8 +105,8 @@ account. (See [Troubleshooting](#troubleshooting) for the 403 case.)
 
 Component-level configuration and access tips (Grafana, Redis, Istio gateway,
 etc.) are documented next to the code in the
-[dev-local README](../../infrastructure/pulumi/dev-local/README.md) and
-[COMPONENTS.md](../../infrastructure/pulumi/dev-local/docs/COMPONENTS.md).
+[dev-local README](../../infrastructure/pulumi/platform/dev-local/README.md) and
+[COMPONENTS.md](../../infrastructure/pulumi/platform/dev-local/docs/COMPONENTS.md).
 
 ### lab-gmail — personal GCP
 
@@ -114,7 +114,7 @@ etc.) are documented next to the code in the
 2. `…:preview -- --refresh --diff` to see drift (the stack is long-lived).
 3. Review, then `…:up`.
 4. Custom domains and multi-service deploys are config-driven — see the
-   [lab-gmail README](../../infrastructure/pulumi/lab-gmail/README.md).
+   [lab-gmail README](../../infrastructure/pulumi/accounts/personal/README.md).
 
 ### repo_config — this repo's GitHub settings
 

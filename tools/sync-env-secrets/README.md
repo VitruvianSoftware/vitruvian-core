@@ -12,7 +12,7 @@ imperative one-off) and **§2.4** (secrets never live in git). It replaces ad-ho
 ## Why a tool, and why not Pulumi/`repo_config`
 
 Non-secret environment **variables** (project id, region, deploy SA, WIF provider)
-_are_ managed as code in `infrastructure/pulumi/repo_config` (`oauthEnvironment`).
+_are_ managed as code in `infrastructure/pulumi/platform/repo_config` (`oauthEnvironment`).
 
 The **secrets** _could_ be Pulumi-managed too — `repo_config`'s `dependabotSecrets`
 manages `BUILDBUDDY_API_KEY` via a committed `secure:`-encrypted config value that
@@ -99,6 +99,6 @@ deploy](../../.github/workflows/oauth-user-inspector-deploy.yaml):
 
 Provisioning these (machine key via the in-cluster `iam-admin-pat`; the Tailscale
 OAuth client in the admin console) is described in
-[`oauth-user-inspector` onboarding](../../infrastructure/pulumi/oauth-user-inspector-deploy-identity/);
+[`oauth-user-inspector` onboarding](../../infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity/);
 once you hold the values, drop each into `secrets/oauth-user-inspector-development/`
 and run `apply` + `bw-push`.

@@ -9,7 +9,7 @@
 # (issue #460). Each team currently has a single member (@ipv1337); adding a
 # maintainer to an area is now a team-membership change, not a CODEOWNERS edit.
 # Teams (created + granted repo access, codified in
-# infrastructure/pulumi/repo_config):
+# infrastructure/pulumi/platform/repo_config):
 #    @VitruvianSoftware/platform-team              platform / build / infra
 #    @VitruvianSoftware/devx-team                  devx
 #    @VitruvianSoftware/homelab-team               homelab

@@ -77,7 +77,7 @@ ROOT="${BUILD_WORKSPACE_DIRECTORY:-$PWD}"
 REGISTRY="$ROOT/tools/conformance/version-pins.tsv"
 EXCEPTIONS_DOC="$ROOT/docs/engineering/version-pin-exceptions.md"
 WORKSPACE_YAML="$ROOT/pnpm-workspace.yaml"
-REPO_CONFIG_MAIN="$ROOT/infrastructure/pulumi/repo_config/main.go"
+REPO_CONFIG_MAIN="$ROOT/infrastructure/pulumi/platform/repo_config/main.go"
 WORKFLOWS_DIR="$ROOT/.github/workflows"
 TODAY="$(date +%Y-%m-%d)"
 
@@ -1031,7 +1031,7 @@ EOF
 # brownfield-adoption pattern for the GitHub provider and stay allowed.
 # ---------------------------------------------------------------------------
 check_zitadel_import() {
-  zdir="$ROOT/infrastructure/pulumi/zitadel-apps"
+  zdir="$ROOT/infrastructure/pulumi/platform/zitadel-apps"
   [ -d "$zdir" ] || return 0
   hits="$(grep -rn 'pulumi\.Import(' "$zdir" --include='*.go' 2>/dev/null || true)"
   if [ -n "$hits" ]; then
@@ -1048,7 +1048,7 @@ check_zitadel_import() {
 $hits
 EOF
   else
-    emit "iac" "$GLYPH_OK" "$C_GREEN" "infrastructure/pulumi/zitadel-apps" "no imports" "create-only" \
+    emit "iac" "$GLYPH_OK" "$C_GREEN" "infrastructure/pulumi/platform/zitadel-apps" "no imports" "create-only" \
       "zitadel-apps creates and owns its OIDC apps (no destructive adopt)" ""
     OK_COUNT=$((OK_COUNT + 1))
   fi

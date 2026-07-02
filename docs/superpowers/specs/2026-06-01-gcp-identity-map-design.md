@@ -72,7 +72,7 @@ Seed content:
 #   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
 #
 # infra_dir                        account                              gcp_project   purpose
-infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+infrastructure/pulumi/accounts/personal    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                  james@abrial.ai                      -             abrial.ai projects (future)
 -                                  james@sandbox.vitruviansoftware.dev  -             Vitruvian Software sandbox/company (future)
@@ -115,7 +115,7 @@ Inserted after `export GOWORK=off`, before `exec pulumi …`:
   - reference row (`-`) and unknown dir → empty output
   - comment/blank lines ignored; `purpose` with spaces doesn't corrupt cols 1–3
 - **`gofmt`/build** unaffected (no Go changes).
-- **Manual end-to-end:** `bazel run //infrastructure/pulumi/lab-gmail:preview -- --stack dev` with the ambient `gcloud` account set to `james@abrial.ai` must still authenticate as `james.nguyen@gmail.com` and refresh cleanly. Set ambient to a bogus/none and confirm the fail-fast message when the declared account lacks creds.
+- **Manual end-to-end:** `bazel run //infrastructure/pulumi/accounts/personal:preview -- --stack dev` with the ambient `gcloud` account set to `james@abrial.ai` must still authenticate as `james.nguyen@gmail.com` and refresh cleanly. Set ambient to a bogus/none and confirm the fail-fast message when the declared account lacks creds.
 
 ## Failure Modes
 

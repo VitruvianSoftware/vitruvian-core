@@ -69,7 +69,7 @@ command -v gh >/dev/null 2>&1 || { err "gh CLI not found — install it and re-r
 if gh auth status >/dev/null 2>&1; then ok "gh authenticated ($(gh api user --jq .login 2>/dev/null || echo '?'))"; else err "gh not authenticated — run 'gh auth login'."; exit 1; fi
 
 repo_root="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-devyaml="${repo_root}/infrastructure/pulumi/repo_config/Pulumi.dev.yaml"
+devyaml="${repo_root}/infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml"
 # Flag an ACTUAL committed key value only — a real `buildbuddyApiKey:` config key
 # or a `secure:` blob — not the comment lines that legitimately mention the key
 # name (those describe how the value is injected, and are expected to remain).

@@ -24,7 +24,7 @@
 | **Full sweep (`//...`)** | `bazel build //... && bazel test //...` — builds and tests every target in the repository. Expensive but comprehensive. |
 | **Path filtering** | Skipping CI work when the diff only touches files that cannot affect the build (e.g., `docs/`, `*.md`, `gitops/`). See [relevant-paths.sh](/tools/ci/relevant-paths.sh). |
 | **Merge queue** | GitHub's mechanism that serializes PR merges. Each queued PR is tested on top of the latest `main` + all PRs ahead of it in the queue, preventing "merge skew" where two individually-green PRs break when combined. |
-| **Required status check** | A CI job that _must_ pass before a PR can merge. Configured in branch protection rules (managed as IaC in `infrastructure/pulumi/repo_config/`). |
+| **Required status check** | A CI job that _must_ pass before a PR can merge. Configured in branch protection rules (managed as IaC in `infrastructure/pulumi/platform/repo_config/`). |
 | **Remote Build Execution (RBE)** | Offloading build and test actions to remote workers (BuildBuddy). Faster than local execution because actions run in parallel on a cluster. Enabled via `--config=remote` in `.bazelrc`. |
 | **Remote cache** | Sharing build artifacts across CI runs and developers. A cache hit skips re-execution. Enabled via `--config=remotecache` in `.bazelrc`. |
 

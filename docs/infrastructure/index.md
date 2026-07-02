@@ -28,9 +28,9 @@ the same `bazel run` wrappers.
 | Project | Directory | Manages | State backend | Identity |
 |---|---|---|---|---|
 | **sync-auth** | [`infrastructure/pulumi`](../../infrastructure/pulumi) | Copybara deploy keys + GitHub App dispatch secrets | Pulumi Cloud | GitHub App / token |
-| **dev-local** | [`infrastructure/pulumi/dev-local`](../../infrastructure/pulumi/dev-local) | Local k3s cluster + platform add-ons | Pulumi Cloud | kubeconfig `~/.kube/cluster.yaml` (context `default`) |
-| **lab-gmail** | [`infrastructure/pulumi/lab-gmail`](../../infrastructure/pulumi/lab-gmail) | Personal GCP: Cloud Run, GCS, IAM, Secret Manager + Cloudflare DNS | Pulumi Cloud | `james.nguyen@gmail.com` (GCP) |
-| **repo_config** | [`infrastructure/pulumi/repo_config`](../../infrastructure/pulumi/repo_config) | This repo's GitHub branch protection + merge policy | Pulumi Cloud | GitHub App / token |
+| **dev-local** | [`infrastructure/pulumi/platform/dev-local`](../../infrastructure/pulumi/platform/dev-local) | Local k3s cluster + platform add-ons | Pulumi Cloud | kubeconfig `~/.kube/cluster.yaml` (context `default`) |
+| **lab-gmail** | [`infrastructure/pulumi/accounts/personal`](../../infrastructure/pulumi/accounts/personal) | Personal GCP: Cloud Run, GCS, IAM, Secret Manager + Cloudflare DNS | Pulumi Cloud | `james.nguyen@gmail.com` (GCP) |
+| **repo_config** | [`infrastructure/pulumi/platform/repo_config`](../../infrastructure/pulumi/platform/repo_config) | This repo's GitHub branch protection + merge policy | Pulumi Cloud | GitHub App / token |
 
 Each project is a **standalone Go module** with its own `go.mod` — deliberately
 kept out of the repo's `go.work` — and its own `Pulumi.yaml`. They share nothing

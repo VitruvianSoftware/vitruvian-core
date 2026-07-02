@@ -55,19 +55,19 @@ map="$tmp/map.tsv"
 cat >"$map" <<'MAP'
 # comment — should be ignored
 #
-infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com   personal-llc   Personal Cloud Run + DNS
+infrastructure/pulumi/accounts/personal    james.nguyen@gmail.com   personal-llc   Personal Cloud Run + DNS
 -    james@abrial.ai   -   abrial future (reference only)
 MAP
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
 # 1. Known dir → "account<TAB>project" (purpose column has spaces; must not leak)
-got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/lab-gmail")"
+got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/accounts/personal")"
 want="$(printf 'james.nguyen@gmail.com\tpersonal-llc')"
 [ "$got" = "$want" ] || fail "known dir: got [$got] want [$want]"
 
 # 2. Unknown dir → empty
-got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/repo_config")"
+got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/platform/repo_config")"
 [ -z "$got" ] || fail "unknown dir should be empty, got [$got]"
 
 # 3. The "-" reference placeholder is never matched
@@ -75,7 +75,7 @@ got="$(bash "$RESOLVER" "$map" "-")"
 [ -z "$got" ] || fail "'-' placeholder should never match, got [$got]"
 
 # 4. Missing map file → empty, exit 0
-got="$(bash "$RESOLVER" "$tmp/nope.tsv" "infrastructure/pulumi/lab-gmail")"
+got="$(bash "$RESOLVER" "$tmp/nope.tsv" "infrastructure/pulumi/accounts/personal")"
 [ -z "$got" ] || fail "missing map should be empty, got [$got]"
 
 echo "PASS: resolve_identity.sh"
@@ -203,7 +203,7 @@ Create `infrastructure/gcp-identities.tsv`:
 #   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
 #
 # infra_dir                        account                              gcp_project   purpose
-infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+infrastructure/pulumi/accounts/personal    james.nguyen@gmail.com               personal-llc  Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                  james@abrial.ai                      -             abrial.ai projects (future)
 -                                  james@sandbox.vitruviansoftware.dev  -             Vitruvian Software sandbox/company (future)
@@ -211,10 +211,10 @@ infrastructure/pulumi/lab-gmail    james.nguyen@gmail.com               personal
 
 - [ ] **Step 2: Sanity-check the real map against the resolver**
 
-Run: `bash tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv infrastructure/pulumi/lab-gmail`
+Run: `bash tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv infrastructure/pulumi/accounts/personal`
 Expected (account and project separated by a tab): `james.nguyen@gmail.com	personal-llc`
 
-Run (a non-GCP project, must print nothing): `bash tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv infrastructure/pulumi/repo_config`
+Run (a non-GCP project, must print nothing): `bash tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv infrastructure/pulumi/platform/repo_config`
 Expected: (no output)
 
 - [ ] **Step 3: Commit**
@@ -253,7 +253,7 @@ The only change vs. the current file is the new `GCP identity injection` block i
 #   $1  workspace-relative path to the Pulumi project directory
 #   $2  the pulumi subcommand to run (preview|up|destroy|refresh|config|...)
 # Anything a developer appends after `--` is forwarded verbatim to pulumi, e.g.
-#   bazel run //infrastructure/pulumi/repo_config:up -- --stack dev --yes
+#   bazel run //infrastructure/pulumi/platform/repo_config:up -- --stack dev --yes
 #
 # Pulumi compiles and runs the Go program itself; Bazel only launches the CLI
 # from the real workspace tree (not the sandboxed runfiles dir).
@@ -395,10 +395,10 @@ Expected: prints `james@abrial.ai` (or anything that is NOT `james.nguyen@gmail.
 Run:
 ```bash
 unset GOOGLE_OAUTH_ACCESS_TOKEN GOOGLE_CLOUD_PROJECT CLOUDSDK_CORE_PROJECT
-bazel run //infrastructure/pulumi/lab-gmail:preview -- --stack dev --diff --non-interactive
+bazel run //infrastructure/pulumi/accounts/personal:preview -- --stack dev --diff --non-interactive
 ```
 Expected:
-- stderr shows: `→ GCP identity: james.nguyen@gmail.com (project personal-llc) for infrastructure/pulumi/lab-gmail`
+- stderr shows: `→ GCP identity: james.nguyen@gmail.com (project personal-llc) for infrastructure/pulumi/accounts/personal`
 - the refresh succeeds with **no `403 IAM_PERMISSION_DENIED`** errors
 - summary ends with `Resources:` … `30 unchanged` (no pending changes)
 
@@ -439,7 +439,7 @@ so auth never depends on the ambient `gcloud` account (the machine default is
 `james@abrial.ai`, which 403s on personal-llc). Failing fast on a not-logged-in
 account is intentional.
 
-Current entries: `infrastructure/pulumi/lab-gmail` → `james.nguyen@gmail.com`
+Current entries: `infrastructure/pulumi/accounts/personal` → `james.nguyen@gmail.com`
 (`personal-llc`). `james@abrial.ai` and `james@sandbox.vitruviansoftware.dev` are
 reference rows (no in-repo infra yet). To add infra: add a row to the map; the
 wrapper does the rest. For ad-hoc GCP work, see `AGENTS.md`.
