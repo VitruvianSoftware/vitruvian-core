@@ -456,6 +456,13 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 // The first two variables already exist (hand-set) and use the mandatory
 // import-then-manage pattern (the provider's variable Create is a create-only
 // POST that 409s on an existing name); the last two are created fresh.
+//
+// Values default to "true" (the #499 steady state: CI is the sole writer) but
+// each can be overridden AS CODE via the optional `pipelineGates` config map,
+// so a deliberate opt-out survives every future apply instead of being
+// silently clobbered back to "true":
+//
+//	pulumi config set --path 'pipelineGates["REPO_CONFIG_AUTO_APPLY"]' false --stack dev
 func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
 	nm := repoName(cfg)
 
@@ -465,6 +472,9 @@ func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Reposit
 		"SYNC_AUTH_AUTO_APPLY":        false,
 		"PULUMI_PREVIEW_ENABLED":      false,
 	}
+	var overrides map[string]string
+	_ = cfg.GetObject("pipelineGates", &overrides)
+
 	// Deterministic resource names: iterate in sorted order.
 	names := make([]string, 0, len(imported))
 	for k := range imported {
@@ -472,6 +482,10 @@ func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Reposit
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		value := "true"
+		if v, ok := overrides[name]; ok && v != "" {
+			value = v
+		}
 		opts := []pulumi.ResourceOption{}
 		if imported[name] {
 			opts = append(opts, pulumi.Import(pulumi.ID(nm+":"+name)))
@@ -480,7 +494,7 @@ func pipelineGates(ctx *pulumi.Context, cfg *config.Config, repo *github.Reposit
 		if _, err := github.NewActionsVariable(ctx, resName, &github.ActionsVariableArgs{
 			Repository:   repo.Name,
 			VariableName: pulumi.String(name),
-			Value:        pulumi.String("true"),
+			Value:        pulumi.String(value),
 		}, opts...); err != nil {
 			return err
 		}
