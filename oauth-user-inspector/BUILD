@@ -62,6 +62,7 @@ jest_test(
         "package.json",
         "server/tsconfig.server.json",
         "tsconfig.json",
+        "tsconfig.test.json",
         ":node_modules/@google-cloud/logging-winston",
         ":node_modules/@google-cloud/secret-manager",
         ":node_modules/@types/express",
