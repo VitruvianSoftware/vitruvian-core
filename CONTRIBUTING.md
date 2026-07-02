@@ -152,7 +152,7 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 
 The default branch is **`main`**.
 
-1. **Branch first — never commit on `main`.** If you share this checkout with other sessions/agents, do all work in a **git worktree** to avoid stomping `HEAD`.
+1. **Branch first — never commit on `main`, and branch work happens in a worktree.** `bazel run //tools/worktree -- <branch>` creates an isolated worktree with its own Bazel server. This is **enforced, not convention** (#502): `bazel build/run/test` from the *primary* checkout on a non-`main` HEAD fails via the workspace-status guard (`githooks/check-config.sh`) with recovery instructions. `VITRUVIAN_ALLOW_PRIMARY_BRANCH=1` is the break-glass override; CI and linked worktrees are exempt.
 2. **Conventional Commits.** Use `feat:`, `fix:`, `docs:`, `chore:`, scoped where helpful (`fix(gitops): …`). This feeds `release-please`.
 3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `devx/CONTRIBUTING.md`, the de-facto template).
 4. **Finish branches with a PR.** When a branch is done, **push and open a GitHub PR** (`gh pr create`) for review + CI. **Never merge locally.**
