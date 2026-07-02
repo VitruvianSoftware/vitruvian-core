@@ -245,8 +245,8 @@ importers:
   tabula/cli:
     dependencies:
       chalk:
-        specifier: ^4.1.2
-        version: 4.1.2
+        specifier: ^5.6.2
+        version: 5.6.2
       commander:
         specifier: ^11.1.0
         version: 11.1.0
