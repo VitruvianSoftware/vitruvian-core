@@ -178,10 +178,54 @@ playwright.playwright_test(
         "PLAYWRIGHT_BROWSERS_PATH": "$(rootpath @playwright//:chromium)/../",
     },
     # fixed_args (not args): the service manager execs this binary directly,
-    # so Bazel-time test args never reach it.
+    # so Bazel-time test args never reach it. That is also WHY the quarantine
+    # split (#501) is baked in HERE and not passed as --test_arg from the CI
+    # workflow -- a workflow-level test arg would silently never arrive.
+    # Specs tagged @quarantine in their title (docs/engineering/flaky-tests.md)
+    # are excluded from this blocking suite everywhere -- CI and local runs
+    # alike -- and run only via :e2e_quarantine below.
     fixed_args = [
         "test",
         "--config=tabula/extension/playwright.config.ts",
+        "--grep-invert",
+        "@quarantine",
+    ],
+    tags = ["manual"],
+)
+
+# The nightly quarantine lane's suite (#501): ONLY the @quarantine-tagged
+# specs, so a quarantined flake keeps producing the green-streak evidence its
+# tracking issue needs without ever blocking a PR or merge batch.
+# --pass-with-no-tests: an empty quarantine register (everything
+# un-quarantined) is a clean no-op, not a "no tests found" failure.
+playwright.playwright_test(
+    name = "pw_suite_quarantine",
+    data = glob([
+        "tests/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+    ]) + [
+        "playwright.config.ts",
+        ":dist",
+        ":node_modules/@playwright/test",
+        ":node_modules/@types/jsonwebtoken",
+        ":node_modules/jsonwebtoken",
+        "@playwright//:chromium",
+    ],
+    env = {
+        "CI": "1",
+        "EXTENSION_PATH": "$(rootpath :dist)",
+        # Same TMPDIR rationale as :pw_suite (unix-socket path limit).
+        "TMPDIR": "/tmp",
+        "JWT_SECRET": "e2e-test-jwt-secret-key",
+        "PLAYWRIGHT_BROWSERS_PATH": "$(rootpath @playwright//:chromium)/../",
+    },
+    fixed_args = [
+        "test",
+        "--config=tabula/extension/playwright.config.ts",
+        "--grep",
+        "@quarantine",
+        "--pass-with-no-tests",
     ],
     tags = ["manual"],
 )
@@ -208,6 +252,29 @@ service_test(
         "requires-network",
     ],
     test = ":pw_suite",
+)
+
+# Nightly quarantine lane (#501): run by tabula-e2e.yaml's schedule trigger by
+# EXPLICIT LABEL -- the manual tag keeps it out of every //tabula/... wildcard
+# (including the blocking e2e lanes and the full sweeps), so quarantined specs
+# run exactly once a night and nowhere else.
+service_test(
+    name = "e2e_quarantine",
+    size = "enormous",
+    services = [
+        "//tabula/api:api_service",
+        "//tabula/api:migrate",
+        "//tabula/api:postgres",
+        "//tabula/api:redis",
+        "//tabula/api:seed_e2e_user",
+    ],
+    tags = [
+        "e2e",
+        "manual",
+        "no-remote-exec",
+        "requires-network",
+    ],
+    test = ":pw_suite_quarantine",
 )
 
 # Release bundle: identical to :dist except API_URL targets the deployed API
