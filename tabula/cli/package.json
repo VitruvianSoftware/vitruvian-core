@@ -23,6 +23,6 @@
     "@types/node": "^20.11.17",
     "jest": "catalog:",
     "jest-cli": "^29.7.0",
-    "jest-junit": "^16.0.0"
+    "jest-junit": "^17.0.0"
   }
 }

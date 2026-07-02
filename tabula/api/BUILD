@@ -107,7 +107,6 @@ ts_project(
         ":node_modules/@fastify/rate-limit",
         ":node_modules/@prisma/adapter-pg",
         ":node_modules/@prisma/client",
-        ":node_modules/@types/bcryptjs",
         ":node_modules/@types/jsonwebtoken",
         ":node_modules/@types/node",
         ":node_modules/@types/pg",
