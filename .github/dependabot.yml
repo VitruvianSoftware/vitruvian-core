@@ -125,6 +125,15 @@ updates:
       # only, so a major here is the same startup-fatal plugin mismatch.
       - dependency-name: "@fastify/jwt"
         update-types: ["version-update:semver-major"]
+      # fastify itself and the rest of its plugin family move together (#530):
+      # a solo fastify-5 major (dependabot PR #536) boots against still-
+      # fastify-4 plugins (rate-limit 9, jwt 8, cors 9) and dies on the same
+      # plugin version check; cors >= 10 is the inverse mismatch. The whole
+      # set bumps in ONE coordinated PR when #530 lands.
+      - dependency-name: "fastify"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@fastify/cors"
+        update-types: ["version-update:semver-major"]
       # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
       # a client/CLI major without the engine re-vendor breaks migrate deploy
       # at deploy time, invisibly to CI.
