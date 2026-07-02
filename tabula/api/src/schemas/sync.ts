@@ -44,7 +44,7 @@ export const SyncEntityStateSchema = z.object({
   id: z.string(),
   version: z.number().int().min(0),
   updatedAt: z.coerce.date(),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 
 export type SyncEntityState = z.infer<typeof SyncEntityStateSchema>;
@@ -60,7 +60,7 @@ export const SyncPushSchema = z.object({
       type: z.enum(["workspace", "spaceGroup"]),
       action: z.enum(["create", "update", "delete"]),
       entityId: z.string(),
-      data: z.record(z.unknown()).optional(),
+      data: z.record(z.string(), z.unknown()).optional(),
       version: z.number().int().min(0).default(0),
     }),
   ),
