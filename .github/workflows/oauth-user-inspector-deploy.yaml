@@ -38,6 +38,14 @@ name: oauth-user-inspector-deploy
 on:
   push:
     branches: [main]
+    # Path globs are GRAPH-CORRECT for this app (#498), unlike tabula's: the
+    # oauth-user-inspector container builds STANDALONE (its own Docker Buildx
+    # build + self-contained package.json -- it is CATALOG_EXEMPT in
+    # tools/conformance for exactly this reason), so it has no cross-package
+    # Bazel dependencies a directory glob could under-trigger on. These four
+    # globs ARE its complete input set. Revisit if/when the app migrates to
+    # Bazel rules_oci (docs/repo-assessment.md §5.1) -- then it gates via
+    # tools/ci/deploy-affected.sh like tabula.
     paths:
       - "oauth-user-inspector/**"
       - "infrastructure/pulumi/oauth-user-inspector/**"
