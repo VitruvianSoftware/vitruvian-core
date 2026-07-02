@@ -63,8 +63,24 @@ describe("ApiService", () => {
       const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
       const headers = callArgs[1].headers as Headers;
       expect(headers.get("Authorization")).toBe("Bearer test-token");
-      expect(headers.get("Content-Type")).toBe("application/json");
+      // Body-less requests must NOT claim a JSON body: fastify 5 parses the
+      // (empty) body whenever the header is present and 400s on it.
+      expect(headers.get("Content-Type")).toBeNull();
       expect(callArgs[0]).toContain("/workspaces");
+    });
+
+    it("sets Content-Type only on requests that carry a body", async () => {
+      (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
+      (globalThis.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { email: "a@b.c" } }),
+      });
+
+      await ApiService.updateUserProfile({ name: "N" });
+
+      const callArgs = (globalThis.fetch as jest.Mock).mock.calls[0];
+      const headers = callArgs[1].headers as Headers;
+      expect(headers.get("Content-Type")).toBe("application/json");
     });
 
     it("should not add Authorization header when token is missing", async () => {

@@ -67,7 +67,12 @@ export class ApiService {
     const token = await AuthService.getToken();
 
     const headers = new Headers(options.headers);
-    headers.set("Content-Type", "application/json");
+    // Only claim a JSON body when there is one: fastify 5 parses bodies on
+    // any method with a content-type header and 400s an empty JSON body (the
+    // API keeps a compat shim for older builds, but don't rely on it).
+    if (options.body !== undefined && options.body !== null) {
+      headers.set("Content-Type", "application/json");
+    }
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
