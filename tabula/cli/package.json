@@ -19,7 +19,7 @@
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
     "@types/inquirer": "^8.2.10",
-    "@types/jest": "^29.5.12",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.17",
     "jest": "catalog:",
     "jest-cli": "^29.7.0",
