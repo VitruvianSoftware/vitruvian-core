@@ -63,10 +63,9 @@ describe("Sync API Endpoints", () => {
       secret: "test-jwt-secret-for-tests",
     });
 
-    // Decorate request with user (the mock auth middleware will set this)
-    if (!app.hasRequestDecorator("user")) {
-      app.decorateRequest("user", null);
-    }
+    // request.user is decorated by @fastify/jwt (registered above); the mock
+    // auth middleware sets it per-request. (fastify 5's stricter
+    // decorateRequest types reject a null initializer anyway.)
 
     await app.register(syncRoutes, { prefix: "/api/v1/sync" });
     await app.ready();

@@ -73,7 +73,16 @@ describe("Sharing API Endpoints", () => {
     app.inject({
       method,
       url,
-      headers: { authorization: authToken, "content-type": "application/json" },
+      // Only claim a JSON body when there is one (fastify 5 rejects an empty
+      // JSON body at the parsing step). This suite hand-rolls its app and so
+      // skips buildApp's field-client compat shim — that shim has its own
+      // regression guard in emptyJsonBody.test.ts.
+      headers: {
+        authorization: authToken,
+        ...(payload !== undefined
+          ? { "content-type": "application/json" }
+          : {}),
+      },
       payload: payload as object,
     });
 

@@ -115,24 +115,21 @@ updates:
       # ("Executable doesn't exist ... chromium-<n>/chrome"). Bump ONLY
       # together with the rules_playwright browser re-vendor.
       - dependency-name: "@playwright/test"
-      # Coupled to fastify 4 until the coordinated fastify-5 upgrade (#530):
-      # rate-limit >= 10 requires fastify 5 and kills the API at startup
-      # (FST_ERR_PLUGIN_VERSION_MISMATCH).
-      - dependency-name: "@fastify/rate-limit"
-        update-types: ["version-update:semver-major"]
-      # Same fastify-4 coupling (#530): every @fastify/jwt release above the
-      # 8.x line (9.x and 10.x alike) depends on fastify-plugin ^5 -> fastify 5
-      # only, so a major here is the same startup-fatal plugin mismatch.
-      - dependency-name: "@fastify/jwt"
-        update-types: ["version-update:semver-major"]
-      # fastify itself and the rest of its plugin family move together (#530):
-      # a solo fastify-5 major (dependabot PR #536) boots against still-
-      # fastify-4 plugins (rate-limit 9, jwt 8, cors 9) and dies on the same
-      # plugin version check; cors >= 10 is the inverse mismatch. The whole
-      # set bumps in ONE coordinated PR when #530 lands.
+      # The fastify family moves together — permanently. Each @fastify/*
+      # plugin major tracks a fastify major via fastify-plugin's boot-time
+      # version check, so a solo major in ANY of them is a startup-fatal
+      # FST_ERR_PLUGIN_VERSION_MISMATCH (proven twice: rate-limit-10 on
+      # fastify 4, and dependabot #536's solo fastify-5). Fastify majors land
+      # as ONE coordinated PR bumping the whole set (fastify 4->5 was #530) —
+      # and plugin majors can hide runtime-only breaks (cors 11 narrowed the
+      # default CORS methods to GET/HEAD/POST). Minors/patches flow normally.
       - dependency-name: "fastify"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@fastify/cors"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@fastify/jwt"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@fastify/rate-limit"
         update-types: ["version-update:semver-major"]
       # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
       # a client/CLI major without the engine re-vendor breaks migrate deploy

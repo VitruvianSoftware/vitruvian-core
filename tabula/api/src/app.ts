@@ -28,6 +28,7 @@ import dotenv from "dotenv";
 import { redis } from "./lib/redis";
 import { resolveJwtSecret, ACCESS_TOKEN_TTL } from "./lib/auth";
 import { errorHandler } from "./lib/errorHandler";
+import { registerEmptyJsonBodyTolerance } from "./lib/emptyJsonBody";
 import { assertDatabaseSchemaCurrent } from "./lib/migrationGuard";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { spaceGroupRoutes } from "./routes/spacegroup.routes";
@@ -58,9 +59,19 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
     ...opts,
   });
 
+  // Field clients (deployed extension builds) claim a JSON body on body-less
+  // DELETEs; fastify 5 would 400 them at the parsing step. See
+  // lib/emptyJsonBody.ts; regression guard in emptyJsonBody.test.ts.
+  registerEmptyJsonBodyTolerance(app);
+
   // Register plugins
   app.register(cors, {
     origin: (process.env.CORS_ORIGIN || "http://localhost:3000").split(","),
+    // @fastify/cors v11 narrowed the default to the CORS-safelisted methods
+    // (GET, HEAD, POST) — without this list, browser preflight blocks every
+    // cross-origin PUT/PATCH/DELETE. Invisible to CI: app.inject bypasses
+    // CORS entirely.
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
   });
 
   // Default generously: the extension's sync is chatty (a whole-workspace PUT
