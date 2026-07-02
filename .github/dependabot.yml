@@ -131,6 +131,18 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@fastify/rate-limit"
         update-types: ["version-update:semver-major"]
+      # The jest runner family moves together (#573): jest-cli 30 driving
+      # jest core 29 dies at runtime on missing internals
+      # (this._moduleMocker.clearMocksOnScope — dependabot PR #564), and the
+      # coordinated jest-30 attempt surfaced real migration work (mock
+      # semantics + jsdom 26 + an integration-suite hang). Majors ignored
+      # until #573 lands the family in one PR.
+      - dependency-name: "jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jest-cli"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jest-environment-jsdom"
+        update-types: ["version-update:semver-major"]
       # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
       # a client/CLI major without the engine re-vendor breaks migrate deploy
       # at deploy time, invisibly to CI.
