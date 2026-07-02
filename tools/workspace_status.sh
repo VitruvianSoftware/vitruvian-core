@@ -24,6 +24,16 @@
 # See https://registry.bazel.build/docs/bazel_lib/3.0.0#lib-stamping-bzl
 set -o errexit -o nounset -o pipefail
 
+# Run the repo config checks FIRST (#502). `--config=release` REPLACES the
+# default workspace_status_command (githooks/check-config.sh) with this script
+# — --workspace_status_command is single-valued, last mention wins — so
+# without this call a stamped local build (`--config=release` is a documented
+# developer flow) would silently bypass the primary-checkout branch guard.
+# Bazel runs the status command from the workspace root, so the relative path
+# is stable. check-config.sh writes only to stderr (never pollutes the status
+# keys) and exits non-zero on refusal, which aborts the build via errexit.
+bash githooks/check-config.sh
+
 git_commit=$(git rev-parse HEAD)
 
 # Follows https://blog.aspect.build/versioning-releases-from-a-monorepo
