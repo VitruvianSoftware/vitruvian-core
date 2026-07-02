@@ -79,7 +79,7 @@ jobs:
 
   publish:
     needs: [gate]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.outputs.affected == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
