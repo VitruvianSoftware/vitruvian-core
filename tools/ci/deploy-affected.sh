@@ -54,8 +54,24 @@
 set -euo pipefail
 
 emit() {
-  local value="$1" reason="$2"
+  local value="$1" reason="$2" class="${3:-expected}"
   echo "deploy-affected: affected=${value} (${reason})"
+  # Observability (#503): "degraded" marks a fail-open caused by the fast path
+  # being BROKEN (TD unavailable / TD error), not by a designed deploy trigger.
+  # Surfaced as a titled warning + step-summary line so a persistently broken
+  # gate (deploying on every push) is audible instead of silently tolerated.
+  if [ "${class}" = "degraded" ]; then
+    echo "::warning title=deploy-gate-fallback::deploy gate degraded -- failing OPEN to deploy (${reason})"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      {
+        echo "### ⚠ deploy-gate fallback (degraded)"
+        echo ""
+        echo "- reason: ${reason}"
+        echo "- consequence: deployed without graph attribution (fail-open, idempotent blue-green)"
+        echo "- if this recurs, the gate fast path is broken (see #503): check tools/ci/td-lib.sh"
+      } >> "${GITHUB_STEP_SUMMARY}"
+    fi
+  fi
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "affected=${value}" >> "${GITHUB_OUTPUT}"
   fi
@@ -101,7 +117,7 @@ fi
 # shellcheck source=tools/ci/td-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/td-lib.sh"
 if ! fetch_td; then
-  emit true "target-determinator unavailable (${TD_FETCH_ERROR})"
+  emit true "target-determinator unavailable (${TD_FETCH_ERROR})" degraded
 fi
 
 # The universe is the UNION of the deploy targets (a bazel query expression):
@@ -120,7 +136,7 @@ if ! "${TD}" \
       --bazel-opts "--config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
       --before-query-error-behavior=ignore-and-build-all \
       "${BEFORE_REV}" > deploy-affected.txt; then
-  emit true "target-determinator returned non-zero"
+  emit true "target-determinator returned non-zero" degraded
 fi
 
 if [ -s deploy-affected.txt ]; then

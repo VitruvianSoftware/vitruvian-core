@@ -32,9 +32,13 @@ Usage: bazel run //tools/remote:setup -- [flags]
                                            hidden prompt or the BUILDBUDDY_API_KEY env var)
   --yes                                    Accepted for non-interactive callers (no-op)
   --no-ci                                  Configure local only; skip CI secret/snippet
+  --no-local-default                       Do NOT make --config=remotecache the default
+                                           for plain bazel invocations (#506 opt-out)
   -h, --help                               Show this help
 USAGE
 }
+
+LOCAL_DEFAULT=1
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,6 +50,7 @@ while [ $# -gt 0 ]; do
     --key)         KEY="${2:?}"; shift 2 ;;
     --yes|-y)      shift ;;
     --no-ci)       DO_CI=0; shift ;;
+    --no-local-default) LOCAL_DEFAULT=0; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -203,13 +208,36 @@ echo "✓ Wrote tools/remote.bazelrc (commit this — it is non-secret)."
 # --- Secret config: user.bazelrc (git-ignored) -----------------------------
 touch user.bazelrc
 # Idempotent: drop any prior header lines for this header before re-adding.
+# (strip_managed_block already ran at case entry, clearing the managed block.)
 grep -v -- "--remote_header=$HEADER_NAME=" user.bazelrc | grep -v -- "--bes_header=$HEADER_NAME=" >user.bazelrc.tmp || true
 mv user.bazelrc.tmp user.bazelrc
 {
   echo "common:remote --remote_header=$HEADER_NAME=$KEY"
   echo "common:remote --bes_header=$HEADER_NAME=$KEY"
 } >>user.bazelrc
+# Local-default shared cache (#506): make every plain bazel invocation on this
+# machine read AND write the BuildBuddy cache (cache-only — execution stays
+# local; RBE remains an explicit --config=remote). Without the default, cache
+# hit rate depends on CI alone and every dev cold-builds a large polyglot
+# repo. A dead/stale key degrades gracefully: Bazel treats remote-cache errors
+# as warnings and the build continues locally. Opt out with
+# --no-local-default; `--cache none` removes everything.
+{
+  echo "$MARK_BEGIN"
+  if [ "$LOCAL_DEFAULT" -eq 1 ]; then
+    echo "common --config=remotecache"
+  fi
+  echo "common:remotecache --remote_header=$HEADER_NAME=$KEY"
+  echo "common:remotecache --bes_header=$HEADER_NAME=$KEY"
+  echo "common:remotecache --remote_upload_local_results"
+  echo "$MARK_END"
+} >>user.bazelrc
 echo "✓ Wrote the API key to user.bazelrc (git-ignored — do NOT commit)."
+if [ "$LOCAL_DEFAULT" -eq 1 ]; then
+  echo "✓ Shared cache is now the LOCAL DEFAULT (plain bazel reads + writes it; #506)."
+else
+  echo "  Local default skipped (--no-local-default): use --config=remotecache explicitly."
+fi
 ensure_user_bazelrc_ignored
 
 # --- CI: GitHub Actions secret + workflow snippet --------------------------

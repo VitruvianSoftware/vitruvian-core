@@ -115,6 +115,21 @@ cat > "${DEST}/user.bazelrc" <<EOF
 startup --output_user_root=${OUTPUT_ROOT}
 EOF
 
+# Propagate the PRIMARY checkout's build-cache setup (#506): the shared-cache
+# default + auth headers live in the primary user.bazelrc (written by
+# //tools/remote:setup), which git worktrees do NOT inherit — without this
+# copy every worktree silently cold-builds with no remote cache. Copies the
+# managed block plus the config=remote-scoped header lines; both are inert if
+# the primary has no cache configured.
+if [ -f "${REPO}/user.bazelrc" ]; then
+  {
+    awk '/^# >>> build cache \(managed by tools\/remote:setup\)/{inblk=1}
+         inblk{print}
+         /^# <<< build cache \(managed by tools\/remote:setup\)/{inblk=0}' "${REPO}/user.bazelrc"
+    grep -E '^common:remote --(remote_header|bes_header)=' "${REPO}/user.bazelrc" || true
+  } >> "${DEST}/user.bazelrc"
+fi
+
 cat <<EOF
 
   ✔ worktree ready
