@@ -66,7 +66,9 @@ export const useLiveTabs = ({
 }: UseLiveTabsOptions = {}): UseLiveTabsReturn => {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [loading, setLoading] = useState(true);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
 
   /**
    * Fetch current tabs from Chrome.
