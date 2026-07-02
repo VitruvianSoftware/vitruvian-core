@@ -368,6 +368,7 @@ ROWS_CAT_ADVISORY=""
 ROWS_VIS=""
 ROWS_MERGEQ=""
 ROWS_SWEEP=""
+ROWS_IAC=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -382,6 +383,7 @@ emit() {
     vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
+    iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
   esac
 }
 
@@ -1016,6 +1018,41 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# IaC destructive-import guard (#499). The pulumiverse/zitadel provider marks
+# several ApplicationOidc fields replace-triggering, and import does NOT
+# populate them — so `pulumi.Import` of a zitadel OIDC app plans a REPLACEMENT
+# that deletes the LIVE client (2026-06-26 incident: hosted login broke with
+# Errors.App.NotFound; recovery runbook in PR #310). The zitadel-apps stack
+# must CREATE and own its apps, never adopt them. This guard fails conformance
+# on any pulumi.Import usage in that stack. Scoped to zitadel-apps only:
+# repo_config's imports (repo, variables, branch protection) are the correct
+# brownfield-adoption pattern for the GitHub provider and stay allowed.
+# ---------------------------------------------------------------------------
+check_zitadel_import() {
+  zdir="$ROOT/infrastructure/pulumi/zitadel-apps"
+  [ -d "$zdir" ] || return 0
+  hits="$(grep -rn 'pulumi\.Import(' "$zdir" --include='*.go' 2>/dev/null || true)"
+  if [ -n "$hits" ]; then
+    # Heredoc (not a pipe) so emit/counter mutations happen in THIS shell.
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      hitfile="${line%%:*}"
+      hitline="$(printf '%s' "$line" | cut -d: -f2)"
+      emit "iac" "$GLYPH_FAIL" "$C_RED" "${hitfile#"$ROOT"/}:$hitline" "pulumi.Import" "create-only" \
+        "importing a zitadel ApplicationOidc force-replaces and DELETES the live OIDC client (PR #310 incident)" \
+        "remove the pulumi.Import option -- the zitadel-apps stack must CREATE and own its apps"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    done <<EOF
+$hits
+EOF
+  else
+    emit "iac" "$GLYPH_OK" "$C_GREEN" "infrastructure/pulumi/zitadel-apps" "no imports" "create-only" \
+      "zitadel-apps creates and owns its OIDC apps (no destructive adopt)" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -1081,6 +1118,7 @@ advisory_catalog
 check_app_visibility
 check_merge_queue
 check_sweep_backstop
+check_zitadel_import
 
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -1094,6 +1132,7 @@ print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATA
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
+print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
