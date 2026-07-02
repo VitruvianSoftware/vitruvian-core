@@ -20,7 +20,7 @@
     "@swc/jest": "catalog:",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
-    "@types/chrome": "^0.2.1",
+    "@types/chrome": "^0.2.2",
     "@types/jest": "^29.5.12",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/react": "^18.2.55",
