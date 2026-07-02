@@ -51,12 +51,7 @@ export interface ExploreEndpointDef {
 }
 
 export type ExploreProvider =
-  | "github"
-  | "google"
-  | "gitlab"
-  | "auth0"
-  | "zitadel"
-  | "linkedin";
+  "github" | "google" | "gitlab" | "auth0" | "zitadel" | "linkedin";
 
 /**
  * The full server-owned table. Mirrors frontend/utils/apiEndpoints.ts.

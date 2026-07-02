@@ -38,12 +38,7 @@
  */
 
 export type UserinfoProvider =
-  | "github"
-  | "google"
-  | "gitlab"
-  | "auth0"
-  | "zitadel"
-  | "linkedin";
+  "github" | "google" | "gitlab" | "auth0" | "zitadel" | "linkedin";
 
 export interface UserinfoRequestOptions {
   /** Auth0 tenant domain (issuer host) — required for provider "auth0". */
