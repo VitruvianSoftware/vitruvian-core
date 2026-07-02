@@ -43,6 +43,14 @@ on:
       - "tabula/**"
       - "tools/testinfra/**"
       - ".github/workflows/tabula-e2e.yaml"
+  # Quarantine lane (#501): specs tagged @quarantine are EXCLUDED from the
+  # blocking push/PR runs above (one flaky spec must not fail unrelated PRs)
+  # but still run nightly here, so a quarantined test keeps producing signal
+  # -- the green-streak evidence its tracking issue needs to un-quarantine,
+  # or the continuing-red evidence that keeps the issue honest. Policy:
+  # docs/engineering/flaky-tests.md.
+  schedule:
+    - cron: "30 6 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -108,7 +116,20 @@ jobs:
           if [ -n "$BUILDBUDDY_API_KEY" ]; then
             cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
           fi
-          bazel test "${cache[@]}" --config=e2e //tabula/...
+          # Quarantine split (#501, docs/engineering/flaky-tests.md):
+          #   blocking lanes (push/PR) skip @quarantine-tagged specs -- a known
+          #     flake must not fail unrelated changes;
+          #   the nightly schedule runs ONLY the quarantined specs, keeping
+          #     them producing the signal their tracking issues need.
+          # Playwright's --grep/--grep-invert match on test titles; the args
+          # thread through `bazel test` via --test_arg. --no-cache_test_results
+          # on the nightly lane: a cached pass would silently hollow out the
+          # green-streak evidence.
+          quarantine=(--test_arg=--grep-invert --test_arg=@quarantine)
+          if [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
+            quarantine=(--test_arg=--grep --test_arg=@quarantine --nocache_test_results)
+          fi
+          bazel test "${cache[@]}" --config=e2e "${quarantine[@]}" //tabula/...
 
       - name: Report slowest E2E tests
         # Surface the per-test durations the 'list' reporter wrote into Bazel's
@@ -144,7 +165,9 @@ jobs:
     # Runs in PARALLEL with the `e2e` job: `bazel coverage` excludes e2e-tagged
     # targets (the coverage command inherits --test_tag_filters=-e2e), so this no
     # longer stacks ~80s onto the e2e critical path. Needs the Bazel stack but
-    # not Chromium.
+    # not Chromium. Skipped on the nightly quarantine schedule (#501) -- that
+    # lane exists only to re-run quarantined e2e specs.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

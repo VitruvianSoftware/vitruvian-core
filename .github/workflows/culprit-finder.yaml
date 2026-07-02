@@ -1,0 +1,110 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: culprit-finder
+
+# Mechanical bisection for a red nightly sweep (#501). The merge-queue /
+# postsubmit lanes are affected-scoped, so a breakage the graph misattributed
+# could have landed with ANY commit since the last green sweep — across a
+# batch of merges. This workflow drives `git bisect run` over that range with
+# `bazel test` on exactly the failing targets; the remote cache makes each
+# midpoint roughly one incremental test run.
+#
+# Run it from the breakage issue periodic-full-sweep filed: the issue links
+# the red run, the run log names the failing target(s), and the last green
+# sweep run's commit is the `good` input. Supply `issue` to have the culprit
+# posted back onto that issue.
+
+on:
+  workflow_dispatch:
+    inputs:
+      good:
+        description: "Last known-GREEN commit SHA (e.g. the previous green sweep's commit)"
+        required: true
+        type: string
+      bad:
+        description: "Known-RED commit SHA (default: current main tip)"
+        required: false
+        type: string
+      targets:
+        description: "Space-separated failing Bazel target label(s) from the sweep log"
+        required: true
+        type: string
+      issue:
+        description: "Issue number to post the culprit onto (e.g. the sweep breakage issue)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: culprit-finder
+  cancel-in-progress: false
+
+jobs:
+  bisect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Bisect needs the full history + object graph of the range.
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        run: |
+          echo "Disk before cleanup:" && df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL || true
+          echo "Disk after cleanup:" && df -h /
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Bisect
+        id: bisect
+        env:
+          GOOD_SHA: ${{ inputs.good }}
+          BAD_SHA: ${{ inputs.bad || github.sha }}
+          TARGETS: ${{ inputs.targets }}
+          BAZEL_ARGS: "--config=remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}"
+        run: bash tools/ci/bisect-culprit.sh
+
+      - name: Post the culprit onto the breakage issue
+        if: ${{ always() && inputs.issue != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.bisect.outputs.culprit }}
+          SUBJECT: ${{ steps.bisect.outputs.culprit_subject }}
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ -n "$RESULT" ]; then
+            body="culprit-finder: first bad commit is \`${RESULT}\` — ${SUBJECT} (bisect run: ${run_url})"
+          else
+            body="culprit-finder: bisect did NOT converge (flaky in range, or the good/bad inputs are wrong). Run: ${run_url}"
+          fi
+          gh issue comment "${{ inputs.issue }}" --body "$body"
