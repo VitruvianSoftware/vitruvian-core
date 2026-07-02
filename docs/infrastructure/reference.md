@@ -8,9 +8,9 @@ Terse lookup tables for the Pulumi estate. For prose, see the
 | Project | Bazel package | Pulumi project | Stack | Backend | Providers | Identity |
 |---|---|---|---|---|---|---|
 | sync-auth | `//infrastructure/pulumi` | `vitruvian-core-infra` | `dev` | Pulumi Cloud | GitHub, TLS | `GITHUB_TOKEN` / sync App |
-| dev-local | `//infrastructure/pulumi/dev-local` | `monorepo` | `local` | Pulumi Cloud (`ipv1337`) | Kubernetes, Helm | kubeconfig `~/.kube/cluster.yaml`, context `default` |
-| lab-gmail | `//infrastructure/pulumi/lab-gmail` | `pulumi_lab_gmail` | `dev` | Pulumi Cloud (`ipv1337`) | GCP, Cloudflare | `james.nguyen@gmail.com` → `personal-llc` |
-| repo_config | `//infrastructure/pulumi/repo_config` | `vitruvian-core-repo-config` | `dev` | Pulumi Cloud | GitHub | `GITHUB_TOKEN` / org App |
+| dev-local | `//infrastructure/pulumi/platform/dev-local` | `monorepo` | `local` | Pulumi Cloud (`ipv1337`) | Kubernetes, Helm | kubeconfig `~/.kube/cluster.yaml`, context `default` |
+| lab-gmail | `//infrastructure/pulumi/accounts/personal` | `pulumi_lab_gmail` | `dev` | Pulumi Cloud (`ipv1337`) | GCP, Cloudflare | `james.nguyen@gmail.com` → `personal-llc` |
+| repo_config | `//infrastructure/pulumi/platform/repo_config` | `vitruvian-core-repo-config` | `dev` | Pulumi Cloud | GitHub | `GITHUB_TOKEN` / org App |
 
 ## Bazel run verbs
 

@@ -9,7 +9,7 @@
 #   $1  workspace-relative path to the Pulumi project directory
 #   $2  the pulumi subcommand to run (preview|up|destroy|refresh|config|...)
 # Anything a developer appends after `--` is forwarded verbatim to pulumi, e.g.
-#   bazel run //infrastructure/pulumi/repo_config:up -- --stack dev --yes
+#   bazel run //infrastructure/pulumi/platform/repo_config:up -- --stack dev --yes
 #
 # Pulumi compiles and runs the Go program itself; Bazel only launches the CLI
 # from the real workspace tree (not the sandboxed runfiles dir).
@@ -77,7 +77,7 @@ fi
 # cluster — the Helm provider then defaults to kubeVersion v1.20.0 and chart
 # templating fails. Other Pulumi projects are unaffected; a caller-supplied
 # --stack/-s still wins.
-if [ "$PROJECT_DIR" = "infrastructure/pulumi/dev-local" ]; then
+if [ "$PROJECT_DIR" = "infrastructure/pulumi/platform/dev-local" ]; then
   : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
   export KUBECONFIG
   # The dev-local stack (ipv1337/monorepo/local) lives in the Pulumi Cloud

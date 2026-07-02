@@ -23,7 +23,7 @@
 # `helm get values opentelemetry-operator -n opentelemetry` USER-SUPPLIED output
 # and the running operator Deployment spec on-cluster). The live values are the
 # Pulumi merge of the base values file
-# (infrastructure/pulumi/dev-local/values/opentelemetry-operator.yaml: crds,
+# (infrastructure/pulumi/platform/dev-local/values/opentelemetry-operator.yaml: crds,
 # manager, admissionWebhooks) with the inline Go map (replicaCount, affinity,
 # pdb) — both halves are reproduced below.
 #   chart opentelemetry-operator-0.110.0  (appVersion / operator image 0.148.0)

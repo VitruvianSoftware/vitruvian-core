@@ -22,10 +22,10 @@
 Developers should never need to memorize the `pulumi` CLI. Instead of running
 `pulumi up` from the project dir, they run:
 
-    bazel run //infrastructure/pulumi/repo_config:up
-    bazel run //infrastructure/pulumi/repo_config:preview -- --diff
-    bazel run //infrastructure/pulumi/repo_config:config -- set repoOwner my-org
-    bazel run //infrastructure/pulumi/repo_config:setup        # guided bootstrap
+    bazel run //infrastructure/pulumi/platform/repo_config:up
+    bazel run //infrastructure/pulumi/platform/repo_config:preview -- --diff
+    bazel run //infrastructure/pulumi/platform/repo_config:config -- set repoOwner my-org
+    bazel run //infrastructure/pulumi/platform/repo_config:setup        # guided bootstrap
 
 Each target is a thin `sh_binary` whose wrapper (`//tools/pulumi:pulumi_cmd.sh`
 or `:pulumi_setup.sh`) cd's to the project dir under $BUILD_WORKSPACE_DIRECTORY
@@ -58,7 +58,7 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
         `refresh`, `config`, `setup` — in the calling package).
       dir: workspace-relative path to the Pulumi project directory (the dir that
         holds the project's `go.mod` and `Pulumi.yaml`), e.g.
-        "infrastructure/pulumi/repo_config".
+        "infrastructure/pulumi/platform/repo_config".
       visibility: visibility for the generated targets.
     """
     for subcmd in _SUBCOMMANDS:

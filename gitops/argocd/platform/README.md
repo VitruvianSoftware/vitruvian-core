@@ -1,6 +1,6 @@
 # Platform (ArgoCD-managed)
 
-Cluster system components, migrated from `infrastructure/pulumi/dev-local` to
+Cluster system components, migrated from `infrastructure/pulumi/platform/dev-local` to
 ArgoCD (Pulumi→ArgoCD cutover, tracked in issue #170). Pulumi stays the
 **bootstrap** for ArgoCD itself; everything here is owned by ArgoCD via the
 `app-of-platform` root (`../root-platform.yaml`).

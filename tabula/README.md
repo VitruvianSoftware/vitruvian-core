@@ -166,7 +166,7 @@ bazel run //tabula/cli:tabcli -- --help
 Registry -> prisma migrate -> Pulumi). Manual rollout:
 
 ```bash
-bazel run //infrastructure/pulumi/tabula:up
+bazel run //infrastructure/pulumi/apps/tabula:up
 ```
 
 See [docs/tabula](../docs/tabula) for the full documentation set.

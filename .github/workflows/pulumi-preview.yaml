@@ -53,8 +53,8 @@ name: Pulumi Preview
 on:
   pull_request:
     paths:
-      - "infrastructure/pulumi/tabula/**"
-      - "infrastructure/pulumi/oauth-user-inspector/**"
+      - "infrastructure/pulumi/apps/tabula/**"
+      - "infrastructure/pulumi/apps/oauth-user-inspector/**"
       - "infrastructure/pulumi/pkg/**"
       - ".github/workflows/pulumi-preview.yaml"
 
@@ -79,11 +79,11 @@ jobs:
       matrix:
         include:
           - app: tabula
-            dir: infrastructure/pulumi/tabula
+            dir: infrastructure/pulumi/apps/tabula
             stack: development
             environment: tabula-development
           - app: oauth-user-inspector
-            dir: infrastructure/pulumi/oauth-user-inspector
+            dir: infrastructure/pulumi/apps/oauth-user-inspector
             stack: development
             environment: oauth-user-inspector-development
     environment: ${{ matrix.environment }}

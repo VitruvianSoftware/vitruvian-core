@@ -44,7 +44,7 @@ cd <repo root>
 export KUBECONFIG="$HOME/.kube/cluster.yaml"
 
 # 1. Bring the cluster + ArgoCD back up (installs the sealed-secrets controller too).
-bazel run //infrastructure/pulumi/dev-local:up -- --stack local --yes
+bazel run //infrastructure/pulumi/platform/dev-local:up -- --stack local --yes
 
 # 2. Restore the sealed-secrets master key so the controller can decrypt git secrets.
 bazel run //tools/gitops:sealed-secrets-restore        # enter bw master password if prompted
@@ -118,7 +118,7 @@ Then restart Claude Desktop (Cmd-Q) and confirm both MCP servers connect.
 ## Notes
 
 - The `mcp` ArgoCD account (apiKey, role:admin) is created by pulumi
-  (`argocd_api_account` in `infrastructure/pulumi/dev-local`; the enablement lives in
+  (`argocd_api_account` in `infrastructure/pulumi/platform/dev-local`; the enablement lives in
   the gitignored `Pulumi.local.yaml` on the operator's machine).
 - Losing **both** the Bitwarden items and the live cluster means re-bootstrapping from
   scratch (new signing key, new token, re-seal Grafana). Keep the Bitwarden vault backed up.

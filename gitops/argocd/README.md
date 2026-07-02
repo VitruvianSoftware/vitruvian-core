@@ -53,7 +53,7 @@ fully automatically.
 
 ## Bootstrap (the one manual layer, by design)
 
-ArgoCD itself is bootstrapped by Pulumi (`infrastructure/pulumi/dev-local`, the only
+ArgoCD itself is bootstrapped by Pulumi (`infrastructure/pulumi/platform/dev-local`, the only
 remaining Pulumi module). The three roots above are applied once at bootstrap. That
 single bootstrap step is the *only* sanctioned manual apply — everything downstream
 is GitOps.

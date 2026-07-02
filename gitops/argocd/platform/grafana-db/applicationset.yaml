@@ -23,7 +23,7 @@
 # Pulumi/Helm release EXACTLY so ArgoCD adopts in place with ZERO churn (no pod
 # restart, no PVC change). Verified against `helm get values grafana-db -a`
 # (== /tmp/cutover-values/grafana-db.values.yaml) and the Pulumi `dbValues` map
-# in infrastructure/pulumi/dev-local/pkg/applications/grafana.go (DeployGrafana,
+# in infrastructure/pulumi/platform/dev-local/pkg/applications/grafana.go (DeployGrafana,
 # grafana_ha_enabled branch). Pulumi sets NO ValuesFile for this release, so the
 # live values are the in-code map alone — reproduced 1:1 below.
 #   chart cluster-0.2.1 (repo https://cloudnative-pg.github.io/charts), ns grafana,

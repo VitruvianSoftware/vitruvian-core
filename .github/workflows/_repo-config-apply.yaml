@@ -37,7 +37,7 @@ on:
         # branch name — repos whose default branch isn't "main" should edit this
         # list to match.
         branches: ["main"]
-        paths: ["infrastructure/pulumi/repo_config/**"]
+        paths: ["infrastructure/pulumi/platform/repo_config/**"]
     # Manual apply: break-glass + the bootstrap run that first applies the
     # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
     # Bypasses the variable gate below — a dispatch is an explicit human act.
@@ -82,4 +82,4 @@ jobs:
                   # Injected (never committed) so repo_config can set the Dependabot
                   # BUILDBUDDY_API_KEY secret without a secure: value in git (#456).
                   BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-              run: bazel run //infrastructure/pulumi/repo_config:up -- --stack dev --yes
+              run: bazel run //infrastructure/pulumi/platform/repo_config:up -- --stack dev --yes

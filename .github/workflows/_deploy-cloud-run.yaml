@@ -38,7 +38,7 @@ name: _deploy-cloud-run
 #     (GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOY_SERVICE_ACCOUNT,
 #     GCP_PROJECT_ID, GCP_REGION) -- pass `secrets: inherit`.
 #   * The Pulumi program reads <env-prefix>_IMAGE_TAG / _PROMOTE /
-#     _STABLE_REVISION (see infrastructure/pulumi/tabula/main.go envOrConfig).
+#     _STABLE_REVISION (see infrastructure/pulumi/apps/tabula/main.go envOrConfig).
 #   * Migrations (run-migrations: true) implement the vendored-Prisma pattern;
 #     an app with a different migration story extends this workflow rather
 #     than bolting steps around the call.
@@ -71,7 +71,7 @@ on:
         required: true
         type: string
       pulumi-dir:
-        description: "Pulumi project dir, e.g. infrastructure/pulumi/tabula"
+        description: "Pulumi project dir, e.g. infrastructure/pulumi/apps/tabula"
         required: true
         type: string
       env-prefix:

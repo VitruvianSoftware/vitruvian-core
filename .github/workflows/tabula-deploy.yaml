@@ -26,7 +26,7 @@
 # names, env prefix) and its trigger policy.
 #
 # One workflow, parameterized by GitHub Environment (managed as code in
-# //infrastructure/pulumi/repo_config): tabula-development deploys
+# //infrastructure/pulumi/platform/repo_config): tabula-development deploys
 # automatically on push to main; tabula-nonproduction / tabula-production are
 # promoted via workflow_dispatch, with tabula-production additionally gated by
 # its environment protection rules (required reviewer, protected branches).
@@ -94,7 +94,7 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+          EXTRA_PATH_REGEX: "infrastructure/pulumi/apps/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   deploy:
@@ -114,7 +114,7 @@ jobs:
       image-repository-path: tabula/api
       artifact-repository: tabula
       service-name: tabula-api
-      pulumi-dir: infrastructure/pulumi/tabula
+      pulumi-dir: infrastructure/pulumi/apps/tabula
       env-prefix: TABULA
       run-migrations: true
       smoke-url-path: /health

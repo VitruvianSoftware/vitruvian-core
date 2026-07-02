@@ -22,7 +22,7 @@
 # remote-write receiver consumed by the OTel collector and Tempo's metrics
 # generator. helm.values mirror the LIVE Pulumi/Helm release verbatim
 # (`helm get values prometheus -n monitoring` == DeployPrometheus in
-# infrastructure/pulumi/dev-local/pkg/applications/monitoring.go), so ArgoCD
+# infrastructure/pulumi/platform/dev-local/pkg/applications/monitoring.go), so ArgoCD
 # adoption is a no-op — no pod restart, no PVC churn.
 #   chart prometheus-22.6.7 (prometheus-community), ns monitoring.
 #   server: replicaCount=1, statefulSet.enabled=false (Deployment, NOT a

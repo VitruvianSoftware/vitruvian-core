@@ -36,7 +36,7 @@ on:
   # fast (~20s) and validates the full tree regardless of the diff, so running it
   # unconditionally is both correct and cheap. The required-check context is the
   # job name `gitops-validate`, wired into the ruleset in
-  # infrastructure/pulumi/repo_config/main.go (guarded by //tools/conformance:check).
+  # infrastructure/pulumi/platform/repo_config/main.go (guarded by //tools/conformance:check).
   pull_request:
     branches: [main]
   push:

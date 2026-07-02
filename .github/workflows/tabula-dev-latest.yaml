@@ -74,7 +74,7 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "infrastructure/pulumi/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml"
+          EXTRA_PATH_REGEX: "infrastructure/pulumi/apps/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   publish:

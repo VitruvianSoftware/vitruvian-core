@@ -1197,7 +1197,7 @@ on:
       - "tabula/extension/**"
       - "tabula/shared/**"
       - "tabula/api/**"
-      - "infrastructure/pulumi/tabula/**"
+      - "infrastructure/pulumi/apps/tabula/**"
       - ".github/workflows/tabula-dev-latest.yaml"
       - ".github/workflows/tabula-deploy.yaml"
 

@@ -48,7 +48,7 @@ vitruvian-core/
     .release-please-manifest.json
     shared/   api/   extension/   web/   cli/
   tools/oci/node_image.bzl         # NEW — sibling of go_image/py3_image
-  infrastructure/pulumi/tabula/    # NEW — Cloud Run + AR + secrets + SA (Go)
+  infrastructure/pulumi/apps/tabula/    # NEW — Cloud Run + AR + secrets + SA (Go)
 ```
 
 - **npm → pnpm**: `package-lock.json` removed; deps fold into root `pnpm-lock.yaml`;
@@ -153,7 +153,7 @@ Three tiers, all `bazel test` targets:
 - `tools/oci/node_image.bzl`: `js_image_layer` → `oci_image` on a new
   `gcr.io/distroless/nodejs22-debian12` `oci.pull` base (engine-free Prisma ⇒ no OpenSSL/zlib
   concerns). First `oci_push` target in the repo → Artifact Registry.
-- `infrastructure/pulumi/tabula/` (Go, `pulumi_project` macro, registered in
+- `infrastructure/pulumi/apps/tabula/` (Go, `pulumi_project` macro, registered in
   `infrastructure/gcp-identities.tsv`): Cloud Run service `tabula-api-stg`, Artifact Registry
   repo, Secret Manager secrets (DATABASE_URL, JWT_SECRET, WORKOS_*, UPSTASH_REDIS_URL),
   service account + IAM (public invoker). **Neon + Upstash stay externally provisioned**

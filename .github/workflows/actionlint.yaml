@@ -36,7 +36,7 @@ on:
   # workflow doesn't run (never reports) on a PR outside its paths, blocking that
   # PR from becoming mergeable. Linting the whole workflow tree is fast and runs
   # regardless of the diff. Required-check context is the job name `actionlint`,
-  # wired into the ruleset in infrastructure/pulumi/repo_config/main.go
+  # wired into the ruleset in infrastructure/pulumi/platform/repo_config/main.go
   # (guarded by //tools/conformance:check).
   pull_request:
     branches: [main]

@@ -71,7 +71,7 @@ configuration."_
 The Zitadel **instance** is GitOps-managed
 (`gitops/argocd/platform/zitadel/`). The hosted oauth-user-inspector **OAuth
 application** and its redirect URIs are managed as code (Pulumi) under
-[`infrastructure/pulumi/zitadel-apps/`](../infrastructure/pulumi/zitadel-apps/) —
+[`infrastructure/pulumi/platform/zitadel-apps/`](../infrastructure/pulumi/platform/zitadel-apps/) —
 add or change a redirect URI there and re-apply rather than editing the Zitadel
 console by hand. See that project's README for the required service-user
 credential and how to apply (including importing the existing application so its
