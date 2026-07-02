@@ -24,8 +24,7 @@ export interface WebLocksMock {
   request<T>(
     name: string,
     optionsOrCallback:
-      | { ifAvailable?: boolean }
-      | ((lock: unknown) => Promise<T> | T),
+      { ifAvailable?: boolean } | ((lock: unknown) => Promise<T> | T),
     maybeCallback?: (lock: unknown) => Promise<T> | T,
   ): Promise<T>;
 }

@@ -153,8 +153,7 @@ export const useTabSync = ({
       "tabula_force_remote_until",
     );
     const forceRemoteUntil = forceRemoteResult.tabula_force_remote_until as
-      | number
-      | undefined;
+      number | undefined;
     if (forceRemoteUntil && Date.now() < forceRemoteUntil) {
       // eslint-disable-next-line no-console
       console.log(

@@ -176,12 +176,7 @@ export interface ProviderLinkedInUser {
 }
 
 export type AuthProvider =
-  | "github"
-  | "google"
-  | "gitlab"
-  | "auth0"
-  | "zitadel"
-  | "linkedin";
+  "github" | "google" | "gitlab" | "auth0" | "zitadel" | "linkedin";
 
 // This is the unified user object used throughout the application
 export interface AppUser {

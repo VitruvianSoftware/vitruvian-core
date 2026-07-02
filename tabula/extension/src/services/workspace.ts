@@ -411,8 +411,7 @@ export class WorkspaceService {
           "tabula_force_remote_until",
         );
         const forceRemoteUntil = forceRemoteResult.tabula_force_remote_until as
-          | number
-          | undefined;
+          number | undefined;
         const now = Date.now();
         const forceRemote = forceRemoteUntil && now < forceRemoteUntil;
 

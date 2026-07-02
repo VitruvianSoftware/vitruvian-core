@@ -27,12 +27,7 @@ import type { Workspace } from "@tabula/shared";
 import { SharingService, ApiError } from "@/lib/sharing";
 
 type SaveStatus =
-  | "idle"
-  | "saving"
-  | "saved"
-  | "conflict"
-  | "forbidden"
-  | "error";
+  "idle" | "saving" | "saved" | "conflict" | "forbidden" | "error";
 
 const DEBOUNCE_MS = 700;
 

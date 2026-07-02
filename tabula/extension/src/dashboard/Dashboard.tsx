@@ -457,9 +457,7 @@ export const Dashboard: React.FC = () => {
         // Handle external active workspace change (e.g. from sidebar/service)
         useWorkspaceStore.setState({
           activeWorkspaceId: changes.tabula_active_workspace.newValue as
-            | string
-            | null
-            | undefined,
+            string | null | undefined,
         });
       }
 

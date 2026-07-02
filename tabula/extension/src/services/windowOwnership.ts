@@ -43,8 +43,7 @@ export interface WindowOwnershipRecord {
 }
 
 export type ClaimResult =
-  | { claimed: true }
-  | { claimed: false; owner: WindowOwnershipRecord };
+  { claimed: true } | { claimed: false; owner: WindowOwnershipRecord };
 
 const STORAGE_KEY = "tabula_window_ownership";
 const LOCK_NAME = "tabula_ownership_lock";
