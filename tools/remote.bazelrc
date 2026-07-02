@@ -8,8 +8,26 @@ common:remote --bes_results_url=https://app.buildbuddy.io/invocation/
 common:remote --remote_timeout=10m
 common:remote --jobs=50
 common:remote --remote_download_outputs=minimal
-# Default Linux execution platform/container for RBE actions. Adjust the
-# container-image to match your toolchains. NOTE: macOS targets cannot run on
-# Linux RBE — keep them local (e.g. --strategy=...=local). See docs/remote-build.md.
+# Default Linux execution platform/container for RBE actions. The image must ship
+# a modern glibc (>=2.28) for current Node/Python toolchains AND a modern git
+# (>=2.28) for tests/tools that use `git init -b`, `git switch`, etc. Ubuntu
+# 22.04 (rbe-ubuntu22-04) provides git 2.34 / glibc 2.35; the older 20.04 image
+# ships git 2.25 (no `git init -b`). Adjust to match your toolchains. NOTE: macOS
+# targets cannot run on Linux RBE — keep them local (e.g. --strategy=...=local).
+# See docs/remote-build.md.
 common:remote --remote_default_exec_properties=OSFamily=linux
-common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/executor-docker-default:enterprise-v1.6.0
+common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu22-04:latest
+
+# Cache-only profile (--config=remotecache): share the BuildBuddy remote cache +
+# BES but WITHOUT remote execution. Unlike :remote it sets NO --remote_executor
+# and NO --remote_download_outputs=minimal, so build OUTPUTS stay materialized
+# locally and actions run on the runner. Use this on lanes that consume
+# bazel-bin artifacts directly (image push, `cp` of a built zip, a vendored
+# schema-engine binary) or need host-local test execution (Playwright/Chromium),
+# where full RBE would break them. Remote-cache I/O errors fall back to local
+# execution; BES upload is fully async so it never blocks or fails the build.
+common:remotecache --remote_cache=grpcs://remote.buildbuddy.io
+common:remotecache --bes_backend=grpcs://remote.buildbuddy.io
+common:remotecache --bes_results_url=https://app.buildbuddy.io/invocation/
+common:remotecache --bes_upload_mode=fully_async
+common:remotecache --remote_timeout=10m
