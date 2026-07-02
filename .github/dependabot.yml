@@ -153,6 +153,26 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # Pinned to the Bazel-vendored browser build (MODULE.bazel documents the
+      # coupling): Playwright >= 1.58 fetches chromium from Chrome-for-Testing
+      # CDN paths that rules_playwright cannot mirror -- a bump here without
+      # re-vendoring the browsers wipes out the whole e2e lane at launch
+      # ("Executable doesn't exist ... chromium-<n>/chrome"). Bump ONLY
+      # together with the rules_playwright browser re-vendor.
+      - dependency-name: "@playwright/test"
+      # Coupled to fastify 4 until the coordinated fastify-5 upgrade (#530):
+      # rate-limit >= 10 requires fastify 5 and kills the API at startup
+      # (FST_ERR_PLUGIN_VERSION_MISMATCH).
+      - dependency-name: "@fastify/rate-limit"
+        update-types: ["version-update:semver-major"]
+      # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
+      # a client/CLI major without the engine re-vendor breaks migrate deploy
+      # at deploy time, invisibly to CI.
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
   # ─── infrastructure/pulumi Go modules (issue #462 — previously uncovered).
   #     Each is its own go.mod (GOWORK=off); a bump PR that breaks a stack fails
   #     CI and won't merge. ───

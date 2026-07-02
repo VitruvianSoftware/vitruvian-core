@@ -15,7 +15,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.57.0",
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
     "@testing-library/jest-dom": "^6.9.1",
