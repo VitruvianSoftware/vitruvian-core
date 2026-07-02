@@ -98,11 +98,14 @@ jobs:
         run: bash tools/ci/deploy-affected.sh
 
   deploy:
-    # Push lane: only when the gate says the artifacts are affected.
+    # Push lane: when the gate says the artifacts are affected -- OR when the
+    # gate JOB itself failed (infra flake, timeout, runner death): the script
+    # is fail-open, and the job wrapping it must be too, or an infra hiccup
+    # silently skips a deploy that should have happened.
     # Dispatch lane: always (the gate job itself is skipped on dispatch, so
     # gate against `!cancelled()` rather than default needs-success).
     needs: [gate]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.outputs.affected == 'true') }}
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
