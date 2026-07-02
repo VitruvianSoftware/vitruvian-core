@@ -19,7 +19,7 @@
 # SOFTWARE.
 # longhorn — Pulumi -> ArgoCD platform cutover. THE STORAGE CSI (highest stakes).
 # Values mirror the LIVE Pulumi/Helm deployment exactly (DeployLonghorn in
-# infrastructure/pulumi/dev-local/pkg/applications/longhorn.go; no ValuesFile, so
+# infrastructure/pulumi/platform/dev-local/pkg/applications/longhorn.go; no ValuesFile, so
 # live user-supplied values = the code Values map only — verified against
 # `helm get values longhorn -a`):
 #   chart longhorn-1.6.2 (repo https://charts.longhorn.io), ns longhorn-system,
