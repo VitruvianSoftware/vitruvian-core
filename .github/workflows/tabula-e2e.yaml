@@ -43,6 +43,14 @@ on:
       - "tabula/**"
       - "tools/testinfra/**"
       - ".github/workflows/tabula-e2e.yaml"
+  # Quarantine lane (#501): specs tagged @quarantine are EXCLUDED from the
+  # blocking push/PR runs above (one flaky spec must not fail unrelated PRs)
+  # but still run nightly here, so a quarantined test keeps producing signal
+  # -- the green-streak evidence its tracking issue needs to un-quarantine,
+  # or the continuing-red evidence that keeps the issue honest. Policy:
+  # docs/engineering/flaky-tests.md.
+  schedule:
+    - cron: "30 6 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -108,7 +116,22 @@ jobs:
           if [ -n "$BUILDBUDDY_API_KEY" ]; then
             cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
           fi
-          bazel test "${cache[@]}" --config=e2e //tabula/...
+          # Quarantine split (#501, docs/engineering/flaky-tests.md). The grep
+          # filters are BAKED INTO the Bazel targets (tabula/extension/BUILD),
+          # NOT passed via --test_arg: pw_suite uses fixed_args because the
+          # service manager execs the binary directly, so Bazel-time test args
+          # would silently never reach Playwright.
+          #   blocking lanes (push/PR): //tabula/... -- :e2e excludes
+          #     @quarantine-tagged specs via its baked --grep-invert, and the
+          #     manual-tagged :e2e_quarantine is skipped by the wildcard.
+          #   nightly schedule: ONLY the quarantined specs, by explicit label.
+          #     --nocache_test_results: a cached pass would hollow out the
+          #     green-streak evidence the tracking issue needs.
+          if [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
+            bazel test "${cache[@]}" --config=e2e --nocache_test_results //tabula/extension:e2e_quarantine
+          else
+            bazel test "${cache[@]}" --config=e2e //tabula/...
+          fi
 
       - name: Report slowest E2E tests
         # Surface the per-test durations the 'list' reporter wrote into Bazel's
@@ -144,7 +167,9 @@ jobs:
     # Runs in PARALLEL with the `e2e` job: `bazel coverage` excludes e2e-tagged
     # targets (the coverage command inherits --test_tag_filters=-e2e), so this no
     # longer stacks ~80s onto the e2e critical path. Needs the Bazel stack but
-    # not Chromium.
+    # not Chromium. Skipped on the nightly quarantine schedule (#501) -- that
+    # lane exists only to re-run quarantined e2e specs.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

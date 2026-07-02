@@ -104,7 +104,13 @@ jobs:
           build only affected targets), so a red sweep means main is broken for a
           target the graph diff missed — treat as P0 and fix or revert.
 
-          Failing run: ${run_url}"
+          Failing run: ${run_url}
+
+          To attribute it: run the **culprit-finder** workflow (Actions -> culprit-finder
+          -> Run workflow) with \`good\` = the previous green sweep's commit, \`targets\` =
+          the failing target(s) from the run log, and \`issue\` = this issue's number.
+          It bisects the range with \`bazel test\` and posts the first bad commit here
+          (docs/engineering/flaky-tests.md)."
           existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "Still red: ${run_url}"

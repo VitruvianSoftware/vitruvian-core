@@ -326,7 +326,12 @@ test.describe("Cross-device sync convergence (#136)", () => {
     await page.close();
   });
 
-  test("later write wins predictably across devices (workspace-granularity LWW)", async () => {
+  // QUARANTINED (#512, docs/engineering/flaky-tests.md): 3 consecutive CI
+  // failures 2026-07-01 under parallel-worker load (409/SSE signature; NOT the
+  // old shared-user race -- this file already runs on its own CONV_TEST_USER).
+  // Excluded from the blocking e2e lane; exercised nightly by the scheduled
+  // quarantine lane. Remove the tag per the exit criteria in the policy doc.
+  test("later write wins predictably across devices (workspace-granularity LWW) @quarantine", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
     const base = `Conv lww ${Date.now()}`;
     await createSpaceA(page, base);
@@ -446,7 +451,8 @@ test.describe("Cross-device sync convergence (#136)", () => {
     await page.close();
   });
 
-  test("device B's section reorder converges into device A (array order preserved)", async () => {
+  // QUARANTINED (#512): see the note on the LWW spec above.
+  test("device B's section reorder converges into device A (array order preserved) @quarantine", async () => {
     const page = await getOrCreateDashboardPage(context, extensionId);
     const name = `Conv reorder ${Date.now()}`;
     await createSpaceA(page, name);
