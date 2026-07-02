@@ -69,7 +69,6 @@ jest_test(
         ":node_modules/@types/jest",
         ":node_modules/@types/node",
         ":node_modules/@types/supertest",
-        ":node_modules/@types/uuid",
         ":node_modules/dotenv",
         ":node_modules/express",
         ":node_modules/js-base64",
