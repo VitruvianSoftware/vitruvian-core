@@ -86,8 +86,8 @@ export const useTabSync = ({
   currentWindowId,
   activeWorkspaceId,
 }: UseTabSyncOptions) => {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const initPollRef = useRef<ReturnType<typeof setTimeout>>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const initPollRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isSyncingRef = useRef(false);
   const ownershipLostRef = useRef(false);
   // syncTabs is memoized once (its deps are all referentially stable), so the
