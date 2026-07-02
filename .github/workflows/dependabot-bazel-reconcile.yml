@@ -24,14 +24,22 @@ name: Dependabot Bazel reconcile
 # BUILD files + MODULE.bazel use_repo (bazel mod tidy) so the Bazel build stays
 # consistent, and commit the result to the PR branch. No-op for version-only bumps
 # (versions re-resolve via go_deps; BUILD/use_repo only change when the dep SET does).
+# For npm bumps, regenerate pnpm-lock.yaml with the hermetic @pnpm//:pnpm so the
+# lock always matches the manifests in OUR canonical form -- tidy-check's
+# lockfile-sync guard requires exactly this, and Dependabot's own lock output
+# (when it produces one at all) is not guaranteed to match it byte-for-byte.
 # Pushes via the GitHub App token: Dependabot-triggered runs only see Dependabot
-# secrets, and an App-token push re-triggers CI on the reconciled commit.
+# secrets, and an App-token push re-triggers CI on the reconciled commit. No push
+# loop: the re-triggered run's actor is the App (not dependabot[bot]) and the
+# reconcile is a fixpoint (second run produces no diff).
 on:
     pull_request:
         branches: [main]
         paths:
             - "**/go.mod"
             - "**/go.sum"
+            - "**/package.json"
+            - "pnpm-lock.yaml"
 
 permissions:
     contents: read
@@ -62,6 +70,9 @@ jobs:
               run: |
                 bazel mod tidy
                 bazel run //:gazelle
+            - name: Reconcile pnpm lock (hermetic pnpm, canonical form)
+              run: |
+                bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
             - name: Commit reconcile if anything changed
               env:
                 HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -72,5 +83,5 @@ jobs:
                 git config user.name "VitruvianSoftware Sync"
                 git config user.email "sync@vitruviansoftware.com"
                 git add -A
-                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy)"
+                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy + pnpm lock)"
                 git push origin "HEAD:${HEAD_REF}"
