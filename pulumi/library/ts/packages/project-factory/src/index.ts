@@ -112,13 +112,12 @@ export class ProjectFactory extends pulumi.ComponentResource {
             apiResources.push(svc);
         }
 
-        // Deprivilege default compute service account
-        if (args.defaultServiceAccount === "deprivilege") {
-            // Remove default editor role from the compute default SA
-            new gcp.projects.IAMBinding(`${name}-remove-default-editor`, {
+        // Default Service Account management
+        if (args.defaultServiceAccount && args.defaultServiceAccount.toUpperCase() !== "KEEP") {
+            new gcp.projects.DefaultServiceAccounts(`${name}-default-sa`, {
                 project: project.projectId,
-                role: "roles/editor",
-                members: [],
+                action: args.defaultServiceAccount.toUpperCase(),
+                restorePolicy: "REVERT_AND_IGNORE_FAILURE",
             }, { parent: this, dependsOn: apiResources });
         }
 
