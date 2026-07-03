@@ -180,10 +180,15 @@ ts_project(
     srcs = glob(["tests/**/*.ts"]),
     declaration = True,
     declaration_map = True,
+    # TS 6 stopped auto-including @types/jest from the rules_js virtual store
+    # under nodenext (@types/node still resolves; jest's transitive type graph
+    # does not). tsconfig.test.json declares types: [node, jest] explicitly for
+    # the test compile only — src (:lib) keeps the base config unchanged.
+    extends = "tsconfig.json",
     resolve_json_module = True,
     source_map = True,
     transpiler = "tsc",
-    tsconfig = "tsconfig.json",
+    tsconfig = "tsconfig.test.json",
     deps = [
         ":lib",
         ":node_modules/@types/jest",

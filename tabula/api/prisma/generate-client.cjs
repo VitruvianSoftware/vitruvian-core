@@ -66,9 +66,9 @@ function collectTs(dir) {
 
 const files = collectTs(GENERATED_DIR);
 const program = ts.createProgram(files, {
-  module: ts.ModuleKind.CommonJS,
+  module: ts.ModuleKind.NodeNext,
   target: ts.ScriptTarget.ES2022,
-  moduleResolution: ts.ModuleResolutionKind.Node10,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
   declaration: true,
   esModuleInterop: true,
   resolveJsonModule: true,

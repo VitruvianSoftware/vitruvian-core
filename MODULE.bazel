@@ -163,7 +163,16 @@ npm.npm_translate_lock(
 use_repo(npm, "npm")
 
 rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
-rules_ts_ext.deps(ts_version_from = "//:package.json")
+
+# ts_integrity is REQUIRED for TypeScript versions newer than what rules_ts
+# 3.8.11 mirrors (its curated list predates TS 6). Without it the npm_typescript
+# repo fails to fetch: "typescript version ^6.0.3 is not mirrored in rules_ts".
+# Get the value from: npm view typescript@<ver> dist.integrity — and update it
+# in lockstep with the package.json typescript bump.
+rules_ts_ext.deps(
+    ts_integrity = "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
+    ts_version_from = "//:package.json",
+)
 use_repo(rules_ts_ext, "npm_typescript")
 
 #########################
