@@ -197,7 +197,7 @@ The bootstrap stage creates the Seed project (state storage, KMS encryption, ser
 10. Export outputs needed by downstream stages and CI/CD:
 
     ```bash
-    export CICD_PROJECT_ID=$(pulumi stack output cicd_project_id)
+    export CICD_PROJECT_ID=$(pulumi stack output cloudbuild_project_id)
     export WIF_PROVIDER=$(pulumi stack output wif_provider_name)
 
     echo "CI/CD Project = ${CICD_PROJECT_ID}"
@@ -297,7 +297,7 @@ The organization stage creates the folder structure, shared projects (logging, b
 7. Check if a Security Command Center notification named `scc-notify` already exists:
 
    ```bash
-   export ORG_STEP_SA=$(pulumi -C ../gcp-bootstrap stack output organization_step_terraform_service_account_email)
+   export ORG_STEP_SA=$(pulumi -C ../gcp-bootstrap stack output org_step_terraform_service_account_email)
 
    gcloud scc notifications describe "scc-notify" \
      --format="value(name)" \

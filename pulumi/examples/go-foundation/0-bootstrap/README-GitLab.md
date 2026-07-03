@@ -169,7 +169,7 @@ Set these in each project's Settings → CI/CD → Variables:
 | Variable | Value | Source |
 |----------|-------|--------|
 | `WIF_PROVIDER_NAME` | `projects/{number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gl-provider` | `pulumi stack output wif_provider_name` |
-| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_sa_email` |
+| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_step_terraform_service_account_email` |
 
 ## Self-Hosted GitLab
 

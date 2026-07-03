@@ -126,7 +126,7 @@ Set these in each repository's Settings → Secrets:
 | Secret | Value | Source |
 |--------|-------|--------|
 | `WIF_PROVIDER_NAME` | `projects/{project_number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider` | `pulumi stack output wif_provider_name` |
-| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_sa_email` |
+| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_step_terraform_service_account_email` |
 
 ## Migration from Key-Based Auth
 

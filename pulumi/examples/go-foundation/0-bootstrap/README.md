@@ -222,7 +222,7 @@ This is the recommended CI/CD approach for the Pulumi foundation. After the init
 
    # Key outputs:
    export SEED_PROJECT_ID=$(pulumi stack output seed_project_id)
-   export CICD_PROJECT_ID=$(pulumi stack output cicd_project_id)
+   export CICD_PROJECT_ID=$(pulumi stack output cloudbuild_project_id)
    export STATE_BUCKET=$(pulumi stack output tf_state_bucket)
 
    echo "Seed Project ID: ${SEED_PROJECT_ID}"
@@ -383,15 +383,15 @@ These configure the [Workload Identity Federation](https://cloud.google.com/iam/
 | Name | Description |
 |------|-------------|
 | `seed_project_id` | Project ID of the Seed project (`prj-b-seed`) |
-| `cicd_project_id` | Project ID of the CI/CD project (`prj-b-cicd`) |
+| `cloudbuild_project_id` | Project ID of the CI/CD project (`prj-b-cicd`) |
 | `bootstrap_folder_id` | Folder ID of the bootstrap folder |
 | `tf_state_bucket` | Name of the GCS bucket for Pulumi state |
 | `state_bucket_kms_key_id` | KMS key ID used for state bucket encryption |
-| `bootstrap_sa_email` | Bootstrap stage service account email |
-| `org_sa_email` | Organization stage service account email |
-| `env_sa_email` | Environment stage service account email |
-| `net_sa_email` | Network stage service account email |
-| `proj_sa_email` | Projects stage service account email |
+| `bootstrap_step_terraform_service_account_email` | Bootstrap stage service account email |
+| `org_step_terraform_service_account_email` | Organization stage service account email |
+| `env_step_terraform_service_account_email` | Environment stage service account email |
+| `net_step_terraform_service_account_email` | Network stage service account email |
+| `proj_step_terraform_service_account_email` | Projects stage service account email |
 | `common_config` | Composite config object (org_id, billing_account, regions, prefixes, parent_id, bootstrap_folder_name) consumed by all downstream stages via Stack References |
 | `required_groups` | Map of required group emails (group_org_admins, group_billing_admins, billing_data_users, audit_data_users) |
 | `optional_groups` | Map of optional governance group emails (gcp_security_reviewer, gcp_network_viewer, gcp_scc_admin, gcp_global_secrets_admin, gcp_kms_admin) |
