@@ -379,11 +379,14 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
     const centralizedLogging = new CentralizedLogging("org-logging", {
         projectId: orgAuditLogs.projectId,
         orgId: cfg.orgId,
+        folderId: cfg.parentFolder || undefined,
         billingAccount: cfg.enableBillingAccountSink ? cfg.billingAccount : undefined,
         loggingBucketOptions: {
             name: "LogBucket",
             loggingSinkName: "sk-c-logging-logbkt",
             loggingSinkFilter: logFilter,
+            enableAnalytics: true,
+            linkedDatasetId: "ds_c_prj_aggregated_logs_analytics",
         },
         bigqueryOptions: {
             datasetName: "audit_logs",
