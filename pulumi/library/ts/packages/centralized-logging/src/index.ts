@@ -13,6 +13,8 @@ export interface LoggingBucketOptions {
     loggingSinkFilter?: string;
     retentionDays?: number;
     location?: string;
+    enableAnalytics?: boolean;
+    linkedDatasetId?: string | null;
 }
 
 export interface BigQueryOptions {
@@ -47,6 +49,7 @@ export interface PubsubOptions {
 export interface CentralizedLoggingArgs {
     projectId: pulumi.Input<string>;
     orgId: string;
+    folderId?: string;
     billingAccount?: string;
     loggingBucketOptions?: LoggingBucketOptions | null;
     bigqueryOptions?: BigQueryOptions | null;
@@ -62,6 +65,36 @@ export class CentralizedLogging extends pulumi.ComponentResource {
     public readonly linkedDatasetName: pulumi.Output<string>;
     /** Billing sink names by destination key — mirrors TF billing_sink_names output */
     public readonly billingSinkNames: Record<string, pulumi.Output<string>>;
+
+    private createSink(
+        name: string,
+        args: {
+            orgId: string;
+            folderId?: string;
+            sinkName: string;
+            destination: pulumi.Input<string>;
+            filter: string;
+        },
+        parent: pulumi.Resource
+    ): gcp.logging.OrganizationSink | gcp.logging.FolderSink {
+        if (args.folderId) {
+            return new gcp.logging.FolderSink(name, {
+                folder: args.folderId,
+                name: args.sinkName,
+                destination: args.destination,
+                filter: args.filter,
+                includeChildren: true,
+            }, { parent });
+        } else {
+            return new gcp.logging.OrganizationSink(name, {
+                orgId: args.orgId,
+                name: args.sinkName,
+                destination: args.destination,
+                filter: args.filter,
+                includeChildren: true,
+            }, { parent });
+        }
+    }
 
     constructor(name: string, args: CentralizedLoggingArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:CentralizedLogging", name, args, opts);
@@ -80,15 +113,26 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 location: args.loggingBucketOptions.location ?? "global",
                 bucketId: args.loggingBucketOptions.name,
                 retentionDays: args.loggingBucketOptions.retentionDays ?? 365,
+                enableAnalytics: args.loggingBucketOptions.enableAnalytics,
             }, { parent: this });
 
-            const sink = new gcp.logging.OrganizationSink(`${name}-log-bucket-sink`, {
+            if (args.loggingBucketOptions.linkedDatasetId) {
+                const linkedDataset = new gcp.logging.LinkedDataset(`${name}-linked-dataset`, {
+                    parent: pulumi.interpolate`projects/${args.projectId}`,
+                    location: args.loggingBucketOptions.location ?? "global",
+                    bucket: bucket.bucketId,
+                    linkId: args.loggingBucketOptions.linkedDatasetId,
+                }, { parent: bucket });
+                this.linkedDatasetName = linkedDataset.name;
+            }
+
+            const sink = this.createSink(`${name}-log-bucket-sink`, {
                 orgId: args.orgId,
-                name: args.loggingBucketOptions.loggingSinkName ?? `sk-c-logging-${args.loggingBucketOptions.name}`,
+                folderId: args.folderId,
+                sinkName: args.loggingBucketOptions.loggingSinkName ?? `sk-c-logging-${args.loggingBucketOptions.name}`,
                 destination: pulumi.interpolate`logging.googleapis.com/projects/${args.projectId}/locations/${args.loggingBucketOptions.location ?? "global"}/buckets/${bucket.bucketId}`,
                 filter: args.loggingBucketOptions.loggingSinkFilter ?? "",
-                includeChildren: true,
-            }, { parent: this });
+            }, this);
 
             const iam = new gcp.projects.IAMMember(`${name}-log-bucket-iam`, {
                 project: args.projectId,
@@ -128,16 +172,13 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 deleteContentsOnDestroy: args.bigqueryOptions.deleteContentsOnDestroy ?? false,
             }, { parent: this });
 
-            const sink = new gcp.logging.OrganizationSink(`${name}-bq-sink`, {
+            const sink = this.createSink(`${name}-bq-sink`, {
                 orgId: args.orgId,
-                name: args.bigqueryOptions.loggingSinkName ?? `sk-c-logging-bq-${args.bigqueryOptions.datasetName}`,
+                folderId: args.folderId,
+                sinkName: args.bigqueryOptions.loggingSinkName ?? `sk-c-logging-bq-${args.bigqueryOptions.datasetName}`,
                 destination: pulumi.interpolate`bigquery.googleapis.com/projects/${args.projectId}/datasets/${dataset.datasetId}`,
                 filter: args.bigqueryOptions.loggingSinkFilter ?? "",
-                includeChildren: true,
-                bigqueryOptions: {
-                    usePartitionedTables: true,
-                },
-            }, { parent: this });
+            }, this);
 
             const iam = new gcp.bigquery.DatasetIamMember(`${name}-bq-iam`, {
                 project: args.projectId,
@@ -166,13 +207,13 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 } : undefined,
             }, { parent: this });
 
-            const sink = new gcp.logging.OrganizationSink(`${name}-storage-sink`, {
+            const sink = this.createSink(`${name}-storage-sink`, {
                 orgId: args.orgId,
-                name: args.storageOptions.loggingSinkName ?? `sk-c-logging-bkt-${args.storageOptions.bucketName}`,
+                folderId: args.folderId,
+                sinkName: args.storageOptions.loggingSinkName ?? `sk-c-logging-bkt-${args.storageOptions.bucketName}`,
                 destination: pulumi.interpolate`storage.googleapis.com/${bucket.name}`,
                 filter: args.storageOptions.loggingSinkFilter ?? "",
-                includeChildren: true,
-            }, { parent: this });
+            }, this);
 
             const iam = new gcp.storage.BucketIAMMember(`${name}-storage-iam`, {
                 bucket: bucket.name,
@@ -206,13 +247,13 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                 name: args.pubsubOptions.topicName,
             }, { parent: this });
 
-            const sink = new gcp.logging.OrganizationSink(`${name}-pubsub-sink`, {
+            const sink = this.createSink(`${name}-pubsub-sink`, {
                 orgId: args.orgId,
-                name: args.pubsubOptions.loggingSinkName ?? `sk-c-logging-pub-${args.pubsubOptions.topicName}`,
+                folderId: args.folderId,
+                sinkName: args.pubsubOptions.loggingSinkName ?? `sk-c-logging-pub-${args.pubsubOptions.topicName}`,
                 destination: pulumi.interpolate`pubsub.googleapis.com/projects/${args.projectId}/topics/${topic.name}`,
                 filter: args.pubsubOptions.loggingSinkFilter ?? "",
-                includeChildren: true,
-            }, { parent: this });
+            }, this);
 
             const iam = new gcp.pubsub.TopicIAMMember(`${name}-pubsub-iam`, {
                 project: args.projectId,
