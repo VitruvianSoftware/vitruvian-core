@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-cicd-v0.4.0...go-cicd-v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **go/cicd:** add repository_owner to WIF attribute mapping ([#67](https://github.com/VitruvianSoftware/pulumi-library/issues/67)) ([26287dc](https://github.com/VitruvianSoftware/pulumi-library/commit/26287dc7d6c566f51316788e46d4442ffafbfccc))
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/pulumi-library/issues/71)) ([d6d73ed](https://github.com/VitruvianSoftware/pulumi-library/commit/d6d73edb3e703338a9d6f64adba003b6d9bdf293))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-cicd-v0.3.1...go-cicd-v0.4.0) (2026-05-06)
 
 

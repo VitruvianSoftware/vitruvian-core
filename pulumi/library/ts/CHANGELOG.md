@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.7.0...foundation-library-v0.7.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **ts:** allow Input&lt;string&gt; for CentralizedLogging bucketName ([#68](https://github.com/VitruvianSoftware/pulumi-library/issues/68)) ([54c79d8](https://github.com/VitruvianSoftware/pulumi-library/commit/54c79d85366c0b855799eec931e5401dfaf8bed3))
+
 ## [0.7.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.6.0...foundation-library-v0.7.0) (2026-05-06)
 
 

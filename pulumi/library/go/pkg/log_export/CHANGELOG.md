@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-log-export-v0.2.0...go-log-export-v0.2.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/pulumi-library/issues/71)) ([d6d73ed](https://github.com/VitruvianSoftware/pulumi-library/commit/d6d73edb3e703338a9d6f64adba003b6d9bdf293))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-log-export-v0.1.0...go-log-export-v0.2.0) (2026-05-06)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.2...foundation-centralized-logging-v0.5.3) (2026-07-03)
+
+
+### Bug Fixes
+
+* **go/cicd:** add repository_owner to WIF attribute mapping ([#67](https://github.com/VitruvianSoftware/pulumi-library/issues/67)) ([26287dc](https://github.com/VitruvianSoftware/pulumi-library/commit/26287dc7d6c566f51316788e46d4442ffafbfccc))
+* **ts:** allow Input&lt;string&gt; for CentralizedLogging bucketName ([#68](https://github.com/VitruvianSoftware/pulumi-library/issues/68)) ([54c79d8](https://github.com/VitruvianSoftware/pulumi-library/commit/54c79d85366c0b855799eec931e5401dfaf8bed3))
+
 ## [0.5.2](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.1...foundation-centralized-logging-v0.5.2) (2026-07-03)
 
 

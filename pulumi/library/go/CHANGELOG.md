@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-foundation-v0.4.0...go-foundation-v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* go mod tidy ([#72](https://github.com/VitruvianSoftware/pulumi-library/issues/72)) ([633687e](https://github.com/VitruvianSoftware/pulumi-library/commit/633687e03eeb5042874d9da415648cdc13251165))
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/pulumi-library/issues/71)) ([d6d73ed](https://github.com/VitruvianSoftware/pulumi-library/commit/d6d73edb3e703338a9d6f64adba003b6d9bdf293))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-foundation-v0.3.1...go-foundation-v0.4.0) (2026-05-06)
 
 

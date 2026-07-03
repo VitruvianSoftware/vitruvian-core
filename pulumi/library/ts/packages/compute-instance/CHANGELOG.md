@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-compute-instance-v0.2.0...foundation-compute-instance-v0.2.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/pulumi-library/issues/71)) ([d6d73ed](https://github.com/VitruvianSoftware/pulumi-library/commit/d6d73edb3e703338a9d6f64adba003b6d9bdf293))
+* update instance template Go structs for 5-app-infra gaps ([#70](https://github.com/VitruvianSoftware/pulumi-library/issues/70)) ([41cd6bc](https://github.com/VitruvianSoftware/pulumi-library/commit/41cd6bc7af83d7a8b4b90cb63aa8d0f39cc0a774))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-compute-instance-v0.1.0...foundation-compute-instance-v0.2.0) (2026-05-06)
 
 
