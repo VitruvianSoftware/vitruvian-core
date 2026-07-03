@@ -54,12 +54,17 @@ func orgOrFolderIAMMember(ctx *pulumi.Context, name string, cfg *OrgConfig, role
 
 // deployOrgIAM creates all IAM bindings for governance groups on
 // org-level projects. This mirrors the Terraform foundation's iam.tf.
-func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error {
+func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootstrapRef *pulumi.StackReference) error {
 	// ========================================================================
 	// 1. Audit Logs Project — IAM for audit_data_users
 	// ========================================================================
-	if cfg.AuditDataUsers != "" {
-		auditGroup := fmt.Sprintf("group:%s", cfg.AuditDataUsers)
+	requiredGroups := bootstrapRef.GetOutput(pulumi.String("required_groups"))
+	auditGroup := requiredGroups.ApplyT(func(v interface{}) string {
+		m := v.(map[string]interface{})
+		return fmt.Sprintf("group:%v", m["audit_data_users"])
+	}).(pulumi.StringOutput)
+
+	{ // Unconditional
 		auditRoles := []struct{ name, role string }{
 			{"audit-log-viewer", "roles/logging.viewer"},
 			{"audit-bq-user", "roles/bigquery.user"},
@@ -69,7 +74,7 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 			if _, err := projects.NewIAMMember(ctx, r.name, &projects.IAMMemberArgs{
 				Project: proj.AuditLogsProjectID,
 				Role:    pulumi.String(r.role),
-				Member:  pulumi.String(auditGroup),
+				Member:  auditGroup,
 			}); err != nil {
 				return err
 			}
@@ -79,8 +84,12 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 	// ========================================================================
 	// 2. Billing Export Project — IAM for billing_data_users
 	// ========================================================================
-	if cfg.BillingDataUsers != "" {
-		billingGroup := fmt.Sprintf("group:%s", cfg.BillingDataUsers)
+	billingGroup := requiredGroups.ApplyT(func(v interface{}) string {
+		m := v.(map[string]interface{})
+		return fmt.Sprintf("group:%v", m["billing_data_users"])
+	}).(pulumi.StringOutput)
+
+	{ // Unconditional
 
 		// Project-level: BQ user + data viewer
 		billingRoles := []struct{ name, role string }{
@@ -91,7 +100,7 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 			if _, err := projects.NewIAMMember(ctx, r.name, &projects.IAMMemberArgs{
 				Project: proj.BillingExportProjectID,
 				Role:    pulumi.String(r.role),
-				Member:  pulumi.String(billingGroup),
+				Member:  billingGroup,
 			}); err != nil {
 				return err
 			}
@@ -101,7 +110,7 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 		if _, err := organizations.NewIAMMember(ctx, "billing-viewer", &organizations.IAMMemberArgs{
 			OrgId:  pulumi.String(cfg.OrgID),
 			Role:   pulumi.String("roles/billing.viewer"),
-			Member: pulumi.String(billingGroup),
+			Member: billingGroup,
 		}); err != nil {
 			return err
 		}
@@ -265,19 +274,21 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 	// elevated roles on the hub project to manage compute, SAs, and IAM.
 	// Mirrors: google_project_iam_member "network_sa" in projects.tf
 	// ========================================================================
-	if cfg.EnableHubAndSpoke && cfg.NetworksSAEmail != "" {
+	if cfg.EnableHubAndSpoke {
 		hubAndSpokeRoles := []string{
 			"roles/compute.instanceAdmin",
 			"roles/iam.serviceAccountAdmin",
 			"roles/resourcemanager.projectIamAdmin",
 			"roles/iam.serviceAccountUser",
 		}
-		networkSA := fmt.Sprintf("serviceAccount:%s", cfg.NetworksSAEmail)
+		networkSA := bootstrapRef.GetOutput(pulumi.String("networks_step_terraform_service_account_email")).ApplyT(func(v interface{}) string {
+			return fmt.Sprintf("serviceAccount:%v", v)
+		}).(pulumi.StringOutput)
 		for _, role := range hubAndSpokeRoles {
 			if _, err := projects.NewIAMMember(ctx, fmt.Sprintf("net-hub-sa-%s", role), &projects.IAMMemberArgs{
 				Project: proj.NetHubProjectID,
 				Role:    pulumi.String(role),
-				Member:  pulumi.String(networkSA),
+				Member:  networkSA,
 			}); err != nil {
 				return err
 			}

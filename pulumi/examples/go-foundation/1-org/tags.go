@@ -32,7 +32,7 @@ import (
 //
 // When CreateUniqueTagKey is true (recommended for parent folder deployments),
 // a random suffix is appended to tag key names to avoid org-wide conflicts.
-func deployTags(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (pulumi.MapOutput, error) {
+func deployTags(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders, bootstrapRef *pulumi.StackReference) (pulumi.MapOutput, error) {
 	// Tag keys are always created at the organization level, even when
 	// deploying under a parent_folder. Matches upstream tags.tf which uses
 	// "organizations/${local.org_id}" unconditionally.
@@ -108,15 +108,20 @@ func deployTags(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (pulumi.M
 		return pulumi.MapOutput{}, err
 	}
 
-	// Bootstrap folder → bootstrap tag (when bootstrap_folder_name is provided)
-	if cfg.BootstrapFolderName != "" {
-		if _, err := tags.NewTagBinding(ctx, "tag-binding-bootstrap", &tags.TagBindingArgs{
-			Parent:   pulumi.Sprintf("//cloudresourcemanager.googleapis.com/%s", cfg.BootstrapFolderName),
-			TagValue: tagValueMap["bootstrap"].ID(),
-		}); err != nil {
-			return pulumi.MapOutput{}, err
-		}
+	// Bootstrap folder → bootstrap tag (unconditionally using bootstrapRef output)
+	commonConfig := bootstrapRef.GetOutput(pulumi.String("common_config"))
+	bootstrapParent := commonConfig.ApplyT(func(v interface{}) string {
+		m := v.(map[string]interface{})
+		return fmt.Sprintf("//cloudresourcemanager.googleapis.com/%v", m["bootstrap_folder_name"])
+	}).(pulumi.StringOutput)
+
+	if _, err := tags.NewTagBinding(ctx, "tag-binding-bootstrap", &tags.TagBindingArgs{
+		Parent:   bootstrapParent,
+		TagValue: tagValueMap["bootstrap"].ID(),
+	}); err != nil {
+		return pulumi.MapOutput{}, err
 	}
+
 
 	return tagOutputMap.ToMapOutput(), nil
 }

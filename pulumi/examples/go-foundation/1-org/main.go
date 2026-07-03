@@ -102,13 +102,13 @@ func main() {
 		}
 
 		// 7. Deploy Org-level Tags (with folder bindings)
-		tagOutputs, err := deployTags(ctx, cfg, folders)
+		tagOutputs, err := deployTags(ctx, cfg, folders, bootstrapRef)
 		if err != nil {
 			return err
 		}
 
 		// 8. Deploy IAM bindings for groups
-		if err := deployOrgIAM(ctx, cfg, projOutputs); err != nil {
+		if err := deployOrgIAM(ctx, cfg, projOutputs, bootstrapRef); err != nil {
 			return err
 		}
 
