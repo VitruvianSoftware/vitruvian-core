@@ -9,7 +9,7 @@ import * as gcp from "@pulumi/gcp";
 
 export interface ComputeInstanceArgs {
     project: pulumi.Input<string>;
-    zone: string;
+    zone: pulumi.Input<string>;
     hostname: string;
     instanceTemplate: pulumi.Input<string>;
     numInstances?: number;

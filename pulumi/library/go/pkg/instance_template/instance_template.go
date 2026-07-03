@@ -26,7 +26,7 @@ import (
 
 type InstanceTemplateArgs struct {
 	Project            pulumi.StringInput
-	Region             string
+	Region             pulumi.StringInput
 	MachineType        string
 	SourceImage        string
 	SourceImageFamily  string
@@ -39,7 +39,7 @@ type InstanceTemplateArgs struct {
 	ServiceAccountScopes []string
 	Tags               []string
 	Labels             map[string]string
-	Metadata           map[string]string
+	Metadata           pulumi.StringMapInput
 	EnableShieldedVm   bool
 	EnableConfidentialVm bool
 	NamePrefix         string
@@ -77,7 +77,7 @@ func NewInstanceTemplate(ctx *pulumi.Context, name string, args *InstanceTemplat
 
 	tmplArgs := &compute.InstanceTemplateArgs{
 		Project:     args.Project,
-		Region:      pulumi.String(args.Region),
+		Region:      args.Region,
 		MachineType: pulumi.String(machineType),
 		Disks: compute.InstanceTemplateDiskArray{
 			&compute.InstanceTemplateDiskArgs{
@@ -133,12 +133,8 @@ func NewInstanceTemplate(ctx *pulumi.Context, name string, args *InstanceTemplat
 		tmplArgs.Labels = labels
 	}
 
-	if len(args.Metadata) > 0 {
-		metadata := pulumi.StringMap{}
-		for k, v := range args.Metadata {
-			metadata[k] = pulumi.String(v)
-		}
-		tmplArgs.Metadata = metadata
+	if args.Metadata != nil {
+		tmplArgs.Metadata = args.Metadata
 	}
 
 	if args.EnableShieldedVm {

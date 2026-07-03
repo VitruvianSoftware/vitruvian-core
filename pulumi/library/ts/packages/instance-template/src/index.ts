@@ -10,11 +10,11 @@ export interface InstanceTemplateArgs {
     projectId: pulumi.Input<string>;
     namePrefix: string;
     machineType: string;
-    region: string;
+    region: pulumi.Input<string>;
     sourceImage?: string;
     sourceImageFamily?: string;
     sourceImageProject?: string;
-    minCpuPlatform?: string;
+    minCpuPlatform?: pulumi.Input<string>;
     diskSizeGb?: number;
     diskType?: string;
     subnetwork: pulumi.Input<string>;

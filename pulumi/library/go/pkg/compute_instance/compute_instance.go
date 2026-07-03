@@ -26,7 +26,7 @@ import (
 
 type ComputeInstanceArgs struct {
 	Project            pulumi.StringInput
-	Zone               string
+	Zone pulumi.StringInput
 	Hostname           string
 	InstanceTemplate   pulumi.StringInput
 	NumInstances       int
@@ -61,7 +61,7 @@ func NewComputeInstance(ctx *pulumi.Context, name string, args *ComputeInstanceA
 
 		inst, err := compute.NewInstanceFromTemplate(ctx, fmt.Sprintf("%s-%d", name, i), &compute.InstanceFromTemplateArgs{
 			Project:                 args.Project,
-			Zone:                    pulumi.String(args.Zone),
+			Zone:                    args.Zone,
 			Name:                    pulumi.String(hostname),
 			SourceInstanceTemplate:  args.InstanceTemplate,
 			DeletionProtection:      pulumi.Bool(args.DeletionProtection),
