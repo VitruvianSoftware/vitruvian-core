@@ -134,6 +134,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: commonFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: [
             "logging.googleapis.com", "bigquery.googleapis.com",
             "billingbudgets.googleapis.com",
@@ -157,6 +158,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: commonFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: [
             "logging.googleapis.com", "bigquery.googleapis.com",
             "billingbudgets.googleapis.com",
@@ -180,6 +182,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: commonFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: [
             "logging.googleapis.com", "cloudkms.googleapis.com",
             "billingbudgets.googleapis.com",
@@ -203,6 +206,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: commonFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: [
             "logging.googleapis.com", "secretmanager.googleapis.com",
             "billingbudgets.googleapis.com",
@@ -226,6 +230,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: networkFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: ["billingbudgets.googleapis.com", "compute.googleapis.com"],
         labels: {
             environment: "network",
@@ -246,6 +251,7 @@ export = async () => {
         billingAccount: cfg.billingAccount,
         folderId: commonFolder.name,
         deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
         activateApis: [
             "logging.googleapis.com", "pubsub.googleapis.com",
             "securitycenter.googleapis.com", "billingbudgets.googleapis.com",
@@ -272,6 +278,7 @@ export = async () => {
             billingAccount: cfg.billingAccount,
             folderId: networkFolder.name,
             deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
             activateApis: [
                 "compute.googleapis.com", "dns.googleapis.com",
                 "servicenetworking.googleapis.com", "logging.googleapis.com",
@@ -305,6 +312,7 @@ export = async () => {
             billingAccount: cfg.billingAccount,
             folderId: networkFolder.name,
             deletionPolicy: cfg.projectDeletionPolicy,
+            defaultServiceAccount: "deprivilege",
             activateApis: [
                 "compute.googleapis.com", "dns.googleapis.com",
                 "servicenetworking.googleapis.com", "container.googleapis.com",

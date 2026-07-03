@@ -63,6 +63,7 @@ export function deployEnvBaseline(args: EnvBaselineArgs): EnvBaselineOutputs {
         billingAccount: args.billingAccount,
         folderId: envFolder.name,
         deletionPolicy: args.projectDeletionPolicy,
+        defaultServiceAccount: "deprivilege",
         activateApis: ["logging.googleapis.com", "cloudkms.googleapis.com", "billingbudgets.googleapis.com"],
         labels: {
             environment: name,
@@ -87,6 +88,7 @@ export function deployEnvBaseline(args: EnvBaselineArgs): EnvBaselineOutputs {
         billingAccount: args.billingAccount,
         folderId: envFolder.name,
         deletionPolicy: args.projectDeletionPolicy,
+        defaultServiceAccount: "deprivilege",
         activateApis: ["logging.googleapis.com", "secretmanager.googleapis.com", "billingbudgets.googleapis.com"],
         labels: {
             environment: name,
