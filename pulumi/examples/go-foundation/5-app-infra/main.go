@@ -59,7 +59,13 @@ func main() {
 		// The project scaffold exports are always available. Compute workload
 		// exports are added by the example files when enabled.
 		ctx.Export("project_id", appProjectID)
-		ctx.Export("region", pulumi.String(cfg.Region))
+
+		appRegion := pulumi.String(cfg.Region).ToStringOutput()
+		if cfg.Region == "" {
+			appRegion = projStack.GetStringOutput(pulumi.String("default_region"))
+		}
+		ctx.Export("region", appRegion)
+
 
 		return nil
 	})
@@ -85,9 +91,7 @@ func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 		BootstrapStackName:     conf.Get("bootstrap_stack_name"),
 		ConfidentialImageDigest: conf.Get("confidential_image_digest"),
 	}
-	if c.Region == "" {
-		c.Region = "us-central1"
-	}
+
 	if c.BusinessCode == "" {
 		c.BusinessCode = "bu1"
 	}

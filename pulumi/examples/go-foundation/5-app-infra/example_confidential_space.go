@@ -40,7 +40,7 @@ type ConfidentialSpaceArgs struct {
 	BusinessUnit            string
 	ProjectID               pulumi.StringInput
 	ProjectNumber           pulumi.StringInput // from 4-projects stack export
-	Region                  string
+	Region                pulumi.StringInput
 	SubnetworkSelfLink      pulumi.StringInput
 	WorkloadSAEmail         pulumi.StringInput
 	ConfidentialImageDigest string
@@ -154,10 +154,9 @@ func deployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 		SourceImageProject:       "confidential-space-images",
 		DiskSizeGb:               20,
 		DiskType:                 "pd-ssd",
-		Subnetwork:               args.SubnetworkSelfLink,
 		ServiceAccountEmail:      args.WorkloadSAEmail,
 		ServiceAccountScopes:     []string{"https://www.googleapis.com/auth/cloud-platform"},
-		Metadata: map[string]string{
+		Metadata: pulumi.StringMap{
 			"tee-image-reference": defaultTeeImageRef,
 		},
 	}, pulumi.DependsOn([]pulumi.Resource{wait}))
@@ -167,11 +166,24 @@ func deployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 
 	// 5. Compute Instance from Template
 	inst, err := computeinstance.NewComputeInstance(ctx, name+"-vm", &computeinstance.ComputeInstanceArgs{
-		ProjectId:        args.ProjectID,
-		Zone:             args.Region + "-a",
-		InstanceName:     "confidential-instance",
+		Project:          args.ProjectID,
+		Zone:             pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
+			project := args[0].(string)
+			region := args[1].(string)
+			zones, err := compute.GetZones(ctx, &compute.GetZonesArgs{
+				Project: &project,
+				Region:  &region,
+			})
+			if err != nil {
+				return "", err
+			}
+			if len(zones.Names) == 0 {
+				return "", fmt.Errorf("no zones found in region %s", region)
+			}
+			return zones.Names[0], nil
+		}).(pulumi.StringOutput),
+		Hostname:     "confidential-instance",
 		InstanceTemplate: tmpl.Template.SelfLink,
-		Subnetwork:       args.SubnetworkSelfLink,
 		NumInstances:     1,
 	})
 	if err != nil {
@@ -179,9 +191,9 @@ func deployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 	}
 
 	return &ConfidentialSpaceResult{
-		InstanceSelfLink:       inst.SelfLink,
-		InstanceName:           inst.Name,
-		InstanceZone:           inst.Zone,
+		InstanceSelfLink:       inst.Instances[0].SelfLink,
+		InstanceName:           inst.Instances[0].Name,
+		InstanceZone:           inst.Instances[0].Zone,
 		WorkloadPoolID:         pool.WorkloadIdentityPoolId,
 		WorkloadPoolProviderID: provider.WorkloadIdentityPoolProviderId,
 	}, nil

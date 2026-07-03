@@ -24,6 +24,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance"
@@ -36,9 +37,13 @@ type EnvBaseArgs struct {
 	Env                string
 	BusinessUnit       string
 	ProjectSuffix      string
-	Hostname           string // upstream default: "example-app"
+	Hostname           string
+	MachineType        string
+	NumInstances       int
+	SourceImageFamily  string
+	SourceImageProject string
 	ProjectID          pulumi.StringInput
-	Region             string
+	Region             pulumi.StringInput
 	SubnetworkSelfLink pulumi.StringInput
 	IAPFirewallTags    pulumi.StringMapInput // nil for non-peering projects
 }
@@ -62,6 +67,18 @@ func deployEnvBase(ctx *pulumi.Context, name string, args *EnvBaseArgs) (*EnvBas
 	if hostname == "" {
 		hostname = "example-app"
 	}
+	if args.MachineType == "" {
+		args.MachineType = "f1-micro"
+	}
+	if args.NumInstances == 0 {
+		args.NumInstances = 1
+	}
+	if args.SourceImageFamily == "" {
+		args.SourceImageFamily = "debian-12"
+	}
+	if args.SourceImageProject == "" {
+		args.SourceImageProject = "debian-cloud"
+	}
 
 	// 1. Service Account — matching upstream's google_service_account.compute_engine_service_account
 	sa, err := serviceaccount.NewAccount(ctx, name+"-sa", &serviceaccount.AccountArgs{
@@ -78,14 +95,16 @@ func deployEnvBase(ctx *pulumi.Context, name string, args *EnvBaseArgs) (*EnvBas
 	tmpl, err := instance_template.NewInstanceTemplate(ctx, name+"-tmpl", &instance_template.InstanceTemplateArgs{
 		Project:              args.ProjectID,
 		Region:               args.Region,
-		MachineType:          "f1-micro",
-		SourceImage:          "debian-cloud/debian-11",
+		MachineType:          args.MachineType,
+		SourceImageFamily:    args.SourceImageFamily,
+		SourceImageProject:   args.SourceImageProject,
+		SourceImage:          "",
 		Network:              pulumi.String(""),
 		Subnetwork:           args.SubnetworkSelfLink,
 		ServiceAccountEmail:  sa.Email,
 		ServiceAccountScopes: []string{"https://www.googleapis.com/auth/compute"},
-		Metadata: map[string]string{
-			"block-project-ssh-keys": "true",
+		Metadata: pulumi.StringMap{
+			"block-project-ssh-keys": pulumi.String("true"),
 		},
 	})
 	if err != nil {
@@ -95,10 +114,24 @@ func deployEnvBase(ctx *pulumi.Context, name string, args *EnvBaseArgs) (*EnvBas
 	// 3. Compute Instance
 	inst, err := compute_instance.NewComputeInstance(ctx, name+"-inst", &compute_instance.ComputeInstanceArgs{
 		Project:          args.ProjectID,
-		Zone:             args.Region + "-a",
+		Zone:             pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
+			project := args[0].(string)
+			region := args[1].(string)
+			zones, err := compute.GetZones(ctx, &compute.GetZonesArgs{
+				Project: &project,
+				Region:  &region,
+			})
+			if err != nil {
+				return "", err
+			}
+			if len(zones.Names) == 0 {
+				return "", fmt.Errorf("no zones found in region %s", region)
+			}
+			return zones.Names[0], nil
+		}).(pulumi.StringOutput),
 		Hostname:         fmt.Sprintf("%s-%s", hostname, args.ProjectSuffix),
 		InstanceTemplate: tmpl.Template.SelfLink,
-		NumInstances:     1,
+		NumInstances:     args.NumInstances,
 	})
 	if err != nil {
 		return nil, err
