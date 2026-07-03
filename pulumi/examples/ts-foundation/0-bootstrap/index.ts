@@ -72,6 +72,7 @@ export = async () => {
         activateApis: [
             "serviceusage.googleapis.com",
             "servicenetworking.googleapis.com",
+            "cloudkms.googleapis.com",
             "compute.googleapis.com",
             "logging.googleapis.com",
             "bigquery.googleapis.com",
