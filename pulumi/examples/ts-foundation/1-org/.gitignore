@@ -8,6 +8,11 @@ dist/
 *.js.map
 *.d.ts
 
+# Preserve Cloud Function source files that must ship with the deployment.
+# The CAI monitoring function is plain JS (not compiled from TS), so it must
+# be tracked even though *.js is globally ignored above.
+!cai-monitoring-function/**/*.js
+
 # Pulumi stack configs (contain secrets / environment-specific values)
 Pulumi.*.yaml
 !Pulumi.yaml
