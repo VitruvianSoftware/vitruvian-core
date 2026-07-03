@@ -7,6 +7,7 @@ import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
 import { SharedVpc } from "../../modules/shared_vpc";
 import { HierarchicalFirewallPolicy } from "@vitruviansoftware/foundation-hierarchical-firewall-policy";
+import { VpcServiceControls, DEFAULT_RESTRICTED_SERVICES } from "@vitruviansoftware/foundation-vpc-service-controls";
 
 export = async () => {
     const config = new pulumi.Config();
@@ -14,6 +15,7 @@ export = async () => {
 
     const networkFolderName = orgRef.getOutput("network_folder_name") as pulumi.Output<string>;
     const netHubProjectId = orgRef.getOutput("net_hub_project_id") as pulumi.Output<string>;
+    const netHubProjectNumber = orgRef.getOutput("net_hub_project_number") as pulumi.Output<string>;
 
     const defaultRegion = config.get("default_region") || "us-central1";
     const defaultRegion2 = config.get("default_region_2") || "us-west1";
@@ -119,7 +121,24 @@ export = async () => {
         targetFolders: [networkFolderName],
     });
 
+
+    // VPC Service Controls (mirrors TF net-hubs.tf)
+    const policyId = orgRef.getOutput("access_context_manager_policy_id") as pulumi.Output<string>;
+    const vpcScMembers = config.getObject<string[]>("vpc_sc_members") || [];
+    const enforceVpcSc = config.getBoolean("enforce_vpc_sc") ?? true;
+
+    const vpcSc = new VpcServiceControls("hub-vpc-sc-perimeter", {
+        policyId: policyId,
+        prefix: `c_hub`,
+        members: vpcScMembers,
+        membersDryRun: vpcScMembers,
+        projectNumbers: [netHubProjectNumber],
+        restrictedServices: DEFAULT_RESTRICTED_SERVICES,
+        enforce: enforceVpcSc,
+    });
+
     return {
+
         shared_vpc_host_project_id: netHubProjectId,
         network_name: hubVpc.networkName,
         network_id: hubVpc.networkId,
