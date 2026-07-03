@@ -18,7 +18,7 @@
   "devDependencies": {
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
-    "@types/inquirer": "^8.2.10",
+    "@types/inquirer": "^9.0.10",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.0",
     "jest": "catalog:",

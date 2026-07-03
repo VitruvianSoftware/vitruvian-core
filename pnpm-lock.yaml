@@ -267,8 +267,8 @@ importers:
         specifier: 'catalog:'
         version: 0.2.39(@swc/core@1.15.43)
       '@types/inquirer':
-        specifier: ^8.2.10
-        version: 8.2.12
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -2143,8 +2143,8 @@ packages:
   '@types/http-errors@2.0.5':
     resolution: {integrity: sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==}
 
-  '@types/inquirer@8.2.12':
-    resolution: {integrity: sha512-YxURZF2ZsSjU5TAe06tW0M3sL4UI9AMPA6dd8I72uOtppzNafcY38xkYgCZ/vsVOAyNdzHmvtTpLWilOrbP0dQ==}
+  '@types/inquirer@9.0.10':
+    resolution: {integrity: sha512-vFW2WbXwO9eZpRT5GJGFJ/shgyMNnYozmnjakt9jCQSS1lvqX8pZEQMjJ9RdDPct/YxwciQ8+V8OYn9euIrZDA==}
 
   '@types/istanbul-lib-coverage@2.0.6':
     resolution: {integrity: sha512-2QF/t/auWm0lsy8XtKVPG19v3sSOQlJe/YHZgfjb/KBBHOGSV+J2q/S671rcq9uTBrLAXmZpqJiaQbMT+zNU1w==}
@@ -9424,7 +9424,7 @@ snapshots:
 
   '@types/http-errors@2.0.5': {}
 
-  '@types/inquirer@8.2.12':
+  '@types/inquirer@9.0.10':
     dependencies:
       '@types/through': 0.0.33
       rxjs: 7.8.2
