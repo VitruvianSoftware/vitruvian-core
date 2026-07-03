@@ -35,7 +35,7 @@ export interface SharedVpcArgs {
     /** For spoke mode: hub project ID */
     netHubProjectId?: string;
     /** For spoke mode: hub network self-link */
-    netHubNetworkSelfLink?: string;
+    netHubNetworkSelfLink?: pulumi.Input<string>;
 }
 
 /**
@@ -210,6 +210,28 @@ export class SharedVpc extends pulumi.ComponentResource {
                     }],
                 },
             }, { parent: this });
+        }
+
+
+        // ================================================================
+        // Bi-Directional VPC Peering (Spoke <-> Hub)
+        // ================================================================
+        if (args.mode === "spoke" && args.netHubProjectId && args.netHubNetworkSelfLink) {
+            const spokeToHub = new gcp.compute.NetworkPeering(`${name}-spoke-to-hub`, {
+                network: this.network.networkSelfLink,
+                peerNetwork: args.netHubNetworkSelfLink,
+                name: pulumi.interpolate`np-${args.environmentCode}-svpc-spoke-vpc-c-svpc-hub`,
+                exportCustomRoutes: false,
+                importCustomRoutes: true,
+            }, { parent: this });
+
+            const hubToSpoke = new gcp.compute.NetworkPeering(`${name}-hub-to-spoke`, {
+                network: args.netHubNetworkSelfLink,
+                peerNetwork: this.network.networkSelfLink,
+                name: pulumi.interpolate`np-vpc-c-svpc-hub-${args.environmentCode}-svpc-spoke`,
+                exportCustomRoutes: true,
+                importCustomRoutes: false,
+            }, { parent: this, dependsOn: [spokeToHub] });
         }
 
         // Private Service Connect

@@ -43,6 +43,7 @@ export = async () => {
         firewallEnableLogging: firewallEnableLogging,
         pscAddress: "10.2.0.10",
         netHubProjectId: config.get("net_hub_project_id"),
+        netHubNetworkSelfLink: pulumi.interpolate`projects/${config.get("net_hub_project_id")}/global/networks/vpc-c-svpc-hub`,
         subnets: [
             {
                 subnetName: `sb-${envCode}-svpc-spoke-${defaultRegion}`,
