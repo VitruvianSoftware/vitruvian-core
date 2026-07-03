@@ -198,7 +198,7 @@ export class SharedVpc extends pulumi.ComponentResource {
             ["notebooks-api", "notebooks.cloud.google.com."],
             ["notebooks-gke", "notebooks.googleusercontent.com."],
         ]) {
-            new gcp.dns.ManagedZone(`${name}-dns-${zoneName}`, {
+            const zone = new gcp.dns.ManagedZone(`${name}-dns-${zoneName}`, {
                 project: args.projectId,
                 name: `dz-${vpcName}-${zoneName}`,
                 dnsName: dnsName,
@@ -210,6 +210,27 @@ export class SharedVpc extends pulumi.ComponentResource {
                     }],
                 },
             }, { parent: this });
+
+            const cnameTarget = zoneName === "googleapis" ? "restricted.googleapis.com." : dnsName;
+            const aRecordName = zoneName === "googleapis" ? "restricted.googleapis.com." : dnsName;
+
+            new gcp.dns.RecordSet(`${name}-dns-${zoneName}-cname`, {
+                project: args.projectId,
+                managedZone: zone.name,
+                name: `*.${dnsName}`,
+                type: "CNAME",
+                ttl: 300,
+                rrdatas: [cnameTarget],
+            }, { parent: zone });
+
+            new gcp.dns.RecordSet(`${name}-dns-${zoneName}-a`, {
+                project: args.projectId,
+                managedZone: zone.name,
+                name: aRecordName,
+                type: "A",
+                ttl: 300,
+                rrdatas: [args.pscAddress],
+            }, { parent: zone });
         }
 
         // Private Service Connect

@@ -198,7 +198,7 @@ export class SharedVpc extends pulumi.ComponentResource {
             ["notebooks-api", "notebooks.cloud.google.com."],
             ["notebooks-gke", "notebooks.googleusercontent.com."],
         ]) {
-            new gcp.dns.ManagedZone(`${name}-dns-${zoneName}`, {
+            const zone = new gcp.dns.ManagedZone(`${name}-dns-${zoneName}`, {
                 project: args.projectId,
                 name: `dz-${vpcName}-${zoneName}`,
                 dnsName: dnsName,
@@ -210,6 +210,49 @@ export class SharedVpc extends pulumi.ComponentResource {
                     }],
                 },
             }, { parent: this });
+
+            const cnameTarget = zoneName === "googleapis" ? "restricted.googleapis.com." : dnsName;
+            const aRecordName = zoneName === "googleapis" ? "restricted.googleapis.com." : dnsName;
+
+            new gcp.dns.RecordSet(`${name}-dns-${zoneName}-cname`, {
+                project: args.projectId,
+                managedZone: zone.name,
+                name: `*.${dnsName}`,
+                type: "CNAME",
+                ttl: 300,
+                rrdatas: [cnameTarget],
+            }, { parent: zone });
+
+            new gcp.dns.RecordSet(`${name}-dns-${zoneName}-a`, {
+                project: args.projectId,
+                managedZone: zone.name,
+                name: aRecordName,
+                type: "A",
+                ttl: 300,
+                rrdatas: [args.pscAddress],
+            }, { parent: zone });
+        }
+
+
+        // ================================================================
+        // Bi-Directional VPC Peering (Spoke <-> Hub)
+        // ================================================================
+        if (args.mode === "spoke" && args.netHubProjectId && args.netHubNetworkSelfLink) {
+            const spokeToHub = new gcp.compute.NetworkPeering(`${name}-spoke-to-hub`, {
+                network: this.network.networkSelfLink,
+                peerNetwork: args.netHubNetworkSelfLink,
+                name: pulumi.interpolate`np-${args.environmentCode}-svpc-spoke-vpc-c-svpc-hub`,
+                exportCustomRoutes: false,
+                importCustomRoutes: true,
+            }, { parent: this });
+
+            const hubToSpoke = new gcp.compute.NetworkPeering(`${name}-hub-to-spoke`, {
+                network: args.netHubNetworkSelfLink,
+                peerNetwork: this.network.networkSelfLink,
+                name: pulumi.interpolate`np-vpc-c-svpc-hub-${args.environmentCode}-svpc-spoke`,
+                exportCustomRoutes: true,
+                importCustomRoutes: false,
+            }, { parent: this, dependsOn: [spokeToHub] });
         }
 
 
