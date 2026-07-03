@@ -12,8 +12,9 @@ export = async () => {
     const orgRef = new pulumi.StackReference("org");
     const envRef = new pulumi.StackReference("env-development");
 
-    const sharedVpcProjects = orgRef.getOutput("shared_vpc_projects") as pulumi.Output<Record<string, { project_id: string }>>;
+    const sharedVpcProjects = orgRef.getOutput("shared_vpc_projects") as pulumi.Output<Record<string, { project_id: string; project_number: string }>>;
     const envProjectId = sharedVpcProjects.apply(p => p["development"]?.project_id || "");
+    const envProjectNumber = sharedVpcProjects.apply(p => p["development"]?.project_number || "");
 
     const defaultRegion = config.get("default_region") || "us-central1";
     const defaultRegion2 = config.get("default_region_2") || "us-west1";
@@ -63,7 +64,7 @@ export = async () => {
         prefix: `d_spoke`,
         members: vpcScMembers,
         membersDryRun: vpcScMembers,
-        projectNumbers: [envProjectId],
+        projectNumbers: [envProjectNumber],
         restrictedServices: DEFAULT_RESTRICTED_SERVICES,
         enforce: enforceVpcSc,
     });
