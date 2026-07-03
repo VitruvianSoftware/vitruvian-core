@@ -367,6 +367,12 @@ export = async () => {
     /*************************************************
       Centralized Logging (mirrors log_sinks.tf)
     *************************************************/
+    const logBucketSuffix = new random.RandomString("log-bucket-suffix", {
+        length: 4,
+        special: false,
+        upper: false,
+    });
+
     const logFilter = `logName: /logs/cloudaudit.googleapis.com%2Factivity OR
 logName: /logs/cloudaudit.googleapis.com%2Fsystem_event OR
 logName: /logs/cloudaudit.googleapis.com%2Fdata_access OR
@@ -394,7 +400,7 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
             loggingSinkFilter: logFilter,
         },
         storageOptions: {
-            bucketName: `${cfg.projectPrefix}-c-logging-bucket`,
+            bucketName: pulumi.interpolate`bkt-${orgAuditLogs.projectId}-org-logs-${logBucketSuffix.result}` as unknown as string,
             loggingSinkName: "sk-c-logging-bkt",
             loggingSinkFilter: logFilter,
             forceDestroy: cfg.logExportStorageForceDestroy,
@@ -608,6 +614,6 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
         cai_monitoring_topic: caiMonitoring?.topicName,
         // Billing sink names — dynamically resolved from centralized logging
         // Mirrors TF: module.logs_export.billing_sink_names
-        billing_sink_names: centralizedLogging.billingSinkNames,
+        billing_sink_names: (centralizedLogging as any).billingSinkNames,
     };
 };
