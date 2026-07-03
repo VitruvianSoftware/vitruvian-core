@@ -77,7 +77,7 @@ func main() {
 					{
 						Name:   fmt.Sprintf("sb-%s-svpc-hub-%s", cfg.EnvCode, cfg.Region1),
 						Region: cfg.Region1,
-						CIDR:   "10.0.64.0/18",
+						CIDR:   cfg.HubSubnet1Cidr,
 						SecondaryRanges: []networking.SecondaryRangeArgs{
 							{RangeName: fmt.Sprintf("rn-%s-hub-%s-gke-pod", cfg.EnvCode, cfg.Region1), CIDR: "100.64.64.0/18"},
 							{RangeName: fmt.Sprintf("rn-%s-hub-%s-gke-svc", cfg.EnvCode, cfg.Region1), CIDR: "100.65.64.0/18"},
@@ -90,7 +90,7 @@ func main() {
 					{
 						Name:   fmt.Sprintf("sb-%s-svpc-hub-%s", cfg.EnvCode, cfg.Region2),
 						Region: cfg.Region2,
-						CIDR:   "10.1.64.0/18",
+						CIDR:   cfg.HubSubnet2Cidr,
 						SecondaryRanges: []networking.SecondaryRangeArgs{
 							{RangeName: fmt.Sprintf("rn-%s-hub-%s-gke-pod", cfg.EnvCode, cfg.Region2), CIDR: "100.66.64.0/18"},
 							{RangeName: fmt.Sprintf("rn-%s-hub-%s-gke-svc", cfg.EnvCode, cfg.Region2), CIDR: "100.67.64.0/18"},
@@ -115,7 +115,7 @@ func main() {
 				TargetVPCs: []pulumi.StringInput{
 					pulumi.Sprintf("projects/%s/global/networks/%s", cfg.HubProjectID, hubVpc.VPC.Name),
 				},
-				Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{"10.0.64.0/18", "10.1.64.0/18"}, cfg.FirewallPoliciesEnableLogging),
+				Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{cfg.HubSubnet1Cidr, cfg.HubSubnet2Cidr}, cfg.FirewallPoliciesEnableLogging),
 			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 			if err != nil {
 				return err
@@ -241,10 +241,10 @@ func main() {
 				{
 					Name:   fmt.Sprintf("sb-%s-svpc-spoke-%s", cfg.EnvCode, cfg.Region1),
 					Region: cfg.Region1,
-					CIDR:   "10.8.64.0/18",
+					CIDR:   cfg.SpokeSubnet1Cidr,
 					SecondaryRanges: []networking.SecondaryRangeArgs{
-						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-pod", cfg.EnvCode, cfg.Region1), CIDR: "100.72.64.0/18"},
-						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-svc", cfg.EnvCode, cfg.Region1), CIDR: "100.73.64.0/18"},
+						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-pod", cfg.EnvCode, cfg.Region1), CIDR: cfg.SpokeGkePod1Cidr},
+						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-svc", cfg.EnvCode, cfg.Region1), CIDR: cfg.SpokeGkeSvc1Cidr},
 					},
 					FlowLogs:         true,
 					FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
@@ -254,10 +254,10 @@ func main() {
 				{
 					Name:   fmt.Sprintf("sb-%s-svpc-spoke-%s", cfg.EnvCode, cfg.Region2),
 					Region: cfg.Region2,
-					CIDR:   "10.9.64.0/18",
+					CIDR:   cfg.SpokeSubnet2Cidr,
 					SecondaryRanges: []networking.SecondaryRangeArgs{
-						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-pod", cfg.EnvCode, cfg.Region2), CIDR: "100.74.64.0/18"},
-						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-svc", cfg.EnvCode, cfg.Region2), CIDR: "100.75.64.0/18"},
+						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-pod", cfg.EnvCode, cfg.Region2), CIDR: cfg.SpokeGkePod2Cidr},
+						{RangeName: fmt.Sprintf("rn-%s-spoke-%s-gke-svc", cfg.EnvCode, cfg.Region2), CIDR: cfg.SpokeGkeSvc2Cidr},
 					},
 					FlowLogs:         true,
 					FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
@@ -267,14 +267,14 @@ func main() {
 				{
 					Name:    fmt.Sprintf("sb-%s-svpc-spoke-%s-proxy", cfg.EnvCode, cfg.Region1),
 					Region:  cfg.Region1,
-					CIDR:    "10.26.2.0/23",
+					CIDR:    cfg.SpokeProxy1Cidr,
 					Role:    "ACTIVE",
 					Purpose: "REGIONAL_MANAGED_PROXY",
 				},
 				{
 					Name:    fmt.Sprintf("sb-%s-svpc-spoke-%s-proxy", cfg.EnvCode, cfg.Region2),
 					Region:  cfg.Region2,
-					CIDR:    "10.27.2.0/23",
+					CIDR:    cfg.SpokeProxy2Cidr,
 					Role:    "ACTIVE",
 					Purpose: "REGIONAL_MANAGED_PROXY",
 				},
@@ -319,7 +319,7 @@ func main() {
 			TargetVPCs: []pulumi.StringInput{
 				pulumi.Sprintf("projects/%s/global/networks/%s", cfg.SpokeProjectID, spokeVpc.VPC.Name),
 			},
-			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{"10.8.64.0/18", "10.9.64.0/18"}, cfg.FirewallPoliciesEnableLogging),
+			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{cfg.SpokeSubnet1Cidr, cfg.SpokeSubnet2Cidr}, cfg.FirewallPoliciesEnableLogging),
 		}, pulumi.DependsOn([]pulumi.Resource{spokeVpc.VPC}))
 		if err != nil {
 			return err
@@ -493,6 +493,16 @@ type NetConfig struct {
 	VpcScEgressPolicies           accesscontextmanager.ServicePerimeterStatusEgressPolicyArray
 	VpcScIngressPoliciesDryRun    accesscontextmanager.ServicePerimeterSpecIngressPolicyArray
 	VpcScEgressPoliciesDryRun     accesscontextmanager.ServicePerimeterSpecEgressPolicyArray
+	SpokeSubnet1Cidr              string
+	SpokeSubnet2Cidr              string
+	SpokeProxy1Cidr               string
+	SpokeProxy2Cidr               string
+	SpokeGkePod1Cidr              string
+	SpokeGkeSvc1Cidr              string
+	SpokeGkePod2Cidr              string
+	SpokeGkeSvc2Cidr              string
+	HubSubnet1Cidr                string
+	HubSubnet2Cidr                string
 	FirewallAssociations          []string
 	FirewallPoliciesEnableLogging bool
 	DnsEnableLogging              bool
@@ -575,6 +585,54 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	}
 	if len(c.TargetNameServers) == 0 {
 		c.TargetNameServers = []string{"10.0.0.1"}
+	}
+
+	// Assign CIDRs based on EnvCode to avoid peering overlaps
+	// Defaults derived from reference architecture
+	if c.HubSubnet1Cidr == "" {
+		c.HubSubnet1Cidr = "10.0.64.0/18"
+	}
+	if c.HubSubnet2Cidr == "" {
+		c.HubSubnet2Cidr = "10.1.64.0/18"
+	}
+
+	if c.EnvCode == "d" {
+		c.SpokeSubnet1Cidr = "10.8.64.0/18"
+		c.SpokeSubnet2Cidr = "10.9.64.0/18"
+		c.SpokeProxy1Cidr = "10.26.2.0/23"
+		c.SpokeProxy2Cidr = "10.27.2.0/23"
+		c.SpokeGkePod1Cidr = "100.72.64.0/18"
+		c.SpokeGkeSvc1Cidr = "100.73.64.0/18"
+		c.SpokeGkePod2Cidr = "100.74.64.0/18"
+		c.SpokeGkeSvc2Cidr = "100.75.64.0/18"
+	} else if c.EnvCode == "n" {
+		c.SpokeSubnet1Cidr = "10.8.128.0/18"
+		c.SpokeSubnet2Cidr = "10.9.128.0/18"
+		c.SpokeProxy1Cidr = "10.26.4.0/23"
+		c.SpokeProxy2Cidr = "10.27.4.0/23"
+		c.SpokeGkePod1Cidr = "100.72.128.0/18"
+		c.SpokeGkeSvc1Cidr = "100.73.128.0/18"
+		c.SpokeGkePod2Cidr = "100.74.128.0/18"
+		c.SpokeGkeSvc2Cidr = "100.75.128.0/18"
+	} else if c.EnvCode == "p" {
+		c.SpokeSubnet1Cidr = "10.8.192.0/18"
+		c.SpokeSubnet2Cidr = "10.9.192.0/18"
+		c.SpokeProxy1Cidr = "10.26.6.0/23"
+		c.SpokeProxy2Cidr = "10.27.6.0/23"
+		c.SpokeGkePod1Cidr = "100.72.192.0/18"
+		c.SpokeGkeSvc1Cidr = "100.73.192.0/18"
+		c.SpokeGkePod2Cidr = "100.74.192.0/18"
+		c.SpokeGkeSvc2Cidr = "100.75.192.0/18"
+	} else {
+		// Fallback
+		c.SpokeSubnet1Cidr = "10.8.64.0/18"
+		c.SpokeSubnet2Cidr = "10.9.64.0/18"
+		c.SpokeProxy1Cidr = "10.26.2.0/23"
+		c.SpokeProxy2Cidr = "10.27.2.0/23"
+		c.SpokeGkePod1Cidr = "100.72.64.0/18"
+		c.SpokeGkeSvc1Cidr = "100.73.64.0/18"
+		c.SpokeGkePod2Cidr = "100.74.64.0/18"
+		c.SpokeGkeSvc2Cidr = "100.75.64.0/18"
 	}
 
 	c.BgpAsn = 64514
