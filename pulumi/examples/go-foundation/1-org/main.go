@@ -346,7 +346,7 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		// SCC
 		SCCNotificationName:   conf.Get("scc_notification_name"),
 		SCCNotificationFilter: conf.Get("scc_notification_filter"),
-		EnableSCCResources:       conf.Get("enable_scc_resources") != "false",
+		EnableSCCResources:       conf.Get("enable_scc_resources") == "true",
 		EnableBillingAccountSink: conf.Get("enable_billing_account_sink") != "false",
 
 		// Policies
@@ -369,7 +369,7 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		// Logging storage options (H6, H7)
 		LogExportStorageLocation:     conf.Get("log_export_storage_location"),
 		LogExportStorageForceDestroy: conf.Get("log_export_storage_force_destroy") == "true",
-		LogExportStorageVersioning:   conf.Get("log_export_storage_versioning") != "false",
+		LogExportStorageVersioning:   conf.Get("log_export_storage_versioning") == "true",
 
 		// Logging billing export
 		BillingExportDatasetLocation: conf.Get("billing_export_dataset_location"),
