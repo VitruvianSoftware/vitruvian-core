@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/policy"
-	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -155,15 +154,11 @@ func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi
 
 	// ========================================================================
 	// Access Context Manager
+	// NOTE: The AccessPolicy resource is created in main.go (step 9.5) because
+	// its output feeds the access_context_manager_policy_id stack export.
+	// It must NOT be duplicated here — two resources with the same Pulumi name
+	// would produce a duplicate-URN error on pulumi up.
 	// ========================================================================
-	if cfg.CreateAccessContextManagerPolicy {
-		if _, err := accesscontextmanager.NewAccessPolicy(ctx, "access-policy", &accesscontextmanager.AccessPolicyArgs{
-			Parent: pulumi.String("organizations/" + cfg.OrgID),
-			Title:  pulumi.String("default policy"),
-		}); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
