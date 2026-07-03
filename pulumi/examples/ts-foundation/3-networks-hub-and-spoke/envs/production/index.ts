@@ -6,6 +6,7 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
 import { SharedVpc } from "../../modules/shared_vpc";
+import * as time from "@pulumiverse/time";
 
 export = async () => {
     const config = new pulumi.Config();
@@ -82,6 +83,12 @@ export = async () => {
     const enforceVpcSc = config.getBoolean("enforce_vpc_sc") ?? true;
 
     const { VpcServiceControls, DEFAULT_RESTRICTED_SERVICES } = await import("@vitruviansoftware/foundation-vpc-service-controls");
+    
+    const vpcScIngressPolicies = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterStatusIngressPolicy[]>("vpc_sc_ingress_policies") || [];
+    const vpcScEgressPolicies = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterStatusEgressPolicy[]>("vpc_sc_egress_policies") || [];
+    const vpcScIngressPoliciesDryRun = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterSpecIngressPolicy[]>("vpc_sc_ingress_policies_dry_run") || [];
+    const vpcScEgressPoliciesDryRun = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterSpecEgressPolicy[]>("vpc_sc_egress_policies_dry_run") || [];
+
     const vpcSc = new VpcServiceControls("vpc-sc-perimeter", {
         policyId: policyId,
         prefix: `p_spoke`,
@@ -90,7 +97,16 @@ export = async () => {
         projectNumbers: [envProjectNumber],
         restrictedServices: DEFAULT_RESTRICTED_SERVICES,
         enforce: enforceVpcSc,
+        ingressPolicies: vpcScIngressPolicies,
+        egressPolicies: vpcScEgressPolicies,
+        ingressPoliciesDryRun: vpcScIngressPoliciesDryRun,
+        egressPoliciesDryRun: vpcScEgressPoliciesDryRun,
     });
+
+    // 60-second propagation wait for VPC-SC
+    const vpcScSleep = new time.Sleep("vpc-sc-propagation-wait", {
+        createDuration: "60s",
+    }, { dependsOn: vpcSc.perimeter });
 
     return {
         access_context_manager_policy_id: policyId,
@@ -105,6 +121,6 @@ export = async () => {
         access_level_name: vpcSc.accessLevel.name,
         access_level_name_dry_run: vpcSc.accessLevelDryRun.name,
         enforce_vpcsc: enforceVpcSc,
-        service_perimeter_name: vpcSc.perimeter.name,
+        service_perimeter_name: vpcScSleep.id.apply(() => vpcSc.perimeter.name),
     };
 };
