@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-vpc-sc-v0.4.0...go-vpc-sc-v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **go/vpc_sc:** allow ProjectNumbers to be dynamic ([#64](https://github.com/VitruvianSoftware/pulumi-library/issues/64)) ([b76e8f7](https://github.com/VitruvianSoftware/pulumi-library/commit/b76e8f75f5cf43277f7f878cc7ff7197932b6d38))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-vpc-sc-v0.3.1...go-vpc-sc-v0.4.0) (2026-05-06)
 
 

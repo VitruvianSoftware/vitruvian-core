@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.4.0...foundation-project-factory-v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **ts/project-factory:** implement disable/delete for defaultServiceAccount ([#62](https://github.com/VitruvianSoftware/pulumi-library/issues/62)) ([ecbc8dd](https://github.com/VitruvianSoftware/pulumi-library/commit/ecbc8ddee9b2fbf746d75f946d046e576cffa6b4))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.3.1...foundation-project-factory-v0.4.0) (2026-05-06)
 
 
