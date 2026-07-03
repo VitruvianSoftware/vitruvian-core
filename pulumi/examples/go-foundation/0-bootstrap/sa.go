@@ -291,6 +291,14 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		}
 	}
 
+	if _, err := iam.NewOrganizationIAMMember(ctx, "org-billing-admins-admin", &iam.OrganizationIAMMemberArgs{
+		OrgID:  pulumi.String(cfg.OrgID),
+		Role:   pulumi.String("roles/billing.admin"),
+		Member: pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
+	}); err != nil {
+		return nil, err
+	}
+
 	// ========================================================================
 	// 8. SA Self-Impersonation
 	// Each granular SA gets roles/iam.serviceAccountTokenCreator on itself.
