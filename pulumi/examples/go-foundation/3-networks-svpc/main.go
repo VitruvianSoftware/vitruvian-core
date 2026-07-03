@@ -24,6 +24,7 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/networking"
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_sc"
@@ -281,7 +282,18 @@ func main() {
 			if err != nil {
 				return err
 			}
-			perimeterName = perimeter.Perimeter.Name
+			
+			vpcScSleep, err := time.NewSleep(ctx, "vpc-sc-propagation-wait", &time.SleepArgs{
+				CreateDuration: pulumi.String("60s"),
+			}, pulumi.DependsOn([]pulumi.Resource{perimeter.Perimeter}))
+			if err != nil {
+				return err
+			}
+			
+			perimeterName = pulumi.All(vpcScSleep.ID(), perimeter.Perimeter.Name).ApplyT(func(args []interface{}) string {
+				return args[1].(string)
+			}).(pulumi.StringOutput)
+			
 			accessLevelName = perimeter.AccessLevel.Name
 			accessLevelDryRunName = perimeter.AccessLevelDryRun.Name
 		} else {
@@ -355,6 +367,7 @@ type NetConfig struct {
 	FirewallPoliciesEnableLogging bool
 	DnsEnableLogging              bool
 	EnforceVpcSc                  bool
+	EnableDedicatedInterconnect   bool
 	VpcFlowLogs                   *VpcFlowLogsConfig
 }
 
@@ -377,6 +390,10 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	conf.GetObject("vpc_sc_members", &c.VpcScMembers)
 	conf.GetObject("vpc_sc_projects", &c.VpcScProjects)
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
+	conf.GetObject("vpc_sc_ingress_policies", &c.VpcScIngressPolicies)
+	conf.GetObject("vpc_sc_egress_policies", &c.VpcScEgressPolicies)
+	conf.GetObject("vpc_sc_ingress_policies_dry_run", &c.VpcScIngressPoliciesDryRun)
+	conf.GetObject("vpc_sc_egress_policies_dry_run", &c.VpcScEgressPoliciesDryRun)
 	conf.GetObject("target_name_servers", &c.TargetNameServers)
 	conf.GetObject("firewall_associations", &c.FirewallAssociations)
 
@@ -410,6 +427,12 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.EnforceVpcSc = true
 	}
 
+	if val, err := conf.TryBool("enable_dedicated_interconnect"); err == nil {
+		c.EnableDedicatedInterconnect = val
+	} else {
+		c.EnableDedicatedInterconnect = false
+	}
+
 	if c.Region1 == "" {
 		c.Region1 = "us-central1"
 	}
@@ -427,6 +450,45 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	}
 	if len(c.VpcScRestrictedServices) == 0 {
 		c.VpcScRestrictedServices = vpc_sc.GetDefaultRestrictedServices()
+	}
+	
+	if c.EnableDedicatedInterconnect {
+		c.VpcScEgressPolicies = append(c.VpcScEgressPolicies, accesscontextmanager.ServicePerimeterStatusEgressPolicyArgs{
+			EgressFrom: accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressFromArgs{
+				IdentityType: pulumi.String("ANY_IDENTITY"),
+			},
+			EgressTo: accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressToArgs{
+				Resources: pulumi.StringArray{pulumi.String("*")},
+				Operations: accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressToOperationArray{
+					&accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressToOperationArgs{
+						ServiceName: pulumi.String("compute.googleapis.com"),
+						MethodSelectors: accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressToOperationMethodSelectorArray{
+							&accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressToOperationMethodSelectorArgs{
+								Method: pulumi.String("*"),
+							},
+						},
+					},
+				},
+			},
+		})
+		c.VpcScEgressPoliciesDryRun = append(c.VpcScEgressPoliciesDryRun, accesscontextmanager.ServicePerimeterSpecEgressPolicyArgs{
+			EgressFrom: accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressFromArgs{
+				IdentityType: pulumi.String("ANY_IDENTITY"),
+			},
+			EgressTo: accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressToArgs{
+				Resources: pulumi.StringArray{pulumi.String("*")},
+				Operations: accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressToOperationArray{
+					&accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressToOperationArgs{
+						ServiceName: pulumi.String("compute.googleapis.com"),
+						MethodSelectors: accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressToOperationMethodSelectorArray{
+							&accesscontextmanager.ServicePerimeterSpecEgressPolicyEgressToOperationMethodSelectorArgs{
+								Method: pulumi.String("*"),
+							},
+						},
+					},
+				},
+			},
+		})
 	}
 	if len(c.FirewallAssociations) == 0 {
 		c.FirewallAssociations = []string{c.ParentID} // Fallback to parent

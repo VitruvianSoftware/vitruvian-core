@@ -24,6 +24,7 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/networking"
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_sc"
@@ -478,7 +479,18 @@ func main() {
 			if err != nil {
 				return err
 			}
-			perimeterName = perimeter.Perimeter.Name
+			
+			vpcScSleep, err := time.NewSleep(ctx, "vpc-sc-propagation-wait", &time.SleepArgs{
+				CreateDuration: pulumi.String("60s"),
+			}, pulumi.DependsOn([]pulumi.Resource{perimeter.Perimeter}))
+			if err != nil {
+				return err
+			}
+			
+			perimeterName = pulumi.All(vpcScSleep.ID(), perimeter.Perimeter.Name).ApplyT(func(args []interface{}) string {
+				return args[1].(string)
+			}).(pulumi.StringOutput)
+			
 			accessLevelName = perimeter.AccessLevel.Name
 			accessLevelDryRunName = perimeter.AccessLevelDryRun.Name
 		}
@@ -591,6 +603,10 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	conf.GetObject("vpc_sc_members", &c.VpcScMembers)
 	conf.GetObject("vpc_sc_projects", &c.VpcScProjects)
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
+	conf.GetObject("vpc_sc_ingress_policies", &c.VpcScIngressPolicies)
+	conf.GetObject("vpc_sc_egress_policies", &c.VpcScEgressPolicies)
+	conf.GetObject("vpc_sc_ingress_policies_dry_run", &c.VpcScIngressPoliciesDryRun)
+	conf.GetObject("vpc_sc_egress_policies_dry_run", &c.VpcScEgressPoliciesDryRun)
 	conf.GetObject("target_name_servers", &c.TargetNameServers)
 	conf.GetObject("firewall_associations", &c.FirewallAssociations)
 
