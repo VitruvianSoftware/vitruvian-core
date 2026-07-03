@@ -142,21 +142,13 @@ export = async () => {
             "roles/resourcemanager.organizationAdmin",
             "roles/billing.user",
             "roles/resourcemanager.tagAdmin",
-            "roles/resourcemanager.tagUser",
-            "roles/logging.configWriter",
-            "roles/securitycenter.notificationConfigEditor",
-            "roles/accesscontextmanager.policyAdmin",
-            "roles/essentialcontacts.admin"
+            "roles/resourcemanager.tagUser"
           ]
         : [
             "roles/resourcemanager.organizationAdmin",
             "roles/billing.user",
             "roles/resourcemanager.tagAdmin",
-            "roles/resourcemanager.tagUser",
-            "roles/logging.configWriter",
-            "roles/securitycenter.notificationConfigEditor",
-            "roles/accesscontextmanager.policyAdmin",
-            "roles/essentialcontacts.admin"
+            "roles/resourcemanager.tagUser"
           ];
 
     for (const role of orgAdminsRoles) {
