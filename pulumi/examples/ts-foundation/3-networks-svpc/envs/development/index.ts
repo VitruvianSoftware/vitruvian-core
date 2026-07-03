@@ -4,8 +4,10 @@
  */
 
 import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
 import { SharedVpc } from "../../modules/shared_vpc";
 import { VpcServiceControls, DEFAULT_RESTRICTED_SERVICES } from "@vitruviansoftware/foundation-vpc-service-controls";
+import * as time from "@pulumiverse/time";
 
 export = async () => {
     const config = new pulumi.Config();
@@ -82,6 +84,47 @@ export = async () => {
     const additionalVpcScProjects = config.getObject<string[]>("vpc_sc_project_numbers") || [];
     const allProjectNumbers = [envProjectNumber, ...additionalVpcScProjects];
 
+    const vpcScIngressPolicies = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterStatusIngressPolicy[]>("vpc_sc_ingress_policies") || [];
+    const vpcScEgressPolicies = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterStatusEgressPolicy[]>("vpc_sc_egress_policies") || [];
+    const vpcScIngressPoliciesDryRun = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterSpecIngressPolicy[]>("vpc_sc_ingress_policies_dry_run") || [];
+    const vpcScEgressPoliciesDryRun = config.getObject<gcp.types.input.accesscontextmanager.ServicePerimeterSpecEgressPolicy[]>("vpc_sc_egress_policies_dry_run") || [];
+
+    const enableDedicatedInterconnect = config.getBoolean("enable_dedicated_interconnect") ?? false;
+    
+    // Automatic egress policy for dedicated interconnect
+    if (enableDedicatedInterconnect) {
+        vpcScEgressPolicies.push({
+            egressFrom: {
+                identities: [],
+                identityType: "ANY_IDENTITY",
+            },
+            egressTo: {
+                resources: ["*"],
+                operations: [{
+                    serviceName: "compute.googleapis.com",
+                    methodSelectors: [{
+                        method: "*",
+                    }],
+                }],
+            },
+        });
+        vpcScEgressPoliciesDryRun.push({
+            egressFrom: {
+                identities: [],
+                identityType: "ANY_IDENTITY",
+            },
+            egressTo: {
+                resources: ["*"],
+                operations: [{
+                    serviceName: "compute.googleapis.com",
+                    methodSelectors: [{
+                        method: "*",
+                    }],
+                }],
+            },
+        });
+    }
+
     const vpcSc = new VpcServiceControls("vpc-sc-perimeter", {
         policyId: policyId,
         prefix: "d_svpc",
@@ -90,9 +133,18 @@ export = async () => {
         projectNumbers: allProjectNumbers,
         restrictedServices: DEFAULT_RESTRICTED_SERVICES,
         enforce: enforceVpcSc,
+        ingressPolicies: vpcScIngressPolicies,
+        egressPolicies: vpcScEgressPolicies,
+        ingressPoliciesDryRun: vpcScIngressPoliciesDryRun,
+        egressPoliciesDryRun: vpcScEgressPoliciesDryRun,
     });
 
-    perimeterName = vpcSc.perimeter.name;
+    // 60-second propagation wait for VPC-SC
+    const vpcScSleep = new time.Sleep("vpc-sc-propagation-wait", {
+        createDuration: "60s",
+    }, { dependsOn: vpcSc.perimeter });
+
+    perimeterName = vpcScSleep.id.apply(() => vpcSc.perimeter.name);
 
     const targetNameServerAddresses = config.getObject<string[]>("target_name_server_addresses") || ["10.0.0.1"];
 
