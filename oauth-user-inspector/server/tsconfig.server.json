@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     // node10 ("node") resolution is deprecated under TypeScript 6 (TS5107).
     // Defer the migration to "bundler"/"nodenext" until TS 7; this keeps the
     // resolution behavior unchanged meanwhile.
