@@ -81,8 +81,19 @@ func main() {
 		ctx.Export("gcs_bucket_tfstate", seed.StateBucketName)
 		ctx.Export("projects_gcs_bucket_tfstate", seed.ProjectsStateBucketName)
 		ctx.Export("state_bucket_kms_key_id", seed.KMSKeyID)
+		saOutputNames := map[string]string{
+			"bootstrap": "bootstrap",
+			"org":       "organization",
+			"env":       "environment",
+			"net":       "networks",
+			"proj":      "projects",
+		}
 		for key, sa := range sas {
-			ctx.Export(key+"_step_terraform_service_account_email", sa.Email)
+			prefix, ok := saOutputNames[key]
+			if !ok {
+				prefix = key
+			}
+			ctx.Export(prefix+"_step_terraform_service_account_email", sa.Email)
 		}
 
 		// 7. Common config — composite output consumed by all downstream
