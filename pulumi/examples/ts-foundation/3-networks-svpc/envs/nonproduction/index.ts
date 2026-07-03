@@ -27,7 +27,8 @@ export = async () => {
         mode: null,
         natEnabled: true,
         dnsEnableInboundForwarding: true,
-        dnsEnableLogging: true,
+        dnsEnableLogging: dnsEnableLogging,
+        firewallEnableLogging: firewallEnableLogging,
         pscAddress: "10.2.0.20",
         subnets: [
             {
@@ -36,6 +37,9 @@ export = async () => {
                 subnetRegion: defaultRegion,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "nonproduction SVPC subnet in primary region",
             },
             {
@@ -44,6 +48,9 @@ export = async () => {
                 subnetRegion: defaultRegion2,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "nonproduction SVPC subnet in secondary region",
             },
         ],

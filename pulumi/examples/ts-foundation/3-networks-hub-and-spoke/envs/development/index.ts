@@ -20,6 +20,15 @@ export = async () => {
     const defaultRegion2 = config.get("default_region_2") || "us-west1";
     const envCode = "d";
 
+    const vpcFlowLogs = config.getObject<any>("vpc_flow_logs") || {
+        aggregation_interval: "INTERVAL_5_SEC",
+        flow_sampling: 0.5,
+        metadata: "INCLUDE_ALL_METADATA",
+    };
+    const dnsEnableLogging = config.getBoolean("dns_enable_logging") ?? true;
+    const firewallEnableLogging = config.getBoolean("firewall_policies_enable_logging") ?? true;
+
+
     const spokeVpc = new SharedVpc("development-network", {
         projectId: envProjectId,
         environmentCode: envCode,
@@ -30,7 +39,8 @@ export = async () => {
         mode: "spoke",
         natEnabled: true,
         dnsEnableInboundForwarding: true,
-        dnsEnableLogging: true,
+        dnsEnableLogging: dnsEnableLogging,
+        firewallEnableLogging: firewallEnableLogging,
         pscAddress: "10.2.0.10",
         netHubProjectId: config.get("net_hub_project_id"),
         subnets: [
@@ -40,6 +50,9 @@ export = async () => {
                 subnetRegion: defaultRegion,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "development spoke subnet in primary region",
             },
             {
@@ -48,6 +61,9 @@ export = async () => {
                 subnetRegion: defaultRegion2,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "development spoke subnet in secondary region",
             },
         ],

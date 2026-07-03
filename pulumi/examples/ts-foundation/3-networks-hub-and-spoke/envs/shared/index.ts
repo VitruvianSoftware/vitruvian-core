@@ -29,7 +29,8 @@ export = async () => {
         mode: "hub",
         natEnabled: true,
         dnsEnableInboundForwarding: true,
-        dnsEnableLogging: true,
+        dnsEnableLogging: dnsEnableLogging,
+        firewallEnableLogging: firewallEnableLogging,
         pscAddress: "10.2.0.30",
         subnets: [
             {
@@ -38,6 +39,9 @@ export = async () => {
                 subnetRegion: defaultRegion,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "Hub subnet in primary region",
             },
             {
@@ -46,6 +50,9 @@ export = async () => {
                 subnetRegion: defaultRegion2,
                 subnetPrivateAccess: true,
                 subnetFlowLogs: true,
+                subnetFlowLogsInterval: vpcFlowLogs.aggregation_interval,
+                subnetFlowLogsSampling: vpcFlowLogs.flow_sampling,
+                subnetFlowLogsMetadata: vpcFlowLogs.metadata,
                 description: "Hub subnet in secondary region",
             },
         ],
