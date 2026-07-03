@@ -31,6 +31,7 @@ on:
       - "development"
       - "nonproduction"
       - "production"
+      - "shared"
 
 jobs:
   preview:
@@ -66,5 +67,6 @@ jobs:
           stack-name: ${{ github.base_ref }}
           comment-on-pr: true
           diff: true
+          args: --policy-pack ../policy-library
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}

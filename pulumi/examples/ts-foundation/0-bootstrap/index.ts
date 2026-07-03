@@ -167,6 +167,25 @@ export = async () => {
         }, { dependsOn: groupOutputs.dependsOn });
     }
 
+    // Authoritative projectCreator Enforcement
+    new gcp.organizations.IAMBinding("org-project-creators", {
+        orgId: cfg.orgId,
+        role: "roles/resourcemanager.projectCreator",
+        members: [
+            ...Object.values(saOutputs.saEmails).map(email => pulumi.interpolate`serviceAccount:${email}` as unknown as string),
+            `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
+        ],
+    }, { dependsOn: groupOutputs.dependsOn });
+
+    // Authoritative billing.creator Enforcement
+    new gcp.organizations.IAMBinding("org-billing-creator", {
+        orgId: cfg.orgId,
+        role: "roles/billing.creator",
+        members: [
+            `group:${cfg.groups.requiredGroups.groupBillingAdmins}`,
+        ],
+    }, { dependsOn: groupOutputs.dependsOn });
+
     /*************************************************
       Outputs — mirrors outputs.tf and outputs_cb.tf
     *************************************************/

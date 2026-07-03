@@ -61,7 +61,7 @@ export = async () => {
         // Compute Engine hardening
         "compute.disableNestedVirtualization": true,
         "compute.disableSerialPortAccess": true,
-        "compute.disableGuestAttributesAccess": true,
+
         "compute.skipDefaultNetworkCreation": true,
         "compute.restrictXpnProjectLienRemoval": true,
         "compute.disableVpcExternalIpv6": true,
