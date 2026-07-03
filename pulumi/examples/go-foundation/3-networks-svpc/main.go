@@ -91,7 +91,10 @@ func main() {
 						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-pod", cfg.EnvCode, cfg.Region1), CIDR: "100.72.64.0/18"},
 						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-svc", cfg.EnvCode, cfg.Region1), CIDR: "100.73.64.0/18"},
 					},
-					FlowLogs: true,
+					FlowLogs:         true,
+					FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
+					FlowLogsSampling: cfg.VpcFlowLogs.FlowSampling,
+					FlowLogsMetadata: cfg.VpcFlowLogs.Metadata,
 				},
 				{
 					Name:   fmt.Sprintf("sb-%s-svpc-%s", cfg.EnvCode, cfg.Region2),
@@ -101,7 +104,10 @@ func main() {
 						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-pod", cfg.EnvCode, cfg.Region2), CIDR: "100.74.64.0/18"},
 						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-svc", cfg.EnvCode, cfg.Region2), CIDR: "100.75.64.0/18"},
 					},
-					FlowLogs: true,
+					FlowLogs:         true,
+					FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
+					FlowLogsSampling: cfg.VpcFlowLogs.FlowSampling,
+					FlowLogsMetadata: cfg.VpcFlowLogs.Metadata,
 				},
 				{ // Proxy-only subnets for ILB
 					Name:    fmt.Sprintf("sb-%s-svpc-%s-proxy", cfg.EnvCode, cfg.Region1),
@@ -132,7 +138,7 @@ func main() {
 			TargetVPCs: []pulumi.StringInput{
 				pulumi.Sprintf("projects/%s/global/networks/%s", cfg.ProjectID, vpcModule.VPC.Name),
 			},
-			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{"10.8.64.0/18", "10.9.64.0/18"}, true),
+			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{"10.8.64.0/18", "10.9.64.0/18"}, cfg.FirewallPoliciesEnableLogging),
 		}, pulumi.DependsOn([]pulumi.Resource{vpcModule.VPC}))
 		if err != nil {
 			return err
@@ -316,6 +322,12 @@ func main() {
 	})
 }
 
+type VpcFlowLogsConfig struct {
+	AggregationInterval string  `json:"aggregation_interval"`
+	FlowSampling        float64 `json:"flow_sampling"`
+	Metadata            string  `json:"metadata"`
+}
+
 type NetConfig struct {
 	Env                           string
 	EnvCode                       string // single-char env code (d, n, p)
@@ -343,6 +355,7 @@ type NetConfig struct {
 	FirewallPoliciesEnableLogging bool
 	DnsEnableLogging              bool
 	EnforceVpcSc                  bool
+	VpcFlowLogs                   *VpcFlowLogsConfig
 }
 
 func loadNetConfig(ctx *pulumi.Context) *NetConfig {
@@ -366,6 +379,18 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
 	conf.GetObject("target_name_servers", &c.TargetNameServers)
 	conf.GetObject("firewall_associations", &c.FirewallAssociations)
+
+	var flowLogs VpcFlowLogsConfig
+	if err := conf.GetObject("vpc_flow_logs", &flowLogs); err == nil {
+		c.VpcFlowLogs = &flowLogs
+	} else {
+		// Default matches TF upstream default
+		c.VpcFlowLogs = &VpcFlowLogsConfig{
+			AggregationInterval: "INTERVAL_5_SEC",
+			FlowSampling:        0.5,
+			Metadata:            "INCLUDE_ALL_METADATA",
+		}
+	}
 
 	if val, err := conf.TryBool("firewall_policies_enable_logging"); err == nil {
 		c.FirewallPoliciesEnableLogging = val

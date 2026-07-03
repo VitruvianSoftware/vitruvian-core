@@ -96,6 +96,17 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `billing_account` | Billing account ID | ✅ | — |
 | `org_stack_name` | Fully qualified Pulumi stack name of the 1-org stage | ✅ | — |
 | `project_prefix` | Project name prefix | | `"prj"` |
+| `folder_prefix` | Name prefix for folders | | `"fldr"` |
+| `project_deletion_policy` | Deletion policy for created projects | | `"PREVENT"` |
+| `default_service_account` | Default service account setting | | `"delete"` |
+| `folder_deletion_protection` | Prevent Terraform from destroying folders | | `true` |
+| `random_suffix` | Append random suffix to project IDs | | `true` |
+| `project_budget` | Budget configuration for projects | | `{}` |
+| `assured_workload_enabled` | Enable Assured Workload | | `false` |
+| `assured_workload_location` | Assured Workload location | | `"us-central1"` |
+| `assured_workload_display_name` | Assured Workload display name | | `"FEDRAMP-MODERATE"` |
+| `assured_workload_compliance_regime` | Assured Workload compliance regime | | `"FEDRAMP_MODERATE"` |
+| `assured_workload_resource_type` | Assured Workload resource type | | `"CONSUMER_FOLDER"` |
 
 ## Outputs
 
@@ -108,7 +119,8 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `production_kms_project_id` | KMS project ID for production |
 | `production_secrets_project_id` | Secrets project ID for production |
 | `{env}_folder_id` | Folder ID for each environment (passed through from Stage 1) |
-
+| `{env}_assured_workload_id` | Assured Workload ID for each environment (if configured) |
+| `{env}_assured_workload_resources` | Assured Workload resources for each environment (if configured) |
 ## File Structure
 
 | File | Description |
