@@ -23,13 +23,16 @@ stages:
     - curl -fsSL https://get.pulumi.com | sh
     - export PATH=$HOME/.pulumi/bin:$PATH
     - go mod download
+    - echo ${CI_JOB_JWT_V2} > /tmp/oidc_token.txt
+    - gcloud iam workload-identity-pools create-cred-config ${GCP_WORKLOAD_IDENTITY_PROVIDER} --service-account=${GCP_SERVICE_ACCOUNT} --output-file=/tmp/sts-creds.json --credential-source-file=/tmp/oidc_token.txt
+    - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sts-creds.json
 
 preview:
   extends: .pulumi_base
   stage: preview
   script:
     - pulumi stack select ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}
-    - pulumi preview --diff
+    - pulumi preview --diff --policy-pack ../policy-library
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: always
@@ -39,7 +42,7 @@ deploy:
   stage: deploy
   script:
     - pulumi stack select ${CI_COMMIT_BRANCH}
-    - pulumi up --yes
+    - pulumi up --yes --policy-pack ../policy-library
   rules:
-    - if: $CI_COMMIT_BRANCH =~ /^(development|nonproduction|production)$/
+    - if: $CI_COMMIT_BRANCH =~ /^(development|nonproduction|production|shared)$/
       when: on_success

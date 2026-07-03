@@ -31,6 +31,7 @@ on:
       - "development"
       - "nonproduction"
       - "production"
+      - "shared"
 
 jobs:
   deploy:
@@ -59,5 +60,6 @@ jobs:
         with:
           command: up
           stack-name: ${{ github.ref_name }}
+          args: --policy-pack ../policy-library
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
