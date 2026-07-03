@@ -27,7 +27,7 @@ export interface BigQueryOptions {
 }
 
 export interface StorageOptions {
-    bucketName?: string | null;
+    bucketName?: pulumi.Input<string> | null;
     loggingSinkName?: string | null;
     loggingSinkFilter?: string;
     forceDestroy?: boolean;
