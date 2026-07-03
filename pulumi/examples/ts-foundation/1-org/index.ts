@@ -339,6 +339,15 @@ export = async () => {
     /*************************************************
       Centralized Logging (mirrors log_sinks.tf)
     *************************************************/
+    const logFilter = `logName: /logs/cloudaudit.googleapis.com%2Factivity OR
+logName: /logs/cloudaudit.googleapis.com%2Fsystem_event OR
+logName: /logs/cloudaudit.googleapis.com%2Fdata_access OR
+logName: /logs/cloudaudit.googleapis.com%2Faccess_transparency OR
+logName: /logs/cloudaudit.googleapis.com%2Fpolicy OR
+logName: /logs/compute.googleapis.com%2Fvpc_flows OR
+logName: /logs/compute.googleapis.com%2Ffirewall OR
+logName: /logs/dns.googleapis.com%2Fdns_queries`;
+
     const centralizedLogging = new CentralizedLogging("org-logging", {
         projectId: orgAuditLogs.projectId,
         orgId: cfg.orgId,
@@ -346,17 +355,17 @@ export = async () => {
         loggingBucketOptions: {
             name: "LogBucket",
             loggingSinkName: "sk-c-logging-logbkt",
-            loggingSinkFilter: "",
+            loggingSinkFilter: logFilter,
         },
         bigqueryOptions: {
             datasetName: "audit_logs",
             loggingSinkName: "sk-c-logging-bq",
-            loggingSinkFilter: "",
+            loggingSinkFilter: logFilter,
         },
         storageOptions: {
             bucketName: `${cfg.projectPrefix}-c-logging-bucket`,
             loggingSinkName: "sk-c-logging-bkt",
-            loggingSinkFilter: "",
+            loggingSinkFilter: logFilter,
             forceDestroy: cfg.logExportStorageForceDestroy,
             versioning: cfg.logExportStorageVersioning,
             location: cfg.logExportStorageLocation,
@@ -365,7 +374,7 @@ export = async () => {
         pubsubOptions: {
             topicName: "tp-c-logging",
             loggingSinkName: "sk-c-logging-pub",
-            loggingSinkFilter: "",
+            loggingSinkFilter: logFilter,
         },
     }, { dependsOn: [orgAuditLogs] });
 
