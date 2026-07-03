@@ -27,7 +27,7 @@ import { z } from "zod";
 
 export const UserUpdateSchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  preferences: z.record(z.unknown()).optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type UserUpdateInput = z.infer<typeof UserUpdateSchema>;

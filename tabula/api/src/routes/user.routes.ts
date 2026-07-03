@@ -73,7 +73,7 @@ export async function userRoutes(fastify: FastifyInstance) {
           return reply.code(400).send({
             error: "Validation Error",
             message: "Invalid request body",
-            details: validationResult.error.errors,
+            details: validationResult.error.issues,
           });
         }
 
@@ -129,7 +129,7 @@ export async function userRoutes(fastify: FastifyInstance) {
         return reply.code(400).send({
           error: "Validation Error",
           message: "Invalid request body",
-          details: validationResult.error.errors,
+          details: validationResult.error.issues,
         });
       }
 

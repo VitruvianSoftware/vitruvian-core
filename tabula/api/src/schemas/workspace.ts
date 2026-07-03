@@ -62,7 +62,7 @@ export const TabSchema = z.preprocess(
     position: z.number().int().min(0).optional(),
     isPinned: z.boolean().default(false),
     groupId: z.string().optional().nullable(), // Stable TabGroup.id for persistence
-    metadata: z.record(z.unknown()).default({}),
+    metadata: z.record(z.string(), z.unknown()).default({}),
   }),
 );
 
@@ -117,7 +117,7 @@ export const WorkspaceCreateSchema = z.object({
   icon: z.string().max(50).optional().nullable(),
   groupId: z.string().optional().nullable(),
   position: z.number().int().min(0).default(0),
-  settings: z.record(z.unknown()).default({}),
+  settings: z.record(z.string(), z.unknown()).default({}),
   tabs: z.array(TabSchema).optional(),
   tabGroups: z.array(TabGroupSchema).optional(), // Chrome tab groups for restoration
   sections: z.array(SectionSchema).optional(),
@@ -133,7 +133,7 @@ export const WorkspaceUpdateSchema = z.object({
   icon: z.string().max(50).optional().nullable(),
   groupId: z.string().optional().nullable(),
   position: z.number().int().optional(),
-  settings: z.record(z.unknown()).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
   tabs: z.array(TabSchema).optional(),
   tabGroups: z.array(TabGroupSchema).optional(), // Chrome tab groups for restoration
   sections: z.array(SectionSchema).optional(),
