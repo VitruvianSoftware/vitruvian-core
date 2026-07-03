@@ -10,6 +10,7 @@
 
 import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
+import * as random from "@pulumi/random";
 import { loadOrgConfig } from "./config";
 import { ProjectFactory } from "@vitruviansoftware/foundation-project-factory";
 import { OrgPolicyBoolean, OrgPolicyList, DomainRestrictedSharing } from "@vitruviansoftware/foundation-org-policy";
@@ -398,12 +399,21 @@ export = async () => {
         }, { dependsOn: [sccNotifications] });
     }
 
-    /*************************************************
-      Tags (mirrors tags.tf)
-    *************************************************/
+    // When createUniqueTagKey is true, append a random suffix to avoid
+    // tag key name collisions across orgs (mirrors TF's random_string.tag_key_suffix).
+    let tagKeyShortName = "environment";
+    let tagKeySuffix: random.RandomString | undefined;
+    if (cfg.createUniqueTagKey) {
+        tagKeySuffix = new random.RandomString("tag-key-suffix", {
+            length: 8,
+            special: false,
+            upper: false,
+        });
+        tagKeyShortName = pulumi.interpolate`environment-${tagKeySuffix.result}` as any;
+    }
     const tagKey = new gcp.tags.TagKey("environment-tag-key", {
         parent: `organizations/${cfg.orgId}`,
-        shortName: cfg.createUniqueTagKey ? "environment" : "environment",
+        shortName: tagKeyShortName,
         description: "Environment tag key for the foundation.",
     });
 
