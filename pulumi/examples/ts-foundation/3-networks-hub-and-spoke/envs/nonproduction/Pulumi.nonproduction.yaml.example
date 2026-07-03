@@ -2,5 +2,6 @@
 config:
   3-networks-hub-and-spoke-nonproduction:org_id: "YOUR_ORG_ID"
   3-networks-hub-and-spoke-nonproduction:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  3-networks-hub-and-spoke-nonproduction:parent: "folders/YOUR_FOLDER_ID"
   # 3-networks-hub-and-spoke-nonproduction:default_region: "us-central1"
   # 3-networks-hub-and-spoke-nonproduction:default_region_2: "us-west1"
