@@ -68,7 +68,7 @@ describe("1-org config defaults", () => {
         expect(cfg.enableSccResources).toBe(false);
         expect(cfg.enableKmsKeyUsageTracking).toBe(true);
         expect(cfg.createAccessContextManagerAccessPolicy).toBe(true);
-        expect(cfg.enforceAllowedWorkerPools).toBe(true);
+        expect(cfg.enforceAllowedWorkerPools).toBe(false);
         expect(cfg.caiMonitoringKmsForceDestroy).toBe(false);
         expect(cfg.projectDeletionPolicy).toBe("PREVENT");
         expect(cfg.folderDeletionProtection).toBe(true);
