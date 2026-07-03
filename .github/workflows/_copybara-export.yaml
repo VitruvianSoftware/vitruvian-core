@@ -90,6 +90,7 @@ jobs:
                     git clone --no-tags "git@github.com:${{ github.repository_owner }}/${COMPONENT}.git" \
                     "$RUNNER_TEMP/${COMPONENT}-peer"
                   # STANDALONE_ONLY is intentionally unquoted: it word-splits into separate pathspec args.
+                  # shellcheck disable=SC2086
                   bazel run //tools/copybara/conflict_precheck -- \
                     export "$COMPONENT" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/${COMPONENT}-peer" \
                     $STANDALONE_ONLY
