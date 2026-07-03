@@ -156,7 +156,7 @@ type VpcServiceControlsArgs struct {
 	Prefix                   string
 	Members                  []string
 	MembersDryRun            []string
-	ProjectNumbers           []string
+	ProjectNumbers           pulumi.StringArrayInput
 	RestrictedServices       []string
 	RestrictedServicesDryRun []string
 	Enforce                  bool
@@ -256,9 +256,16 @@ func NewVpcServiceControls(ctx *pulumi.Context, name string, args *VpcServiceCon
 	}
 	component.AccessLevelDryRun = alDry
 
-	var resources pulumi.StringArray
-	for _, p := range args.ProjectNumbers {
-		resources = append(resources, pulumi.String(fmt.Sprintf("projects/%s", p)))
+	var resources pulumi.StringArrayInput
+	if args.ProjectNumbers != nil {
+		resources = args.ProjectNumbers.ToStringArrayOutput().ApplyT(func(v interface{}) ([]string, error) {
+			nums := v.([]string)
+			var res []string
+			for _, p := range nums {
+				res = append(res, fmt.Sprintf("projects/%s", p))
+			}
+			return res, nil
+		}).(pulumi.StringArrayOutput)
 	}
 
 	var svcs pulumi.StringArray
