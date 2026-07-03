@@ -33,7 +33,7 @@ func TestNewVpcServiceControls(t *testing.T) {
 			Prefix:             "test",
 			Members:            []string{"user:test@example.com"},
 			MembersDryRun:      []string{"user:dryrun@example.com"},
-			ProjectNumbers:     []string{"123456789"},
+			ProjectNumbers:     pulumi.StringArray{pulumi.String("123456789")},
 			RestrictedServices: []string{"storage.googleapis.com"},
 			Enforce:            true,
 			IngressPolicies: accesscontextmanager.ServicePerimeterStatusIngressPolicyArray{
@@ -47,7 +47,7 @@ func TestNewVpcServiceControls(t *testing.T) {
 			PolicyID:           pulumi.String("accessPolicies/12345"),
 			Prefix:             "test-dry",
 			Members:            []string{"user:test@example.com"},
-			ProjectNumbers:     []string{"123456789"},
+			ProjectNumbers:     pulumi.StringArray{pulumi.String("123456789")},
 			RestrictedServices: []string{"storage.googleapis.com"},
 			Enforce:            false,
 		})
@@ -57,7 +57,7 @@ func TestNewVpcServiceControls(t *testing.T) {
 		_, err = NewVpcServiceControls(ctx, "test-vpcsc-empty", &VpcServiceControlsArgs{
 			PolicyID:       pulumi.String("accessPolicies/12345"),
 			Prefix:         "test-empty",
-			ProjectNumbers: []string{"123456789"},
+			ProjectNumbers: pulumi.StringArray{pulumi.String("123456789")},
 			Enforce:        true,
 		})
 		require.NoError(t, err)

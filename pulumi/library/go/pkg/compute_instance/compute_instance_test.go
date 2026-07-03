@@ -39,7 +39,7 @@ func TestNewComputeInstance_Single(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		result, err := NewComputeInstance(ctx, "test-inst", &ComputeInstanceArgs{
 			Project:          pulumi.String("test-proj"),
-			Zone:             "us-central1-a",
+			Zone:             pulumi.String("us-central1-a"),
 			Hostname:         "my-instance",
 			InstanceTemplate: pulumi.String("projects/test/global/instanceTemplates/tmpl"),
 		})
@@ -57,7 +57,7 @@ func TestNewComputeInstance_Multiple(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		result, err := NewComputeInstance(ctx, "test-multi", &ComputeInstanceArgs{
 			Project:          pulumi.String("test-proj"),
-			Zone:             "us-central1-a",
+			Zone:             pulumi.String("us-central1-a"),
 			Hostname:         "web-server",
 			InstanceTemplate: pulumi.String("projects/test/global/instanceTemplates/tmpl"),
 			NumInstances:     3,
@@ -76,7 +76,7 @@ func TestNewComputeInstance_DeletionProtection(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewComputeInstance(ctx, "test-protected", &ComputeInstanceArgs{
 			Project:            pulumi.String("test-proj"),
-			Zone:               "us-central1-a",
+			Zone:             pulumi.String("us-central1-a"),
 			Hostname:           "protected-instance",
 			InstanceTemplate:   pulumi.String("projects/test/global/instanceTemplates/tmpl"),
 			DeletionProtection: true,
