@@ -270,7 +270,7 @@ func main() {
 				Prefix:                fmt.Sprintf("%s_svpc", cfg.EnvCode),
 				Members:               cfg.VpcScMembers,
 				MembersDryRun:         cfg.VpcScMembers,
-				ProjectNumbers:        cfg.VpcScProjects,
+				ProjectNumbers:        pulumi.ToStringArray(cfg.VpcScProjects),
 				RestrictedServices:    cfg.VpcScRestrictedServices,
 				Enforce:               cfg.EnforceVpcSc,
 				IngressPolicies:       cfg.VpcScIngressPolicies,
