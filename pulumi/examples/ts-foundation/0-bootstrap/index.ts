@@ -56,9 +56,11 @@ export = async () => {
         defaultRegion: cfg.defaultRegion,
         defaultRegionKms: cfg.defaultRegionKms,
         defaultRegionGcs: cfg.defaultRegionGcs,
-        randomSuffix: true,
+        randomSuffix: cfg.randomSuffix,
         encryptStateBucket: true,
         bucketForceDestroy: cfg.bucketForceDestroy,
+        keyProtectionLevel: cfg.kmsKeyProtectionLevel,
+        kmsPreventDestroy: !cfg.bucketTfStateKmsForceDestroy,
         projectLabels: {
             environment: "bootstrap",
             application_name: "seed-bootstrap",
