@@ -143,13 +143,6 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "jest-environment-jsdom"
         update-types: ["version-update:semver-major"]
-      # TypeScript 6 is blocked by prisma 7.8.0 (#578): prisma generate trips
-      # TS5107 internally under TS 6 and fails //tabula/api:prisma_client on
-      # every build. Our own node10 configs are already migrated (#577);
-      # unblock by bumping prisma to a TS6-compatible release (needs the
-      # #528 engine re-vendor) and then dropping this rule.
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
       # Coupled to the vendored Prisma engines hash in MODULE.bazel (#528):
       # a client/CLI major without the engine re-vendor breaks migrate deploy
       # at deploy time, invisibly to CI.
