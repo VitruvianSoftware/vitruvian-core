@@ -165,13 +165,18 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| `parent` | Parent folder or organization ID | `string` | n/a | yes |
 | `org_id` | GCP Organization ID | `string` | n/a | yes |
 | `billing_account` | Billing account ID | `string` | n/a | yes |
-| `org_stack_name` | Stack reference to the 1-org stack | `string` | n/a | yes |
+| `org_stack_name` | Stack reference to the 1-org stack | `string` | `"org"` | no |
+| `bootstrap_stack` | Stack reference to the 0-bootstrap stack | `string` | `"bootstrap"` | no |
 | `project_prefix` | Name prefix for projects | `string` | `"prj"` | no |
 | `folder_prefix` | Name prefix for folders | `string` | `"fldr"` | no |
 | `default_region` | Default region for resources | `string` | `"us-central1"` | no |
 | `project_deletion_policy` | Deletion policy for created projects | `string` | `"PREVENT"` | no |
+| `folder_deletion_protection` | Prevent Terraform from destroying folders | `boolean` | `true` | no |
+| `project_budget` | Budget configuration for projects | `object` | `{}` | no |
+| `assured_workload_configuration` | Assured workload configuration | `object` | `null` | no |
 
 ## Outputs
 
@@ -180,6 +185,8 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `env_kms_project_id` | Environment KMS project ID |
 | `env_secrets_project_id` | Environment Secrets project ID |
 | `env_folder_id` | Environment folder ID |
+| `assured_workload_id` | Assured Workload ID (if configured) |
+| `assured_workload_resources` | Assured Workload resources (if configured) |
 
 ## File Structure
 
