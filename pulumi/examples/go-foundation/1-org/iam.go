@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/folder"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
@@ -211,11 +212,13 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects) error 
 	// ========================================================================
 	if cfg.EnableKMSKeyUsageTracking {
 		// Ensure the KMS organization service agent exists before granting it IAM.
-		// This is the Pulumi equivalent of the upstream's:
+		// The Pulumi gcp.projects.ServiceIdentity only creates a project-level
+		// identity (service-{project_number}@gcp-sa-cloudkms...), but we need the
+		// org-level agent (service-org-{org_id}@gcp-sa-cloudkms...).
+		// Use command.local.Command to run the gcloud equivalent:
 		//   gcloud beta services identity create --service cloudkms.googleapis.com --organization ${org_id}
-		kmsIdentity, err := projects.NewServiceIdentity(ctx, "kms-service-identity", &projects.ServiceIdentityArgs{
-			Service: pulumi.String("cloudkms.googleapis.com"),
-			Project: proj.OrgKMSProjectID,
+		kmsIdentity, err := local.NewCommand(ctx, "kms-org-service-identity", &local.CommandArgs{
+			Create: pulumi.Sprintf("gcloud beta services identity create --service cloudkms.googleapis.com --organization %s", cfg.OrgID),
 		})
 		if err != nil {
 			return err
