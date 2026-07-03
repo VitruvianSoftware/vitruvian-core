@@ -106,6 +106,7 @@ export function loadOrgConfig(config: pulumi.Config): OrgConfig {
         logExportStorageForceDestroy: config.getBoolean("log_export_storage_force_destroy") ?? false,
         logExportStorageVersioning: config.getBoolean("log_export_storage_versioning") ?? false,
         logExportStorageLocation: config.get("log_export_storage_location") || undefined,
+        logExportStorageRetentionPolicy: config.getObject("log_export_storage_retention_policy") || undefined,
         billingExportDatasetLocation: config.get("billing_export_dataset_location") || undefined,
         remoteStateBucket: config.require("remote_state_bucket"),
         requiredGroups: config.getObject<Record<string, string>>("required_groups") || {},
