@@ -30,13 +30,19 @@ export = async () => {
         projectDeletionPolicy: config.get("project_deletion_policy") || "PREVENT",
         folderDeletionProtection: config.getBoolean("folder_deletion_protection") ?? true,
         projectBudget: config.getObject<Record<string, any>>("project_budget") || {},
+        assuredWorkloadConfiguration: config.getObject<any>("assured_workload_configuration"),
     });
 
     // Exports — matches upstream TF 2-environments/envs/nonproduction/outputs.tf exactly
-    return {
+    const exports: Record<string, any> = {
         env_folder: result.envFolder.name,
         env_kms_project_id: result.envKmsProjectId,
         env_kms_project_number: result.envKmsProjectNumber,
         env_secrets_project_id: result.envSecretsProjectId,
     };
+    if (result.assuredWorkloadId) {
+        exports.assured_workload_id = result.assuredWorkloadId;
+        exports.assured_workload_resources = result.assuredWorkloadResources;
+    }
+    return exports;
 };
