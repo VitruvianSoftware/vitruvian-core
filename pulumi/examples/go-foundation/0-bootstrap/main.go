@@ -30,7 +30,8 @@ func main() {
 		// 1b. Optionally create Google Workspace groups.
 		// Groups must exist before IAM bindings reference them.
 		// Mirrors: 0-bootstrap/groups.tf in the TF foundation.
-		if err := deployGroups(ctx, cfg); err != nil {
+		groupResources, err := deployGroups(ctx, cfg)
+		if err != nil {
 			return err
 		}
 
@@ -63,7 +64,7 @@ func main() {
 		}
 
 		// 5. Deploy IAM: granular service accounts with least-privilege bindings
-		sas, err := deployIAM(ctx, cfg, seed, cicd)
+		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources)
 		if err != nil {
 			return err
 		}
@@ -128,26 +129,26 @@ func main() {
 // Config holds all configuration for the bootstrap stage, mirroring the
 // Terraform foundation's variables.tf for full feature parity.
 type Config struct {
-	OrgID            string
-	BillingAccount   string
-	ProjectPrefix    string
-	FolderPrefix     string
-	BucketPrefix     string
-	DefaultRegion    string
-	DefaultRegion2   string
-	DefaultRegionGCS string
-	DefaultRegionKMS    string // Dedicated KMS region (default: "us"), matches upstream
-	KMSKeyProtectionLevel string // "SOFTWARE" or "HSM" — matches upstream key_protection_level
-	Parent           string // Full parent path: "organizations/123" or "folders/456"
-	ParentFolder     string // Raw folder ID, empty if deploying at org root
-	ParentType       string // "organization" or "folder"
-	ParentID         string // The numeric ID for parent-level IAM bindings
-	OrgPolicyAdminRole bool
-	BucketForceDestroy bool
-	BucketTFStateKMSForceDestroy bool // When deleting a bucket, this boolean option will delete the KMS keys
-	RandomSuffix       bool // Append random hex suffix to project IDs (default: true)
-	ProjectDeletionPolicy    string // "PREVENT" or "DELETE" (default: "PREVENT")
-	FolderDeletionProtection bool   // Prevent Terraform from destroying the folder (default: true)
+	OrgID                        string
+	BillingAccount               string
+	ProjectPrefix                string
+	FolderPrefix                 string
+	BucketPrefix                 string
+	DefaultRegion                string
+	DefaultRegion2               string
+	DefaultRegionGCS             string
+	DefaultRegionKMS             string // Dedicated KMS region (default: "us"), matches upstream
+	KMSKeyProtectionLevel        string // "SOFTWARE" or "HSM" — matches upstream key_protection_level
+	Parent                       string // Full parent path: "organizations/123" or "folders/456"
+	ParentFolder                 string // Raw folder ID, empty if deploying at org root
+	ParentType                   string // "organization" or "folder"
+	ParentID                     string // The numeric ID for parent-level IAM bindings
+	OrgPolicyAdminRole           bool
+	BucketForceDestroy           bool
+	BucketTFStateKMSForceDestroy bool   // When deleting a bucket, this boolean option will delete the KMS keys
+	RandomSuffix                 bool   // Append random hex suffix to project IDs (default: true)
+	ProjectDeletionPolicy        string // "PREVENT" or "DELETE" (default: "PREVENT")
+	FolderDeletionProtection     bool   // Prevent Terraform from destroying the folder (default: true)
 
 	// Groups — required for org admin and billing workflows
 	GroupOrgAdmins     string
@@ -157,11 +158,11 @@ type Config struct {
 
 	// Optional groups — governance groups consumed by 1-org for IAM bindings.
 	// These match the upstream Terraform foundation's optional_groups object.
-	GCPSecurityReviewer    string
-	GCPNetworkViewer       string
-	GCPSCCAdmin            string
-	GCPGlobalSecretsAdmin  string
-	GCPKMSAdmin            string
+	GCPSecurityReviewer   string
+	GCPNetworkViewer      string
+	GCPSCCAdmin           string
+	GCPGlobalSecretsAdmin string
+	GCPKMSAdmin           string
 
 	// Group creation — when true, the bootstrap stage creates the groups
 	// via Cloud Identity instead of assuming they pre-exist.
@@ -172,34 +173,34 @@ type Config struct {
 
 	// GitHub Actions CI/CD — default CI/CD provider.
 	// Set github_owner to enable Workload Identity Federation.
-	GitHubOwner             string
-	GitHubRepoBootstrap     string
-	GitHubRepoOrg           string
-	GitHubRepoEnv           string
-	GitHubRepoNet           string
-	GitHubRepoProj          string
-	WIFAttributeCondition   string // Optional: override the default WIF attribute condition
+	GitHubOwner           string
+	GitHubRepoBootstrap   string
+	GitHubRepoOrg         string
+	GitHubRepoEnv         string
+	GitHubRepoNet         string
+	GitHubRepoProj        string
+	WIFAttributeCondition string // Optional: override the default WIF attribute condition
 }
 
 func loadConfig(ctx *pulumi.Context) *Config {
 	conf := config.New(ctx, "")
 	c := &Config{
-		OrgID:              conf.Require("org_id"),
-		BillingAccount:     conf.Require("billing_account"),
-		ProjectPrefix:      conf.Get("project_prefix"),
-		FolderPrefix:       conf.Get("folder_prefix"),
-		BucketPrefix:       conf.Get("bucket_prefix"),
-		DefaultRegion:      conf.Get("default_region"),
-		DefaultRegion2:     conf.Get("default_region_2"),
-		DefaultRegionGCS:   conf.Get("default_region_gcs"),
+		OrgID:                 conf.Require("org_id"),
+		BillingAccount:        conf.Require("billing_account"),
+		ProjectPrefix:         conf.Get("project_prefix"),
+		FolderPrefix:          conf.Get("folder_prefix"),
+		BucketPrefix:          conf.Get("bucket_prefix"),
+		DefaultRegion:         conf.Get("default_region"),
+		DefaultRegion2:        conf.Get("default_region_2"),
+		DefaultRegionGCS:      conf.Get("default_region_gcs"),
 		DefaultRegionKMS:      conf.Get("default_region_kms"),
 		KMSKeyProtectionLevel: conf.Get("kms_key_protection_level"),
 		ProjectDeletionPolicy: conf.Get("project_deletion_policy"),
 		ParentFolder:          conf.Get("parent_folder"),
-		GroupOrgAdmins:     conf.Require("group_org_admins"),
-		GroupBillingAdmins: conf.Require("group_billing_admins"),
-		BillingDataUsers:   conf.Require("billing_data_users"),
-		AuditDataUsers:     conf.Require("audit_data_users"),
+		GroupOrgAdmins:        conf.Require("group_org_admins"),
+		GroupBillingAdmins:    conf.Require("group_billing_admins"),
+		BillingDataUsers:      conf.Require("billing_data_users"),
+		AuditDataUsers:        conf.Require("audit_data_users"),
 		// Optional groups — empty string means not configured
 		GCPSecurityReviewer:   conf.Get("gcp_security_reviewer"),
 		GCPNetworkViewer:      conf.Get("gcp_network_viewer"),

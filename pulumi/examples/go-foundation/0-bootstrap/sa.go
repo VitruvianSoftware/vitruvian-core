@@ -32,7 +32,8 @@ import (
 // deployIAM creates the granular service accounts and assigns least-privilege
 // IAM roles at every scope (org, parent, seed project, CI/CD project, billing).
 // This directly mirrors the Terraform foundation's sa.tf.
-func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject) (map[string]*serviceaccount.Account, error) {
+func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource) (map[string]*serviceaccount.Account, error) {
+	dependsOnGroups := pulumi.DependsOn(groupResources)
 	// ========================================================================
 	// 1. Create Granular Service Accounts
 	// Each foundation stage gets a dedicated SA for separation of duty.
@@ -121,7 +122,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 				OrgID:  pulumi.String(cfg.OrgID),
 				Role:   pulumi.String(role),
 				Member: memberOf(sas[key]),
-			}); err != nil {
+			}, dependsOnGroups); err != nil {
 				return nil, err
 			}
 		}
@@ -164,7 +165,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ParentId:   pulumi.String(cfg.ParentID),
 			Member:     memberOf(sas[key]),
 			Roles:      roles,
-		})
+		}, dependsOnGroups)
 		if err != nil {
 			return nil, err
 		}
@@ -193,7 +194,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ParentId:   seed.ProjectID,
 			Member:     memberOf(sas[key]),
 			Roles:      roles,
-		})
+		}, dependsOnGroups)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +227,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ParentId:   cicd.ProjectID,
 			Member:     memberOf(sas[key]),
 			Roles:      roles,
-		})
+		}, dependsOnGroups)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +244,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			BillingAccountID: pulumi.String(cfg.BillingAccount),
 			Role:             pulumi.String("roles/billing.user"),
 			Member:           memberOf(sas[key]),
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 
@@ -251,7 +252,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			BillingAccountID: pulumi.String(cfg.BillingAccount),
 			Role:             pulumi.String("roles/billing.admin"),
 			Member:           memberOf(sas[key]),
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 	}
@@ -261,7 +262,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		BillingAccountID: pulumi.String(cfg.BillingAccount),
 		Role:             pulumi.String("roles/logging.configWriter"),
 		Member:           memberOf(sas["org"]),
-	}); err != nil {
+	}, dependsOnGroups); err != nil {
 		return nil, err
 	}
 
@@ -285,7 +286,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			OrgID:  pulumi.String(cfg.OrgID),
 			Role:   pulumi.String(role),
 			Member: orgAdminGroupMember,
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 	}
@@ -302,7 +303,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ServiceAccountID: sa.Name,
 			Role:             pulumi.String("roles/iam.serviceAccountTokenCreator"),
 			Member:           memberOf(sa),
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 	}
@@ -316,7 +317,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ServiceAccountID: sa.Name,
 			Role:             pulumi.String("roles/iam.serviceAccountTokenCreator"),
 			Member:           orgAdminGroupMember,
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 		// roles/iam.serviceAccountUser allows the admins to "act as" the SA
@@ -325,7 +326,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ServiceAccountID: sa.Name,
 			Role:             pulumi.String("roles/iam.serviceAccountUser"),
 			Member:           orgAdminGroupMember,
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 	}
@@ -338,7 +339,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		ParentId:   pulumi.String(cfg.ParentID),
 		Member:     orgAdminGroupMember,
 		Roles:      []string{"roles/serviceusage.serviceUsageConsumer"},
-	})
+	}, dependsOnGroups)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +358,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// Also include the org admins group so they retain the ability to create projects
 	saMembers = append(saMembers, pulumi.Sprintf("group:%s", cfg.GroupOrgAdmins))
 
-	if err := bindParentIAMBinding(ctx, "org-project-creators", cfg, pulumi.String("roles/resourcemanager.projectCreator"), saMembers); err != nil {
+	if err := bindParentIAMBinding(ctx, "org-project-creators", cfg, pulumi.String("roles/resourcemanager.projectCreator"), saMembers, dependsOnGroups); err != nil {
 		return nil, err
 	}
 
@@ -374,7 +375,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		Members: pulumi.StringArray{
 			pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
 		},
-	}); err != nil {
+	}, dependsOnGroups); err != nil {
 		return nil, err
 	}
 
@@ -394,7 +395,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			ParentType: "project",
 			ParentId:   projID,
 			Roles:      []string{"roles/editor"},
-		})
+		}, dependsOnGroups)
 		if err != nil {
 			return nil, err
 		}
@@ -419,7 +420,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			Bucket: seed.StateBucketName,
 			Role:   pulumi.String("roles/storage.admin"),
 			Member: member,
-		}); err != nil {
+		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
 	}
@@ -430,19 +431,19 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 // bindParentIAMBinding creates an authoritative IAM binding at either the
 // organization or folder scope, depending on whether the foundation is
 // deployed under a parent folder or at the org root.
-func bindParentIAMBinding(ctx *pulumi.Context, name string, cfg *Config, role pulumi.StringInput, members pulumi.StringArrayInput) error {
+func bindParentIAMBinding(ctx *pulumi.Context, name string, cfg *Config, role pulumi.StringInput, members pulumi.StringArrayInput, dependsOnGroups pulumi.ResourceOption) error {
 	if cfg.ParentType == "organization" {
 		_, err := iam.NewOrganizationIAMBinding(ctx, name, &iam.OrganizationIAMBindingArgs{
 			OrgID:   pulumi.String(cfg.ParentID),
 			Role:    role,
 			Members: members,
-		})
+		}, dependsOnGroups)
 		return err
 	}
 	_, err := iam.NewFolderIAMBinding(ctx, name, &iam.FolderIAMBindingArgs{
 		FolderID: pulumi.String(cfg.ParentID),
 		Role:     role,
 		Members:  members,
-	})
+	}, dependsOnGroups)
 	return err
 }
