@@ -17,6 +17,15 @@ export = async () => {
     const defaultRegion = config.get("default_region") || "us-central1";
     const defaultRegion2 = config.get("default_region_2") || "us-west1";
 
+    const vpcFlowLogs = config.getObject<any>("vpc_flow_logs") || {
+        aggregation_interval: "INTERVAL_5_SEC",
+        flow_sampling: 0.5,
+        metadata: "INCLUDE_ALL_METADATA",
+    };
+    const dnsEnableLogging = config.getBoolean("dns_enable_logging") ?? true;
+    const firewallEnableLogging = config.getBoolean("firewall_policies_enable_logging") ?? true;
+
+
     const svpc = new SharedVpc("production-network", {
         projectId: envProjectId,
         environmentCode: "p",
