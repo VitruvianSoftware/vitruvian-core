@@ -100,7 +100,7 @@ export function loadOrgConfig(config: pulumi.Config): OrgConfig {
         enableSccResources: config.getBoolean("enable_scc_resources") ?? false,
         enableKmsKeyUsageTracking: config.getBoolean("enable_kms_key_usage_tracking") ?? true,
         createAccessContextManagerAccessPolicy: config.getBoolean("create_access_context_manager_access_policy") ?? true,
-        enforceAllowedWorkerPools: config.getBoolean("enforce_allowed_worker_pools") ?? true,
+        enforceAllowedWorkerPools: config.getBoolean("enforce_allowed_worker_pools") ?? false,
         cloudBuildPrivateWorkerPoolId: config.get("cloud_build_private_worker_pool_id") || undefined,
         caiMonitoringKmsForceDestroy: config.getBoolean("cai_monitoring_kms_force_destroy") ?? false,
         projectDeletionPolicy: config.get("project_deletion_policy") || "PREVENT",
