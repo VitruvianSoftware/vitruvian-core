@@ -87,7 +87,7 @@ func deployPeeringNetwork(
 	}
 
 	// 3. Bi-directional VPC Peering (peering project <-> shared VPC host)
-	hostVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-%s-svpc-base", networkProjectID, cfg.EnvCode)
+	hostVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-%s-svpc", networkProjectID, cfg.EnvCode)
 
 	peeringToHost, err := compute.NewNetworkPeering(ctx, "peering-to-host", &compute.NetworkPeeringArgs{
 		Network:            peeringVpc.VPC.SelfLink,
