@@ -196,6 +196,29 @@ func main() {
 				return err
 			}
 
+			// 8.1. Hub Firewall — Allow Health Checks to Transitivity ILBs
+			_, err = compute.NewFirewall(ctx, "fw-hub-allow-health-checks", &compute.FirewallArgs{
+				Project: pulumi.String(cfg.HubProjectID),
+				Name:    pulumi.String(fmt.Sprintf("fw-%s-hub-allow-health-checks", cfg.EnvCode)),
+				Network: hubVpc.VPC.SelfLink,
+				Allows: compute.FirewallAllowArray{
+					&compute.FirewallAllowArgs{
+						Protocol: pulumi.String("tcp"),
+						Ports:    pulumi.StringArray{pulumi.String("22")},
+					},
+				},
+				SourceRanges: pulumi.StringArray{
+					pulumi.String("130.211.0.0/22"),
+					pulumi.String("35.191.0.0/16"),
+				},
+				TargetTags: pulumi.StringArray{
+					pulumi.String("allow-transitivity"),
+				},
+			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
+			if err != nil {
+				return err
+			}
+
 			// 9. Hub BGP Routers — 4 total (2 per region), hub only (not on spokes)
 			for _, reg := range []string{cfg.Region1, cfg.Region2} {
 				for _, crIdx := range []string{"5", "6"} {
