@@ -351,7 +351,7 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
     const centralizedLogging = new CentralizedLogging("org-logging", {
         projectId: orgAuditLogs.projectId,
         orgId: cfg.orgId,
-        billingAccount: cfg.billingAccount,
+        billingAccount: cfg.enableBillingAccountSink ? cfg.billingAccount : undefined,
         loggingBucketOptions: {
             name: "LogBucket",
             loggingSinkName: "sk-c-logging-logbkt",

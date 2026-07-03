@@ -19,6 +19,7 @@ import * as pulumi from "@pulumi/pulumi";
 export interface OrgConfig {
     orgId: string;
     billingAccount: string;
+    enableBillingAccountSink: boolean;
     projectPrefix: string;
     folderPrefix: string;
     defaultRegion: string;
@@ -79,6 +80,7 @@ export function loadOrgConfig(config: pulumi.Config): OrgConfig {
     return {
         orgId,
         billingAccount: config.require("billing_account"),
+        enableBillingAccountSink: config.getBoolean("enable_billing_account_sink") ?? false,
         projectPrefix: config.get("project_prefix") || "prj",
         folderPrefix: config.get("folder_prefix") || "fldr",
         defaultRegion: config.get("default_region") || "us-central1",
