@@ -24,6 +24,8 @@ export = async () => {
     };
     const dnsEnableLogging = config.getBoolean("dns_enable_logging") ?? true;
     const firewallEnableLogging = config.getBoolean("firewall_policies_enable_logging") ?? true;
+    const domain = config.get("domain") || "example.com.";
+
 
 
     const svpc = new SharedVpc("development-network", {
@@ -38,6 +40,8 @@ export = async () => {
         dnsEnableInboundForwarding: true,
         dnsEnableLogging: dnsEnableLogging,
         firewallEnableLogging: firewallEnableLogging,
+        domain: domain,
+        dnsHubProjectId: sharedVpcProjects.apply(p => p["production"]?.project_id || ""),
         pscAddress: "10.2.0.10",
         subnets: [
             {

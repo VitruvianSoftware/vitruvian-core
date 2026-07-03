@@ -27,6 +27,9 @@ export = async () => {
     };
     const dnsEnableLogging = config.getBoolean("dns_enable_logging") ?? true;
     const firewallEnableLogging = config.getBoolean("firewall_policies_enable_logging") ?? true;
+    const targetNameServerAddresses = config.getObject<string[]>("target_name_server_addresses") || ["10.0.0.1"];
+    const domain = config.get("domain") || "example.com.";
+
 
 
     const spokeVpc = new SharedVpc("production-network", {
@@ -41,6 +44,8 @@ export = async () => {
         dnsEnableInboundForwarding: true,
         dnsEnableLogging: dnsEnableLogging,
         firewallEnableLogging: firewallEnableLogging,
+        domain: domain,
+        targetNameServerAddresses: targetNameServerAddresses,
         pscAddress: "10.2.0.30",
         netHubProjectId: config.get("net_hub_project_id"),
         netHubNetworkSelfLink: pulumi.interpolate`projects/${config.get("net_hub_project_id")}/global/networks/vpc-c-svpc-hub`,

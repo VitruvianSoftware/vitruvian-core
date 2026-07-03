@@ -8,6 +8,7 @@
 
 import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
+import { CloudRouter } from "@vitruviansoftware/foundation-cloud-router";
 import { Network, SubnetConfig } from "@vitruviansoftware/foundation-network";
 import { PrivateServiceConnect } from "@vitruviansoftware/foundation-private-service-connect";
 
@@ -31,6 +32,9 @@ export interface SharedVpcArgs {
     firewallEnableLogging?: boolean;
     dnsEnableInboundForwarding?: boolean;
     dnsEnableLogging?: boolean;
+    domain?: string;
+    targetNameServerAddresses?: string[];
+    dnsHubProjectId?: pulumi.Input<string>;
     pscAddress: string;
     /** For spoke mode: hub project ID */
     netHubProjectId?: string;
@@ -277,6 +281,45 @@ export class SharedVpc extends pulumi.ComponentResource {
             }, { parent: this, dependsOn: [spokeToHub] });
         }
 
+        // DNS Forwarding / Peering for Hybrid DNS
+        if (args.environmentCode === "p" && args.domain && args.targetNameServerAddresses) {
+            new gcp.dns.ManagedZone(`${name}-dns-forwarding`, {
+                project: args.projectId,
+                name: `fz-${vpcName}`,
+                dnsName: args.domain,
+                description: "DNS forwarding zone to on-prem",
+                visibility: "private",
+                privateVisibilityConfig: {
+                    networks: [{
+                        networkUrl: this.network.networkSelfLink,
+                    }],
+                },
+                forwardingConfig: {
+                    targetNameServers: args.targetNameServerAddresses.map((ip: string) => ({
+                        ipv4Address: ip,
+                    })),
+                },
+            }, { parent: this });
+        } else if (args.environmentCode !== "p" && args.domain) {
+            new gcp.dns.ManagedZone(`${name}-dns-peering`, {
+                project: args.projectId,
+                name: `dz-${vpcName}-to-dns-hub`,
+                dnsName: args.domain,
+                description: "DNS peering zone to DNS hub (production)",
+                visibility: "private",
+                privateVisibilityConfig: {
+                    networks: [{
+                        networkUrl: this.network.networkSelfLink,
+                    }],
+                },
+                peeringConfig: {
+                    targetNetwork: {
+                        networkUrl: pulumi.interpolate`https://www.googleapis.com/compute/v1/projects/${args.dnsHubProjectId}/global/networks/vpc-c-hub`,
+                    },
+                },
+            }, { parent: this });
+        }
+
         // Private Service Connect
         new PrivateServiceConnect(`${name}-psc`, {
             projectId: args.projectId,
@@ -285,47 +328,80 @@ export class SharedVpc extends pulumi.ComponentResource {
             forwardingRuleName: `fr-${vpcName}-psc`,
         }, { parent: this });
 
+        // BGP Cloud Routers (cr5-cr8) for hybrid connectivity
+        const bgpAsn = args.environmentCode === "p" ? 16550 : 64514;
+        const advRanges = [
+            { range: "199.36.153.4/30" }, // restricted API VIP
+        ];
+        if (args.environmentCode === "p") {
+            advRanges.push({ range: "35.199.192.0/19" }); // DNS forwarding
+        }
+
+        const regions = [args.defaultRegion, args.defaultRegion2];
+        regions.forEach((reg) => {
+            ["5", "6"].forEach((crIdx) => {
+                new CloudRouter(`${name}-cr-${reg}-cr${crIdx}`, {
+                    project: args.projectId,
+                    name: `cr-${reg}-cr${crIdx}`,
+                    network: this.network.networkSelfLink,
+                    region: reg,
+                    bgp: {
+                        asn: bgpAsn,
+                        advertisedGroups: ["ALL_SUBNETS"],
+                        advertisedIpRanges: advRanges,
+                    },
+                }, { parent: this });
+            });
+        });
+
         // NAT (if enabled)
         if (args.natEnabled !== false) {
-            const natRouter = new gcp.compute.Router(`${name}-nat-router-${args.defaultRegion}`, {
-                name: `cr-${vpcName}-${args.defaultRegion}-nat`,
-                project: args.projectId,
-                region: args.defaultRegion,
-                network: this.network.networkId,
-            }, { parent: this });
+            const natBgpAsn = 64512;
+            regions.forEach((reg) => {
+                const natRouter = new CloudRouter(`${name}-nat-router-${reg}`, {
+                    project: args.projectId,
+                    name: `cr-${vpcName}-${reg}-nat`,
+                    network: this.network.networkSelfLink,
+                    region: reg,
+                    bgp: {
+                        asn: natBgpAsn,
+                    },
+                }, { parent: this });
 
-            new gcp.compute.RouterNat(`${name}-nat-${args.defaultRegion}`, {
-                name: `rn-${vpcName}-${args.defaultRegion}-egress`,
-                project: args.projectId,
-                router: natRouter.name,
-                region: args.defaultRegion,
-                natIpAllocateOption: "AUTO_ONLY",
-                sourceSubnetworkIpRangesToNat: "ALL_SUBNETWORKS_ALL_IP_RANGES",
-                logConfig: {
-                    enable: true,
-                    filter: "TRANSLATIONS_ONLY",
-                },
-            }, { parent: this });
+                const natIps = [];
+                for (let i = 0; i < 2; i++) {
+                    const address = new gcp.compute.Address(`${name}-nat-ip-${reg}-${i}`, {
+                        project: args.projectId,
+                        region: reg,
+                        name: `ip-${vpcName}-${reg}-nat-egress-${i}`,
+                    }, { parent: natRouter });
+                    natIps.push(address.selfLink);
+                }
 
-            // Second region NAT
-            const natRouter2 = new gcp.compute.Router(`${name}-nat-router-${args.defaultRegion2}`, {
-                name: `cr-${vpcName}-${args.defaultRegion2}-nat`,
-                project: args.projectId,
-                region: args.defaultRegion2,
-                network: this.network.networkId,
-            }, { parent: this });
+                new gcp.compute.RouterNat(`${name}-nat-${reg}`, {
+                    name: `rn-${vpcName}-${reg}-egress`,
+                    project: args.projectId,
+                    router: natRouter.router.name,
+                    region: reg,
+                    natIpAllocateOption: "MANUAL_ONLY",
+                    natIps: natIps,
+                    sourceSubnetworkIpRangesToNat: "ALL_SUBNETWORKS_ALL_IP_RANGES",
+                    logConfig: {
+                        enable: true,
+                        filter: "TRANSLATIONS_ONLY",
+                    },
+                }, { parent: natRouter });
+            });
 
-            new gcp.compute.RouterNat(`${name}-nat-${args.defaultRegion2}`, {
-                name: `rn-${vpcName}-${args.defaultRegion2}-egress`,
+            // Tag-based internet egress route
+            new gcp.compute.Route(`${name}-egress-internet`, {
                 project: args.projectId,
-                router: natRouter2.name,
-                region: args.defaultRegion2,
-                natIpAllocateOption: "AUTO_ONLY",
-                sourceSubnetworkIpRangesToNat: "ALL_SUBNETWORKS_ALL_IP_RANGES",
-                logConfig: {
-                    enable: true,
-                    filter: "TRANSLATIONS_ONLY",
-                },
+                network: this.network.networkName,
+                name: `rt-${vpcName}-egress-internet-default`,
+                destRange: "0.0.0.0/0",
+                nextHopGateway: "default-internet-gateway",
+                tags: ["egress-internet"],
+                priority: 1000,
             }, { parent: this });
         }
 

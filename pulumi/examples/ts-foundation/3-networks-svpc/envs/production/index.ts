@@ -25,6 +25,8 @@ export = async () => {
     const dnsEnableLogging = config.getBoolean("dns_enable_logging") ?? true;
     const firewallEnableLogging = config.getBoolean("firewall_policies_enable_logging") ?? true;
 
+    const targetNameServerAddresses = config.getObject<string[]>("target_name_server_addresses") || ["10.0.0.1"];
+    const domain = config.get("domain") || "example.com.";
 
     const svpc = new SharedVpc("production-network", {
         projectId: envProjectId,
@@ -38,6 +40,8 @@ export = async () => {
         dnsEnableInboundForwarding: true,
         dnsEnableLogging: dnsEnableLogging,
         firewallEnableLogging: firewallEnableLogging,
+        domain: domain,
+        targetNameServerAddresses: targetNameServerAddresses,
         pscAddress: "10.2.0.30",
         subnets: [
             {
@@ -88,8 +92,6 @@ export = async () => {
     });
 
     perimeterName = vpcSc.perimeter.name;
-
-    const targetNameServerAddresses = config.getObject<string[]>("target_name_server_addresses") || ["10.0.0.1"];
 
     return {
         target_name_server_addresses: targetNameServerAddresses,
