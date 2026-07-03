@@ -77,7 +77,7 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, seed *SeedProjec
 		var attr string
 		if repo == "" || repo == "*" {
 			// Wildcard: any repo under this owner
-			attr = fmt.Sprintf("attribute.repository/%s", cfg.GitHubOwner)
+			attr = fmt.Sprintf("attribute.repository/%s/*", cfg.GitHubOwner)
 		} else {
 			// Specific repo binding
 			attr = fmt.Sprintf("attribute.repository/%s/%s", cfg.GitHubOwner, repo)
