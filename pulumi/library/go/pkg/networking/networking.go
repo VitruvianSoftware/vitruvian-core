@@ -37,6 +37,9 @@ type SubnetArgs struct {
 	Role            string
 	Purpose         string
 	FlowLogs        bool
+	FlowLogsInterval string
+	FlowLogsSampling float64
+	FlowLogsMetadata string
 }
 
 type NetworkingArgs struct {
@@ -109,10 +112,22 @@ func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts 
 		}
 
 		if s.FlowLogs {
+			interval := "INTERVAL_5_SEC"
+			if s.FlowLogsInterval != "" {
+				interval = s.FlowLogsInterval
+			}
+			sampling := 0.5
+			if s.FlowLogsSampling != 0 {
+				sampling = s.FlowLogsSampling
+			}
+			metadata := "INCLUDE_ALL_METADATA"
+			if s.FlowLogsMetadata != "" {
+				metadata = s.FlowLogsMetadata
+			}
 			subArgs.LogConfig = &compute.SubnetworkLogConfigArgs{
-				AggregationInterval: pulumi.String("INTERVAL_5_SEC"),
-				FlowSampling:        pulumi.Float64(0.5),
-				Metadata:            pulumi.String("INCLUDE_ALL_METADATA"),
+				AggregationInterval: pulumi.String(interval),
+				FlowSampling:        pulumi.Float64(sampling),
+				Metadata:            pulumi.String(metadata),
 			}
 		}
 
