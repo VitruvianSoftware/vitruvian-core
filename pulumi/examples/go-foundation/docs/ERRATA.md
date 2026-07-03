@@ -15,22 +15,40 @@ can evaluate whether they affect their deployment and plan accordingly.
 - Jenkins
 - Terraform Cloud / Terraform Enterprise
 
-**This port:** Supports **GitHub Actions only**. The deployment pipeline template
-is provided in `build/pulumi-ci.yml` and is copied to the operator's repository
-during onboarding. There are no equivalent `README-Jenkins.md`,
-`README-GitLab.md`, or `README-Terraform-Cloud.md` files.
+**This port:** Uses **GitHub Actions** as the default CI/CD tool (with Workload
+Identity Federation), reversing the upstream default of Cloud Build. Pipeline
+templates are provided in `build/pulumi-preview.yml` and `build/pulumi-up.yml`.
+Alternative CI/CD tool support is available via opt-in `.example` files:
+
+- **GitLab CI/CD:** `build/gitlab-ci.yml` + `0-bootstrap/build_gitlab.go.example`
+  with instructions in `0-bootstrap/README-GitLab.md`
+- **Cloud Build:** `0-bootstrap/build_cloud_build.go.example` with instructions
+  in `0-bootstrap/README-CloudBuild.md`
+- **Jenkins:** `0-bootstrap/build_jenkins.go.example`
+- **Terraform Cloud:** `0-bootstrap/build_terraform_cloud.go.example`
+
+Cloud Build triggers, per-stage log/artifact buckets, and the automated
+runner-image build pipeline (`tf_cloud_builder` module) are not ported. The
+private worker pool infrastructure is also not ported in the Go foundation
+(the TS port includes it via the `cb-private-pool` library component).
 
 ## Policy Validation
 
-**Upstream:** Includes a `policy-library/` directory with OPA-based constraint
-templates and uses `gcloud beta terraform vet` to validate plans against
-organizational policies before apply.
+**Upstream:** Includes a `policy-library/` directory with 28 OPA constraint
+files and 81 template files, enforced via `gcloud beta terraform vet` in every
+CI pipeline.
 
-**This port:** Does not include policy validation infrastructure. Pulumi does
-not have a direct equivalent of `terraform vet`. Policy enforcement is handled
-via organization policies deployed in Stage 1 and via Pulumi's
-[CrossGuard](https://www.pulumi.com/docs/using-pulumi/crossguard/) policy-as-code
-framework, which can be adopted separately.
+**This port:** Provides a CrossGuard policy pack in the
+[TypeScript foundation's `policy-library/`](https://github.com/VitruvianSoftware/pulumi_ts-example-foundation/tree/main/policy-library)
+directory with 7 policies covering public access, firewall rules, flow logs,
+and naming conventions. The Go foundation references this pack via its own
+`policy-library/README.md`.
+
+**Known gaps:** The CrossGuard pack is not automatically wired into the CI/CD
+pipeline templates (`build/pulumi-preview.yml` does not pass `--policy-pack`).
+Operators should add `--policy-pack ./policy-library` to preview/up commands
+for enforcement. Coverage is narrower than TF's 28+81 constraint suite (no GKE,
+BigQuery, Cloud SQL SSL, or service-usage allowlist constraints).
 
 ## State Backend
 
@@ -50,9 +68,11 @@ and Artifact Registry repositories as part of the CI/CD project. Cloud Build
 is deeply integrated into the deployment workflow.
 
 **This port:** The CI/CD project (`prj-b-cicd`) is created with the relevant
-APIs enabled, but Cloud Build triggers are not provisioned. CI/CD is handled
-entirely by GitHub Actions with Workload Identity Federation (WIF) or service
-account key authentication.
+APIs enabled, but Cloud Build triggers are not provisioned by default. CI/CD
+is handled by GitHub Actions with Workload Identity Federation (WIF). Cloud
+Build support is available as an opt-in alternative via the `.example` files
+described above, but the automated runner-image build pipeline and per-stage
+log/artifact buckets are not ported.
 
 ## Networking: Interconnect and VPN
 
@@ -61,9 +81,13 @@ account key authentication.
 - Partner Interconnect VLAN attachments
 - HA VPN configuration with BGP sessions
 
-**This port:** Creates the Interconnect project but does not include
-Interconnect or VPN resource definitions. The README provides guidance on
-where to extend the code, but the resources must be added manually.
+**This port:** Provides `.example` files implementing Interconnect and VPN
+attachments in both `3-networks-svpc/` and `3-networks-hub-and-spoke/` stages.
+These are opt-in scaffolds that must be activated by the operator. **Known
+gaps:** the example attachments do not include BGP session/peer configuration
+(TF examples create full `google_compute_router_interface` +
+`google_compute_router_peer` resources), and partner interconnect
+`preactivate` handling is not ported.
 
 ## VPC Service Controls
 
@@ -71,30 +95,38 @@ where to extend the code, but the resources must be added manually.
 with Access Context Manager integration, including `access_context.auto.tfvars`
 for perimeter member management.
 
-**This port:** Access Context Manager policy creation is supported in Stage 1,
-but VPC-SC perimeters and access levels are not configured. The firewall
-policies and Private Google Access routes provide a baseline network security
-posture.
+**This port:** Implements VPC-SC perimeters and access levels in
+`3-networks-svpc` and `3-networks-hub-and-spoke` via the shared library's
+`vpc-service-controls` component. Access Context Manager policy creation is
+supported in Stage 1. **Known gap:** the hub project in hub-and-spoke topology
+does not receive its own VPC-SC perimeter (TF applies one unconditionally).
 
 ## Assured Workloads
 
 **Upstream:** Stage 2 (`2-environments`) includes optional Assured Workloads
 configuration for compliance-regulated environments.
 
-**This port:** Stage 2 creates per-environment KMS and Secrets projects but
-does not include Assured Workloads resource definitions. The `assuredworkloads`
-API is enabled in the seed project, but workload creation must be added
-manually.
+**This port:** Implements Assured Workloads in Stage 2 via the
+`AssuredWorkloadConfig` structure, with `FEDRAMP_MODERATE` as the default
+compliance regime. **Known gaps:** the `assured_workload_id` and
+`assured_workload_resources` values are computed but not exported as stack
+outputs, and the TS port does not wire the configuration into the env stacks.
 
-## App Infrastructure: Confidential Space
+## App Infrastructure: Stage 5
 
-**Upstream:** Stage 5 (`5-app-infra`) deploys a Confidential Space workload
-with integrity verification, token claim configuration, and Source Repository
-integration.
+**Upstream:** Stage 5 (`5-app-infra`) deploys sample workloads per business
+unit environment:
+- Service account + instance template + compute instance on the SVPC project
+- The same on the peering project
+- A Confidential Space stack (WIF pool, OIDC provider, confidential VM)
 
-**This port:** Stage 5 deploys a sample Cloud Run service and BigQuery dataset
-using the shared library components. Confidential Space resources are not
-included.
+**This port:** The default `5-app-infra` program exports only `project_id` and
+`region` from Stage 4. The env_base workload (compute instances) and
+Confidential Space stack are provided as opt-in examples behind the
+`//go:build example` build tag in `example_env_base.go` and
+`example_confidential_space.go`. **Known gaps:** the example code is not
+invoked from `main()` even when the build tag is active — `deployEnvBase` and
+`deployConfidentialSpace` are defined but never called.
 
 ## Naming Conventions
 
