@@ -428,7 +428,21 @@ func main() {
 		ctx.Export("subnets_names", subnetNames)
 		ctx.Export("subnets_ips", subnetIPs)
 		ctx.Export("subnets_self_links", subnetSelfLinks)
-		ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))
+		// Secondary ranges: build a list from each subnet's secondary_ip_ranges.
+		// TF outputs this as a list of objects with range_name and ip_cidr_range.
+		var secondaryRangesList pulumi.ArrayOutput
+		for _, subnet := range spokeVpc.Subnets {
+			secondaryRangesList = pulumi.All(secondaryRangesList, subnet.SecondaryIpRanges).ApplyT(func(args []interface{}) []interface{} {
+				existing, _ := args[0].([]interface{})
+				ranges, _ := args[1].([]interface{})
+				return append(existing, ranges...)
+			}).(pulumi.ArrayOutput)
+		}
+		if secondaryRangesList == (pulumi.ArrayOutput{}) {
+			ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))
+		} else {
+			ctx.Export("subnets_secondary_ranges", secondaryRangesList)
+		}
 		ctx.Export("enforce_vpcsc", pulumi.Bool(cfg.EnforceVpcSc))
 		ctx.Export("service_perimeter_name", perimeterName)
 		ctx.Export("access_level_name", accessLevelName)
