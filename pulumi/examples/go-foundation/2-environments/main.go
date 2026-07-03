@@ -64,6 +64,13 @@ func main() {
 			ctx.Export(fmt.Sprintf("%s_env_kms_project_id", env), outputs.KMSProjectID)
 			ctx.Export(fmt.Sprintf("%s_env_kms_project_number", env), outputs.KMSProjectNumber)
 			ctx.Export(fmt.Sprintf("%s_env_secrets_project_id", env), outputs.SecretsProjectID)
+
+			// Export Assured Workload outputs when configured.
+			// Matches TF's assured_workload_id and assured_workload_resources outputs.
+			if outputs.AssuredWorkloadID != (pulumi.StringOutput{}) {
+				ctx.Export(fmt.Sprintf("%s_assured_workload_id", env), outputs.AssuredWorkloadID)
+				ctx.Export(fmt.Sprintf("%s_assured_workload_resources", env), outputs.AssuredWorkloadResources)
+			}
 		}
 
 		return nil
