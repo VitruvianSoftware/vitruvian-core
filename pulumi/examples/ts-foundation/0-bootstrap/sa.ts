@@ -19,7 +19,9 @@ export async function deployServiceAccounts(
     cfg: BootstrapConfig,
     seedProject: gcp.organizations.Project,
     cicdProjectId: pulumi.Output<string>,
+groupDependsOn?: pulumi.Resource[],
 ): Promise<GranularSAs> {
+    const opts = { dependsOn: groupDependsOn };
     const parentType = cfg.parentType;
     const parentId = cfg.parentId;
 
@@ -145,7 +147,7 @@ export async function deployServiceAccounts(
             parentType: "organization",
             parentId: cfg.orgId,
             roles: roles,
-        });
+        }, opts);
     }
 
     // Parent-level IAM bindings (folder or org)
@@ -155,7 +157,7 @@ export async function deployServiceAccounts(
             parentType: parentType,
             parentId: parentId,
             roles: roles,
-        });
+        }, opts);
     }
 
     // Seed project IAM bindings
@@ -165,7 +167,7 @@ export async function deployServiceAccounts(
             parentType: "project",
             parentId: seedProject.projectId,
             roles: roles,
-        });
+        }, opts);
     }
 
     // CI/CD project IAM bindings
@@ -175,7 +177,7 @@ export async function deployServiceAccounts(
             parentType: "project",
             parentId: cicdProjectId,
             roles: roles,
-        });
+        }, opts);
     }
 
     // Remove default editor role from bootstrap projects
@@ -187,7 +189,7 @@ export async function deployServiceAccounts(
             parentType: "project",
             parentId: projectId,
             roles: ["roles/editor"],
-        });
+        }, opts);
     }
 
     // Billing account IAM
@@ -196,13 +198,13 @@ export async function deployServiceAccounts(
             billingAccountId: cfg.billingAccount,
             role: "roles/billing.user",
             member: pulumi.interpolate`serviceAccount:${serviceAccounts[key].email}`,
-        });
+        }, opts);
 
         new gcp.billing.AccountIamMember(`billing-admin-${key}`, {
             billingAccountId: cfg.billingAccount,
             role: "roles/billing.admin",
             member: pulumi.interpolate`serviceAccount:${serviceAccounts[key].email}`,
-        });
+        }, opts);
     }
 
     // Billing account sink writer for org SA
@@ -210,7 +212,7 @@ export async function deployServiceAccounts(
         billingAccountId: cfg.billingAccount,
         role: "roles/logging.configWriter",
         member: pulumi.interpolate`serviceAccount:${serviceAccounts["org"].email}`,
-    });
+    }, opts);
 
     return { saEmails, serviceAccounts };
 }

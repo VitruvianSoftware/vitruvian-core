@@ -107,7 +107,7 @@ export = async () => {
     /*************************************************
       Service Accounts and IAM (mirrors sa.tf)
     *************************************************/
-    const saOutputs = await deployServiceAccounts(cfg, seedProject, cicdOutputs.cicdProjectId);
+    const saOutputs = await deployServiceAccounts(cfg, seedProject, cicdOutputs.cicdProjectId, groupOutputs.dependsOn);
 
     /*************************************************
       Projects state bucket (for 4-projects stage)
@@ -164,7 +164,7 @@ export = async () => {
             orgId: cfg.orgId,
             role: role,
             member: `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
-        });
+        }, { dependsOn: groupOutputs.dependsOn });
     }
 
     /*************************************************

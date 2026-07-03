@@ -82,7 +82,7 @@ export = async () => {
     for (const [constraint, enforced] of Object.entries(booleanPolicies)) {
         new OrgPolicyBoolean(`org-policy-${constraint.replace(/\./g, "-")}`, {
             orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
             constraint: constraint,
             enforced: enforced,
         });
@@ -91,7 +91,7 @@ export = async () => {
     // VM external IP deny all
     new OrgPolicyList("deny-vm-external-ip", {
         orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
         constraint: "compute.vmExternalIpAccess",
         policyType: "deny",
         values: ["all"],
@@ -100,7 +100,7 @@ export = async () => {
     // Restrict protocol forwarding to internal only (was missing)
     new OrgPolicyList("restrict-protocol-forwarding", {
         orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
         constraint: "compute.restrictProtocolForwardingCreationForTypes",
         policyType: "allow",
         values: ["INTERNAL"],
@@ -111,7 +111,7 @@ export = async () => {
     if (cfg.essentialContactsDomainsToAllow.length > 0) {
         new OrgPolicyList("essential-contacts-domain-restriction", {
             orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
             constraint: "essentialcontacts.allowedContactDomains",
             policyType: "allow",
             values: cfg.essentialContactsDomainsToAllow.map(d => d.startsWith("@") ? d : `@${d}`),
@@ -122,7 +122,7 @@ export = async () => {
     if (cfg.enforceAllowedWorkerPools && cfg.cloudBuildPrivateWorkerPoolId) {
         new OrgPolicyList("allowed-worker-pools", {
             orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
             constraint: "cloudbuild.allowedWorkerPools",
             policyType: "allow",
             values: [cfg.cloudBuildPrivateWorkerPoolId],
@@ -379,14 +379,14 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
     const centralizedLogging = new CentralizedLogging("org-logging", {
         projectId: orgAuditLogs.projectId,
         orgId: cfg.orgId,
-        folderId: cfg.parentFolder || undefined,
+
         billingAccount: cfg.enableBillingAccountSink ? cfg.billingAccount : undefined,
         loggingBucketOptions: {
             name: "LogBucket",
             loggingSinkName: "sk-c-logging-logbkt",
             loggingSinkFilter: logFilter,
-            enableAnalytics: true,
-            linkedDatasetId: "ds_c_prj_aggregated_logs_analytics",
+
+
         },
         bigqueryOptions: {
             datasetName: "audit_logs",
@@ -418,7 +418,7 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
     if (cfg.domainsToAllow.length > 0) {
         new DomainRestrictedSharing("domain-restricted-sharing", {
             orgId: cfg.orgId,
-            folderId: cfg.parentFolder || undefined,
+
             domainsToAllow: cfg.domainsToAllow,
         }, { dependsOn: [centralizedLogging] });
     }
