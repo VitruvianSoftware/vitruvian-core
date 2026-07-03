@@ -116,6 +116,16 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		_, err := accesscontextmanager.NewServicePerimeterDryRunResource(ctx, "svpc-vpcsc-attach-dry-run", &accesscontextmanager.ServicePerimeterDryRunResourceArgs{
+			PerimeterName: perimeterName,
+			Resource: svpcProject.Project.Number.ApplyT(func(n string) string {
+				return fmt.Sprintf("projects/%s", n)
+			}).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result.SVPCProjectID = svpcProject.Project.ProjectId

@@ -95,6 +95,16 @@ func deployConfidentialSpaceProject(
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		_, err := accesscontextmanager.NewServicePerimeterDryRunResource(ctx, "conf-space-vpcsc-attach-dry-run", &accesscontextmanager.ServicePerimeterDryRunResourceArgs{
+			PerimeterName: perimeterName,
+			Resource: confProject.Project.Number.ApplyT(func(n string) string {
+				return fmt.Sprintf("projects/%s", n)
+			}).(pulumi.StringOutput),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 4. Workload Service Account for Confidential Space

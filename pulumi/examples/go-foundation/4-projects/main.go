@@ -275,6 +275,8 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		c.EnforceVpcSc = true
 	}
 
+
+
 	// Peering
 	if val, err := conf.TryBool("peering_enabled"); err == nil {
 		c.PeeringEnabled = val
