@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.2](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.1...foundation-centralized-logging-v0.5.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* **ts/centralized-logging:** add Log Analytics, linked dataset, folder sinks ([#66](https://github.com/VitruvianSoftware/pulumi-library/issues/66)) ([8e6dcda](https://github.com/VitruvianSoftware/pulumi-library/commit/8e6dcda341e8a48f1d329dda26e8db2792154ca0))
+* **ts/psc:** add support for target, noAutomateDnsZone, and serviceDirectoryRegistrations ([#65](https://github.com/VitruvianSoftware/pulumi-library/issues/65)) ([7482d31](https://github.com/VitruvianSoftware/pulumi-library/commit/7482d31d40f31d627138fbf4ccca3c9038f08bf8))
+
 ## [0.5.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.0...foundation-centralized-logging-v0.5.1) (2026-05-07)
 
 

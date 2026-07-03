@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2](https://github.com/VitruvianSoftware/pulumi-library/compare/go-logging-v0.4.1...go-logging-v0.4.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* **go/logging:** grant bucketWriter for log-bucket destination ([#63](https://github.com/VitruvianSoftware/pulumi-library/issues/63)) ([b0c586d](https://github.com/VitruvianSoftware/pulumi-library/commit/b0c586dc2fe850a144b10fc400beff42fbb2f1bb))
+* **logging:** grant bucketWriter instead of logWriter for log-bucket sinks ([#59](https://github.com/VitruvianSoftware/pulumi-library/issues/59)) ([5bfe05f](https://github.com/VitruvianSoftware/pulumi-library/commit/5bfe05f83032267754ec81ba8de1e4e39ee9beb5))
+
 ## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-logging-v0.4.0...go-logging-v0.4.1) (2026-05-07)
 
 

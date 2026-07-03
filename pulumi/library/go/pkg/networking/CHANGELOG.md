@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-networking-v0.4.0...go-networking-v0.5.0) (2026-07-03)
+
+
+### Features
+
+* **go/networking:** support configuring VPC flow log options on SubnetArgs ([#61](https://github.com/VitruvianSoftware/pulumi-library/issues/61)) ([a71371f](https://github.com/VitruvianSoftware/pulumi-library/commit/a71371f11968c5cfb9ebf3ffe48e5cbdf249f160))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-networking-v0.3.1...go-networking-v0.4.0) (2026-05-06)
 
 
