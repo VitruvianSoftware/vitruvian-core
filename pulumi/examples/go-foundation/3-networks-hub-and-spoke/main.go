@@ -491,7 +491,7 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		SpokeProjectID: conf.Get("spoke_project_id"),
 		Region1:        conf.Get("region1"),
 		Region2:        conf.Get("region2"),
-		ParentID:       conf.Get("parent_id"),
+		ParentID:       conf.Require("parent_id"),
 		Domain:         conf.Get("domain"),
 		PolicyID:       conf.Get("policy_id"),
 		OrgStackName:   conf.Get("org_stack_name"),
@@ -535,9 +535,6 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	}
 	if c.PscIP == "" {
 		c.PscIP = "10.17.0.6"
-	}
-	if c.ParentID == "" {
-		c.ParentID = "organizations/123456789012"
 	}
 	if len(c.VpcScRestrictedServices) == 0 {
 		c.VpcScRestrictedServices = vpc_sc.GetDefaultRestrictedServices()

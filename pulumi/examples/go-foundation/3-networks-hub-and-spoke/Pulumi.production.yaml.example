@@ -2,7 +2,8 @@
 config:
   # Required
   foundation-3-networks-hub-and-spoke:env: "production"
-  foundation-3-networks-hub-and-spoke:project_id: "prj-p-hub-and-spoke"
+  foundation-3-networks-hub-and-spoke:env_code: "p"
+  foundation-3-networks-hub-and-spoke:hub_project_id: "prj-p-hub-and-spoke"
   foundation-3-networks-hub-and-spoke:parent_id: "organizations/YOUR_ORG_ID"
 
   # Optional

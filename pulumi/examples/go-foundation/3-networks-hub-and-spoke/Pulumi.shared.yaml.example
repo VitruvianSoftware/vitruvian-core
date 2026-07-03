@@ -1,0 +1,11 @@
+# Pulumi Configuration for 3-networks-hub-and-spoke (shared stack)
+config:
+  # Required
+  foundation-3-networks-hub-and-spoke:env: "shared"
+  foundation-3-networks-hub-and-spoke:env_code: "c"
+  foundation-3-networks-hub-and-spoke:hub_project_id: "prj-c-hub-and-spoke"
+  foundation-3-networks-hub-and-spoke:parent_id: "organizations/YOUR_ORG_ID"
+
+  # Optional
+  # foundation-3-networks-hub-and-spoke:region1: "us-central1"
+  # foundation-3-networks-hub-and-spoke:region2: "us-west1"
