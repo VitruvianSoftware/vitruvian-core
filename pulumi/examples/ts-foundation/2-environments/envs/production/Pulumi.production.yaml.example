@@ -3,4 +3,5 @@ config:
   2-environments-production:org_id: "YOUR_ORG_ID"
   2-environments-production:billing_account: "XXXXXX-XXXXXX-XXXXXX"
   2-environments-production:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  2-environments-production:parent: "folders/YOUR_FOLDER_ID"
   # 2-environments-production:project_prefix: "prj"

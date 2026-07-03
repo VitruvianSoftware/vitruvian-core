@@ -10,11 +10,11 @@ export = async () => {
     const config = new pulumi.Config();
 
     // Stack references for remote state
-    const bootstrapRef = new pulumi.StackReference("bootstrap");
-    const orgRef = new pulumi.StackReference("org");
+    const bootstrapStackName = config.get("bootstrap_stack") || "bootstrap";
+    const orgStackName = config.get("org_stack") || "org";
+    const bootstrapRef = new pulumi.StackReference(bootstrapStackName);
+    const orgRef = new pulumi.StackReference(orgStackName);
 
-    const commonConfig = bootstrapRef.getOutput("common_config") as pulumi.Output<Record<string, string>>;
-    const requiredGroups = bootstrapRef.getOutput("required_groups") as pulumi.Output<Record<string, string>>;
     const tags = orgRef.getOutput("tags");
 
     const result = deployEnvBaseline({
