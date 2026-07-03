@@ -14,7 +14,8 @@ export = async () => {
     const config = new pulumi.Config();
     const projectRef = new pulumi.StackReference("projects-bu1-production");
 
-    const projectId = projectRef.getOutput("shared_vpc_project") as pulumi.Output<string>;
+    // 4-projects exports "shared_vpc_project_id" (not "shared_vpc_project").
+    const projectId = projectRef.getOutput("shared_vpc_project_id") as pulumi.Output<string>;
     const region = config.get("region") || "us-central1";
 
     // Scaffold exports — matching TF 5-app-infra outputs structure.
