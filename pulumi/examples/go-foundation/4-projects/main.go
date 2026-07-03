@@ -53,8 +53,10 @@ func main() {
 			return err
 		}
 
-		// 2. Resolve the environment folder from Stage 1 outputs
-		folderID := orgStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_folder_id", cfg.Env)))
+		// 2. Resolve the environment folder from Stage 2 outputs
+		// TF reads this from the 2-environments remote state (env_folder_name).
+		// The Go 2-environments stack exports "{env}_env_folder" (e.g. "development_env_folder").
+		folderID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_folder", cfg.Env)))
 
 		// Resolve the SVPC host project for this environment
 		networkProjectID := orgStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_network_project_id", cfg.Env)))
