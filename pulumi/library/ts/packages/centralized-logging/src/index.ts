@@ -97,6 +97,24 @@ export class CentralizedLogging extends pulumi.ComponentResource {
             }, { parent: this });
             iamDependencies.push(iam);
             _logBucketName = bucket.bucketId;
+
+            // Billing account sink → log bucket (mirrors Go/TF billing sinks)
+            if (args.billingAccount) {
+                const billSinkName = `${args.loggingBucketOptions.loggingSinkName ?? `sk-c-logging-${args.loggingBucketOptions.name}`}-billing`;
+                const billSink = new gcp.logging.BillingAccountSink(`${name}-log-bucket-billing-sink`, {
+                    name: billSinkName,
+                    billingAccount: args.billingAccount,
+                    destination: pulumi.interpolate`logging.googleapis.com/projects/${args.projectId}/locations/${args.loggingBucketOptions.location ?? "global"}/buckets/${bucket.bucketId}`,
+                }, { parent: this });
+                const billIam = new gcp.projects.IAMMember(`${name}-log-bucket-billing-iam`, {
+                    project: args.projectId,
+                    role: "roles/logging.bucketWriter",
+                    member: billSink.writerIdentity,
+                }, { parent: this });
+                iamDependencies.push(billIam);
+                billingSinkNames["logbucket"] = pulumi.output(billSinkName);
+            }
+
         }
 
         // BigQuery sink

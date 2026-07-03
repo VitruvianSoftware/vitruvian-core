@@ -11,6 +11,10 @@ export interface PrivateServiceConnectArgs {
     networkSelfLink: pulumi.Input<string>;
     address: string;
     forwardingRuleName: string;
+    target?: string;
+    noAutomateDnsZone?: boolean;
+    serviceDirectoryNamespace?: string;
+    serviceDirectoryRegion?: string;
     subnetworkName?: string;
     subnetworkIpCidrRange?: string;
     region?: string;
@@ -29,14 +33,32 @@ export class PrivateServiceConnect extends pulumi.ComponentResource {
             network: args.networkSelfLink,
         }, { parent: this });
 
-        new gcp.compute.GlobalForwardingRule(`${name}-psc-fwd-rule`, {
+        const targetStr = args.target || "vpc-sc";
+
+        const fwdArgs: gcp.compute.GlobalForwardingRuleArgs = {
             name: args.forwardingRuleName,
             project: args.projectId,
             network: args.networkSelfLink,
             ipAddress: addr.id,
-            target: "all-apis",
+            target: targetStr,
             loadBalancingScheme: "",
-        }, { parent: this });
+        };
+
+        if (args.noAutomateDnsZone !== false) {
+            fwdArgs.noAutomateDnsZone = true;
+        }
+
+        if (args.serviceDirectoryNamespace || args.serviceDirectoryRegion) {
+            fwdArgs.serviceDirectoryRegistrations = {};
+            if (args.serviceDirectoryNamespace) {
+                fwdArgs.serviceDirectoryRegistrations.namespace = args.serviceDirectoryNamespace;
+            }
+            if (args.serviceDirectoryRegion) {
+                fwdArgs.serviceDirectoryRegistrations.serviceDirectoryRegion = args.serviceDirectoryRegion;
+            }
+        }
+
+        new gcp.compute.GlobalForwardingRule(`${name}-psc-fwd-rule`, fwdArgs, { parent: this });
 
         this.registerOutputs({});
     }

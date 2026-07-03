@@ -10,6 +10,7 @@ import * as gcp from "@pulumi/gcp";
 export interface OrgPolicyBooleanArgs {
     /** Organization ID (numeric). */
     orgId: string;
+    folderId?: string;
     /** Constraint name (e.g., "compute.disableNestedVirtualization"). */
     constraint: string;
     /** Whether the policy is enforced. */
@@ -20,9 +21,10 @@ export class OrgPolicyBoolean extends pulumi.ComponentResource {
     constructor(name: string, args: OrgPolicyBooleanArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:OrgPolicyBoolean", name, args, opts);
 
+        const parentId = args.folderId ? `folders/${args.folderId}` : `organizations/${args.orgId}`;
         new gcp.orgpolicy.Policy(`${name}-policy`, {
-            name: `organizations/${args.orgId}/policies/${args.constraint}`,
-            parent: `organizations/${args.orgId}`,
+            name: `${parentId}/policies/${args.constraint}`,
+            parent: parentId,
             spec: {
                 rules: [{
                     enforce: args.enforced ? "TRUE" : "FALSE",
@@ -37,6 +39,7 @@ export class OrgPolicyBoolean extends pulumi.ComponentResource {
 export interface OrgPolicyListArgs {
     /** Organization ID (numeric). */
     orgId: string;
+    folderId?: string;
     /** Constraint name. */
     constraint: string;
     /** Policy type: "allow" or "deny". */
@@ -64,9 +67,10 @@ export class OrgPolicyList extends pulumi.ComponentResource {
             }
         }
 
+        const parentId = args.folderId ? `folders/${args.folderId}` : `organizations/${args.orgId}`;
         new gcp.orgpolicy.Policy(`${name}-policy`, {
-            name: `organizations/${args.orgId}/policies/${args.constraint}`,
-            parent: `organizations/${args.orgId}`,
+            name: `${parentId}/policies/${args.constraint}`,
+            parent: parentId,
             spec: {
                 rules: [rule],
             },
@@ -79,6 +83,7 @@ export class OrgPolicyList extends pulumi.ComponentResource {
 export interface DomainRestrictedSharingArgs {
     /** Organization ID (numeric). */
     orgId: string;
+    folderId?: string;
     /** List of allowed domain customer IDs (e.g., ["C0xxxxxxx"]). */
     domainsToAllow: string[];
 }
@@ -87,9 +92,10 @@ export class DomainRestrictedSharing extends pulumi.ComponentResource {
     constructor(name: string, args: DomainRestrictedSharingArgs, opts?: pulumi.ComponentResourceOptions) {
         super("foundation:modules:DomainRestrictedSharing", name, args, opts);
 
+        const parentId = args.folderId ? `folders/${args.folderId}` : `organizations/${args.orgId}`;
         new gcp.orgpolicy.Policy(`${name}-policy`, {
-            name: `organizations/${args.orgId}/policies/iam.allowedPolicyMemberDomains`,
-            parent: `organizations/${args.orgId}`,
+            name: `${parentId}/policies/iam.allowedPolicyMemberDomains`,
+            parent: parentId,
             spec: {
                 rules: [{
                     values: {
