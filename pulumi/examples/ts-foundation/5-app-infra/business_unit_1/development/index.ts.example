@@ -14,7 +14,8 @@ export = async () => {
     const projectRef = new pulumi.StackReference("projects-bu1-development");
 
     const projectId = projectRef.getOutput("shared_vpc_project_id") as pulumi.Output<string>;
-    const region = config.get("region") || "us-central1";
+    const defaultRegion = projectRef.getOutput("default_region") as pulumi.Output<string>;
+    const region = config.get("region") ? pulumi.output(config.get("region") as string) : defaultRegion;
     const machineType = config.get("machine_type") || "f1-micro";
     const numInstances = config.getNumber("num_instances") || 1;
     const hostname = config.get("hostname") || "example-app";
@@ -32,12 +33,12 @@ export = async () => {
         projectId: projectId,
         namePrefix: "example-app",
         machineType: machineType,
-        region: region,
+        region: region as unknown as string,
         sourceImageFamily: "debian-12",
         sourceImageProject: "debian-cloud",
         diskSizeGb: 100,
         diskType: "pd-ssd",
-        subnetwork: `projects/${config.get("shared_vpc_host_project") || ""}/regions/${region}/subnetworks/sb-d-svpc-${region}`,
+        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
         serviceAccount: {
             email: sa.email,
             scopes: ["compute-rw"],
@@ -50,10 +51,10 @@ export = async () => {
     // Compute instance
     const instance = new ComputeInstance("example-instance", {
         projectId: projectId,
-        zone: `${region}-a`,
+        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
         instanceName: hostname,
         instanceTemplate: template.templateSelfLink,
-        subnetwork: `projects/${config.get("shared_vpc_host_project") || ""}/regions/${region}/subnetworks/sb-d-svpc-${region}`,
+        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
         numInstances: numInstances,
     });
 
@@ -75,7 +76,7 @@ export = async () => {
         projectId: peeringProjectId,
         namePrefix: "peering-app",
         machineType: machineType,
-        region: region,
+        region: region as unknown as string,
         sourceImageFamily: "debian-12",
         sourceImageProject: "debian-cloud",
         diskSizeGb: 100,
@@ -92,7 +93,7 @@ export = async () => {
 
     const peeringInstance = new ComputeInstance("peering-instance", {
         projectId: peeringProjectId,
-        zone: `${region}-a`,
+        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
         instanceName: "peering-app",
         instanceTemplate: peeringTemplate.templateSelfLink,
         subnetwork: peeringSubnet,
@@ -145,14 +146,14 @@ export = async () => {
         projectId: confSpaceProjectId,
         namePrefix: "conf-space-app",
         machineType: "n2d-standard-2",
-        region: region,
+        region: region as unknown as string,
         sourceImageFamily: "confidential-space",
         sourceImageProject: "confidential-space-images",
         diskSizeGb: 20,
         diskType: "pd-ssd",
-        subnetwork: `projects/${config.get("shared_vpc_host_project") || ""}/regions/${region}/subnetworks/sb-d-svpc-${region}`,
+        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
         enableConfidentialVm: true,
-        minCpuPlatform: "AMD Rome",
+        minCpuPlatform: "AMD Milan",
         confidentialInstanceType: "SEV",
         metadata: {
             "tee-image-reference": `${region}-docker.pkg.dev/fake-project/tf-runners/confidential_space_image:latest`,
@@ -165,17 +166,17 @@ export = async () => {
 
     const confInstance = new ComputeInstance("d-confidential-instance", {
         projectId: confSpaceProjectId,
-        zone: `${region}-a`,
+        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
         instanceName: "conf-space-instance",
         instanceTemplate: confTemplate.templateSelfLink,
-        subnetwork: `projects/${config.get("shared_vpc_host_project") || ""}/regions/${region}/subnetworks/sb-d-svpc-${region}`,
+        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
         numInstances: 1,
     });
 
     return {
         // Standard compute instance outputs
         project_id: projectId,
-        region: region,
+        region: region as unknown as string,
         instances_self_links: pulumi.all(instance.instances.map(i => i.selfLink)),
         instances_names: pulumi.all(instance.instances.map(i => i.name)),
         instances_zones: pulumi.all(instance.instances.map(i => i.zone)),
@@ -194,7 +195,7 @@ export = async () => {
         confidential_instances_self_links: pulumi.all(confInstance.instances.map(i => i.selfLink)),
         confidential_instances_names: pulumi.all(confInstance.instances.map(i => i.name)),
         confidential_instances_zones: pulumi.all(confInstance.instances.map(i => i.zone)),
-        available_zones: [pulumi.interpolate`${region}-a`],
-        confidential_available_zones: [pulumi.interpolate`${region}-a`],
+        available_zones: gcp.compute.getZonesOutput({ project: projectId, region: region }).names,
+        confidential_available_zones: gcp.compute.getZonesOutput({ project: projectId, region: region }).names,
     };
 };
