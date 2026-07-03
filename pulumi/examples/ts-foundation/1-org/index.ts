@@ -329,6 +329,7 @@ export = async () => {
     const centralizedLogging = new CentralizedLogging("org-logging", {
         projectId: orgAuditLogs.projectId,
         orgId: cfg.orgId,
+        billingAccount: cfg.billingAccount,
         loggingBucketOptions: {
             name: "LogBucket",
             loggingSinkName: "sk-c-logging-logbkt",
