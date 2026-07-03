@@ -216,7 +216,7 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 1. Record the outputs. These will be consumed by downstream stages via [Stack References](../docs/GLOSSARY.md#pulumi-stack-reference):
 
    ```bash
-   export CICD_PROJECT_ID=$(pulumi stack output cicd_project_id)
+   export CICD_PROJECT_ID=$(pulumi stack output cloudbuild_project_id)
    export WIF_PROVIDER=$(pulumi stack output wif_provider_name)
 
    echo "CI/CD Project = ${CICD_PROJECT_ID}"
@@ -331,7 +331,7 @@ The Pulumi foundation supports pluggable CI/CD providers:
 | Name | Description |
 |------|-------------|
 | `seed_project_id` | Project where service accounts and core APIs are enabled |
-| `cicd_project_id` | Project where CI/CD infrastructure resides |
+| `cloudbuild_project_id` | Project where CI/CD infrastructure resides |
 | `gcs_bucket_tfstate` | Bucket used for storing Pulumi state |
 | `bootstrap_step_terraform_service_account_email` | Bootstrap Step Service Account |
 | `organization_step_terraform_service_account_email` | Organization Step Service Account |
