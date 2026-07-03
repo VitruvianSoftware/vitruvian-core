@@ -116,7 +116,7 @@ assert_exists "CICD project exists (prj-b-cicd-*)" "$CICD_PROJECT"
 # Check KMS key ring
 if [ -n "$SEED_PROJECT" ]; then
   KMS_KEYRING=$(gcloud kms keyrings list \
-    --location=us-central1 \
+    --location=us \
     --project="$SEED_PROJECT" \
     --format="value(name)" 2>/dev/null | head -1)
   assert_exists "KMS keyring exists in seed project" "$KMS_KEYRING"
@@ -197,10 +197,10 @@ echo "━━━ Phase 3: Networks ━━━"
 
 NET_PROJECTS=$(gcloud projects list \
   --format="value(projectId)" \
-  --filter="projectId:(prj-d-shared-base* OR prj-n-shared-base* OR prj-p-shared-base* OR prj-d-shared-restricted* OR prj-n-shared-restricted* OR prj-p-shared-restricted*)" 2>/dev/null | wc -l | tr -d ' ')
+  --filter="projectId:(prj-d-svpc* OR prj-n-svpc* OR prj-p-svpc*)" 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$NET_PROJECTS" -ge 1 ] 2>/dev/null; then
-  assert_count "Network host projects created" "$NET_PROJECTS" 2
+  assert_count "Network host projects created" "$NET_PROJECTS" 3
 else
   warn_missing "Phase 3 not deployed"
 fi
