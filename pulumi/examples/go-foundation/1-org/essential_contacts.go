@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/essentialcontacts"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -104,9 +105,18 @@ func deployEssentialContacts(ctx *pulumi.Context, cfg *OrgConfig) error {
 		contactMap[email] = unique
 	}
 
-	// Create one Essential Contact per unique email
-	idx := 0
-	for email, categories := range contactMap {
+	// Create one Essential Contact per unique email.
+	// Sort by email to ensure deterministic Pulumi resource names — Go map
+	// iteration order is nondeterministic, which would otherwise cause
+	// resource URN churn across preview/up runs.
+	sortedEmails := make([]string, 0, len(contactMap))
+	for email := range contactMap {
+		sortedEmails = append(sortedEmails, email)
+	}
+	sort.Strings(sortedEmails)
+
+	for idx, email := range sortedEmails {
+		categories := contactMap[email]
 		catArray := make(pulumi.StringArray, len(categories))
 		for i, c := range categories {
 			catArray[i] = pulumi.String(c)
@@ -120,7 +130,6 @@ func deployEssentialContacts(ctx *pulumi.Context, cfg *OrgConfig) error {
 		}); err != nil {
 			return err
 		}
-		idx++
 	}
 
 	return nil
