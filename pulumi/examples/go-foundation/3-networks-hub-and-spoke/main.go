@@ -108,6 +108,20 @@ func main() {
 				return err
 			}
 
+			// Hub Egress internet route (tag-based, only when NAT is enabled)
+			_, err = compute.NewRoute(ctx, "hub-egress-internet", &compute.RouteArgs{
+				Project:        pulumi.String(cfg.HubProjectID),
+				Name:           pulumi.String(fmt.Sprintf("rt-%s-hub-1000-egress-internet-default", cfg.EnvCode)),
+				Network:        hubVpc.VPC.ID(),
+				DestRange:      pulumi.String("0.0.0.0/0"),
+				NextHopGateway: pulumi.String("default-internet-gateway"),
+				Priority:       pulumi.Int(1000),
+				Tags:           pulumi.StringArray{pulumi.String("egress-internet")},
+			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
+			if err != nil {
+				return err
+			}
+
 			// 4. Hub VPC-Level Firewall — data-driven rules
 			hubFw, err := networking.NewNetworkFirewallPolicy(ctx, "hub-vpc-fw", &networking.NetworkFirewallPolicyArgs{
 				ProjectID:  pulumi.String(cfg.HubProjectID),
