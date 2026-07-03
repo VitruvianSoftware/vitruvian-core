@@ -33,10 +33,8 @@ jest.mock("../../services/tabs", () => ({
   TabService: { getCurrentTabs: jest.fn() },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { getDeviceId } = require("../../services/deviceId");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { TabService } = require("../../services/tabs");
+import { getDeviceId } from "../../services/deviceId";
+import { TabService } from "../../services/tabs";
 
 const ME = "this-device";
 

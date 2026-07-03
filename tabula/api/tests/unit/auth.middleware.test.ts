@@ -27,6 +27,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import {
   authenticateUser,
   authenticateUserAllowQueryToken,
+  optionalAuth,
 } from "../../src/middleware/auth";
 
 describe("Auth Middleware", () => {
@@ -211,14 +212,6 @@ describe("Auth Middleware", () => {
   });
 
   describe("optionalAuth", () => {
-    // Import the function
-    let optionalAuth: typeof import("../../src/middleware/auth").optionalAuth;
-
-    beforeAll(async () => {
-      const module = await import("../../src/middleware/auth");
-      optionalAuth = module.optionalAuth;
-    });
-
     it("should verify user if authorization header is present", async () => {
       mockRequest.headers = { authorization: "Bearer valid-token" };
       (mockRequest.jwtVerify as jest.Mock).mockResolvedValue(undefined);
