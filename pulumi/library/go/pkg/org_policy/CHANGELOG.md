@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.1](https://github.com/VitruvianSoftware/pulumi-library/compare/v1.0.0...v1.0.1) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* rename Go library packages to descriptive, upstream-consistent names ([6734481](https://github.com/VitruvianSoftware/pulumi-library/commit/6734481530f65d20d1a6de2f9dbb3bd5e6f7d43a))
+
+
+### Bug Fixes
+
+* **go:** publish go-module path-format tags for renamed packages ([7b56cb0](https://github.com/VitruvianSoftware/pulumi-library/commit/7b56cb050503d53da230899e79f58721945c3ec3))
+* **go:** publish go-module path-format tags for renamed packages ([cbbb8b1](https://github.com/VitruvianSoftware/pulumi-library/commit/cbbb8b185bdd2b6b3b848731ddb535cefd3c6a8d))
+* **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
 ## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-org-policy-v0.4.1...go-org-policy-v1.0.0) (2026-07-04)
 
 
