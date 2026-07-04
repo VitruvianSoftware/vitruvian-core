@@ -93,6 +93,7 @@ export async function deployCICDProject(
         "compute.googleapis.com",
         "logging.googleapis.com",
         "iam.googleapis.com",
+        "iamcredentials.googleapis.com",
         "admin.googleapis.com",
         "workflows.googleapis.com",
         "artifactregistry.googleapis.com",

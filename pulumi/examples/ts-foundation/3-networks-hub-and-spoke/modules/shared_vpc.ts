@@ -259,28 +259,6 @@ export class SharedVpc extends pulumi.ComponentResource {
             }, { parent: this, dependsOn: [spokeToHub] });
         }
 
-
-        // ================================================================
-        // Bi-Directional VPC Peering (Spoke <-> Hub)
-        // ================================================================
-        if (args.mode === "spoke" && args.netHubProjectId && args.netHubNetworkSelfLink) {
-            const spokeToHub = new gcp.compute.NetworkPeering(`${name}-spoke-to-hub`, {
-                network: this.network.networkSelfLink,
-                peerNetwork: args.netHubNetworkSelfLink,
-                name: pulumi.interpolate`np-${args.environmentCode}-svpc-spoke-vpc-c-svpc-hub`,
-                exportCustomRoutes: false,
-                importCustomRoutes: true,
-            }, { parent: this });
-
-            const hubToSpoke = new gcp.compute.NetworkPeering(`${name}-hub-to-spoke`, {
-                network: args.netHubNetworkSelfLink,
-                peerNetwork: this.network.networkSelfLink,
-                name: pulumi.interpolate`np-vpc-c-svpc-hub-${args.environmentCode}-svpc-spoke`,
-                exportCustomRoutes: true,
-                importCustomRoutes: false,
-            }, { parent: this, dependsOn: [spokeToHub] });
-        }
-
         // DNS Forwarding / Peering for Hybrid DNS
         if (args.environmentCode === "p" && args.domain && args.targetNameServerAddresses) {
             new gcp.dns.ManagedZone(`${name}-dns-forwarding`, {
@@ -328,10 +306,13 @@ export class SharedVpc extends pulumi.ComponentResource {
             forwardingRuleName: `fr-${vpcName}-psc`,
         }, { parent: this });
 
-        // BGP Cloud Routers (cr5-cr8) for hybrid connectivity
-        const bgpAsn = args.environmentCode === "p" ? 16550 : 64514;
+        // BGP Cloud Routers (cr5-cr8) for hybrid connectivity.
+        // ASN 64514 for all environments (16550 is reserved for partner interconnect,
+        // not the base hub routers). Advertise the private PSC endpoint that serves the
+        // restricted Google APIs, not the public restricted VIP.
+        const bgpAsn = 64514;
         const advRanges = [
-            { range: "199.36.153.4/30" }, // restricted API VIP
+            { range: `${args.pscAddress}/32` }, // restricted Google APIs via PSC endpoint
         ];
         if (args.environmentCode === "p") {
             advRanges.push({ range: "35.199.192.0/19" }); // DNS forwarding

@@ -49,7 +49,7 @@ describe("1-org config defaults", () => {
         const cfg = loadOrgConfig(configWithRequired());
         expect(cfg.orgId).toBe("123456789");
         expect(cfg.billingAccount).toBe("AAAAAA-BBBBBB-CCCCCC");
-        expect(cfg.enableBillingAccountSink).toBe(false);
+        expect(cfg.enableBillingAccountSink).toBe(true);
         expect(cfg.projectPrefix).toBe("prj");
         expect(cfg.folderPrefix).toBe("fldr");
         expect(cfg.defaultRegion).toBe("us-central1");

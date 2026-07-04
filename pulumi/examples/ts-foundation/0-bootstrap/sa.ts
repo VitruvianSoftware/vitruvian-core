@@ -140,6 +140,17 @@ groupDependsOn?: pulumi.Resource[],
         saEmails[key] = sa.email;
     }
 
+    // Self-impersonation: allow each granular SA to mint tokens for itself
+    // (roles/iam.serviceAccountTokenCreator on itself), matching TF self_impersonate
+    // and the Go port. Relies on iamcredentials.googleapis.com on the seed project.
+    for (const [key, sa] of Object.entries(serviceAccounts)) {
+        new gcp.serviceaccount.IAMMember(`sa-self-impersonate-${key}`, {
+            serviceAccountId: sa.name,
+            role: "roles/iam.serviceAccountTokenCreator",
+            member: pulumi.interpolate`serviceAccount:${sa.email}`,
+        }, opts);
+    }
+
     // Org-level IAM bindings
     for (const [key, roles] of Object.entries(orgLevelRoles)) {
         new ParentIamMember(`org-iam-${key}`, {
