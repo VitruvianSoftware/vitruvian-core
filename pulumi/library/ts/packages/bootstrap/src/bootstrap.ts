@@ -55,6 +55,13 @@ export class Bootstrap extends pulumi.ComponentResource {
     if (encryptBucket && !activateApis.includes("cloudkms.googleapis.com")) {
       activateApis.push("cloudkms.googleapis.com");
     }
+    // Impersonation APIs are always enabled on the seed project, matching
+    // terraform-google-bootstrap's impersonation_apis.
+    for (const api of ["serviceusage.googleapis.com", "iamcredentials.googleapis.com"]) {
+      if (!activateApis.includes(api)) {
+        activateApis.push(api);
+      }
+    }
 
     // 1. Seed Project
     this.seedProject = new ProjectFactory(`${name}-seed`, {

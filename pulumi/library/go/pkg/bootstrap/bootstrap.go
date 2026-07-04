@@ -162,6 +162,10 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	if encryptBucket {
 		activateApis = appendIfMissing(activateApis, "cloudkms.googleapis.com")
 	}
+	// Impersonation APIs are always enabled on the seed project, matching
+	// terraform-google-bootstrap's impersonation_apis.
+	activateApis = appendIfMissing(activateApis, "serviceusage.googleapis.com")
+	activateApis = appendIfMissing(activateApis, "iamcredentials.googleapis.com")
 
 	// ========================================================================
 	// 1. Seed Project
