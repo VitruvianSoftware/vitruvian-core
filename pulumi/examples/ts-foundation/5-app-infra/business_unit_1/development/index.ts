@@ -12,6 +12,8 @@ import { InstanceTemplate, ComputeInstance } from "@vitruviansoftware/foundation
 export = async () => {
     const config = new pulumi.Config();
     const projectRef = new pulumi.StackReference("projects-bu1-development");
+    const bootstrapRef = new pulumi.StackReference("bootstrap");
+    const cloudbuildProjectId = bootstrapRef.getOutput("cloudbuild_project_id") as pulumi.Output<string>;
 
     const projectId = projectRef.getOutput("shared_vpc_project_id") as pulumi.Output<string>;
     const defaultRegion = projectRef.getOutput("default_region") as pulumi.Output<string>;
@@ -156,7 +158,7 @@ export = async () => {
         minCpuPlatform: "AMD Milan",
         confidentialInstanceType: "SEV",
         metadata: {
-            "tee-image-reference": `${region}-docker.pkg.dev/fake-project/tf-runners/confidential_space_image:latest`,
+            "tee-image-reference": pulumi.interpolate`${region}-docker.pkg.dev/${cloudbuildProjectId}/tf-runners/confidential_space_image:latest` as any,
         },
         serviceAccount: {
             email: confSpaceSaEmail,

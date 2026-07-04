@@ -39,7 +39,7 @@ describe("5-app-infra config defaults", () => {
             enableCmek: false,
             enableConfidentialSpace: false,
             enableNetworkPeering: false,
-            machineType: "n1-standard-1",
+            machineType: "f1-micro",
         };
     }
 
@@ -68,9 +68,9 @@ describe("5-app-infra config defaults", () => {
         expect(cfg.instanceRegion).toBe("us-central1");
     });
 
-    it("should default machineType to n1-standard-1", () => {
+    it("should default machineType to f1-micro", () => {
         const cfg = defaultAppConfig("development");
-        expect(cfg.machineType).toBe("n1-standard-1");
+        expect(cfg.machineType).toBe("f1-micro");
     });
 
     it("should default all feature flags to false", () => {
