@@ -58,6 +58,8 @@ export function deploySingleProject(name: string, args: SingleProjectArgs): Sing
         folderId: args.folderId,
         deletionPolicy: args.projectDeletionPolicy ?? "PREVENT",
         activateApis: enabledApis,
+        // Strip the Editor role from the default compute SA (TF default_service_account).
+        defaultServiceAccount: "deprivilege",
         labels: {
             environment: args.environment,
             application_name: args.applicationName,
