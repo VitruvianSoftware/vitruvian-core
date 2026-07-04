@@ -138,19 +138,17 @@ export = async () => {
     /*************************************************
       Org admins IAM at org level
     *************************************************/
+    // Note: org admins are intentionally NOT granted tagAdmin/tagUser at org level
+    // (TF and the Go port do not grant these here).
     const orgAdminsRoles = cfg.orgPolicyAdminRole
         ? [
             "roles/orgpolicy.policyAdmin",
             "roles/resourcemanager.organizationAdmin",
             "roles/billing.user",
-            "roles/resourcemanager.tagAdmin",
-            "roles/resourcemanager.tagUser"
           ]
         : [
             "roles/resourcemanager.organizationAdmin",
             "roles/billing.user",
-            "roles/resourcemanager.tagAdmin",
-            "roles/resourcemanager.tagUser"
           ];
 
     for (const role of orgAdminsRoles) {
@@ -161,15 +159,25 @@ export = async () => {
         }, { dependsOn: groupOutputs.dependsOn });
     }
 
-    // Authoritative projectCreator Enforcement
-    new gcp.organizations.IAMBinding("org-project-creators", {
-        orgId: cfg.orgId,
-        role: "roles/resourcemanager.projectCreator",
-        members: [
-            ...Object.values(saOutputs.saEmails).map(email => pulumi.interpolate`serviceAccount:${email}` as unknown as string),
-            `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
-        ],
-    }, { dependsOn: groupOutputs.dependsOn });
+    // Authoritative projectCreator Enforcement, scoped to the parent (org or folder)
+    // to match TF's org_project_creators binding and the Go port's bindParentIAMBinding.
+    const projectCreatorMembers = [
+        ...Object.values(saOutputs.saEmails).map(email => pulumi.interpolate`serviceAccount:${email}` as unknown as string),
+        `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
+    ];
+    if (cfg.parentType === "folder") {
+        new gcp.folder.IAMBinding("org-project-creators", {
+            folder: cfg.parent,
+            role: "roles/resourcemanager.projectCreator",
+            members: projectCreatorMembers,
+        }, { dependsOn: groupOutputs.dependsOn });
+    } else {
+        new gcp.organizations.IAMBinding("org-project-creators", {
+            orgId: cfg.orgId,
+            role: "roles/resourcemanager.projectCreator",
+            members: projectCreatorMembers,
+        }, { dependsOn: groupOutputs.dependsOn });
+    }
 
     // Authoritative billing.creator Enforcement
     new gcp.organizations.IAMBinding("org-billing-creator", {
