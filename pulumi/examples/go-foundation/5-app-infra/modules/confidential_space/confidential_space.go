@@ -18,7 +18,6 @@
 // To enable, remove this build constraint or build with: go build -tags=example
 //
 
-
 package confidential_space
 
 import (
@@ -36,18 +35,18 @@ import (
 // ConfidentialSpaceArgs configures a Confidential Space VM deployment,
 // matching the upstream Terraform confidential_space module.
 type ConfidentialSpaceArgs struct {
-	Env                     string
-	BusinessUnit            string
-	ProjectID               pulumi.StringInput
-	ProjectNumber           pulumi.StringInput // from 4-projects stack export
-	Region                pulumi.StringInput
-	SubnetworkSelfLink      pulumi.StringInput
-	WorkloadSAEmail         pulumi.StringInput
-	ConfidentialImageDigest string
-	ConfidentialMachineType string
+	Env                      string
+	BusinessUnit             string
+	ProjectID                pulumi.StringInput
+	ProjectNumber            pulumi.StringInput // from 4-projects stack export
+	Region                   pulumi.StringInput
+	SubnetworkSelfLink       pulumi.StringInput
+	WorkloadSAEmail          pulumi.StringInput
+	ConfidentialImageDigest  string
+	ConfidentialMachineType  string
 	ConfidentialInstanceType string
-	CpuPlatform             string
-	CloudBuildProjectID     pulumi.StringInput
+	CpuPlatform              string
+	CloudBuildProjectID      pulumi.StringInput
 }
 
 // ConfidentialSpaceResult holds outputs from the Confidential Space deployment.
@@ -149,6 +148,8 @@ func DeployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 		MachineType:              args.ConfidentialMachineType,
 		Region:                   args.Region,
 		MinCpuPlatform:           args.CpuPlatform,
+		Network:                  pulumi.String(""),
+		Subnetwork:               args.SubnetworkSelfLink,
 		EnableConfidentialVm:     true,
 		ConfidentialInstanceType: args.ConfidentialInstanceType,
 		EnableShieldedVm:         true,
@@ -168,8 +169,8 @@ func DeployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 
 	// 5. Compute Instance from Template
 	inst, err := computeinstance.NewComputeInstance(ctx, name+"-vm", &computeinstance.ComputeInstanceArgs{
-		Project:          args.ProjectID,
-		Zone:             pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
+		Project: args.ProjectID,
+		Zone: pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
 			project := args[0].(string)
 			region := args[1].(string)
 			zones, err := compute.GetZones(ctx, &compute.GetZonesArgs{
@@ -184,7 +185,7 @@ func DeployConfidentialSpace(ctx *pulumi.Context, name string, args *Confidentia
 			}
 			return zones.Names[0], nil
 		}).(pulumi.StringOutput),
-		Hostname:     "confidential-instance",
+		Hostname:         "confidential-instance",
 		InstanceTemplate: tmpl.Template.SelfLink,
 		NumInstances:     1,
 	})
