@@ -429,7 +429,7 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	if val, err := conf.TryBool("enforce_vpcsc"); err == nil {
 		c.EnforceVpcSc = val
 	} else {
-		c.EnforceVpcSc = true
+		c.EnforceVpcSc = false // TF defaults enforce_vpcsc=false (dry-run first)
 	}
 
 	if val, err := conf.TryBool("enable_dedicated_interconnect"); err == nil {
