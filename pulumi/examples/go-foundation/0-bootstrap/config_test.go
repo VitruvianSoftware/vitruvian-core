@@ -17,147 +17,83 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
+
+type mocks int
+
+func (mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
+}
+
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
 
 // TestConfigDefaults verifies that the Config struct applies the correct
 // defaults matching the Terraform foundation's variables.tf defaults.
 func TestConfigDefaults(t *testing.T) {
-	cfg := &Config{}
+	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123456789", "project:billing_account":"000000-000000-000000", "project:group_org_admins":"org-admins@example.com", "project:group_billing_admins":"billing-admins@example.com", "project:billing_data_users":"billing-users@example.com", "project:audit_data_users":"audit-users@example.com"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
 
-	// Apply defaults the same way loadConfig does
-	if cfg.ProjectPrefix == "" {
-		cfg.ProjectPrefix = "prj"
-	}
-	if cfg.FolderPrefix == "" {
-		cfg.FolderPrefix = "fldr"
-	}
-	if cfg.BucketPrefix == "" {
-		cfg.BucketPrefix = "bkt"
-	}
-	if cfg.ProjectDeletionPolicy == "" {
-		cfg.ProjectDeletionPolicy = "PREVENT"
-	}
-	if cfg.DefaultRegion == "" {
-		cfg.DefaultRegion = "us-central1"
-	}
-	if cfg.DefaultRegion2 == "" {
-		cfg.DefaultRegion2 = "us-west1"
-	}
-	if cfg.DefaultRegionGCS == "" {
-		cfg.DefaultRegionGCS = "US"
-	}
-	if cfg.DefaultRegionKMS == "" {
-		cfg.DefaultRegionKMS = "us"
-	}
-	if cfg.KMSKeyProtectionLevel == "" {
-		cfg.KMSKeyProtectionLevel = "SOFTWARE"
-	}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadConfig(ctx)
 
-	assert.Equal(t, "prj", cfg.ProjectPrefix, "project_prefix default")
-	assert.Equal(t, "fldr", cfg.FolderPrefix, "folder_prefix default")
-	assert.Equal(t, "bkt", cfg.BucketPrefix, "bucket_prefix default")
-	assert.Equal(t, "PREVENT", cfg.ProjectDeletionPolicy, "project_deletion_policy default")
-	assert.Equal(t, "us-central1", cfg.DefaultRegion, "default_region default")
-	assert.Equal(t, "us-west1", cfg.DefaultRegion2, "default_region_2 default")
-	assert.Equal(t, "US", cfg.DefaultRegionGCS, "default_region_gcs default")
-	assert.Equal(t, "us", cfg.DefaultRegionKMS, "default_region_kms default")
-	assert.Equal(t, "SOFTWARE", cfg.KMSKeyProtectionLevel, "kms_key_protection_level default")
+		assert.Equal(t, "prj", cfg.ProjectPrefix, "project_prefix default")
+		assert.Equal(t, "fldr", cfg.FolderPrefix, "folder_prefix default")
+		assert.Equal(t, "bkt", cfg.BucketPrefix, "bucket_prefix default")
+		assert.Equal(t, "PREVENT", cfg.ProjectDeletionPolicy, "project_deletion_policy default")
+		assert.Equal(t, "us-central1", cfg.DefaultRegion, "default_region default")
+		assert.Equal(t, "us-west1", cfg.DefaultRegion2, "default_region_2 default")
+		assert.Equal(t, "US", cfg.DefaultRegionGCS, "default_region_gcs default")
+		assert.Equal(t, "us", cfg.DefaultRegionKMS, "default_region_kms default")
+		assert.Equal(t, "SOFTWARE", cfg.KMSKeyProtectionLevel, "kms_key_protection_level default")
+		assert.Equal(t, "organizations/123456789", cfg.Parent, "parent default")
+		assert.Equal(t, "organization", cfg.ParentType, "parent_type default")
+		assert.Equal(t, "123456789", cfg.ParentID, "parent_id default")
+		assert.True(t, cfg.RandomSuffix, "random_suffix default")
+		assert.True(t, cfg.FolderDeletionProtection, "folder_deletion_protection default")
+		assert.Equal(t, "WITH_INITIAL_OWNER", cfg.InitialGroupConfig, "initial_group_config default")
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }
 
-// TestConfigParentOrgRoot tests that parent is set to org when no parent_folder is specified.
-func TestConfigParentOrgRoot(t *testing.T) {
-	cfg := &Config{
-		OrgID: "123456789",
-	}
-
-	if cfg.ParentFolder != "" {
-		cfg.Parent = "folders/" + cfg.ParentFolder
-		cfg.ParentType = "folder"
-		cfg.ParentID = cfg.ParentFolder
-	} else {
-		cfg.Parent = "organizations/" + cfg.OrgID
-		cfg.ParentType = "organization"
-		cfg.ParentID = cfg.OrgID
-	}
-
-	assert.Equal(t, "organizations/123456789", cfg.Parent)
-	assert.Equal(t, "organization", cfg.ParentType)
-	assert.Equal(t, "123456789", cfg.ParentID)
-}
-
-// TestConfigParentFolder tests that parent is set to folder when parent_folder is specified.
 func TestConfigParentFolder(t *testing.T) {
-	cfg := &Config{
-		OrgID:        "123456789",
-		ParentFolder: "987654321",
-	}
+	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123456789", "project:billing_account":"000000-000000-000000", "project:group_org_admins":"org-admins@example.com", "project:group_billing_admins":"billing-admins@example.com", "project:billing_data_users":"billing-users@example.com", "project:audit_data_users":"audit-users@example.com", "project:parent_folder":"987654321"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
 
-	if cfg.ParentFolder != "" {
-		cfg.Parent = "folders/" + cfg.ParentFolder
-		cfg.ParentType = "folder"
-		cfg.ParentID = cfg.ParentFolder
-	} else {
-		cfg.Parent = "organizations/" + cfg.OrgID
-		cfg.ParentType = "organization"
-		cfg.ParentID = cfg.OrgID
-	}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadConfig(ctx)
 
-	assert.Equal(t, "folders/987654321", cfg.Parent)
-	assert.Equal(t, "folder", cfg.ParentType)
-	assert.Equal(t, "987654321", cfg.ParentID)
+		assert.Equal(t, "folders/987654321", cfg.Parent)
+		assert.Equal(t, "folder", cfg.ParentType)
+		assert.Equal(t, "987654321", cfg.ParentID)
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }
 
-// TestConfigRandomSuffix tests that random_suffix defaults to true.
-func TestConfigRandomSuffix(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{"default (empty) → true", "", true},
-		{"explicit true", "true", true},
-		{"explicit false", "false", false},
-		{"any other value → true", "yes", true},
-	}
+func TestConfigExplicitFalseDefaults(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123456789", "project:billing_account":"000000-000000-000000", "project:group_org_admins":"org-admins@example.com", "project:group_billing_admins":"billing-admins@example.com", "project:billing_data_users":"billing-users@example.com", "project:audit_data_users":"audit-users@example.com", "project:random_suffix":"false", "project:folder_deletion_protection":"false"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.input != "false"
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadConfig(ctx)
 
-// TestConfigFolderDeletionProtection tests that folder_deletion_protection defaults to true.
-func TestConfigFolderDeletionProtection(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{"default (empty) → true", "", true},
-		{"explicit true", "true", true},
-		{"explicit false", "false", false},
-	}
+		assert.False(t, cfg.RandomSuffix, "random_suffix when false")
+		assert.False(t, cfg.FolderDeletionProtection, "folder_deletion_protection when false")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.input != "false"
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// TestConfigInitialGroupConfig tests the InitialGroupConfig default.
-func TestConfigInitialGroupConfig(t *testing.T) {
-	cfg := &Config{}
-	if cfg.InitialGroupConfig == "" {
-		cfg.InitialGroupConfig = "WITH_INITIAL_OWNER"
-	}
-	assert.Equal(t, "WITH_INITIAL_OWNER", cfg.InitialGroupConfig)
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }
 
 // TestSeedProjectStruct verifies the SeedProject output struct.

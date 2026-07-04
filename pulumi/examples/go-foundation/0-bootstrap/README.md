@@ -411,7 +411,6 @@ The Pulumi foundation supports pluggable CI/CD providers, mirroring the Terrafor
 The default is GitHub Actions with Workload Identity Federation. To switch to an alternative provider, follow the instructions in its README.
 
 > [!NOTE]
-> The Terraform foundation also includes Jenkins and Terraform Cloud examples.
 > These are not ported because they are specific to the Terraform ecosystem.
 > Contributions for additional CI/CD providers are welcome.
 

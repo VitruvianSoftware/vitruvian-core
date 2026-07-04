@@ -1,13 +1,6 @@
 go 1.26.1
 
 use (
-	./0-bootstrap
-	./1-org
-	./2-environments
-	./3-networks-hub-and-spoke
-	./3-networks-svpc
-	./4-projects
-	./5-app-infra
 	../pulumi-library/go
 	../pulumi-library/go/pkg/app/
 	../pulumi-library/go/pkg/bootstrap/
@@ -34,4 +27,12 @@ use (
 	../pulumi-library/go/pkg/security/
 	../pulumi-library/go/pkg/storage/
 	../pulumi-library/go/pkg/vpc_sc/
+	./0-bootstrap
+	./1-org
+	./2-environments
+	./3-networks-hub-and-spoke
+	./3-networks-svpc
+	./4-projects
+	./5-app-infra
+	./helpers/iam-validate
 )

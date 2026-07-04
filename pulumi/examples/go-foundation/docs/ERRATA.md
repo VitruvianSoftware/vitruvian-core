@@ -12,7 +12,6 @@ can evaluate whether they affect their deployment and plan accordingly.
 - Google Cloud Build (default)
 - GitHub Actions
 - GitLab CI/CD
-- Jenkins
 - Terraform Cloud / Terraform Enterprise
 
 **This port:** Uses **GitHub Actions** as the default CI/CD tool (with Workload
@@ -24,7 +23,6 @@ Alternative CI/CD tool support is available via opt-in `.example` files:
   with instructions in `0-bootstrap/README-GitLab.md`
 - **Cloud Build:** `0-bootstrap/build_cloud_build.go.example` with instructions
   in `0-bootstrap/README-CloudBuild.md`
-- **Jenkins:** `0-bootstrap/build_jenkins.go.example`
 - **Terraform Cloud:** `0-bootstrap/build_terraform_cloud.go.example`
 
 Cloud Build triggers, per-stage log/artifact buckets, and the automated

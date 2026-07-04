@@ -1,0 +1,9 @@
+package main
+
+import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+func exportLocalOutputs(ctx *pulumi.Context, seed *SeedProject) {
+	ctx.Export("cicd_project_id", seed.ProjectID)
+}
