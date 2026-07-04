@@ -32,7 +32,7 @@ package bootstrap
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/kms"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
@@ -103,7 +103,7 @@ type Bootstrap struct {
 	pulumi.ResourceState
 
 	// SeedProject is the underlying project component.
-	SeedProject *project.Project
+	SeedProject *project_factory.Project
 	// SeedProjectID is the seed project's project ID.
 	SeedProjectID pulumi.StringOutput
 	// StateBucketName is the name of the GCS state bucket.
@@ -172,7 +172,7 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	// Created via pkg/project with lien and default SA management.
 	// Matches: module "seed_project" in TF bootstrap main.tf
 	// ========================================================================
-	seed, err := project.NewProject(ctx, fmt.Sprintf("%s-seed", name), &project.ProjectArgs{
+	seed, err := project_factory.NewProject(ctx, fmt.Sprintf("%s-seed", name), &project_factory.ProjectArgs{
 		ProjectID:             pulumi.String(fmt.Sprintf("%s-b-seed", args.ProjectPrefix)),
 		Name:                  pulumi.String(fmt.Sprintf("%s-b-seed", args.ProjectPrefix)),
 		FolderID:              args.FolderID,

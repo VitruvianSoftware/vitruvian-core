@@ -6,7 +6,7 @@ Creates the seed infrastructure required by a GCP foundation, mirroring the func
 
 The `Bootstrap` component bundles the following resources to prepare a foundation environment:
 
-- **Seed Project**: Created via `pkg/project`, with lien protection and default service account management.
+- **Seed Project**: Created via `pkg/project_factory`, with lien protection and default service account management.
 - **KMS Key Ring & Crypto Key**: For state bucket encryption.
 - **State Bucket**: GCS bucket with uniform bucket-level access, versioning, and KMS encryption.
 - **Org Policy**: Allows cross-project service account usage on the seed project.
