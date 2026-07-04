@@ -39,7 +39,7 @@ func main() {
 			}
 			return ""
 		}).(pulumi.StringOutput)
-		workloadSAEmail := projStack.GetStringOutput(pulumi.String("workload_sa_email"))
+		workloadSAEmail := projStack.GetStringOutput(pulumi.String("confidential_space_workload_sa"))
 
 		cloudbuildProjectID := bootstrapStack.GetStringOutput(pulumi.String("cloudbuild_project_id"))
 
@@ -63,7 +63,9 @@ func main() {
 			ProjectID:          appProjectID,
 			Region:             appRegion,
 			SubnetworkSelfLink: subnetsSelfLinks,
-			IAPFirewallTags:    pulumi.StringMap{"iap-ssh": pulumi.String("true")},
+			// env_base is the non-peering SVPC instance; IAP secure tags belong on the
+			// (separate) peering-project workload, so leave these nil here.
+			IAPFirewallTags: nil,
 		})
 		if err != nil {
 			return err
@@ -78,6 +80,7 @@ func main() {
 			Region:                  appRegion,
 			SubnetworkSelfLink:      subnetsSelfLinks,
 			WorkloadSAEmail:         workloadSAEmail,
+			ConfidentialImageDigest: cfg.ConfidentialImageDigest,
 			ConfidentialMachineType: "n2d-standard-2",
 			ConfidentialInstanceType: "SEV",
 			CpuPlatform:             "AMD Milan",

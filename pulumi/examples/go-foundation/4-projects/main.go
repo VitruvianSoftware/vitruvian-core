@@ -69,9 +69,9 @@ func main() {
 			DisplayName: folderID.ApplyT(func(_ string) string {
 				return fmt.Sprintf("%s-%s-%s", cfg.FolderPrefix, cfg.Env, cfg.BusinessCode)
 			}).(pulumi.StringOutput),
-			Parent: folderID.ApplyT(func(id string) string {
-				return "folders/" + id
-			}).(pulumi.StringOutput),
+			// {env}_env_folder is exported as envFolder.Name, which GCP already
+			// formats as "folders/{id}"; use it directly (prefixing would double it).
+			Parent:             folderID,
 			DeletionProtection: pulumi.Bool(cfg.FolderDeletionProtection),
 		})
 		if err != nil {

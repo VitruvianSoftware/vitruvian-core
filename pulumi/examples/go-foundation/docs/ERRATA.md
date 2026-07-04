@@ -42,11 +42,11 @@ directory with 7 policies covering public access, firewall rules, flow logs,
 and naming conventions. The Go foundation references this pack via its own
 `policy-library/README.md`.
 
-**Known gaps:** The CrossGuard pack is not automatically wired into the CI/CD
-pipeline templates (`build/pulumi-preview.yml` does not pass `--policy-pack`).
-Operators should add `--policy-pack ./policy-library` to preview/up commands
-for enforcement. Coverage is narrower than TF's 28+81 constraint suite (no GKE,
-BigQuery, Cloud SQL SSL, or service-usage allowlist constraints).
+The CrossGuard pack is wired into the CI/CD pipeline templates:
+`build/pulumi-preview.yml`, `build/pulumi-up.yml`, and `build/gitlab-ci.yml`
+all pass `--policy-pack ../policy-library`, so every preview/apply is
+policy-checked. **Known gap:** coverage is narrower than TF's 28+81 constraint
+suite (no GKE, BigQuery, Cloud SQL SSL, or service-usage allowlist constraints).
 
 ## State Backend
 
@@ -96,8 +96,8 @@ for perimeter member management.
 **This port:** Implements VPC-SC perimeters and access levels in
 `3-networks-svpc` and `3-networks-hub-and-spoke` via the shared library's
 `vpc-service-controls` component. Access Context Manager policy creation is
-supported in Stage 1. **Known gap:** the hub project in hub-and-spoke topology
-does not receive its own VPC-SC perimeter (TF applies one unconditionally).
+supported in Stage 1. The hub project in hub-and-spoke topology now receives its
+own VPC-SC perimeter, created once in the shared/hub stack (matching TF).
 
 ## Assured Workloads
 
@@ -106,9 +106,9 @@ configuration for compliance-regulated environments.
 
 **This port:** Implements Assured Workloads in Stage 2 via the
 `AssuredWorkloadConfig` structure, with `FEDRAMP_MODERATE` as the default
-compliance regime. **Known gaps:** the `assured_workload_id` and
-`assured_workload_resources` values are computed but not exported as stack
-outputs, and the TS port does not wire the configuration into the env stacks.
+compliance regime. The `assured_workload_id` and `assured_workload_resources`
+values are exported as stack outputs, and both ports wire the configuration
+into the environment stacks.
 
 ## App Infrastructure: Stage 5
 
@@ -118,13 +118,13 @@ unit environment:
 - The same on the peering project
 - A Confidential Space stack (WIF pool, OIDC provider, confidential VM)
 
-**This port:** The default `5-app-infra` program exports only `project_id` and
-`region` from Stage 4. The env_base workload (compute instances) and
-Confidential Space stack are provided as opt-in examples behind the
-`//go:build example` build tag in `example_env_base.go` and
-`example_confidential_space.go`. **Known gaps:** the example code is not
-invoked from `main()` even when the build tag is active — `deployEnvBase` and
-`deployConfidentialSpace` are defined but never called.
+**This port:** The default `5-app-infra` program deploys the env_base workload
+(service account, instance template, and compute instance on the SVPC project)
+and the Confidential Space stack (WIF pool, OIDC provider, confidential VM) by
+default, via the `modules/env_base` and `modules/confidential_space` packages
+invoked from `main()`. **Known gap:** the peering-project workload (the same VM
+on the peering project) is not yet deployed; only the SVPC-project workload and
+the Confidential Space stack are created.
 
 ## Naming Conventions
 

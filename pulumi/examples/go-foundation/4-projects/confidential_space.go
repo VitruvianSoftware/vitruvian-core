@@ -55,13 +55,14 @@ func deployConfidentialSpaceProject(
 
 	// 1. Create the Confidential Space project
 	confProject, err := project.NewProject(ctx, "bu-conf-space-project", &project.ProjectArgs{
-		ProjectID:       pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:            pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:        folderID,
-		BillingAccount:  pulumi.String(cfg.BillingAccount),
-		RandomProjectID: cfg.RandomSuffix,
-		Labels:          projectLabels(cfg, "sample-instance", "svpc"),
-		Budget:          budgetConfig(cfg),
+		DefaultServiceAccount: "deprivilege",
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
+		RandomProjectID:       cfg.RandomSuffix,
+		Labels:                projectLabels(cfg, "sample-instance", "svpc"),
+		Budget:                budgetConfig(cfg),
 		ActivateApis: []string{
 			"accesscontextmanager.googleapis.com",
 			"artifactregistry.googleapis.com",
