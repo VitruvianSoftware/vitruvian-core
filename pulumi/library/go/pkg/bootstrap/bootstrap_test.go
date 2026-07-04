@@ -221,13 +221,19 @@ func TestNewBootstrap_CloudKMSAPIAutoAdded(t *testing.T) {
 	}, pulumi.WithMocks("test-project", "test-stack", tracker))
 	require.NoError(t, err)
 
-	services := tracker.RequireType(t, gcpService, 2) // compute + cloudkms
+	// compute (input) + cloudkms (encryption) + serviceusage + iamcredentials
+	// (impersonation APIs always added, matching terraform-google-bootstrap).
+	services := tracker.RequireType(t, gcpService, 4)
 	apis := map[string]bool{}
 	for _, svc := range services {
 		apis[svc.Inputs["service"].StringValue()] = true
 	}
 	assert.True(t, apis["cloudkms.googleapis.com"],
 		"cloudkms should be auto-added when encryption is enabled")
+	assert.True(t, apis["serviceusage.googleapis.com"],
+		"serviceusage should be auto-added for impersonation")
+	assert.True(t, apis["iamcredentials.googleapis.com"],
+		"iamcredentials should be auto-added for impersonation")
 }
 
 func TestAppendIfMissing(t *testing.T) {
