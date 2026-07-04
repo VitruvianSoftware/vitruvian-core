@@ -19,6 +19,11 @@ stages:
 
 .pulumi_base:
   image: golang:1.21
+  # CI_JOB_JWT_V2 was removed in GitLab 16.0; obtain the OIDC token via id_tokens.
+  # The aud must match the audience configured on the WIF provider.
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://iam.googleapis.com/${GCP_WORKLOAD_IDENTITY_PROVIDER}
   before_script:
     - apt-get update && apt-get install -y apt-transport-https ca-certificates gnupg curl
     - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
@@ -28,7 +33,7 @@ stages:
     - curl -fsSL https://get.pulumi.com | sh
     - export PATH=$HOME/.pulumi/bin:$PATH
     - go mod download
-    - echo ${CI_JOB_JWT_V2} > /tmp/oidc_token.txt
+    - echo "${GITLAB_OIDC_TOKEN}" > /tmp/oidc_token.txt
     - gcloud iam workload-identity-pools create-cred-config ${GCP_WORKLOAD_IDENTITY_PROVIDER} --service-account=${GCP_SERVICE_ACCOUNT} --output-file=/tmp/sts-creds.json --credential-source-file=/tmp/oidc_token.txt
     - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sts-creds.json
 

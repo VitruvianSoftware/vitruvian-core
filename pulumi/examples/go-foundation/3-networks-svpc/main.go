@@ -139,7 +139,7 @@ func main() {
 			TargetVPCs: []pulumi.StringInput{
 				pulumi.Sprintf("projects/%s/global/networks/%s", cfg.ProjectID, vpcModule.VPC.Name),
 			},
-			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{"10.8.64.0/18", "10.9.64.0/18"}, cfg.FirewallPoliciesEnableLogging),
+			Rules: networking.BuildFoundationRules(cfg.EnvCode, cfg.FirewallPoliciesEnableLogging, cfg.PscIP+"/32", []string{"10.8.64.0/18", "10.9.64.0/18"}, false),
 		}, pulumi.DependsOn([]pulumi.Resource{vpcModule.VPC}))
 		if err != nil {
 			return err

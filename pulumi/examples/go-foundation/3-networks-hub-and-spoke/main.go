@@ -130,7 +130,7 @@ func main() {
 				TargetVPCs: []pulumi.StringInput{
 					pulumi.Sprintf("projects/%s/global/networks/%s", cfg.HubProjectID, hubVpc.VPC.Name),
 				},
-				Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{cfg.HubSubnet1Cidr, cfg.HubSubnet2Cidr}, cfg.FirewallPoliciesEnableLogging),
+				Rules: networking.BuildFoundationRules(cfg.EnvCode, cfg.FirewallPoliciesEnableLogging, cfg.PscIP+"/32", []string{cfg.HubSubnet1Cidr, cfg.HubSubnet2Cidr}, false),
 			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 			if err != nil {
 				return err
@@ -358,7 +358,7 @@ func main() {
 			TargetVPCs: []pulumi.StringInput{
 				pulumi.Sprintf("projects/%s/global/networks/%s", cfg.SpokeProjectID, spokeVpc.VPC.Name),
 			},
-			Rules: networking.BuildFoundationRules(cfg.EnvCode, true, cfg.PscIP+"/32", []string{cfg.SpokeSubnet1Cidr, cfg.SpokeSubnet2Cidr}, cfg.FirewallPoliciesEnableLogging),
+			Rules: networking.BuildFoundationRules(cfg.EnvCode, cfg.FirewallPoliciesEnableLogging, cfg.PscIP+"/32", []string{cfg.SpokeSubnet1Cidr, cfg.SpokeSubnet2Cidr}, false),
 		}, pulumi.DependsOn([]pulumi.Resource{spokeVpc.VPC}))
 		if err != nil {
 			return err
