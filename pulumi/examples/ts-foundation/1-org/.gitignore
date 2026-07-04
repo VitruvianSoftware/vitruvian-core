@@ -17,6 +17,7 @@ dist/
 Pulumi.*.yaml
 !Pulumi.yaml
 !Pulumi.*.yaml.example
+!cai-monitoring-function/**/*.js
 
 # IDE
 .idea/

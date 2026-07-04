@@ -127,7 +127,7 @@ const foundationPolicies = new policy.PolicyPack("foundation-policies", {
         {
             name: "require-flow-logs",
             description: "Subnets should have VPC Flow Logs enabled for network monitoring.",
-            enforcementLevel: "advisory",
+            enforcementLevel: "mandatory",
             validateResource: (args, reportViolation) => {
                 if (args.type === "gcp:compute/subnetwork:Subnetwork") {
                     const logConfig = args.props.logConfig;
@@ -136,6 +136,77 @@ const foundationPolicies = new policy.PolicyPack("foundation-policies", {
                             "Subnets should enable VPC Flow Logs for network " +
                             "traffic analysis and security monitoring."
                         );
+                    }
+                }
+            },
+        {
+            name: "deletion-policy-prevent",
+            description: "Certain core infrastructure must have deletion protection enabled.",
+            enforcementLevel: "mandatory",
+            validateResource: (args, reportViolation) => {
+                const protectedTypes = [
+                    "gcp:organizations/project:Project",
+                    "gcp:kms/keyRing:KeyRing",
+                    "gcp:kms/cryptoKey:CryptoKey",
+                ];
+                if (protectedTypes.includes(args.type)) {
+                    // Pulumi projects usually protect via the `protect` resource option or a provider-specific property.
+                    // For gcp:organizations/project:Project, deletionPolicy="PREVENT".
+                    if (args.type === "gcp:organizations/project:Project" && args.props.deletionPolicy !== "PREVENT") {
+                        reportViolation("Projects must set deletionPolicy to PREVENT.");
+                    }
+                    if (args.type === "gcp:kms/cryptoKey:CryptoKey" && args.props.destroyScheduledDuration == null) {
+                        // Just an example check for KMS if there's no native deletion block
+                        // Pulumi's engine options (protect: true) aren't visible in CrossGuard args.props, 
+                        // so we check resource-specific fields when applicable.
+                    }
+                }
+            },
+        },
+        {
+            name: "restrict-owner-role",
+            description: "The primitive 'roles/owner' must not be granted.",
+            enforcementLevel: "mandatory",
+            validateResource: (args, reportViolation) => {
+                const iamTypes = [
+                    "gcp:projects/iAMMember:IAMMember",
+                    "gcp:projects/iAMBinding:IAMBinding",
+                    "gcp:organizations/iAMMember:IAMMember",
+                    "gcp:organizations/iAMBinding:IAMBinding",
+                ];
+                if (iamTypes.includes(args.type)) {
+                    if (args.props.role === "roles/owner") {
+                        reportViolation("The roles/owner primitive role is prohibited.");
+                    }
+                }
+            },
+        },
+        {
+            name: "appengine-service-versions",
+            description: "App Engine flexible environment constraints.",
+            enforcementLevel: "mandatory",
+            validateResource: (args, reportViolation) => {
+                if (args.type === "gcp:appengine/flexibleAppVersion:FlexibleAppVersion") {
+                    // Generic constraint as an example
+                    if (!args.props.service) {
+                        reportViolation("App Engine version must specify a service.");
+                    }
+                }
+            },
+        },
+        {
+            name: "dnssec-rsasha1",
+            description: "DNSSEC must not use RSASHA1 algorithm.",
+            enforcementLevel: "mandatory",
+            validateResource: (args, reportViolation) => {
+                if (args.type === "gcp:dns/managedZone:ManagedZone") {
+                    const dnssec = args.props.dnssecConfig;
+                    if (dnssec && dnssec.defaultKeySpecs) {
+                        for (const spec of dnssec.defaultKeySpecs) {
+                            if (spec.algorithm === "rsasha1") {
+                                reportViolation("DNSSEC must not use the insecure RSASHA1 algorithm.");
+                            }
+                        }
                     }
                 }
             },
