@@ -2,6 +2,16 @@
 
 Creates a Cloud Identity / Google Workspace group with configurable type labels and robust membership management (Owners, Managers, and Members).
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group"
+```
+
 ## Overview
 
 The `Group` component wraps `cloudidentity.Group` and `cloudidentity.GroupMembership` resources, providing a structured mechanism to define organization groups securely and programmatically. 

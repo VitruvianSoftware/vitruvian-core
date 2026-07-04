@@ -2,6 +2,16 @@
 
 Creates VPC networks with subnets (including GKE secondary ranges, flow logs, and Private Google Access) and optional Private Service Access (PSA).
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/network
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
+```
+
 ## Overview
 
 The `Networking` component wraps:

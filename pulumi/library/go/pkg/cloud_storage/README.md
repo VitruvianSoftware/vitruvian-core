@@ -2,6 +2,16 @@
 
 Provides foundational storage components, mirroring the functionality of the `terraform-google-modules/cloud-storage/google//modules/simple_bucket` module.
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage"
+```
+
 ## Overview
 
 The `SimpleBucket` component creates a Google Cloud Storage bucket with sane foundation defaults enforced out-of-the-box:
