@@ -81,14 +81,15 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	}
 
 	svpcProject, err := project.NewProject(ctx, "bu-svpc-project", &project.ProjectArgs{
-		ProjectID:       pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:            pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:        folderID,
-		BillingAccount:  pulumi.String(cfg.BillingAccount),
-		RandomProjectID: cfg.RandomSuffix,
-		Labels:          projectLabels(cfg, "sample-application", "svpc"),
-		Budget:          budgetConfig(cfg),
-		ActivateApis:    svpcApis,
+		DefaultServiceAccount: "deprivilege",
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
+		RandomProjectID:       cfg.RandomSuffix,
+		Labels:                projectLabels(cfg, "sample-application", "svpc"),
+		Budget:                budgetConfig(cfg),
+		ActivateApis:          svpcApis,
 	})
 	if err != nil {
 		return nil, err
@@ -135,13 +136,14 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	// 2. Floating Project (not attached to any VPC)
 	// ========================================================================
 	floatingProject, err := project.NewProject(ctx, "bu-floating-project", &project.ProjectArgs{
-		ProjectID:       pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:            pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:        folderID,
-		BillingAccount:  pulumi.String(cfg.BillingAccount),
-		RandomProjectID: cfg.RandomSuffix,
-		Labels:          projectLabels(cfg, "sample-application", "none"),
-		Budget:          budgetConfig(cfg),
+		DefaultServiceAccount: "deprivilege",
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
+		RandomProjectID:       cfg.RandomSuffix,
+		Labels:                projectLabels(cfg, "sample-application", "none"),
+		Budget:                budgetConfig(cfg),
 		ActivateApis: []string{
 			"compute.googleapis.com",
 			"container.googleapis.com",
@@ -160,13 +162,14 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	// 3. Peering Project — full VPC, subnet, DNS, peering, firewall
 	// ========================================================================
 	peeringProject, err := project.NewProject(ctx, "bu-peering-project", &project.ProjectArgs{
-		ProjectID:       pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:            pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:        folderID,
-		BillingAccount:  pulumi.String(cfg.BillingAccount),
-		RandomProjectID: cfg.RandomSuffix,
-		Labels:          projectLabels(cfg, "sample-peering", "none"),
-		Budget:          budgetConfig(cfg),
+		DefaultServiceAccount: "deprivilege",
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
+		RandomProjectID:       cfg.RandomSuffix,
+		Labels:                projectLabels(cfg, "sample-peering", "none"),
+		Budget:                budgetConfig(cfg),
 		ActivateApis: []string{
 			"compute.googleapis.com",
 			"dns.googleapis.com",
