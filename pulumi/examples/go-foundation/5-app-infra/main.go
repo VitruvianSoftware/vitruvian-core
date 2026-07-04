@@ -1,27 +1,3 @@
-/*
- * Copyright 2026 Vitruvian Software
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-// 5-app-infra is the scaffold for deploying application infrastructure.
-//
-// This file provides the project scaffold (stack references, config loading).
-// Actual compute workloads (VMs, confidential space) are defined in the
-// example_*.go files which are excluded from compilation by default.
-//
-// To enable example workloads, remove the //go:build example constraint
-// from the example files, or build with: go build -tags=example
 package main
 
 import (
@@ -30,6 +6,8 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"foundation-5-app-infra/modules/confidential_space"
+	"foundation-5-app-infra/modules/env_base"
 )
 
 func main() {
@@ -45,7 +23,7 @@ func main() {
 		}
 
 		// 2. Stack Reference: 0-bootstrap (shared / common — not per-environment)
-		_, err = pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
+		bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
 			Name: pulumi.String(cfg.BootstrapStackName),
 		})
 		if err != nil {
@@ -54,18 +32,60 @@ func main() {
 
 		// --- Resolve outputs from 4-projects ---
 		appProjectID := projStack.GetStringOutput(pulumi.String("shared_vpc_project"))
+		appProjectNumber := projStack.GetStringOutput(pulumi.String("shared_vpc_project_number"))
+		subnetsSelfLinks := projStack.GetOutput(pulumi.String("subnets_self_links")).ApplyT(func(v interface{}) string {
+			if links, ok := v.([]interface{}); ok && len(links) > 0 {
+				return links[0].(string)
+			}
+			return ""
+		}).(pulumi.StringOutput)
+		workloadSAEmail := projStack.GetStringOutput(pulumi.String("workload_sa_email"))
 
-		// 3. Scaffold Exports — matching TF 5-app-infra outputs structure
-		// The project scaffold exports are always available. Compute workload
-		// exports are added by the example files when enabled.
-		ctx.Export("project_id", appProjectID)
+		cloudbuildProjectID := bootstrapStack.GetStringOutput(pulumi.String("cloudbuild_project_id"))
 
 		appRegion := pulumi.String(cfg.Region).ToStringOutput()
 		if cfg.Region == "" {
 			appRegion = projStack.GetStringOutput(pulumi.String("default_region"))
 		}
+		ctx.Export("project_id", appProjectID)
 		ctx.Export("region", appRegion)
 
+		// 4. Deploy Base Environment Workload
+		_, err = env_base.DeployEnvBase(ctx, "env-base", &env_base.EnvBaseArgs{
+			Env:                cfg.Env,
+			BusinessUnit:       cfg.BusinessCode,
+			ProjectSuffix:      "app-infra",
+			Hostname:           cfg.EnvCode + "-env-base",
+			MachineType:        "f1-micro",
+			NumInstances:       1,
+			SourceImageFamily:  "debian-11",
+			SourceImageProject: "debian-cloud",
+			ProjectID:          appProjectID,
+			Region:             appRegion,
+			SubnetworkSelfLink: subnetsSelfLinks,
+			IAPFirewallTags:    pulumi.StringMap{"iap-ssh": pulumi.String("true")},
+		})
+		if err != nil {
+			return err
+		}
+
+		// 5. Deploy Confidential Space Workload
+		_, err = confidential_space.DeployConfidentialSpace(ctx, "conf-space", &confidential_space.ConfidentialSpaceArgs{
+			Env:                     cfg.Env,
+			BusinessUnit:            cfg.BusinessCode,
+			ProjectID:               appProjectID,
+			ProjectNumber:           appProjectNumber,
+			Region:                  appRegion,
+			SubnetworkSelfLink:      subnetsSelfLinks,
+			WorkloadSAEmail:         workloadSAEmail,
+			ConfidentialMachineType: "n2d-standard-2",
+			ConfidentialInstanceType: "SEV",
+			CpuPlatform:             "AMD Milan",
+			CloudBuildProjectID:     cloudbuildProjectID,
+		})
+		if err != nil {
+			return err
+		}
 
 		return nil
 	})
@@ -99,9 +119,6 @@ func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 		c.ProjectsStackName = fmt.Sprintf("VitruvianSoftware/foundation-4-projects/%s", c.Env)
 	}
 	if c.BootstrapStackName == "" {
-		// Bootstrap is a shared stage — use the org_stack_name pattern with
-		// the same naming convention as other stages. Fall back to a
-		// default derived from the projects stack name.
 		c.BootstrapStackName = strings.Replace(c.ProjectsStackName, "foundation-4-projects/"+c.Env, "foundation-0-bootstrap/shared", 1)
 	}
 	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}

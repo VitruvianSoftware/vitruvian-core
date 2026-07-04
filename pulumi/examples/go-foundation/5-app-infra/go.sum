@@ -8,10 +8,10 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.4.1-0.20260703174208-a71371f11968 h1:R6iDp53ksLIdaUE6/ZT3XZMcdzJ5R6fWicjp92SVkKU=
 github.com/VitruvianSoftware/pulumi-library/go v0.4.1-0.20260703174208-a71371f11968/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260703223843-d6d73edb3e70 h1:81nYcd9pqqyOpXXxQKSBHIuMoBwrJCEIW4LKRcV4/xw=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260703223843-d6d73edb3e70/go.mod h1:HpnIjiX9CYDqyMJjbVTnQwxawjOD/FcrXkVWB5MPdr4=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260703223843-d6d73edb3e70 h1:5pc+WDRtHbexEREkGKD4sQ03g8RoWOemSipQQYka+UA=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260703223843-d6d73edb3e70/go.mod h1:qKAhLAJe1Fe5eFx5dBT6foJD7dxPRSrY9lbuxsg2Oos=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d h1:vDkmDMG4CvcGvMzB1zD/wAaAnEO7xYxusEY2MV0Q5U8=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d/go.mod h1:HpnIjiX9CYDqyMJjbVTnQwxawjOD/FcrXkVWB5MPdr4=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d h1:N5OksnowTNncuCsGnjx2HbepIxke68rbQdWsESqgr5o=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d/go.mod h1:qKAhLAJe1Fe5eFx5dBT6foJD7dxPRSrY9lbuxsg2Oos=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
