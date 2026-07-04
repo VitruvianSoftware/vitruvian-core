@@ -75,13 +75,22 @@ func NewInstanceTemplate(ctx *pulumi.Context, name string, args *InstanceTemplat
 		machineType = "n1-standard-1"
 	}
 
+	sourceImage := args.SourceImage
+	if sourceImage == "" && args.SourceImageFamily != "" {
+		if args.SourceImageProject != "" {
+			sourceImage = fmt.Sprintf("projects/%s/global/images/family/%s", args.SourceImageProject, args.SourceImageFamily)
+		} else {
+			sourceImage = fmt.Sprintf("global/images/family/%s", args.SourceImageFamily)
+		}
+	}
+
 	tmplArgs := &compute.InstanceTemplateArgs{
 		Project:     args.Project,
 		Region:      args.Region,
 		MachineType: pulumi.String(machineType),
 		Disks: compute.InstanceTemplateDiskArray{
 			&compute.InstanceTemplateDiskArgs{
-				SourceImage: pulumi.String(args.SourceImage),
+				SourceImage: pulumi.String(sourceImage),
 				DiskSizeGb:  pulumi.Int(diskSize),
 				DiskType:    pulumi.String(diskType),
 				Boot:        pulumi.Bool(true),

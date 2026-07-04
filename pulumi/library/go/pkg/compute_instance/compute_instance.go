@@ -31,6 +31,7 @@ type ComputeInstanceArgs struct {
 	InstanceTemplate   pulumi.StringInput
 	NumInstances       int
 	DeletionProtection bool
+	ResourceManagerTags pulumi.StringMapInput
 }
 
 type ComputeInstance struct {
@@ -59,13 +60,21 @@ func NewComputeInstance(ctx *pulumi.Context, name string, args *ComputeInstanceA
 			hostname = fmt.Sprintf("%s-%d", args.Hostname, i)
 		}
 
-		inst, err := compute.NewInstanceFromTemplate(ctx, fmt.Sprintf("%s-%d", name, i), &compute.InstanceFromTemplateArgs{
+		instArgs := &compute.InstanceFromTemplateArgs{
 			Project:                 args.Project,
 			Zone:                    args.Zone,
 			Name:                    pulumi.String(hostname),
 			SourceInstanceTemplate:  args.InstanceTemplate,
 			DeletionProtection:      pulumi.Bool(args.DeletionProtection),
-		}, pulumi.Parent(component))
+		}
+		
+		if args.ResourceManagerTags != nil {
+			instArgs.Params = &compute.InstanceFromTemplateParamsArgs{
+				ResourceManagerTags: args.ResourceManagerTags,
+			}
+		}
+
+		inst, err := compute.NewInstanceFromTemplate(ctx, fmt.Sprintf("%s-%d", name, i), instArgs, pulumi.Parent(component))
 		if err != nil {
 			return nil, err
 		}
