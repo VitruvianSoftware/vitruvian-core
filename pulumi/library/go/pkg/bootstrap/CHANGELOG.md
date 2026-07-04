@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-bootstrap-v0.4.1...go-bootstrap-v1.0.0) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* rename Go library packages to descriptive, upstream-consistent names ([6734481](https://github.com/VitruvianSoftware/pulumi-library/commit/6734481530f65d20d1a6de2f9dbb3bd5e6f7d43a))
+
+
+### Bug Fixes
+
+* **bootstrap:** always enable impersonation APIs on the seed project ([8063653](https://github.com/VitruvianSoftware/pulumi-library/commit/806365320fa047980cd307c163aa92d1a7be81a9))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([b0189b2](https://github.com/VitruvianSoftware/pulumi-library/commit/b0189b2d6c3b5c7b70dd2e6294b237778ef8cb10))
+
 ## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-bootstrap-v0.4.0...go-bootstrap-v0.4.1) (2026-07-03)
 
 

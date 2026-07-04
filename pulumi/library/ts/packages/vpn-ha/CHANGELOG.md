@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-vpn-ha-v0.3.0...foundation-vpn-ha-v0.4.0) (2026-07-04)
+
+
+### Features
+
+* Phase 7 component parity ([#75](https://github.com/VitruvianSoftware/pulumi-library/issues/75)) ([45aae42](https://github.com/VitruvianSoftware/pulumi-library/commit/45aae42e9fb2a66f69654c486d1d01e2f7a67ffd))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-vpn-ha-v0.2.4...foundation-vpn-ha-v0.3.0) (2026-04-23)
 
 

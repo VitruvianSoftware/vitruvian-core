@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.3...foundation-centralized-logging-v0.6.0) (2026-07-04)
+
+
+### Features
+
+* add 22 fine-grained library packages for foundation modular parity ([#48](https://github.com/VitruvianSoftware/pulumi-library/issues/48)) ([f54c6f2](https://github.com/VitruvianSoftware/pulumi-library/commit/f54c6f2a30ea4429a69e31ad3168aa3f075b0070))
+* **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+* **ts:** add missing outputs to CentralizedLogging and ProjectFactory ([#52](https://github.com/VitruvianSoftware/pulumi-library/issues/52)) ([adaa126](https://github.com/VitruvianSoftware/pulumi-library/commit/adaa1266ab114f0eede81ca3af84e503fdcf718b))
+
+
+### Bug Fixes
+
+* achieve 100% architectural parity ([#55](https://github.com/VitruvianSoftware/pulumi-library/issues/55)) ([26036da](https://github.com/VitruvianSoftware/pulumi-library/commit/26036da5f46c1d49cfe9fbace41ea23ed6f51e11))
+* **ci:** configure npm publishing to github packages ([#35](https://github.com/VitruvianSoftware/pulumi-library/issues/35)) ([3c847ac](https://github.com/VitruvianSoftware/pulumi-library/commit/3c847acd3c768edfefb9a0da2b5112109a2d5a1f))
+* **go/cicd:** add repository_owner to WIF attribute mapping ([#67](https://github.com/VitruvianSoftware/pulumi-library/issues/67)) ([26287dc](https://github.com/VitruvianSoftware/pulumi-library/commit/26287dc7d6c566f51316788e46d4442ffafbfccc))
+* **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+* **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))
+* **ts/centralized-logging:** add Log Analytics, linked dataset, folder sinks ([#66](https://github.com/VitruvianSoftware/pulumi-library/issues/66)) ([8e6dcda](https://github.com/VitruvianSoftware/pulumi-library/commit/8e6dcda341e8a48f1d329dda26e8db2792154ca0))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([b0189b2](https://github.com/VitruvianSoftware/pulumi-library/commit/b0189b2d6c3b5c7b70dd2e6294b237778ef8cb10))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([de944b3](https://github.com/VitruvianSoftware/pulumi-library/commit/de944b396e86619446fbcdebc792beb0a546c169))
+* **ts/psc:** add support for target, noAutomateDnsZone, and serviceDirectoryRegistrations ([#65](https://github.com/VitruvianSoftware/pulumi-library/issues/65)) ([7482d31](https://github.com/VitruvianSoftware/pulumi-library/commit/7482d31d40f31d627138fbf4ccca3c9038f08bf8))
+* **ts:** add repository field to package.json ([4a21652](https://github.com/VitruvianSoftware/pulumi-library/commit/4a216520d0c7480834407db63574b39f339de4ca))
+* **ts:** allow Input&lt;string&gt; for CentralizedLogging bucketName ([#68](https://github.com/VitruvianSoftware/pulumi-library/issues/68)) ([54c79d8](https://github.com/VitruvianSoftware/pulumi-library/commit/54c79d85366c0b855799eec931e5401dfaf8bed3))
+* **ts:** make npm packages public ([1c47b53](https://github.com/VitruvianSoftware/pulumi-library/commit/1c47b530a70156a4a4f7d25211050f6991bd2ee1))
+* **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
 ## [0.5.3](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.2...foundation-centralized-logging-v0.5.3) (2026-07-03)
 
 

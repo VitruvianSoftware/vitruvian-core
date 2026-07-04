@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.7.1...foundation-library-v0.8.0) (2026-07-04)
+
+
+### Features
+
+* Phase 7 component parity ([#75](https://github.com/VitruvianSoftware/pulumi-library/issues/75)) ([45aae42](https://github.com/VitruvianSoftware/pulumi-library/commit/45aae42e9fb2a66f69654c486d1d01e2f7a67ffd))
+
 ## [0.7.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-library-v0.7.0...foundation-library-v0.7.1) (2026-07-03)
 
 

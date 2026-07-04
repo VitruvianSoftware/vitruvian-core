@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-foundation-v0.4.1...go-foundation-v1.0.0) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* Phase 7 component parity ([#75](https://github.com/VitruvianSoftware/pulumi-library/issues/75)) ([45aae42](https://github.com/VitruvianSoftware/pulumi-library/commit/45aae42e9fb2a66f69654c486d1d01e2f7a67ffd))
+* rename Go library packages to descriptive, upstream-consistent names ([6734481](https://github.com/VitruvianSoftware/pulumi-library/commit/6734481530f65d20d1a6de2f9dbb3bd5e6f7d43a))
+
+
+### Bug Fixes
+
+* **5-app-infra:** add missing compute_instance and instance_template properties ([#74](https://github.com/VitruvianSoftware/pulumi-library/issues/74)) ([53378ff](https://github.com/VitruvianSoftware/pulumi-library/commit/53378ff8764ddb63a5ffd9d4731b4aefd7e24911))
+
 ## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-foundation-v0.4.0...go-foundation-v0.4.1) (2026-07-03)
 
 

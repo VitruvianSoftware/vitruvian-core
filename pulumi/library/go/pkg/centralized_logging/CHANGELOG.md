@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-centralized-logging-v0.4.3...go-centralized-logging-v1.0.0) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* rename Go library packages to descriptive, upstream-consistent names ([6734481](https://github.com/VitruvianSoftware/pulumi-library/commit/6734481530f65d20d1a6de2f9dbb3bd5e6f7d43a))
+
+
+### Bug Fixes
+
+* **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
 ## [0.4.3](https://github.com/VitruvianSoftware/pulumi-library/compare/go-logging-v0.4.2...go-logging-v0.4.3) (2026-07-03)
 
 

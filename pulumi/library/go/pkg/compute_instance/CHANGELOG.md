@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/VitruvianSoftware/pulumi-library/compare/go-compute-instance-v0.2.1...go-compute-instance-v0.2.2) (2026-07-04)
+
+
+### Bug Fixes
+
+* **5-app-infra:** add missing compute_instance and instance_template properties ([#74](https://github.com/VitruvianSoftware/pulumi-library/issues/74)) ([53378ff](https://github.com/VitruvianSoftware/pulumi-library/commit/53378ff8764ddb63a5ffd9d4731b4aefd7e24911))
+
 ## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-compute-instance-v0.2.0...go-compute-instance-v0.2.1) (2026-07-03)
 
 
