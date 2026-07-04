@@ -55,7 +55,7 @@ Key differences:
 | Language | HCL | TypeScript |
 | Runtime | Terraform CLI | Node.js + Pulumi CLI |
 | State | GCS backend via `terraform_remote_state` | Pulumi Cloud / GCS backend via Stack References |
-| CI/CD | Cloud Build, Jenkins, GitHub Actions, GitLab, Terraform Cloud | GitHub Actions (default), GitLab (alternative) |
+| CI/CD | Cloud Build, GitHub Actions, GitLab, Terraform Cloud | GitHub Actions (default), GitLab (alternative) |
 | Modules | Terraform Registry modules (CFT) | TypeScript packages in `pulumi-library` |
 | Config | `.tfvars` files | `pulumi config` (YAML) |
 | Plan/Apply | `terraform plan` / `terraform apply` | `pulumi preview` / `pulumi up` |
