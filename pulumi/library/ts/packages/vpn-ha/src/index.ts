@@ -17,6 +17,17 @@ export interface VpnHaTunnelConfig {
     sharedSecret: string;
     /** VPN gateway interface. */
     vpnGatewayInterface: number;
+    /** IKE version (defaults to 2). */
+    ikeVersion?: number;
+}
+
+export interface RouterAdvertiseConfig {
+    mode?: string;
+    groups?: string[];
+    ipRanges?: {
+        range: string;
+        description?: string;
+    }[];
 }
 
 export interface VpnHaArgs {
@@ -30,6 +41,8 @@ export interface VpnHaArgs {
     name: string;
     /** Router ASN. */
     routerAsn: number;
+    /** Router advertise config. */
+    routerAdvertiseConfig?: RouterAdvertiseConfig;
     /** Peer VPN gateway self-link (for GCP-to-GCP). */
     peerGcpGateway?: pulumi.Input<string>;
     /** External peer gateway config (for on-prem). */
@@ -58,14 +71,26 @@ export class VpnHa extends pulumi.ComponentResource {
         }, { parent: this });
 
         // Create Cloud Router
+        let bgpConfig: gcp.types.input.compute.RouterBgp = {
+            asn: args.routerAsn,
+        };
+        if (args.routerAdvertiseConfig) {
+            bgpConfig.advertiseMode = args.routerAdvertiseConfig.mode;
+            bgpConfig.advertisedGroups = args.routerAdvertiseConfig.groups;
+            if (args.routerAdvertiseConfig.ipRanges) {
+                bgpConfig.advertisedIpRanges = args.routerAdvertiseConfig.ipRanges.map(r => ({
+                    range: r.range,
+                    description: r.description,
+                }));
+            }
+        }
+
         this.router = new gcp.compute.Router(`${name}-router`, {
             name: `cr-${args.name}`,
             project: args.projectId,
             region: args.region,
             network: args.network,
-            bgp: {
-                asn: args.routerAsn,
-            },
+            bgp: bgpConfig,
         }, { parent: this });
 
         // Create external peer gateway if needed
@@ -96,6 +121,7 @@ export class VpnHa extends pulumi.ComponentResource {
                 peerExternalGatewayInterface: peerGateway ? tunnelCfg.vpnGatewayInterface : undefined,
                 sharedSecret: tunnelCfg.sharedSecret,
                 router: this.router.id,
+                ikeVersion: tunnelCfg.ikeVersion ?? 2,
             }, { parent: this });
 
             const iface = new gcp.compute.RouterInterface(`${name}-iface-${i}`, {
