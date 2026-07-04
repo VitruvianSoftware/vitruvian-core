@@ -265,9 +265,14 @@ func main() {
 		var perimeterName pulumi.StringOutput
 		var accessLevelName pulumi.StringOutput
 		var accessLevelDryRunName pulumi.StringOutput
+		// Resolve the policy from local config or the org stack (TF always creates the perimeter).
+		var finalPolicyID pulumi.StringInput = acmPolicyID
 		if cfg.PolicyID != "" {
+			finalPolicyID = pulumi.String(cfg.PolicyID)
+		}
+		if cfg.PolicyID != "" || cfg.OrgStackName != "" {
 			perimeter, err := vpc_sc.NewVpcServiceControls(ctx, "vpc-sc-perimeter", &vpc_sc.VpcServiceControlsArgs{
-				PolicyID:              pulumi.String(cfg.PolicyID),
+				PolicyID:              finalPolicyID,
 				Prefix:                fmt.Sprintf("%s_svpc", cfg.EnvCode),
 				Members:               cfg.VpcScMembers,
 				MembersDryRun:         cfg.VpcScMembers,
@@ -282,18 +287,18 @@ func main() {
 			if err != nil {
 				return err
 			}
-			
+
 			vpcScSleep, err := time.NewSleep(ctx, "vpc-sc-propagation-wait", &time.SleepArgs{
 				CreateDuration: pulumi.String("60s"),
 			}, pulumi.DependsOn([]pulumi.Resource{perimeter.Perimeter}))
 			if err != nil {
 				return err
 			}
-			
+
 			perimeterName = pulumi.All(vpcScSleep.ID(), perimeter.Perimeter.Name).ApplyT(func(args []interface{}) string {
 				return args[1].(string)
 			}).(pulumi.StringOutput)
-			
+
 			accessLevelName = perimeter.AccessLevel.Name
 			accessLevelDryRunName = perimeter.AccessLevelDryRun.Name
 		} else {
@@ -451,7 +456,7 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	if len(c.VpcScRestrictedServices) == 0 {
 		c.VpcScRestrictedServices = vpc_sc.GetDefaultRestrictedServices()
 	}
-	
+
 	if c.EnableDedicatedInterconnect {
 		c.VpcScEgressPolicies = append(c.VpcScEgressPolicies, accesscontextmanager.ServicePerimeterStatusEgressPolicyArgs{
 			EgressFrom: accesscontextmanager.ServicePerimeterStatusEgressPolicyEgressFromArgs{

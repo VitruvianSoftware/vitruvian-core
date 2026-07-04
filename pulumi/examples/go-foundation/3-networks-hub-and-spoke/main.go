@@ -253,8 +253,33 @@ func main() {
 				}
 			}
 
-	
-		// Exports — matching TF 3-networks-hub-and-spoke/envs/shared/outputs.tf
+			// VPC-SC perimeter on the hub project — created once here in the shared/hub
+			// stack that owns net-hub (TF applies it unconditionally in envs/shared).
+			if cfg.OrgStackName != "" {
+				hubOrgStack, err := pulumi.NewStackReference(ctx, "org", &pulumi.StackReferenceArgs{
+					Name: pulumi.String(cfg.OrgStackName),
+				})
+				if err != nil {
+					return err
+				}
+				var hubPolicyID pulumi.StringInput = hubOrgStack.GetStringOutput(pulumi.String("access_context_manager_policy_id"))
+				if cfg.PolicyID != "" {
+					hubPolicyID = pulumi.String(cfg.PolicyID)
+				}
+				_, err = vpc_sc.NewVpcServiceControls(ctx, "hub-vpc-sc-perimeter", &vpc_sc.VpcServiceControlsArgs{
+					PolicyID:           hubPolicyID,
+					Prefix:             "c_hub",
+					Members:            cfg.VpcScMembers,
+					ProjectNumbers:     pulumi.StringArray{hubOrgStack.GetStringOutput(pulumi.String("net_hub_project_number"))},
+					RestrictedServices: cfg.VpcScRestrictedServices,
+					Enforce:            cfg.EnforceVpcSc,
+				})
+				if err != nil {
+					return err
+				}
+			}
+
+			// Exports — matching TF 3-networks-hub-and-spoke/envs/shared/outputs.tf
 			ctx.Export("shared_vpc_host_project_id", pulumi.String(cfg.HubProjectID))
 			ctx.Export("network_name", hubVpc.VPC.Name)
 			ctx.Export("dns_policy", hubDnsPolicy.ID()) // DNS policy ID
@@ -421,7 +446,6 @@ func main() {
 		}
 
 		var acmPolicyID pulumi.StringOutput
-		var netHubProjectNumber pulumi.StringOutput
 		if cfg.OrgStackName != "" {
 			orgStack, err := pulumi.NewStackReference(ctx, "org", &pulumi.StackReferenceArgs{
 				Name: pulumi.String(cfg.OrgStackName),
@@ -430,10 +454,8 @@ func main() {
 				return err
 			}
 			acmPolicyID = orgStack.GetStringOutput(pulumi.String("access_context_manager_policy_id"))
-			netHubProjectNumber = orgStack.GetStringOutput(pulumi.String("net_hub_project_number"))
 		} else {
 			acmPolicyID = pulumi.String("").ToStringOutput()
-			netHubProjectNumber = pulumi.String("").ToStringOutput()
 		}
 
 		var finalPolicyID pulumi.StringInput
@@ -441,21 +463,6 @@ func main() {
 			finalPolicyID = pulumi.String(cfg.PolicyID)
 		} else {
 			finalPolicyID = acmPolicyID
-		}
-
-		// VPC-SC on hub
-		{
-			_, err := vpc_sc.NewVpcServiceControls(ctx, "hub-vpc-sc-perimeter", &vpc_sc.VpcServiceControlsArgs{
-				PolicyID:           finalPolicyID,
-				Prefix:             fmt.Sprintf("%s_hub", cfg.EnvCode),
-				Members:            cfg.VpcScMembers,
-				ProjectNumbers:     pulumi.StringArray{netHubProjectNumber},
-				RestrictedServices: cfg.VpcScRestrictedServices,
-				Enforce:            cfg.EnforceVpcSc,
-			})
-			if err != nil {
-				return err
-			}
 		}
 
 		// VPC-SC on spoke
@@ -479,24 +486,21 @@ func main() {
 			if err != nil {
 				return err
 			}
-			
+
 			vpcScSleep, err := time.NewSleep(ctx, "vpc-sc-propagation-wait", &time.SleepArgs{
 				CreateDuration: pulumi.String("60s"),
 			}, pulumi.DependsOn([]pulumi.Resource{perimeter.Perimeter}))
 			if err != nil {
 				return err
 			}
-			
+
 			perimeterName = pulumi.All(vpcScSleep.ID(), perimeter.Perimeter.Name).ApplyT(func(args []interface{}) string {
 				return args[1].(string)
 			}).(pulumi.StringOutput)
-			
+
 			accessLevelName = perimeter.AccessLevel.Name
 			accessLevelDryRunName = perimeter.AccessLevelDryRun.Name
 		}
-
-
-
 
 		// Exports — matching TF 3-networks-hub-and-spoke/envs/{env}/outputs.tf
 		ctx.Export("access_context_manager_policy_id", acmPolicyID)
