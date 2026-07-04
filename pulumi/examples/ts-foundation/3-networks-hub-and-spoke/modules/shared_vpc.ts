@@ -306,10 +306,13 @@ export class SharedVpc extends pulumi.ComponentResource {
             forwardingRuleName: `fr-${vpcName}-psc`,
         }, { parent: this });
 
-        // BGP Cloud Routers (cr5-cr8) for hybrid connectivity
-        const bgpAsn = args.environmentCode === "p" ? 16550 : 64514;
+        // BGP Cloud Routers (cr5-cr8) for hybrid connectivity.
+        // ASN 64514 for all environments (16550 is reserved for partner interconnect,
+        // not the base hub routers). Advertise the private PSC endpoint that serves the
+        // restricted Google APIs, not the public restricted VIP.
+        const bgpAsn = 64514;
         const advRanges = [
-            { range: "199.36.153.4/30" }, // restricted API VIP
+            { range: `${args.pscAddress}/32` }, // restricted Google APIs via PSC endpoint
         ];
         if (args.environmentCode === "p") {
             advRanges.push({ range: "35.199.192.0/19" }); // DNS forwarding
