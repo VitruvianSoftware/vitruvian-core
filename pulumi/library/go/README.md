@@ -13,7 +13,7 @@ go get github.com/VitruvianSoftware/pulumi-library
 Then import the package you need:
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/project"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/project_factory"
 ```
 
 ## Packages
@@ -21,17 +21,17 @@ import "github.com/VitruvianSoftware/pulumi-library/pkg/project"
 | Package | Import Path | Docs |
 |---------|-------------|------|
 | **Bootstrap** | `pkg/bootstrap` | [README](./pkg/bootstrap/README.md) |
-| **Project** | `pkg/project` | [README](./pkg/project/README.md) |
-| **Group** | `pkg/group` | [README](./pkg/group/README.md) |
+| **Project** | `pkg/project_factory` | [README](./pkg/project_factory/README.md) |
+| **Group** | `pkg/google_group` | [README](./pkg/google_group/README.md) |
 | **IAM** | `pkg/iam` | [README](./pkg/iam/README.md) |
-| **Policy** | `pkg/policy` | [README](./pkg/policy/README.md) |
-| **Logging** | `pkg/logging` | [README](./pkg/logging/README.md) |
-| **Networking** | `pkg/networking` | [README](./pkg/networking/README.md) |
+| **Policy** | `pkg/org_policy` | [README](./pkg/org_policy/README.md) |
+| **Logging** | `pkg/centralized_logging` | [README](./pkg/centralized_logging/README.md) |
+| **Networking** | `pkg/network` | [README](./pkg/network/README.md) |
 | **App** | `pkg/app` | [README](./pkg/app/README.md) |
 | **Data** | `pkg/data` | [README](./pkg/data/README.md) |
 | **CI/CD** | `pkg/cicd` | [README](./pkg/cicd/README.md) |
-| **Storage** | `pkg/storage` | [README](./pkg/storage/README.md) |
-| **Security** | `pkg/security` | [README](./pkg/security/README.md) |
+| **Storage** | `pkg/cloud_storage` | [README](./pkg/cloud_storage/README.md) |
+| **Security** | `pkg/cai_monitoring` | [README](./pkg/cai_monitoring/README.md) |
 
 ## Architecture
 
@@ -114,7 +114,7 @@ seed, err := bootstrap.NewBootstrap(ctx, "foundation-seed", &bootstrap.Bootstrap
 ### Create a Project with APIs
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/project"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/project_factory"
 
 p, err := project.NewProject(ctx, "my-project", &project.ProjectArgs{
     ProjectID:      pulumi.String("my-project-id"),
@@ -171,7 +171,7 @@ iam.NewProjectIAMBinding(ctx, "project-viewers", &iam.ProjectIAMBindingArgs{
 ### Provision Google Workspace Groups
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/group"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/google_group"
 
 g, err := group.NewGroup(ctx, "org-admins", &group.GroupArgs{
     ID:          "gcp-org-admins@example.com",
@@ -189,7 +189,7 @@ g, err := group.NewGroup(ctx, "org-admins", &group.GroupArgs{
 ### Enforce Organization Policies
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/policy"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/org_policy"
 
 // Boolean constraint — enforce
 policy.NewOrgPolicy(ctx, "no-serial-port", &policy.OrgPolicyArgs{
@@ -216,7 +216,7 @@ policy.NewOrgPolicy(ctx, "restrict-domains", &policy.OrgPolicyArgs{
 ### Export Centralized Logs
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/logging"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/centralized_logging"
 
 cl, err := logging.NewCentralizedLogging(ctx, "logs-export", &logging.CentralizedLoggingArgs{
     Resources:                   map[string]string{"resource": "organizations/1234567890"},
@@ -233,7 +233,7 @@ cl, err := logging.NewCentralizedLogging(ctx, "logs-export", &logging.Centralize
 ### Create a VPC with Subnets and PSA
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/networking"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/network"
 
 net, err := networking.NewNetworking(ctx, "my-vpc", &networking.NetworkingArgs{
     ProjectID: p.Project.ProjectId,
@@ -312,7 +312,7 @@ gh, err := cicd.NewGitHubOIDC(ctx, "gh-oidc", &cicd.GitHubOIDCArgs{
 ### Create a Secure Cloud Storage Bucket
 
 ```go
-import "github.com/VitruvianSoftware/pulumi-library/pkg/storage"
+import "github.com/VitruvianSoftware/pulumi-library/pkg/cloud_storage"
 
 enabled := true
 bucket, err := storage.NewSimpleBucket(ctx, "state-bucket", &storage.SimpleBucketArgs{

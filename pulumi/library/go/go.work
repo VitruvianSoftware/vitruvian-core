@@ -11,20 +11,20 @@ use (
 	./pkg/compute_instance
 	./pkg/data
 	./pkg/gcloud
-	./pkg/group
+	./pkg/google_group
 	./pkg/iam
 	./pkg/instance_template
 	./pkg/kms
 	./pkg/log_export
-	./pkg/logging
+	./pkg/centralized_logging
 	./pkg/network_firewall_policy
 	./pkg/network_peering
-	./pkg/networking
-	./pkg/policy
+	./pkg/network
+	./pkg/org_policy
 	./pkg/private_service_connect
-	./pkg/project
+	./pkg/project_factory
 	./pkg/pubsub
-	./pkg/security
-	./pkg/storage
-	./pkg/vpc_sc
+	./pkg/cai_monitoring
+	./pkg/cloud_storage
+	./pkg/vpc_service_controls
 )

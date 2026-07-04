@@ -136,41 +136,9 @@
       "release-type": "go",
       "component": "go-data"
     },
-    "go/pkg/group": {
-      "release-type": "go",
-      "component": "go-group"
-    },
     "go/pkg/iam": {
       "release-type": "go",
       "component": "go-iam"
-    },
-    "go/pkg/logging": {
-      "release-type": "go",
-      "component": "go-logging"
-    },
-    "go/pkg/networking": {
-      "release-type": "go",
-      "component": "go-networking"
-    },
-    "go/pkg/policy": {
-      "release-type": "go",
-      "component": "go-policy"
-    },
-    "go/pkg/project": {
-      "release-type": "go",
-      "component": "go-project"
-    },
-    "go/pkg/security": {
-      "release-type": "go",
-      "component": "go-security"
-    },
-    "go/pkg/storage": {
-      "release-type": "go",
-      "component": "go-storage"
-    },
-    "go/pkg/vpc_sc": {
-      "release-type": "go",
-      "component": "go-vpc-sc"
     },
     "go/pkg/cloud_dns": {
       "release-type": "go",
@@ -219,6 +187,38 @@
     "go/pkg/pubsub": {
       "release-type": "go",
       "component": "go-pubsub"
+    },
+    "go/pkg/project_factory": {
+      "release-type": "go",
+      "component": "go-project-factory"
+    },
+    "go/pkg/network": {
+      "release-type": "go",
+      "component": "go-network"
+    },
+    "go/pkg/vpc_service_controls": {
+      "release-type": "go",
+      "component": "go-vpc-service-controls"
+    },
+    "go/pkg/centralized_logging": {
+      "release-type": "go",
+      "component": "go-centralized-logging"
+    },
+    "go/pkg/cloud_storage": {
+      "release-type": "go",
+      "component": "go-cloud-storage"
+    },
+    "go/pkg/org_policy": {
+      "release-type": "go",
+      "component": "go-org-policy"
+    },
+    "go/pkg/cai_monitoring": {
+      "release-type": "go",
+      "component": "go-cai-monitoring"
+    },
+    "go/pkg/google_group": {
+      "release-type": "go",
+      "component": "go-google-group"
     }
   }
 }
