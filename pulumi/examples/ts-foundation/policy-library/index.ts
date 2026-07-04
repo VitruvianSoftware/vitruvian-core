@@ -139,6 +139,7 @@ const foundationPolicies = new policy.PolicyPack("foundation-policies", {
                     }
                 }
             },
+        },
         {
             name: "deletion-policy-prevent",
             description: "Certain core infrastructure must have deletion protection enabled.",

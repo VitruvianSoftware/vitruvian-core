@@ -259,28 +259,6 @@ export class SharedVpc extends pulumi.ComponentResource {
             }, { parent: this, dependsOn: [spokeToHub] });
         }
 
-
-        // ================================================================
-        // Bi-Directional VPC Peering (Spoke <-> Hub)
-        // ================================================================
-        if (args.mode === "spoke" && args.netHubProjectId && args.netHubNetworkSelfLink) {
-            const spokeToHub = new gcp.compute.NetworkPeering(`${name}-spoke-to-hub`, {
-                network: this.network.networkSelfLink,
-                peerNetwork: args.netHubNetworkSelfLink,
-                name: pulumi.interpolate`np-${args.environmentCode}-svpc-spoke-vpc-c-svpc-hub`,
-                exportCustomRoutes: false,
-                importCustomRoutes: true,
-            }, { parent: this });
-
-            const hubToSpoke = new gcp.compute.NetworkPeering(`${name}-hub-to-spoke`, {
-                network: args.netHubNetworkSelfLink,
-                peerNetwork: this.network.networkSelfLink,
-                name: pulumi.interpolate`np-vpc-c-svpc-hub-${args.environmentCode}-svpc-spoke`,
-                exportCustomRoutes: true,
-                importCustomRoutes: false,
-            }, { parent: this, dependsOn: [spokeToHub] });
-        }
-
         // DNS Forwarding / Peering for Hybrid DNS
         if (args.environmentCode === "p" && args.domain && args.targetNameServerAddresses) {
             new gcp.dns.ManagedZone(`${name}-dns-forwarding`, {
