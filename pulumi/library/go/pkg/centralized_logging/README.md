@@ -9,6 +9,16 @@ This package mirrors the upstream Terraform modules used by the Google Cloud Fou
 | `LogExport` | `terraform-google-modules/log-export/google` |
 | `CentralizedLogging` | `modules/centralized-logging` (in-repo) |
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging"
+```
+
 ## LogExport
 
 Low-level component that creates a single log sink. Supports all four GCP sink types based on `ResourceType`:

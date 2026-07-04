@@ -2,6 +2,16 @@
 
 Creates GCP projects with API enablement, billing association, and automatic default-VPC suppression.
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
+```
+
 ## Overview
 
 The `Project` component wraps [`organizations.Project`](https://www.pulumi.com/registry/packages/gcp/api-docs/organizations/project/) and a dynamic set of [`projects.Service`](https://www.pulumi.com/registry/packages/gcp/api-docs/projects/service/) resources. APIs to enable are specified as a plain `[]string` slice — not as Pulumi inputs — so that each API service is a first-class resource in the Pulumi state graph.

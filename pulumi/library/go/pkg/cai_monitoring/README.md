@@ -2,6 +2,16 @@
 
 Reusable Pulumi components for GCP security infrastructure, mirroring local modules from the upstream [Google Terraform Example Foundation](https://github.com/terraform-google-modules/terraform-example-foundation).
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring"
+```
+
 ## Components
 
 - **`CAIMonitoring`** (component): Mirrors `terraform-example-foundation/1-org/modules/cai-monitoring`. Deploys a Cloud Asset Inventory monitoring pipeline that watches for privileged IAM role grants across an organization and reports violations as Security Command Center findings.

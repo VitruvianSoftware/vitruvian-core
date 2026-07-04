@@ -189,36 +189,28 @@
       "component": "go-pubsub"
     },
     "go/pkg/project_factory": {
-      "release-type": "go",
-      "component": "go-project-factory"
+      "release-type": "go"
     },
     "go/pkg/network": {
-      "release-type": "go",
-      "component": "go-network"
+      "release-type": "go"
     },
     "go/pkg/vpc_service_controls": {
-      "release-type": "go",
-      "component": "go-vpc-service-controls"
+      "release-type": "go"
     },
     "go/pkg/centralized_logging": {
-      "release-type": "go",
-      "component": "go-centralized-logging"
+      "release-type": "go"
     },
     "go/pkg/cloud_storage": {
-      "release-type": "go",
-      "component": "go-cloud-storage"
+      "release-type": "go"
     },
     "go/pkg/org_policy": {
-      "release-type": "go",
-      "component": "go-org-policy"
+      "release-type": "go"
     },
     "go/pkg/cai_monitoring": {
-      "release-type": "go",
-      "component": "go-cai-monitoring"
+      "release-type": "go"
     },
     "go/pkg/google_group": {
-      "release-type": "go",
-      "component": "go-google-group"
+      "release-type": "go"
     }
   }
 }

@@ -2,6 +2,16 @@
 
 Enforces [GCP organization policy constraints](https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints) using the v2 Org Policy API.
 
+## Installation
+
+```bash
+go get github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy
+```
+
+```go
+import "github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy"
+```
+
 ## Overview
 
 The `OrgPolicy` component wraps [`orgpolicy.Policy`](https://www.pulumi.com/registry/packages/gcp/api-docs/orgpolicy/policy/) to enforce boolean and list constraints at any scope (organization, folder, or project).
