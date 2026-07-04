@@ -123,7 +123,9 @@ export class CentralizedLogging extends pulumi.ComponentResource {
                     bucket: bucket.bucketId,
                     linkId: args.loggingBucketOptions.linkedDatasetId,
                 }, { parent: bucket });
-                this.linkedDatasetName = linkedDataset.name;
+                // Feed the shared _linkedDatasetName so the final assignment below
+                // does not clobber this Log Analytics linked-dataset value with "".
+                _linkedDatasetName = linkedDataset.name;
             }
 
             const sink = this.createSink(`${name}-log-bucket-sink`, {
