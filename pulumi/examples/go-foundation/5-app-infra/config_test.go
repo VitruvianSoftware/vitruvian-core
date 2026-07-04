@@ -11,38 +11,35 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestAppInfraConfigStruct validates the AppInfraConfig struct.
-func TestAppInfraConfigStruct(t *testing.T) {
-	cfg := &AppInfraConfig{
-		Env:          "development",
-		BusinessCode: "bu1",
-		Region:       "us-central1",
-	}
+type mocks int
 
-	assert.Equal(t, "development", cfg.Env)
-	assert.Equal(t, "bu1", cfg.BusinessCode)
-	assert.Equal(t, "us-central1", cfg.Region)
+func (mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
 }
 
-// TestDefaultRegion validates the default region constant.
-func TestDefaultRegion(t *testing.T) {
-	cfg := &AppInfraConfig{Region: ""}
-	if cfg.Region == "" {
-		cfg.Region = "us-central1"
-	}
-	assert.Equal(t, "us-central1", cfg.Region)
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
 }
 
-// TestDefaultBusinessCode validates the default business code.
-func TestDefaultBusinessCode(t *testing.T) {
-	cfg := &AppInfraConfig{BusinessCode: ""}
-	if cfg.BusinessCode == "" {
-		cfg.BusinessCode = "bu1"
-	}
-	assert.Equal(t, "bu1", cfg.BusinessCode)
+func TestAppConfigDefaultsReal(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{"project:env":"development"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadAppInfraConfig(ctx)
+
+		assert.Equal(t, "development", cfg.Env)
+		assert.Equal(t, "bu1", cfg.BusinessCode)
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }

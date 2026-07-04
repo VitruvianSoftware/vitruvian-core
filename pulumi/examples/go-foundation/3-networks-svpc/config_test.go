@@ -11,48 +11,39 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNetConfigStruct validates the NetConfig struct with SVPC-specific fields.
-func TestNetConfigStruct(t *testing.T) {
-	cfg := &NetConfig{
-		Env:     "development",
-		Region1: "us-central1",
-		Region2: "us-west1",
-	}
+type mocks int
 
-	assert.Equal(t, "development", cfg.Env)
-	assert.Equal(t, "us-central1", cfg.Region1)
-	assert.Equal(t, "us-west1", cfg.Region2)
+func (mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
 }
 
-// TestNetConfigDefaults validates default values for network config.
-func TestNetConfigDefaults(t *testing.T) {
-	cfg := &NetConfig{}
-
-	// Apply defaults as loadNetConfig would
-	if cfg.Region1 == "" {
-		cfg.Region1 = "us-central1"
-	}
-	if cfg.Region2 == "" {
-		cfg.Region2 = "us-west1"
-	}
-
-	assert.Equal(t, "us-central1", cfg.Region1)
-	assert.Equal(t, "us-west1", cfg.Region2)
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
 }
 
-// TestNetConfigEnvironmentValues validates all valid environment inputs.
-func TestNetConfigEnvironmentValues(t *testing.T) {
-	validEnvs := []string{"development", "nonproduction", "production"}
+func TestNetConfigDefaultsReal(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{"project:env":"development", "project:env_code":"d", "project:project_id":"prj-d-svpc", "project:parent_id":"folders/123"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
 
-	for _, env := range validEnvs {
-		t.Run(env, func(t *testing.T) {
-			cfg := &NetConfig{Env: env}
-			assert.NotEmpty(t, cfg.Env)
-		})
-	}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadNetConfig(ctx)
+
+		assert.Equal(t, "development", cfg.Env)
+		assert.Equal(t, "d", cfg.EnvCode)
+		assert.Equal(t, "prj-d-svpc", cfg.ProjectID)
+		// Default values
+		assert.Equal(t, "us-central1", cfg.Region1)
+		assert.Equal(t, "us-west1", cfg.Region2)
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }

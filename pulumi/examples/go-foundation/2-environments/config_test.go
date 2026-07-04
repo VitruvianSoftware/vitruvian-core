@@ -11,29 +11,32 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestEnvironments validates the fixed set of environment names used
-// for folder and project creation. Must match Terraform upstream.
-func TestEnvironments(t *testing.T) {
-	envs := []string{"development", "nonproduction", "production"}
-	assert.Len(t, envs, 3, "exactly 3 environments expected")
-	assert.Contains(t, envs, "development")
-	assert.Contains(t, envs, "nonproduction")
-	assert.Contains(t, envs, "production")
+type mocks int
+
+func (mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
 }
 
-// TestEnvCode validates the environment code mapping.
-func TestEnvCode(t *testing.T) {
-	envCodes := map[string]string{
-		"development":   "d",
-		"nonproduction": "n",
-		"production":    "p",
-	}
-	assert.Equal(t, "d", envCodes["development"])
-	assert.Equal(t, "n", envCodes["nonproduction"])
-	assert.Equal(t, "p", envCodes["production"])
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
+
+func TestDeployEnvBaseline(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123", "project:billing_account":"123", "project:org_stack_name":"org-stack"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadEnvConfig(ctx)
+		assert.Equal(t, "org-stack", cfg.OrgStackName)
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }
