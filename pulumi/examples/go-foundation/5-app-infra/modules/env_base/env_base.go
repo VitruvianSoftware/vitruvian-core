@@ -18,17 +18,16 @@
 // To enable, remove this build constraint or build with: go build -tags=example
 //
 
-
 package env_base
 
 import (
 	"fmt"
 
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance"
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance"
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template"
 )
 
 // EnvBaseArgs configures a standard Compute Instance deployment,
@@ -113,8 +112,8 @@ func DeployEnvBase(ctx *pulumi.Context, name string, args *EnvBaseArgs) (*EnvBas
 
 	// 3. Compute Instance
 	inst, err := compute_instance.NewComputeInstance(ctx, name+"-inst", &compute_instance.ComputeInstanceArgs{
-		Project:          args.ProjectID,
-		Zone:             pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
+		Project: args.ProjectID,
+		Zone: pulumi.All(args.ProjectID, args.Region).ApplyT(func(args []interface{}) (string, error) {
 			project := args[0].(string)
 			region := args[1].(string)
 			zones, err := compute.GetZones(ctx, &compute.GetZonesArgs{
@@ -129,9 +128,9 @@ func DeployEnvBase(ctx *pulumi.Context, name string, args *EnvBaseArgs) (*EnvBas
 			}
 			return zones.Names[0], nil
 		}).(pulumi.StringOutput),
-		Hostname:         fmt.Sprintf("%s-%s", hostname, args.ProjectSuffix),
-		InstanceTemplate: tmpl.Template.SelfLink,
-		NumInstances:     args.NumInstances,
+		Hostname:            fmt.Sprintf("%s-%s", hostname, args.ProjectSuffix),
+		InstanceTemplate:    tmpl.Template.SelfLink,
+		NumInstances:        args.NumInstances,
 		ResourceManagerTags: args.IAPFirewallTags,
 	})
 	if err != nil {

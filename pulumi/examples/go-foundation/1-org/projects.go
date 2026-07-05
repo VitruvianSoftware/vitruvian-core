@@ -19,22 +19,22 @@ package main
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // OrgProjects holds outputs from all org-level project deployments.
 type OrgProjects struct {
-	AuditLogsProjectID     pulumi.StringOutput
-	BillingExportProjectID pulumi.StringOutput
-	SCCProjectID           pulumi.StringOutput
-	OrgKMSProjectID        pulumi.StringOutput
-	OrgSecretsProjectID    pulumi.StringOutput
-	InterconnectProjectID  pulumi.StringOutput
+	AuditLogsProjectID        pulumi.StringOutput
+	BillingExportProjectID    pulumi.StringOutput
+	SCCProjectID              pulumi.StringOutput
+	OrgKMSProjectID           pulumi.StringOutput
+	OrgSecretsProjectID       pulumi.StringOutput
+	InterconnectProjectID     pulumi.StringOutput
 	InterconnectProjectNumber pulumi.StringOutput // upstream: interconnect_project_number
-	NetHubProjectID        pulumi.StringOutput
-	NetHubProjectNumber    pulumi.StringOutput // upstream: net_hub_project_number
-	NetworkProjectIDs      map[string]pulumi.StringOutput
+	NetHubProjectID           pulumi.StringOutput
+	NetHubProjectNumber       pulumi.StringOutput // upstream: net_hub_project_number
+	NetworkProjectIDs         map[string]pulumi.StringOutput
 }
 
 // createProject is a helper that creates a standardized project using the
@@ -136,7 +136,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// ========================================================================
 
 	// Audit Logs — centralized logging destination
-	auditLogsProjectID, _, err := createProject(ctx, "org-logging",
+	auditLogsProjectID, _, err := createProject(
+		ctx, "org-logging",
 		fmt.Sprintf("%s-c-logging", cfg.ProjectPrefix),
 		commonFolderID, cfg,
 		[]string{"logging.googleapis.com", "bigquery.googleapis.com", "billingbudgets.googleapis.com"},
@@ -157,7 +158,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Billing Export — BigQuery dataset for billing data
-	billingExportProjectID, _, err := createProject(ctx, "org-billing-export",
+	billingExportProjectID, _, err := createProject(
+		ctx, "org-billing-export",
 		fmt.Sprintf("%s-c-billing-export", cfg.ProjectPrefix),
 		commonFolderID, cfg,
 		[]string{"logging.googleapis.com", "bigquery.googleapis.com", "billingbudgets.googleapis.com"},
@@ -178,7 +180,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Security Command Center — SCC notifications via Pub/Sub
-	sccProjectID, _, err := createProject(ctx, "org-scc",
+	sccProjectID, _, err := createProject(
+		ctx, "org-scc",
 		fmt.Sprintf("%s-c-scc", cfg.ProjectPrefix),
 		commonFolderID, cfg,
 		[]string{"logging.googleapis.com", "securitycenter.googleapis.com", "pubsub.googleapis.com", "billingbudgets.googleapis.com", "cloudkms.googleapis.com"},
@@ -199,7 +202,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// KMS — org-level key management
-	orgKMSProjectID, _, err := createProject(ctx, "org-kms",
+	orgKMSProjectID, _, err := createProject(
+		ctx, "org-kms",
 		fmt.Sprintf("%s-c-kms", cfg.ProjectPrefix),
 		commonFolderID, cfg,
 		[]string{"logging.googleapis.com", "cloudkms.googleapis.com", "billingbudgets.googleapis.com"},
@@ -220,7 +224,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Secrets — org-level secret storage
-	orgSecretsProjectID, _, err := createProject(ctx, "org-secrets",
+	orgSecretsProjectID, _, err := createProject(
+		ctx, "org-secrets",
 		fmt.Sprintf("%s-c-secrets", cfg.ProjectPrefix),
 		commonFolderID, cfg,
 		[]string{"logging.googleapis.com", "secretmanager.googleapis.com", "billingbudgets.googleapis.com"},
@@ -245,7 +250,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// ========================================================================
 
 	// Interconnect — Dedicated/Partner Interconnect connections
-	interconnectProjectID, interconnectProjectNumber, err := createProject(ctx, "org-interconnect",
+	interconnectProjectID, interconnectProjectNumber, err := createProject(
+		ctx, "org-interconnect",
 		fmt.Sprintf("%s-net-interconnect", cfg.ProjectPrefix),
 		networkFolderID, cfg,
 		[]string{"billingbudgets.googleapis.com", "compute.googleapis.com"},
@@ -269,7 +275,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	var netHubProjectID pulumi.StringOutput
 	var netHubProjectNumber pulumi.StringOutput
 	if cfg.EnableHubAndSpoke {
-		netHubProjectID, netHubProjectNumber, err = createProject(ctx, "org-net-hub",
+		netHubProjectID, netHubProjectNumber, err = createProject(
+			ctx, "org-net-hub",
 			fmt.Sprintf("%s-net-hub", cfg.ProjectPrefix),
 			networkFolderID, cfg,
 			[]string{
@@ -302,7 +309,8 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
 	networkProjectIDs := make(map[string]pulumi.StringOutput)
 	for env, code := range envCodes {
-		netProjectID, _, err := createProject(ctx,
+		netProjectID, _, err := createProject(
+			ctx,
 			fmt.Sprintf("org-net-%s", env),
 			fmt.Sprintf("%s-%s-svpc", cfg.ProjectPrefix, code),
 			networkFolderID, cfg,
@@ -312,7 +320,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 				"servicenetworking.googleapis.com",
 				"container.googleapis.com",
 				"logging.googleapis.com",
-				"cloudresourcemanager.googleapis.com",  // Gap 2: matches upstream network module
+				"cloudresourcemanager.googleapis.com", // Gap 2: matches upstream network module
 				"accesscontextmanager.googleapis.com", // Gap 2: needed for VPC Service Controls
 				"billingbudgets.googleapis.com",
 			},
@@ -346,5 +354,3 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 		NetworkProjectIDs:         networkProjectIDs,
 	}, nil
 }
-
-

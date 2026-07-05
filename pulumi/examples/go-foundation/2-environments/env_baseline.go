@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/assuredworkloads"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/tags"
@@ -28,12 +28,12 @@ import (
 
 // EnvBaselineOutputs holds all outputs from a single environment's baseline deployment.
 type EnvBaselineOutputs struct {
-	FolderName       pulumi.StringOutput
-	FolderID         pulumi.IDOutput
-	KMSProjectID     pulumi.StringOutput
-	KMSProjectNumber pulumi.StringOutput
-	SecretsProjectID pulumi.StringOutput
-	AssuredWorkloadID pulumi.StringOutput
+	FolderName               pulumi.StringOutput
+	FolderID                 pulumi.IDOutput
+	KMSProjectID             pulumi.StringOutput
+	KMSProjectNumber         pulumi.StringOutput
+	SecretsProjectID         pulumi.StringOutput
+	AssuredWorkloadID        pulumi.StringOutput
 	AssuredWorkloadResources assuredworkloads.WorkloadResourceArrayOutput
 }
 
@@ -114,10 +114,10 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 	//   does not disable services on destroy by default, which matches.
 	// ========================================================================
 	kmsProject, err := project.NewProject(ctx, fmt.Sprintf("env-kms-%s", env), &project.ProjectArgs{
-		ProjectID:      pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
-		Name:           pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
-		FolderID:       folderID,
-		BillingAccount: pulumi.String(cfg.BillingAccount),
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
 		RandomProjectID:       cfg.RandomSuffix,
 		DeletionPolicy:        pulumi.String(cfg.ProjectDeletionPolicy),
 		DefaultServiceAccount: cfg.DefaultServiceAccount,
@@ -153,10 +153,10 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 	// - disable_services_on_destroy=false matches Pulumi default
 	// ========================================================================
 	secretsProject, err := project.NewProject(ctx, fmt.Sprintf("env-secrets-%s", env), &project.ProjectArgs{
-		ProjectID:      pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
-		Name:           pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
-		FolderID:       folderID,
-		BillingAccount: pulumi.String(cfg.BillingAccount),
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
+		FolderID:              folderID,
+		BillingAccount:        pulumi.String(cfg.BillingAccount),
 		RandomProjectID:       cfg.RandomSuffix,
 		DeletionPolicy:        pulumi.String(cfg.ProjectDeletionPolicy),
 		DefaultServiceAccount: cfg.DefaultServiceAccount,
@@ -187,8 +187,8 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 	// ========================================================================
 	if cfg.AssuredWorkload.Enabled {
 		workload, err := assuredworkloads.NewWorkload(ctx, fmt.Sprintf("assured-workload-%s", env), &assuredworkloads.WorkloadArgs{
-			Organization:                pulumi.String(cfg.OrgID),
-			BillingAccount:              pulumi.String(fmt.Sprintf("billingAccounts/%s", cfg.BillingAccount)),
+			Organization:   pulumi.String(cfg.OrgID),
+			BillingAccount: pulumi.String(fmt.Sprintf("billingAccounts/%s", cfg.BillingAccount)),
 			ProvisionedResourcesParent: envFolder.ID().ApplyT(func(id pulumi.ID) string {
 				return string(id)
 			}).(pulumi.StringOutput),

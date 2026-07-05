@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -65,4 +66,3 @@ func deployFolders(ctx *pulumi.Context, cfg *OrgConfig) (*Folders, error) {
 		Network: network,
 	}, nil
 }
-

@@ -29,7 +29,7 @@ func NewParentIamRemoveRole(ctx *pulumi.Context, name string, args *ParentIamRem
 
 	for _, role := range args.Roles {
 		roleID := strings.ReplaceAll(strings.TrimPrefix(role, "roles/"), ".", "-")
-		
+
 		if args.ParentType == "project" {
 			_, err = projects.NewIAMBinding(ctx, fmt.Sprintf("%s-%s", name, roleID), &projects.IAMBindingArgs{
 				Project: args.ParentId,

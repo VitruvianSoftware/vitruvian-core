@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"foundation-5-app-infra/modules/confidential_space"
 	"foundation-5-app-infra/modules/env_base"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 func main() {
@@ -73,18 +73,18 @@ func main() {
 
 		// 5. Deploy Confidential Space Workload
 		_, err = confidential_space.DeployConfidentialSpace(ctx, "conf-space", &confidential_space.ConfidentialSpaceArgs{
-			Env:                     cfg.Env,
-			BusinessUnit:            cfg.BusinessCode,
-			ProjectID:               appProjectID,
-			ProjectNumber:           appProjectNumber,
-			Region:                  appRegion,
-			SubnetworkSelfLink:      subnetsSelfLinks,
-			WorkloadSAEmail:         workloadSAEmail,
-			ConfidentialImageDigest: cfg.ConfidentialImageDigest,
-			ConfidentialMachineType: "n2d-standard-2",
+			Env:                      cfg.Env,
+			BusinessUnit:             cfg.BusinessCode,
+			ProjectID:                appProjectID,
+			ProjectNumber:            appProjectNumber,
+			Region:                   appRegion,
+			SubnetworkSelfLink:       subnetsSelfLinks,
+			WorkloadSAEmail:          workloadSAEmail,
+			ConfidentialImageDigest:  cfg.ConfidentialImageDigest,
+			ConfidentialMachineType:  "n2d-standard-2",
 			ConfidentialInstanceType: "SEV",
-			CpuPlatform:             "AMD Milan",
-			CloudBuildProjectID:     cloudbuildProjectID,
+			CpuPlatform:              "AMD Milan",
+			CloudBuildProjectID:      cloudbuildProjectID,
 		})
 		if err != nil {
 			return err
@@ -95,23 +95,23 @@ func main() {
 }
 
 type AppInfraConfig struct {
-	Env                    string
-	EnvCode                string
-	BusinessCode           string
-	Region                 string
-	ProjectsStackName      string
-	BootstrapStackName     string
+	Env                     string
+	EnvCode                 string
+	BusinessCode            string
+	Region                  string
+	ProjectsStackName       string
+	BootstrapStackName      string
 	ConfidentialImageDigest string
 }
 
 func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 	conf := config.New(ctx, "")
 	c := &AppInfraConfig{
-		Env:                    conf.Require("env"),
-		BusinessCode:           conf.Get("business_code"),
-		Region:                 conf.Get("region"),
-		ProjectsStackName:      conf.Get("projects_stack_name"),
-		BootstrapStackName:     conf.Get("bootstrap_stack_name"),
+		Env:                     conf.Require("env"),
+		BusinessCode:            conf.Get("business_code"),
+		Region:                  conf.Get("region"),
+		ProjectsStackName:       conf.Get("projects_stack_name"),
+		BootstrapStackName:      conf.Get("bootstrap_stack_name"),
 		ConfidentialImageDigest: conf.Get("confidential_image_digest"),
 	}
 

@@ -20,9 +20,9 @@ import (
 // the correct set of labels matching the Terraform foundation's pattern.
 func TestProjectLabels(t *testing.T) {
 	cfg := &ProjectsConfig{
-		Env:           "development",
-		EnvCode:       "d",
-		BusinessCode:  "bu1",
+		Env:              "development",
+		EnvCode:          "d",
+		BusinessCode:     "bu1",
 		PrimaryContact:   "owner@example.com",
 		SecondaryContact: "backup@example.com",
 		BillingCode:      "12345",
@@ -66,9 +66,9 @@ func TestBudgetConfig(t *testing.T) {
 // TestProjectsConfigStruct validates the ProjectsConfig struct fields.
 func TestProjectsConfigStruct(t *testing.T) {
 	cfg := &ProjectsConfig{
-		Env:          "production",
-		EnvCode:      "p",
-		BusinessCode: "bu1",
+		Env:           "production",
+		EnvCode:       "p",
+		BusinessCode:  "bu1",
 		ProjectPrefix: "prj",
 		FolderPrefix:  "fldr",
 	}

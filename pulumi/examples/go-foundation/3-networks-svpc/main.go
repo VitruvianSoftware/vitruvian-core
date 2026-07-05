@@ -26,8 +26,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/networking"
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_sc"
+	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
+	vpc_sc "github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls"
 )
 
 func main() {

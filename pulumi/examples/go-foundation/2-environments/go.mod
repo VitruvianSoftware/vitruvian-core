@@ -1,9 +1,9 @@
 module foundation-2-environments
 
-go 1.26.1
+go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project v0.4.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
 	github.com/pulumi/pulumi/sdk/v3 v3.250.0
 	github.com/stretchr/testify v1.11.1
@@ -13,7 +13,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go v0.4.1-0.20260703174208-a71371f11968 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go v0.5.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -32,7 +32,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cloudflare/circl v1.6.4 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
@@ -73,7 +73,7 @@ require (
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
 	github.com/pulumi/esc v0.25.0 // indirect
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0 // indirect
@@ -121,3 +121,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.5.1 // indirect
 )
+
+replace github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory => ../../../library/go/pkg/project_factory
+
+replace github.com/VitruvianSoftware/pulumi-library/go => ../../../library/go

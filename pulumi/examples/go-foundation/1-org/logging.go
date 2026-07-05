@@ -17,7 +17,7 @@
 package main
 
 import (
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/logging"
+	logging "github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/bigquery"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -26,8 +26,8 @@ import (
 type LoggingOutputs struct {
 	StorageBucketName pulumi.StringOutput
 	PubSubTopicName   pulumi.StringOutput
-	LogBucketName     pulumi.StringOutput // upstream: logs_export_project_logbucket_name
-	LinkedDatasetName pulumi.StringOutput // upstream: logs_export_project_linked_dataset_name
+	LogBucketName     pulumi.StringOutput            // upstream: logs_export_project_logbucket_name
+	LinkedDatasetName pulumi.StringOutput            // upstream: logs_export_project_linked_dataset_name
 	BillingSinkNames  map[string]pulumi.StringOutput // upstream: billing_sink_names
 	// LastResource is the last resource created by the logging deployment,
 	// used for dependency ordering (e.g., policies must wait for sinks).

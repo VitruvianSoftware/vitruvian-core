@@ -80,6 +80,11 @@ exports_files(
 # with Bazel ts_project targets deferred to a follow-up. Keep gazelle out so it
 # does not fight the hand-authored/absent BUILD files.
 # gazelle:exclude pulumi/library
+# pulumi/examples holds the reference foundation stages — standalone Pulumi
+# projects (own go.mod, resolving the in-tree library via replace directives,
+# not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
+# as infrastructure/pulumi. Keep gazelle out of the subtree.
+# gazelle:exclude pulumi/examples
 
 gazelle(
     name = "gazelle",

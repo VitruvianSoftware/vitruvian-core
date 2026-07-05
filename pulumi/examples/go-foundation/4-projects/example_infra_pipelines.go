@@ -25,15 +25,15 @@ import (
 // InfraPipelinesArgs configures the Cloud Build infrastructure pipeline module.
 // Mirrors: 4-projects/modules/infra_pipelines (Terraform)
 type InfraPipelinesArgs struct {
-	ProjectID             string
-	DefaultRegion         string
-	BillingAccount        string
-	OrgID                 string
-	AppInfraRepos         []string
-	BucketPrefix          string
-	RemoteTFStateBucket   string
+	ProjectID                string
+	DefaultRegion            string
+	BillingAccount           string
+	OrgID                    string
+	AppInfraRepos            []string
+	BucketPrefix             string
+	RemoteTFStateBucket      string
 	CloudBuilderArtifactRepo string
-	PrivateWorkerPoolID   string
+	PrivateWorkerPoolID      string
 }
 
 // InfraPipelinesResult holds the outputs from the infra pipeline deployment.

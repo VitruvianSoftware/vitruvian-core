@@ -183,13 +183,13 @@ type ProjectsConfig struct {
 	ConfidentialSpaceEnabled bool
 
 	// CMEK
-	CMEKEnabled       bool
-	KMSLocation       string
-	GCSLocation       string
-	KeyringName       string
-	KeyName           string
-	KeyRotationPeriod string
-	GCSBucketPrefix   string
+	CMEKEnabled         bool
+	KMSLocation         string
+	GCSLocation         string
+	KeyringName         string
+	KeyName             string
+	KeyRotationPeriod   string
+	GCSBucketPrefix     string
 	GCSPlacementRegions []string
 
 	// Regions
@@ -203,12 +203,12 @@ type ProjectsConfig struct {
 func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	conf := config.New(ctx, "")
 	c := &ProjectsConfig{
-		Env:            conf.Require("env"),
-		BusinessCode:   conf.Require("business_code"),
-		BillingAccount: conf.Require("billing_account"),
-		ProjectPrefix:  conf.Get("project_prefix"),
-		FolderPrefix:   conf.Get("folder_prefix"),
-		OrgStackName:   conf.Require("org_stack_name"),
+		Env:              conf.Require("env"),
+		BusinessCode:     conf.Require("business_code"),
+		BillingAccount:   conf.Require("billing_account"),
+		ProjectPrefix:    conf.Get("project_prefix"),
+		FolderPrefix:     conf.Get("folder_prefix"),
+		OrgStackName:     conf.Require("org_stack_name"),
 		NetworkStackName: conf.Get("network_stack_name"),
 		EnvStackName:     conf.Get("env_stack_name"),
 	}
@@ -274,8 +274,6 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	} else {
 		c.EnforceVpcSc = true
 	}
-
-
 
 	// Peering
 	if val, err := conf.TryBool("peering_enabled"); err == nil {

@@ -197,3 +197,23 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # ─── pulumi go-foundation example stages. Each stage is its own go.mod (Pulumi
+  #     project resolving the in-tree library via replace directives). Keeps the
+  #     reference foundation's third-party deps (pulumi-gcp, sdk) current. ───
+  - package-ecosystem: "gomod"
+    directories:
+      - "/pulumi/examples/go-foundation/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

@@ -20,18 +20,18 @@ import (
 	"fmt"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap"
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
-	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/storage"
+	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage"
+	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // SeedProject holds outputs from the seed project deployment.
 type SeedProject struct {
-	ProjectID              pulumi.StringOutput
-	StateBucketName        pulumi.StringOutput
+	ProjectID               pulumi.StringOutput
+	StateBucketName         pulumi.StringOutput
 	ProjectsStateBucketName pulumi.StringOutput // Separate bucket for 4-projects stage
-	KMSKeyID               pulumi.StringOutput
+	KMSKeyID                pulumi.StringOutput
 }
 
 // CICDProject holds outputs from the CI/CD project deployment.
@@ -53,14 +53,14 @@ type CICDProject struct {
 func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringOutput, bucketIAMMembers []pulumi.StringInput) (*SeedProject, error) {
 	kmsPrevent := !cfg.BucketTFStateKMSForceDestroy
 	b, err := bootstrap.NewBootstrap(ctx, "seed-bootstrap", &bootstrap.BootstrapArgs{
-		OrgID:          cfg.OrgID,
-		FolderID:       folderID,
-		BillingAccount: cfg.BillingAccount,
-		ProjectPrefix:  cfg.ProjectPrefix,
-		DefaultRegion:  cfg.DefaultRegion,
+		OrgID:            cfg.OrgID,
+		FolderID:         folderID,
+		BillingAccount:   cfg.BillingAccount,
+		ProjectPrefix:    cfg.ProjectPrefix,
+		DefaultRegion:    cfg.DefaultRegion,
 		DefaultRegionKMS: cfg.DefaultRegionKMS,
 		DefaultRegionGCS: cfg.DefaultRegionGCS,
-		RandomSuffix:   cfg.RandomSuffix,
+		RandomSuffix:     cfg.RandomSuffix,
 		ProjectLabels: pulumi.StringMap{
 			"environment":       pulumi.String("bootstrap"),
 			"application_name":  pulumi.String("seed-bootstrap"),

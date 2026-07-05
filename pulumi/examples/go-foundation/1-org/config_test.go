@@ -51,14 +51,14 @@ func TestOrgConfigDefaults(t *testing.T) {
 		assert.Equal(t, "scc-notify", cfg.SCCNotificationName)
 		assert.Equal(t, "state = \"ACTIVE\"", cfg.SCCNotificationFilter)
 		assert.Equal(t, false, cfg.CreateUniqueTagKey)
-		assert.Equal(t, false, cfg.EnableSCCResources) 
+		assert.Equal(t, false, cfg.EnableSCCResources)
 		assert.Equal(t, true, cfg.EnableKMSKeyUsageTracking)
 		assert.Equal(t, true, cfg.CreateAccessContextManagerPolicy)
 		assert.Equal(t, false, cfg.EnforceAllowedWorkerPools)
 		assert.Equal(t, "PREVENT", cfg.ProjectDeletionPolicy)
 		assert.Equal(t, true, cfg.FolderDeletionProtection)
 		assert.Equal(t, false, cfg.LogExportStorageForceDestroy)
-		assert.Equal(t, false, cfg.LogExportStorageVersioning) 
+		assert.Equal(t, false, cfg.LogExportStorageVersioning)
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", &mockResourceProvider{}))

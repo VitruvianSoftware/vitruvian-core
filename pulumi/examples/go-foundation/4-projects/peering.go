@@ -19,8 +19,8 @@ package main
 import (
 	"fmt"
 
-	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/networking"
-	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
+	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/tags"
@@ -30,9 +30,9 @@ import (
 // PeeringResult holds outputs from the peering network deployment.
 // These are exported by main.go to satisfy downstream dependencies in 5-app-infra.
 type PeeringResult struct {
-	NetworkSelfLink    pulumi.StringOutput
-	SubnetSelfLink     pulumi.StringOutput
-	IAPFirewallTags    pulumi.MapOutput // map of tagKey → tagValue for IAP access
+	NetworkSelfLink pulumi.StringOutput
+	SubnetSelfLink  pulumi.StringOutput
+	IAPFirewallTags pulumi.MapOutput // map of tagKey → tagValue for IAP access
 }
 
 // deployPeeringNetwork creates the full peering network infrastructure for the
@@ -166,8 +166,8 @@ func deployPeeringNetwork(
 	fwRules := buildPeeringFirewallRules(cfg, sshTagValueID, rdpTagValueID)
 
 	_, err = libnet.NewNetworkFirewallPolicy(ctx, "peering-fw", &libnet.NetworkFirewallPolicyArgs{
-		ProjectID:  projectID,
-		PolicyName: fmt.Sprintf("fp-%s-peering-project-firewalls", cfg.EnvCode),
+		ProjectID:   projectID,
+		PolicyName:  fmt.Sprintf("fp-%s-peering-project-firewalls", cfg.EnvCode),
 		Description: fmt.Sprintf("Firewall rules for Peering Network: %s.", vpcName),
 		TargetVPCs: []pulumi.StringInput{
 			pulumi.Sprintf("projects/%s/global/networks/%s", projectID, peeringVpc.VPC.Name),

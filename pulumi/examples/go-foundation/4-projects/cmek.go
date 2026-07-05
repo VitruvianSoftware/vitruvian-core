@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/kms"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
@@ -60,10 +60,10 @@ func deployCMEKStorage(
 
 	// 2. Crypto Key with rotation
 	cryptoKey, err := kms.NewCryptoKey(ctx, "cmek-crypto-key", &kms.CryptoKeyArgs{
-		Name:            pulumi.String(cfg.KeyName),
-		KeyRing:         keyring.ID(),
-		RotationPeriod:  pulumi.String(cfg.KeyRotationPeriod),
-		Purpose:         pulumi.String("ENCRYPT_DECRYPT"),
+		Name:           pulumi.String(cfg.KeyName),
+		KeyRing:        keyring.ID(),
+		RotationPeriod: pulumi.String(cfg.KeyRotationPeriod),
+		Purpose:        pulumi.String("ENCRYPT_DECRYPT"),
 	}, pulumi.Parent(keyring))
 	if err != nil {
 		return nil, err

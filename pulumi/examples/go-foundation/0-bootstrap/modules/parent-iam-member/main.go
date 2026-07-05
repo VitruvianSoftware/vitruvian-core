@@ -30,7 +30,7 @@ func NewParentIamMember(ctx *pulumi.Context, name string, args *ParentIamMemberA
 
 	for _, role := range args.Roles {
 		roleID := strings.ReplaceAll(strings.TrimPrefix(role, "roles/"), ".", "-")
-		
+
 		if args.ParentType == "project" {
 			_, err = projects.NewIAMMember(ctx, fmt.Sprintf("%s-%s", name, roleID), &projects.IAMMemberArgs{
 				Project: args.ParentId,

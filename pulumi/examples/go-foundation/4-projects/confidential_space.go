@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project"
+	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	gcpproject "github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
@@ -52,7 +52,6 @@ func deployConfidentialSpaceProject(
 	networkProjectID pulumi.StringOutput,
 	perimeterName pulumi.StringOutput,
 ) (*ConfidentialSpaceResult, error) {
-
 	// 1. Create the Confidential Space project
 	confProject, err := project.NewProject(ctx, "bu-conf-space-project", &project.ProjectArgs{
 		DefaultServiceAccount: "deprivilege",

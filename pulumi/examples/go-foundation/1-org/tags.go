@@ -122,6 +122,5 @@ func deployTags(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders, bootstrap
 		return pulumi.MapOutput{}, err
 	}
 
-
 	return tagOutputMap.ToMapOutput(), nil
 }
