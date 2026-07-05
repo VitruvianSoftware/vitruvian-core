@@ -75,7 +75,8 @@ while IFS= read -r f; do
     note "${f}: license header holder is not 'VitruvianSoftware'"
   fi
 done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
-  grep -vE '(^|/)(node_modules|dist|dist-server|bazel-[^/]*)/|\.d\.ts$|/internal/scaffold/templates/')
+  grep -vE '(^|/)(node_modules|dist|dist-server|bazel-[^/]*)/|\.d\.ts$|/internal/scaffold/templates/' |
+  grep -vE '^pulumi/library/')
 
 if [ "${fail}" -ne 0 ]; then
   echo "license-verify: FAILED — first-party LICENSE files and source headers must be MIT + 'VitruvianSoftware'." >&2

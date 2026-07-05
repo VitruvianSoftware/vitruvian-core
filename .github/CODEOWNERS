@@ -53,6 +53,7 @@
 # ==========================================
 /tools/ @VitruvianSoftware/platform-team
 /infrastructure/ @VitruvianSoftware/platform-team
+/pulumi/ @VitruvianSoftware/platform-team
 /gitops/ @VitruvianSoftware/platform-team
 /githooks/ @VitruvianSoftware/platform-team
 /.github/ @VitruvianSoftware/platform-team

@@ -54,6 +54,10 @@ _IGNORE_GLOBS = [
     "**/coverage/**",
     ".remember/**",
     "**/lima-k8s.yaml",
+    # pulumi-library is Apache-2.0 (grafted public library with its own LICENSE
+    # and upstream-consistent Apache headers); deliberately exempt from the
+    # repo's MIT header enforcement so the public mirror stays Apache-2.0.
+    "pulumi/library/**",
 ]
 
 _LICENSE_FLAG = "mit"
