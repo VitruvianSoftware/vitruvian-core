@@ -18,11 +18,28 @@ package network
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/servicenetworking"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// splitCIDR splits a CIDR string like "10.16.56.0/21" into its network address
+// ("10.16.56.0") and prefix length (21). Used to reserve an explicit Private
+// Service Access range instead of auto-allocating one.
+func splitCIDR(cidr string) (string, int, error) {
+	addr, prefixStr, ok := strings.Cut(cidr, "/")
+	if !ok {
+		return "", 0, fmt.Errorf("missing prefix length")
+	}
+	prefix, err := strconv.Atoi(prefixStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid prefix length %q", prefixStr)
+	}
+	return addr, prefix, nil
+}
 
 type SecondaryRangeArgs struct {
 	RangeName string
@@ -43,10 +60,14 @@ type SubnetArgs struct {
 }
 
 type NetworkingArgs struct {
-	ProjectID                   pulumi.StringInput
-	VPCName                     pulumi.StringInput
-	Subnets                     []SubnetArgs
-	EnablePSA                   bool
+	ProjectID pulumi.StringInput
+	VPCName   pulumi.StringInput
+	Subnets   []SubnetArgs
+	EnablePSA bool
+	// PrivateServiceCidr, when set (e.g. "10.16.56.0/21"), reserves that exact
+	// CIDR for Private Service Access instead of auto-allocating a /16. Mirrors
+	// the upstream per-environment private_service_cidr.
+	PrivateServiceCidr          string
 	DeleteDefaultRoutesOnCreate *bool
 	RoutingMode                 string // "GLOBAL" or "REGIONAL"
 }
@@ -151,14 +172,26 @@ func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts 
 
 	// 3. Private Service Access
 	if args.EnablePSA {
-		reservedIP, err := compute.NewGlobalAddress(ctx, name+"-psa-ip", &compute.GlobalAddressArgs{
-			Project:      args.ProjectID,
-			Name:         pulumi.String(fmt.Sprintf("%s-psa-range", name)),
-			Purpose:      pulumi.String("VPC_PEERING"),
-			AddressType:  pulumi.String("INTERNAL"),
-			PrefixLength: pulumi.Int(16),
-			Network:      vpc.ID(),
-		}, pulumi.Parent(vpc))
+		gaArgs := &compute.GlobalAddressArgs{
+			Project:     args.ProjectID,
+			Name:        pulumi.String(fmt.Sprintf("%s-psa-range", name)),
+			Purpose:     pulumi.String("VPC_PEERING"),
+			AddressType: pulumi.String("INTERNAL"),
+			Network:     vpc.ID(),
+		}
+		// If an explicit private_service_cidr was supplied, reserve that exact
+		// address+prefix (upstream fidelity); otherwise auto-allocate a /16.
+		if args.PrivateServiceCidr != "" {
+			addr, prefix, err := splitCIDR(args.PrivateServiceCidr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid PrivateServiceCidr %q: %w", args.PrivateServiceCidr, err)
+			}
+			gaArgs.Address = pulumi.String(addr)
+			gaArgs.PrefixLength = pulumi.Int(prefix)
+		} else {
+			gaArgs.PrefixLength = pulumi.Int(16)
+		}
+		reservedIP, err := compute.NewGlobalAddress(ctx, name+"-psa-ip", gaArgs, pulumi.Parent(vpc))
 		if err != nil {
 			return nil, err
 		}
