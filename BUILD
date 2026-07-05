@@ -74,6 +74,12 @@ exports_files(
 # webpack/next js_run_binary + jest/itest wiring) that the JS gazelle extension
 # would mangle, same situation as mcp-slack. Keep gazelle out of the subtree.
 # gazelle:exclude tabula
+# pulumi/library is a grafted external library (Apache-2.0) with a multi-module
+# Go tree (own go.mod per component) and a pnpm-workspace TS tree. Its Go BUILD
+# files are hand-authored; its TS packages are built/tested natively (vitest)
+# with Bazel ts_project targets deferred to a follow-up. Keep gazelle out so it
+# does not fight the hand-authored/absent BUILD files.
+# gazelle:exclude pulumi/library
 
 gazelle(
     name = "gazelle",

@@ -10,7 +10,7 @@ go_library(
     importpath = "github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap",
     visibility = ["//visibility:public"],
     deps = [
-        "//pulumi/library/go/pkg/project_factory:project_factory",
+        "//pulumi/library/go/pkg/project_factory",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/kms",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/projects",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/storage",
@@ -28,7 +28,7 @@ go_test(
         ":bootstrap",
     ],
     deps = [
-        "//pulumi/library/go/internal/testutil:testutil",
+        "//pulumi/library/go/internal/testutil",
         "@com_github_pulumi_pulumi_sdk_v3//go/pulumi",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

@@ -44,9 +44,9 @@ pulumi/
    `pnpm-workspace.yaml`; `@pulumi/*` SDKs and the vitest toolchain moved to the
    pnpm **catalog** (`catalog:`); cross-package deps repointed to `workspace:*`;
    `ignoreDeprecations: "6.0"` added to the base tsconfig so the library builds
-   under the monorepo's TypeScript 6.0.3; root `pnpm-lock.yaml` regenerated;
-   `ts_project`/`npm_package` BUILD files added per package. Published package
-   names and versions are unchanged.
+   under the monorepo's TypeScript 6.0.3; root `pnpm-lock.yaml` regenerated.
+   Published package names and versions are unchanged. TS packages build/test
+   natively (vitest); their Bazel `ts_project` targets are deferred (see below).
 
 4. **Release / license / ownership / dependabot.** release-please paths
    prefixed with `pulumi/library/` and `pulumi/library` registered in the
@@ -70,8 +70,13 @@ runs in CI:
 - **`bazel run //:tidy` (gazelle) is the source of truth** for BUILD files and
   will reconcile anything the hand/standalone-gazelle generation got subtly
   wrong, and regenerate `MODULE.bazel.lock` under the One Version Rule.
-- **Vitest-under-Bazel** test targets are a follow-up — the monorepo standard is
-  `aspect_rules_jest`; the library's vitest tests run natively in the interim.
+- **TS Bazel targets** (`ts_project`/`npm_package` + vitest test targets) are a
+  follow-up. `pulumi/library` is `# gazelle:exclude`-d (like `tabula` and
+  `infrastructure`): the Go BUILD files are hand-authored, and the TS packages
+  have no Bazel targets yet — they build/test natively via pnpm+vitest and are
+  available in the pnpm workspace. Generating the TS targets needs a
+  Bazel-capable environment to run aspect's JS gazelle (it could not run in the
+  migration sandbox). The monorepo test standard is `aspect_rules_jest`.
 - **Copybara mirror-out** + the **publish-origin** decision (version/publish from
   the monorepo apps-release vs the mirror's own `release.yml`) are a follow-up;
   the library's standalone `.github/workflows/` are retained (inert in the

@@ -36,7 +36,7 @@ go_test(
         ":iam",
     ],
     deps = [
-        "//pulumi/library/go/internal/testutil:testutil",
+        "//pulumi/library/go/internal/testutil",
         "@com_github_pulumi_pulumi_sdk_v3//go/pulumi",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
