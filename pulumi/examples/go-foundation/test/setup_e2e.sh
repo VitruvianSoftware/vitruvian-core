@@ -15,7 +15,7 @@
 # limitations under the License.
 
 # =============================================================================
-# E2E Test Setup 
+# E2E Test Setup
 # =============================================================================
 # This script injects your Organization ID, Billing ID, and Identity domain
 # into all Pulumi.<stack>.yaml configuration files across the foundation.
@@ -31,26 +31,26 @@ set -e
 
 # Load .env if it exists
 if [ -f .env ]; then
-  echo "Loading environment variables from .env..."
-  set -a
-  source .env
-  set +a
+	echo "Loading environment variables from .env..."
+	set -a
+	source .env
+	set +a
 fi
 
 # Validate required variables
 if [ -z "$E2E_ORG_ID" ]; then
-  echo "Error: E2E_ORG_ID environment variable is required."
-  exit 1
+	echo "Error: E2E_ORG_ID environment variable is required."
+	exit 1
 fi
 
 if [ -z "$E2E_BILLING_ACCOUNT" ]; then
-  echo "Error: E2E_BILLING_ACCOUNT environment variable is required."
-  exit 1
+	echo "Error: E2E_BILLING_ACCOUNT environment variable is required."
+	exit 1
 fi
 
 if [ -z "$E2E_DOMAIN" ]; then
-  echo "Error: E2E_DOMAIN environment variable is required."
-  exit 1
+	echo "Error: E2E_DOMAIN environment variable is required."
+	exit 1
 fi
 
 E2E_FOLDER_ID=${E2E_FOLDER_ID:-""}
@@ -60,7 +60,7 @@ echo " Configuring Foundation for E2E Deployment"
 echo "================================================="
 echo " Organization:  $E2E_ORG_ID"
 if [ -n "$E2E_FOLDER_ID" ]; then
-  echo " Parent Folder: $E2E_FOLDER_ID"
+	echo " Parent Folder: $E2E_FOLDER_ID"
 fi
 echo " Billing ID:    $E2E_BILLING_ACCOUNT"
 echo " Domain:        $E2E_DOMAIN"
@@ -79,22 +79,22 @@ AUDIT_DATA="gcp-audit-data@${E2E_DOMAIN}"
 
 # Find all example config files and inject variables
 find . -type f -name "Pulumi.*.yaml.example" | while read -r example_file; do
-  target_file="${example_file%.example}"
-  echo "Generating $target_file..."
-  
-  # Use awk to do the replacement safely across MacOS/Linux
-  awk -v org="$E2E_ORG_ID" \
-      -v billing="$E2E_BILLING_ACCOUNT" \
-      -v org_admin="$ORG_ADMINS" \
-      -v bill_admin="$BILLING_ADMINS" \
-      -v net_admin="$NETWORK_ADMINS" \
-      -v sec_admin="$SECURITY_ADMINS" \
-      -v bill_data="$BILLING_DATA" \
-      -v audit_data="$AUDIT_DATA" \
-      -v pulumi_user="$PULUMI_USER" \
-      -v domain="$E2E_DOMAIN" \
-      -v folder_id="$E2E_FOLDER_ID" \
-      '{
+	target_file="${example_file%.example}"
+	echo "Generating $target_file..."
+
+	# Use awk to do the replacement safely across MacOS/Linux
+	awk -v org="$E2E_ORG_ID" \
+		-v billing="$E2E_BILLING_ACCOUNT" \
+		-v org_admin="$ORG_ADMINS" \
+		-v bill_admin="$BILLING_ADMINS" \
+		-v net_admin="$NETWORK_ADMINS" \
+		-v sec_admin="$SECURITY_ADMINS" \
+		-v bill_data="$BILLING_DATA" \
+		-v audit_data="$AUDIT_DATA" \
+		-v pulumi_user="$PULUMI_USER" \
+		-v domain="$E2E_DOMAIN" \
+		-v folder_id="$E2E_FOLDER_ID" \
+		'{
         gsub(/YOUR_ORG_ID/, org);
         gsub(/XXXXXX-XXXXXX-XXXXXX/, billing);
         gsub(/org-admins@example.com/, org_admin);
@@ -111,7 +111,7 @@ find . -type f -name "Pulumi.*.yaml.example" | while read -r example_file; do
         }
         
         print
-      }' "$example_file" > "$target_file"
+      }' "$example_file" >"$target_file"
 done
 
 echo ""

@@ -34,9 +34,9 @@ set -e
 
 # Load .env if it exists
 if [ -f .env ]; then
-  set -a
-  source .env
-  set +a
+	set -a
+	source .env
+	set +a
 fi
 
 # Colors
@@ -50,36 +50,36 @@ FAIL=0
 WARN=0
 
 assert_exists() {
-  local description="$1"
-  local result="$2"
+	local description="$1"
+	local result="$2"
 
-  if [ -n "$result" ] && [ "$result" != "0" ] && [ "$result" != "null" ]; then
-    echo -e "  ${GREEN}✓${NC} $description"
-    PASS=$((PASS + 1))
-  else
-    echo -e "  ${RED}✗${NC} $description"
-    FAIL=$((FAIL + 1))
-  fi
+	if [ -n "$result" ] && [ "$result" != "0" ] && [ "$result" != "null" ]; then
+		echo -e "  ${GREEN}✓${NC} $description"
+		PASS=$((PASS + 1))
+	else
+		echo -e "  ${RED}✗${NC} $description"
+		FAIL=$((FAIL + 1))
+	fi
 }
 
 assert_count() {
-  local description="$1"
-  local actual="$2"
-  local expected="$3"
+	local description="$1"
+	local actual="$2"
+	local expected="$3"
 
-  if [ "$actual" -ge "$expected" ] 2>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} $description (found $actual, expected >= $expected)"
-    PASS=$((PASS + 1))
-  else
-    echo -e "  ${RED}✗${NC} $description (found $actual, expected >= $expected)"
-    FAIL=$((FAIL + 1))
-  fi
+	if [ "$actual" -ge "$expected" ] 2>/dev/null; then
+		echo -e "  ${GREEN}✓${NC} $description (found $actual, expected >= $expected)"
+		PASS=$((PASS + 1))
+	else
+		echo -e "  ${RED}✗${NC} $description (found $actual, expected >= $expected)"
+		FAIL=$((FAIL + 1))
+	fi
 }
 
 warn_missing() {
-  local description="$1"
-  echo -e "  ${YELLOW}⚠${NC} $description (skipped — stage not deployed)"
-  WARN=$((WARN + 1))
+	local description="$1"
+	echo -e "  ${YELLOW}⚠${NC} $description (skipped — stage not deployed)"
+	WARN=$((WARN + 1))
 }
 
 echo "============================================="
@@ -96,43 +96,43 @@ echo "━━━ Phase 0: Bootstrap ━━━"
 
 # Check bootstrap folder exists
 BOOTSTRAP_FOLDER=$(gcloud resource-manager folders list \
-  --organization="${E2E_ORG_ID}" \
-  --format="value(name)" \
-  --filter="displayName:fldr-bootstrap" 2>/dev/null | head -1)
+	--organization="${E2E_ORG_ID}" \
+	--format="value(name)" \
+	--filter="displayName:fldr-bootstrap" 2>/dev/null | head -1)
 assert_exists "Bootstrap folder exists" "$BOOTSTRAP_FOLDER"
 
 # Check seed project
 SEED_PROJECT=$(gcloud projects list \
-  --format="value(projectId)" \
-  --filter="projectId:prj-b-seed*" 2>/dev/null | head -1)
+	--format="value(projectId)" \
+	--filter="projectId:prj-b-seed*" 2>/dev/null | head -1)
 assert_exists "Seed project exists (prj-b-seed-*)" "$SEED_PROJECT"
 
 # Check CICD project
 CICD_PROJECT=$(gcloud projects list \
-  --format="value(projectId)" \
-  --filter="projectId:prj-b-cicd*" 2>/dev/null | head -1)
+	--format="value(projectId)" \
+	--filter="projectId:prj-b-cicd*" 2>/dev/null | head -1)
 assert_exists "CICD project exists (prj-b-cicd-*)" "$CICD_PROJECT"
 
 # Check KMS key ring
 if [ -n "$SEED_PROJECT" ]; then
-  KMS_KEYRING=$(gcloud kms keyrings list \
-    --location=us \
-    --project="$SEED_PROJECT" \
-    --format="value(name)" 2>/dev/null | head -1)
-  assert_exists "KMS keyring exists in seed project" "$KMS_KEYRING"
+	KMS_KEYRING=$(gcloud kms keyrings list \
+		--location=us \
+		--project="$SEED_PROJECT" \
+		--format="value(name)" 2>/dev/null | head -1)
+	assert_exists "KMS keyring exists in seed project" "$KMS_KEYRING"
 
-  # Check state bucket
-  STATE_BUCKET=$(gcloud storage buckets list \
-    --project="$SEED_PROJECT" \
-    --format="value(name)" 2>/dev/null | grep "tfstate" | head -1)
-  assert_exists "State bucket exists" "$STATE_BUCKET"
+	# Check state bucket
+	STATE_BUCKET=$(gcloud storage buckets list \
+		--project="$SEED_PROJECT" \
+		--format="value(name)" 2>/dev/null | grep "tfstate" | head -1)
+	assert_exists "State bucket exists" "$STATE_BUCKET"
 
-  # Check service accounts
-  SA_COUNT=$(gcloud iam service-accounts list \
-    --project="$SEED_PROJECT" \
-    --format="value(email)" \
-    --filter="email:sa-terraform-*" 2>/dev/null | wc -l | tr -d ' ')
-  assert_count "Pipeline service accounts created" "$SA_COUNT" 4
+	# Check service accounts
+	SA_COUNT=$(gcloud iam service-accounts list \
+		--project="$SEED_PROJECT" \
+		--format="value(email)" \
+		--filter="email:sa-terraform-*" 2>/dev/null | wc -l | tr -d ' ')
+	assert_count "Pipeline service accounts created" "$SA_COUNT" 4
 fi
 
 echo ""
@@ -144,30 +144,30 @@ echo "━━━ Phase 1: Organization ━━━"
 
 # Check org-level folders
 COMMON_FOLDER=$(gcloud resource-manager folders list \
-  --organization="${E2E_ORG_ID}" \
-  --format="value(name)" \
-  --filter="displayName:fldr-common" 2>/dev/null | head -1)
+	--organization="${E2E_ORG_ID}" \
+	--format="value(name)" \
+	--filter="displayName:fldr-common" 2>/dev/null | head -1)
 
 if [ -n "$COMMON_FOLDER" ]; then
-  assert_exists "Common folder exists" "$COMMON_FOLDER"
+	assert_exists "Common folder exists" "$COMMON_FOLDER"
 
-  # Check org-level projects
-  ORG_AUDIT_PROJECT=$(gcloud projects list \
-    --format="value(projectId)" \
-    --filter="projectId:prj-c-logging*" 2>/dev/null | head -1)
-  assert_exists "Audit logging project exists (prj-c-logging-*)" "$ORG_AUDIT_PROJECT"
+	# Check org-level projects
+	ORG_AUDIT_PROJECT=$(gcloud projects list \
+		--format="value(projectId)" \
+		--filter="projectId:prj-c-logging*" 2>/dev/null | head -1)
+	assert_exists "Audit logging project exists (prj-c-logging-*)" "$ORG_AUDIT_PROJECT"
 
-  ORG_BILLING_PROJECT=$(gcloud projects list \
-    --format="value(projectId)" \
-    --filter="projectId:prj-c-billing*" 2>/dev/null | head -1)
-  assert_exists "Billing export project exists (prj-c-billing-*)" "$ORG_BILLING_PROJECT"
+	ORG_BILLING_PROJECT=$(gcloud projects list \
+		--format="value(projectId)" \
+		--filter="projectId:prj-c-billing*" 2>/dev/null | head -1)
+	assert_exists "Billing export project exists (prj-c-billing-*)" "$ORG_BILLING_PROJECT"
 
-  ORG_SCC_PROJECT=$(gcloud projects list \
-    --format="value(projectId)" \
-    --filter="projectId:prj-c-scc*" 2>/dev/null | head -1)
-  assert_exists "SCC notifications project exists (prj-c-scc-*)" "$ORG_SCC_PROJECT"
+	ORG_SCC_PROJECT=$(gcloud projects list \
+		--format="value(projectId)" \
+		--filter="projectId:prj-c-scc*" 2>/dev/null | head -1)
+	assert_exists "SCC notifications project exists (prj-c-scc-*)" "$ORG_SCC_PROJECT"
 else
-  warn_missing "Phase 1 not deployed"
+	warn_missing "Phase 1 not deployed"
 fi
 
 echo ""
@@ -178,14 +178,14 @@ echo ""
 echo "━━━ Phase 2: Environments ━━━"
 
 ENV_FOLDERS=$(gcloud resource-manager folders list \
-  --organization="${E2E_ORG_ID}" \
-  --format="value(displayName)" \
-  --filter="displayName:(fldr-development OR fldr-nonproduction OR fldr-production)" 2>/dev/null | wc -l | tr -d ' ')
+	--organization="${E2E_ORG_ID}" \
+	--format="value(displayName)" \
+	--filter="displayName:(fldr-development OR fldr-nonproduction OR fldr-production)" 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$ENV_FOLDERS" -ge 1 ] 2>/dev/null; then
-  assert_count "Environment folders created" "$ENV_FOLDERS" 3
+	assert_count "Environment folders created" "$ENV_FOLDERS" 3
 else
-  warn_missing "Phase 2 not deployed"
+	warn_missing "Phase 2 not deployed"
 fi
 
 echo ""
@@ -196,13 +196,13 @@ echo ""
 echo "━━━ Phase 3: Networks ━━━"
 
 NET_PROJECTS=$(gcloud projects list \
-  --format="value(projectId)" \
-  --filter="projectId:(prj-d-svpc* OR prj-n-svpc* OR prj-p-svpc*)" 2>/dev/null | wc -l | tr -d ' ')
+	--format="value(projectId)" \
+	--filter="projectId:(prj-d-svpc* OR prj-n-svpc* OR prj-p-svpc*)" 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$NET_PROJECTS" -ge 1 ] 2>/dev/null; then
-  assert_count "Network host projects created" "$NET_PROJECTS" 3
+	assert_count "Network host projects created" "$NET_PROJECTS" 3
 else
-  warn_missing "Phase 3 not deployed"
+	warn_missing "Phase 3 not deployed"
 fi
 
 echo ""
@@ -213,13 +213,13 @@ echo ""
 echo "━━━ Phase 4: Projects ━━━"
 
 BU_PROJECTS=$(gcloud projects list \
-  --format="value(projectId)" \
-  --filter="projectId:(prj-d-bu1* OR prj-n-bu1* OR prj-p-bu1*)" 2>/dev/null | wc -l | tr -d ' ')
+	--format="value(projectId)" \
+	--filter="projectId:(prj-d-bu1* OR prj-n-bu1* OR prj-p-bu1*)" 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$BU_PROJECTS" -ge 1 ] 2>/dev/null; then
-  assert_count "Business unit projects created" "$BU_PROJECTS" 3
+	assert_count "Business unit projects created" "$BU_PROJECTS" 3
 else
-  warn_missing "Phase 4 not deployed"
+	warn_missing "Phase 4 not deployed"
 fi
 
 echo ""
@@ -230,13 +230,13 @@ echo ""
 echo "━━━ Phase 5: App Infra ━━━"
 
 APP_PROJECTS=$(gcloud projects list \
-  --format="value(projectId)" \
-  --filter="labels.application_name=app-infra-pipelines" 2>/dev/null | wc -l | tr -d ' ')
+	--format="value(projectId)" \
+	--filter="labels.application_name=app-infra-pipelines" 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "$APP_PROJECTS" -ge 1 ] 2>/dev/null; then
-  assert_count "App infra projects created" "$APP_PROJECTS" 1
+	assert_count "App infra projects created" "$APP_PROJECTS" 1
 else
-  warn_missing "Phase 5 not deployed"
+	warn_missing "Phase 5 not deployed"
 fi
 
 echo ""
@@ -250,9 +250,9 @@ echo -e " Results: ${GREEN}${PASS} passed${NC}, ${RED}${FAIL} failed${NC}, ${YEL
 echo "============================================="
 
 if [ "$FAIL" -gt 0 ]; then
-  echo -e "${RED}E2E VALIDATION FAILED${NC}"
-  exit 1
+	echo -e "${RED}E2E VALIDATION FAILED${NC}"
+	exit 1
 else
-  echo -e "${GREEN}E2E VALIDATION PASSED${NC}"
-  exit 0
+	echo -e "${GREEN}E2E VALIDATION PASSED${NC}"
+	exit 0
 fi
