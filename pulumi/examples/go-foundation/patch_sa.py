@@ -1,6 +1,8 @@
 import re
+
 with open("0-bootstrap/sa.go", "r") as f:
     text = f.read()
+
 
 def patch(text, start_str):
     idx = 0
@@ -16,16 +18,17 @@ def patch(text, start_str):
         depth = 1
         curr = args_idx + 1
         while depth > 0 and curr < len(text):
-            if text[curr] == '{':
+            if text[curr] == "{":
                 depth += 1
-            elif text[curr] == '}':
+            elif text[curr] == "}":
                 depth -= 1
             curr += 1
-        
-        if text[curr:curr+1] == ')':
+
+        if text[curr : curr + 1] == ")":
             text = text[:curr] + ", dependsOnGroups" + text[curr:]
         idx = curr
     return text
+
 
 prefixes = [
     "iam.NewOrganizationIAMMember",
