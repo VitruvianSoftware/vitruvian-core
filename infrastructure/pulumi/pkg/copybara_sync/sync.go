@@ -113,6 +113,19 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo: "pulumi-library",
 		OneWay:         true,
 	},
+	{
+		// Export-only reference mirror. Name uppercase-snakes to
+		// PULUMI_GO_EXAMPLE_FOUNDATION -> PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY,
+		// consumed by copybara-export-pulumi-go-example-foundation.yaml.
+		Name:           "pulumi_go-example-foundation",
+		StandaloneRepo: "pulumi_go-example-foundation",
+		OneWay:         true,
+	},
+	{
+		Name:           "pulumi_ts-example-foundation",
+		StandaloneRepo: "pulumi_ts-example-foundation",
+		OneWay:         true,
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
