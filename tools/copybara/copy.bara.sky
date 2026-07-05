@@ -186,7 +186,11 @@ def _library_export_transforms():
         core.replace(
             before = '"' + _dep + '": "catalog:"',
             after = '"' + _dep + '": "' + _LIBRARY_CATALOG_VERSIONS[_dep] + '"',
-            paths = glob(["ts/**/package.json"]),
+            # Both patterns: `ts/**/package.json` does NOT match the root
+            # `ts/package.json` (Copybara `**` needs >=1 path segment), and the
+            # private root meta-package carries `catalog:` deps too -- missing it
+            # leaves an npm-unresolvable `catalog:` in the mirror.
+            paths = glob(["ts/package.json", "ts/**/package.json"]),
         )
         for _dep in _LIBRARY_CATALOG_VERSIONS
     ]
