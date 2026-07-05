@@ -1,4 +1,4 @@
-load("@aspect_rules_js//npm:defs.bzl", "npm_link_all_packages")
+load("@npm//:defs.bzl", "npm_link_all_packages")
 
 # TypeScript arm of pulumi-library. Each component under packages/* is an
 # independently published @vitruviansoftware/foundation-* npm package built by
