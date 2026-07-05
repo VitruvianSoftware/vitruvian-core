@@ -262,6 +262,9 @@ COMPONENTS = [
         "repo": "pulumi-library",
         "subtree": "pulumi/library",
         "standalone_rev_id": "PULUMI_LIBRARY_REV_ID",
+        # export_only mirror -> SQUASH so the seed is a single clean commit (see
+        # _export_mode). Seed once with '--init-history --force --ignore-noop'.
+        "mode": "SQUASH",
         # Files the STANDALONE owns that the monorepo does not carry, or carries in
         # a monorepo-specific form the export must NOT push over the mirror. Verified
         # by diffing the live mirror (2026-07-05):
@@ -344,6 +347,13 @@ def _define_component(_c):
     _monorepo_only_files = _monorepo_only(_subtree)
     _is_one_way = _c.get("is_one_way", False)
 
+    # Export history mode. Bidirectional/one-way components MUST stay ITERATIVE so
+    # the per-commit loop-guard runs on each commit (verified in CI). export_only
+    # mirrors have no import and no loop-guard, so they may use SQUASH: the seed
+    # (and every run) lands as ONE clean commit carrying the whole current state,
+    # instead of ITERATIVE's --init-history replaying the full subtree history.
+    _export_mode = _c.get("mode", "ITERATIVE")
+
     # Export: vitruvian-core/<subtree>/  ->  VitruvianSoftware/<repo> (repo root).
     # IDENTICAL for bidirectional and one-way components -- the export side is
     # never touched by the one-way cutover, preserving the live export baseline.
@@ -365,7 +375,7 @@ def _define_component(_c):
         # must never delete the dispatch workflow or an npm lockfile).
         destination_files = glob(["**"], exclude = _standalone_only),
         authoring = authoring.pass_thru(default = AUTHOR),
-        mode = "ITERATIVE",
+        mode = _export_mode,
         # Stamp the monorepo's own rev-id, and drop any change the import
         # direction brought in (carries the per-component standalone label).
         experimental_custom_rev_id = MONOREPO_REV_ID,

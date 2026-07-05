@@ -38,7 +38,7 @@ on:
     workflow_dispatch:
         inputs:
             copybara_options:
-                description: "Copybara CLI options. First seed of the existing mirror: '--force --ignore-noop' (INSPECT the push). Normal runs: --ignore-noop."
+                description: "Copybara CLI options. FIRST seed (no MONOREPO_REV_ID baseline on the mirror yet): '--init-history --force --ignore-noop' -- SQUASH mode lands it as one clean commit; INSPECT the push. Normal runs: --ignore-noop."
                 default: "--ignore-noop"
                 required: false
 
