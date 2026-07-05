@@ -290,10 +290,20 @@ COMPONENTS = [
             "go/go.work",
             "go/go.work.sum",
         ],
-        # A stale npm lockfile lingers in the monorepo subtree (pnpm is used at the
-        # root); never push it out — the standalone manages its own lockfile.
+        # Files the mirror owns that ALSO exist in the monorepo subtree must be
+        # excluded at the ORIGIN (not just standalone_only): Copybara refuses to
+        # leave a migrated file uncovered by destination_files, so a
+        # destination-only exclude of an origin file errors. Excluding them here
+        # means they are never migrated, so the mirror's own copies stay intact:
+        #   * release-please-config.json — the mirror's path-based Go tag config.
+        #   * CHANGELOG.md (root + per-package) — the mirror's published history.
+        #   * ts/package-lock.json — a stale in-tree lock (pnpm is used at the root).
+        # (go/go.work* live ONLY on the mirror, so standalone_only alone suffices.)
         "origin_only_exclude": [
             "pulumi/library/ts/package-lock.json",
+            "pulumi/library/release-please-config.json",
+            "pulumi/library/CHANGELOG.md",
+            "pulumi/library/**/CHANGELOG.md",
         ],
         "export_only": True,
         "export_transformations": _library_export_transforms(),
