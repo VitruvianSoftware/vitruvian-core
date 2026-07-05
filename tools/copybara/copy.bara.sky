@@ -155,16 +155,34 @@ _LIBRARY_CATALOG_VERSIONS = {
     "@vitest/coverage-v8": "^4.1.5",
 }
 
+# Verified against the live mirror (2026-07-05): the standalone pulumi-library
+# builds ts with **npm** (package-lock.json), not pnpm, and commits **concrete**
+# cross-ref floors — NOT `workspace:*`. The monorepo replaced those floors with
+# `workspace:*` for in-tree pnpm resolution; the export must restore each package's
+# exact mirror floor, or npm would publish a changed dependency range. These are
+# per-package author choices (a deliberate compat floor below the latest release),
+# so they are pinned literally rather than computed from the current manifest.
+_LIBRARY_WORKSPACE_FLOORS = {
+    "ts/packages/bootstrap/package.json": ("@vitruviansoftware/foundation-project-factory", "^0.3.0"),
+    "ts/packages/cb-private-pool/package.json": ("@vitruviansoftware/foundation-network", "*"),
+}
+
 def _library_export_transforms():
-    """Export transforms that reverse the pulumi-library's monorepo integration
-    so the standalone mirror builds/publishes on its own. Applied AFTER the
+    """Export transforms that reverse the pulumi-library's monorepo integration so
+    the standalone mirror builds AND publishes on its own. Applied AFTER the
     subtree->root move, so paths are repo-root-relative (ts/**, not
-    pulumi/library/ts/**). Currently: concretize every `catalog:` reference.
-    `workspace:*` cross-refs between foundation-* packages are LEFT AS-IS — the
-    standalone is itself a pnpm workspace, and `workspace:*` is resolved to the
-    concrete version by pnpm at publish time (its whole purpose), so rewriting
-    it would be wrong."""
-    return [
+    pulumi/library/ts/**):
+
+      1. `catalog:` -> concrete ranges (the mirror has no pnpm catalog).
+      2. `workspace:*` cross-refs -> each package's exact concrete floor (the
+         mirror is npm-based and commits concrete ranges; see above).
+      3. Strip the `pulumi/library/` key prefix from `.release-please-manifest.json`
+         so the mirror's publish-on-version-bump (and its own path-based
+         release-please-config.json) find the right per-package versions. The
+         monorepo authors the version NUMBERS; the mirror owns the tag FORMAT
+         (its release-please-config.json is standalone_only).
+    """
+    _t = [
         core.replace(
             before = '"' + _dep + '": "catalog:"',
             after = '"' + _dep + '": "' + _LIBRARY_CATALOG_VERSIONS[_dep] + '"',
@@ -172,6 +190,20 @@ def _library_export_transforms():
         )
         for _dep in _LIBRARY_CATALOG_VERSIONS
     ]
+    _t += [
+        core.replace(
+            before = '"' + _LIBRARY_WORKSPACE_FLOORS[_path][0] + '": "workspace:*"',
+            after = '"' + _LIBRARY_WORKSPACE_FLOORS[_path][0] + '": "' + _LIBRARY_WORKSPACE_FLOORS[_path][1] + '"',
+            paths = glob([_path]),
+        )
+        for _path in _LIBRARY_WORKSPACE_FLOORS
+    ]
+    _t.append(core.replace(
+        before = '"pulumi/library/',
+        after = '"',
+        paths = glob([".release-please-manifest.json"]),
+    ))
+    return _t
 
 # Source of truth for which components are synced and their per-component knobs.
 #   name              : monorepo subfolder name == standalone repo name
@@ -230,17 +262,28 @@ COMPONENTS = [
         "repo": "pulumi-library",
         "subtree": "pulumi/library",
         "standalone_rev_id": "PULUMI_LIBRARY_REV_ID",
-        # Files the STANDALONE owns that the monorepo does not carry (or carries
-        # differently). Export must neither push a monorepo copy over them nor
-        # delete them: the standalone's own CI/publish workflows, its pnpm
-        # workspace + lockfiles (the monorepo uses a single root pnpm-lock.yaml
-        # and pnpm catalog instead), and its Go multi-module go.work (deleted in
-        # the monorepo in favour of the root go.work). NOTE: finalize this list by
-        # diffing the live standalone before the first --force seed (runbook §Seed).
+        # Files the STANDALONE owns that the monorepo does not carry, or carries in
+        # a monorepo-specific form the export must NOT push over the mirror. Verified
+        # by diffing the live mirror (2026-07-05):
+        #   * release-please-config.json — the mirror's Go tag config is PATH-based
+        #     (component `go/pkg/<n>` + `tag-separator:/` -> tag `go/pkg/<n>/vX.Y.Z`,
+        #     which `go get` REQUIRES). The monorepo's own config is flat
+        #     (`go-<n>`) for its monorepo-side tags, so it must never overwrite the
+        #     mirror's. The mirror's publish-on-version-bump reads this for tag format;
+        #     the monorepo authors only the version NUMBERS (via the exported manifest).
+        #   * CHANGELOG.md (root + per-package) — the mirror's published release
+        #     history; the monorepo's are the older migration snapshot.
+        #   * ts/package-lock.json — the mirror builds ts with npm; the monorepo uses
+        #     root pnpm. go/go.work(.sum) — the mirror's Go multi-module workspace,
+        #     deleted in the monorepo in favour of the root go.work.
+        # NOTE: .github/workflows/ is NOT standalone_only — the monorepo manages the
+        # mirror's release.yml (publish-on-version-bump) and exports it, per the
+        # standard one-way pattern (devx/homelab/...). ci.yml is dropped in-tree.
         "standalone_only": [
-            ".github/workflows/**",
-            "ts/pnpm-workspace.yaml",
-            "ts/pnpm-lock.yaml",
+            "release-please-config.json",
+            "CHANGELOG.md",
+            "**/CHANGELOG.md",
+            "ts/package-lock.json",
             "go/go.work",
             "go/go.work.sum",
         ],

@@ -1,61 +1,130 @@
-name: Release
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Publish-on-version-bump (multi-package). The monorepo (vitruvian-core) authors
+# this library's version bumps via release-please (.github/workflows/apps-release.yml,
+# matrix leg pulumi/library); copybara exports the bumped .release-please-manifest.json
+# here. This workflow detects each package whose manifest version has no matching
+# tag yet, tags the exported commit in the mirror's PATH-based Go format
+# (go/pkg/<name>/vX.Y.Z -- required for `go get`) or the npm component format
+# (foundation-<name>-vX.Y.Z), and `npm publish`es the bumped node packages with the
+# mirror's existing tokens.
+#
+# It REPLACES the in-mirror release-please job (which authored version/changelog
+# commits here -- the two-writable-copies drift the one-way migration removes). It
+# never authors source; it only tags + publishes. This is the standard one-way
+# pattern (devx/homelab/...) scaled to the library's 55 independently-versioned
+# packages: the tag FORMAT stays owned by the mirror's release-please-config.json
+# (standalone_only), the version NUMBERS come from the exported manifest.
+#
+# Idempotent: a package is tagged/published only when its manifest version has no
+# existing tag, so the copybara seed (all packages already at their published
+# versions) is a no-op, and re-runs never double-publish.
+name: release
 
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches:
+            - main
 
 permissions:
-  contents: write
-  pull-requests: write
-  packages: write
+    contents: write
+    packages: write
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: false
 
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      paths_released: ${{ steps.release.outputs.paths_released }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
 
-  publish-npm:
-    needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "22"
+                  registry-url: "https://registry.npmjs.org"
+                  scope: "@vitruviansoftware"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-          scope: "@vitruviansoftware"
+            - name: Build the ts workspace (for npm publish)
+              working-directory: ts
+              run: |
+                  npm install
+                  npm run build
 
-      - name: Install and build library
-        working-directory: ts
-        run: |
-          npm install
-          npm run build
+            - name: Tag + publish newly-bumped packages (idempotent)
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+              run: |
+                  set -euo pipefail
+                  if [ ! -f .release-please-manifest.json ] || [ ! -f release-please-config.json ]; then
+                    echo "No exported manifest/config yet -- nothing to release."
+                    exit 0
+                  fi
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  python3 - <<'PY'
+                  import json, os, subprocess
 
-      - name: Publish all packages
-        working-directory: ts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          for pkg_dir in packages/*/; do
-            pkg_name=$(jq -r '.name' "$pkg_dir/package.json")
-            pkg_version=$(jq -r '.version' "$pkg_dir/package.json")
-            echo "Publishing $pkg_name@$pkg_version..."
-            cd "$pkg_dir"
-            npm publish --access public || echo "⚠️ $pkg_name may already be published at this version"
-            cd ../..
-          done
+                  manifest = json.load(open(".release-please-manifest.json"))
+                  config = json.load(open("release-please-config.json"))["packages"]
+                  head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+                  def tag_exists(t):
+                      return subprocess.run(
+                          ["git", "rev-parse", "-q", "--verify", "refs/tags/" + t],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+                  released = 0
+                  for path, version in manifest.items():
+                      cfg = config.get(path, {})
+                      component = cfg.get("component", path)          # tag stem (mirror-owned format)
+                      separator = cfg.get("tag-separator", "-")       # go/pkg/* use "/"; node uses "-"
+                      tag = "{}{}v{}".format(component, separator, version)
+                      if tag_exists(tag):
+                          continue
+
+                      print("Releasing {} v{} -> tag {}".format(path, version, tag))
+                      subprocess.run(["git", "tag", "-a", tag, "-m", "{} v{}".format(path, version), head], check=True)
+                      subprocess.run(["git", "push", "origin", tag], check=True)
+                      # GitHub Release for parity with the prior release-please behaviour (best-effort).
+                      subprocess.run(
+                          ["gh", "release", "create", tag, "--title", tag,
+                           "--notes", "Automated release of {} v{}.".format(path, version)],
+                          check=False)
+                      # npm publish only the published node packages (ts/packages/*); the private
+                      # `ts` meta-package and the go modules (tag-only) are skipped.
+                      if cfg.get("release-type") == "node" and path.startswith("ts/packages/"):
+                          pj = json.load(open(os.path.join(path, "package.json")))
+                          if not pj.get("private"):
+                              r = subprocess.run(["npm", "publish", "--access", "public"], cwd=path)
+                              if r.returncode != 0:
+                                  print("  warn: npm publish {} failed (may already be published)".format(pj.get("name")))
+                      released += 1
+
+                  print("Released {} newly-bumped package(s).".format(released) if released
+                        else "No newly-bumped packages; nothing to tag/publish.")
+                  PY
