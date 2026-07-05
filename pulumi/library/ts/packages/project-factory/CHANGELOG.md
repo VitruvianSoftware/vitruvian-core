@@ -1,0 +1,69 @@
+# Changelog
+
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.4.0...foundation-project-factory-v0.4.1) (2026-07-03)
+
+### Bug Fixes
+
+- **ts/project-factory:** implement disable/delete for defaultServiceAccount ([#62](https://github.com/VitruvianSoftware/pulumi-library/issues/62)) ([ecbc8dd](https://github.com/VitruvianSoftware/pulumi-library/commit/ecbc8ddee9b2fbf746d75f946d046e576cffa6b4))
+
+## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.3.1...foundation-project-factory-v0.4.0) (2026-05-06)
+
+### Features
+
+- **ts:** add missing outputs to CentralizedLogging and ProjectFactory ([#52](https://github.com/VitruvianSoftware/pulumi-library/issues/52)) ([adaa126](https://github.com/VitruvianSoftware/pulumi-library/commit/adaa1266ab114f0eede81ca3af84e503fdcf718b))
+
+## [0.3.1](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.3.0...foundation-project-factory-v0.3.1) (2026-04-24)
+
+### Bug Fixes
+
+- conditionally set folderId and orgId to prevent GCP project configuration conflicts ([d096742](https://github.com/VitruvianSoftware/pulumi-library/commit/d096742b1dc61cea77b3d78c4a8ba0ae1ed0ea32))
+
+## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-project-factory-v0.2.4...foundation-project-factory-v0.3.0) (2026-04-23)
+
+### Features
+
+- **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+
+### Bug Fixes
+
+- **ci:** configure npm publishing to github packages ([#35](https://github.com/VitruvianSoftware/pulumi-library/issues/35)) ([3c847ac](https://github.com/VitruvianSoftware/pulumi-library/commit/3c847acd3c768edfefb9a0da2b5112109a2d5a1f))
+- **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+- **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))
+- **ts:** add repository field to package.json ([4a21652](https://github.com/VitruvianSoftware/pulumi-library/commit/4a216520d0c7480834407db63574b39f339de4ca))
+- **ts:** make npm packages public ([1c47b53](https://github.com/VitruvianSoftware/pulumi-library/commit/1c47b530a70156a4a4f7d25211050f6991bd2ee1))
+- **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
+## [0.2.4](https://github.com/VitruvianSoftware/pulumi-library/compare/pulumi-project-factory-v0.2.3...pulumi-project-factory-v0.2.4) (2026-04-23)
+
+### Bug Fixes
+
+- **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
+## [0.2.3](https://github.com/VitruvianSoftware/pulumi-library/compare/pulumi-project-factory-v0.2.2...pulumi-project-factory-v0.2.3) (2026-04-23)
+
+### Bug Fixes
+
+- **ts:** make npm packages public ([1c47b53](https://github.com/VitruvianSoftware/pulumi-library/commit/1c47b530a70156a4a4f7d25211050f6991bd2ee1))
+
+## [0.2.2](https://github.com/VitruvianSoftware/pulumi-library/compare/pulumi-project-factory-v0.2.1...pulumi-project-factory-v0.2.2) (2026-04-23)
+
+### Bug Fixes
+
+- **ts:** add repository field to package.json ([4a21652](https://github.com/VitruvianSoftware/pulumi-library/commit/4a216520d0c7480834407db63574b39f339de4ca))
+
+## [0.2.1](https://github.com/VitruvianSoftware/pulumi-library/compare/pulumi-project-factory-v0.2.0...pulumi-project-factory-v0.2.1) (2026-04-23)
+
+### Bug Fixes
+
+- **ci:** configure npm publishing to github packages ([#35](https://github.com/VitruvianSoftware/pulumi-library/issues/35)) ([3c847ac](https://github.com/VitruvianSoftware/pulumi-library/commit/3c847acd3c768edfefb9a0da2b5112109a2d5a1f))
+
+## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/pulumi-project-factory-v0.1.0...pulumi-project-factory-v0.2.0) (2026-04-23)
+
+### Features
+
+- **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+
+### Bug Fixes
+
+- **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+- **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))

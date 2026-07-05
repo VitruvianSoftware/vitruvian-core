@@ -1,0 +1,24 @@
+{
+  "name": "@vitruviansoftware/foundation-gcloud",
+  "version": "0.2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pulumi/command": "catalog:",
+    "@pulumi/gcp": "catalog:",
+    "@pulumi/pulumi": "catalog:",
+    "@pulumi/random": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VitruvianSoftware/pulumi-library.git",
+    "directory": "ts/packages/cloud-router"
+  }
+}

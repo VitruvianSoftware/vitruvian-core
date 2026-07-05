@@ -1,0 +1,224 @@
+{
+  "packages": {
+    "pulumi/library/ts": {
+      "release-type": "node",
+      "component": "foundation-library"
+    },
+    "pulumi/library/go": {
+      "release-type": "go",
+      "component": "go-foundation"
+    },
+    "pulumi/library/ts/packages/budget": {
+      "release-type": "node",
+      "component": "foundation-budget"
+    },
+    "pulumi/library/ts/packages/cb-private-pool": {
+      "release-type": "node",
+      "component": "foundation-cb-private-pool"
+    },
+    "pulumi/library/ts/packages/centralized-logging": {
+      "release-type": "node",
+      "component": "foundation-centralized-logging"
+    },
+    "pulumi/library/ts/packages/dns-hub": {
+      "release-type": "node",
+      "component": "foundation-dns-hub"
+    },
+    "pulumi/library/ts/packages/google-group": {
+      "release-type": "node",
+      "component": "foundation-google-group"
+    },
+    "pulumi/library/ts/packages/hierarchical-firewall-policy": {
+      "release-type": "node",
+      "component": "foundation-hierarchical-firewall-policy"
+    },
+    "pulumi/library/ts/packages/instance-template": {
+      "release-type": "node",
+      "component": "foundation-instance-template"
+    },
+    "pulumi/library/ts/packages/kms": {
+      "release-type": "node",
+      "component": "foundation-kms"
+    },
+    "pulumi/library/ts/packages/network": {
+      "release-type": "node",
+      "component": "foundation-network"
+    },
+    "pulumi/library/ts/packages/network-peering": {
+      "release-type": "node",
+      "component": "foundation-network-peering"
+    },
+    "pulumi/library/ts/packages/org-policy": {
+      "release-type": "node",
+      "component": "foundation-org-policy"
+    },
+    "pulumi/library/ts/packages/parent-iam": {
+      "release-type": "node",
+      "component": "foundation-parent-iam"
+    },
+    "pulumi/library/ts/packages/private-service-connect": {
+      "release-type": "node",
+      "component": "foundation-private-service-connect"
+    },
+    "pulumi/library/ts/packages/project-factory": {
+      "release-type": "node",
+      "component": "foundation-project-factory"
+    },
+    "pulumi/library/ts/packages/simple-bucket": {
+      "release-type": "node",
+      "component": "foundation-simple-bucket"
+    },
+    "pulumi/library/ts/packages/vpn-ha": {
+      "release-type": "node",
+      "component": "foundation-vpn-ha"
+    },
+    "pulumi/library/ts/packages/vpc-service-controls": {
+      "release-type": "node",
+      "component": "foundation-vpc-service-controls"
+    },
+    "pulumi/library/ts/packages/cai-monitoring": {
+      "release-type": "node",
+      "component": "foundation-cai-monitoring"
+    },
+    "pulumi/library/ts/packages/bootstrap": {
+      "release-type": "node",
+      "component": "foundation-bootstrap"
+    },
+    "pulumi/library/ts/packages/cloud-dns": {
+      "release-type": "node",
+      "component": "foundation-cloud-dns"
+    },
+    "pulumi/library/ts/packages/cloud-functions": {
+      "release-type": "node",
+      "component": "foundation-cloud-functions"
+    },
+    "pulumi/library/ts/packages/cloud-router": {
+      "release-type": "node",
+      "component": "foundation-cloud-router"
+    },
+    "pulumi/library/ts/packages/cloud-storage": {
+      "release-type": "node",
+      "component": "foundation-cloud-storage"
+    },
+    "pulumi/library/ts/packages/compute-instance": {
+      "release-type": "node",
+      "component": "foundation-compute-instance"
+    },
+    "pulumi/library/ts/packages/gcloud": {
+      "release-type": "node",
+      "component": "foundation-gcloud"
+    },
+    "pulumi/library/ts/packages/log-export": {
+      "release-type": "node",
+      "component": "foundation-log-export"
+    },
+    "pulumi/library/ts/packages/network-firewall-policy": {
+      "release-type": "node",
+      "component": "foundation-network-firewall-policy"
+    },
+    "pulumi/library/ts/packages/pubsub": {
+      "release-type": "node",
+      "component": "foundation-pubsub"
+    },
+    "pulumi/library/go/pkg/app": {
+      "release-type": "go",
+      "component": "go-app"
+    },
+    "pulumi/library/go/pkg/bootstrap": {
+      "release-type": "go",
+      "component": "go-bootstrap"
+    },
+    "pulumi/library/go/pkg/cicd": {
+      "release-type": "go",
+      "component": "go-cicd"
+    },
+    "pulumi/library/go/pkg/data": {
+      "release-type": "go",
+      "component": "go-data"
+    },
+    "pulumi/library/go/pkg/iam": {
+      "release-type": "go",
+      "component": "go-iam"
+    },
+    "pulumi/library/go/pkg/cloud_dns": {
+      "release-type": "go",
+      "component": "go-cloud-dns"
+    },
+    "pulumi/library/go/pkg/cloud_functions": {
+      "release-type": "go",
+      "component": "go-cloud-functions"
+    },
+    "pulumi/library/go/pkg/cloud_router": {
+      "release-type": "go",
+      "component": "go-cloud-router"
+    },
+    "pulumi/library/go/pkg/compute_instance": {
+      "release-type": "go",
+      "component": "go-compute-instance"
+    },
+    "pulumi/library/go/pkg/gcloud": {
+      "release-type": "go",
+      "component": "go-gcloud"
+    },
+    "pulumi/library/go/pkg/instance_template": {
+      "release-type": "go",
+      "component": "go-instance-template"
+    },
+    "pulumi/library/go/pkg/kms": {
+      "release-type": "go",
+      "component": "go-kms"
+    },
+    "pulumi/library/go/pkg/log_export": {
+      "release-type": "go",
+      "component": "go-log-export"
+    },
+    "pulumi/library/go/pkg/network_firewall_policy": {
+      "release-type": "go",
+      "component": "go-network-firewall-policy"
+    },
+    "pulumi/library/go/pkg/network_peering": {
+      "release-type": "go",
+      "component": "go-network-peering"
+    },
+    "pulumi/library/go/pkg/private_service_connect": {
+      "release-type": "go",
+      "component": "go-private-service-connect"
+    },
+    "pulumi/library/go/pkg/pubsub": {
+      "release-type": "go",
+      "component": "go-pubsub"
+    },
+    "pulumi/library/go/pkg/project_factory": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/network": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/vpc_service_controls": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/centralized_logging": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/cloud_storage": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/org_policy": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/cai_monitoring": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    },
+    "pulumi/library/go/pkg/google_group": {
+      "release-type": "go",
+      "release-as": "1.0.1"
+    }
+  }
+}

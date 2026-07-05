@@ -176,3 +176,24 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # ─── pulumi-library Go modules. Each component under pulumi/library/go is its
+  #     own go.mod (workspace member); a bump PR that breaks a component fails
+  #     CI and won't merge. ───
+  - package-ecosystem: "gomod"
+    directories:
+      - "/pulumi/library/go"
+      - "/pulumi/library/go/pkg/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
