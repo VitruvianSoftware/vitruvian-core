@@ -8,8 +8,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pulumi/gcp": "^8.0.0",
-    "@pulumi/pulumi": "^3.0.0"
+    "@pulumi/gcp": "catalog:",
+    "@pulumi/pulumi": "catalog:"
   },
   "publishConfig": {
     "access": "public"

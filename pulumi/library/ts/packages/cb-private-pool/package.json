@@ -8,10 +8,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pulumi/gcp": "^8.0.0",
-    "@pulumi/pulumi": "^3.0.0",
-    "@pulumi/random": "^4.0.0",
-    "@vitruviansoftware/foundation-network": "*"
+    "@pulumi/gcp": "catalog:",
+    "@pulumi/pulumi": "catalog:",
+    "@pulumi/random": "catalog:",
+    "@vitruviansoftware/foundation-network": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
