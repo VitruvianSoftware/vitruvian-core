@@ -1,0 +1,39 @@
+# Pulumi Configuration for 0-bootstrap (production stack)
+#
+# Copy this file to Pulumi.production.yaml and fill in the values:
+#   cp Pulumi.production.yaml.example Pulumi.production.yaml
+#
+# Or set values via CLI:
+#   pulumi config set org_id "YOUR_ORG_ID"
+
+config:
+  # Required
+  0-bootstrap:org_id: "YOUR_ORG_ID"
+  0-bootstrap:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  0-bootstrap:group_org_admins: "org-admins@example.com"
+  0-bootstrap:group_billing_admins: "billing-admins@example.com"
+  0-bootstrap:billing_data_users: "billing-data@example.com"
+  0-bootstrap:audit_data_users: "audit-data@example.com"
+
+  # Optional (defaults shown)
+  # 0-bootstrap:project_prefix: "prj"
+  # 0-bootstrap:folder_prefix: "fldr"
+  # 0-bootstrap:bucket_prefix: "bkt"
+  # 0-bootstrap:default_region: "us-central1"
+  # 0-bootstrap:default_region_2: "us-west1"
+  # 0-bootstrap:default_region_gcs: "US"
+  # 0-bootstrap:default_region_kms: "us"
+  # 0-bootstrap:parent_folder: ""
+  # 0-bootstrap:random_suffix: "true"
+  # 0-bootstrap:bucket_force_destroy: "false"
+
+  # GitHub Actions CI/CD (set github_owner to enable WIF)
+  # 0-bootstrap:github_owner: "YOUR_GITHUB_ORG"
+  # 0-bootstrap:github_repo_bootstrap: "gcp-bootstrap"
+
+  # Optional Groups
+  # 0-bootstrap:gcp_security_reviewer: ""
+  # 0-bootstrap:gcp_network_viewer: ""
+  # 0-bootstrap:gcp_scc_admin: ""
+  # 0-bootstrap:gcp_global_secrets_admin: ""
+  # 0-bootstrap:gcp_kms_admin: ""

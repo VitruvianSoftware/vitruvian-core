@@ -1,0 +1,24 @@
+# Pulumi
+.pulumi/
+Pulumi.*.yaml
+!Pulumi.yaml
+!Pulumi.*.yaml.example
+
+# Go
+bin/
+dist/
+*.exe
+*.test
+*.out
+vendor/
+
+# OS
+.DS_Store
+.env
+
+# Compiled stage binaries
+/foundation-*
+0-bootstrap/foundation-0-bootstrap
+1-org/foundation-1-org
+2-environments/foundation-2-environments
+node_modules/
