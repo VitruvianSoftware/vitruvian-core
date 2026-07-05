@@ -103,6 +103,16 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo: "oauth-user-inspector",
 		OneWay:         true,
 	},
+	{
+		// pulumi-library is EXPORT-ONLY (copy.bara.sky export_only): developed and
+		// published from the monorepo, its public repo a read-only mirror. OneWay
+		// skips the import-back dispatch credentials — it needs only the export
+		// SSH deploy key (PULUMI_LIBRARY_SYNC_SSH_KEY), consumed by
+		// copybara-export-pulumi-library.yaml.
+		Name:           "pulumi-library",
+		StandaloneRepo: "pulumi-library",
+		OneWay:         true,
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its

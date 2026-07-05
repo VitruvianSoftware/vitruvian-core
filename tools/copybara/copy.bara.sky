@@ -15,6 +15,13 @@
 #     for any future component that genuinely needs writable-both-ways sync.
 #     Generates export_<comp> + a push-to-main import_<comp>. No current
 #     component uses it; converging on one-way removed the #1 drift risk.
+#   * EXPORT-ONLY (export_only=True) -- emits ONLY export_<comp>; no import path
+#     of any kind. For subtrees developed AND published from the monorepo whose
+#     public repo is a pure read-only mirror (e.g. pulumi-library). Such a
+#     component may set `subtree`/`repo` when its monorepo path differs from the
+#     standalone repo name (pulumi/library -> pulumi-library), plus
+#     `export_transformations` to reverse its monorepo integration (e.g.
+#     `catalog:` -> concrete versions) so the mirror builds standalone.
 #
 # (`-` in a component name becomes `_` in the workflow name, e.g.
 #  export_nexus_agent.) The first run against a fresh destination (no rev-id
@@ -133,6 +140,39 @@ def _monorepo_only(component):
         component + "/BUILD.bazel",
     ]
 
+# pnpm catalog -> concrete version map for the pulumi-library TS export.
+# The monorepo's JS One-Version Rule references shared dep versions as
+# `"<dep>": "catalog:"` (resolved from the root pnpm-workspace.yaml catalog).
+# The standalone pulumi-library mirror has no monorepo catalog, so the export
+# rewrites each `catalog:` back to the concrete range it resolves to here.
+# Keep in sync with the `catalog:` block in //pnpm-workspace.yaml.
+_LIBRARY_CATALOG_VERSIONS = {
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/gcp": "^8.0.0",
+    "@pulumi/random": "^4.0.0",
+    "@pulumi/command": "^1.0.0",
+    "vitest": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.5",
+}
+
+def _library_export_transforms():
+    """Export transforms that reverse the pulumi-library's monorepo integration
+    so the standalone mirror builds/publishes on its own. Applied AFTER the
+    subtree->root move, so paths are repo-root-relative (ts/**, not
+    pulumi/library/ts/**). Currently: concretize every `catalog:` reference.
+    `workspace:*` cross-refs between foundation-* packages are LEFT AS-IS — the
+    standalone is itself a pnpm workspace, and `workspace:*` is resolved to the
+    concrete version by pnpm at publish time (its whole purpose), so rewriting
+    it would be wrong."""
+    return [
+        core.replace(
+            before = '"' + _dep + '": "catalog:"',
+            after = '"' + _dep + '": "' + _LIBRARY_CATALOG_VERSIONS[_dep] + '"',
+            paths = glob(["ts/**/package.json"]),
+        )
+        for _dep in _LIBRARY_CATALOG_VERSIONS
+    ]
+
 # Source of truth for which components are synced and their per-component knobs.
 #   name              : monorepo subfolder name == standalone repo name
 #   standalone_rev_id : the per-component IMPORT label (must be unique; see above)
@@ -177,6 +217,41 @@ COMPONENTS = [
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
+    # pulumi-library: EXPORT-ONLY mirror (monorepo pulumi/library/ -> the
+    # standalone VitruvianSoftware/pulumi-library, at its repo root). The monorepo
+    # subtree (`subtree`) differs from the standalone repo (`repo`), so both are
+    # given explicitly instead of relying on name==subtree==repo. `export_only`
+    # emits ONLY export_pulumi_library (no import path): the library is developed
+    # in the monorepo and published from there (release-please -> apps-release ->
+    # this export -> the mirror's publish-on-version-bump), so there is nothing to
+    # import back. See docs/copybara-pulumi-oneway-cutover.md.
+    {
+        "name": "pulumi-library",
+        "repo": "pulumi-library",
+        "subtree": "pulumi/library",
+        "standalone_rev_id": "PULUMI_LIBRARY_REV_ID",
+        # Files the STANDALONE owns that the monorepo does not carry (or carries
+        # differently). Export must neither push a monorepo copy over them nor
+        # delete them: the standalone's own CI/publish workflows, its pnpm
+        # workspace + lockfiles (the monorepo uses a single root pnpm-lock.yaml
+        # and pnpm catalog instead), and its Go multi-module go.work (deleted in
+        # the monorepo in favour of the root go.work). NOTE: finalize this list by
+        # diffing the live standalone before the first --force seed (runbook §Seed).
+        "standalone_only": [
+            ".github/workflows/**",
+            "ts/pnpm-workspace.yaml",
+            "ts/pnpm-lock.yaml",
+            "go/go.work",
+            "go/go.work.sum",
+        ],
+        # A stale npm lockfile lingers in the monorepo subtree (pnpm is used at the
+        # root); never push it out — the standalone manages its own lockfile.
+        "origin_only_exclude": [
+            "pulumi/library/ts/package-lock.json",
+        ],
+        "export_only": True,
+        "export_transformations": _library_export_transforms(),
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):
@@ -199,14 +274,34 @@ def _make_skip_guard(workflow_name, peer_label, origin_desc):
 # `for` -- Copybara's Starlark forbids top-level `for` STATEMENTS).
 def _define_component(_c):
     _name = _c["name"]
-    _wf = _name.replace("-", "_")
-    _standalone = STANDALONE_SSH_PREFIX + _name + ".git"
+
+    # `repo` (standalone repo name) and `subtree` (monorepo path) default to
+    # `name`, so the historical components (name == subtree == repo) are
+    # byte-for-byte unchanged. Only components whose monorepo path differs from
+    # their standalone repo name (e.g. pulumi/library -> pulumi-library) set them.
+    _repo = _c.get("repo", _name)
+    _subtree = _c.get("subtree", _name)
+    _wf = _repo.replace("-", "_")
+    _standalone = STANDALONE_SSH_PREFIX + _repo + ".git"
     _standalone_rev_id = _c["standalone_rev_id"]
     _standalone_only = _c["standalone_only"]
-    _monorepo_only_files = _monorepo_only(_name)
+
+    # Origin files that must NEVER be exported (in addition to the monorepo-only
+    # Bazel BUILD files) -- e.g. a stale in-tree lockfile the standalone owns.
+    _origin_exclude = _c.get("origin_only_exclude", [])
+
+    # Extra export transforms, applied AFTER the subtree->root move (so they see
+    # repo-root-relative paths). Used to reverse a component's monorepo
+    # integration so its standalone mirror builds on its own.
+    _export_transformations = _c.get("export_transformations", [])
+
+    # export_only: emit ONLY the export workflow (no import path). For mirrors
+    # that are developed-and-published in the monorepo and never take changes back.
+    _export_only = _c.get("export_only", False)
+    _monorepo_only_files = _monorepo_only(_subtree)
     _is_one_way = _c.get("is_one_way", False)
 
-    # Export: vitruvian-core/<name>/  ->  VitruvianSoftware/<name> (repo root).
+    # Export: vitruvian-core/<subtree>/  ->  VitruvianSoftware/<repo> (repo root).
     # IDENTICAL for bidirectional and one-way components -- the export side is
     # never touched by the one-way cutover, preserving the live export baseline.
     core.workflow(
@@ -220,8 +315,9 @@ def _define_component(_c):
             fetch = "main",
             push = "main",
         ),
-        # Component subtree minus the monorepo-only Bazel BUILD files.
-        origin_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+        # Component subtree minus the monorepo-only Bazel BUILD files (and any
+        # origin_only_exclude paths the component declares).
+        origin_files = glob([_subtree + "/**"], exclude = _monorepo_only_files + _origin_exclude),
         # Manage all standalone files EXCEPT the standalone-only ones (the sync
         # must never delete the dispatch workflow or an npm lockfile).
         destination_files = glob(["**"], exclude = _standalone_only),
@@ -234,12 +330,17 @@ def _define_component(_c):
             core.dynamic_transform(impl = _make_skip_guard(
                 "export_" + _wf,
                 _standalone_rev_id,
-                "the standalone " + _name + " repo",
+                "the standalone " + _repo + " repo",
             )),
-            # Strip the `<name>/` prefix so the component lands at the repo root.
-            core.move(_name, ""),
-        ],
+            # Strip the `<subtree>/` prefix so the component lands at the repo root.
+            core.move(_subtree, ""),
+        ] + _export_transformations,
     )
+
+    if _export_only:
+        # No import path: this mirror is source-of-truth in the monorepo and
+        # published from there. Nothing is ever imported back.
+        return
 
     if _is_one_way:
         # One-way PR-import: a labelled PR on VitruvianSoftware/<name> becomes a
@@ -269,22 +370,22 @@ def _define_component(_c):
                 # into a throwaway config copy before invoking copybara. The branch
                 # is per-component (<name>-import-pr-<N>) so two apps' imports of the
                 # same PR number never collide on one branch.
-                pr_branch = _name + "-import-pr-@@PR_NUMBER@@",
+                pr_branch = _repo + "-import-pr-@@PR_NUMBER@@",
                 # Static, self-identifying title (the contributor's commit message
                 # carries the detail; ${GITHUB_PR_TITLE} also does not resolve here).
-                title = "[" + _name + " import] " + _name + "#@@PR_NUMBER@@",
+                title = "[" + _repo + " import] " + _repo + "#@@PR_NUMBER@@",
                 # Body footer carries the standalone repo + PR ref so the
                 # post-merge auto-close workflow (copybara-import-pr-close.yaml)
                 # can find and close the right mirror PR after the monorepo PR
                 # merges. NOTE: a bare GitHub trailer cannot auto-close across
                 # repos; closure is done explicitly by that workflow, not GitHub.
-                body = "Imported from VitruvianSoftware/" + _name + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _name + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
+                body = "Imported from VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),
-            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
-            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
             authoring = authoring.pass_thru(default = AUTHOR),
             mode = "ITERATIVE",
             # Stamp the standalone's per-component rev-id (NOT MONOREPO_REV_ID):
@@ -297,9 +398,9 @@ def _define_component(_c):
                     MONOREPO_REV_ID,
                     "the vitruvian-core monorepo export",
                 )),
-                # Re-add the `<name>/` prefix so the standalone root lands under
+                # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
-                core.move("", _name),
+                core.move("", _subtree),
             ],
         )
     else:
@@ -318,9 +419,9 @@ def _define_component(_c):
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),
-            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
-            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
             authoring = authoring.pass_thru(default = AUTHOR),
             mode = "ITERATIVE",
             # Stamp the standalone's own per-component rev-id, and drop any change
@@ -332,9 +433,9 @@ def _define_component(_c):
                     MONOREPO_REV_ID,
                     "the vitruvian-core monorepo",
                 )),
-                # Re-add the `<name>/` prefix so the standalone root lands under
+                # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
-                core.move("", _name),
+                core.move("", _subtree),
             ],
         )
 
