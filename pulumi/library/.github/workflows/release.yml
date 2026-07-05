@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-npm:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@vitruviansoftware"
+
+      - name: Install and build library
+        working-directory: ts
+        run: |
+          npm install
+          npm run build
+
+      - name: Publish all packages
+        working-directory: ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg_dir in packages/*/; do
+            pkg_name=$(jq -r '.name' "$pkg_dir/package.json")
+            pkg_version=$(jq -r '.version' "$pkg_dir/package.json")
+            echo "Publishing $pkg_name@$pkg_version..."
+            cd "$pkg_dir"
+            npm publish --access public || echo "⚠️ $pkg_name may already be published at this version"
+            cd ../..
+          done

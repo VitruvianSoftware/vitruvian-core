@@ -1,0 +1,84 @@
+# Changelog
+
+## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-bootstrap-v0.4.1...go-bootstrap-v1.0.0) (2026-07-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* rename Go library packages to descriptive, upstream-consistent names ([6734481](https://github.com/VitruvianSoftware/pulumi-library/commit/6734481530f65d20d1a6de2f9dbb3bd5e6f7d43a))
+
+
+### Bug Fixes
+
+* **bootstrap:** always enable impersonation APIs on the seed project ([8063653](https://github.com/VitruvianSoftware/pulumi-library/commit/806365320fa047980cd307c163aa92d1a7be81a9))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([b0189b2](https://github.com/VitruvianSoftware/pulumi-library/commit/b0189b2d6c3b5c7b70dd2e6294b237778ef8cb10))
+
+## [0.4.1](https://github.com/VitruvianSoftware/pulumi-library/compare/go-bootstrap-v0.4.0...go-bootstrap-v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/pulumi-library/issues/71)) ([d6d73ed](https://github.com/VitruvianSoftware/pulumi-library/commit/d6d73edb3e703338a9d6f64adba003b6d9bdf293))
+
+## [0.4.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-bootstrap-v0.3.2...go-bootstrap-v0.4.0) (2026-05-06)
+
+
+### Features
+
+* **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+* restructure to polyglot monorepo with release-please ([#21](https://github.com/VitruvianSoftware/pulumi-library/issues/21)) ([942dbcf](https://github.com/VitruvianSoftware/pulumi-library/commit/942dbcf9f672d870489a679cf67ae819e1e5aee9))
+
+
+### Bug Fixes
+
+* add kms and gcs region parity to bootstrap component ([#41](https://github.com/VitruvianSoftware/pulumi-library/issues/41)) ([5d6cb35](https://github.com/VitruvianSoftware/pulumi-library/commit/5d6cb359b7d6970792b5e741a82f4cdc4032cef9))
+* grant kms encrypterDecrypter to gcs service agent before bucket creation ([5543345](https://github.com/VitruvianSoftware/pulumi-library/commit/55433459ca6389cfbf4e06661bf49ce595b898f5))
+* **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+* **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))
+* **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
+## [0.3.2](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.3.1...v0.3.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* add kms and gcs region parity to bootstrap component ([#41](https://github.com/VitruvianSoftware/pulumi-library/issues/41)) ([5d6cb35](https://github.com/VitruvianSoftware/pulumi-library/commit/5d6cb359b7d6970792b5e741a82f4cdc4032cef9))
+* grant kms encrypterDecrypter to gcs service agent before bucket creation ([5543345](https://github.com/VitruvianSoftware/pulumi-library/commit/55433459ca6389cfbf4e06661bf49ce595b898f5))
+
+## [0.3.1](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.3.0...v0.3.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **ts:** trigger release ([1bcb6fa](https://github.com/VitruvianSoftware/pulumi-library/commit/1bcb6faa91d8c2bb7d6b80c6ec1e081bf8e136b6))
+
+## [0.3.0](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.2.0...v0.3.0) (2026-04-23)
+
+
+### Features
+
+* **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+
+
+### Bug Fixes
+
+* **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+* **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))
+
+## [0.2.0](https://github.com/VitruvianSoftware/pulumi-library/compare/v0.1.0...v0.2.0) (2026-04-23)
+
+
+### Features
+
+* **library:** refactor to independent workspaces for go and ts ([df88451](https://github.com/VitruvianSoftware/pulumi-library/commit/df88451e4195f05d5b8455085d2806c4e96ee6a3))
+* restructure to polyglot monorepo with release-please ([#21](https://github.com/VitruvianSoftware/pulumi-library/issues/21)) ([942dbcf](https://github.com/VitruvianSoftware/pulumi-library/commit/942dbcf9f672d870489a679cf67ae819e1e5aee9))
+
+
+### Bug Fixes
+
+* **library:** resolve workspace dependencies and test config ([b48fd3f](https://github.com/VitruvianSoftware/pulumi-library/commit/b48fd3f9aec3df5c2193c8997d7bbc7fd43d1719))
+* **library:** resolve workspace dependencies and test config ([781c2d1](https://github.com/VitruvianSoftware/pulumi-library/commit/781c2d1d2bb7a51c21cd6917bd8d51bea2ea49b4))

@@ -1,0 +1,31 @@
+# Pulumi
+.pulumi/
+Pulumi.dev.yaml
+Pulumi.prod.yaml
+Pulumi.nonprod.yaml
+
+# Go
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.html
+vendor/
+
+# TypeScript
+ts/node_modules/
+ts/packages/*/node_modules/
+ts/dist/
+ts/packages/*/dist/
+ts/coverage/
+ts/*.js
+ts/*.js.map
+ts/*.d.ts
+
+# Go workspace
+go/go.work.sum
+
+# OS
+.DS_Store
+.env

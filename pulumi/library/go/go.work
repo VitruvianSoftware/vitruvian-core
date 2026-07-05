@@ -1,0 +1,30 @@
+go 1.25.8
+
+use (
+	.
+	./pkg/app
+	./pkg/bootstrap
+	./pkg/cicd
+	./pkg/cloud_dns
+	./pkg/cloud_functions
+	./pkg/cloud_router
+	./pkg/compute_instance
+	./pkg/data
+	./pkg/gcloud
+	./pkg/google_group
+	./pkg/iam
+	./pkg/instance_template
+	./pkg/kms
+	./pkg/log_export
+	./pkg/centralized_logging
+	./pkg/network_firewall_policy
+	./pkg/network_peering
+	./pkg/network
+	./pkg/org_policy
+	./pkg/private_service_connect
+	./pkg/project_factory
+	./pkg/pubsub
+	./pkg/cai_monitoring
+	./pkg/cloud_storage
+	./pkg/vpc_service_controls
+)
