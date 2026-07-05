@@ -28,12 +28,12 @@ import (
 )
 
 type GcloudArgs struct {
-	Commands         []string
-	Environment      map[string]string
+	Commands              []string
+	Environment           map[string]string
 	ServiceAccountKeyFile string
-	ProjectID        string
-	CreateCmdBody    string
-	DestroyCmdBody   string
+	ProjectID             string
+	CreateCmdBody         string
+	DestroyCmdBody        string
 }
 
 type Gcloud struct {

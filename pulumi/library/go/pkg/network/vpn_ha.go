@@ -25,12 +25,12 @@ import (
 )
 
 type VpnHaTunnelConfig struct {
-	BgpSessionRange      string
-	PeerBgpSessionRange  string
-	PeerAsn              int
-	SharedSecret         string
-	VpnGatewayInterface  int
-	IkeVersion           *int
+	BgpSessionRange     string
+	PeerBgpSessionRange string
+	PeerAsn             int
+	SharedSecret        string
+	VpnGatewayInterface int
+	IkeVersion          *int
 }
 
 type RouterAdvertiseConfig struct {
@@ -142,7 +142,7 @@ func NewVpnHa(ctx *pulumi.Context, name string, args *VpnHaArgs, opts ...pulumi.
 		if args.PeerExternalGateway.RedundancyType != nil {
 			redundancy = *args.PeerExternalGateway.RedundancyType
 		}
-		
+
 		var interfaces compute.ExternalVpnGatewayInterfaceArray
 		for _, i := range args.PeerExternalGateway.Interfaces {
 			interfaces = append(interfaces, &compute.ExternalVpnGatewayInterfaceArgs{

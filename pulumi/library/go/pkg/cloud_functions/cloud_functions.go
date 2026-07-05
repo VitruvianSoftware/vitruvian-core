@@ -21,25 +21,26 @@ package cloud_functions
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudfunctionsv2"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 type CloudFunctionArgs struct {
-	ProjectID         pulumi.StringInput
-	Region            string
-	Name              string
-	Description       string
-	Runtime           string
-	EntryPoint        string
-	SourceBucket      pulumi.StringInput
-	SourceObject      pulumi.StringInput
-	EventTriggerType  string
+	ProjectID            pulumi.StringInput
+	Region               string
+	Name                 string
+	Description          string
+	Runtime              string
+	EntryPoint           string
+	SourceBucket         pulumi.StringInput
+	SourceObject         pulumi.StringInput
+	EventTriggerType     string
 	EventTriggerResource pulumi.StringInput
 	ServiceAccountEmail  pulumi.StringInput
-	AvailableMemory   string
-	Timeout           int
-	Labels            map[string]string
+	AvailableMemory      string
+	Timeout              int
+	Labels               map[string]string
 }
 
 type CloudFunction struct {
@@ -86,9 +87,9 @@ func NewCloudFunction(ctx *pulumi.Context, name string, args *CloudFunctionArgs,
 			},
 		},
 		ServiceConfig: &cloudfunctionsv2.FunctionServiceConfigArgs{
-			AvailableMemory:            pulumi.String(memory),
-			TimeoutSeconds:             pulumi.Int(timeout),
-			ServiceAccountEmail:        args.ServiceAccountEmail,
+			AvailableMemory:     pulumi.String(memory),
+			TimeoutSeconds:      pulumi.Int(timeout),
+			ServiceAccountEmail: args.ServiceAccountEmail,
 		},
 	}
 
@@ -102,7 +103,7 @@ func NewCloudFunction(ctx *pulumi.Context, name string, args *CloudFunctionArgs,
 
 	if args.EventTriggerType != "" {
 		fnArgs.EventTrigger = &cloudfunctionsv2.FunctionEventTriggerArgs{
-			EventType:   pulumi.String(args.EventTriggerType),
+			EventType:     pulumi.String(args.EventTriggerType),
 			TriggerRegion: pulumi.String(args.Region),
 		}
 	}

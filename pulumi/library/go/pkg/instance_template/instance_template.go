@@ -20,30 +20,31 @@ package instance_template
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 type InstanceTemplateArgs struct {
-	Project            pulumi.StringInput
-	Region             pulumi.StringInput
-	MachineType        string
-	SourceImage        string
-	SourceImageFamily  string
-	SourceImageProject string
-	DiskSizeGb         int
-	DiskType           string
-	Network            pulumi.StringInput
-	Subnetwork         pulumi.StringInput
-	ServiceAccountEmail pulumi.StringInput
-	ServiceAccountScopes []string
-	Tags               []string
-	Labels             map[string]string
-	Metadata           pulumi.StringMapInput
-	EnableShieldedVm   bool
-	EnableConfidentialVm bool
-	NamePrefix         string
-	MinCpuPlatform     string
+	Project                  pulumi.StringInput
+	Region                   pulumi.StringInput
+	MachineType              string
+	SourceImage              string
+	SourceImageFamily        string
+	SourceImageProject       string
+	DiskSizeGb               int
+	DiskType                 string
+	Network                  pulumi.StringInput
+	Subnetwork               pulumi.StringInput
+	ServiceAccountEmail      pulumi.StringInput
+	ServiceAccountScopes     []string
+	Tags                     []string
+	Labels                   map[string]string
+	Metadata                 pulumi.StringMapInput
+	EnableShieldedVm         bool
+	EnableConfidentialVm     bool
+	NamePrefix               string
+	MinCpuPlatform           string
 	ConfidentialInstanceType string
 }
 

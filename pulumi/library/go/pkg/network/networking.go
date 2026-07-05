@@ -30,13 +30,13 @@ type SecondaryRangeArgs struct {
 }
 
 type SubnetArgs struct {
-	Name            string
-	Region          string
-	CIDR            string
-	SecondaryRanges []SecondaryRangeArgs
-	Role            string
-	Purpose         string
-	FlowLogs        bool
+	Name             string
+	Region           string
+	CIDR             string
+	SecondaryRanges  []SecondaryRangeArgs
+	Role             string
+	Purpose          string
+	FlowLogs         bool
 	FlowLogsInterval string
 	FlowLogsSampling float64
 	FlowLogsMetadata string

@@ -39,7 +39,7 @@ func TestNewInstanceTemplate_Basic(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewInstanceTemplate(ctx, "test-tmpl", &InstanceTemplateArgs{
 			Project:     pulumi.String("test-proj"),
-			Region:           pulumi.String("us-central1"),
+			Region:      pulumi.String("us-central1"),
 			SourceImage: "projects/debian-cloud/global/images/family/debian-11",
 			Network:     pulumi.String("projects/test/global/networks/vpc"),
 			Subnetwork:  pulumi.String("projects/test/regions/us-central1/subnetworks/subnet"),
@@ -57,7 +57,7 @@ func TestNewInstanceTemplate_WithShieldedVm(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewInstanceTemplate(ctx, "test-shielded", &InstanceTemplateArgs{
 			Project:             pulumi.String("test-proj"),
-			Region:           pulumi.String("us-central1"),
+			Region:              pulumi.String("us-central1"),
 			MachineType:         "n2-standard-4",
 			SourceImage:         "projects/cos-cloud/global/images/family/cos-stable",
 			DiskSizeGb:          50,
@@ -83,7 +83,7 @@ func TestNewInstanceTemplate_ConfidentialVm(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewInstanceTemplate(ctx, "test-confidential", &InstanceTemplateArgs{
 			Project:              pulumi.String("test-proj"),
-			Region:           pulumi.String("us-central1"),
+			Region:               pulumi.String("us-central1"),
 			MachineType:          "n2d-standard-2",
 			SourceImage:          "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts",
 			Network:              pulumi.String("projects/test/global/networks/vpc"),

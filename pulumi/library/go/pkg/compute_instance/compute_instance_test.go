@@ -76,7 +76,7 @@ func TestNewComputeInstance_DeletionProtection(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewComputeInstance(ctx, "test-protected", &ComputeInstanceArgs{
 			Project:            pulumi.String("test-proj"),
-			Zone:             pulumi.String("us-central1-a"),
+			Zone:               pulumi.String("us-central1-a"),
 			Hostname:           "protected-instance",
 			InstanceTemplate:   pulumi.String("projects/test/global/instanceTemplates/tmpl"),
 			DeletionProtection: true,

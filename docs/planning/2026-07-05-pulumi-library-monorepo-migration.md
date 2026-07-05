@@ -28,7 +28,7 @@ pulumi/
 ## What PR1 does
 
 1. **History-preserving graft.** `git filter-repo --to-subdirectory-filter
-   pulumi/library/` on a fresh clone of `pulumi-library`, then
+pulumi/library/` on a fresh clone of `pulumi-library`, then
    `git merge --allow-unrelated-histories`. All 51 upstream commits are
    preserved (`git log --oneline -- pulumi/library/`).
 

@@ -104,8 +104,8 @@ func NewGitHubOIDC(ctx *pulumi.Context, name string, args *GitHubOIDCArgs, opts 
 		WorkloadIdentityPoolProviderId: args.ProviderID,
 		AttributeCondition:             args.AttributeCondition,
 		AttributeMapping: pulumi.StringMap{
-			"google.subject":       pulumi.String("assertion.sub"),
-			"attribute.actor":      pulumi.String("assertion.actor"),
+			"google.subject":             pulumi.String("assertion.sub"),
+			"attribute.actor":            pulumi.String("assertion.actor"),
 			"attribute.aud":              pulumi.String("assertion.aud"),
 			"attribute.repository":       pulumi.String("assertion.repository"),
 			"attribute.repository_owner": pulumi.String("assertion.repository_owner"),

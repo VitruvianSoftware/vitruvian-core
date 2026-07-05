@@ -441,7 +441,8 @@ func BuildFoundationRules(envCode string, enableLogging bool, restrictedApiCidr 
 	}
 
 	if enableInternal {
-		rules = append(rules,
+		rules = append(
+			rules,
 			FirewallRule{
 				Priority:      10000,
 				Direction:     "EGRESS",

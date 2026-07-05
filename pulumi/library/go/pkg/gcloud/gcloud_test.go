@@ -54,7 +54,7 @@ func TestNewGcloud_WithEnvironment(t *testing.T) {
 		_, err := NewGcloud(ctx, "test-env", &GcloudArgs{
 			Commands: []string{"gcloud config set project $PROJECT"},
 			Environment: map[string]string{
-				"PROJECT":        "my-project",
+				"PROJECT":       "my-project",
 				"CLOUDSDK_CORE": "gcloud",
 			},
 		})

@@ -20,17 +20,18 @@ package compute_instance
 
 import (
 	"fmt"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 type ComputeInstanceArgs struct {
-	Project            pulumi.StringInput
-	Zone pulumi.StringInput
-	Hostname           string
-	InstanceTemplate   pulumi.StringInput
-	NumInstances       int
-	DeletionProtection bool
+	Project             pulumi.StringInput
+	Zone                pulumi.StringInput
+	Hostname            string
+	InstanceTemplate    pulumi.StringInput
+	NumInstances        int
+	DeletionProtection  bool
 	ResourceManagerTags pulumi.StringMapInput
 }
 
@@ -61,13 +62,13 @@ func NewComputeInstance(ctx *pulumi.Context, name string, args *ComputeInstanceA
 		}
 
 		instArgs := &compute.InstanceFromTemplateArgs{
-			Project:                 args.Project,
-			Zone:                    args.Zone,
-			Name:                    pulumi.String(hostname),
-			SourceInstanceTemplate:  args.InstanceTemplate,
-			DeletionProtection:      pulumi.Bool(args.DeletionProtection),
+			Project:                args.Project,
+			Zone:                   args.Zone,
+			Name:                   pulumi.String(hostname),
+			SourceInstanceTemplate: args.InstanceTemplate,
+			DeletionProtection:     pulumi.Bool(args.DeletionProtection),
 		}
-		
+
 		if args.ResourceManagerTags != nil {
 			instArgs.Params = &compute.InstanceFromTemplateParamsArgs{
 				ResourceManagerTags: args.ResourceManagerTags,

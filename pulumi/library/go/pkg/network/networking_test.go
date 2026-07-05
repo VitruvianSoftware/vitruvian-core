@@ -252,8 +252,10 @@ func TestNewNetworking_FullStack(t *testing.T) {
 			RoutingMode:                 "GLOBAL",
 			EnablePSA:                   true,
 			Subnets: []SubnetArgs{
-				{Name: "sb-a", Region: "us-central1", CIDR: "10.0.0.0/24", FlowLogs: true,
-					SecondaryRanges: []SecondaryRangeArgs{{RangeName: "pods", CIDR: "10.4.0.0/14"}}},
+				{
+					Name: "sb-a", Region: "us-central1", CIDR: "10.0.0.0/24", FlowLogs: true,
+					SecondaryRanges: []SecondaryRangeArgs{{RangeName: "pods", CIDR: "10.4.0.0/14"}},
+				},
 				{Name: "sb-b", Region: "us-east1", CIDR: "10.1.0.0/24"},
 			},
 		})

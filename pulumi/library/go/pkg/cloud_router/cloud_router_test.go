@@ -78,13 +78,13 @@ func TestNewCloudRouter_CustomAdvertisements(t *testing.T) {
 	tracker := testutil.NewTracker()
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewCloudRouter(ctx, "test-router-adv", &CloudRouterArgs{
-			ProjectID:        pulumi.String("test-proj"),
-			Region:           "us-central1",
-			Network:          pulumi.String("projects/test/global/networks/vpc"),
-			BgpAsn:           64514,
-			Description:      "Custom router",
+			ProjectID:         pulumi.String("test-proj"),
+			Region:            "us-central1",
+			Network:           pulumi.String("projects/test/global/networks/vpc"),
+			BgpAsn:            64514,
+			Description:       "Custom router",
 			KeepaliveInterval: 20,
-			AdvertisedGroups: []string{"ALL_SUBNETS"},
+			AdvertisedGroups:  []string{"ALL_SUBNETS"},
 			AdvertisedIpRanges: []AdvertisedIPRange{
 				{Range: "10.0.0.0/8", Description: "RFC1918"},
 				{Range: "172.16.0.0/12", Description: "RFC1918 B"},

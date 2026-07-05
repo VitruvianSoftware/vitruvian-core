@@ -1,2 +1,6 @@
 # Prettier ignore
 
+
+# pulumi-library is a grafted external library (Apache-2.0, gazelle-excluded);
+# keep its upstream formatting so the one-way mirror stays byte-faithful.
+pulumi/library/
