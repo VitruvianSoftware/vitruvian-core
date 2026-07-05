@@ -1,0 +1,13 @@
+name: 1-org
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: |
+  Organization-level shared resources — folders, IAM, org policies,
+  centralized logging, SCC, tags, essential contacts, and shared projects.
+  Mirrors Stage 1 of the terraform-example-foundation.
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: foundation-org

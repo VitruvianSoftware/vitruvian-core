@@ -1,0 +1,6 @@
+name: 3-networks-hub-and-spoke-shared
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Hub-and-spoke shared network — hub VPC and hierarchical firewall"

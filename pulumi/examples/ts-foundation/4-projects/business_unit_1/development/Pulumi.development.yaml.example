@@ -1,0 +1,7 @@
+# Pulumi Configuration for 4-projects/business_unit_1/development
+config:
+  4-projects-bu1-development:org_id: "YOUR_ORG_ID"
+  4-projects-bu1-development:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  4-projects-bu1-development:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 4-projects-bu1-development:business_code: "bu1"
+  # 4-projects-bu1-development:project_prefix: "prj"

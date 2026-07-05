@@ -1,0 +1,8 @@
+import * as pulumi from "@pulumi/pulumi";
+import { SeedProjectOutputs } from "./index";
+
+export function exportLocalOutputs(seed: SeedProjectOutputs) {
+    return {
+        cicd_project_id: seed.projectId,
+    };
+}

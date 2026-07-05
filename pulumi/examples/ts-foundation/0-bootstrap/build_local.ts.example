@@ -1,0 +1,39 @@
+/**
+ * Local Build — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to configure a local deployment.
+ * This mirrors the Terraform foundation's `build_local.tf.example`.
+ *
+ * To use Local deployment instead of a CI/CD builder:
+ * 1. Rename this file: build_local.ts.example → build_local.ts
+ * 2. Rename outputs_local.ts.example -> outputs_local.ts
+ * 3. Update index.ts to not create a CI/CD project, and pass the Seed project 
+ *    ID as the CI/CD project ID to the other modules if needed.
+ *
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+import * as libstorage from "@vitruviansoftware/foundation-storage";
+import { Config } from "./config";
+
+export async function deployLocalBuild(
+    cfg: Config,
+    seedProjectId: pulumi.Output<string>,
+    seedKmsKey: pulumi.Output<string>
+) {
+    // Projects State Bucket
+    const projectsStateBucket = new libstorage.SimpleBucket("gcp-projects-state-bucket", {
+        projectId: seedProjectId,
+        name: pulumi.interpolate`${cfg.bucketPrefix}-${seedProjectId}-gcp-projects-tfstate`,
+        location: cfg.defaultRegion,
+        forceDestroy: cfg.bucketForceDestroy,
+        encryption: {
+            defaultKmsKeyName: seedKmsKey,
+        },
+    });
+
+    return {};
+}

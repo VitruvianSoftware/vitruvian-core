@@ -1,0 +1,25 @@
+# Pulumi Configuration for 0-bootstrap (production stack)
+#
+# Copy this file to Pulumi.production.yaml:
+#   cp Pulumi.production.yaml.example Pulumi.production.yaml
+#
+# Or set values via CLI:
+#   pulumi config set org_id "YOUR_ORG_ID"
+
+config:
+  # Required
+  0-bootstrap:org_id: "YOUR_ORG_ID"
+  0-bootstrap:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  0-bootstrap:group_org_admins: "org-admins@example.com"
+  0-bootstrap:group_billing_admins: "billing-admins@example.com"
+  0-bootstrap:billing_data_users: "billing-data@example.com"
+  0-bootstrap:audit_data_users: "audit-data@example.com"
+
+  # Optional (defaults shown)
+  # 0-bootstrap:project_prefix: "prj"
+  # 0-bootstrap:default_region: "us-central1"
+  # 0-bootstrap:parent_folder: ""
+  # 0-bootstrap:random_suffix: true
+
+  # GitHub Actions CI/CD
+  # 0-bootstrap:github_owner: "YOUR_GITHUB_ORG"

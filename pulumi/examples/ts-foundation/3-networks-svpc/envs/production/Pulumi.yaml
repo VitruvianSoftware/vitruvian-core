@@ -1,0 +1,6 @@
+name: 3-networks-svpc-production
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Shared VPC network for production environment"

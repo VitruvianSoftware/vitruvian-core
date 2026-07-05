@@ -1,0 +1,6 @@
+# Pulumi Configuration for 3-networks-svpc/shared
+config:
+  3-networks-svpc-shared:org_id: "YOUR_ORG_ID"
+  3-networks-svpc-shared:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 3-networks-svpc-shared:default_region: "us-central1"
+  # 3-networks-svpc-shared:default_region_2: "us-west1"

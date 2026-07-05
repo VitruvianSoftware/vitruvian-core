@@ -49,7 +49,23 @@ covers it.
 ## PR3 — ts-example-foundation
 
 **No rename drift** — the example's `@vitruviansoftware/foundation-*` deps all match HEAD package
-names. Mechanical repoint (`workspace:*` + catalog), mirroring PR1's TS side.
+names, so it's a repoint rather than a port.
+
+Structural note: the `foundation-*` deps live only in the **root** `package.json` (stages consume
+them via hoisting), and 19 of the per-env `package.json` files share the name `"0-bootstrap"` — so
+they can't all be pnpm workspace members. Approach:
+
+- Register **only the root** `pulumi/examples/ts-foundation` as the pnpm workspace member; convert its
+  `foundation-*` deps to `workspace:*` so they resolve in-tree (verified: node_modules links
+  `foundation-network → ../../../../library/ts/packages/network`). The per-env Pulumi project dirs
+  share this hoisted install.
+- Keep concrete `@pulumi/*` ranges and add `pulumi/examples/ts-foundation` to `CATALOG_EXEMPT` — a
+  fork-and-own reference builds standalone when forked, so `catalog:` would break it (same class as
+  `oauth-user-inspector` / the go example's `policy-library`).
+- `pulumi_project` BUILD per Pulumi project (20 `envs/*`/stage dirs); regenerate `pnpm-lock.yaml`;
+  align the go helper's go directive (1.26.2) and the bootstrap Dockerfile (node 22) to canonical.
+- Format-clean (prettier/buildifier/shfmt); `pulumi/examples` is already gazelle-excluded and
+  license-exempt (PR2). Conformance passes locally (0 fail).
 
 ## Deferred (unchanged)
 

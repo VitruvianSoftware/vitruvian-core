@@ -1,0 +1,6 @@
+name: 3-networks-hub-and-spoke-nonproduction
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Hub-and-spoke network for nonproduction environment"

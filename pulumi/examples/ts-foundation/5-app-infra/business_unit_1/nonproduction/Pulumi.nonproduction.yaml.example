@@ -1,0 +1,4 @@
+# Pulumi Configuration for 5-app-infra/business_unit_1/nonproduction
+config:
+  5-app-infra-bu1-nonproduction:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 5-app-infra-bu1-nonproduction:region: "us-central1"

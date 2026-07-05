@@ -1,0 +1,123 @@
+/**
+ * Partner Interconnect — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to provision Partner Interconnect
+ * attachments for on-prem connectivity via a service provider. This mirrors
+ * the Terraform foundation's `partner_interconnect.tf.example`.
+ *
+ * To activate:
+ * 1. Rename: partner_interconnect.ts.example → partner_interconnect.ts
+ * 2. Update the configuration values below for your environment
+ * 3. Import this module from the relevant env's index.ts
+ * 4. Run `pulumi up` in each environment stack
+ * 5. Contact your service provider to complete the pairing
+ *
+ * ============================================================================
+ * PREREQUISITES:
+ * - A supported service provider must be selected
+ * - Interconnect locations must be known
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+
+export interface PartnerInterconnectConfig {
+    /** The project hosting the Shared VPC */
+    attachmentProjectId: pulumi.Input<string>;
+    /** VPC name (e.g., "d-svpc") */
+    vpcName: string;
+    /** Pre-activate attachments (true if provider supports it) */
+    preactivate: boolean;
+
+    // Region 1
+    region1: string;
+    region1Router1Name: pulumi.Input<string>;
+    region1Router2Name: pulumi.Input<string>;
+    region1Interconnect1Location: string;
+    region1Interconnect2Location: string;
+
+    // Region 2
+    region2: string;
+    region2Router1Name: pulumi.Input<string>;
+    region2Router2Name: pulumi.Input<string>;
+    region2Interconnect1Location: string;
+    region2Interconnect2Location: string;
+}
+
+/**
+ * Deploys 4x Partner Interconnect attachments (2 per region, for redundancy).
+ * After deployment, contact your service provider to complete the pairing.
+ */
+export function deployPartnerInterconnect(
+    name: string,
+    config: PartnerInterconnectConfig,
+    opts?: pulumi.ComponentResourceOptions,
+) {
+    const attachments: gcp.compute.InterconnectAttachment[] = [];
+
+    // Region 1, Router 1
+    attachments.push(new gcp.compute.InterconnectAttachment(`${name}-r1-attach1`, {
+        project: config.attachmentProjectId,
+        region: config.region1,
+        router: config.region1Router1Name,
+        name: `${config.vpcName}-r1-a1`,
+        edgeAvailabilityDomain: "AVAILABILITY_DOMAIN_1",
+        type: "PARTNER",
+    }, opts));
+
+    // Region 1, Router 2
+    attachments.push(new gcp.compute.InterconnectAttachment(`${name}-r1-attach2`, {
+        project: config.attachmentProjectId,
+        region: config.region1,
+        router: config.region1Router2Name,
+        name: `${config.vpcName}-r1-a2`,
+        edgeAvailabilityDomain: "AVAILABILITY_DOMAIN_2",
+        type: "PARTNER",
+    }, opts));
+
+    // Region 2, Router 1
+    attachments.push(new gcp.compute.InterconnectAttachment(`${name}-r2-attach1`, {
+        project: config.attachmentProjectId,
+        region: config.region2,
+        router: config.region2Router1Name,
+        name: `${config.vpcName}-r2-a1`,
+        edgeAvailabilityDomain: "AVAILABILITY_DOMAIN_1",
+        type: "PARTNER",
+    }, opts));
+
+    // Region 2, Router 2
+    attachments.push(new gcp.compute.InterconnectAttachment(`${name}-r2-attach2`, {
+        project: config.attachmentProjectId,
+        region: config.region2,
+        router: config.region2Router2Name,
+        name: `${config.vpcName}-r2-a2`,
+        edgeAvailabilityDomain: "AVAILABILITY_DOMAIN_2",
+        type: "PARTNER",
+    }, opts));
+
+    return { attachments };
+}
+
+// =============================================================================
+// Example usage (uncomment and adapt in your env's index.ts):
+//
+// import { deployPartnerInterconnect } from "../modules/partner_interconnect";
+//
+// const interconnect = deployPartnerInterconnect("svpc-partner-ic", {
+//     attachmentProjectId: sharedVpcProjectId,
+//     vpcName: "d-svpc",
+//     preactivate: true,
+//     region1: "us-central1",
+//     region1Router1Name: network.region1Router1.name,
+//     region1Router2Name: network.region1Router2.name,
+//     region1Interconnect1Location: "las-zone1-770",
+//     region1Interconnect2Location: "las-zone1-770",
+//     region2: "us-west1",
+//     region2Router1Name: network.region2Router1.name,
+//     region2Router2Name: network.region2Router2.name,
+//     region2Interconnect1Location: "lax-zone2-19",
+//     region2Interconnect2Location: "lax-zone1-403",
+// });
+// =============================================================================

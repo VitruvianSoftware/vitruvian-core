@@ -1,0 +1,14 @@
+# Pulumi Configuration for 1-org (production stack)
+config:
+  # Required
+  1-org:org_id: "YOUR_ORG_ID"
+  1-org:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  1-org:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+
+  # Optional
+  # 1-org:project_prefix: "prj"
+  # 1-org:folder_prefix: "fldr"
+  # 1-org:default_region: "us-central1"
+  # 1-org:enable_hub_and_spoke: false
+  # 1-org:domains_to_allow: []
+  # 1-org:scc_notification_filter: "state = \"ACTIVE\""

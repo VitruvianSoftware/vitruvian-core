@@ -1,0 +1,28 @@
+/foundation-*
+node_modules/
+package-lock.json
+dist/
+*.js
+*.js.map
+*.d.ts
+!jest.config.js
+
+# Pulumi
+Pulumi.*.yaml
+!Pulumi.yaml
+!Pulumi.*.yaml.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp_plan/
+*.log
+.env
