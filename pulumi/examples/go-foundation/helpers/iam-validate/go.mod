@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/pulumi_go-example-foundation/helpers/iam-validate
 
-go 1.26.1
+go 1.26.2
 
 require (
 	cloud.google.com/go/billing v1.26.0
