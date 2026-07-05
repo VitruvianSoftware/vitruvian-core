@@ -1,7 +1,38 @@
 go 1.26.2
 
 use (
-    .
-    ./homelab
-    ./devx
+	.
+	./devx
+	./homelab
+
+	// pulumi-library: the GCP Pulumi component library, grafted from the
+	// standalone pulumi-library repo. Each component is its own module (kept
+	// from upstream so the public mirror keeps publishing per-package tags);
+	// a single go_deps.from_file(go_work=...) in MODULE.bazel covers them all.
+	./pulumi/library/go
+	./pulumi/library/go/pkg/app
+	./pulumi/library/go/pkg/bootstrap
+	./pulumi/library/go/pkg/cai_monitoring
+	./pulumi/library/go/pkg/centralized_logging
+	./pulumi/library/go/pkg/cicd
+	./pulumi/library/go/pkg/cloud_dns
+	./pulumi/library/go/pkg/cloud_functions
+	./pulumi/library/go/pkg/cloud_router
+	./pulumi/library/go/pkg/cloud_storage
+	./pulumi/library/go/pkg/compute_instance
+	./pulumi/library/go/pkg/data
+	./pulumi/library/go/pkg/gcloud
+	./pulumi/library/go/pkg/google_group
+	./pulumi/library/go/pkg/iam
+	./pulumi/library/go/pkg/instance_template
+	./pulumi/library/go/pkg/kms
+	./pulumi/library/go/pkg/log_export
+	./pulumi/library/go/pkg/network
+	./pulumi/library/go/pkg/network_firewall_policy
+	./pulumi/library/go/pkg/network_peering
+	./pulumi/library/go/pkg/org_policy
+	./pulumi/library/go/pkg/private_service_connect
+	./pulumi/library/go/pkg/project_factory
+	./pulumi/library/go/pkg/pubsub
+	./pulumi/library/go/pkg/vpc_service_controls
 )
