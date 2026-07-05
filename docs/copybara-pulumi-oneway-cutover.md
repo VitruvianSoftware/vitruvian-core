@@ -65,8 +65,15 @@ standalone has no catalog, so the export rewrites each back to the range it reso
 | `vitest`              | `^4.1.5` |
 | `@vitest/coverage-v8` | `^4.1.5` |
 
-`workspace:*` cross-refs between `foundation-*` packages are **left as-is** — the standalone is itself
-a pnpm workspace and pnpm rewrites `workspace:*` to the concrete version at publish time.
+`workspace:*` cross-refs are **rewritten to each package's exact concrete floor** (verified against the
+live mirror: `bootstrap`→`foundation-project-factory: ^0.3.0`, `cb-private-pool`→`foundation-network: *`).
+The mirror builds ts with **npm** and commits concrete ranges, so leaving `workspace:*` would publish a
+changed dependency. The export also strips the `pulumi/library/` key prefix from
+`.release-please-manifest.json`, and keeps the mirror's `release-please-config.json` + `CHANGELOG.md`s
+(`standalone_only`) — the mirror owns the **path-based Go tag format** (`go/pkg/<n>/vX.Y.Z`, required by
+`go get`; the monorepo's own config is flat `go-<n>`), the monorepo authors only the version numbers. The
+mirror's `release.yml` is converted to a **multi-package publish-on-version-bump** (tag + `npm publish`
+each package whose exported manifest version has no tag yet; idempotent, so the seed publishes nothing).
 
 ## Library cutover — operator steps (do first; the examples depend on it)
 
