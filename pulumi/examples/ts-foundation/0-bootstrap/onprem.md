@@ -4,11 +4,11 @@ The infrastructure created for CI/CD allows access to on-prem resources through 
 
 ## Connectivity Options
 
-| Option | Description | Documentation |
-|--------|-------------|---------------|
-| **HA VPN** | High Availability VPN with 99.99% SLA | [Overview](https://cloud.google.com/network-connectivity/docs/vpn/concepts/topologies#overview) |
+| Option                     | Description                                   | Documentation                                                                                                                 |
+| -------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **HA VPN**                 | High Availability VPN with 99.99% SLA         | [Overview](https://cloud.google.com/network-connectivity/docs/vpn/concepts/topologies#overview)                               |
 | **Dedicated Interconnect** | Physical cross-connect at colocation facility | [Setup Guide](https://cloud.google.com/network-connectivity/docs/interconnect/tutorials/dedicated-creating-9999-availability) |
-| **Partner Interconnect** | Connection via a supported service provider | [Setup Guide](https://cloud.google.com/network-connectivity/docs/interconnect/tutorials/partner-creating-9999-availability) |
+| **Partner Interconnect**   | Connection via a supported service provider   | [Setup Guide](https://cloud.google.com/network-connectivity/docs/interconnect/tutorials/partner-creating-9999-availability)   |
 
 ## Architecture
 

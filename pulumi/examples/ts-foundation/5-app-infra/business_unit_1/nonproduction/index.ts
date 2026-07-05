@@ -7,197 +7,276 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as gcp from "@pulumi/gcp";
 import * as time from "@pulumiverse/time";
-import { InstanceTemplate, ComputeInstance } from "@vitruviansoftware/foundation-instance-template";
+import {
+  InstanceTemplate,
+  ComputeInstance,
+} from "@vitruviansoftware/foundation-instance-template";
 
 export = async () => {
-    const config = new pulumi.Config();
-    const projectRef = new pulumi.StackReference("projects-bu1-nonproduction");
-    const bootstrapRef = new pulumi.StackReference("bootstrap");
-    const cloudbuildProjectId = bootstrapRef.getOutput("cloudbuild_project_id") as pulumi.Output<string>;
+  const config = new pulumi.Config();
+  const projectRef = new pulumi.StackReference("projects-bu1-nonproduction");
+  const bootstrapRef = new pulumi.StackReference("bootstrap");
+  const cloudbuildProjectId = bootstrapRef.getOutput(
+    "cloudbuild_project_id",
+  ) as pulumi.Output<string>;
 
-    const projectId = projectRef.getOutput("shared_vpc_project_id") as pulumi.Output<string>;
-    const defaultRegion = projectRef.getOutput("default_region") as pulumi.Output<string>;
-    const region = config.get("region") ? pulumi.output(config.get("region") as string) : defaultRegion;
-    const machineType = config.get("machine_type") || "f1-micro";
-    const numInstances = config.getNumber("num_instances") || 1;
-    const hostname = config.get("hostname") || "example-app";
+  const projectId = projectRef.getOutput(
+    "shared_vpc_project_id",
+  ) as pulumi.Output<string>;
+  const defaultRegion = projectRef.getOutput(
+    "default_region",
+  ) as pulumi.Output<string>;
+  const region = config.get("region")
+    ? pulumi.output(config.get("region") as string)
+    : defaultRegion;
+  const machineType = config.get("machine_type") || "f1-micro";
+  const numInstances = config.getNumber("num_instances") || 1;
+  const hostname = config.get("hostname") || "example-app";
 
-    // Service account for the compute instance
-    const sa = new gcp.serviceaccount.Account("example-app-sa", {
-        project: projectId,
-        accountId: "sa-example-app",
-        displayName: "Example app service Account",
-        createIgnoreAlreadyExists: true,
-    });
+  // Service account for the compute instance
+  const sa = new gcp.serviceaccount.Account("example-app-sa", {
+    project: projectId,
+    accountId: "sa-example-app",
+    displayName: "Example app service Account",
+    createIgnoreAlreadyExists: true,
+  });
 
-    // Instance template
-    const template = new InstanceTemplate("example-template", {
-        projectId: projectId,
-        namePrefix: "example-app",
-        machineType: machineType,
-        region: region as unknown as string,
-        sourceImageFamily: "debian-12",
-        sourceImageProject: "debian-cloud",
-        diskSizeGb: 100,
-        diskType: "pd-ssd",
-        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
-        serviceAccount: {
-            email: sa.email,
-            scopes: ["compute-rw"],
-        },
-        metadata: {
-            "block-project-ssh-keys": "true",
-        },
-    });
+  // Instance template
+  const template = new InstanceTemplate("example-template", {
+    projectId: projectId,
+    namePrefix: "example-app",
+    machineType: machineType,
+    region: region as unknown as string,
+    sourceImageFamily: "debian-12",
+    sourceImageProject: "debian-cloud",
+    diskSizeGb: 100,
+    diskType: "pd-ssd",
+    subnetwork: (
+      projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>
+    ).apply((links) => links[0] || ""),
+    serviceAccount: {
+      email: sa.email,
+      scopes: ["compute-rw"],
+    },
+    metadata: {
+      "block-project-ssh-keys": "true",
+    },
+  });
 
-    // Compute instance
-    const instance = new ComputeInstance("example-instance", {
-        projectId: projectId,
-        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
-        instanceName: hostname,
-        instanceTemplate: template.templateSelfLink,
-        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
-        numInstances: numInstances,
-    });
+  // Compute instance
+  const instance = new ComputeInstance("example-instance", {
+    projectId: projectId,
+    zone: gcp.compute
+      .getZonesOutput({ project: projectId, region: region })
+      .apply((zones) => zones.names[0]) as unknown as string,
+    instanceName: hostname,
+    instanceTemplate: template.templateSelfLink,
+    subnetwork: (
+      projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>
+    ).apply((links) => links[0] || ""),
+    numInstances: numInstances,
+  });
 
-    // ====================================================================
-    // Peering Compute Instance
-    // ====================================================================
-    const peeringProjectId = projectRef.getOutput("peering_project_id") as pulumi.Output<string>;
-    const peeringSubnet = projectRef.getOutput("peering_subnetwork_self_link") as pulumi.Output<string>;
-    const iapFirewallTags = projectRef.getOutput("iap_firewall_tags") as pulumi.Output<Record<string, string>>;
+  // ====================================================================
+  // Peering Compute Instance
+  // ====================================================================
+  const peeringProjectId = projectRef.getOutput(
+    "peering_project_id",
+  ) as pulumi.Output<string>;
+  const peeringSubnet = projectRef.getOutput(
+    "peering_subnetwork_self_link",
+  ) as pulumi.Output<string>;
+  const iapFirewallTags = projectRef.getOutput(
+    "iap_firewall_tags",
+  ) as pulumi.Output<Record<string, string>>;
 
-    const peeringSa = new gcp.serviceaccount.Account("peering-app-sa", {
-        project: peeringProjectId,
-        accountId: "sa-peering-app",
-        displayName: "Peering app service Account",
-        createIgnoreAlreadyExists: true,
-    });
+  const peeringSa = new gcp.serviceaccount.Account("peering-app-sa", {
+    project: peeringProjectId,
+    accountId: "sa-peering-app",
+    displayName: "Peering app service Account",
+    createIgnoreAlreadyExists: true,
+  });
 
-    const peeringTemplate = new InstanceTemplate("peering-template", {
-        projectId: peeringProjectId,
-        namePrefix: "peering-app",
-        machineType: machineType,
-        region: region as unknown as string,
-        sourceImageFamily: "debian-12",
-        sourceImageProject: "debian-cloud",
-        diskSizeGb: 100,
-        diskType: "pd-ssd",
-        subnetwork: peeringSubnet,
-        serviceAccount: {
-            email: peeringSa.email,
-            scopes: ["compute-rw"],
-        },
-        metadata: {
-            "block-project-ssh-keys": "true",
-        },
-    });
+  const peeringTemplate = new InstanceTemplate("peering-template", {
+    projectId: peeringProjectId,
+    namePrefix: "peering-app",
+    machineType: machineType,
+    region: region as unknown as string,
+    sourceImageFamily: "debian-12",
+    sourceImageProject: "debian-cloud",
+    diskSizeGb: 100,
+    diskType: "pd-ssd",
+    subnetwork: peeringSubnet,
+    serviceAccount: {
+      email: peeringSa.email,
+      scopes: ["compute-rw"],
+    },
+    metadata: {
+      "block-project-ssh-keys": "true",
+    },
+  });
 
-    const peeringInstance = new ComputeInstance("peering-instance", {
-        projectId: peeringProjectId,
-        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
-        instanceName: "peering-app",
-        instanceTemplate: peeringTemplate.templateSelfLink,
-        subnetwork: peeringSubnet,
-        numInstances: 1,
-        resourceManagerTags: iapFirewallTags,
-    });
+  const peeringInstance = new ComputeInstance("peering-instance", {
+    projectId: peeringProjectId,
+    zone: gcp.compute
+      .getZonesOutput({ project: projectId, region: region })
+      .apply((zones) => zones.names[0]) as unknown as string,
+    instanceName: "peering-app",
+    instanceTemplate: peeringTemplate.templateSelfLink,
+    subnetwork: peeringSubnet,
+    numInstances: 1,
+    resourceManagerTags: iapFirewallTags,
+  });
 
-    // ====================================================================
-    // Confidential Space Compute
-    // ====================================================================
-    const confSpaceProjectId = projectRef.getOutput("confidential_space_project_id") as pulumi.Output<string>;
-    const confSpaceProjectNum = projectRef.getOutput("confidential_space_project_number") as pulumi.Output<string>;
-    const confSpaceSaEmail = projectRef.getOutput("confidential_space_workload_sa") as pulumi.Output<string>;
-    
-    const wip = new gcp.iam.WorkloadIdentityPool("n-conf-space-pool", {
-        workloadIdentityPoolId: "confidential-space-pool",
-        disabled: false,
-        project: confSpaceProjectId,
-    });
+  // ====================================================================
+  // Confidential Space Compute
+  // ====================================================================
+  const confSpaceProjectId = projectRef.getOutput(
+    "confidential_space_project_id",
+  ) as pulumi.Output<string>;
+  const confSpaceProjectNum = projectRef.getOutput(
+    "confidential_space_project_number",
+  ) as pulumi.Output<string>;
+  const confSpaceSaEmail = projectRef.getOutput(
+    "confidential_space_workload_sa",
+  ) as pulumi.Output<string>;
 
-    const attestationProvider = new gcp.iam.WorkloadIdentityPoolProvider("n-attestation-verifier", {
-        workloadIdentityPoolId: wip.workloadIdentityPoolId,
-        workloadIdentityPoolProviderId: "attestation-verifier",
-        displayName: "attestation-verifier",
-        description: "OIDC provider for confidential computing attestation",
-        project: confSpaceProjectId,
-        oidc: {
-            issuerUri: "https://confidentialcomputing.googleapis.com/",
-            allowedAudiences: ["https://sts.googleapis.com"],
-        },
-        attributeMapping: {
-            "google.subject": '"gcpcs::" + assertion.submods.container.image_digest + "::" + assertion.submods.gce.project_number + "::" + assertion.submods.gce.instance_id',
-            "attribute.image_digest": "assertion.submods.container.image_digest",
-        },
-        attributeCondition: pulumi.interpolate`assertion.submods.container.image_digest == "sha256:0000000000000000000000000000000000000000000000000000000000000000" && "${confSpaceSaEmail}" in assertion.google_service_accounts && assertion.swname == "CONFIDENTIAL_SPACE" && "STABLE" in assertion.submods.confidential_space.support_attributes`,
-    });
+  const wip = new gcp.iam.WorkloadIdentityPool("n-conf-space-pool", {
+    workloadIdentityPoolId: "confidential-space-pool",
+    disabled: false,
+    project: confSpaceProjectId,
+  });
 
-    const wait60Seconds = new time.Sleep("wait-60-seconds", {
-        createDuration: "60s",
-    }, { dependsOn: [wip, attestationProvider] });
+  const attestationProvider = new gcp.iam.WorkloadIdentityPoolProvider(
+    "n-attestation-verifier",
+    {
+      workloadIdentityPoolId: wip.workloadIdentityPoolId,
+      workloadIdentityPoolProviderId: "attestation-verifier",
+      displayName: "attestation-verifier",
+      description: "OIDC provider for confidential computing attestation",
+      project: confSpaceProjectId,
+      oidc: {
+        issuerUri: "https://confidentialcomputing.googleapis.com/",
+        allowedAudiences: ["https://sts.googleapis.com"],
+      },
+      attributeMapping: {
+        "google.subject":
+          '"gcpcs::" + assertion.submods.container.image_digest + "::" + assertion.submods.gce.project_number + "::" + assertion.submods.gce.instance_id',
+        "attribute.image_digest": "assertion.submods.container.image_digest",
+      },
+      attributeCondition: pulumi.interpolate`assertion.submods.container.image_digest == "sha256:0000000000000000000000000000000000000000000000000000000000000000" && "${confSpaceSaEmail}" in assertion.google_service_accounts && assertion.swname == "CONFIDENTIAL_SPACE" && "STABLE" in assertion.submods.confidential_space.support_attributes`,
+    },
+  );
 
-    // Workload identity binding for the service account
-    const saBinding = new gcp.serviceaccount.IAMMember("n-workload-identity-binding", {
-        serviceAccountId: pulumi.interpolate`projects/${confSpaceProjectId}/serviceAccounts/${confSpaceSaEmail}`,
-        role: "roles/iam.workloadIdentityUser",
-        member: pulumi.interpolate`principalSet://iam.googleapis.com/projects/${confSpaceProjectNum}/locations/global/workloadIdentityPools/${wip.workloadIdentityPoolId}/*`,
-    }, { dependsOn: [wait60Seconds] });
+  const wait60Seconds = new time.Sleep(
+    "wait-60-seconds",
+    {
+      createDuration: "60s",
+    },
+    { dependsOn: [wip, attestationProvider] },
+  );
 
-    const confTemplate = new InstanceTemplate("n-confidential-template", {
-        projectId: confSpaceProjectId,
-        namePrefix: "conf-space-app",
-        machineType: "n2d-standard-2",
-        region: region as unknown as string,
-        sourceImageFamily: "confidential-space",
-        sourceImageProject: "confidential-space-images",
-        diskSizeGb: 20,
-        diskType: "pd-ssd",
-        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
-        enableConfidentialVm: true,
-        minCpuPlatform: "AMD Milan",
-        confidentialInstanceType: "SEV",
-        metadata: {
-            "tee-image-reference": pulumi.interpolate`${region}-docker.pkg.dev/${cloudbuildProjectId}/tf-runners/confidential_space_image:latest` as any,
-        },
-        serviceAccount: {
-            email: confSpaceSaEmail,
-            scopes: ["cloud-platform"],
-        },
-    }, { dependsOn: [saBinding] });
+  // Workload identity binding for the service account
+  const saBinding = new gcp.serviceaccount.IAMMember(
+    "n-workload-identity-binding",
+    {
+      serviceAccountId: pulumi.interpolate`projects/${confSpaceProjectId}/serviceAccounts/${confSpaceSaEmail}`,
+      role: "roles/iam.workloadIdentityUser",
+      member: pulumi.interpolate`principalSet://iam.googleapis.com/projects/${confSpaceProjectNum}/locations/global/workloadIdentityPools/${wip.workloadIdentityPoolId}/*`,
+    },
+    { dependsOn: [wait60Seconds] },
+  );
 
-    const confInstance = new ComputeInstance("n-confidential-instance", {
-        projectId: confSpaceProjectId,
-        zone: gcp.compute.getZonesOutput({ project: projectId, region: region }).apply(zones => zones.names[0]) as unknown as string,
-        instanceName: "conf-space-instance",
-        instanceTemplate: confTemplate.templateSelfLink,
-        subnetwork: (projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>).apply(links => links[0] || ""),
-        numInstances: 1,
-    });
+  const confTemplate = new InstanceTemplate(
+    "n-confidential-template",
+    {
+      projectId: confSpaceProjectId,
+      namePrefix: "conf-space-app",
+      machineType: "n2d-standard-2",
+      region: region as unknown as string,
+      sourceImageFamily: "confidential-space",
+      sourceImageProject: "confidential-space-images",
+      diskSizeGb: 20,
+      diskType: "pd-ssd",
+      subnetwork: (
+        projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>
+      ).apply((links) => links[0] || ""),
+      enableConfidentialVm: true,
+      minCpuPlatform: "AMD Milan",
+      confidentialInstanceType: "SEV",
+      metadata: {
+        "tee-image-reference":
+          pulumi.interpolate`${region}-docker.pkg.dev/${cloudbuildProjectId}/tf-runners/confidential_space_image:latest` as any,
+      },
+      serviceAccount: {
+        email: confSpaceSaEmail,
+        scopes: ["cloud-platform"],
+      },
+    },
+    { dependsOn: [saBinding] },
+  );
 
-    return {
-        // Standard compute instance outputs
-        project_id: projectId,
-        region: region as unknown as string,
-        instances_self_links: pulumi.all(instance.instances.map(i => i.selfLink)),
-        instances_names: pulumi.all(instance.instances.map(i => i.name)),
-        instances_zones: pulumi.all(instance.instances.map(i => i.zone)),
-        instances_details: pulumi.all(instance.instances.map(i => pulumi.all([i.name, i.zone, i.selfLink]).apply(([name, zone, selfLink]) => ({ name, zone, selfLink })))),
+  const confInstance = new ComputeInstance("n-confidential-instance", {
+    projectId: confSpaceProjectId,
+    zone: gcp.compute
+      .getZonesOutput({ project: projectId, region: region })
+      .apply((zones) => zones.names[0]) as unknown as string,
+    instanceName: "conf-space-instance",
+    instanceTemplate: confTemplate.templateSelfLink,
+    subnetwork: (
+      projectRef.getOutput("subnets_self_links") as pulumi.Output<string[]>
+    ).apply((links) => links[0] || ""),
+    numInstances: 1,
+  });
 
-        // Peering instances outputs
-        peering_instances_self_links: pulumi.all(peeringInstance.instances.map(i => i.selfLink)),
-        peering_instances_names: pulumi.all(peeringInstance.instances.map(i => i.name)),
-        peering_instances_zones: pulumi.all(peeringInstance.instances.map(i => i.zone)),
+  return {
+    // Standard compute instance outputs
+    project_id: projectId,
+    region: region as unknown as string,
+    instances_self_links: pulumi.all(instance.instances.map((i) => i.selfLink)),
+    instances_names: pulumi.all(instance.instances.map((i) => i.name)),
+    instances_zones: pulumi.all(instance.instances.map((i) => i.zone)),
+    instances_details: pulumi.all(
+      instance.instances.map((i) =>
+        pulumi
+          .all([i.name, i.zone, i.selfLink])
+          .apply(([name, zone, selfLink]) => ({ name, zone, selfLink })),
+      ),
+    ),
 
-        // Confidential Space outputs
-        confidential_space_project_id: confSpaceProjectId,
-        confidential_space_project_number: confSpaceProjectNum,
-        workload_identity_pool_id: wip.workloadIdentityPoolId,
-        workload_pool_provider_id: attestationProvider.workloadIdentityPoolProviderId,
-        confidential_instances_self_links: pulumi.all(confInstance.instances.map(i => i.selfLink)),
-        confidential_instances_names: pulumi.all(confInstance.instances.map(i => i.name)),
-        confidential_instances_zones: pulumi.all(confInstance.instances.map(i => i.zone)),
-        available_zones: gcp.compute.getZonesOutput({ project: projectId, region: region }).names,
-        confidential_available_zones: gcp.compute.getZonesOutput({ project: projectId, region: region }).names,
-    };
+    // Peering instances outputs
+    peering_instances_self_links: pulumi.all(
+      peeringInstance.instances.map((i) => i.selfLink),
+    ),
+    peering_instances_names: pulumi.all(
+      peeringInstance.instances.map((i) => i.name),
+    ),
+    peering_instances_zones: pulumi.all(
+      peeringInstance.instances.map((i) => i.zone),
+    ),
+
+    // Confidential Space outputs
+    confidential_space_project_id: confSpaceProjectId,
+    confidential_space_project_number: confSpaceProjectNum,
+    workload_identity_pool_id: wip.workloadIdentityPoolId,
+    workload_pool_provider_id:
+      attestationProvider.workloadIdentityPoolProviderId,
+    confidential_instances_self_links: pulumi.all(
+      confInstance.instances.map((i) => i.selfLink),
+    ),
+    confidential_instances_names: pulumi.all(
+      confInstance.instances.map((i) => i.name),
+    ),
+    confidential_instances_zones: pulumi.all(
+      confInstance.instances.map((i) => i.zone),
+    ),
+    available_zones: gcp.compute.getZonesOutput({
+      project: projectId,
+      region: region,
+    }).names,
+    confidential_available_zones: gcp.compute.getZonesOutput({
+      project: projectId,
+      region: region,
+    }).names,
+  };
 };

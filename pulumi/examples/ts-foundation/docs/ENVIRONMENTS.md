@@ -41,6 +41,7 @@ has its own physical directory containing a `Pulumi.yaml`, `index.ts`, and
 `tsconfig.json`.
 
 This means:
+
 - **Go**: `cd 3-networks-svpc && pulumi stack select development && pulumi up`
 - **TS**: `cd 3-networks-svpc/envs/development && pulumi up`
 

@@ -142,28 +142,28 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ## Configuration Reference
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `org_id` | GCP Organization ID | `string` | n/a | yes |
-| `billing_account` | Billing account ID | `string` | n/a | yes |
-| `proj_stack_name` | Stack reference to the 4-projects stack | `string` | n/a | yes |
-| `business_code` | Short code for the business unit | `string` | `"bu1"` | no |
-| `instance_region` | Region for the Compute Engine instance | `string` | `"us-central1"` | no |
-| `machine_type` | Machine type for the instance | `string` | `"f1-micro"` | no |
-| `project_deletion_policy` | Deletion policy for created projects | `string` | `"PREVENT"` | no |
+| Name                      | Description                             | Type     | Default         | Required |
+| ------------------------- | --------------------------------------- | -------- | --------------- | :------: |
+| `org_id`                  | GCP Organization ID                     | `string` | n/a             |   yes    |
+| `billing_account`         | Billing account ID                      | `string` | n/a             |   yes    |
+| `proj_stack_name`         | Stack reference to the 4-projects stack | `string` | n/a             |   yes    |
+| `business_code`           | Short code for the business unit        | `string` | `"bu1"`         |    no    |
+| `instance_region`         | Region for the Compute Engine instance  | `string` | `"us-central1"` |    no    |
+| `machine_type`            | Machine type for the instance           | `string` | `"f1-micro"`    |    no    |
+| `project_deletion_policy` | Deletion policy for created projects    | `string` | `"PREVENT"`     |    no    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `instance_name` | Name of the created Compute Engine instance |
-| `instance_zone` | Zone where the instance is deployed |
-| `service_account_email` | Service account email for the instance |
+| Name                    | Description                                 |
+| ----------------------- | ------------------------------------------- |
+| `instance_name`         | Name of the created Compute Engine instance |
+| `instance_zone`         | Zone where the instance is deployed         |
+| `service_account_email` | Service account email for the instance      |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `business_unit_1/development/index.ts` | Development app infrastructure for BU1 |
+| File                                     | Description                               |
+| ---------------------------------------- | ----------------------------------------- |
+| `business_unit_1/development/index.ts`   | Development app infrastructure for BU1    |
 | `business_unit_1/nonproduction/index.ts` | Non-production app infrastructure for BU1 |
-| `business_unit_1/production/index.ts` | Production app infrastructure for BU1 |
+| `business_unit_1/production/index.ts`    | Production app infrastructure for BU1     |

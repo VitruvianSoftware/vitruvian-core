@@ -193,33 +193,33 @@ To create a new business unit (e.g., `bu2`), copy the `business_unit_1` director
 
 ## Configuration Reference
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `org_id` | GCP Organization ID | `string` | n/a | yes |
-| `billing_account` | Billing account ID | `string` | n/a | yes |
-| `org_stack_name` | Stack reference to the 1-org stack | `string` | n/a | yes |
-| `net_stack_name` | Stack reference to the 3-networks stack | `string` | n/a | yes |
-| `project_prefix` | Name prefix for projects | `string` | `"prj"` | no |
-| `folder_prefix` | Name prefix for folders | `string` | `"fldr"` | no |
-| `business_code` | Short code for the business unit | `string` | `"bu1"` | no |
-| `business_unit` | Full name of the business unit | `string` | `"business_unit_1"` | no |
-| `project_deletion_policy` | Deletion policy for created projects | `string` | `"PREVENT"` | no |
+| Name                      | Description                             | Type     | Default             | Required |
+| ------------------------- | --------------------------------------- | -------- | ------------------- | :------: |
+| `org_id`                  | GCP Organization ID                     | `string` | n/a                 |   yes    |
+| `billing_account`         | Billing account ID                      | `string` | n/a                 |   yes    |
+| `org_stack_name`          | Stack reference to the 1-org stack      | `string` | n/a                 |   yes    |
+| `net_stack_name`          | Stack reference to the 3-networks stack | `string` | n/a                 |   yes    |
+| `project_prefix`          | Name prefix for projects                | `string` | `"prj"`             |    no    |
+| `folder_prefix`           | Name prefix for folders                 | `string` | `"fldr"`            |    no    |
+| `business_code`           | Short code for the business unit        | `string` | `"bu1"`             |    no    |
+| `business_unit`           | Full name of the business unit          | `string` | `"business_unit_1"` |    no    |
+| `project_deletion_policy` | Deletion policy for created projects    | `string` | `"PREVENT"`         |    no    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `svpc_project_id` | SVPC-attached project ID |
-| `floating_project_id` | Floating project ID |
-| `peering_project_id` | Peering project ID |
+| Name                        | Description                        |
+| --------------------------- | ---------------------------------- |
+| `svpc_project_id`           | SVPC-attached project ID           |
+| `floating_project_id`       | Floating project ID                |
+| `peering_project_id`        | Peering project ID                 |
 | `infra_pipeline_project_id` | Infrastructure pipeline project ID |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `business_unit_1/development/index.ts` | Development projects for business unit 1 |
-| `business_unit_1/nonproduction/index.ts` | Non-production projects for business unit 1 |
-| `business_unit_1/production/index.ts` | Production projects for business unit 1 |
-| `business_unit_1/shared/index.ts` | Shared projects for business unit 1 (infra pipeline) |
-| `modules/single_project.ts` | Single project factory with APIs, billing, VPC attachment |
+| File                                     | Description                                               |
+| ---------------------------------------- | --------------------------------------------------------- |
+| `business_unit_1/development/index.ts`   | Development projects for business unit 1                  |
+| `business_unit_1/nonproduction/index.ts` | Non-production projects for business unit 1               |
+| `business_unit_1/production/index.ts`    | Production projects for business unit 1                   |
+| `business_unit_1/shared/index.ts`        | Shared projects for business unit 1 (infra pipeline)      |
+| `modules/single_project.ts`              | Single project factory with APIs, billing, VPC attachment |

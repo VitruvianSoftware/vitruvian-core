@@ -5,6 +5,7 @@ If you are deploying using [GitLab Pipelines](https://docs.gitlab.com/ee/ci/pipe
 ## Prerequisites
 
 Same as the [main prerequisites](../ONBOARDING.md#requirements), plus:
+
 - A [GitLab](https://gitlab.com) account with project creation access
 - A GitLab group for your foundation repositories
 
@@ -20,10 +21,10 @@ Same as the [main prerequisites](../ONBOARDING.md#requirements), plus:
 
 2. Configure CI/CD variables in your GitLab project settings:
 
-   | Variable | Description | Protected | Masked |
-   |----------|-------------|:---------:|:------:|
-   | `PULUMI_ACCESS_TOKEN` | Pulumi Cloud access token | ✅ | ✅ |
-   | `GCP_SERVICE_ACCOUNT_KEY` | Service account JSON key (if not using WIF) | ✅ | ✅ |
+   | Variable                  | Description                                 | Protected | Masked |
+   | ------------------------- | ------------------------------------------- | :-------: | :----: |
+   | `PULUMI_ACCESS_TOKEN`     | Pulumi Cloud access token                   |    ✅     |   ✅   |
+   | `GCP_SERVICE_ACCOUNT_KEY` | Service account JSON key (if not using WIF) |    ✅     |   ✅   |
 
 3. Copy the GitLab CI template:
 
@@ -35,9 +36,9 @@ Same as the [main prerequisites](../ONBOARDING.md#requirements), plus:
 
 ## Pipeline Behavior
 
-| Action | Trigger |
-|--------|---------|
+| Action                        | Trigger          |
+| ----------------------------- | ---------------- |
 | Merge request to named branch | `pulumi preview` |
-| Merge to named branch | `pulumi up` |
+| Merge to named branch         | `pulumi up`      |
 
 Named branches: `development`, `nonproduction`, `production`

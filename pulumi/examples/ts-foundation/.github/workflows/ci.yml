@@ -23,7 +23,6 @@
 #   build/pulumi-preview.yml  — runs pulumi preview on PRs
 #   build/pulumi-up.yml       — runs pulumi up on merges
 
-
 name: CI
 
 on:
@@ -37,7 +36,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: '${{ github.workflow }}-${{ github.head_ref || github.ref }}'
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
   cancel-in-progress: true
 
 jobs:
@@ -89,7 +88,6 @@ jobs:
       - name: TypeScript compile check
         working-directory: ${{ matrix.stage }}
         run: npx tsc --noEmit
-
 
   test:
     name: Unit Tests

@@ -30,35 +30,37 @@ This is the Pulumi equivalent of the Terraform foundation's `helpers/foundation-
 
 ## Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--stage <N>` | Deploy a specific stage (0-5) | All stages |
-| `--action <action>` | `preview` or `up` | `preview` |
-| `--stack <stack>` | Target a specific stack name | All stacks |
-| `--destroy` | Destroy in reverse order | `false` |
-| `--dry-run` | Show commands without executing | `false` |
+| Option              | Description                     | Default    |
+| ------------------- | ------------------------------- | ---------- |
+| `--stage <N>`       | Deploy a specific stage (0-5)   | All stages |
+| `--action <action>` | `preview` or `up`               | `preview`  |
+| `--stack <stack>`   | Target a specific stack name    | All stacks |
+| `--destroy`         | Destroy in reverse order        | `false`    |
+| `--dry-run`         | Show commands without executing | `false`    |
 
 ## Stage Execution Order
 
 ### Deploy (forward)
+
 ```
 0-bootstrap → 1-org → 2-environments → 3-networks-svpc → 4-projects → 5-app-infra
 ```
 
 ### Destroy (reverse)
+
 ```
 5-app-infra → 4-projects → 3-networks-svpc → 2-environments → 1-org → 0-bootstrap
 ```
 
 ## Differences from Terraform Foundation Deployer
 
-| Feature | TF Deployer | Pulumi Deployer |
-|---------|-------------|-----------------|
-| **Implementation** | 35-file Go CLI | Single shell script |
-| **Backend management** | Manipulates `backend.tf` files | Not needed (Pulumi manages state natively) |
-| **State migration** | Handles remote state bucket creation | Handled by `pulumi login` |
-| **Dependency install** | `terraform init` | `npm install` (TS) / `go mod download` (Go) |
-| **Cloud Build integration** | Full trigger management | Separate CI/CD pipeline files |
+| Feature                     | TF Deployer                          | Pulumi Deployer                             |
+| --------------------------- | ------------------------------------ | ------------------------------------------- |
+| **Implementation**          | 35-file Go CLI                       | Single shell script                         |
+| **Backend management**      | Manipulates `backend.tf` files       | Not needed (Pulumi manages state natively)  |
+| **State migration**         | Handles remote state bucket creation | Handled by `pulumi login`                   |
+| **Dependency install**      | `terraform init`                     | `npm install` (TS) / `go mod download` (Go) |
+| **Cloud Build integration** | Full trigger management              | Separate CI/CD pipeline files               |
 
 ## Prerequisites
 

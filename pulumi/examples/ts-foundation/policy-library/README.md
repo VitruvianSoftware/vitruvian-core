@@ -24,27 +24,27 @@ policy-library/
 
 ### Project Policies
 
-| Policy | Severity | Description |
-|--------|----------|-------------|
-| `no-default-network` | mandatory | Projects must not create the default network |
+| Policy                    | Severity  | Description                                                    |
+| ------------------------- | --------- | -------------------------------------------------------------- |
+| `no-default-network`      | mandatory | Projects must not create the default network                   |
 | `project-labels-required` | mandatory | Projects must have `environment` and `application_name` labels |
-| `deletion-policy-prevent` | advisory | Projects should use `PREVENT` deletion policy |
+| `deletion-policy-prevent` | advisory  | Projects should use `PREVENT` deletion policy                  |
 
 ### IAM Policies
 
-| Policy | Severity | Description |
-|--------|----------|-------------|
-| `no-sa-key-creation` | mandatory | Service account keys must not be created (use WIF instead) |
-| `no-public-access` | mandatory | Resources must not grant `allUsers` or `allAuthenticatedUsers` |
-| `restrict-owner-role` | advisory | `roles/owner` should not be used in IAM bindings |
+| Policy                | Severity  | Description                                                    |
+| --------------------- | --------- | -------------------------------------------------------------- |
+| `no-sa-key-creation`  | mandatory | Service account keys must not be created (use WIF instead)     |
+| `no-public-access`    | mandatory | Resources must not grant `allUsers` or `allAuthenticatedUsers` |
+| `restrict-owner-role` | advisory  | `roles/owner` should not be used in IAM bindings               |
 
 ### Network Policies
 
-| Policy | Severity | Description |
-|--------|----------|-------------|
-| `no-public-ip` | mandatory | Compute instances must not have external IPs |
-| `require-private-google-access` | mandatory | Subnets must enable Private Google Access |
-| `require-flow-logs` | advisory | Subnets should have VPC Flow Logs enabled |
+| Policy                          | Severity  | Description                                  |
+| ------------------------------- | --------- | -------------------------------------------- |
+| `no-public-ip`                  | mandatory | Compute instances must not have external IPs |
+| `require-private-google-access` | mandatory | Subnets must enable Private Google Access    |
+| `require-flow-logs`             | advisory  | Subnets should have VPC Flow Logs enabled    |
 
 ## Usage
 
@@ -84,7 +84,7 @@ Policies can be set to `mandatory` (blocks deployment), `advisory` (warns), or
 config:
   pulumi:policyPacks:
     - name: foundation-policies
-      enforcementLevel: advisory  # Override all to advisory for dev
+      enforcementLevel: advisory # Override all to advisory for dev
 ```
 
 ## Relationship to Upstream Terraform Policies
@@ -95,9 +95,9 @@ CrossGuard policy pack provides equivalent compliance coverage using Pulumi's
 native policy-as-code framework, with the advantage of being evaluated at
 preview-time (before any API calls) rather than post-plan.
 
-| Terraform Constraint | CrossGuard Equivalent | Status |
-|---------------------|-----------------------|--------|
-| `GCPExternalIpAccessConstraintV1` | `no-public-ip` | ✅ |
-| `GCPServiceUsageConstraintV1` | Enforced via org policy in Stage 1 | ✅ |
-| `GCPIAMAllowedPolicyMemberDomainsConstraintV2` | Enforced via org policy in Stage 1 | ✅ |
-| `GCPResourceValuePatternConstraintV1` (labels) | `project-labels-required` | ✅ |
+| Terraform Constraint                           | CrossGuard Equivalent              | Status |
+| ---------------------------------------------- | ---------------------------------- | ------ |
+| `GCPExternalIpAccessConstraintV1`              | `no-public-ip`                     | ✅     |
+| `GCPServiceUsageConstraintV1`                  | Enforced via org policy in Stage 1 | ✅     |
+| `GCPIAMAllowedPolicyMemberDomainsConstraintV2` | Enforced via org policy in Stage 1 | ✅     |
+| `GCPResourceValuePatternConstraintV1` (labels) | `project-labels-required`          | ✅     |

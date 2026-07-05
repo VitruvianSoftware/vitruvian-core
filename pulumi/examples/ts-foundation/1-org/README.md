@@ -151,6 +151,7 @@ Consider the following:
    ```
 
    If it exists, set a different name:
+
    ```bash
    pulumi config set scc_notification_name "scc-notify-pulumi"
    ```
@@ -200,44 +201,44 @@ Consider the following:
 
 ## Configuration Reference
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `org_id` | GCP Organization ID | `string` | n/a | yes |
-| `billing_account` | Billing account ID | `string` | n/a | yes |
-| `remote_state_bucket` | Bootstrap state bucket name or stack reference | `string` | n/a | yes |
-| `project_prefix` | Name prefix for projects | `string` | `"prj"` | no |
-| `folder_prefix` | Name prefix for folders | `string` | `"fldr"` | no |
-| `default_region` | Default region for resources | `string` | `"us-central1"` | no |
-| `parent_folder` | Optional parent folder ID | `string` | `""` | no |
-| `enable_hub_and_spoke` | Enable Hub and Spoke network mode | `boolean` | `false` | no |
-| `domains_to_allow` | Domains allowed in domain-restricted sharing policy | `string[]` | `[]` | no |
-| `scc_notification_name` | Name for the SCC notification config | `string` | `"scc-notify"` | no |
-| `scc_notification_filter` | Filter for SCC notifications | `string` | `"state = \"ACTIVE\""` | no |
-| `create_unique_tag_key` | Create a unique tag key name | `boolean` | `false` | no |
-| `enable_cai_monitoring` | Enable Cloud Asset Inventory monitoring | `boolean` | `false` | no |
-| `log_export_storage_force_destroy` | Allow destroying log export bucket with objects | `boolean` | `false` | no |
-| `log_export_storage_versioning` | Enable versioning on log export bucket | `boolean` | `false` | no |
-| `project_deletion_policy` | Deletion policy for created projects | `string` | `"PREVENT"` | no |
-| `folder_deletion_protection` | Prevent destroying folders | `boolean` | `true` | no |
+| Name                               | Description                                         | Type       | Default                | Required |
+| ---------------------------------- | --------------------------------------------------- | ---------- | ---------------------- | :------: |
+| `org_id`                           | GCP Organization ID                                 | `string`   | n/a                    |   yes    |
+| `billing_account`                  | Billing account ID                                  | `string`   | n/a                    |   yes    |
+| `remote_state_bucket`              | Bootstrap state bucket name or stack reference      | `string`   | n/a                    |   yes    |
+| `project_prefix`                   | Name prefix for projects                            | `string`   | `"prj"`                |    no    |
+| `folder_prefix`                    | Name prefix for folders                             | `string`   | `"fldr"`               |    no    |
+| `default_region`                   | Default region for resources                        | `string`   | `"us-central1"`        |    no    |
+| `parent_folder`                    | Optional parent folder ID                           | `string`   | `""`                   |    no    |
+| `enable_hub_and_spoke`             | Enable Hub and Spoke network mode                   | `boolean`  | `false`                |    no    |
+| `domains_to_allow`                 | Domains allowed in domain-restricted sharing policy | `string[]` | `[]`                   |    no    |
+| `scc_notification_name`            | Name for the SCC notification config                | `string`   | `"scc-notify"`         |    no    |
+| `scc_notification_filter`          | Filter for SCC notifications                        | `string`   | `"state = \"ACTIVE\""` |    no    |
+| `create_unique_tag_key`            | Create a unique tag key name                        | `boolean`  | `false`                |    no    |
+| `enable_cai_monitoring`            | Enable Cloud Asset Inventory monitoring             | `boolean`  | `false`                |    no    |
+| `log_export_storage_force_destroy` | Allow destroying log export bucket with objects     | `boolean`  | `false`                |    no    |
+| `log_export_storage_versioning`    | Enable versioning on log export bucket              | `boolean`  | `false`                |    no    |
+| `project_deletion_policy`          | Deletion policy for created projects                | `string`   | `"PREVENT"`            |    no    |
+| `folder_deletion_protection`       | Prevent destroying folders                          | `boolean`  | `true`                 |    no    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `common_folder_name` | Common folder ID |
-| `network_folder_name` | Network folder ID |
-| `logging_project_id` | Centralized logging project ID |
-| `billing_export_project_id` | Billing export project ID |
-| `scc_project_id` | SCC notifications project ID |
-| `org_audit_logs_project_id` | Audit logs project ID |
-| `dns_hub_project_id` | DNS hub project ID |
-| `interconnect_project_id` | Interconnect project ID |
-| `scc_notification_name` | SCC notification configuration name |
-| `tags` | Organization-level tags |
+| Name                        | Description                         |
+| --------------------------- | ----------------------------------- |
+| `common_folder_name`        | Common folder ID                    |
+| `network_folder_name`       | Network folder ID                   |
+| `logging_project_id`        | Centralized logging project ID      |
+| `billing_export_project_id` | Billing export project ID           |
+| `scc_project_id`            | SCC notifications project ID        |
+| `org_audit_logs_project_id` | Audit logs project ID               |
+| `dns_hub_project_id`        | DNS hub project ID                  |
+| `interconnect_project_id`   | Interconnect project ID             |
+| `scc_notification_name`     | SCC notification configuration name |
+| `tags`                      | Organization-level tags             |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `index.ts` | Orchestrates the org stage: folders, projects, policies, logging, SCC, tags, CAI monitoring |
-| `config.ts` | Configuration loading for organization-level settings |
+| File        | Description                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `index.ts`  | Orchestrates the org stage: folders, projects, policies, logging, SCC, tags, CAI monitoring |
+| `config.ts` | Configuration loading for organization-level settings                                       |

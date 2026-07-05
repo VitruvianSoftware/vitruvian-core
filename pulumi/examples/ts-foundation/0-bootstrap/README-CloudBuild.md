@@ -41,17 +41,24 @@ to configure Cloud Build triggers per-stage, per-environment:
 import * as gcp from "@pulumi/gcp";
 
 // Example: create a plan trigger for each stage
-const stages = ["0-bootstrap", "1-org", "2-environments", "3-networks-svpc", "4-projects", "5-app-infra"];
+const stages = [
+  "0-bootstrap",
+  "1-org",
+  "2-environments",
+  "3-networks-svpc",
+  "4-projects",
+  "5-app-infra",
+];
 for (const stage of stages) {
-    new gcp.cloudbuild.Trigger(`plan-${stage}`, {
-        project: cicdProjectId,
-        name: `plan-${stage}`,
-        triggerTemplate: {
-            repoName: `gcp-${stage}`,
-            branchName: ".*",
-        },
-        filename: "cloudbuild-pulumi-plan.yaml",
-    });
+  new gcp.cloudbuild.Trigger(`plan-${stage}`, {
+    project: cicdProjectId,
+    name: `plan-${stage}`,
+    triggerTemplate: {
+      repoName: `gcp-${stage}`,
+      branchName: ".*",
+    },
+    filename: "cloudbuild-pulumi-plan.yaml",
+  });
 }
 ```
 
@@ -70,9 +77,9 @@ Ensure the CI/CD project has the required APIs:
 
 ```typescript
 const cloudBuildApis = [
-    "cloudbuild.googleapis.com",
-    "sourcerepo.googleapis.com",
-    "artifactregistry.googleapis.com",
+  "cloudbuild.googleapis.com",
+  "sourcerepo.googleapis.com",
+  "artifactregistry.googleapis.com",
 ];
 ```
 
@@ -91,56 +98,56 @@ Place these in each stage's repository root:
 
 ```yaml
 steps:
-  - id: 'install'
-    name: 'node:22'
-    entrypoint: 'npm'
-    args: ['install']
-  - id: 'pulumi-preview'
-    name: 'pulumi/pulumi-nodejs:latest'
-    entrypoint: 'bash'
+  - id: "install"
+    name: "node:22"
+    entrypoint: "npm"
+    args: ["install"]
+  - id: "pulumi-preview"
+    name: "pulumi/pulumi-nodejs:latest"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         pulumi login gs://${_TF_BACKEND}
         pulumi preview --stack ${_STACK} --non-interactive
     env:
-      - 'PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}'
+      - "PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}"
 ```
 
 ### `cloudbuild-pulumi-apply.yaml`
 
 ```yaml
 steps:
-  - id: 'install'
-    name: 'node:22'
-    entrypoint: 'npm'
-    args: ['install']
-  - id: 'pulumi-up'
-    name: 'pulumi/pulumi-nodejs:latest'
-    entrypoint: 'bash'
+  - id: "install"
+    name: "node:22"
+    entrypoint: "npm"
+    args: ["install"]
+  - id: "pulumi-up"
+    name: "pulumi/pulumi-nodejs:latest"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         pulumi login gs://${_TF_BACKEND}
         pulumi up --stack ${_STACK} --non-interactive --yes
     env:
-      - 'PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}'
+      - "PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}"
 ```
 
 ## What Gets Created
 
-| Resource | Count | Description |
-|----------|-------|-------------|
-| Cloud Source Repos | 7 | One per stage + `gcp-policies` + `pulumi-cloudbuilder` |
-| Artifact Registry | 1 | Docker repo for custom Pulumi builder images |
-| AR IAM Bindings | 5 | `artifactregistry.reader` per SA |
-| Cloud Build Plan Triggers | 5 | `plan-{stage}` — runs on any branch push |
-| Cloud Build Apply Triggers | 5 | `apply-{stage}` — runs on main branch only |
+| Resource                   | Count | Description                                            |
+| -------------------------- | ----- | ------------------------------------------------------ |
+| Cloud Source Repos         | 7     | One per stage + `gcp-policies` + `pulumi-cloudbuilder` |
+| Artifact Registry          | 1     | Docker repo for custom Pulumi builder images           |
+| AR IAM Bindings            | 5     | `artifactregistry.reader` per SA                       |
+| Cloud Build Plan Triggers  | 5     | `plan-{stage}` — runs on any branch push               |
+| Cloud Build Apply Triggers | 5     | `apply-{stage}` — runs on main branch only             |
 
 ## Additional Outputs
 
-| Name | Description |
-|------|-------------|
-| `cloudbuild_project_id` | Project ID of the CI/CD project |
-| `cloud_build_private_worker_pool_id` | Worker pool ID (if enabled) |
-| `artifact_repo_name` | Name of the Artifact Registry repository |
+| Name                                 | Description                              |
+| ------------------------------------ | ---------------------------------------- |
+| `cloudbuild_project_id`              | Project ID of the CI/CD project          |
+| `cloud_build_private_worker_pool_id` | Worker pool ID (if enabled)              |
+| `artifact_repo_name`                 | Name of the Artifact Registry repository |

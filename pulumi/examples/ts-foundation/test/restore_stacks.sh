@@ -31,22 +31,22 @@ set -euo pipefail
 TARGET_STAGE="${2:-all}"
 
 restore_stage() {
-    local stage="$1"
-    echo "--- Restoring stack configs in $stage ---"
+	local stage="$1"
+	echo "--- Restoring stack configs in $stage ---"
 
-    find "$stage" -name "Pulumi.*.yaml.disabled" | while read -r f; do
-        restored="${f%.disabled}"
-        echo "  $f → $restored"
-        mv "$f" "$restored"
-    done
+	find "$stage" -name "Pulumi.*.yaml.disabled" | while read -r f; do
+		restored="${f%.disabled}"
+		echo "  $f → $restored"
+		mv "$f" "$restored"
+	done
 }
 
 if [ "$TARGET_STAGE" = "all" ]; then
-    for stage in 0-bootstrap 1-org 2-environments 3-networks-svpc 3-networks-hub-and-spoke 4-projects 5-app-infra; do
-        [ -d "$stage" ] && restore_stage "$stage"
-    done
+	for stage in 0-bootstrap 1-org 2-environments 3-networks-svpc 3-networks-hub-and-spoke 4-projects 5-app-infra; do
+		[ -d "$stage" ] && restore_stage "$stage"
+	done
 else
-    [ -d "$TARGET_STAGE" ] && restore_stage "$TARGET_STAGE"
+	[ -d "$TARGET_STAGE" ] && restore_stage "$TARGET_STAGE"
 fi
 
 echo "=== Done ==="

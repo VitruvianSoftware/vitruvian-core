@@ -7,11 +7,11 @@ Terraform-managed GCP infrastructure to the Pulumi foundation.
 
 There are three strategies for migration, each with different risk profiles:
 
-| Strategy | Risk | Downtime | Best For |
-|----------|------|----------|----------|
-| **1. Import & Adopt** | Low | Zero | Existing resources that should be managed by Pulumi |
-| **2. Side-by-Side** | Medium | Zero | Gradual migration while both tools coexist |
-| **3. Destroy & Recreate** | High | Yes | Non-critical environments, dev/test |
+| Strategy                  | Risk   | Downtime | Best For                                            |
+| ------------------------- | ------ | -------- | --------------------------------------------------- |
+| **1. Import & Adopt**     | Low    | Zero     | Existing resources that should be managed by Pulumi |
+| **2. Side-by-Side**       | Medium | Zero     | Gradual migration while both tools coexist          |
+| **3. Destroy & Recreate** | High   | Yes      | Non-critical environments, dev/test                 |
 
 ---
 
@@ -31,17 +31,17 @@ terraform state list
 
 ### Step 2: Map Terraform Resource Types to Pulumi
 
-| Terraform Resource | Pulumi Resource | Import ID |
-|-------------------|-----------------|-----------|
-| `google_project` | `gcp.organizations.Project` | `projects/{project_id}` |
-| `google_folder` | `gcp.organizations.Folder` | `folders/{folder_id}` |
-| `google_project_service` | `gcp.projects.Service` | `{project_id}/{service}` |
-| `google_service_account` | `gcp.serviceaccount.Account` | `projects/{project}/serviceAccounts/{email}` |
-| `google_storage_bucket` | `gcp.storage.Bucket` | `{bucket_name}` |
-| `google_compute_network` | `gcp.compute.Network` | `projects/{project}/global/networks/{name}` |
-| `google_compute_subnetwork` | `gcp.compute.Subnetwork` | `projects/{project}/regions/{region}/subnetworks/{name}` |
-| `google_kms_key_ring` | `gcp.kms.KeyRing` | `projects/{project}/locations/{location}/keyRings/{name}` |
-| `google_organization_policy` | `gcp.orgpolicy.Policy` | `organizations/{org_id}/policies/{constraint}` |
+| Terraform Resource           | Pulumi Resource              | Import ID                                                 |
+| ---------------------------- | ---------------------------- | --------------------------------------------------------- |
+| `google_project`             | `gcp.organizations.Project`  | `projects/{project_id}`                                   |
+| `google_folder`              | `gcp.organizations.Folder`   | `folders/{folder_id}`                                     |
+| `google_project_service`     | `gcp.projects.Service`       | `{project_id}/{service}`                                  |
+| `google_service_account`     | `gcp.serviceaccount.Account` | `projects/{project}/serviceAccounts/{email}`              |
+| `google_storage_bucket`      | `gcp.storage.Bucket`         | `{bucket_name}`                                           |
+| `google_compute_network`     | `gcp.compute.Network`        | `projects/{project}/global/networks/{name}`               |
+| `google_compute_subnetwork`  | `gcp.compute.Subnetwork`     | `projects/{project}/regions/{region}/subnetworks/{name}`  |
+| `google_kms_key_ring`        | `gcp.kms.KeyRing`            | `projects/{project}/locations/{location}/keyRings/{name}` |
+| `google_organization_policy` | `gcp.orgpolicy.Policy`       | `organizations/{org_id}/policies/{constraint}`            |
 
 ### Step 3: Import Resources
 
@@ -128,8 +128,8 @@ import * as gcp from "@pulumi/gcp";
 
 // Read Terraform remote state from GCS
 const tfState = new gcp.storage.BucketObject.get("tf-state", {
-    bucket: "bkt-prj-b-seed-tfstate",
-    name: "terraform/0-bootstrap/default.tfstate",
+  bucket: "bkt-prj-b-seed-tfstate",
+  name: "terraform/0-bootstrap/default.tfstate",
 });
 ```
 
@@ -213,13 +213,13 @@ pulumi stack init production \
 
 ## Common Pitfalls
 
-| Pitfall | Description | Mitigation |
-|---------|-------------|------------|
-| **Duplicate Resource** | Both tools try to manage the same resource | Always `terraform state rm` before `pulumi import` |
-| **IAM Drift** | Concurrent IAM changes from both tools | Migrate IAM bindings atomically per resource |
-| **State Corruption** | Manually editing state files | Use `pulumi import` / `terraform state rm` exclusively |
-| **Provider Version Mismatch** | TF and Pulumi using different GCP provider versions | Pin to compatible versions during migration |
-| **Missing `protect`** | Imported resources lack deletion protection | Add `{ protect: true }` to critical resources |
+| Pitfall                       | Description                                         | Mitigation                                             |
+| ----------------------------- | --------------------------------------------------- | ------------------------------------------------------ |
+| **Duplicate Resource**        | Both tools try to manage the same resource          | Always `terraform state rm` before `pulumi import`     |
+| **IAM Drift**                 | Concurrent IAM changes from both tools              | Migrate IAM bindings atomically per resource           |
+| **State Corruption**          | Manually editing state files                        | Use `pulumi import` / `terraform state rm` exclusively |
+| **Provider Version Mismatch** | TF and Pulumi using different GCP provider versions | Pin to compatible versions during migration            |
+| **Missing `protect`**         | Imported resources lack deletion protection         | Add `{ protect: true }` to critical resources          |
 
 ## Verification Checklist
 

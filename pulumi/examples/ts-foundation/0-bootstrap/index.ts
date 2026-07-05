@@ -25,220 +25,256 @@ import * as random from "@pulumi/random";
 import { loadConfig, BootstrapConfig } from "./config";
 import { deployGroups } from "./groups";
 import { deployServiceAccounts, GranularSAs } from "./sa";
-import { deployGitHubActionsWIF, deployCICDProject } from "./build_github_actions";
+import {
+  deployGitHubActionsWIF,
+  deployCICDProject,
+} from "./build_github_actions";
 import { Bootstrap } from "@vitruviansoftware/foundation-bootstrap";
 
 export = async () => {
-    const cfg = loadConfig(new pulumi.Config());
+  const cfg = loadConfig(new pulumi.Config());
 
-    /*************************************************
+  /*************************************************
       Groups creation (mirrors groups.tf)
     *************************************************/
-    const groupOutputs = await deployGroups(cfg);
+  const groupOutputs = await deployGroups(cfg);
 
-    /*************************************************
+  /*************************************************
       Bootstrap Folder
     *************************************************/
-    const bootstrapFolder = new gcp.organizations.Folder("bootstrap-folder", {
-        displayName: `${cfg.folderPrefix}-bootstrap`,
-        parent: cfg.parent,
-        deletionProtection: cfg.folderDeletionProtection,
-    }, { protect: true });
+  const bootstrapFolder = new gcp.organizations.Folder(
+    "bootstrap-folder",
+    {
+      displayName: `${cfg.folderPrefix}-bootstrap`,
+      parent: cfg.parent,
+      deletionProtection: cfg.folderDeletionProtection,
+    },
+    { protect: true },
+  );
 
-    /*************************************************
+  /*************************************************
       Seed Bootstrap Project (mirrors main.tf module "seed_bootstrap")
     *************************************************/
-    const seedBootstrap = new Bootstrap("seed_bootstrap", {
-        orgId: cfg.orgId,
-        folderId: bootstrapFolder.name,
-        billingAccount: cfg.billingAccount,
-        projectPrefix: cfg.projectPrefix,
-        defaultRegion: cfg.defaultRegion,
-        defaultRegionKms: cfg.defaultRegionKms,
-        defaultRegionGcs: cfg.defaultRegionGcs,
-        randomSuffix: cfg.randomSuffix,
-        encryptStateBucket: true,
-        bucketForceDestroy: cfg.bucketForceDestroy,
-        keyProtectionLevel: cfg.kmsKeyProtectionLevel,
-        kmsPreventDestroy: !cfg.bucketTfStateKmsForceDestroy,
-        projectLabels: {
-            environment: "bootstrap",
-            application_name: "seed-bootstrap",
-            billing_code: "1234",
-            primary_contact: "example1",
-            secondary_contact: "example2",
-            business_code: "shared",
-            env_code: "b",
-            vpc: "none",
-        },
-        activateApis: [
-            "serviceusage.googleapis.com",
-            "servicenetworking.googleapis.com",
-            "cloudkms.googleapis.com",
-            "compute.googleapis.com",
-            "logging.googleapis.com",
-            "bigquery.googleapis.com",
-            "cloudresourcemanager.googleapis.com",
-            "cloudbilling.googleapis.com",
-            "cloudbuild.googleapis.com",
-            "iam.googleapis.com",
-            "admin.googleapis.com",
-            "appengine.googleapis.com",
-            "storage-api.googleapis.com",
-            "monitoring.googleapis.com",
-            "pubsub.googleapis.com",
-            "securitycenter.googleapis.com",
-            "accesscontextmanager.googleapis.com",
-            "billingbudgets.googleapis.com",
-            "essentialcontacts.googleapis.com",
-            "assuredworkloads.googleapis.com",
-            "cloudasset.googleapis.com",
-        ],
-        bucketPrefix: cfg.bucketPrefix,
-        stateBucketIamMembers: [],
-    }, { dependsOn: groupOutputs.dependsOn });
+  const seedBootstrap = new Bootstrap(
+    "seed_bootstrap",
+    {
+      orgId: cfg.orgId,
+      folderId: bootstrapFolder.name,
+      billingAccount: cfg.billingAccount,
+      projectPrefix: cfg.projectPrefix,
+      defaultRegion: cfg.defaultRegion,
+      defaultRegionKms: cfg.defaultRegionKms,
+      defaultRegionGcs: cfg.defaultRegionGcs,
+      randomSuffix: cfg.randomSuffix,
+      encryptStateBucket: true,
+      bucketForceDestroy: cfg.bucketForceDestroy,
+      keyProtectionLevel: cfg.kmsKeyProtectionLevel,
+      kmsPreventDestroy: !cfg.bucketTfStateKmsForceDestroy,
+      projectLabels: {
+        environment: "bootstrap",
+        application_name: "seed-bootstrap",
+        billing_code: "1234",
+        primary_contact: "example1",
+        secondary_contact: "example2",
+        business_code: "shared",
+        env_code: "b",
+        vpc: "none",
+      },
+      activateApis: [
+        "serviceusage.googleapis.com",
+        "servicenetworking.googleapis.com",
+        "cloudkms.googleapis.com",
+        "compute.googleapis.com",
+        "logging.googleapis.com",
+        "bigquery.googleapis.com",
+        "cloudresourcemanager.googleapis.com",
+        "cloudbilling.googleapis.com",
+        "cloudbuild.googleapis.com",
+        "iam.googleapis.com",
+        "admin.googleapis.com",
+        "appengine.googleapis.com",
+        "storage-api.googleapis.com",
+        "monitoring.googleapis.com",
+        "pubsub.googleapis.com",
+        "securitycenter.googleapis.com",
+        "accesscontextmanager.googleapis.com",
+        "billingbudgets.googleapis.com",
+        "essentialcontacts.googleapis.com",
+        "assuredworkloads.googleapis.com",
+        "cloudasset.googleapis.com",
+      ],
+      bucketPrefix: cfg.bucketPrefix,
+      stateBucketIamMembers: [],
+    },
+    { dependsOn: groupOutputs.dependsOn },
+  );
 
-    const seedProject = seedBootstrap.seedProject.project;
-    const stateBucketKmsKey = seedBootstrap.kmsKeyId as pulumi.Output<string>;
+  const seedProject = seedBootstrap.seedProject.project;
+  const stateBucketKmsKey = seedBootstrap.kmsKeyId as pulumi.Output<string>;
 
-    /*************************************************
+  /*************************************************
       CI/CD Project (mirrors Go's deployCICDProject)
     *************************************************/
-    const cicdOutputs = await deployCICDProject(cfg, bootstrapFolder);
+  const cicdOutputs = await deployCICDProject(cfg, bootstrapFolder);
 
-    /*************************************************
+  /*************************************************
       Service Accounts and IAM (mirrors sa.tf)
     *************************************************/
-    const saOutputs = await deployServiceAccounts(cfg, seedProject, cicdOutputs.cicdProjectId, groupOutputs.dependsOn);
+  const saOutputs = await deployServiceAccounts(
+    cfg,
+    seedProject,
+    cicdOutputs.cicdProjectId,
+    groupOutputs.dependsOn,
+  );
 
-    /*************************************************
+  /*************************************************
       Projects state bucket (for 4-projects stage)
     *************************************************/
-    const projectsStateBucket = new gcp.storage.Bucket("projects-state-bucket", {
-        name: pulumi.interpolate`${cfg.bucketPrefix}-${seedProject.projectId}-gcp-projects-tfstate`,
-        project: seedProject.projectId,
-        location: cfg.defaultRegionGcs,
-        forceDestroy: cfg.bucketForceDestroy,
-        uniformBucketLevelAccess: true,
-        versioning: { enabled: true },
-        encryption: { defaultKmsKeyName: stateBucketKmsKey },
-    }, { dependsOn: [seedBootstrap] });
+  const projectsStateBucket = new gcp.storage.Bucket(
+    "projects-state-bucket",
+    {
+      name: pulumi.interpolate`${cfg.bucketPrefix}-${seedProject.projectId}-gcp-projects-tfstate`,
+      project: seedProject.projectId,
+      location: cfg.defaultRegionGcs,
+      forceDestroy: cfg.bucketForceDestroy,
+      uniformBucketLevelAccess: true,
+      versioning: { enabled: true },
+      encryption: { defaultKmsKeyName: stateBucketKmsKey },
+    },
+    { dependsOn: [seedBootstrap] },
+  );
 
-    /*************************************************
+  /*************************************************
       GitHub Actions WIF (mirrors Go's deployGitHubActionsBuild)
     *************************************************/
-    const wifOutputs = await deployGitHubActionsWIF(
-        cfg,
-        cicdOutputs.cicdProjectId,
-        seedBootstrap.stateBucketName,
-        projectsStateBucket.name,
-        saOutputs,
-    );
+  const wifOutputs = await deployGitHubActionsWIF(
+    cfg,
+    cicdOutputs.cicdProjectId,
+    seedBootstrap.stateBucketName,
+    projectsStateBucket.name,
+    saOutputs,
+  );
 
-    /*************************************************
+  /*************************************************
       Org admins IAM at org level
     *************************************************/
-    // Note: org admins are intentionally NOT granted tagAdmin/tagUser at org level
-    // (TF and the Go port do not grant these here).
-    const orgAdminsRoles = cfg.orgPolicyAdminRole
-        ? [
-            "roles/orgpolicy.policyAdmin",
-            "roles/resourcemanager.organizationAdmin",
-            "roles/billing.user",
-          ]
-        : [
-            "roles/resourcemanager.organizationAdmin",
-            "roles/billing.user",
-          ];
+  // Note: org admins are intentionally NOT granted tagAdmin/tagUser at org level
+  // (TF and the Go port do not grant these here).
+  const orgAdminsRoles = cfg.orgPolicyAdminRole
+    ? [
+        "roles/orgpolicy.policyAdmin",
+        "roles/resourcemanager.organizationAdmin",
+        "roles/billing.user",
+      ]
+    : ["roles/resourcemanager.organizationAdmin", "roles/billing.user"];
 
-    for (const role of orgAdminsRoles) {
-        new gcp.organizations.IAMMember(`org-admin-${role.replace(/\//g, "-")}`, {
-            orgId: cfg.orgId,
-            role: role,
-            member: `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
-        }, { dependsOn: groupOutputs.dependsOn });
-    }
-
-    // Authoritative projectCreator Enforcement, scoped to the parent (org or folder)
-    // to match TF's org_project_creators binding and the Go port's bindParentIAMBinding.
-    const projectCreatorMembers = [
-        ...Object.values(saOutputs.saEmails).map(email => pulumi.interpolate`serviceAccount:${email}` as unknown as string),
-        `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
-    ];
-    if (cfg.parentType === "folder") {
-        new gcp.folder.IAMBinding("org-project-creators", {
-            folder: cfg.parent,
-            role: "roles/resourcemanager.projectCreator",
-            members: projectCreatorMembers,
-        }, { dependsOn: groupOutputs.dependsOn });
-    } else {
-        new gcp.organizations.IAMBinding("org-project-creators", {
-            orgId: cfg.orgId,
-            role: "roles/resourcemanager.projectCreator",
-            members: projectCreatorMembers,
-        }, { dependsOn: groupOutputs.dependsOn });
-    }
-
-    // Authoritative billing.creator Enforcement
-    new gcp.organizations.IAMBinding("org-billing-creator", {
+  for (const role of orgAdminsRoles) {
+    new gcp.organizations.IAMMember(
+      `org-admin-${role.replace(/\//g, "-")}`,
+      {
         orgId: cfg.orgId,
-        role: "roles/billing.creator",
-        members: [
-            `group:${cfg.groups.requiredGroups.groupBillingAdmins}`,
-        ],
-    }, { dependsOn: groupOutputs.dependsOn });
+        role: role,
+        member: `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
+      },
+      { dependsOn: groupOutputs.dependsOn },
+    );
+  }
 
-    new gcp.organizations.IAMMember(`org-billing-admins-admin`, {
+  // Authoritative projectCreator Enforcement, scoped to the parent (org or folder)
+  // to match TF's org_project_creators binding and the Go port's bindParentIAMBinding.
+  const projectCreatorMembers = [
+    ...Object.values(saOutputs.saEmails).map(
+      (email) =>
+        pulumi.interpolate`serviceAccount:${email}` as unknown as string,
+    ),
+    `group:${cfg.groups.requiredGroups.groupOrgAdmins}`,
+  ];
+  if (cfg.parentType === "folder") {
+    new gcp.folder.IAMBinding(
+      "org-project-creators",
+      {
+        folder: cfg.parent,
+        role: "roles/resourcemanager.projectCreator",
+        members: projectCreatorMembers,
+      },
+      { dependsOn: groupOutputs.dependsOn },
+    );
+  } else {
+    new gcp.organizations.IAMBinding(
+      "org-project-creators",
+      {
         orgId: cfg.orgId,
-        role: "roles/billing.admin",
-        member: `group:${cfg.groups.requiredGroups.groupBillingAdmins}`,
-    });
+        role: "roles/resourcemanager.projectCreator",
+        members: projectCreatorMembers,
+      },
+      { dependsOn: groupOutputs.dependsOn },
+    );
+  }
 
-    /*************************************************
+  // Authoritative billing.creator Enforcement
+  new gcp.organizations.IAMBinding(
+    "org-billing-creator",
+    {
+      orgId: cfg.orgId,
+      role: "roles/billing.creator",
+      members: [`group:${cfg.groups.requiredGroups.groupBillingAdmins}`],
+    },
+    { dependsOn: groupOutputs.dependsOn },
+  );
+
+  new gcp.organizations.IAMMember(`org-billing-admins-admin`, {
+    orgId: cfg.orgId,
+    role: "roles/billing.admin",
+    member: `group:${cfg.groups.requiredGroups.groupBillingAdmins}`,
+  });
+
+  /*************************************************
       Outputs — mirrors outputs.tf and outputs_cb.tf
     *************************************************/
-    return {
-        // outputs.tf
-        seed_project_id: seedProject.projectId,
-        bootstrap_step_terraform_service_account_email: saOutputs.saEmails["bootstrap"],
-        projects_step_terraform_service_account_email: saOutputs.saEmails["proj"],
-        networks_step_terraform_service_account_email: saOutputs.saEmails["net"],
-        environment_step_terraform_service_account_email: saOutputs.saEmails["env"],
-        organization_step_terraform_service_account_email: saOutputs.saEmails["org"],
-        gcs_bucket_tfstate: seedBootstrap.stateBucketName,
-        projects_gcs_bucket_tfstate: projectsStateBucket.name,
-        state_bucket_kms_key_id: stateBucketKmsKey,
+  return {
+    // outputs.tf
+    seed_project_id: seedProject.projectId,
+    bootstrap_step_terraform_service_account_email:
+      saOutputs.saEmails["bootstrap"],
+    projects_step_terraform_service_account_email: saOutputs.saEmails["proj"],
+    networks_step_terraform_service_account_email: saOutputs.saEmails["net"],
+    environment_step_terraform_service_account_email: saOutputs.saEmails["env"],
+    organization_step_terraform_service_account_email:
+      saOutputs.saEmails["org"],
+    gcs_bucket_tfstate: seedBootstrap.stateBucketName,
+    projects_gcs_bucket_tfstate: projectsStateBucket.name,
+    state_bucket_kms_key_id: stateBucketKmsKey,
 
-        common_config: {
-            org_id: cfg.orgId,
-            parent_folder: cfg.parentFolder,
-            billing_account: cfg.billingAccount,
-            default_region: cfg.defaultRegion,
-            default_region_2: cfg.defaultRegion2,
-            default_region_gcs: cfg.defaultRegionGcs,
-            default_region_kms: cfg.defaultRegionKms,
-            project_prefix: cfg.projectPrefix,
-            folder_prefix: cfg.folderPrefix,
-            parent_id: cfg.parent,
-            bootstrap_folder_name: bootstrapFolder.name,
+    common_config: {
+      org_id: cfg.orgId,
+      parent_folder: cfg.parentFolder,
+      billing_account: cfg.billingAccount,
+      default_region: cfg.defaultRegion,
+      default_region_2: cfg.defaultRegion2,
+      default_region_gcs: cfg.defaultRegionGcs,
+      default_region_kms: cfg.defaultRegionKms,
+      project_prefix: cfg.projectPrefix,
+      folder_prefix: cfg.folderPrefix,
+      parent_id: cfg.parent,
+      bootstrap_folder_name: bootstrapFolder.name,
+    },
+
+    required_groups: cfg.groups.createRequiredGroups
+      ? groupOutputs.requiredGroupIds
+      : {
+          group_org_admins: cfg.groups.requiredGroups.groupOrgAdmins,
+          group_billing_admins: cfg.groups.requiredGroups.groupBillingAdmins,
+          billing_data_users: cfg.groups.requiredGroups.billingDataUsers,
+          audit_data_users: cfg.groups.requiredGroups.auditDataUsers,
         },
 
-        required_groups: cfg.groups.createRequiredGroups
-            ? groupOutputs.requiredGroupIds
-            : {
-                group_org_admins: cfg.groups.requiredGroups.groupOrgAdmins,
-                group_billing_admins: cfg.groups.requiredGroups.groupBillingAdmins,
-                billing_data_users: cfg.groups.requiredGroups.billingDataUsers,
-                audit_data_users: cfg.groups.requiredGroups.auditDataUsers,
-            },
+    optional_groups: cfg.groups.createOptionalGroups
+      ? groupOutputs.optionalGroupIds
+      : cfg.groups.optionalGroups,
 
-        optional_groups: cfg.groups.createOptionalGroups
-            ? groupOutputs.optionalGroupIds
-            : cfg.groups.optionalGroups,
-
-        cloudbuild_project_id: cicdOutputs.cicdProjectId,
-        cloud_build_private_worker_pool_id: cicdOutputs.privateWorkerPoolId,
-        wif_pool_name: wifOutputs.wifPoolName,
-        wif_provider_name: wifOutputs.wifProviderName,
-    };
+    cloudbuild_project_id: cicdOutputs.cicdProjectId,
+    cloud_build_private_worker_pool_id: cicdOutputs.privateWorkerPoolId,
+    wif_pool_name: wifOutputs.wifPoolName,
+    wif_provider_name: wifOutputs.wifProviderName,
+  };
 };

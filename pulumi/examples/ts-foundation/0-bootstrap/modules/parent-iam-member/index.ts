@@ -9,7 +9,11 @@ export interface ParentIamMemberArgs {
 }
 
 export class ParentIamMember extends pulumi.ComponentResource {
-  constructor(name: string, args: ParentIamMemberArgs, opts?: pulumi.ComponentResourceOptions) {
+  constructor(
+    name: string,
+    args: ParentIamMemberArgs,
+    opts?: pulumi.ComponentResourceOptions,
+  ) {
     super("modules:local:ParentIamMember", name, args, opts);
 
     for (const role of args.roles) {
@@ -17,23 +21,35 @@ export class ParentIamMember extends pulumi.ComponentResource {
       const resourceName = `${name}-${sanitizedRole}`;
 
       if (args.parentType === "organization") {
-        new gcp.organizations.IAMMember(resourceName, {
-          orgId: args.parentId,
-          role: role,
-          member: args.member,
-        }, { parent: this });
+        new gcp.organizations.IAMMember(
+          resourceName,
+          {
+            orgId: args.parentId,
+            role: role,
+            member: args.member,
+          },
+          { parent: this },
+        );
       } else if (args.parentType === "folder") {
-        new gcp.folder.IAMMember(resourceName, {
-          folder: args.parentId,
-          role: role,
-          member: args.member,
-        }, { parent: this });
+        new gcp.folder.IAMMember(
+          resourceName,
+          {
+            folder: args.parentId,
+            role: role,
+            member: args.member,
+          },
+          { parent: this },
+        );
       } else if (args.parentType === "project") {
-        new gcp.projects.IAMMember(resourceName, {
-          project: args.parentId,
-          role: role,
-          member: args.member,
-        }, { parent: this });
+        new gcp.projects.IAMMember(
+          resourceName,
+          {
+            project: args.parentId,
+            role: role,
+            member: args.member,
+          },
+          { parent: this },
+        );
       }
     }
   }

@@ -6,19 +6,19 @@ This directory contains the Pulumi configuration for the **production** environm
 
 These values are read from `Pulumi.production.yaml` or set via `pulumi config set`:
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `org_id` | GCP Organization ID | `string` | n/a | yes |
-| `billing_account` | Billing account ID | `string` | n/a | yes |
-| `bootstrap_stack_name` | Fully qualified stack name of 0-bootstrap | `string` | n/a | yes |
-| `project_prefix` | Name prefix for projects | `string` | `"prj"` | no |
+| Name                   | Description                               | Type     | Default | Required |
+| ---------------------- | ----------------------------------------- | -------- | ------- | :------: |
+| `org_id`               | GCP Organization ID                       | `string` | n/a     |   yes    |
+| `billing_account`      | Billing account ID                        | `string` | n/a     |   yes    |
+| `bootstrap_stack_name` | Fully qualified stack name of 0-bootstrap | `string` | n/a     |   yes    |
+| `project_prefix`       | Name prefix for projects                  | `string` | `"prj"` |    no    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `env_folder` | Environment folder ID |
-| `env_kms_project_id` | KMS project ID for this environment |
+| Name                     | Description                             |
+| ------------------------ | --------------------------------------- |
+| `env_folder`             | Environment folder ID                   |
+| `env_kms_project_id`     | KMS project ID for this environment     |
 | `env_secrets_project_id` | Secrets project ID for this environment |
 
 ## Deploying

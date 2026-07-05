@@ -58,11 +58,11 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # Required for Workload Identity Federation
+  id-token: write # Required for Workload Identity Federation
 
 concurrency:
-  group: 'e2e-${{ github.head_ref || github.ref }}'
-  cancel-in-progress: false  # Never cancel in-flight infra operations
+  group: "e2e-${{ github.head_ref || github.ref }}"
+  cancel-in-progress: false # Never cancel in-flight infra operations
 
 jobs:
   gate:

@@ -26,7 +26,7 @@
 #
 # =============================================================================
 
-FROM node:20-slim
+FROM node:22-slim
 
 # Use ARGs so versions can be overridden at build time
 ARG PULUMI_VERSION=3.165.0

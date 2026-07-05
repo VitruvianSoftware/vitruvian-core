@@ -4,7 +4,7 @@
 
 See [GLOSSARY.md](./GLOSSARY.md).
 
-- - -
+---
 
 ## Problems
 
@@ -13,7 +13,7 @@ See [GLOSSARY.md](./GLOSSARY.md).
 - [Billing quota exceeded](#billing-quota-exceeded)
 - [Pulumi state lock errors](#pulumi-state-lock-errors)
 
-- - -
+---
 
 ## Common issues
 
@@ -25,7 +25,7 @@ See [GLOSSARY.md](./GLOSSARY.md).
 - [TypeScript compilation errors](#typescript-compilation-errors)
 - [npm install failures](#npm-install-failures)
 
-- - -
+---
 
 ### Project quota exceeded
 
@@ -71,6 +71,7 @@ failed to load checkpoint: blob (key ".pulumi/stacks/...") (code=Unknown)
 **Cause:**
 
 The stages after `0-bootstrap` use [Pulumi Stack References](./GLOSSARY.md#pulumi-stack-reference) to read common configuration like the organization ID from the output of the `0-bootstrap` stage. The error means that either:
+
 - The referenced stack has not been deployed yet
 - The stack name is incorrect
 - You are using a different backend than the one the referenced stack was deployed to
@@ -191,7 +192,7 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-- - -
+---
 
 ### Caller does not have permission in the Organization
 

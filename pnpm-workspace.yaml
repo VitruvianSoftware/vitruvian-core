@@ -37,6 +37,10 @@ packages:
   # The ts/ root is a private meta-package holding the shared vitest config.
   - pulumi/library/ts
   - pulumi/library/ts/packages/*
+  # pulumi ts foundation example (fork-and-own reference): root is the single
+  # workspace member so foundation-* resolve in-tree via workspace:*; the per-env
+  # Pulumi project dirs share this hoisted install.
+  - pulumi/examples/ts-foundation
 
 # Catalog: the single source of truth for versions of dependencies meant to be
 # uniform across every workspace — the JS arm of the repo's One Version Rule

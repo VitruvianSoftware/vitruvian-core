@@ -29,18 +29,18 @@ For automated pipelines to interact with Google Cloud and Pulumi Cloud, they req
 
 Create a dedicated Google Cloud Service Account within the sandbox organization (e.g., `sa-e2e-foundation@prj-b-seed-XXXX.iam.gserviceaccount.com`). This identity requires organization-level administrative privileges:
 
-*   `roles/resourcemanager.folderAdmin`
-*   `roles/resourcemanager.projectCreator`
-*   `roles/billing.admin`
-*   `roles/orgpolicy.policyAdmin`
-*   `roles/iam.organizationRoleAdmin`
+- `roles/resourcemanager.folderAdmin`
+- `roles/resourcemanager.projectCreator`
+- `roles/billing.admin`
+- `roles/orgpolicy.policyAdmin`
+- `roles/iam.organizationRoleAdmin`
 
 ### 2. Workload Identity Pool and Provider
 
 Establish a Workload Identity Pool and Provider in your sandbox seed project configured to trust GitHub's OIDC tokens (`https://token.actions.githubusercontent.com`).
 
-*   Scope the provider attribute mapping to your specific GitHub repository or organization to ensure isolation.
-*   Grant the GitHub Actions identity the `roles/iam.workloadIdentityUser` role on the dedicated GCP Service Account created in Step 1.
+- Scope the provider attribute mapping to your specific GitHub repository or organization to ensure isolation.
+- Grant the GitHub Actions identity the `roles/iam.workloadIdentityUser` role on the dedicated GCP Service Account created in Step 1.
 
 ## Required GitHub Configuration
 
@@ -50,15 +50,15 @@ To fully enable the E2E pipeline, configure the following Secrets and Variables 
 
 These values are sensitive and must be stored securely.
 
-*   `GCP_WORKLOAD_IDENTITY_PROVIDER`: The full resource name of the WIF provider (e.g., `projects/1234567890/locations/global/workloadIdentityPools/github-pool/providers/github-provider`).
-*   `GCP_SERVICE_ACCOUNT`: The email address of the dedicated GCP Service Account.
-*   `PULUMI_ACCESS_TOKEN`: A valid Pulumi Cloud access token for state management.
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`: The full resource name of the WIF provider (e.g., `projects/1234567890/locations/global/workloadIdentityPools/github-pool/providers/github-provider`).
+- `GCP_SERVICE_ACCOUNT`: The email address of the dedicated GCP Service Account.
+- `PULUMI_ACCESS_TOKEN`: A valid Pulumi Cloud access token for state management.
 
 ### Repository Variables
 
 These non-secret values configure the E2E runtime environment.
 
-*   `E2E_ORG_ID`: The Sandbox Google Cloud Organization ID.
-*   `E2E_BILLING_ACCOUNT`: The Sandbox Google Cloud Billing Account ID.
-*   `E2E_DOMAIN`: The Sandbox domain (e.g., `sandbox.example.com`).
-*   `E2E_ENABLED`: Set to `"true"` to enable E2E runs on pushes and Pull Requests. Defaults to false if unset.
+- `E2E_ORG_ID`: The Sandbox Google Cloud Organization ID.
+- `E2E_BILLING_ACCOUNT`: The Sandbox Google Cloud Billing Account ID.
+- `E2E_DOMAIN`: The Sandbox domain (e.g., `sandbox.example.com`).
+- `E2E_ENABLED`: Set to `"true"` to enable E2E runs on pushes and Pull Requests. Defaults to false if unset.

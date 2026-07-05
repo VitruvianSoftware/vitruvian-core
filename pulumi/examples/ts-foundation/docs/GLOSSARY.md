@@ -38,9 +38,10 @@ A Pulumi mechanism that retrieves output values from another stack's state. In t
 Stack References are the Pulumi equivalent of Terraform's `terraform_remote_state` data source.
 
 Usage example in TypeScript:
+
 ```typescript
 const bootstrapRef = new pulumi.StackReference("bootstrap", {
-    name: "organization/vitruvian/0-bootstrap/production",
+  name: "organization/vitruvian/0-bootstrap/production",
 });
 const seedProjectId = bootstrapRef.getOutput("seed_project_id");
 ```

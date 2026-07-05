@@ -44,29 +44,38 @@ BILLING_ACCOUNT=""
 USER_EMAIL=""
 
 while getopts "o:b:u:" opt; do
-  case ${opt} in
-    o) ORG_ID="${OPTARG}" ;;
-    b) BILLING_ACCOUNT="${OPTARG}" ;;
-    u) USER_EMAIL="${OPTARG}" ;;
-    *) echo "Usage: $0 -o <ORG_ID> -b <BILLING_ACCOUNT_ID> -u <USER_EMAIL>"; exit 1 ;;
-  esac
+	case ${opt} in
+	o) ORG_ID="${OPTARG}" ;;
+	b) BILLING_ACCOUNT="${OPTARG}" ;;
+	u) USER_EMAIL="${OPTARG}" ;;
+	*)
+		echo "Usage: $0 -o <ORG_ID> -b <BILLING_ACCOUNT_ID> -u <USER_EMAIL>"
+		exit 1
+		;;
+	esac
 done
 
 if [[ -z "${ORG_ID}" || -z "${BILLING_ACCOUNT}" || -z "${USER_EMAIL}" ]]; then
-  echo "Usage: $0 -o <ORG_ID> -b <BILLING_ACCOUNT_ID> -u <USER_EMAIL>"
-  exit 1
+	echo "Usage: $0 -o <ORG_ID> -b <BILLING_ACCOUNT_ID> -u <USER_EMAIL>"
+	exit 1
 fi
 
 ERRORS=0
 WARNINGS=0
 
 pass() { echo -e "${GREEN}✓${NC} $1"; }
-fail() { echo -e "${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
-warn() { echo -e "${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
+fail() {
+	echo -e "${RED}✗${NC} $1"
+	ERRORS=$((ERRORS + 1))
+}
+warn() {
+	echo -e "${YELLOW}!${NC} $1"
+	WARNINGS=$((WARNINGS + 1))
+}
 
 # Compare semantic versions: returns 0 if $1 >= $2
 version_gte() {
-  printf '%s\n%s' "$2" "$1" | sort -V -C
+	printf '%s\n%s' "$2" "$1" | sort -V -C
 }
 
 echo ""
@@ -80,67 +89,67 @@ echo "▸ Checking required tools..."
 echo ""
 
 # Pulumi CLI
-if command -v pulumi &> /dev/null; then
-  INSTALLED_PULUMI=$(pulumi version 2>/dev/null | sed 's/^v//')
-  if version_gte "${INSTALLED_PULUMI}" "${PULUMI_VERSION}"; then
-    pass "Pulumi CLI ${INSTALLED_PULUMI} (>= ${PULUMI_VERSION})"
-  else
-    fail "Pulumi CLI ${INSTALLED_PULUMI} (need >= ${PULUMI_VERSION})"
-  fi
+if command -v pulumi &>/dev/null; then
+	INSTALLED_PULUMI=$(pulumi version 2>/dev/null | sed 's/^v//')
+	if version_gte "${INSTALLED_PULUMI}" "${PULUMI_VERSION}"; then
+		pass "Pulumi CLI ${INSTALLED_PULUMI} (>= ${PULUMI_VERSION})"
+	else
+		fail "Pulumi CLI ${INSTALLED_PULUMI} (need >= ${PULUMI_VERSION})"
+	fi
 else
-  fail "Pulumi CLI not found. Install: https://www.pulumi.com/docs/install/"
+	fail "Pulumi CLI not found. Install: https://www.pulumi.com/docs/install/"
 fi
 
 # Node.js
-if command -v node &> /dev/null; then
-  INSTALLED_NODE=$(node --version | sed 's/^v//')
-  if version_gte "${INSTALLED_NODE}" "${NODE_VERSION}"; then
-    pass "Node.js ${INSTALLED_NODE} (>= ${NODE_VERSION})"
-  else
-    fail "Node.js ${INSTALLED_NODE} (need >= ${NODE_VERSION})"
-  fi
+if command -v node &>/dev/null; then
+	INSTALLED_NODE=$(node --version | sed 's/^v//')
+	if version_gte "${INSTALLED_NODE}" "${NODE_VERSION}"; then
+		pass "Node.js ${INSTALLED_NODE} (>= ${NODE_VERSION})"
+	else
+		fail "Node.js ${INSTALLED_NODE} (need >= ${NODE_VERSION})"
+	fi
 else
-  fail "Node.js not found. Install: https://nodejs.org/"
+	fail "Node.js not found. Install: https://nodejs.org/"
 fi
 
 # npm
-if command -v npm &> /dev/null; then
-  INSTALLED_NPM=$(npm --version)
-  if version_gte "${INSTALLED_NPM}" "${NPM_VERSION}"; then
-    pass "npm ${INSTALLED_NPM} (>= ${NPM_VERSION})"
-  else
-    fail "npm ${INSTALLED_NPM} (need >= ${NPM_VERSION})"
-  fi
+if command -v npm &>/dev/null; then
+	INSTALLED_NPM=$(npm --version)
+	if version_gte "${INSTALLED_NPM}" "${NPM_VERSION}"; then
+		pass "npm ${INSTALLED_NPM} (>= ${NPM_VERSION})"
+	else
+		fail "npm ${INSTALLED_NPM} (need >= ${NPM_VERSION})"
+	fi
 else
-  fail "npm not found (should come with Node.js)"
+	fail "npm not found (should come with Node.js)"
 fi
 
 # Google Cloud SDK
-if command -v gcloud &> /dev/null; then
-  INSTALLED_GCLOUD=$(gcloud version 2>/dev/null | head -1 | grep -oP '[\d.]+' || gcloud --version 2>/dev/null | head -1 | awk '{print $NF}')
-  if [[ -n "${INSTALLED_GCLOUD}" ]]; then
-    if version_gte "${INSTALLED_GCLOUD}" "${GCLOUD_VERSION}"; then
-      pass "Google Cloud SDK ${INSTALLED_GCLOUD} (>= ${GCLOUD_VERSION})"
-    else
-      fail "Google Cloud SDK ${INSTALLED_GCLOUD} (need >= ${GCLOUD_VERSION})"
-    fi
-  else
-    warn "Could not determine gcloud version"
-  fi
+if command -v gcloud &>/dev/null; then
+	INSTALLED_GCLOUD=$(gcloud version 2>/dev/null | head -1 | grep -oP '[\d.]+' || gcloud --version 2>/dev/null | head -1 | awk '{print $NF}')
+	if [[ -n "${INSTALLED_GCLOUD}" ]]; then
+		if version_gte "${INSTALLED_GCLOUD}" "${GCLOUD_VERSION}"; then
+			pass "Google Cloud SDK ${INSTALLED_GCLOUD} (>= ${GCLOUD_VERSION})"
+		else
+			fail "Google Cloud SDK ${INSTALLED_GCLOUD} (need >= ${GCLOUD_VERSION})"
+		fi
+	else
+		warn "Could not determine gcloud version"
+	fi
 else
-  fail "Google Cloud SDK not found. Install: https://cloud.google.com/sdk/install"
+	fail "Google Cloud SDK not found. Install: https://cloud.google.com/sdk/install"
 fi
 
 # Git
-if command -v git &> /dev/null; then
-  INSTALLED_GIT=$(git --version | awk '{print $3}')
-  if version_gte "${INSTALLED_GIT}" "${GIT_VERSION}"; then
-    pass "Git ${INSTALLED_GIT} (>= ${GIT_VERSION})"
-  else
-    fail "Git ${INSTALLED_GIT} (need >= ${GIT_VERSION})"
-  fi
+if command -v git &>/dev/null; then
+	INSTALLED_GIT=$(git --version | awk '{print $3}')
+	if version_gte "${INSTALLED_GIT}" "${GIT_VERSION}"; then
+		pass "Git ${INSTALLED_GIT} (>= ${GIT_VERSION})"
+	else
+		fail "Git ${INSTALLED_GIT} (need >= ${GIT_VERSION})"
+	fi
 else
-  fail "Git not found. Install: https://git-scm.com/"
+	fail "Git not found. Install: https://git-scm.com/"
 fi
 
 echo ""
@@ -150,32 +159,32 @@ echo "▸ Checking IAM permissions for ${USER_EMAIL}..."
 echo ""
 
 REQUIRED_ROLES=(
-  "roles/resourcemanager.organizationAdmin"
-  "roles/orgpolicy.policyAdmin"
-  "roles/resourcemanager.projectCreator"
-  "roles/resourcemanager.folderCreator"
-  "roles/securitycenter.admin"
+	"roles/resourcemanager.organizationAdmin"
+	"roles/orgpolicy.policyAdmin"
+	"roles/resourcemanager.projectCreator"
+	"roles/resourcemanager.folderCreator"
+	"roles/securitycenter.admin"
 )
 
 for role in "${REQUIRED_ROLES[@]}"; do
-  if gcloud organizations get-iam-policy "${ORG_ID}" \
-    --flatten="bindings[].members" \
-    --filter="bindings.role=${role} AND bindings.members:user:${USER_EMAIL}" \
-    --format="value(bindings.role)" 2>/dev/null | grep -q "${role}"; then
-    pass "${role}"
-  else
-    warn "${role} — could not verify (user may be in a group with this role)"
-  fi
+	if gcloud organizations get-iam-policy "${ORG_ID}" \
+		--flatten="bindings[].members" \
+		--filter="bindings.role=${role} AND bindings.members:user:${USER_EMAIL}" \
+		--format="value(bindings.role)" 2>/dev/null | grep -q "${role}"; then
+		pass "${role}"
+	else
+		warn "${role} — could not verify (user may be in a group with this role)"
+	fi
 done
 
 # Billing admin check
 if gcloud beta billing accounts get-iam-policy "${BILLING_ACCOUNT}" \
-  --flatten="bindings[].members" \
-  --filter="bindings.role=roles/billing.admin AND bindings.members:user:${USER_EMAIL}" \
-  --format="value(bindings.role)" 2>/dev/null | grep -q "roles/billing.admin"; then
-  pass "roles/billing.admin on billing account"
+	--flatten="bindings[].members" \
+	--filter="bindings.role=roles/billing.admin AND bindings.members:user:${USER_EMAIL}" \
+	--format="value(bindings.role)" 2>/dev/null | grep -q "roles/billing.admin"; then
+	pass "roles/billing.admin on billing account"
 else
-  warn "roles/billing.admin — could not verify on billing account ${BILLING_ACCOUNT}"
+	warn "roles/billing.admin — could not verify on billing account ${BILLING_ACCOUNT}"
 fi
 
 echo ""
@@ -185,19 +194,19 @@ echo "▸ Checking required APIs..."
 echo ""
 
 REQUIRED_APIS=(
-  "cloudresourcemanager.googleapis.com"
-  "cloudbilling.googleapis.com"
-  "iam.googleapis.com"
-  "cloudkms.googleapis.com"
-  "servicenetworking.googleapis.com"
+	"cloudresourcemanager.googleapis.com"
+	"cloudbilling.googleapis.com"
+	"iam.googleapis.com"
+	"cloudkms.googleapis.com"
+	"servicenetworking.googleapis.com"
 )
 
 for api in "${REQUIRED_APIS[@]}"; do
-  if gcloud services list --enabled --filter="config.name=${api}" --format="value(config.name)" 2>/dev/null | grep -q "${api}"; then
-    pass "${api}"
-  else
-    warn "${api} — not enabled in current project (may need: gcloud services enable ${api})"
-  fi
+	if gcloud services list --enabled --filter="config.name=${api}" --format="value(config.name)" 2>/dev/null | grep -q "${api}"; then
+		pass "${api}"
+	else
+		warn "${api} — not enabled in current project (may need: gcloud services enable ${api})"
+	fi
 done
 
 echo ""
@@ -205,19 +214,19 @@ echo ""
 # --- Summary ---
 echo "═══════════════════════════════════════════════════════════"
 if [[ ${ERRORS} -gt 0 ]]; then
-  echo -e " ${RED}FAILED${NC}: ${ERRORS} error(s), ${WARNINGS} warning(s)"
-  echo " Please fix the errors above before proceeding."
-  echo "═══════════════════════════════════════════════════════════"
-  exit 1
+	echo -e " ${RED}FAILED${NC}: ${ERRORS} error(s), ${WARNINGS} warning(s)"
+	echo " Please fix the errors above before proceeding."
+	echo "═══════════════════════════════════════════════════════════"
+	exit 1
 elif [[ ${WARNINGS} -gt 0 ]]; then
-  echo -e " ${YELLOW}PASSED WITH WARNINGS${NC}: ${WARNINGS} warning(s)"
-  echo " The script could not verify some permissions."
-  echo " You may proceed, but verify the warnings manually."
-  echo "═══════════════════════════════════════════════════════════"
-  exit 0
+	echo -e " ${YELLOW}PASSED WITH WARNINGS${NC}: ${WARNINGS} warning(s)"
+	echo " The script could not verify some permissions."
+	echo " You may proceed, but verify the warnings manually."
+	echo "═══════════════════════════════════════════════════════════"
+	exit 0
 else
-  echo -e " ${GREEN}ALL CHECKS PASSED${NC}"
-  echo " Your environment is ready to deploy the foundation."
-  echo "═══════════════════════════════════════════════════════════"
-  exit 0
+	echo -e " ${GREEN}ALL CHECKS PASSED${NC}"
+	echo " Your environment is ready to deploy the foundation."
+	echo "═══════════════════════════════════════════════════════════"
+	exit 0
 fi

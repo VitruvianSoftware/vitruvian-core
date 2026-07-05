@@ -178,6 +178,121 @@ importers:
         specifier: ^8.1.3
         version: 8.1.3(@types/node@26.1.0)(jiti@2.7.0)(terser@5.48.0)
 
+  pulumi/examples/ts-foundation:
+    dependencies:
+      '@pulumi/command':
+        specifier: ^1.0.0
+        version: 1.2.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/gcp':
+        specifier: ^8.0.0
+        version: 8.41.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/pulumi':
+        specifier: ^3.113.0
+        version: 3.250.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/random':
+        specifier: ^4.16.0
+        version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumiverse/time':
+        specifier: ^0.1.1
+        version: 0.1.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@vitruviansoftware/foundation-bootstrap':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/bootstrap
+      '@vitruviansoftware/foundation-budget':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/budget
+      '@vitruviansoftware/foundation-cai-monitoring':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cai-monitoring
+      '@vitruviansoftware/foundation-cb-private-pool':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cb-private-pool
+      '@vitruviansoftware/foundation-centralized-logging':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/centralized-logging
+      '@vitruviansoftware/foundation-cloud-dns':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cloud-dns
+      '@vitruviansoftware/foundation-cloud-functions':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cloud-functions
+      '@vitruviansoftware/foundation-cloud-router':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cloud-router
+      '@vitruviansoftware/foundation-cloud-storage':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/cloud-storage
+      '@vitruviansoftware/foundation-compute-instance':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/compute-instance
+      '@vitruviansoftware/foundation-dns-hub':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/dns-hub
+      '@vitruviansoftware/foundation-gcloud':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/gcloud
+      '@vitruviansoftware/foundation-google-group':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/google-group
+      '@vitruviansoftware/foundation-hierarchical-firewall-policy':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/hierarchical-firewall-policy
+      '@vitruviansoftware/foundation-instance-template':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/instance-template
+      '@vitruviansoftware/foundation-kms':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/kms
+      '@vitruviansoftware/foundation-log-export':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/log-export
+      '@vitruviansoftware/foundation-network':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/network
+      '@vitruviansoftware/foundation-network-firewall-policy':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/network-firewall-policy
+      '@vitruviansoftware/foundation-network-peering':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/network-peering
+      '@vitruviansoftware/foundation-org-policy':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/org-policy
+      '@vitruviansoftware/foundation-parent-iam':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/parent-iam
+      '@vitruviansoftware/foundation-private-service-connect':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/private-service-connect
+      '@vitruviansoftware/foundation-project-factory':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/project-factory
+      '@vitruviansoftware/foundation-pubsub':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/pubsub
+      '@vitruviansoftware/foundation-simple-bucket':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/simple-bucket
+      '@vitruviansoftware/foundation-vpc-service-controls':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/vpc-service-controls
+      '@vitruviansoftware/foundation-vpn-ha':
+        specifier: workspace:*
+        version: link:../../library/ts/packages/vpn-ha
+    devDependencies:
+      '@types/node':
+        specifier: ^22
+        version: 22.20.0
+      '@vitest/coverage-v8':
+        specifier: ^4.1.5
+        version: 4.1.9(vitest@4.1.9)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(jsdom@20.0.3)(vite@8.1.3(@types/node@22.20.0)(jiti@2.7.0)(terser@5.48.0))
+
   pulumi/library/ts:
     dependencies:
       '@pulumi/gcp':
@@ -2185,6 +2300,9 @@ packages:
 
   '@pulumi/random@4.21.0':
     resolution: {integrity: sha512-k4JHqQFOKXWkbSLZtX37xBlRsurfgZbLd1Zib0cLSDP4Dt3uTllR3CBWfMLSnXJGAoTr9MlwyHCer/5tmSaF0Q==}
+
+  '@pulumiverse/time@0.1.1':
+    resolution: {integrity: sha512-M5twzGcPVir5BO3p57taxrGY8oSM896aoLufxDXJ91S508ruKfLiVejusc84sbblU2us90T8lJFGCq7j7tuwCQ==}
 
   '@radix-ui/primitive@1.1.3':
     resolution: {integrity: sha512-JTF99U/6XIjCBo0wqkU5sK10glYe27MRRsfwoiq5zzOEZLHU3A3KCMa5X/azekYRCJ0HlwI0crAXS/5dEHTzDg==}
@@ -9888,6 +10006,14 @@ snapshots:
 
   '@protobufjs/utf8@1.1.1': {}
 
+  '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)':
+    dependencies:
+      '@pulumi/pulumi': 3.250.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+      - typescript
+
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.0)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@pulumi/pulumi': 3.250.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.0)(typescript@6.0.3))(typescript@6.0.3)
@@ -9989,6 +10115,14 @@ snapshots:
   '@pulumi/random@4.21.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.0)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@pulumi/pulumi': 3.250.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.0)(typescript@6.0.3))(typescript@6.0.3)
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+      - typescript
+
+  '@pulumiverse/time@0.1.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)':
+    dependencies:
+      '@pulumi/pulumi': 3.250.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@22.20.0)(typescript@5.9.3))(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node

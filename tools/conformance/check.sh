@@ -90,7 +90,7 @@ TODAY="$(date +%Y-%m-%d)"
 # entries — a top-level workspace dir, or a deeper path prefix for a standalone
 # artifact nested inside another tree (e.g. a CrossGuard policy pack that runs
 # its own `npm install` at `pulumi preview` time).
-CATALOG_EXEMPT="oauth-user-inspector pulumi/examples/go-foundation/policy-library"
+CATALOG_EXEMPT="oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and

@@ -13,23 +13,23 @@
 import { describe, it, expect } from "vitest";
 
 describe("3-networks-hub-and-spoke config struct", () => {
-    it("should require environment code", () => {
-        const args = {
-            projectId: "prj-d-hub",
-            environmentCode: "d",
-            orgId: "123456789",
-            parent: "organizations/123456789",
-            defaultRegion: "us-central1",
-            defaultRegion2: "us-west1",
-            pscAddress: "10.2.0.0",
-        };
-        expect(args.environmentCode).toBe("d");
-        expect(args.pscAddress).toBeTruthy();
-    });
+  it("should require environment code", () => {
+    const args = {
+      projectId: "prj-d-hub",
+      environmentCode: "d",
+      orgId: "123456789",
+      parent: "organizations/123456789",
+      defaultRegion: "us-central1",
+      defaultRegion2: "us-west1",
+      pscAddress: "10.2.0.0",
+    };
+    expect(args.environmentCode).toBe("d");
+    expect(args.pscAddress).toBeTruthy();
+  });
 
-    it("should support hub and spoke modes", () => {
-        const validModes = ["hub", "spoke"];
-        expect(validModes).toContain("hub");
-        expect(validModes).toContain("spoke");
-    });
+  it("should support hub and spoke modes", () => {
+    const validModes = ["hub", "spoke"];
+    expect(validModes).toContain("hub");
+    expect(validModes).toContain("spoke");
+  });
 });

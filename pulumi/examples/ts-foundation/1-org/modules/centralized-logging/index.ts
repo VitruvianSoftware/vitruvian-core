@@ -10,4 +10,7 @@
 // orchestration logic (sink creation per destination type, IAM bindings)
 // lives in the CentralizedLogging library. This module exists to maintain
 // structural parity with the Terraform foundation's modules/ directory.
-export { CentralizedLogging, CentralizedLoggingArgs } from "@vitruviansoftware/foundation-centralized-logging";
+export {
+  CentralizedLogging,
+  CentralizedLoggingArgs,
+} from "@vitruviansoftware/foundation-centralized-logging";
