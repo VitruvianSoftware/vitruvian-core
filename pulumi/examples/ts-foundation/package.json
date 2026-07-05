@@ -9,7 +9,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^5.0.0",
     "vitest": "^4.1.5"
