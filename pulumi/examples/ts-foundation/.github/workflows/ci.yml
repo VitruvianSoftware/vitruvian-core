@@ -1,0 +1,112 @@
+# Copyright 2026 Vitruvian Software
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Repository CI — validates the reference foundation codebase itself.
+#
+# This is NOT the deployment pipeline. The deployment pipeline templates
+# (pulumi preview on PRs, pulumi up on merges) live in build/ and
+# are copied into the operator's per-stage repositories during onboarding.
+# See ONBOARDING.md for details.
+#
+# Templates:
+#   build/pulumi-preview.yml  — runs pulumi preview on PRs
+#   build/pulumi-up.yml       — runs pulumi up on merges
+
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "Build: ${{ matrix.stage }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stage:
+          - 0-bootstrap
+          - 1-org
+          - 2-environments/envs/development
+          - 2-environments/envs/nonproduction
+          - 2-environments/envs/production
+          - 3-networks-hub-and-spoke/envs/development
+          - 3-networks-hub-and-spoke/envs/nonproduction
+          - 3-networks-hub-and-spoke/envs/production
+          - 3-networks-hub-and-spoke/envs/shared
+          - 3-networks-svpc/envs/development
+          - 3-networks-svpc/envs/nonproduction
+          - 3-networks-svpc/envs/production
+          - 3-networks-svpc/envs/shared
+          - 4-projects/business_unit_1/development
+          - 4-projects/business_unit_1/nonproduction
+          - 4-projects/business_unit_1/production
+          - 4-projects/business_unit_1/shared
+          - 5-app-infra/business_unit_1/development
+          - 5-app-infra/business_unit_1/nonproduction
+          - 5-app-infra/business_unit_1/production
+    steps:
+      - name: Checkout foundation
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@vitruviansoftware"
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install stage dependencies
+        working-directory: ${{ matrix.stage }}
+        run: npm install
+
+      - name: TypeScript compile check
+        working-directory: ${{ matrix.stage }}
+        run: npx tsc --noEmit
+
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout foundation
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@vitruviansoftware"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run unit tests
+        run: npx vitest run

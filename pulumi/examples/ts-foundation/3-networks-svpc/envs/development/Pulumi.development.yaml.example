@@ -1,0 +1,6 @@
+# Pulumi Configuration for 3-networks-svpc/development
+config:
+  3-networks-svpc-development:org_id: "YOUR_ORG_ID"
+  3-networks-svpc-development:remote_state_bucket: "bkt-prj-b-seed-xxxx-tfstate"
+  # 3-networks-svpc-development:default_region: "us-central1"
+  # 3-networks-svpc-development:default_region_2: "us-west1"

@@ -1,0 +1,128 @@
+/**
+ * GitLab CI/CD Provider — Example
+ * ============================================================================
+ *
+ * This file is an EXAMPLE showing how to replace the default GitHub Actions
+ * CI/CD provider with GitLab CI/CD using Workload Identity Federation.
+ * This mirrors the Terraform foundation's `build_gitlab.tf.example` and the
+ * Go port's `build_gitlab.go.example`.
+ *
+ * To use GitLab instead of GitHub Actions:
+ *
+ * 1. Rename this file: build_gitlab.ts.example → build_gitlab.ts
+ * 2. Remove or rename the GitHub build file (if applicable).
+ * 3. Update index.ts to import and call `deployGitLabBuild()`
+ * 4. Add the required config values to your Pulumi.<stack>.yaml:
+ *      - gitlab_owner: "your-gitlab-group"
+ *      - gitlab_repo_bootstrap: "gcp-bootstrap"
+ *      - gitlab_repo_org: "gcp-org"
+ *      - gitlab_repo_env: "gcp-environments"
+ *      - gitlab_repo_net: "gcp-networks"
+ *      - gitlab_repo_proj: "gcp-projects"
+ * 5. Run `pulumi up` to provision the GitLab WIF infrastructure.
+ *
+ * ============================================================================
+ * WHAT THIS CREATES:
+ *
+ * 1. Workload Identity Pool — "foundation-pool"
+ * 2. Workload Identity Pool OIDC Provider — "foundation-gl-provider"
+ *    (issuer: https://gitlab.com)
+ * 3. SA → WIF attribute bindings — per-SA project_path mappings
+ * 4. Bootstrap SA gets workloadIdentityPoolAdmin on CI/CD project
+ * ============================================================================
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+import { BootstrapConfig } from "./config";
+
+export interface GitLabBuildOutputs {
+    wifPoolName: pulumi.Output<string>;
+    wifProviderName: pulumi.Output<string>;
+}
+
+export async function deployGitLabBuild(
+    cfg: BootstrapConfig,
+    cicdProjectId: pulumi.Output<string>,
+    sas: Record<string, gcp.serviceaccount.Account>,
+): Promise<GitLabBuildOutputs> {
+
+    // Replace these with config values from your stack config
+    const gitlabOwner = ""; // cfg.gitlabOwner
+    if (!gitlabOwner) {
+        return {
+            wifPoolName: pulumi.output(""),
+            wifProviderName: pulumi.output(""),
+        };
+    }
+
+    const stageRepos: Record<string, string> = {
+        bootstrap: "", // cfg.gitlabRepoBootstrap
+        org:       "", // cfg.gitlabRepoOrg
+        env:       "", // cfg.gitlabRepoEnv
+        net:       "", // cfg.gitlabRepoNet
+        proj:      "", // cfg.gitlabRepoProj
+    };
+
+    // ========================================================================
+    // 1. Workload Identity Pool
+    // ========================================================================
+    const wifPool = new gcp.iam.WorkloadIdentityPool("gitlab-wif-pool", {
+        project: cicdProjectId,
+        workloadIdentityPoolId: "foundation-pool",
+        displayName: "Foundation GitLab Pool",
+    });
+
+    // ========================================================================
+    // 2. Workload Identity Pool OIDC Provider
+    // ========================================================================
+    const wifProvider = new gcp.iam.WorkloadIdentityPoolProvider("gitlab-wif-provider", {
+        project: cicdProjectId,
+        workloadIdentityPoolId: wifPool.workloadIdentityPoolId,
+        workloadIdentityPoolProviderId: "foundation-gl-provider",
+        displayName: "Foundation GitLab Provider",
+        attributeCondition: `assertion.project_path.startsWith('${gitlabOwner}/')`,
+        attributeMapping: {
+            "google.subject":           "assertion.sub",
+            "attribute.project_path":   "assertion.project_path",
+            "attribute.project_id":     "assertion.project_id",
+            "attribute.ref":            "assertion.ref",
+            "attribute.ref_type":       "assertion.ref_type",
+        },
+        oidc: {
+            issuerUri: "https://gitlab.com",
+            allowedAudiences: ["https://gitlab.com"],
+        },
+    });
+
+    // ========================================================================
+    // 3. SA → WIF Attribute Bindings
+    // ========================================================================
+    for (const [key, sa] of Object.entries(sas)) {
+        const repo = stageRepos[key];
+        if (!repo) continue;
+
+        new gcp.serviceaccount.IAMMember(`wif-binding-${key}`, {
+            serviceAccountId: sa.name,
+            role: "roles/iam.workloadIdentityUser",
+            member: pulumi.interpolate`principalSet://iam.googleapis.com/${wifPool.name}/attribute.project_path/${gitlabOwner}/${repo}`,
+        });
+    }
+
+    // ========================================================================
+    // 4. Bootstrap SA: WIF Pool Admin
+    // ========================================================================
+    const bootstrapSA = sas["bootstrap"];
+    if (bootstrapSA) {
+        new gcp.projects.IAMMember("bootstrap-wif-pool-admin", {
+            project: cicdProjectId,
+            role: "roles/iam.workloadIdentityPoolAdmin",
+            member: pulumi.interpolate`serviceAccount:${bootstrapSA.email}`,
+        });
+    }
+
+    return {
+        wifPoolName: wifPool.name,
+        wifProviderName: wifProvider.name,
+    };
+}

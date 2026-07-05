@@ -1,0 +1,52 @@
+{
+  "private": true,
+  "name": "pulumi-ts-example-foundation",
+  "version": "1.0.0",
+  "description": "Pulumi TypeScript port of terraform-example-foundation",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@vitest/coverage-v8": "^4.1.5",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@pulumi/command": "^1.0.0",
+    "@pulumi/gcp": "^8.0.0",
+    "@pulumi/pulumi": "^3.113.0",
+    "@pulumi/random": "^4.16.0",
+    "@pulumiverse/time": "^0.1.1",
+    "@vitruviansoftware/foundation-bootstrap": "^0.2.0",
+    "@vitruviansoftware/foundation-budget": "^0.3.0",
+    "@vitruviansoftware/foundation-cai-monitoring": "^0.2.0",
+    "@vitruviansoftware/foundation-cb-private-pool": "^0.3.1",
+    "@vitruviansoftware/foundation-centralized-logging": "0.5.0",
+    "@vitruviansoftware/foundation-cloud-dns": "^0.2.0",
+    "@vitruviansoftware/foundation-cloud-functions": "^0.2.0",
+    "@vitruviansoftware/foundation-cloud-router": "^0.2.0",
+    "@vitruviansoftware/foundation-cloud-storage": "^0.2.0",
+    "@vitruviansoftware/foundation-compute-instance": "^0.2.0",
+    "@vitruviansoftware/foundation-dns-hub": "^0.3.0",
+    "@vitruviansoftware/foundation-gcloud": "^0.2.0",
+    "@vitruviansoftware/foundation-google-group": "^0.3.0",
+    "@vitruviansoftware/foundation-hierarchical-firewall-policy": "^0.3.0",
+    "@vitruviansoftware/foundation-instance-template": "^0.4.0",
+    "@vitruviansoftware/foundation-kms": "^0.3.0",
+    "@vitruviansoftware/foundation-log-export": "^0.2.0",
+    "@vitruviansoftware/foundation-network": "^0.3.0",
+    "@vitruviansoftware/foundation-network-firewall-policy": "^0.2.0",
+    "@vitruviansoftware/foundation-network-peering": "^0.3.0",
+    "@vitruviansoftware/foundation-org-policy": "^0.3.0",
+    "@vitruviansoftware/foundation-parent-iam": "^0.3.0",
+    "@vitruviansoftware/foundation-private-service-connect": "^0.3.0",
+    "@vitruviansoftware/foundation-project-factory": "^0.4.0",
+    "@vitruviansoftware/foundation-pubsub": "^0.2.0",
+    "@vitruviansoftware/foundation-simple-bucket": "^0.3.0",
+    "@vitruviansoftware/foundation-vpc-service-controls": "^0.2.1",
+    "@vitruviansoftware/foundation-vpn-ha": "^0.3.0"
+  }
+}

@@ -1,0 +1,6 @@
+name: 5-app-infra-bu1-nonproduction
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "App infra for business_unit_1 nonproduction"

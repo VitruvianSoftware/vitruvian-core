@@ -1,0 +1,6 @@
+name: 4-projects-bu1-shared
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: "Business unit 1 shared infra pipeline projects"

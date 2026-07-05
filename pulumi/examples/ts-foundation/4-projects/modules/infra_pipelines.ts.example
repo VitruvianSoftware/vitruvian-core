@@ -1,0 +1,149 @@
+/**
+ * Example: Cloud Build-based infra_pipelines module.
+ * Mirrors: 4-projects/modules/infra_pipelines (Terraform)
+ *
+ * Per approved deviation, Go/TS foundations default to GitHub Actions WIF.
+ * Cloud Build pipelines are provided as an .example reference.
+ *
+ * To enable: rename this file to infra_pipelines.ts and import it in the
+ * shared business unit index.ts.
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+
+export interface InfraPipelinesArgs {
+    projectId: string;
+    defaultRegion: string;
+    billingAccount: string;
+    orgId: string;
+    appInfraRepos: string[];
+    bucketPrefix: string;
+    remoteTfStateBucket: string;
+    cloudBuilderArtifactRepo: string;
+    privateWorkerPoolId?: string;
+}
+
+export interface InfraPipelinesResult {
+    defaultRegion: string;
+    terraformServiceAccounts: Record<string, pulumi.Output<string>>;
+    garName: pulumi.Output<string>;
+    repos: pulumi.Output<string>[];
+    artifactBuckets: Record<string, pulumi.Output<string>>;
+    stateBuckets: Record<string, pulumi.Output<string>>;
+    logBuckets: Record<string, pulumi.Output<string>>;
+    planTriggersId: pulumi.Output<string>[];
+    applyTriggersId: pulumi.Output<string>[];
+    artifactRegistryRepositoryId: pulumi.Output<string>;
+}
+
+/**
+ * deployInfraPipelines creates Cloud Build workspaces, CSRs, buckets, and triggers
+ * for each app infra repo. Mirrors the TF infra_pipelines module.
+ */
+export function deployInfraPipelines(args: InfraPipelinesArgs): InfraPipelinesResult {
+    const result: InfraPipelinesResult = {
+        defaultRegion: args.defaultRegion,
+        terraformServiceAccounts: {},
+        garName: pulumi.output("tf-runners"),
+        repos: [],
+        artifactBuckets: {},
+        stateBuckets: {},
+        logBuckets: {},
+        planTriggersId: [],
+        applyTriggersId: [],
+        artifactRegistryRepositoryId: pulumi.output(args.projectId),
+    };
+
+    // 1. Cloud Build bucket
+    new gcp.storage.Bucket("cb-bucket", {
+        project: args.projectId,
+        name: `${args.projectId}_cloudbuild`,
+        location: args.defaultRegion,
+        uniformBucketLevelAccess: true,
+        forceDestroy: true,
+        versioning: { enabled: true },
+    });
+
+    // 2. GCP Policies CSR
+    new gcp.sourcerepo.Repository("gcp-policies", {
+        project: args.projectId,
+        name: "gcp-policies",
+    });
+
+    // 3. Per-repo resources: CSR, SA, buckets, IAM
+    for (const repoName of args.appInfraRepos) {
+        // Source Repository
+        const repo = new gcp.sourcerepo.Repository(`repo-${repoName}`, {
+            project: args.projectId,
+            name: repoName,
+        });
+        result.repos.push(repo.name);
+
+        // Terraform SA
+        const sa = new gcp.serviceaccount.Account(`sa-${repoName}`, {
+            project: args.projectId,
+            accountId: `sa-tf-cb-${repoName}`,
+            displayName: `Terraform CB SA for ${repoName}`,
+        });
+        result.terraformServiceAccounts[repoName] = sa.email;
+
+        // State bucket
+        const stateBucket = new gcp.storage.Bucket(`state-${repoName}`, {
+            project: args.projectId,
+            name: `${args.bucketPrefix}-${args.projectId}-${repoName}-state`,
+            location: args.defaultRegion,
+            uniformBucketLevelAccess: true,
+            forceDestroy: true,
+            versioning: { enabled: true },
+        });
+        result.stateBuckets[repoName] = stateBucket.name;
+
+        // Artifacts bucket
+        const artifactBucket = new gcp.storage.Bucket(`artifacts-${repoName}`, {
+            project: args.projectId,
+            name: `${args.bucketPrefix}-${args.projectId}-${repoName}-artifacts`,
+            location: args.defaultRegion,
+            uniformBucketLevelAccess: true,
+            forceDestroy: true,
+            versioning: { enabled: true },
+        });
+        result.artifactBuckets[repoName] = artifactBucket.name;
+
+        // Log bucket
+        const logBucket = new gcp.storage.Bucket(`logs-${repoName}`, {
+            project: args.projectId,
+            name: `${args.bucketPrefix}-${args.projectId}-${repoName}-logs`,
+            location: args.defaultRegion,
+            uniformBucketLevelAccess: true,
+            forceDestroy: true,
+            versioning: { enabled: true },
+        });
+        result.logBuckets[repoName] = logBucket.name;
+
+        // IAM: Remote TF state viewer
+        new gcp.storage.BucketIAMMember(`tfstate-viewer-${repoName}`, {
+            bucket: args.remoteTfStateBucket,
+            role: "roles/storage.objectViewer",
+            member: pulumi.interpolate`serviceAccount:${sa.email}`,
+        });
+
+        // IAM: Org browser (required by gcloud beta terraform vet)
+        new gcp.organizations.IAMMember(`browser-${repoName}`, {
+            orgId: args.orgId,
+            role: "roles/browser",
+            member: pulumi.interpolate`serviceAccount:${sa.email}`,
+        });
+
+        // IAM: Artifact Registry writer
+        new gcp.artifactregistry.RepositoryIamMember(`gar-writer-${repoName}`, {
+            project: args.projectId,
+            location: args.defaultRegion,
+            repository: "tf-runners",
+            role: "roles/artifactregistry.writer",
+            member: pulumi.interpolate`serviceAccount:${sa.email}`,
+        });
+    }
+
+    return result;
+}

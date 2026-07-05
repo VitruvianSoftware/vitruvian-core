@@ -1,0 +1,11 @@
+name: 0-bootstrap
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: |
+  Bootstrap GCP Organization — creates the seed project, CI/CD project, and foundational service accounts.
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: foundation-bootstrap

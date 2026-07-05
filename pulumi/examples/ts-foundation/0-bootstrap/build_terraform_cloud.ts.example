@@ -1,0 +1,87 @@
+/**
+ * Terraform Cloud Infrastructure — mirrors 0-bootstrap/build_terraform_cloud.tf.example
+ * Creates the CI/CD project, GKE cluster for TFC agents,
+ * and per-stage impersonation IAM bindings.
+ *
+ * To use:
+ * 1. Rename this file to `build_terraform_cloud.ts`
+ * 2. Export `deployTFCBuild` instead of `deployGithubActions` in index.ts
+ */
+
+import * as pulumi from "@pulumi/pulumi";
+import * as gcp from "@pulumi/gcp";
+import * as random from "@pulumi/random";
+import { BootstrapConfig } from "./config";
+
+export interface TFCBuildOutputs {
+    cicdProjectId: pulumi.Output<string>;
+}
+
+export async function deployTFCBuild(
+    cfg: BootstrapConfig,
+    bootstrapFolder: gcp.organizations.Folder,
+    seedProject: gcp.organizations.Project,
+    stateBucketName: pulumi.Output<string>,
+    stateBucketKmsKey: pulumi.Output<string>,
+): Promise<TFCBuildOutputs> {
+
+    // Random suffix for CI/CD project ID
+    const suffix = new random.RandomString("cicd-suffix", {
+        length: 4,
+        special: false,
+        upper: false,
+    });
+
+    // CI/CD project
+    const cicdProject = new gcp.organizations.Project("cicd-project", {
+        projectId: pulumi.interpolate`${cfg.projectPrefix}-b-cicd-${suffix.result}`,
+        name: pulumi.interpolate`${cfg.projectPrefix}-b-cicd-${suffix.result}`,
+        folderId: bootstrapFolder.name,
+        billingAccount: cfg.billingAccount,
+        deletionPolicy: cfg.projectDeletionPolicy,
+        autoCreateNetwork: false,
+    });
+
+    // TFC Agent Service Account
+    const agentSA = new gcp.serviceaccount.Account("tfc-agent-sa", {
+        project: cicdProject.projectId,
+        accountId: "sa-tfc-agent",
+        displayName: "TFC Agent Service Account",
+    });
+
+    // GKE Cluster for TFC Agents
+    const cluster = new gcp.container.Cluster("tfc-agent-cluster", {
+        project: cicdProject.projectId,
+        name: "tfc-agent-cluster",
+        location: cfg.defaultRegion,
+        initialNodeCount: 1,
+        removeDefaultNodePool: true,
+    });
+
+    // GKE Node Pool
+    new gcp.container.NodePool("tfc-agent-nodepool", {
+        project: cicdProject.projectId,
+        name: "tfc-agent-pool",
+        cluster: cluster.name,
+        location: cfg.defaultRegion,
+        nodeCount: 1,
+        nodeConfig: {
+            machineType: "n1-standard-4",
+            serviceAccount: agentSA.email,
+            oauthScopes: [
+                "https://www.googleapis.com/auth/cloud-platform",
+            ],
+        },
+    });
+
+    // Grant roles/browser to the TFC SA at the Org level
+    new gcp.organizations.IAMMember("tfc-sa-org-browser", {
+        orgId: cfg.orgId,
+        role: "roles/browser",
+        member: pulumi.interpolate`serviceAccount:${agentSA.email}`,
+    });
+
+    return {
+        cicdProjectId: cicdProject.projectId,
+    };
+}
