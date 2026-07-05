@@ -246,6 +246,9 @@ def _go_example_export_transforms():
             before = "replace github.com/VitruvianSoftware/pulumi-library/go${rest}\n",
             after = "",
             regex_groups = {"rest": "[^\n]*"},
+            # multiline: the pattern spans to the line's newline, which a
+            # line-scoped (default) replace cannot match.
+            multiline = True,
             paths = glob(["**/go.mod"]),
         ),
     ]
@@ -304,7 +307,10 @@ def _ts_example_export_transforms():
         core.replace(
             before = '"@vitruviansoftware/foundation-' + _name + '": "workspace:*"',
             after = '"@vitruviansoftware/foundation-' + _name + '": "^' + _TS_EXAMPLE_LIB_VERSIONS[_name] + '"',
-            paths = glob(["**/package.json"]),
+            # `**/package.json` does NOT match the root package.json (Copybara `**`
+            # needs >=1 segment) -- and the ts example's foundation-* deps live ONLY
+            # in the root package.json, so both patterns are required.
+            paths = glob(["package.json", "**/package.json"]),
         )
         for _name in _TS_EXAMPLE_LIB_VERSIONS
     ]
