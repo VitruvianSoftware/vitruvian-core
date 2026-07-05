@@ -87,8 +87,10 @@ TODAY="$(date +%Y-%m-%d)"
 # are exempt from catalog adherence: a concrete version is correct (⊘), and a
 # `catalog:` reference is the FAILURE there (it breaks the standalone build —
 # this is the oauth-user-inspector deploy regression #391 caused). Space-separated
-# workspace directories.
-CATALOG_EXEMPT="oauth-user-inspector"
+# entries — a top-level workspace dir, or a deeper path prefix for a standalone
+# artifact nested inside another tree (e.g. a CrossGuard policy pack that runs
+# its own `npm install` at `pulumi preview` time).
+CATALOG_EXEMPT="oauth-user-inspector pulumi/examples/go-foundation/policy-library"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -639,10 +641,14 @@ check_catalog() {
       ' "$CATALOG_NAMES_FILE" "$pkg"
     )"
     [ -n "$_decls" ] || continue
-    # Exempt (standalone-built) workspaces invert the rule.
+    # Exempt (standalone-built) workspaces invert the rule. Match a top-level
+    # dir (first path segment) or a deeper path-prefix entry (nested artifact).
     _ws="${_rel%%/*}"
     _exempt=0
     case " $CATALOG_EXEMPT " in *" $_ws "*) _exempt=1 ;; esac
+    for _ex in $CATALOG_EXEMPT; do
+      case "$_rel" in "$_ex"/*) _exempt=1; _ws="$_ex" ;; esac
+    done
     while IFS="$(printf '\t')" read -r dep val; do
       [ -n "$dep" ] || continue
       if [ "$_exempt" = "1" ]; then
