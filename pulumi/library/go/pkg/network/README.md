@@ -15,6 +15,7 @@ import "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
 ## Overview
 
 The `Networking` component wraps:
+
 - [`compute.Network`](https://www.pulumi.com/registry/packages/gcp/api-docs/compute/network/) — VPC network
 - [`compute.Subnetwork`](https://www.pulumi.com/registry/packages/gcp/api-docs/compute/subnetwork/) — Subnets with secondary ranges
 - [`compute.GlobalAddress`](https://www.pulumi.com/registry/packages/gcp/api-docs/compute/globaladdress/) + [`servicenetworking.Connection`](https://www.pulumi.com/registry/packages/gcp/api-docs/servicenetworking/connection/) — Private Service Access
@@ -30,37 +31,37 @@ The `Networking` component wraps:
 
 ### `NetworkingArgs`
 
-| Field | Type | Required | Default | Description |
-|-------|------|:--------:|---------|-------------|
-| `ProjectID` | `pulumi.StringInput` | ✅ | — | The GCP project ID |
-| `VPCName` | `pulumi.StringInput` | ✅ | — | The VPC network name |
-| `Subnets` | `[]SubnetArgs` | | `nil` | Subnet definitions (see below) |
-| `EnablePSA` | `bool` | | `false` | Enable Private Service Access for managed services |
-| `DeleteDefaultRoutesOnCreation` | `*bool` | | `true` | Remove default internet routes |
-| `RoutingMode` | `string` | | `"GLOBAL"` | VPC routing mode (`GLOBAL` or `REGIONAL`) |
+| Field                           | Type                 | Required | Default    | Description                                        |
+| ------------------------------- | -------------------- | :------: | ---------- | -------------------------------------------------- |
+| `ProjectID`                     | `pulumi.StringInput` |    ✅    | —          | The GCP project ID                                 |
+| `VPCName`                       | `pulumi.StringInput` |    ✅    | —          | The VPC network name                               |
+| `Subnets`                       | `[]SubnetArgs`       |          | `nil`      | Subnet definitions (see below)                     |
+| `EnablePSA`                     | `bool`               |          | `false`    | Enable Private Service Access for managed services |
+| `DeleteDefaultRoutesOnCreation` | `*bool`              |          | `true`     | Remove default internet routes                     |
+| `RoutingMode`                   | `string`             |          | `"GLOBAL"` | VPC routing mode (`GLOBAL` or `REGIONAL`)          |
 
 ### `SubnetArgs`
 
-| Field | Type | Required | Default | Description |
-|-------|------|:--------:|---------|-------------|
-| `Name` | `string` | ✅ | — | Subnet name |
-| `Region` | `string` | ✅ | — | GCP region |
-| `CIDR` | `string` | ✅ | — | Primary IP CIDR range |
-| `SecondaryRanges` | `[]SecondaryRangeArgs` | | `nil` | GKE pod/service secondary ranges |
-| `FlowLogs` | `bool` | | `false` | Enable VPC flow logs |
+| Field             | Type                   | Required | Default | Description                      |
+| ----------------- | ---------------------- | :------: | ------- | -------------------------------- |
+| `Name`            | `string`               |    ✅    | —       | Subnet name                      |
+| `Region`          | `string`               |    ✅    | —       | GCP region                       |
+| `CIDR`            | `string`               |    ✅    | —       | Primary IP CIDR range            |
+| `SecondaryRanges` | `[]SecondaryRangeArgs` |          | `nil`   | GKE pod/service secondary ranges |
+| `FlowLogs`        | `bool`                 |          | `false` | Enable VPC flow logs             |
 
 ### `SecondaryRangeArgs`
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `RangeName` | `string` | ✅ | Name of the secondary range (e.g., `gke-pods`) |
-| `CIDR` | `string` | ✅ | IP CIDR range for the secondary range |
+| Field       | Type     | Required | Description                                    |
+| ----------- | -------- | :------: | ---------------------------------------------- |
+| `RangeName` | `string` |    ✅    | Name of the secondary range (e.g., `gke-pods`) |
+| `CIDR`      | `string` |    ✅    | IP CIDR range for the secondary range          |
 
 ### `Networking` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `VPC` | `*compute.Network` | The underlying VPC network resource |
+| Field     | Type                             | Description                          |
+| --------- | -------------------------------- | ------------------------------------ |
+| `VPC`     | `*compute.Network`               | The underlying VPC network resource  |
 | `Subnets` | `map[string]*compute.Subnetwork` | Map of subnet name → subnet resource |
 
 ### Constructor

@@ -16,27 +16,27 @@ The `Bootstrap` component bundles the following resources to prepare a foundatio
 
 ### `BootstrapArgs`
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `OrgID` | `string` | ✅ | The GCP organization ID |
-| `BillingAccount` | `string` | ✅ | Billing account ID |
-| `FolderID` | `pulumi.StringInput` | | Optional folder ID to place the seed project |
-| `ProjectPrefix` | `string` | | Prefix for the seed project (e.g., `prj`) |
-| `DefaultRegion` | `string` | | Region for KMS and GCS resources |
-| `RandomSuffix` | `bool` | | Append a 4-char random hex suffix to the project ID and bucket name |
-| `ActivateApis` | `[]string` | | APIs to enable on the seed project |
-| `EncryptStateBucket` | `*bool` | | Enable encryption via KMS (defaults to true) |
-| `StateBucketIAMMembers`| `[]pulumi.StringInput`| | IAM members granted `roles/storage.admin` on the bucket |
+| Field                   | Type                   | Required | Description                                                         |
+| ----------------------- | ---------------------- | :------: | ------------------------------------------------------------------- |
+| `OrgID`                 | `string`               |    ✅    | The GCP organization ID                                             |
+| `BillingAccount`        | `string`               |    ✅    | Billing account ID                                                  |
+| `FolderID`              | `pulumi.StringInput`   |          | Optional folder ID to place the seed project                        |
+| `ProjectPrefix`         | `string`               |          | Prefix for the seed project (e.g., `prj`)                           |
+| `DefaultRegion`         | `string`               |          | Region for KMS and GCS resources                                    |
+| `RandomSuffix`          | `bool`                 |          | Append a 4-char random hex suffix to the project ID and bucket name |
+| `ActivateApis`          | `[]string`             |          | APIs to enable on the seed project                                  |
+| `EncryptStateBucket`    | `*bool`                |          | Enable encryption via KMS (defaults to true)                        |
+| `StateBucketIAMMembers` | `[]pulumi.StringInput` |          | IAM members granted `roles/storage.admin` on the bucket             |
 
 ### `Bootstrap` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `SeedProject` | `*project.Project` | The underlying project component resource |
-| `SeedProjectID` | `pulumi.StringOutput` | The seed project's GCP project ID |
-| `StateBucketName`| `pulumi.StringOutput` | The name of the resulting GCS state bucket |
-| `KMSKeyID` | `pulumi.StringOutput` | The fully qualified ID of the KMS crypto key |
-| `KMSKeyRingID` | `pulumi.StringOutput` | The fully qualified ID of the KMS key ring |
+| Field             | Type                  | Description                                  |
+| ----------------- | --------------------- | -------------------------------------------- |
+| `SeedProject`     | `*project.Project`    | The underlying project component resource    |
+| `SeedProjectID`   | `pulumi.StringOutput` | The seed project's GCP project ID            |
+| `StateBucketName` | `pulumi.StringOutput` | The name of the resulting GCS state bucket   |
+| `KMSKeyID`        | `pulumi.StringOutput` | The fully qualified ID of the KMS crypto key |
+| `KMSKeyRingID`    | `pulumi.StringOutput` | The fully qualified ID of the KMS key ring   |
 
 ## Examples
 

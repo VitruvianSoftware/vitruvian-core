@@ -19,137 +19,171 @@ import * as gcp from "@pulumi/gcp";
 import * as random from "@pulumi/random";
 
 export interface ProjectFactoryArgs {
-    /** Base project name. */
-    name: string;
-    /** GCP Organization ID. */
-    orgId: string;
-    /** Billing account ID. */
-    billingAccount: string;
-    /** Folder ID to place the project under (e.g. "folders/123456"). */
-    folderId: pulumi.Input<string>;
-    /** APIs to enable on the project. */
-    activateApis?: string[];
-    /** Labels to apply to the project. */
-    labels?: Record<string, string>;
-    /** Whether to append a random suffix to the project ID. */
-    randomProjectId?: boolean;
-    /** Length of the random suffix. */
-    randomProjectIdLength?: number;
-    /** Default service account handling: "deprivilege", "disable", "delete", or "keep". */
-    defaultServiceAccount?: string;
-    /** Whether to disable services on destroy. */
-    disableServicesOnDestroy?: boolean;
-    /** Project deletion policy: "PREVENT" or "DELETE". */
-    deletionPolicy?: string;
-    /** Budget alert Pub/Sub topic. */
-    budgetAlertPubsubTopic?: string | null;
-    /** Budget alert spent percentages. */
-    budgetAlertSpentPercents?: number[];
-    /** Budget amount. */
-    budgetAmount?: number | null;
-    /** Budget alert spend basis. */
-    budgetAlertSpendBasis?: string;
+  /** Base project name. */
+  name: string;
+  /** GCP Organization ID. */
+  orgId: string;
+  /** Billing account ID. */
+  billingAccount: string;
+  /** Folder ID to place the project under (e.g. "folders/123456"). */
+  folderId: pulumi.Input<string>;
+  /** APIs to enable on the project. */
+  activateApis?: string[];
+  /** Labels to apply to the project. */
+  labels?: Record<string, string>;
+  /** Whether to append a random suffix to the project ID. */
+  randomProjectId?: boolean;
+  /** Length of the random suffix. */
+  randomProjectIdLength?: number;
+  /** Default service account handling: "deprivilege", "disable", "delete", or "keep". */
+  defaultServiceAccount?: string;
+  /** Whether to disable services on destroy. */
+  disableServicesOnDestroy?: boolean;
+  /** Project deletion policy: "PREVENT" or "DELETE". */
+  deletionPolicy?: string;
+  /** Budget alert Pub/Sub topic. */
+  budgetAlertPubsubTopic?: string | null;
+  /** Budget alert spent percentages. */
+  budgetAlertSpentPercents?: number[];
+  /** Budget amount. */
+  budgetAmount?: number | null;
+  /** Budget alert spend basis. */
+  budgetAlertSpendBasis?: string;
 }
 
 export interface ProjectFactoryOutputs {
-    projectId: pulumi.Output<string>;
-    projectNumber: pulumi.Output<string>;
-    projectName: pulumi.Output<string>;
-    serviceAccountEmail: pulumi.Output<string>;
+  projectId: pulumi.Output<string>;
+  projectNumber: pulumi.Output<string>;
+  projectName: pulumi.Output<string>;
+  serviceAccountEmail: pulumi.Output<string>;
 }
 
 export class ProjectFactory extends pulumi.ComponentResource {
-    public readonly projectId: pulumi.Output<string>;
-    public readonly projectNumber: pulumi.Output<string>;
-    public readonly projectName: pulumi.Output<string>;
-    public readonly serviceAccountEmail: pulumi.Output<string>;
-    public readonly project: gcp.organizations.Project;
+  public readonly projectId: pulumi.Output<string>;
+  public readonly projectNumber: pulumi.Output<string>;
+  public readonly projectName: pulumi.Output<string>;
+  public readonly serviceAccountEmail: pulumi.Output<string>;
+  public readonly project: gcp.organizations.Project;
 
-    constructor(name: string, args: ProjectFactoryArgs, opts?: pulumi.ComponentResourceOptions) {
-        super("foundation:modules:ProjectFactory", name, args, opts);
+  constructor(
+    name: string,
+    args: ProjectFactoryArgs,
+    opts?: pulumi.ComponentResourceOptions,
+  ) {
+    super("foundation:modules:ProjectFactory", name, args, opts);
 
-        const randomIdLength = args.randomProjectIdLength ?? 4;
-        const useRandomId = args.randomProjectId ?? true;
+    const randomIdLength = args.randomProjectIdLength ?? 4;
+    const useRandomId = args.randomProjectId ?? true;
 
-        // Generate random suffix for project ID uniqueness
-        let projectIdInput: pulumi.Input<string> = args.name;
-        if (useRandomId) {
-            const suffix = new random.RandomString(`${name}-suffix`, {
-                length: randomIdLength,
-                special: false,
-                upper: false,
-            }, { parent: this });
-            projectIdInput = pulumi.interpolate`${args.name}-${suffix.result}`;
-        }
-
-        // Determine parent: if folderId is provided, use it; otherwise use org
-        const project = new gcp.organizations.Project(`${name}-project`, {
-            projectId: projectIdInput,
-            name: args.name,
-            orgId: args.folderId ? undefined : args.orgId,
-            folderId: args.folderId ? args.folderId : undefined,
-            billingAccount: args.billingAccount,
-            labels: args.labels,
-            deletionPolicy: args.deletionPolicy ?? "PREVENT",
-            autoCreateNetwork: false,
-        }, { parent: this });
-
-        this.project = project;
-        this.projectId = project.projectId;
-        this.projectNumber = project.number;
-        this.projectName = project.name;
-        this.serviceAccountEmail = project.number.apply(n => `${n}-compute@developer.gserviceaccount.com`);
-
-        // Enable APIs
-        const apiResources: gcp.projects.Service[] = [];
-        for (const api of args.activateApis ?? []) {
-            const sanitized = api.replace(/\./g, "-");
-            const svc = new gcp.projects.Service(`${name}-api-${sanitized}`, {
-                project: project.projectId,
-                service: api,
-                disableOnDestroy: args.disableServicesOnDestroy ?? false,
-            }, { parent: this, dependsOn: [project] });
-            apiResources.push(svc);
-        }
-
-        // Default Service Account management
-        if (args.defaultServiceAccount && args.defaultServiceAccount.toUpperCase() !== "KEEP") {
-            new gcp.projects.DefaultServiceAccounts(`${name}-default-sa`, {
-                project: project.projectId,
-                action: args.defaultServiceAccount.toUpperCase(),
-                restorePolicy: "REVERT_AND_IGNORE_FAILURE",
-            }, { parent: this, dependsOn: apiResources });
-        }
-
-        // Budget alert
-        if (args.budgetAmount != null && args.budgetAmount > 0) {
-            new gcp.billing.Budget(`${name}-budget`, {
-                billingAccount: args.billingAccount,
-                displayName: pulumi.interpolate`Budget for ${project.projectId}`,
-                budgetFilter: {
-                    projects: [pulumi.interpolate`projects/${project.number}`],
-                },
-                amount: {
-                    specifiedAmount: {
-                        currencyCode: "USD",
-                        units: String(args.budgetAmount),
-                    },
-                },
-                thresholdRules: (args.budgetAlertSpentPercents ?? [1.2]).map(pct => ({
-                    thresholdPercent: pct,
-                    spendBasis: (args.budgetAlertSpendBasis ?? "FORECASTED_SPEND") as any,
-                })),
-                allUpdatesRule: args.budgetAlertPubsubTopic ? {
-                    pubsubTopic: args.budgetAlertPubsubTopic,
-                } : undefined,
-            }, { parent: this });
-        }
-
-        this.registerOutputs({
-            projectId: this.projectId,
-            projectNumber: this.projectNumber,
-            projectName: this.projectName,
-            serviceAccountEmail: this.serviceAccountEmail,
-        });
+    // Generate random suffix for project ID uniqueness
+    let projectIdInput: pulumi.Input<string> = args.name;
+    if (useRandomId) {
+      const suffix = new random.RandomString(
+        `${name}-suffix`,
+        {
+          length: randomIdLength,
+          special: false,
+          upper: false,
+        },
+        { parent: this },
+      );
+      projectIdInput = pulumi.interpolate`${args.name}-${suffix.result}`;
     }
+
+    // Determine parent: if folderId is provided, use it; otherwise use org
+    const project = new gcp.organizations.Project(
+      `${name}-project`,
+      {
+        projectId: projectIdInput,
+        name: args.name,
+        orgId: args.folderId ? undefined : args.orgId,
+        folderId: args.folderId ? args.folderId : undefined,
+        billingAccount: args.billingAccount,
+        labels: args.labels,
+        deletionPolicy: args.deletionPolicy ?? "PREVENT",
+        autoCreateNetwork: false,
+      },
+      { parent: this },
+    );
+
+    this.project = project;
+    this.projectId = project.projectId;
+    this.projectNumber = project.number;
+    this.projectName = project.name;
+    this.serviceAccountEmail = project.number.apply(
+      (n) => `${n}-compute@developer.gserviceaccount.com`,
+    );
+
+    // Enable APIs
+    const apiResources: gcp.projects.Service[] = [];
+    for (const api of args.activateApis ?? []) {
+      const sanitized = api.replace(/\./g, "-");
+      const svc = new gcp.projects.Service(
+        `${name}-api-${sanitized}`,
+        {
+          project: project.projectId,
+          service: api,
+          disableOnDestroy: args.disableServicesOnDestroy ?? false,
+        },
+        { parent: this, dependsOn: [project] },
+      );
+      apiResources.push(svc);
+    }
+
+    // Default Service Account management
+    if (
+      args.defaultServiceAccount &&
+      args.defaultServiceAccount.toUpperCase() !== "KEEP"
+    ) {
+      new gcp.projects.DefaultServiceAccounts(
+        `${name}-default-sa`,
+        {
+          project: project.projectId,
+          action: args.defaultServiceAccount.toUpperCase(),
+          restorePolicy: "REVERT_AND_IGNORE_FAILURE",
+        },
+        { parent: this, dependsOn: apiResources },
+      );
+    }
+
+    // Budget alert
+    if (args.budgetAmount != null && args.budgetAmount > 0) {
+      new gcp.billing.Budget(
+        `${name}-budget`,
+        {
+          billingAccount: args.billingAccount,
+          displayName: pulumi.interpolate`Budget for ${project.projectId}`,
+          budgetFilter: {
+            projects: [pulumi.interpolate`projects/${project.number}`],
+          },
+          amount: {
+            specifiedAmount: {
+              currencyCode: "USD",
+              units: String(args.budgetAmount),
+            },
+          },
+          thresholdRules: (args.budgetAlertSpentPercents ?? [1.2]).map(
+            (pct) => ({
+              thresholdPercent: pct,
+              spendBasis: (args.budgetAlertSpendBasis ??
+                "FORECASTED_SPEND") as any,
+            }),
+          ),
+          allUpdatesRule: args.budgetAlertPubsubTopic
+            ? {
+                pubsubTopic: args.budgetAlertPubsubTopic,
+              }
+            : undefined,
+        },
+        { parent: this },
+      );
+    }
+
+    this.registerOutputs({
+      projectId: this.projectId,
+      projectNumber: this.projectNumber,
+      projectName: this.projectName,
+      serviceAccountEmail: this.serviceAccountEmail,
+    });
+  }
 }

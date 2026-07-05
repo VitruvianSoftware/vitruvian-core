@@ -7,6 +7,7 @@ A Pulumi component for creating GCP Compute Instance Templates with optional shi
 ## Overview
 
 Creates a compute instance template with:
+
 - Configurable machine type, disk type, and size
 - Network and subnetwork binding
 - Service account and IAM scopes
@@ -18,27 +19,27 @@ Creates a compute instance template with:
 
 ### InstanceTemplateArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `Project` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `Region` | `string` | ✅ | GCP region |
-| `SourceImage` | `string` | ✅ | Source image or family |
-| `Network` | `pulumi.StringInput` | ✅ | VPC self-link |
-| `Subnetwork` | `pulumi.StringInput` | ✅ | Subnet self-link |
-| `MachineType` | `string` | | Machine type (default: `n1-standard-1`) |
-| `DiskSizeGb` | `int` | | Boot disk size in GB (default: 20) |
-| `DiskType` | `string` | | Disk type (default: `pd-standard`) |
-| `ServiceAccountEmail` | `pulumi.StringInput` | | Service account email |
-| `Tags` | `[]string` | | Network tags |
-| `Labels` | `map[string]string` | | Resource labels |
-| `Metadata` | `map[string]string` | | Instance metadata |
-| `EnableShieldedVm` | `bool` | | Enable Shielded VM |
-| `EnableConfidentialVm` | `bool` | | Enable Confidential VM |
+| Field                  | Type                 | Required | Description                             |
+| :--------------------- | :------------------- | :------- | :-------------------------------------- |
+| `Project`              | `pulumi.StringInput` | ✅       | GCP project ID                          |
+| `Region`               | `string`             | ✅       | GCP region                              |
+| `SourceImage`          | `string`             | ✅       | Source image or family                  |
+| `Network`              | `pulumi.StringInput` | ✅       | VPC self-link                           |
+| `Subnetwork`           | `pulumi.StringInput` | ✅       | Subnet self-link                        |
+| `MachineType`          | `string`             |          | Machine type (default: `n1-standard-1`) |
+| `DiskSizeGb`           | `int`                |          | Boot disk size in GB (default: 20)      |
+| `DiskType`             | `string`             |          | Disk type (default: `pd-standard`)      |
+| `ServiceAccountEmail`  | `pulumi.StringInput` |          | Service account email                   |
+| `Tags`                 | `[]string`           |          | Network tags                            |
+| `Labels`               | `map[string]string`  |          | Resource labels                         |
+| `Metadata`             | `map[string]string`  |          | Instance metadata                       |
+| `EnableShieldedVm`     | `bool`               |          | Enable Shielded VM                      |
+| `EnableConfidentialVm` | `bool`               |          | Enable Confidential VM                  |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
+| Field      | Type                        | Description                   |
+| :--------- | :-------------------------- | :---------------------------- |
 | `Template` | `*compute.InstanceTemplate` | The created instance template |
 
 ## Usage

@@ -39,7 +39,11 @@ export class Bootstrap extends pulumi.ComponentResource {
   public readonly kmsKeyId?: pulumi.Output<string>;
   public readonly kmsKeyRingId?: pulumi.Output<string>;
 
-  constructor(name: string, args: BootstrapArgs, opts?: pulumi.ComponentResourceOptions) {
+  constructor(
+    name: string,
+    args: BootstrapArgs,
+    opts?: pulumi.ComponentResourceOptions,
+  ) {
     super("pkg:index:Bootstrap", name, args, opts);
 
     const deletionPolicy = args.deletionPolicy ?? "PREVENT";
@@ -57,65 +61,88 @@ export class Bootstrap extends pulumi.ComponentResource {
     }
     // Impersonation APIs are always enabled on the seed project, matching
     // terraform-google-bootstrap's impersonation_apis.
-    for (const api of ["serviceusage.googleapis.com", "iamcredentials.googleapis.com"]) {
+    for (const api of [
+      "serviceusage.googleapis.com",
+      "iamcredentials.googleapis.com",
+    ]) {
       if (!activateApis.includes(api)) {
         activateApis.push(api);
       }
     }
 
     // 1. Seed Project
-    this.seedProject = new ProjectFactory(`${name}-seed`, {
-      name: `${args.projectPrefix}-b-seed`,
-      orgId: args.orgId,
-      folderId: args.folderId ?? "",
-      billingAccount: args.billingAccount,
-      randomProjectId: args.randomSuffix ?? false,
-      deletionPolicy: deletionPolicy,
-      labels: args.projectLabels as Record<string, string>,
-      activateApis: activateApis,
-      defaultServiceAccount: defaultSA,
-    }, { parent: this });
+    this.seedProject = new ProjectFactory(
+      `${name}-seed`,
+      {
+        name: `${args.projectPrefix}-b-seed`,
+        orgId: args.orgId,
+        folderId: args.folderId ?? "",
+        billingAccount: args.billingAccount,
+        randomProjectId: args.randomSuffix ?? false,
+        deletionPolicy: deletionPolicy,
+        labels: args.projectLabels as Record<string, string>,
+        activateApis: activateApis,
+        defaultServiceAccount: defaultSA,
+      },
+      { parent: this },
+    );
 
     this.seedProjectId = this.seedProject.projectId;
 
-    new gcp.resourcemanager.Lien(`${name}-seed-lien`, {
-      origin: "bootstrap",
-      parent: pulumi.interpolate`projects/${this.seedProject.projectNumber}`,
-      reason: "Bootstrap seed project is protected",
-      restrictions: ["resourcemanager.projects.delete"],
-    }, { parent: this });
+    new gcp.resourcemanager.Lien(
+      `${name}-seed-lien`,
+      {
+        origin: "bootstrap",
+        parent: pulumi.interpolate`projects/${this.seedProject.projectNumber}`,
+        reason: "Bootstrap seed project is protected",
+        restrictions: ["resourcemanager.projects.delete"],
+      },
+      { parent: this },
+    );
 
     // 2. Org Policy
-    new gcp.projects.OrganizationPolicy(`${name}-cross-project-sa`, {
-      project: this.seedProjectId,
-      constraint: "iam.disableCrossProjectServiceAccountUsage",
-      booleanPolicy: {
-        enforced: false,
+    new gcp.projects.OrganizationPolicy(
+      `${name}-cross-project-sa`,
+      {
+        project: this.seedProjectId,
+        constraint: "iam.disableCrossProjectServiceAccountUsage",
+        booleanPolicy: {
+          enforced: false,
+        },
       },
-    }, { parent: this });
+      { parent: this },
+    );
 
     // 3. KMS Key Ring + Crypto Key
     let cryptoKeyId: pulumi.Output<string> | undefined;
     let kmsBinding: gcp.kms.CryptoKeyIAMMember | undefined;
 
     if (encryptBucket) {
-      const keyRing = new gcp.kms.KeyRing(`${name}-keyring`, {
-        project: this.seedProjectId,
-        name: `${args.projectPrefix}-keyring`,
-        location: kmsRegion,
-      }, { parent: this, protect: kmsPreventDestroy });
+      const keyRing = new gcp.kms.KeyRing(
+        `${name}-keyring`,
+        {
+          project: this.seedProjectId,
+          name: `${args.projectPrefix}-keyring`,
+          location: kmsRegion,
+        },
+        { parent: this, protect: kmsPreventDestroy },
+      );
 
       this.kmsKeyRingId = keyRing.id;
 
-      const cryptoKey = new gcp.kms.CryptoKey(`${name}-key`, {
-        name: `${args.projectPrefix}-key`,
-        keyRing: keyRing.id,
-        rotationPeriod: keyRotation,
-        versionTemplate: {
-          protectionLevel: keyProtection,
-          algorithm: "GOOGLE_SYMMETRIC_ENCRYPTION",
+      const cryptoKey = new gcp.kms.CryptoKey(
+        `${name}-key`,
+        {
+          name: `${args.projectPrefix}-key`,
+          keyRing: keyRing.id,
+          rotationPeriod: keyRotation,
+          versionTemplate: {
+            protectionLevel: keyProtection,
+            algorithm: "GOOGLE_SYMMETRIC_ENCRYPTION",
+          },
         },
-      }, { parent: this, protect: kmsPreventDestroy });
+        { parent: this, protect: kmsPreventDestroy },
+      );
 
       cryptoKeyId = cryptoKey.id;
       this.kmsKeyId = cryptoKeyId;
@@ -126,11 +153,15 @@ export class Bootstrap extends pulumi.ComponentResource {
 
       const storageSA = pulumi.interpolate`serviceAccount:${sa.emailAddress}`;
 
-      kmsBinding = new gcp.kms.CryptoKeyIAMMember(`${name}-kms-sa`, {
-        cryptoKeyId: cryptoKeyId,
-        role: "roles/cloudkms.cryptoKeyEncrypterDecrypter",
-        member: storageSA,
-      }, { parent: this });
+      kmsBinding = new gcp.kms.CryptoKeyIAMMember(
+        `${name}-kms-sa`,
+        {
+          cryptoKeyId: cryptoKeyId,
+          role: "roles/cloudkms.cryptoKeyEncrypterDecrypter",
+          member: storageSA,
+        },
+        { parent: this },
+      );
     }
 
     // 4. State Bucket
@@ -145,9 +176,13 @@ export class Bootstrap extends pulumi.ComponentResource {
 
     let finalBucketName: pulumi.Output<string>;
     if (args.randomSuffix) {
-      const suffix = new random.RandomId(`${name}-bucket-suffix`, {
-        byteLength: 2,
-      }, { parent: this });
+      const suffix = new random.RandomId(
+        `${name}-bucket-suffix`,
+        {
+          byteLength: 2,
+        },
+        { parent: this },
+      );
       finalBucketName = pulumi.interpolate`${baseBucketName}-${suffix.hex}`;
     } else {
       finalBucketName = pulumi.output(baseBucketName);
@@ -158,31 +193,42 @@ export class Bootstrap extends pulumi.ComponentResource {
       bucketOpts.dependsOn = [kmsBinding];
     }
 
-    const stateBucket = new gcp.storage.Bucket(`${name}-state-bucket`, {
-      project: this.seedProjectId,
-      name: finalBucketName,
-      location: gcsRegion,
-      uniformBucketLevelAccess: true,
-      forceDestroy: args.bucketForceDestroy ?? false,
-      labels: args.bucketLabels,
-      versioning: {
-        enabled: true,
+    const stateBucket = new gcp.storage.Bucket(
+      `${name}-state-bucket`,
+      {
+        project: this.seedProjectId,
+        name: finalBucketName,
+        location: gcsRegion,
+        uniformBucketLevelAccess: true,
+        forceDestroy: args.bucketForceDestroy ?? false,
+        labels: args.bucketLabels,
+        versioning: {
+          enabled: true,
+        },
+        encryption:
+          encryptBucket && cryptoKeyId
+            ? {
+                defaultKmsKeyName: cryptoKeyId,
+              }
+            : undefined,
       },
-      encryption: encryptBucket && cryptoKeyId ? {
-        defaultKmsKeyName: cryptoKeyId,
-      } : undefined,
-    }, bucketOpts);
+      bucketOpts,
+    );
 
     this.stateBucketName = stateBucket.name;
 
     // 5. State Bucket IAM
     if (args.stateBucketIamMembers) {
       args.stateBucketIamMembers.forEach((member, i) => {
-        new gcp.storage.BucketIAMMember(`${name}-bucket-iam-${i}`, {
-          bucket: stateBucket.name,
-          role: "roles/storage.admin",
-          member: member,
-        }, { parent: this });
+        new gcp.storage.BucketIAMMember(
+          `${name}-bucket-iam-${i}`,
+          {
+            bucket: stateBucket.name,
+            role: "roles/storage.admin",
+            member: member,
+          },
+          { parent: this },
+        );
       });
     }
 

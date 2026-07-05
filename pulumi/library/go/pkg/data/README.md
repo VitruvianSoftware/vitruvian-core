@@ -15,18 +15,18 @@ Dataset IDs are parameterized to avoid collisions when deploying multiple `DataP
 
 ### `DataPlatformArgs`
 
-| Field | Type | Required | Default | Description |
-|-------|------|:--------:|---------|-------------|
-| `ProjectID` | `pulumi.StringInput` | ✅ | — | The GCP project ID |
-| `Location` | `pulumi.StringInput` | ✅ | — | BigQuery dataset location (e.g., `"US"`, `"EU"`, `"us-central1"`) |
-| `RawDatasetID` | `string` | | `"raw_data"` | Dataset ID for the raw data landing zone |
-| `CuratedDatasetID` | `string` | | `"curated_data"` | Dataset ID for the curated/transformed data |
+| Field              | Type                 | Required | Default          | Description                                                       |
+| ------------------ | -------------------- | :------: | ---------------- | ----------------------------------------------------------------- |
+| `ProjectID`        | `pulumi.StringInput` |    ✅    | —                | The GCP project ID                                                |
+| `Location`         | `pulumi.StringInput` |    ✅    | —                | BigQuery dataset location (e.g., `"US"`, `"EU"`, `"us-central1"`) |
+| `RawDatasetID`     | `string`             |          | `"raw_data"`     | Dataset ID for the raw data landing zone                          |
+| `CuratedDatasetID` | `string`             |          | `"curated_data"` | Dataset ID for the curated/transformed data                       |
 
 ### `DataPlatform` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `RawDataset` | `*bigquery.Dataset` | The raw data BigQuery dataset |
+| Field            | Type                | Description                       |
+| ---------------- | ------------------- | --------------------------------- |
+| `RawDataset`     | `*bigquery.Dataset` | The raw data BigQuery dataset     |
 | `CuratedDataset` | `*bigquery.Dataset` | The curated data BigQuery dataset |
 
 ### Constructor

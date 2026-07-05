@@ -7,6 +7,7 @@ A Pulumi component for creating Pub/Sub topics with optional subscriptions.
 ## Overview
 
 Creates a Pub/Sub topic with:
+
 - Configurable labels
 - Optional pull and push subscriptions
 - Per-subscription ack deadline and push endpoint configuration
@@ -15,26 +16,26 @@ Creates a Pub/Sub topic with:
 
 ### PubSubArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `ProjectID` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `TopicName` | `string` | ✅ | Topic name |
-| `Labels` | `map[string]string` | | Topic labels |
-| `Subscriptions` | `[]SubscriptionConfig` | | Subscriptions to create |
+| Field           | Type                   | Required | Description             |
+| :-------------- | :--------------------- | :------- | :---------------------- |
+| `ProjectID`     | `pulumi.StringInput`   | ✅       | GCP project ID          |
+| `TopicName`     | `string`               | ✅       | Topic name              |
+| `Labels`        | `map[string]string`    |          | Topic labels            |
+| `Subscriptions` | `[]SubscriptionConfig` |          | Subscriptions to create |
 
 ### SubscriptionConfig
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `Name` | `string` | ✅ | Subscription name |
-| `AckDeadlineSeconds` | `int` | | Ack deadline (default: 10) |
-| `PushEndpoint` | `string` | | Push endpoint URL (omit for pull) |
+| Field                | Type     | Required | Description                       |
+| :------------------- | :------- | :------- | :-------------------------------- |
+| `Name`               | `string` | ✅       | Subscription name                 |
+| `AckDeadlineSeconds` | `int`    |          | Ack deadline (default: 10)        |
+| `PushEndpoint`       | `string` |          | Push endpoint URL (omit for pull) |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
-| `Topic` | `*pubsub.Topic` | The created topic |
+| Field           | Type                              | Description                |
+| :-------------- | :-------------------------------- | :------------------------- |
+| `Topic`         | `*pubsub.Topic`                   | The created topic          |
 | `Subscriptions` | `map[string]*pubsub.Subscription` | Map of name → subscription |
 
 ## Usage

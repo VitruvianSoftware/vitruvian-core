@@ -27,20 +27,20 @@ The `SimpleBucket` component creates a Google Cloud Storage bucket with sane fou
 
 ### `SimpleBucketArgs`
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `Name` | `pulumi.StringInput` | ✅ | Globally unique bucket name |
-| `ProjectID` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `Location` | `pulumi.StringInput` | ✅ | GCS location (region or multi-region) |
-| `ForceDestroy` | `pulumi.BoolInput` | | Allow deletion of non-empty buckets |
-| `Encryption` | `*storage.BucketEncryptionArgs` | | KMS encryption configuration |
-| `Versioning` | `*bool` | | Enable object versioning |
-| `Labels` | `pulumi.StringMapInput` | | Key-value labels for the bucket |
+| Field          | Type                            | Required | Description                           |
+| -------------- | ------------------------------- | :------: | ------------------------------------- |
+| `Name`         | `pulumi.StringInput`            |    ✅    | Globally unique bucket name           |
+| `ProjectID`    | `pulumi.StringInput`            |    ✅    | GCP project ID                        |
+| `Location`     | `pulumi.StringInput`            |    ✅    | GCS location (region or multi-region) |
+| `ForceDestroy` | `pulumi.BoolInput`              |          | Allow deletion of non-empty buckets   |
+| `Encryption`   | `*storage.BucketEncryptionArgs` |          | KMS encryption configuration          |
+| `Versioning`   | `*bool`                         |          | Enable object versioning              |
+| `Labels`       | `pulumi.StringMapInput`         |          | Key-value labels for the bucket       |
 
 ### `SimpleBucket` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field    | Type              | Description                        |
+| -------- | ----------------- | ---------------------------------- |
 | `Bucket` | `*storage.Bucket` | The underlying GCS bucket resource |
 
 ## Examples

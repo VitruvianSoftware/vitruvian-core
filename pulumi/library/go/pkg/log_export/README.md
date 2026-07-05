@@ -12,22 +12,22 @@ Creates log sinks that export filtered logs to destinations like Cloud Storage, 
 
 ### LogExportArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `DestinationURI` | `pulumi.StringInput` | ✅ | Destination URI for exported logs |
-| `Filter` | `pulumi.StringInput` | | Log filter expression |
-| `LogSinkName` | `pulumi.StringInput` | ✅ | Name for the log sink |
-| `ParentResourceID` | `pulumi.StringInput` | ✅ | ID of the parent resource (org ID, folder ID, project ID, or billing account) |
-| `ResourceType` | `string` | ✅ | `organization`, `folder`, `project`, or `billing_account` |
-| `UniqueWriterIdentity` | `bool` | | Create a unique writer identity (project sinks) |
-| `IncludeChildren` | `bool` | | Include child resources (org/folder sinks) |
+| Field                  | Type                 | Required | Description                                                                   |
+| :--------------------- | :------------------- | :------- | :---------------------------------------------------------------------------- |
+| `DestinationURI`       | `pulumi.StringInput` | ✅       | Destination URI for exported logs                                             |
+| `Filter`               | `pulumi.StringInput` |          | Log filter expression                                                         |
+| `LogSinkName`          | `pulumi.StringInput` | ✅       | Name for the log sink                                                         |
+| `ParentResourceID`     | `pulumi.StringInput` | ✅       | ID of the parent resource (org ID, folder ID, project ID, or billing account) |
+| `ResourceType`         | `string`             | ✅       | `organization`, `folder`, `project`, or `billing_account`                     |
+| `UniqueWriterIdentity` | `bool`               |          | Create a unique writer identity (project sinks)                               |
+| `IncludeChildren`      | `bool`               |          | Include child resources (org/folder sinks)                                    |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
+| Field            | Type                  | Description                                     |
+| :--------------- | :-------------------- | :---------------------------------------------- |
 | `WriterIdentity` | `pulumi.StringOutput` | Service account for granting destination access |
-| `Sink` | `pulumi.Resource` | The created log sink resource |
+| `Sink`           | `pulumi.Resource`     | The created log sink resource                   |
 
 ## Usage
 

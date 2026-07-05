@@ -25,24 +25,24 @@ The `Project` component wraps [`organizations.Project`](https://www.pulumi.com/r
 
 ### `ProjectArgs`
 
-| Field | Type | Required | Default | Description |
-|-------|------|:--------:|---------|-------------|
-| `ProjectID` | `pulumi.StringInput` | ✅ | — | The GCP project ID (must be globally unique) |
-| `Name` | `pulumi.StringInput` | ✅ | — | The display name of the project |
-| `FolderID` | `pulumi.StringInput` | ✅ | — | The folder ID to create the project under |
-| `BillingAccount` | `pulumi.StringInput` | ✅ | — | The billing account to associate with the project |
-| `ActivateApis` | `[]string` | | `nil` | List of APIs to enable (plain Go slice) |
-| `AutoCreateNetwork` | `pulumi.BoolPtrInput` | | `false` | Whether to create the default network |
-| `Labels` | `pulumi.StringMapInput` | | `nil` | Labels to apply to the project |
-| `DeletionPolicy` | `pulumi.StringPtrInput` | | `nil` | Deletion policy (`DELETE`, `ABANDON`, `PREVENT`) |
-| `RandomProjectID` | `bool` | | `false` | Append a 4-char random hex suffix to project ID |
+| Field               | Type                    | Required | Default | Description                                       |
+| ------------------- | ----------------------- | :------: | ------- | ------------------------------------------------- |
+| `ProjectID`         | `pulumi.StringInput`    |    ✅    | —       | The GCP project ID (must be globally unique)      |
+| `Name`              | `pulumi.StringInput`    |    ✅    | —       | The display name of the project                   |
+| `FolderID`          | `pulumi.StringInput`    |    ✅    | —       | The folder ID to create the project under         |
+| `BillingAccount`    | `pulumi.StringInput`    |    ✅    | —       | The billing account to associate with the project |
+| `ActivateApis`      | `[]string`              |          | `nil`   | List of APIs to enable (plain Go slice)           |
+| `AutoCreateNetwork` | `pulumi.BoolPtrInput`   |          | `false` | Whether to create the default network             |
+| `Labels`            | `pulumi.StringMapInput` |          | `nil`   | Labels to apply to the project                    |
+| `DeletionPolicy`    | `pulumi.StringPtrInput` |          | `nil`   | Deletion policy (`DELETE`, `ABANDON`, `PREVENT`)  |
+| `RandomProjectID`   | `bool`                  |          | `false` | Append a 4-char random hex suffix to project ID   |
 
 ### `Project` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `Project` | `*organizations.Project` | The underlying GCP project resource |
-| `Services` | `[]*projects.Service` | The enabled API service resources |
+| Field      | Type                     | Description                         |
+| ---------- | ------------------------ | ----------------------------------- |
+| `Project`  | `*organizations.Project` | The underlying GCP project resource |
+| `Services` | `[]*projects.Service`    | The enabled API service resources   |
 
 ### Constructor
 

@@ -12,22 +12,22 @@ Creates two reciprocal peering connections between a local and peer network, wit
 
 ### NetworkPeeringArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `LocalNetwork` | `pulumi.StringInput` | ✅ | Self-link of the local VPC |
-| `PeerNetwork` | `pulumi.StringInput` | ✅ | Self-link of the peer VPC |
-| `ExportCustomRoutes` | `bool` | | Export custom routes to peer |
-| `ImportCustomRoutes` | `bool` | | Import custom routes from peer |
-| `ExportSubnetRoutesWithPublicIp` | `bool` | | Export subnet routes with public IPs |
-| `ImportSubnetRoutesWithPublicIp` | `bool` | | Import subnet routes with public IPs |
-| `StackType` | `string` | | Stack type (`IPV4_ONLY` or `IPV4_IPV6`) |
+| Field                            | Type                 | Required | Description                             |
+| :------------------------------- | :------------------- | :------- | :-------------------------------------- |
+| `LocalNetwork`                   | `pulumi.StringInput` | ✅       | Self-link of the local VPC              |
+| `PeerNetwork`                    | `pulumi.StringInput` | ✅       | Self-link of the peer VPC               |
+| `ExportCustomRoutes`             | `bool`               |          | Export custom routes to peer            |
+| `ImportCustomRoutes`             | `bool`               |          | Import custom routes from peer          |
+| `ExportSubnetRoutesWithPublicIp` | `bool`               |          | Export subnet routes with public IPs    |
+| `ImportSubnetRoutesWithPublicIp` | `bool`               |          | Import subnet routes with public IPs    |
+| `StackType`                      | `string`             |          | Stack type (`IPV4_ONLY` or `IPV4_IPV6`) |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
+| Field          | Type                      | Description                     |
+| :------------- | :------------------------ | :------------------------------ |
 | `LocalPeering` | `*compute.NetworkPeering` | Local → Peer peering connection |
-| `PeerPeering` | `*compute.NetworkPeering` | Peer → Local peering connection |
+| `PeerPeering`  | `*compute.NetworkPeering` | Peer → Local peering connection |
 
 ## Usage
 

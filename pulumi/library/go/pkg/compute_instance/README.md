@@ -7,6 +7,7 @@ A Pulumi component for creating GCP Compute Instances from an existing instance 
 ## Overview
 
 Creates one or more compute instances from a template with:
+
 - Configurable instance count
 - Deletion protection
 - Automatic sequential naming
@@ -15,19 +16,19 @@ Creates one or more compute instances from a template with:
 
 ### ComputeInstanceArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `Project` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `Zone` | `string` | ✅ | GCP zone |
-| `Hostname` | `string` | ✅ | Base hostname for instances |
-| `InstanceTemplate` | `pulumi.StringInput` | ✅ | Self-link of the instance template |
-| `NumInstances` | `int` | | Number of instances (default: 1) |
-| `DeletionProtection` | `bool` | | Enable deletion protection |
+| Field                | Type                 | Required | Description                        |
+| :------------------- | :------------------- | :------- | :--------------------------------- |
+| `Project`            | `pulumi.StringInput` | ✅       | GCP project ID                     |
+| `Zone`               | `string`             | ✅       | GCP zone                           |
+| `Hostname`           | `string`             | ✅       | Base hostname for instances        |
+| `InstanceTemplate`   | `pulumi.StringInput` | ✅       | Self-link of the instance template |
+| `NumInstances`       | `int`                |          | Number of instances (default: 1)   |
+| `DeletionProtection` | `bool`               |          | Enable deletion protection         |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
+| Field       | Type                              | Description           |
+| :---------- | :-------------------------------- | :-------------------- |
 | `Instances` | `[]*compute.InstanceFromTemplate` | The created instances |
 
 ## Usage

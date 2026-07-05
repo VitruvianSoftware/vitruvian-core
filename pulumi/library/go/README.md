@@ -18,20 +18,20 @@ import "github.com/VitruvianSoftware/pulumi-library/pkg/project_factory"
 
 ## Packages
 
-| Package | Import Path | Docs |
-|---------|-------------|------|
-| **Bootstrap** | `pkg/bootstrap` | [README](./pkg/bootstrap/README.md) |
-| **Project** | `pkg/project_factory` | [README](./pkg/project_factory/README.md) |
-| **Group** | `pkg/google_group` | [README](./pkg/google_group/README.md) |
-| **IAM** | `pkg/iam` | [README](./pkg/iam/README.md) |
-| **Policy** | `pkg/org_policy` | [README](./pkg/org_policy/README.md) |
-| **Logging** | `pkg/centralized_logging` | [README](./pkg/centralized_logging/README.md) |
-| **Networking** | `pkg/network` | [README](./pkg/network/README.md) |
-| **App** | `pkg/app` | [README](./pkg/app/README.md) |
-| **Data** | `pkg/data` | [README](./pkg/data/README.md) |
-| **CI/CD** | `pkg/cicd` | [README](./pkg/cicd/README.md) |
-| **Storage** | `pkg/cloud_storage` | [README](./pkg/cloud_storage/README.md) |
-| **Security** | `pkg/cai_monitoring` | [README](./pkg/cai_monitoring/README.md) |
+| Package        | Import Path               | Docs                                          |
+| -------------- | ------------------------- | --------------------------------------------- |
+| **Bootstrap**  | `pkg/bootstrap`           | [README](./pkg/bootstrap/README.md)           |
+| **Project**    | `pkg/project_factory`     | [README](./pkg/project_factory/README.md)     |
+| **Group**      | `pkg/google_group`        | [README](./pkg/google_group/README.md)        |
+| **IAM**        | `pkg/iam`                 | [README](./pkg/iam/README.md)                 |
+| **Policy**     | `pkg/org_policy`          | [README](./pkg/org_policy/README.md)          |
+| **Logging**    | `pkg/centralized_logging` | [README](./pkg/centralized_logging/README.md) |
+| **Networking** | `pkg/network`             | [README](./pkg/network/README.md)             |
+| **App**        | `pkg/app`                 | [README](./pkg/app/README.md)                 |
+| **Data**       | `pkg/data`                | [README](./pkg/data/README.md)                |
+| **CI/CD**      | `pkg/cicd`                | [README](./pkg/cicd/README.md)                |
+| **Storage**    | `pkg/cloud_storage`       | [README](./pkg/cloud_storage/README.md)       |
+| **Security**   | `pkg/cai_monitoring`      | [README](./pkg/cai_monitoring/README.md)      |
 
 ## Architecture
 
@@ -79,7 +79,7 @@ iam.NewIAMMember(ctx, "org-admin", &iam.IAMMemberArgs{
 
 ### 2. Plan-Time Values for Dispatch Fields
 
-Fields that control *which* GCP resource type to create (like `ProjectArgs.ActivateApis`) use **plain Go types** (`string`, `[]string`) rather than `pulumi.StringInput`.
+Fields that control _which_ GCP resource type to create (like `ProjectArgs.ActivateApis`) use **plain Go types** (`string`, `[]string`) rather than `pulumi.StringInput`.
 
 **Why:** This ensures resources are registered directly in the Pulumi state graph with proper dependency ordering and error propagation — not inside `ApplyT` callbacks where errors are silently swallowed and resources are invisible to the engine.
 
@@ -345,11 +345,11 @@ cb, err := cicd.NewCloudBuild(ctx, "pipeline", &cicd.CloudBuildArgs{
 
 ## Compatibility
 
-| Dependency | Version |
-|------------|---------|
-| Go | 1.21+ |
-| Pulumi SDK | v3.231.0+ |
-| Pulumi GCP Provider | v9.20.0+ |
+| Dependency          | Version   |
+| ------------------- | --------- |
+| Go                  | 1.21+     |
+| Pulumi SDK          | v3.231.0+ |
+| Pulumi GCP Provider | v9.20.0+  |
 
 ## Development
 

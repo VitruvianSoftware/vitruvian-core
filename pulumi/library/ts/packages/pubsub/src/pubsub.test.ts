@@ -8,21 +8,21 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { setupPulumiMocks } from "../../../test/mocks";
 
 beforeAll(() => {
-    setupPulumiMocks();
+  setupPulumiMocks();
 });
 
 describe("PubSub", () => {
-    it("should export the PubSub class", async () => {
-        const mod = await import("./index");
-        expect(mod.PubSub).toBeDefined();
-    });
+  it("should export the PubSub class", async () => {
+    const mod = await import("./index");
+    expect(mod.PubSub).toBeDefined();
+  });
 
-    it("should instantiate PubSub", async () => {
-        const mod = await import("./index");
-        const topic = new mod.PubSub("test-topic", {
-            projectId: "prj-test",
-            topicName: "my-topic",
-        });
-        expect(topic).toBeDefined();
+  it("should instantiate PubSub", async () => {
+    const mod = await import("./index");
+    const topic = new mod.PubSub("test-topic", {
+      projectId: "prj-test",
+      topicName: "my-topic",
     });
+    expect(topic).toBeDefined();
+  });
 });

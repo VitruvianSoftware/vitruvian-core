@@ -15,28 +15,28 @@ The `CloudRunApp` component wraps [`cloudrunv2.Service`](https://www.pulumi.com/
 
 ### `CloudRunAppArgs`
 
-| Field | Type | Required | Default | Description |
-|-------|------|:--------:|---------|-------------|
-| `ProjectID` | `pulumi.StringInput` | ✅ | — | The GCP project ID |
-| `Name` | `pulumi.StringInput` | ✅ | — | The Cloud Run service name |
-| `Image` | `pulumi.StringInput` | ✅ | — | Container image URI |
-| `Region` | `pulumi.StringInput` | ✅ | — | GCP region to deploy in |
-| `ServiceAccount` | `pulumi.StringPtrInput` | | Compute default | Custom service account email |
-| `Ingress` | `pulumi.StringPtrInput` | | `INGRESS_TRAFFIC_ALL` | Ingress setting |
-| `EnvVars` | `map[string]pulumi.StringInput` | | `nil` | Environment variables |
+| Field            | Type                            | Required | Default               | Description                  |
+| ---------------- | ------------------------------- | :------: | --------------------- | ---------------------------- |
+| `ProjectID`      | `pulumi.StringInput`            |    ✅    | —                     | The GCP project ID           |
+| `Name`           | `pulumi.StringInput`            |    ✅    | —                     | The Cloud Run service name   |
+| `Image`          | `pulumi.StringInput`            |    ✅    | —                     | Container image URI          |
+| `Region`         | `pulumi.StringInput`            |    ✅    | —                     | GCP region to deploy in      |
+| `ServiceAccount` | `pulumi.StringPtrInput`         |          | Compute default       | Custom service account email |
+| `Ingress`        | `pulumi.StringPtrInput`         |          | `INGRESS_TRAFFIC_ALL` | Ingress setting              |
+| `EnvVars`        | `map[string]pulumi.StringInput` |          | `nil`                 | Environment variables        |
 
 #### Ingress Options
 
-| Value | Description |
-|-------|-------------|
-| `INGRESS_TRAFFIC_ALL` | Accept connections from all sources (default) |
-| `INGRESS_TRAFFIC_INTERNAL_ONLY` | Accept connections from VPC and Cloud Interconnect only |
+| Value                                    | Description                                              |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `INGRESS_TRAFFIC_ALL`                    | Accept connections from all sources (default)            |
+| `INGRESS_TRAFFIC_INTERNAL_ONLY`          | Accept connections from VPC and Cloud Interconnect only  |
 | `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` | Accept connections from Google Cloud Load Balancing only |
 
 ### `CloudRunApp` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field     | Type                  | Description                                  |
+| --------- | --------------------- | -------------------------------------------- |
 | `Service` | `*cloudrunv2.Service` | The underlying Cloud Run v2 service resource |
 
 ### Constructor

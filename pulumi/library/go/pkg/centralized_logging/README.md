@@ -4,10 +4,10 @@ Reusable Pulumi components for centralized log export infrastructure.
 
 This package mirrors the upstream Terraform modules used by the Google Cloud Foundation:
 
-| Pulumi Component | Upstream Terraform Module |
-|---|---|
-| `LogExport` | `terraform-google-modules/log-export/google` |
-| `CentralizedLogging` | `modules/centralized-logging` (in-repo) |
+| Pulumi Component     | Upstream Terraform Module                    |
+| -------------------- | -------------------------------------------- |
+| `LogExport`          | `terraform-google-modules/log-export/google` |
+| `CentralizedLogging` | `modules/centralized-logging` (in-repo)      |
 
 ## Installation
 

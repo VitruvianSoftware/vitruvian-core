@@ -8,20 +8,20 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { setupPulumiMocks } from "../../../test/mocks";
 
 beforeAll(() => {
-    setupPulumiMocks();
+  setupPulumiMocks();
 });
 
 describe("Gcloud", () => {
-    it("should export the Gcloud class", async () => {
-        const mod = await import("./index");
-        expect(mod.Gcloud).toBeDefined();
-    });
+  it("should export the Gcloud class", async () => {
+    const mod = await import("./index");
+    expect(mod.Gcloud).toBeDefined();
+  });
 
-    it("should instantiate Gcloud", async () => {
-        const mod = await import("./index");
-        const gcloud = new mod.Gcloud("test-gcloud", {
-            commands: ["gcloud services enable compute.googleapis.com"],
-        });
-        expect(gcloud).toBeDefined();
+  it("should instantiate Gcloud", async () => {
+    const mod = await import("./index");
+    const gcloud = new mod.Gcloud("test-gcloud", {
+      commands: ["gcloud services enable compute.googleapis.com"],
     });
+    expect(gcloud).toBeDefined();
+  });
 });

@@ -14,14 +14,15 @@ import "github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group"
 
 ## Overview
 
-The `Group` component wraps `cloudidentity.Group` and `cloudidentity.GroupMembership` resources, providing a structured mechanism to define organization groups securely and programmatically. 
+The `Group` component wraps `cloudidentity.Group` and `cloudidentity.GroupMembership` resources, providing a structured mechanism to define organization groups securely and programmatically.
 
 ### Group Types
 
 The component allows specifying the group's taxonomy through the `Types` array, mapped natively to Cloud Identity labels:
-- `"default"`  → `cloudidentity.googleapis.com/groups.discussion_forum`
+
+- `"default"` → `cloudidentity.googleapis.com/groups.discussion_forum`
 - `"security"` → `cloudidentity.googleapis.com/groups.security`
-- `"dynamic"`  → `cloudidentity.googleapis.com/groups.dynamic`
+- `"dynamic"` → `cloudidentity.googleapis.com/groups.dynamic`
 - `"external"` → `system/groups/external`
 
 If you are declaring security groups, you should assign `[]string{"default", "security"}`.
@@ -30,24 +31,24 @@ If you are declaring security groups, you should assign `[]string{"default", "se
 
 ### `GroupArgs`
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `ID` | `string` | ✅ | The group email address (e.g. `admins@example.com`) |
-| `CustomerID` | `pulumi.StringInput` | ✅ | Google Workspace customer ID (e.g., `C01234abc`) |
-| `DisplayName` | `string` | | The human-readable group name (Defaults to `ID`) |
-| `Description` | `string` | | Optional extended description |
-| `Types` | `[]string` | | Defines the group type labels (Defaults to `[]string{"default"}`) |
-| `Owners` | `[]string` | | Member emails to add as `OWNER` + `MEMBER` |
-| `Managers` | `[]string` | | Member emails to add as `MANAGER` + `MEMBER` |
-| `Members` | `[]string` | | Member emails to add as `MEMBER` |
+| Field         | Type                 | Required | Description                                                       |
+| ------------- | -------------------- | :------: | ----------------------------------------------------------------- |
+| `ID`          | `string`             |    ✅    | The group email address (e.g. `admins@example.com`)               |
+| `CustomerID`  | `pulumi.StringInput` |    ✅    | Google Workspace customer ID (e.g., `C01234abc`)                  |
+| `DisplayName` | `string`             |          | The human-readable group name (Defaults to `ID`)                  |
+| `Description` | `string`             |          | Optional extended description                                     |
+| `Types`       | `[]string`           |          | Defines the group type labels (Defaults to `[]string{"default"}`) |
+| `Owners`      | `[]string`           |          | Member emails to add as `OWNER` + `MEMBER`                        |
+| `Managers`    | `[]string`           |          | Member emails to add as `MANAGER` + `MEMBER`                      |
+| `Members`     | `[]string`           |          | Member emails to add as `MEMBER`                                  |
 
 ### `Group` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field           | Type                   | Description                                  |
+| --------------- | ---------------------- | -------------------------------------------- |
 | `GroupResource` | `*cloudidentity.Group` | The underlying Cloud Identity group resource |
-| `GroupID` | `pulumi.StringOutput` | The fully qualified group resource name |
-| `GroupEmail` | `pulumi.StringOutput` | The group email address |
+| `GroupID`       | `pulumi.StringOutput`  | The fully qualified group resource name      |
+| `GroupEmail`    | `pulumi.StringOutput`  | The group email address                      |
 
 ## Examples
 

@@ -11,4 +11,3 @@ go get github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls
 ```go
 import "github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls"
 ```
-

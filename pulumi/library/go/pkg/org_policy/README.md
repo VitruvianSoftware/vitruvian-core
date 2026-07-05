@@ -18,30 +18,30 @@ The `OrgPolicy` component wraps [`orgpolicy.Policy`](https://www.pulumi.com/regi
 
 Supports three constraint modes:
 
-| Mode | Fields | Description |
-|------|--------|-------------|
-| **Boolean** | `Boolean` | Enforce (`true`) or disable (`false`) a boolean constraint |
-| **List — deny/allow all** | `DenyAll` or `AllowAll` | Blanket deny or allow for a list constraint |
-| **List — specific values** | `AllowValues` and/or `DenyValues` | Allow or deny specific values for a list constraint |
+| Mode                       | Fields                            | Description                                                |
+| -------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| **Boolean**                | `Boolean`                         | Enforce (`true`) or disable (`false`) a boolean constraint |
+| **List — deny/allow all**  | `DenyAll` or `AllowAll`           | Blanket deny or allow for a list constraint                |
+| **List — specific values** | `AllowValues` and/or `DenyValues` | Allow or deny specific values for a list constraint        |
 
 ## API Reference
 
 ### `OrgPolicyArgs`
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `ParentID` | `pulumi.StringInput` | ✅ | Full resource path (e.g., `"organizations/123"`, `"folders/456"`, `"projects/my-project"`) |
-| `Constraint` | `pulumi.StringInput` | ✅ | Full constraint name (e.g., `"constraints/compute.disableSerialPortAccess"`) |
-| `Boolean` | `pulumi.BoolPtrInput` | | Set to `true` to enforce a boolean constraint |
-| `AllowValues` | `pulumi.StringArrayInput` | | Specific values to allow for list constraints |
-| `DenyValues` | `pulumi.StringArrayInput` | | Specific values to deny for list constraints |
-| `DenyAll` | `pulumi.BoolPtrInput` | | Set to `true` to deny all values for a list constraint |
-| `AllowAll` | `pulumi.BoolPtrInput` | | Set to `true` to allow all values for a list constraint |
+| Field         | Type                      | Required | Description                                                                                |
+| ------------- | ------------------------- | :------: | ------------------------------------------------------------------------------------------ |
+| `ParentID`    | `pulumi.StringInput`      |    ✅    | Full resource path (e.g., `"organizations/123"`, `"folders/456"`, `"projects/my-project"`) |
+| `Constraint`  | `pulumi.StringInput`      |    ✅    | Full constraint name (e.g., `"constraints/compute.disableSerialPortAccess"`)               |
+| `Boolean`     | `pulumi.BoolPtrInput`     |          | Set to `true` to enforce a boolean constraint                                              |
+| `AllowValues` | `pulumi.StringArrayInput` |          | Specific values to allow for list constraints                                              |
+| `DenyValues`  | `pulumi.StringArrayInput` |          | Specific values to deny for list constraints                                               |
+| `DenyAll`     | `pulumi.BoolPtrInput`     |          | Set to `true` to deny all values for a list constraint                                     |
+| `AllowAll`    | `pulumi.BoolPtrInput`     |          | Set to `true` to allow all values for a list constraint                                    |
 
 ### `OrgPolicy` (Output)
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field    | Type                | Description                            |
+| -------- | ------------------- | -------------------------------------- |
 | `Policy` | `*orgpolicy.Policy` | The underlying GCP org policy resource |
 
 ### Constructor
@@ -98,13 +98,13 @@ policy.NewOrgPolicy(ctx, "folder-no-nested-virt", &policy.OrgPolicyArgs{
 
 ## Common Constraints
 
-| Constraint | Type | Description |
-|-----------|------|-------------|
-| `compute.disableSerialPortAccess` | Boolean | Block serial port access |
-| `compute.disableNestedVirtualization` | Boolean | Block nested virtualization |
-| `compute.requireOsLogin` | Boolean | Require OS Login for SSH |
-| `iam.disableServiceAccountKeyCreation` | Boolean | Block SA key creation |
-| `storage.publicAccessPrevention` | Boolean | Block public Cloud Storage |
-| `compute.vmExternalIpAccess` | List | Control VM external IPs |
-| `iam.allowedPolicyMemberDomains` | List | Restrict IAM member domains |
-| `compute.restrictProtocolForwardingCreationForTypes` | List | Restrict protocol forwarding |
+| Constraint                                           | Type    | Description                  |
+| ---------------------------------------------------- | ------- | ---------------------------- |
+| `compute.disableSerialPortAccess`                    | Boolean | Block serial port access     |
+| `compute.disableNestedVirtualization`                | Boolean | Block nested virtualization  |
+| `compute.requireOsLogin`                             | Boolean | Require OS Login for SSH     |
+| `iam.disableServiceAccountKeyCreation`               | Boolean | Block SA key creation        |
+| `storage.publicAccessPrevention`                     | Boolean | Block public Cloud Storage   |
+| `compute.vmExternalIpAccess`                         | List    | Control VM external IPs      |
+| `iam.allowedPolicyMemberDomains`                     | List    | Restrict IAM member domains  |
+| `compute.restrictProtocolForwardingCreationForTypes` | List    | Restrict protocol forwarding |

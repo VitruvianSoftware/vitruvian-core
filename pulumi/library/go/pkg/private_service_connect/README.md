@@ -7,6 +7,7 @@ A Pulumi component for configuring Private Service Connect (PSC) endpoints with 
 ## Overview
 
 Creates a PSC endpoint with:
+
 - Global address and forwarding rule targeting Google APIs
 - Private DNS zones for `googleapis.com`, `gcr.io`, and `pkg.dev`
 - CNAME and A records routing API traffic through the PSC endpoint
@@ -16,22 +17,22 @@ Creates a PSC endpoint with:
 
 ### PrivateServiceConnectArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `ProjectID` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `NetworkSelfLink` | `pulumi.StringInput` | ✅ | VPC self-link |
-| `IPAddress` | `string` | ✅ | Static IP for the PSC endpoint |
-| `ForwardingRuleTarget` | `string` | ✅ | `all-apis` or `vpc-sc` |
-| `DnsCode` | `string` | | Code for DNS zone naming |
-| `PscGlobalAccess` | `bool` | | Enable global access for PSC |
+| Field                  | Type                 | Required | Description                    |
+| :--------------------- | :------------------- | :------- | :----------------------------- |
+| `ProjectID`            | `pulumi.StringInput` | ✅       | GCP project ID                 |
+| `NetworkSelfLink`      | `pulumi.StringInput` | ✅       | VPC self-link                  |
+| `IPAddress`            | `string`             | ✅       | Static IP for the PSC endpoint |
+| `ForwardingRuleTarget` | `string`             | ✅       | `all-apis` or `vpc-sc`         |
+| `DnsCode`              | `string`             |          | Code for DNS zone naming       |
+| `PscGlobalAccess`      | `bool`               |          | Enable global access for PSC   |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
-| `Address` | `*compute.GlobalAddress` | The reserved global address |
-| `ForwardingRule` | `*compute.GlobalForwardingRule` | The PSC forwarding rule |
-| `DnsZones` | `[]*dns.ManagedZone` | Private DNS zones created |
+| Field            | Type                            | Description                 |
+| :--------------- | :------------------------------ | :-------------------------- |
+| `Address`        | `*compute.GlobalAddress`        | The reserved global address |
+| `ForwardingRule` | `*compute.GlobalForwardingRule` | The PSC forwarding rule     |
+| `DnsZones`       | `[]*dns.ManagedZone`            | Private DNS zones created   |
 
 ## Usage
 

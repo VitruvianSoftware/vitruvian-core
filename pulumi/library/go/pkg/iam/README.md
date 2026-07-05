@@ -6,13 +6,13 @@ Additive and authoritative IAM bindings across 5 GCP scopes, each with a dedicat
 
 Each GCP IAM scope has its own pair of constructors:
 
-| Scope | Additive (Member) | Authoritative (Binding) |
-|-------|-------------------|------------------------|
-| Organization | `NewOrganizationIAMMember` | `NewOrganizationIAMBinding` |
-| Folder | `NewFolderIAMMember` | `NewFolderIAMBinding` |
-| Project | `NewProjectIAMMember` | `NewProjectIAMBinding` |
+| Scope           | Additive (Member)            | Authoritative (Binding)       |
+| --------------- | ---------------------------- | ----------------------------- |
+| Organization    | `NewOrganizationIAMMember`   | `NewOrganizationIAMBinding`   |
+| Folder          | `NewFolderIAMMember`         | `NewFolderIAMBinding`         |
+| Project         | `NewProjectIAMMember`        | `NewProjectIAMBinding`        |
 | Service Account | `NewServiceAccountIAMMember` | `NewServiceAccountIAMBinding` |
-| Billing Account | `NewBillingIAMMember` | `NewBillingIAMBinding` |
+| Billing Account | `NewBillingIAMMember`        | `NewBillingIAMBinding`        |
 
 ### Why Scope-Specific Constructors?
 
@@ -25,9 +25,9 @@ Each constructor registers a **distinct Pulumi component type** (e.g., `pkg:iam:
 
 ### Additive vs. Authoritative
 
-| Mode | Constructor | Behavior | When to Use |
-|------|-------------|----------|-------------|
-| **Additive** | `New<Scope>IAMMember` | Adds a single member to a role; does not affect other members | Most environments — safe to use alongside manual IAM |
+| Mode              | Constructor            | Behavior                                                                   | When to Use                                                 |
+| ----------------- | ---------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Additive**      | `New<Scope>IAMMember`  | Adds a single member to a role; does not affect other members              | Most environments — safe to use alongside manual IAM        |
 | **Authoritative** | `New<Scope>IAMBinding` | Sets the complete list of members for a role; **removes unlisted members** | Strict environments where IAM must be fully managed by code |
 
 > ⚠️ **Warning:** `IAMBinding` constructors will remove any members assigned to the specified role that are not included in the `Members` list. Use with extreme caution in production.

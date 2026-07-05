@@ -7,6 +7,7 @@ A Pulumi component for creating GCP Cloud Routers with optional BGP configuratio
 ## Overview
 
 Creates a Cloud Router with:
+
 - Configurable BGP ASN and keepalive interval
 - Custom advertised groups and IP ranges
 - Optional Cloud NAT with configurable external IP addresses
@@ -15,33 +16,33 @@ Creates a Cloud Router with:
 
 ### CloudRouterArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `ProjectID` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `Region` | `string` | ✅ | GCP region |
-| `Network` | `pulumi.StringInput` | ✅ | Self-link of the VPC network |
-| `BgpAsn` | `int` | ✅ | BGP Autonomous System Number |
-| `Description` | `string` | | Router description |
-| `AdvertisedGroups` | `[]string` | | BGP advertised groups (e.g., `ALL_SUBNETS`) |
-| `AdvertisedIpRanges` | `[]AdvertisedIPRange` | | Custom IP ranges to advertise |
-| `KeepaliveInterval` | `int` | | BGP keepalive interval in seconds |
-| `EnableNat` | `bool` | | Enable Cloud NAT on this router |
-| `NatNumAddresses` | `int` | | Number of external IPs for NAT |
+| Field                | Type                  | Required | Description                                 |
+| :------------------- | :-------------------- | :------- | :------------------------------------------ |
+| `ProjectID`          | `pulumi.StringInput`  | ✅       | GCP project ID                              |
+| `Region`             | `string`              | ✅       | GCP region                                  |
+| `Network`            | `pulumi.StringInput`  | ✅       | Self-link of the VPC network                |
+| `BgpAsn`             | `int`                 | ✅       | BGP Autonomous System Number                |
+| `Description`        | `string`              |          | Router description                          |
+| `AdvertisedGroups`   | `[]string`            |          | BGP advertised groups (e.g., `ALL_SUBNETS`) |
+| `AdvertisedIpRanges` | `[]AdvertisedIPRange` |          | Custom IP ranges to advertise               |
+| `KeepaliveInterval`  | `int`                 |          | BGP keepalive interval in seconds           |
+| `EnableNat`          | `bool`                |          | Enable Cloud NAT on this router             |
+| `NatNumAddresses`    | `int`                 |          | Number of external IPs for NAT              |
 
 ### AdvertisedIPRange
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `Range` | `string` | ✅ | CIDR range to advertise |
-| `Description` | `string` | | Description of the range |
+| Field         | Type     | Required | Description              |
+| :------------ | :------- | :------- | :----------------------- |
+| `Range`       | `string` | ✅       | CIDR range to advertise  |
+| `Description` | `string` |          | Description of the range |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
-| `Router` | `*compute.Router` | The created Cloud Router |
+| Field       | Type                 | Description                       |
+| :---------- | :------------------- | :-------------------------------- |
+| `Router`    | `*compute.Router`    | The created Cloud Router          |
 | `Addresses` | `[]*compute.Address` | External IPs for NAT (if enabled) |
-| `NAT` | `*compute.RouterNat` | Cloud NAT (if enabled) |
+| `NAT`       | `*compute.RouterNat` | Cloud NAT (if enabled)            |
 
 ## Usage
 

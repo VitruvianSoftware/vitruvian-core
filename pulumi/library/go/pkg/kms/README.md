@@ -12,27 +12,27 @@ Creates a Cloud KMS keyring with optional crypto keys, supporting configurable k
 
 ### KmsArgs
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `ProjectID` | `pulumi.StringInput` | ✅ | GCP project ID |
-| `Location` | `string` | ✅ | KMS location |
-| `KeyringName` | `string` | ✅ | Name of the keyring |
-| `Keys` | `[]KeyConfig` | | Crypto keys to create in the keyring |
+| Field         | Type                 | Required | Description                          |
+| :------------ | :------------------- | :------- | :----------------------------------- |
+| `ProjectID`   | `pulumi.StringInput` | ✅       | GCP project ID                       |
+| `Location`    | `string`             | ✅       | KMS location                         |
+| `KeyringName` | `string`             | ✅       | Name of the keyring                  |
+| `Keys`        | `[]KeyConfig`        |          | Crypto keys to create in the keyring |
 
 ### KeyConfig
 
-| Field | Type | Required | Description |
-|:--|:--|:--|:--|
-| `Name` | `string` | ✅ | Key name |
-| `RotationPeriod` | `string` | | Rotation period (e.g., `7776000s` for 90 days) |
-| `Purpose` | `string` | | Key purpose (default: `ENCRYPT_DECRYPT`) |
+| Field            | Type     | Required | Description                                    |
+| :--------------- | :------- | :------- | :--------------------------------------------- |
+| `Name`           | `string` | ✅       | Key name                                       |
+| `RotationPeriod` | `string` |          | Rotation period (e.g., `7776000s` for 90 days) |
+| `Purpose`        | `string` |          | Key purpose (default: `ENCRYPT_DECRYPT`)       |
 
 ### Outputs
 
-| Field | Type | Description |
-|:--|:--|:--|
-| `Keyring` | `*kms.KeyRing` | The created keyring |
-| `Keys` | `map[string]*kms.CryptoKey` | Map of key name → crypto key |
+| Field     | Type                        | Description                  |
+| :-------- | :-------------------------- | :--------------------------- |
+| `Keyring` | `*kms.KeyRing`              | The created keyring          |
+| `Keys`    | `map[string]*kms.CryptoKey` | Map of key name → crypto key |
 
 ## Usage
 
