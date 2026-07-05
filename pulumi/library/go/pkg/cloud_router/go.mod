@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_router
 
-go 1.25.8
+go 1.26.2
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go v0.0.0-20260424071204-a7bcd6b2b929

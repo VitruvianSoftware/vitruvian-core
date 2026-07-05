@@ -37,10 +37,6 @@
     "typescript": "^5.0.0",
     "vitest": "catalog:"
   },
-  "peerDependencies": {
-    "@pulumi/gcp": ">=7.0.0",
-    "@pulumi/pulumi": ">=3.0.0"
-  },
   "workspaces": [
     "packages/*"
   ]
