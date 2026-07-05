@@ -176,6 +176,7 @@ Consider the following:
    ```
 
    If it exists, set a different name:
+
    ```bash
    pulumi config set scc_notification_name "my-scc-notify"
    ```
@@ -216,58 +217,58 @@ Consider the following:
 
 ## Configuration Reference
 
-| Name | Description | Required | Default |
-|------|-------------|:--------:|---------|
-| `org_id` | GCP Organization ID | ✅ | — |
-| `billing_account` | Billing account ID | ✅ | — |
-| `bootstrap_stack_name` | Fully qualified Pulumi stack name of the 0-bootstrap stage | ✅ | — |
-| `project_prefix` | Project name prefix | | `"prj"` |
-| `folder_prefix` | Folder name prefix | | `"fldr"` |
-| `default_region` | Default region | | `"us-central1"` |
-| `domains_to_allow` | Comma-separated list of domains for domain-restricted sharing org policy | | `""` |
-| `essential_contacts_domains` | Comma-separated list of domains for Essential Contacts | | `""` |
-| `scc_notification_filter` | SCC notification filter expression | | `"state=\"ACTIVE\""` |
-| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy | | `"true"` |
-| `parent_folder` | Deploy under a specific folder instead of org root | | `""` |
+| Name                                   | Description                                                              | Required | Default              |
+| -------------------------------------- | ------------------------------------------------------------------------ | :------: | -------------------- |
+| `org_id`                               | GCP Organization ID                                                      |    ✅    | —                    |
+| `billing_account`                      | Billing account ID                                                       |    ✅    | —                    |
+| `bootstrap_stack_name`                 | Fully qualified Pulumi stack name of the 0-bootstrap stage               |    ✅    | —                    |
+| `project_prefix`                       | Project name prefix                                                      |          | `"prj"`              |
+| `folder_prefix`                        | Folder name prefix                                                       |          | `"fldr"`             |
+| `default_region`                       | Default region                                                           |          | `"us-central1"`      |
+| `domains_to_allow`                     | Comma-separated list of domains for domain-restricted sharing org policy |          | `""`                 |
+| `essential_contacts_domains`           | Comma-separated list of domains for Essential Contacts                   |          | `""`                 |
+| `scc_notification_filter`              | SCC notification filter expression                                       |          | `"state=\"ACTIVE\""` |
+| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy                       |          | `"true"`             |
+| `parent_folder`                        | Deploy under a specific folder instead of org root                       |          | `""`                 |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `org_id` | GCP Organization ID |
-| `parent_resource_id` | Parent resource ID (org or folder) |
-| `parent_resource_type` | Parent resource type (`organization` or `folder`) |
-| `common_folder_name` | Common folder display name |
-| `common_folder_id` | Common folder ID |
-| `network_folder_name` | Network folder display name |
-| `network_folder_id` | Network folder ID |
-| `org_audit_logs_project_id` | Centralized audit logs project ID |
-| `org_billing_export_project_id` | Billing export project ID |
-| `scc_notifications_project_id` | SCC notifications project ID |
-| `common_kms_project_id` | Organization-level KMS project ID |
-| `org_secrets_project_id` | Organization-level Secrets project ID |
-| `interconnect_project_id` | Interconnect project ID |
-| `interconnect_project_number` | Interconnect project number |
-| `net_hub_project_id` | Network hub project ID (Hub and Spoke mode only) |
-| `{env}_network_project_id` | Per-environment network project ID |
-| `shared_vpc_projects` | Map of environment to Shared VPC project IDs |
-| `logs_export_storage_bucket_name` | Log export storage bucket name |
-| `logs_export_pubsub_topic` | Log export Pub/Sub topic name |
-| `logs_export_project_logbucket_name` | Log export Cloud Logging bucket name |
-| `logs_export_project_linked_dataset_name` | BigQuery linked dataset name |
-| `scc_notification_name` | SCC notification configuration name |
-| `cai_monitoring_*` | Cloud Asset Inventory monitoring outputs (when enabled) |
-| `tags` | Organization-level environment tags |
-| `domains_to_allow` | Configured allowed domains list |
+| Name                                      | Description                                             |
+| ----------------------------------------- | ------------------------------------------------------- |
+| `org_id`                                  | GCP Organization ID                                     |
+| `parent_resource_id`                      | Parent resource ID (org or folder)                      |
+| `parent_resource_type`                    | Parent resource type (`organization` or `folder`)       |
+| `common_folder_name`                      | Common folder display name                              |
+| `common_folder_id`                        | Common folder ID                                        |
+| `network_folder_name`                     | Network folder display name                             |
+| `network_folder_id`                       | Network folder ID                                       |
+| `org_audit_logs_project_id`               | Centralized audit logs project ID                       |
+| `org_billing_export_project_id`           | Billing export project ID                               |
+| `scc_notifications_project_id`            | SCC notifications project ID                            |
+| `common_kms_project_id`                   | Organization-level KMS project ID                       |
+| `org_secrets_project_id`                  | Organization-level Secrets project ID                   |
+| `interconnect_project_id`                 | Interconnect project ID                                 |
+| `interconnect_project_number`             | Interconnect project number                             |
+| `net_hub_project_id`                      | Network hub project ID (Hub and Spoke mode only)        |
+| `{env}_network_project_id`                | Per-environment network project ID                      |
+| `shared_vpc_projects`                     | Map of environment to Shared VPC project IDs            |
+| `logs_export_storage_bucket_name`         | Log export storage bucket name                          |
+| `logs_export_pubsub_topic`                | Log export Pub/Sub topic name                           |
+| `logs_export_project_logbucket_name`      | Log export Cloud Logging bucket name                    |
+| `logs_export_project_linked_dataset_name` | BigQuery linked dataset name                            |
+| `scc_notification_name`                   | SCC notification configuration name                     |
+| `cai_monitoring_*`                        | Cloud Asset Inventory monitoring outputs (when enabled) |
+| `tags`                                    | Organization-level environment tags                     |
+| `domains_to_allow`                        | Configured allowed domains list                         |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `main.go` | Orchestrates the org stage: loads config, deploys folders, projects, policies, logging, SCC, tags |
-| `folders.go` | Creates the common, network, and environment folders |
-| `projects.go` | Creates shared projects (logging, billing-export, scc, kms, secrets, dns, interconnect, network) |
-| `policies.go` | Enforces 14+ boolean and list organization policies |
-| `logging.go` | Sets up centralized logging with org sinks to Storage, Pub/Sub, and BigQuery |
-| `scc.go` | Configures SCC notification with Pub/Sub pipeline |
-| `tags.go` | Creates org-level environment classification tags |
+| File          | Description                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| `main.go`     | Orchestrates the org stage: loads config, deploys folders, projects, policies, logging, SCC, tags |
+| `folders.go`  | Creates the common, network, and environment folders                                              |
+| `projects.go` | Creates shared projects (logging, billing-export, scc, kms, secrets, dns, interconnect, network)  |
+| `policies.go` | Enforces 14+ boolean and list organization policies                                               |
+| `logging.go`  | Sets up centralized logging with org sinks to Storage, Pub/Sub, and BigQuery                      |
+| `scc.go`      | Configures SCC notification with Pub/Sub pipeline                                                 |
+| `tags.go`     | Creates org-level environment classification tags                                                 |

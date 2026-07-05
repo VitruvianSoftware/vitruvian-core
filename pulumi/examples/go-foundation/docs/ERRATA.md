@@ -9,6 +9,7 @@ can evaluate whether they affect their deployment and plan accordingly.
 ## CI/CD Tool Support
 
 **Upstream:** Provides full deployment instructions and infrastructure for five CI/CD tools:
+
 - Google Cloud Build (default)
 - GitHub Actions
 - GitLab CI/CD
@@ -75,6 +76,7 @@ log/artifact buckets are not ported.
 ## Networking: Interconnect and VPN
 
 **Upstream:** Includes complete Terraform modules for:
+
 - Dedicated Interconnect VLAN attachments
 - Partner Interconnect VLAN attachments
 - HA VPN configuration with BGP sessions
@@ -114,6 +116,7 @@ into the environment stacks.
 
 **Upstream:** Stage 5 (`5-app-infra`) deploys sample workloads per business
 unit environment:
+
 - Service account + instance template + compute instance on the SVPC project
 - The same on the peering project
 - A Confidential Space stack (WIF pool, OIDC provider, confidential VM)

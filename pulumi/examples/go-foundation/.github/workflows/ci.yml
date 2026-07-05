@@ -23,7 +23,6 @@
 #   build/pulumi-preview.yml  — runs pulumi preview on PRs
 #   build/pulumi-up.yml       — runs pulumi up on merges
 
-
 name: CI
 
 on:
@@ -36,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: '${{ github.workflow }}-${{ github.head_ref || github.ref }}'
+  group: "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
   cancel-in-progress: true
 
 jobs:

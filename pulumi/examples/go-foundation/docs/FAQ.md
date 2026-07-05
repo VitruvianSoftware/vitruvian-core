@@ -24,6 +24,7 @@ _named branches_. Pushing to a named branch causes `pulumi up` (apply) to
 run. Pushing to branches other than the named branches only runs `pulumi preview`.
 
 Named branches:
+
 - `development`
 - `nonproduction`
 - `production`
@@ -40,6 +41,7 @@ only `pulumi preview` is run. `pulumi up` is **not** run.
 Each stage after 0-bootstrap uses [Pulumi Stack References](./GLOSSARY.md#pulumi-stack-reference) to read outputs from previous stages. This allows configuration values (like organization ID, folder IDs, project IDs) to flow automatically between stages without manual re-entry.
 
 The stack reference name must match the fully qualified name of the source stack, for example:
+
 ```
 organization/vitruvian/0-bootstrap/production
 ```
@@ -50,11 +52,11 @@ If you're using a local backend, the format may differ. Check your backend docum
 
 Key differences:
 
-| Aspect | Terraform Foundation | Pulumi Foundation |
-|--------|---------------------|-------------------|
-| Language | HCL | Go |
-| State | GCS backend via `terraform_remote_state` | Pulumi Cloud / GCS backend via Stack References |
-| CI/CD | Cloud Build, GitHub Actions, GitLab, Terraform Cloud | GitHub Actions |
-| Modules | Terraform Registry modules (CFT) | Go packages in `pulumi-library` |
-| Config | `.tfvars` files | `pulumi config` (YAML) |
-| Plan/Apply | `terraform plan` / `terraform apply` | `pulumi preview` / `pulumi up` |
+| Aspect     | Terraform Foundation                                 | Pulumi Foundation                               |
+| ---------- | ---------------------------------------------------- | ----------------------------------------------- |
+| Language   | HCL                                                  | Go                                              |
+| State      | GCS backend via `terraform_remote_state`             | Pulumi Cloud / GCS backend via Stack References |
+| CI/CD      | Cloud Build, GitHub Actions, GitLab, Terraform Cloud | GitHub Actions                                  |
+| Modules    | Terraform Registry modules (CFT)                     | Go packages in `pulumi-library`                 |
+| Config     | `.tfvars` files                                      | `pulumi config` (YAML)                          |
+| Plan/Apply | `terraform plan` / `terraform apply`                 | `pulumi preview` / `pulumi up`                  |

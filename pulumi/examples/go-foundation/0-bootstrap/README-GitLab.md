@@ -29,12 +29,12 @@ instead of the default GitHub Actions. This mirrors the Terraform foundation's
 
 ### Key Differences from GitHub
 
-| Aspect | GitHub Actions | GitLab CI/CD |
-|--------|---------------|--------------|
-| OIDC Issuer | `https://token.actions.githubusercontent.com` | `https://gitlab.com` (or self-hosted) |
-| Identity Attribute | `attribute.repository` | `attribute.project_path` |
-| Attribute Condition | `assertion.repository_owner=='{owner}'` | `assertion.project_path.startsWith('{owner}/')` |
-| Provider ID | `foundation-gh-provider` | `foundation-gl-provider` |
+| Aspect              | GitHub Actions                                | GitLab CI/CD                                    |
+| ------------------- | --------------------------------------------- | ----------------------------------------------- |
+| OIDC Issuer         | `https://token.actions.githubusercontent.com` | `https://gitlab.com` (or self-hosted)           |
+| Identity Attribute  | `attribute.repository`                        | `attribute.project_path`                        |
+| Attribute Condition | `assertion.repository_owner=='{owner}'`       | `assertion.project_path.startsWith('{owner}/')` |
+| Provider ID         | `foundation-gh-provider`                      | `foundation-gl-provider`                        |
 
 ## How to Switch
 
@@ -110,12 +110,12 @@ pulumi up
 
 ## What Gets Created
 
-| Resource | Name | Description |
-|----------|------|-------------|
-| Workload Identity Pool | `foundation-pool` | Groups all GitLab-based identity providers |
-| WIF OIDC Provider | `foundation-gl-provider` | GitLab OIDC token issuer (`https://gitlab.com`) |
-| SA IAM Bindings (×5) | `wif-sa-binding-{stage}` | Maps each stage project to its SA via `workloadIdentityUser` |
-| SA IAM Binding | `bootstrap-wif-pool-admin` | Bootstrap SA gets `workloadIdentityPoolAdmin` on CI/CD project |
+| Resource               | Name                       | Description                                                    |
+| ---------------------- | -------------------------- | -------------------------------------------------------------- |
+| Workload Identity Pool | `foundation-pool`          | Groups all GitLab-based identity providers                     |
+| WIF OIDC Provider      | `foundation-gl-provider`   | GitLab OIDC token issuer (`https://gitlab.com`)                |
+| SA IAM Bindings (×5)   | `wif-sa-binding-{stage}`   | Maps each stage project to its SA via `workloadIdentityUser`   |
+| SA IAM Binding         | `bootstrap-wif-pool-admin` | Bootstrap SA gets `workloadIdentityPoolAdmin` on CI/CD project |
 
 ## GitLab CI/CD Pipeline Setup
 
@@ -166,10 +166,10 @@ deploy:
 
 Set these in each project's Settings → CI/CD → Variables:
 
-| Variable | Value | Source |
-|----------|-------|--------|
-| `WIF_PROVIDER_NAME` | `projects/{number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gl-provider` | `pulumi stack output wif_provider_name` |
-| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_step_terraform_service_account_email` |
+| Variable                | Value                                                                                                       | Source                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `WIF_PROVIDER_NAME`     | `projects/{number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gl-provider` | `pulumi stack output wif_provider_name`                            |
+| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com`                                              | `pulumi stack output {stage}_step_terraform_service_account_email` |
 
 ## Self-Hosted GitLab
 

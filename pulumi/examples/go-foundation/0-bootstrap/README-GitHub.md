@@ -73,18 +73,18 @@ pulumi config set github_repo_proj "pulumi-foundation-projects"
 
 When `github_owner` is set, the bootstrap creates these resources in the CI/CD project:
 
-| Resource | Name | Description |
-|----------|------|-------------|
-| Workload Identity Pool | `foundation-pool` | Groups all GitHub-based identity providers |
-| WIF OIDC Provider | `foundation-gh-provider` | GitHub Actions OIDC token issuer |
-| SA IAM Bindings (×5) | `wif-sa-binding-{stage}` | Maps each stage repo to its SA via `workloadIdentityUser` |
+| Resource               | Name                     | Description                                               |
+| ---------------------- | ------------------------ | --------------------------------------------------------- |
+| Workload Identity Pool | `foundation-pool`        | Groups all GitHub-based identity providers                |
+| WIF OIDC Provider      | `foundation-gh-provider` | GitHub Actions OIDC token issuer                          |
+| SA IAM Bindings (×5)   | `wif-sa-binding-{stage}` | Maps each stage repo to its SA via `workloadIdentityUser` |
 
 ## Additional Outputs
 
-| Name | Description |
-|------|-------------|
-| `wif_pool_name` | Full resource name of the Workload Identity Pool |
-| `wif_provider_name` | Full resource name of the WIF OIDC provider |
+| Name                | Description                                      |
+| ------------------- | ------------------------------------------------ |
+| `wif_pool_name`     | Full resource name of the Workload Identity Pool |
+| `wif_provider_name` | Full resource name of the WIF OIDC provider      |
 
 ## GitHub Actions Workflow Setup
 
@@ -101,7 +101,7 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write   # Required for WIF
+  id-token: write # Required for WIF
   contents: read
 
 jobs:
@@ -123,10 +123,10 @@ jobs:
 
 Set these in each repository's Settings → Secrets:
 
-| Secret | Value | Source |
-|--------|-------|--------|
-| `WIF_PROVIDER_NAME` | `projects/{project_number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider` | `pulumi stack output wif_provider_name` |
-| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com` | `pulumi stack output {stage}_step_terraform_service_account_email` |
+| Secret                  | Value                                                                                                               | Source                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `WIF_PROVIDER_NAME`     | `projects/{project_number}/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider` | `pulumi stack output wif_provider_name`                            |
+| `SERVICE_ACCOUNT_EMAIL` | `sa-terraform-{stage}@prj-b-seed-xxxx.iam.gserviceaccount.com`                                                      | `pulumi stack output {stage}_step_terraform_service_account_email` |
 
 ## Migration from Key-Based Auth
 

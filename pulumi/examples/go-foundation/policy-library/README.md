@@ -17,15 +17,15 @@ which contains the shared CrossGuard policy pack used by both foundations.
 
 ## Policies
 
-| Policy | Severity | Description |
-|--------|----------|-------------|
-| `no-default-network` | mandatory | Projects must not create the default network |
-| `project-labels-required` | mandatory | Projects must have `environment` and `application_name` labels |
-| `no-sa-key-creation` | mandatory | Service account keys must not be created (use WIF) |
-| `no-public-access` | mandatory | Resources must not grant `allUsers` or `allAuthenticatedUsers` |
-| `no-public-ip` | mandatory | Compute instances must not have external IPs |
-| `require-private-google-access` | mandatory | Subnets must enable Private Google Access |
-| `require-flow-logs` | advisory | Subnets should have VPC Flow Logs enabled |
+| Policy                          | Severity  | Description                                                    |
+| ------------------------------- | --------- | -------------------------------------------------------------- |
+| `no-default-network`            | mandatory | Projects must not create the default network                   |
+| `project-labels-required`       | mandatory | Projects must have `environment` and `application_name` labels |
+| `no-sa-key-creation`            | mandatory | Service account keys must not be created (use WIF)             |
+| `no-public-access`              | mandatory | Resources must not grant `allUsers` or `allAuthenticatedUsers` |
+| `no-public-ip`                  | mandatory | Compute instances must not have external IPs                   |
+| `require-private-google-access` | mandatory | Subnets must enable Private Google Access                      |
+| `require-flow-logs`             | advisory  | Subnets should have VPC Flow Logs enabled                      |
 
 ## Usage
 

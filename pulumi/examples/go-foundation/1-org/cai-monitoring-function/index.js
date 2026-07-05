@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-'use strict'
+"use strict";
 
 // Import
-const uuid4 = require('uuid4')
-const moment = require('moment')
+const uuid4 = require("uuid4");
+const moment = require("moment");
 
 // SCC client
-const { SecurityCenterClient } = require('@google-cloud/security-center').v2;
+const { SecurityCenterClient } = require("@google-cloud/security-center").v2;
 const client = new SecurityCenterClient();
 
 // Environment variables
@@ -30,45 +30,45 @@ const searchroles = process.env.ROLES.split(",");
 
 // Variables
 const sccConfig = {
-    category: 'PRIVILEGED_ROLE_GRANTED',
-    findingClass: 'VULNERABILITY',
-    severity: 'MEDIUM'
+  category: "PRIVILEGED_ROLE_GRANTED",
+  findingClass: "VULNERABILITY",
+  severity: "MEDIUM",
 };
 
 // Exported function
-exports.caiMonitoring = message => {
-    try {
-        var event = parseMessage(message);
+exports.caiMonitoring = (message) => {
+  try {
+    var event = parseMessage(message);
 
-        // This validate is specific for the CAI Monitoring scenario.
-        // If you want to use this Cloud Function for other purpose, please change this validate function.
-        validateEvent(event);
+    // This validate is specific for the CAI Monitoring scenario.
+    // If you want to use this Cloud Function for other purpose, please change this validate function.
+    validateEvent(event);
 
-        // From this part of the code until the end of the function is specific for the CAI Monitoring scenario
-        var bindings = getRoleBindings(event.asset);
+    // From this part of the code until the end of the function is specific for the CAI Monitoring scenario
+    var bindings = getRoleBindings(event.asset);
 
-        // If the list is not empty, search for the same member and role on the prior asset.
-        // Get only the new bindings that is not on the prior asset and create a new finding.
-        if (bindings.length > 0) {
-            var delta = bindingDiff(bindings, getRoleBindings(event.priorAsset));
+    // If the list is not empty, search for the same member and role on the prior asset.
+    // Get only the new bindings that is not on the prior asset and create a new finding.
+    if (bindings.length > 0) {
+      var delta = bindingDiff(bindings, getRoleBindings(event.priorAsset));
 
-            if (delta.length > 0) {
-                // Map of extra properties to save on the finding with field name and value
-                var extraProperties = {
-                    iamBindings: delta
-                };
+      if (delta.length > 0) {
+        // Map of extra properties to save on the finding with field name and value
+        var extraProperties = {
+          iamBindings: delta,
+        };
 
-                createFinding(
-                    event.asset.updateTime,
-                    event.asset.name,
-                    extraProperties
-                );
-            }
-        }
-    } catch (error) {
-        console.warn(`Skipping executing with message: ${error.message}`);
+        createFinding(
+          event.asset.updateTime,
+          event.asset.name,
+          extraProperties,
+        );
+      }
     }
-}
+  } catch (error) {
+    console.warn(`Skipping executing with message: ${error.message}`);
+  }
+};
 
 /**
  * Parse the message received on the Cloud Function to a JSON.
@@ -78,15 +78,15 @@ exports.caiMonitoring = message => {
  * @exception If some error happens while parsing, it will log the error and finish the execution
  */
 function parseMessage(message) {
-    // If message data is missing, log a warning and exit.
-    if (!(message && message.data)) {
-        throw new Error(`Missing required fields (message or message.data)`);
-    }
+  // If message data is missing, log a warning and exit.
+  if (!(message && message.data)) {
+    throw new Error(`Missing required fields (message or message.data)`);
+  }
 
-    // Extract the event data from the message
-    var event = JSON.parse(Buffer.from(message.data, 'base64').toString());
+  // Extract the event data from the message
+  var event = JSON.parse(Buffer.from(message.data, "base64").toString());
 
-    return event;
+  return event;
 }
 
 /**
@@ -96,16 +96,27 @@ function parseMessage(message) {
  * @exception If the asset is not valid it will throw the corresponding error.
  */
 function validateEvent(event) {
-    // If the asset is not present, throw an error.
-    if (!(event.asset && event.asset.iamPolicy && event.asset.iamPolicy.bindings)) {
-        throw new Error(`Missing required fields (asset or asset.iamPolicy or asset.iamPolicy.bindings)`);
-    }
+  // If the asset is not present, throw an error.
+  if (!(
+    event.asset &&
+    event.asset.iamPolicy &&
+    event.asset.iamPolicy.bindings
+  )) {
+    throw new Error(
+      `Missing required fields (asset or asset.iamPolicy or asset.iamPolicy.bindings)`,
+    );
+  }
 
-    // If event priorAsset is missing and assetType is Project, is a new project creation, log a warning and exit
-    if (!(event.priorAsset && event.priorAsset.iamPolicy) && event.asset.assetType === "cloudresourcemanager.googleapis.com/Project") {
-        var name = event.asset.name.split("/");
-        throw new Error(`Creating project ${name[name.length - 1]}, prior asset is empty`);
-    }
+  // If event priorAsset is missing and assetType is Project, is a new project creation, log a warning and exit
+  if (
+    !(event.priorAsset && event.priorAsset.iamPolicy) &&
+    event.asset.assetType === "cloudresourcemanager.googleapis.com/Project"
+  ) {
+    var name = event.asset.name.split("/");
+    throw new Error(
+      `Creating project ${name[name.length - 1]}, prior asset is empty`,
+    );
+  }
 }
 
 /**
@@ -116,28 +127,28 @@ function validateEvent(event) {
  * @returns {Array} The array of found bindings ({member: String, role: String, action: String('ADD')}) sorted by role
  */
 function getRoleBindings(asset) {
-    try {
-        var foundRoles = [];
-        var bindings = asset.iamPolicy.bindings;
+  try {
+    var foundRoles = [];
+    var bindings = asset.iamPolicy.bindings;
 
-        // Check for bindings that include the list of roles
-        bindings.forEach(binding => {
-            if (searchroles.includes(binding.role)) {
-                binding.members.forEach(member => {
-                    foundRoles.push({
-                        member: member,
-                        role: binding.role,
-                        action: 'ADD'
-                    });
-                });
-            }
+    // Check for bindings that include the list of roles
+    bindings.forEach((binding) => {
+      if (searchroles.includes(binding.role)) {
+        binding.members.forEach((member) => {
+          foundRoles.push({
+            member: member,
+            role: binding.role,
+            action: "ADD",
+          });
         });
+      }
+    });
 
-        return foundRoles;
-    } catch (error) {
-        console.warn(`Returning empty bindings with message: ${error.message}`);
-        return [];
-    }
+    return foundRoles;
+  } catch (error) {
+    console.warn(`Returning empty bindings with message: ${error.message}`);
+    return [];
+  }
 }
 
 /**
@@ -149,7 +160,12 @@ function getRoleBindings(asset) {
  * @returns {Array} The difference array between actual and prior bindings
  */
 function bindingDiff(bindings, priorBindings) {
-    return bindings.filter(actual => !priorBindings.some(prior => (prior.member === actual.member && prior.role === actual.role)));
+  return bindings.filter(
+    (actual) =>
+      !priorBindings.some(
+        (prior) => prior.member === actual.member && prior.role === actual.role,
+      ),
+  );
 }
 
 /**
@@ -158,11 +174,11 @@ function bindingDiff(bindings, priorBindings) {
  * @param {string} dateTimeStr date time format as a String. (e.g. 2019-02-15T10:23:13Z)
  */
 function parseStrTime(dateTimeStr) {
-    const dateTimeStrInMillis = moment.utc(dateTimeStr).valueOf()
-    return {
-        seconds: Math.trunc(dateTimeStrInMillis / 1000),
-        nanos: Math.trunc((dateTimeStrInMillis % 1000) * 1000000)
-    }
+  const dateTimeStrInMillis = moment.utc(dateTimeStr).valueOf();
+  return {
+    seconds: Math.trunc(dateTimeStrInMillis / 1000),
+    nanos: Math.trunc((dateTimeStrInMillis % 1000) * 1000000),
+  };
 }
 
 /**
@@ -173,23 +189,21 @@ function parseStrTime(dateTimeStr) {
  * @param {Any} extraProperties A key/value map with properties to save on the finding ({fieldName: fieldValue})
  */
 async function createFinding(updateTime, resourceName, extraProperties) {
-    const [newFinding] = await client.createFinding(
-        {
-            parent: sourceId,
-            findingId: uuid4().replace(/-/g, ''),
-            finding: {
-                ... {
-                    state: 'ACTIVE',
-                    resourceName: resourceName,
-                    category: sccConfig.category,
-                    eventTime: parseStrTime(updateTime),
-                    findingClass: sccConfig.findingClass,
-                    severity: sccConfig.severity
-                },
-                ...extraProperties
-            }
-        }
-    );
+  const [newFinding] = await client.createFinding({
+    parent: sourceId,
+    findingId: uuid4().replace(/-/g, ""),
+    finding: {
+      ...{
+        state: "ACTIVE",
+        resourceName: resourceName,
+        category: sccConfig.category,
+        eventTime: parseStrTime(updateTime),
+        findingClass: sccConfig.findingClass,
+        severity: sccConfig.severity,
+      },
+      ...extraProperties,
+    },
+  });
 
-    console.log('New finding created: %j', newFinding);
+  console.log("New finding created: %j", newFinding);
 }

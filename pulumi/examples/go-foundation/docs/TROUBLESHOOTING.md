@@ -4,7 +4,7 @@
 
 See [GLOSSARY.md](./GLOSSARY.md).
 
-- - -
+---
 
 ## Problems
 
@@ -13,7 +13,7 @@ See [GLOSSARY.md](./GLOSSARY.md).
 - [Billing quota exceeded](#billing-quota-exceeded)
 - [Pulumi state lock errors](#pulumi-state-lock-errors)
 
-- - -
+---
 
 ## Common issues
 
@@ -23,7 +23,7 @@ See [GLOSSARY.md](./GLOSSARY.md).
 - [Cannot assign requested address error in Cloud Shell](#cannot-assign-requested-address-error-in-cloud-shell)
 - [VPC peering rate limit exceeded](#vpc-peering-rate-limit-exceeded)
 
-- - -
+---
 
 ### Project quota exceeded
 
@@ -69,6 +69,7 @@ failed to load checkpoint: blob (key ".pulumi/stacks/...") (code=Unknown)
 **Cause:**
 
 The stages after `0-bootstrap` use [Pulumi Stack References](./GLOSSARY.md#pulumi-stack-reference) to read common configuration like the organization ID from the output of the `0-bootstrap` stage. The error means that either:
+
 - The referenced stack has not been deployed yet
 - The stack name is incorrect
 - You are using a different backend than the one the referenced stack was deployed to
@@ -146,7 +147,7 @@ This is a transient error. Wait at least one minute and retry the deploy:
 pulumi up --refresh
 ```
 
-- - -
+---
 
 ### Caller does not have permission in the Organization
 

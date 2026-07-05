@@ -13,15 +13,15 @@ for the reference architecture and branching strategy context.
 
 The branching model varies by stage:
 
-| Stage | Branches | Rationale |
-|-------|----------|-----------|
-| `0-bootstrap` | `production` | Shared infrastructure — single environment |
-| `1-org` | `production` | Organization-wide resources — single environment |
-| `2-environments` | `development`, `nonproduction`, `production` | Per-environment resources |
-| `3-networks-svpc` | `development`, `nonproduction`, `production` | Per-environment networks |
-| `3-networks-hub-and-spoke` | `development`, `nonproduction`, `production` | Per-environment networks |
-| `4-projects` | `development`, `nonproduction`, `production` | Per-environment projects |
-| `5-app-infra` | `development`, `nonproduction`, `production` | Per-environment app infra |
+| Stage                      | Branches                                     | Rationale                                        |
+| -------------------------- | -------------------------------------------- | ------------------------------------------------ |
+| `0-bootstrap`              | `production`                                 | Shared infrastructure — single environment       |
+| `1-org`                    | `production`                                 | Organization-wide resources — single environment |
+| `2-environments`           | `development`, `nonproduction`, `production` | Per-environment resources                        |
+| `3-networks-svpc`          | `development`, `nonproduction`, `production` | Per-environment networks                         |
+| `3-networks-hub-and-spoke` | `development`, `nonproduction`, `production` | Per-environment networks                         |
+| `4-projects`               | `development`, `nonproduction`, `production` | Per-environment projects                         |
+| `5-app-infra`              | `development`, `nonproduction`, `production` | Per-environment app infra                        |
 
 ### Submitting Changes
 
@@ -55,6 +55,7 @@ it belongs in the library rather than in this foundation repo.
 ## Reporting Issues
 
 Please open a GitHub Issue with:
+
 - Which stage is affected
 - Steps to reproduce
 - Expected vs. actual behavior

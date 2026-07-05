@@ -131,36 +131,36 @@ pulumi up
 
 ### 3-networks (all environments)
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `env` | Environment name | `string` | n/a | yes |
-| `project_id` | Shared VPC host project ID | `string` | n/a | yes |
-| `parent_id` | Parent scope for firewall policies | `string` | n/a | yes |
-| `region1` | Primary region | `string` | `"us-central1"` | no |
-| `region2` | Secondary region | `string` | `"us-west1"` | no |
+| Name         | Description                        | Type     | Default         | Required |
+| ------------ | ---------------------------------- | -------- | --------------- | :------: |
+| `env`        | Environment name                   | `string` | n/a             |   yes    |
+| `project_id` | Shared VPC host project ID         | `string` | n/a             |   yes    |
+| `parent_id`  | Parent scope for firewall policies | `string` | n/a             |   yes    |
+| `region1`    | Primary region                     | `string` | `"us-central1"` |    no    |
+| `region2`    | Secondary region                   | `string` | `"us-west1"`    |    no    |
 
 ### 4-projects (all environments)
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `env` | Environment name | `string` | n/a | yes |
-| `business_code` | Business unit code | `string` | n/a | yes |
-| `billing_account` | Billing account ID | `string` | n/a | yes |
-| `org_stack_name` | Stack name of 1-org stage | `string` | n/a | yes |
+| Name              | Description               | Type     | Default | Required |
+| ----------------- | ------------------------- | -------- | ------- | :------: |
+| `env`             | Environment name          | `string` | n/a     |   yes    |
+| `business_code`   | Business unit code        | `string` | n/a     |   yes    |
+| `billing_account` | Billing account ID        | `string` | n/a     |   yes    |
+| `org_stack_name`  | Stack name of 1-org stage | `string` | n/a     |   yes    |
 
 ### 5-app-infra (all environments)
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| `env` | Environment name | `string` | n/a | yes |
-| `projects_stack_name` | Stack name of 4-projects stage | `string` | n/a | yes |
-| `region` | Region for compute instances | `string` | `"us-central1"` | no |
+| Name                  | Description                    | Type     | Default         | Required |
+| --------------------- | ------------------------------ | -------- | --------------- | :------: |
+| `env`                 | Environment name               | `string` | n/a             |   yes    |
+| `projects_stack_name` | Stack name of 4-projects stage | `string` | n/a             |   yes    |
+| `region`              | Region for compute instances   | `string` | `"us-central1"` |    no    |
 
 ## Key Difference: Stack vs Directory
 
-| Aspect | Terraform | Pulumi TS | Pulumi Go |
-|--------|-----------|-----------|-----------|
-| Env isolation | `envs/development/` directory | `envs/development/` directory | `development` stack |
-| Config file | `terraform.tfvars` per dir | `Pulumi.development.yaml` per dir | `Pulumi.development.yaml` per stage |
-| State isolation | Backend prefix per dir | Automatic per directory | Automatic per stack |
-| Code duplication | Per-env `main.tf` | Per-env `index.ts` | **Single `main.go`** (zero duplication) |
+| Aspect           | Terraform                     | Pulumi TS                         | Pulumi Go                               |
+| ---------------- | ----------------------------- | --------------------------------- | --------------------------------------- |
+| Env isolation    | `envs/development/` directory | `envs/development/` directory     | `development` stack                     |
+| Config file      | `terraform.tfvars` per dir    | `Pulumi.development.yaml` per dir | `Pulumi.development.yaml` per stage     |
+| State isolation  | Backend prefix per dir        | Automatic per directory           | Automatic per stack                     |
+| Code duplication | Per-env `main.tf`             | Per-env `index.ts`                | **Single `main.go`** (zero duplication) |

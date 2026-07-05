@@ -83,13 +83,13 @@ pulumi up
 
 ## What Gets Created
 
-| Resource | Count | Description |
-|----------|-------|-------------|
-| Cloud Source Repos | 7 | One per stage + `gcp-policies` + `pulumi-cloudbuilder` |
-| Artifact Registry | 1 | Docker repo for custom Pulumi builder images |
-| AR IAM Bindings | 5 | `artifactregistry.reader` per SA |
-| Cloud Build Plan Triggers | 5 | `plan-{stage}` — runs on any branch push |
-| Cloud Build Apply Triggers | 5 | `apply-{stage}` — runs on main branch only |
+| Resource                   | Count | Description                                            |
+| -------------------------- | ----- | ------------------------------------------------------ |
+| Cloud Source Repos         | 7     | One per stage + `gcp-policies` + `pulumi-cloudbuilder` |
+| Artifact Registry          | 1     | Docker repo for custom Pulumi builder images           |
+| AR IAM Bindings            | 5     | `artifactregistry.reader` per SA                       |
+| Cloud Build Plan Triggers  | 5     | `plan-{stage}` — runs on any branch push               |
+| Cloud Build Apply Triggers | 5     | `apply-{stage}` — runs on main branch only             |
 
 ## Cloud Build YAML Files
 
@@ -99,37 +99,37 @@ Place these in each stage's repository root:
 
 ```yaml
 steps:
-  - id: 'pulumi-preview'
-    name: '${_GAR_REGION}-docker.pkg.dev/${_GAR_PROJECT_ID}/pulumi-builders/pulumi:latest'
-    entrypoint: 'bash'
+  - id: "pulumi-preview"
+    name: "${_GAR_REGION}-docker.pkg.dev/${_GAR_PROJECT_ID}/pulumi-builders/pulumi:latest"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         pulumi login gs://${_TF_BACKEND}
         pulumi preview --stack production --non-interactive
     env:
-      - 'PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}'
+      - "PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}"
 ```
 
 ### `cloudbuild-pulumi-apply.yaml`
 
 ```yaml
 steps:
-  - id: 'pulumi-up'
-    name: '${_GAR_REGION}-docker.pkg.dev/${_GAR_PROJECT_ID}/pulumi-builders/pulumi:latest'
-    entrypoint: 'bash'
+  - id: "pulumi-up"
+    name: "${_GAR_REGION}-docker.pkg.dev/${_GAR_PROJECT_ID}/pulumi-builders/pulumi:latest"
+    entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |
         pulumi login gs://${_TF_BACKEND}
         pulumi up --stack production --non-interactive --yes
     env:
-      - 'PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}'
+      - "PULUMI_CONFIG_PASSPHRASE=${_PULUMI_CONFIG_PASSPHRASE}"
 ```
 
 ## Additional Outputs
 
-| Name | Description |
-|------|-------------|
-| `cloudbuild_project_id` | Project ID of the CI/CD project |
-| `artifact_repo_name` | Name of the Artifact Registry repository |
+| Name                    | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `cloudbuild_project_id` | Project ID of the CI/CD project          |
+| `artifact_repo_name`    | Name of the Artifact Registry repository |

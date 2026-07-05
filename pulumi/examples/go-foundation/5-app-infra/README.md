@@ -79,33 +79,33 @@ Same process as above — navigate, initialize, configure, and deploy.
 
 ## Configuration Reference
 
-| Name | Description | Required | Default |
-|------|-------------|:--------:|---------|
-| `env` | Environment name (`development`, `nonproduction`, `production`) | ✅ | — |
-| `business_code` | Business Unit code (e.g. `bu1`) | | `"bu1"` |
-| `projects_stack_name` | Fully qualified Pulumi stack name of the 4-projects stage for this environment | | `VitruvianSoftware/foundation-4-projects/<env>` |
-| `bootstrap_stack_name` | Fully qualified Pulumi stack name of the 0-bootstrap stage (shared) | | Derived from `projects_stack_name` |
-| `region` | Region for the Compute Instances | | `"us-central1"` |
-| `confidential_image_digest` | SHA256 digest of the Docker image to be used for running the workload in Confidential Space | | — |
+| Name                        | Description                                                                                 | Required | Default                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------- | :------: | ----------------------------------------------- |
+| `env`                       | Environment name (`development`, `nonproduction`, `production`)                             |    ✅    | —                                               |
+| `business_code`             | Business Unit code (e.g. `bu1`)                                                             |          | `"bu1"`                                         |
+| `projects_stack_name`       | Fully qualified Pulumi stack name of the 4-projects stage for this environment              |          | `VitruvianSoftware/foundation-4-projects/<env>` |
+| `bootstrap_stack_name`      | Fully qualified Pulumi stack name of the 0-bootstrap stage (shared)                         |          | Derived from `projects_stack_name`              |
+| `region`                    | Region for the Compute Instances                                                            |          | `"us-central1"`                                 |
+| `confidential_image_digest` | SHA256 digest of the Docker image to be used for running the workload in Confidential Space |          | —                                               |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `project_id` | Application project ID |
-| `region` | Deployment region |
-| `instances_self_links` | Self-links of SVPC-attached compute instances |
-| `peering_instances_self_links` | Self-links of peering VPC compute instances |
-| `confidential_space_project_id` | Confidential Space project ID (when enabled) |
-| `confidential_space_project_number` | Confidential Space project number (when enabled) |
-| `workload_identity_pool_id` | Workload Identity Pool for Confidential Space attestation |
-| `workload_pool_provider_id` | Workload Identity Pool Provider ID |
-| `confidential_instances_self_links` | Self-links of Confidential Space instances |
+| Name                                | Description                                               |
+| ----------------------------------- | --------------------------------------------------------- |
+| `project_id`                        | Application project ID                                    |
+| `region`                            | Deployment region                                         |
+| `instances_self_links`              | Self-links of SVPC-attached compute instances             |
+| `peering_instances_self_links`      | Self-links of peering VPC compute instances               |
+| `confidential_space_project_id`     | Confidential Space project ID (when enabled)              |
+| `confidential_space_project_number` | Confidential Space project number (when enabled)          |
+| `workload_identity_pool_id`         | Workload Identity Pool for Confidential Space attestation |
+| `workload_pool_provider_id`         | Workload Identity Pool Provider ID                        |
+| `confidential_instances_self_links` | Self-links of Confidential Space instances                |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `main.go` | Resolves outputs from previous stages, coordinates deployment of instances, and exports results. |
-| `env_base.go` | Deploys standard Compute Instances with Service Accounts and IAP tag bindings. |
-| `confidential_space.go` | Deploys Confidential Space VMs and Workload Identity components for attestation. |
+| File                    | Description                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `main.go`               | Resolves outputs from previous stages, coordinates deployment of instances, and exports results. |
+| `env_base.go`           | Deploys standard Compute Instances with Service Accounts and IAP tag bindings.                   |
+| `confidential_space.go` | Deploys Confidential Space VMs and Workload Identity components for attestation.                 |

@@ -142,60 +142,60 @@ Same process as above — navigate, initialize, configure, and deploy.
 
 ## Configuration Reference
 
-| Name | Description | Required | Default |
-|------|-------------|:--------:|---------|
-| `env` | Environment name (`development`, `nonproduction`, `production`) | ✅ | — |
-| `business_code` | Short business unit identifier (e.g., `bu1`, `bu2`) | ✅ | — |
-| `billing_account` | Billing account ID | ✅ | — |
-| `org_stack_name` | Fully qualified Pulumi stack name of the 1-org stage | ✅ | — |
-| `project_prefix` | Project name prefix | | `"prj"` |
-| `folder_prefix` | Folder name prefix | | `"fldr"` |
-| `budget_amount` | Budget amount per project (USD) | | `1000` |
-| `budget_spend_basis` | Budget threshold basis: `CURRENT_SPEND` or `FORECASTED_SPEND` | | `"FORECASTED_SPEND"` |
-| `enforce_vpcsc` | Attach SVPC project to VPC-SC perimeter | | `true` |
-| `peering_enabled` | Deploy peering VPC infrastructure | | `true` |
-| `peering_iap_fw_rules_enabled` | Create IAP SSH/RDP firewall rules + secure tags | | `true` |
-| `subnet_region` | Region for the peering subnet | | `"us-central1"` |
-| `subnet_ip_range` | IP CIDR range for the peering subnet | | `"10.3.64.0/21"` |
-| `firewall_enable_logging` | Enable logging on firewall rules | | `true` |
-| `windows_activation_enabled` | Enable Windows KMS activation egress rule | | `false` |
-| `optional_fw_rules_enabled` | Enable load balancer health check firewall rules | | `false` |
-| `confidential_space_enabled` | Deploy Confidential Space project with workload SA | | `false` |
-| `cmek_enabled` | Create KMS keyring + CMEK-encrypted GCS bucket | | `true` |
-| `location_kms` | KMS keyring location | | Same as `subnet_region` |
-| `location_gcs` | GCS bucket location | | `"US"` |
-| `keyring_name` | KMS keyring name | | `"{bu}-sample-keyring"` |
-| `key_name` | KMS crypto key name | | `"crypto-key-example"` |
-| `key_rotation_period` | Crypto key rotation period | | `"7776000s"` |
-| `primary_contact` | Primary contact email (used in project labels) | | `"example@example.com"` |
-| `secondary_contact` | Secondary contact email (used in project labels) | | `"example2@example.com"` |
-| `billing_code` | Billing code for project labels | | `"1234"` |
-| `folder_deletion_protection` | Prevent accidental folder deletion | | `true` |
+| Name                           | Description                                                     | Required | Default                  |
+| ------------------------------ | --------------------------------------------------------------- | :------: | ------------------------ |
+| `env`                          | Environment name (`development`, `nonproduction`, `production`) |    ✅    | —                        |
+| `business_code`                | Short business unit identifier (e.g., `bu1`, `bu2`)             |    ✅    | —                        |
+| `billing_account`              | Billing account ID                                              |    ✅    | —                        |
+| `org_stack_name`               | Fully qualified Pulumi stack name of the 1-org stage            |    ✅    | —                        |
+| `project_prefix`               | Project name prefix                                             |          | `"prj"`                  |
+| `folder_prefix`                | Folder name prefix                                              |          | `"fldr"`                 |
+| `budget_amount`                | Budget amount per project (USD)                                 |          | `1000`                   |
+| `budget_spend_basis`           | Budget threshold basis: `CURRENT_SPEND` or `FORECASTED_SPEND`   |          | `"FORECASTED_SPEND"`     |
+| `enforce_vpcsc`                | Attach SVPC project to VPC-SC perimeter                         |          | `true`                   |
+| `peering_enabled`              | Deploy peering VPC infrastructure                               |          | `true`                   |
+| `peering_iap_fw_rules_enabled` | Create IAP SSH/RDP firewall rules + secure tags                 |          | `true`                   |
+| `subnet_region`                | Region for the peering subnet                                   |          | `"us-central1"`          |
+| `subnet_ip_range`              | IP CIDR range for the peering subnet                            |          | `"10.3.64.0/21"`         |
+| `firewall_enable_logging`      | Enable logging on firewall rules                                |          | `true`                   |
+| `windows_activation_enabled`   | Enable Windows KMS activation egress rule                       |          | `false`                  |
+| `optional_fw_rules_enabled`    | Enable load balancer health check firewall rules                |          | `false`                  |
+| `confidential_space_enabled`   | Deploy Confidential Space project with workload SA              |          | `false`                  |
+| `cmek_enabled`                 | Create KMS keyring + CMEK-encrypted GCS bucket                  |          | `true`                   |
+| `location_kms`                 | KMS keyring location                                            |          | Same as `subnet_region`  |
+| `location_gcs`                 | GCS bucket location                                             |          | `"US"`                   |
+| `keyring_name`                 | KMS keyring name                                                |          | `"{bu}-sample-keyring"`  |
+| `key_name`                     | KMS crypto key name                                             |          | `"crypto-key-example"`   |
+| `key_rotation_period`          | Crypto key rotation period                                      |          | `"7776000s"`             |
+| `primary_contact`              | Primary contact email (used in project labels)                  |          | `"example@example.com"`  |
+| `secondary_contact`            | Secondary contact email (used in project labels)                |          | `"example2@example.com"` |
+| `billing_code`                 | Billing code for project labels                                 |          | `"1234"`                 |
+| `folder_deletion_protection`   | Prevent accidental folder deletion                              |          | `true`                   |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `bu_folder_id` | Business unit folder ID |
-| `svpc_project_id` | SVPC-attached project ID |
-| `floating_project_id` | Floating project ID |
-| `peering_project_id` | Peering project ID |
-| `peering_network` | Peering VPC network self-link |
-| `peering_subnetwork_self_link` | Peering subnet self-link (used by 5-app-infra for instance placement) |
-| `iap_firewall_tags` | Map of IAP secure tag values for SSH/RDP (used by 5-app-infra for VM tagging) |
-| `infra_pipeline_project_id` | Infrastructure pipeline project ID |
-| `network_project_id` | Network project ID (passed through from Stage 1) |
-| `cmek_bucket` | CMEK-encrypted GCS bucket name |
-| `cmek_keyring` | KMS keyring name |
-| `confidential_space_project_id` | Confidential Space project ID (when enabled) |
-| `confidential_space_workload_sa` | Confidential Space workload service account email (when enabled) |
+| Name                             | Description                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| `bu_folder_id`                   | Business unit folder ID                                                       |
+| `svpc_project_id`                | SVPC-attached project ID                                                      |
+| `floating_project_id`            | Floating project ID                                                           |
+| `peering_project_id`             | Peering project ID                                                            |
+| `peering_network`                | Peering VPC network self-link                                                 |
+| `peering_subnetwork_self_link`   | Peering subnet self-link (used by 5-app-infra for instance placement)         |
+| `iap_firewall_tags`              | Map of IAP secure tag values for SSH/RDP (used by 5-app-infra for VM tagging) |
+| `infra_pipeline_project_id`      | Infrastructure pipeline project ID                                            |
+| `network_project_id`             | Network project ID (passed through from Stage 1)                              |
+| `cmek_bucket`                    | CMEK-encrypted GCS bucket name                                                |
+| `cmek_keyring`                   | KMS keyring name                                                              |
+| `confidential_space_project_id`  | Confidential Space project ID (when enabled)                                  |
+| `confidential_space_workload_sa` | Confidential Space workload service account email (when enabled)              |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `main.go` | Configuration loading, folder creation, orchestration, project labels helper |
-| `business_unit.go` | Creates four project types (SVPC, floating, peering, confidential space) with labels, budget, VPC-SC attachment; delegates to peering and CMEK modules |
-| `peering.go` | Full peering network: VPC, subnet, DNS policy, bi-directional peering, firewall policy with IAP secure tags |
-| `cmek.go` | KMS keyring, crypto key, GCS service account IAM, CMEK-encrypted GCS bucket |
-| `confidential_space.go` | Confidential Space project with workload SA, IAM bindings, SVPC + VPC-SC attachment |
+| File                    | Description                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `main.go`               | Configuration loading, folder creation, orchestration, project labels helper                                                                           |
+| `business_unit.go`      | Creates four project types (SVPC, floating, peering, confidential space) with labels, budget, VPC-SC attachment; delegates to peering and CMEK modules |
+| `peering.go`            | Full peering network: VPC, subnet, DNS policy, bi-directional peering, firewall policy with IAP secure tags                                            |
+| `cmek.go`               | KMS keyring, crypto key, GCS service account IAM, CMEK-encrypted GCS bucket                                                                            |
+| `confidential_space.go` | Confidential Space project with workload SA, IAM bindings, SVPC + VPC-SC attachment                                                                    |

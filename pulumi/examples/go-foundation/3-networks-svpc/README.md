@@ -118,24 +118,24 @@ If you cannot use Dedicated or Partner Interconnect, you can use an HA Cloud VPN
 
 ## Configuration Reference
 
-| Name | Description | Required | Default |
-|------|-------------|:--------:|---------|
-| `env` | Environment name (`development`, `nonproduction`, `production`) | ✅ | — |
-| `project_id` | Shared VPC host project ID | ✅ | — |
-| `parent_id` | Parent scope for firewall policies (`organizations/123` or `folders/456`) | ✅ | — |
-| `region1` | Primary region for subnets and NAT | | `"us-central1"` |
-| `region2` | Secondary region for subnets and NAT | | `"us-west1"` |
+| Name         | Description                                                               | Required | Default         |
+| ------------ | ------------------------------------------------------------------------- | :------: | --------------- |
+| `env`        | Environment name (`development`, `nonproduction`, `production`)           |    ✅    | —               |
+| `project_id` | Shared VPC host project ID                                                |    ✅    | —               |
+| `parent_id`  | Parent scope for firewall policies (`organizations/123` or `folders/456`) |    ✅    | —               |
+| `region1`    | Primary region for subnets and NAT                                        |          | `"us-central1"` |
+| `region2`    | Secondary region for subnets and NAT                                      |          | `"us-west1"`    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `network_id` | VPC network resource ID |
-| `network_name` | VPC network name |
-| `network_self_link` | VPC network self link |
+| Name                | Description             |
+| ------------------- | ----------------------- |
+| `network_id`        | VPC network resource ID |
+| `network_name`      | VPC network name        |
+| `network_self_link` | VPC network self link   |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
+| File      | Description                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `main.go` | Complete network stack: SVPC host, VPC, subnets with GKE ranges, PSA, firewall policies, DNS, NAT, restricted APIs routing |

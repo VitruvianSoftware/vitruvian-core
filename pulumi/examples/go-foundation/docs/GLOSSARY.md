@@ -38,6 +38,7 @@ A Pulumi mechanism that retrieves output values from another stack's state. In t
 Stack References are the Pulumi equivalent of Terraform's `terraform_remote_state` data source.
 
 Usage example in Go:
+
 ```go
 bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
     Name: pulumi.String("organization/vitruvian/0-bootstrap/production"),

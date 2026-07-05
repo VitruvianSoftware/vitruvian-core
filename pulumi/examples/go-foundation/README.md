@@ -11,6 +11,7 @@ This repo contains several distinct Pulumi projects, each within their own direc
 ### [0. Bootstrap](./0-bootstrap/)
 
 Bootstraps the GCP organization by creating:
+
 - **`prj-b-seed`** — Pulumi state storage with KMS-encrypted bucket, and the service accounts used by the pipeline
 - **`prj-b-cicd`** — CI/CD pipeline infrastructure (Artifact Registry, Cloud Build, Workload Identity)
 - **Granular Service Accounts** — One per stage (`bootstrap`, `org`, `env`, `net`, `proj`) with least-privilege IAM at org, folder, project, and billing scopes
@@ -18,6 +19,7 @@ Bootstraps the GCP organization by creating:
 ### [1. Organization](./1-org/)
 
 Sets up the organizational folder structure and shared projects:
+
 - **Folders**: `fldr-common`, `fldr-network`, plus environment folders
 - **Common Projects**: `prj-c-logging`, `prj-c-billing-export`, `prj-c-scc`, `prj-c-kms`, `prj-c-secrets`
 - **Network Projects**: `prj-net-dns`, `prj-net-interconnect`, `prj-{d,n,p}-svpc`
@@ -29,12 +31,14 @@ Sets up the organizational folder structure and shared projects:
 ### [2. Environments](./2-environments/)
 
 Creates per-environment KMS and Secrets projects:
+
 - `prj-{d,n,p}-kms` — Environment-level Cloud KMS
 - `prj-{d,n,p}-secrets` — Environment-level Secret Manager
 
 ### [3. Networks (Choose ONE)](./3-networks-svpc/)
 
 **Shared VPC** (`3-networks-svpc/`):
+
 - Multi-region subnets with GKE secondary ranges (pod + service CIDRs)
 - Shared VPC host project designation
 - Hierarchical firewall policies (IAP, health checks, Windows KMS)
@@ -45,6 +49,7 @@ Creates per-environment KMS and Secrets projects:
 - Default internet routes removed
 
 **Hub-and-Spoke** (`3-networks-hub-and-spoke/`):
+
 - Hub VPC with central routing
 - Spoke VPC with GKE secondary ranges
 - Bidirectional VPC peering with custom route export/import
@@ -53,6 +58,7 @@ Creates per-environment KMS and Secrets projects:
 ### [4. Projects](./4-projects/)
 
 Creates business unit projects with:
+
 - BU subfolder under each environment folder
 - Three project types per BU: **SVPC-attached**, **floating**, **peering**
 - SVPC service project attachment to the host network project
@@ -61,6 +67,7 @@ Creates business unit projects with:
 ### [5. App Infrastructure](./5-app-infra/)
 
 Sample application deployment:
+
 - Cloud Run service (hello-world)
 - BigQuery dataset (data platform)
 
@@ -112,18 +119,18 @@ example-organization
 
 The deployment pipeline (`build/pulumi-ci.yml`) uses a trunk-based development model and is copied into the operator's repository during onboarding (see [ONBOARDING.md](./ONBOARDING.md)). The branching model varies by stage:
 
-| Stage | Branches | Rationale |
-|-------|----------|-----------|
-| `0-bootstrap` | `production` | Shared infrastructure — single environment |
-| `1-org` | `production` | Organization-wide resources — single environment |
-| `2-environments` | `development`, `nonproduction`, `production` | Per-environment resources |
-| `3-networks-*` | `development`, `nonproduction`, `production` | Per-environment networks |
-| `4-projects` | `development`, `nonproduction`, `production` | Per-environment projects |
-| `5-app-infra` | `development`, `nonproduction`, `production` | Per-environment app infra |
+| Stage            | Branches                                     | Rationale                                        |
+| ---------------- | -------------------------------------------- | ------------------------------------------------ |
+| `0-bootstrap`    | `production`                                 | Shared infrastructure — single environment       |
+| `1-org`          | `production`                                 | Organization-wide resources — single environment |
+| `2-environments` | `development`, `nonproduction`, `production` | Per-environment resources                        |
+| `3-networks-*`   | `development`, `nonproduction`, `production` | Per-environment networks                         |
+| `4-projects`     | `development`, `nonproduction`, `production` | Per-environment projects                         |
+| `5-app-infra`    | `development`, `nonproduction`, `production` | Per-environment app infra                        |
 
-| Action | Trigger |
-|--------|---------|
-| Merge to a named branch | `pulumi up` (apply) |
+| Action                         | Trigger                      |
+| ------------------------------ | ---------------------------- |
+| Merge to a named branch        | `pulumi up` (apply)          |
 | Pull Request to a named branch | `pulumi preview` (plan only) |
 
 ## Prerequisites
@@ -137,6 +144,7 @@ The deployment pipeline (`build/pulumi-ci.yml`) uses a trunk-based development m
 ## Using the Shared Library
 
 All stages use the [Vitruvian Software Pulumi Library](https://github.com/VitruvianSoftware/pulumi-library/go) for reusable components:
+
 - `pkg/project` — Project factory with API activation
 - `pkg/iam` — Multi-scope IAM member bindings
 - `pkg/policy` — Organization policy enforcement
@@ -171,5 +179,6 @@ Some configuration values used to deploy the stages have defaults. Check those *
 - [Contributing](./CONTRIBUTING.md) — Development workflow and contribution guidelines
 
 ## Public vs. Private
+
 - This repo is a **Public Reference**.
 - Real Vitruvian Software implementations are managed in **Private** `gcp-*` repositories that consume this foundation logic.

@@ -65,6 +65,7 @@ The bootstrap step creates:
 - The **`fldr-bootstrap`** folder under your organization (or parent folder) that contains both projects
 
 It is a best practice to separate concerns by having two projects here: one for the Pulumi state and one for the CI/CD tool.
+
 - The `prj-b-seed` project stores Pulumi state and has the service accounts that can create or modify infrastructure.
 - The `prj-b-cicd` project holds the CI/CD tool infrastructure that coordinates the deployment.
 
@@ -133,13 +134,13 @@ Also make sure that you've done the following:
 
 1. Enable the following additional services on your current project:
 
-     ```bash
-     gcloud services enable cloudresourcemanager.googleapis.com
-     gcloud services enable cloudbilling.googleapis.com
-     gcloud services enable iam.googleapis.com
-     gcloud services enable cloudkms.googleapis.com
-     gcloud services enable servicenetworking.googleapis.com
-     ```
+   ```bash
+   gcloud services enable cloudresourcemanager.googleapis.com
+   gcloud services enable cloudbilling.googleapis.com
+   gcloud services enable iam.googleapis.com
+   gcloud services enable cloudkms.googleapis.com
+   gcloud services enable servicenetworking.googleapis.com
+   ```
 
 ### Troubleshooting
 
@@ -154,8 +155,8 @@ This is the recommended CI/CD approach for the Pulumi foundation. After the init
 - A [GitHub account](https://docs.github.com/en/get-started/onboarding/getting-started-with-your-github-account) for your user or [Organization](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/creating-a-new-organization-from-scratch).
 - A **private** [GitHub repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-new-repository) to host this foundation code.
 - The following [repository secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) configured:
-    - **`PULUMI_ACCESS_TOKEN`** — A Pulumi Cloud access token for state management. Generate one at [app.pulumi.com](https://app.pulumi.com/account/tokens).
-    - **`GOOGLE_CREDENTIALS`** — GCP service account key JSON with the necessary permissions (typically the bootstrap SA created in this step).
+  - **`PULUMI_ACCESS_TOKEN`** — A Pulumi Cloud access token for state management. Generate one at [app.pulumi.com](https://app.pulumi.com/account/tokens).
+  - **`GOOGLE_CREDENTIALS`** — GCP service account key JSON with the necessary permissions (typically the bootstrap SA created in this step).
 
 ### Instructions
 
@@ -326,87 +327,87 @@ The following steps guide you through deploying without using the CI/CD pipeline
 
 ### Required Configuration
 
-| Name | Description | Example |
-|------|-------------|---------|
-| `org_id` | GCP Organization ID | `"123456789"` |
-| `billing_account` | The ID of the billing account to associate projects with | `"XXXXXX-XXXXXX-XXXXXX"` |
-| `group_org_admins` | Google Workspace group for organization admins | `"org-admins@example.com"` |
-| `group_billing_admins` | Google Workspace group for billing admins | `"billing-admins@example.com"` |
-| `billing_data_users` | Google Workspace group for billing data users | `"billing-data@example.com"` |
-| `audit_data_users` | Google Workspace group for audit data users | `"audit-data@example.com"` |
+| Name                   | Description                                              | Example                        |
+| ---------------------- | -------------------------------------------------------- | ------------------------------ |
+| `org_id`               | GCP Organization ID                                      | `"123456789"`                  |
+| `billing_account`      | The ID of the billing account to associate projects with | `"XXXXXX-XXXXXX-XXXXXX"`       |
+| `group_org_admins`     | Google Workspace group for organization admins           | `"org-admins@example.com"`     |
+| `group_billing_admins` | Google Workspace group for billing admins                | `"billing-admins@example.com"` |
+| `billing_data_users`   | Google Workspace group for billing data users            | `"billing-data@example.com"`   |
+| `audit_data_users`     | Google Workspace group for audit data users              | `"audit-data@example.com"`     |
 
 ### Optional Configuration
 
-| Name | Description | Default |
-|------|-------------|---------|
-| `project_prefix` | Name prefix for projects created. Max 3 characters. | `"prj"` |
-| `folder_prefix` | Name prefix for folders created. | `"fldr"` |
-| `bucket_prefix` | Name prefix for state bucket created. | `"bkt"` |
-| `default_region` | Default region for resource creation. | `"us-central1"` |
-| `default_region_2` | Secondary default region for resource creation. | `"us-west1"` |
-| `default_region_gcs` | Case-sensitive default region for GCS resources. | `"US"` |
-| `default_region_kms` | Default region for KMS key ring creation. Uses multi-region for availability. | `"us"` |
-| `parent_folder` | Numeric folder ID to deploy under instead of org root. | `""` (org root) |
-| `org_policy_admin_role` | Grant additional Org Policy Admin role to admin group. | `"false"` |
-| `bucket_force_destroy` | Allow deletion of state bucket even if it contains objects. | `"false"` |
-| `random_suffix` | Append a random hex suffix to project IDs and bucket names to prevent collisions. Set to `"false"` for deterministic naming. | `"true"` |
-| `kms_key_protection_level` | Protection level for the state bucket KMS key. Use `"HSM"` for hardware-backed keys required by some compliance frameworks. | `"SOFTWARE"` |
+| Name                       | Description                                                                                                                  | Default         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `project_prefix`           | Name prefix for projects created. Max 3 characters.                                                                          | `"prj"`         |
+| `folder_prefix`            | Name prefix for folders created.                                                                                             | `"fldr"`        |
+| `bucket_prefix`            | Name prefix for state bucket created.                                                                                        | `"bkt"`         |
+| `default_region`           | Default region for resource creation.                                                                                        | `"us-central1"` |
+| `default_region_2`         | Secondary default region for resource creation.                                                                              | `"us-west1"`    |
+| `default_region_gcs`       | Case-sensitive default region for GCS resources.                                                                             | `"US"`          |
+| `default_region_kms`       | Default region for KMS key ring creation. Uses multi-region for availability.                                                | `"us"`          |
+| `parent_folder`            | Numeric folder ID to deploy under instead of org root.                                                                       | `""` (org root) |
+| `org_policy_admin_role`    | Grant additional Org Policy Admin role to admin group.                                                                       | `"false"`       |
+| `bucket_force_destroy`     | Allow deletion of state bucket even if it contains objects.                                                                  | `"false"`       |
+| `random_suffix`            | Append a random hex suffix to project IDs and bucket names to prevent collisions. Set to `"false"` for deterministic naming. | `"true"`        |
+| `kms_key_protection_level` | Protection level for the state bucket KMS key. Use `"HSM"` for hardware-backed keys required by some compliance frameworks.  | `"SOFTWARE"`    |
 
 ### Optional Groups
 
 These groups are consumed by the `1-org` stage for governance IAM bindings. Leave unconfigured if not needed.
 
-| Name | Description | Default |
-|------|-------------|---------|
-| `gcp_security_reviewer` | Security reviewer group email | `""` |
-| `gcp_network_viewer` | Network viewer group email | `""` |
-| `gcp_scc_admin` | Security Command Center admin group email | `""` |
-| `gcp_global_secrets_admin` | Global Secrets Manager admin group email | `""` |
-| `gcp_kms_admin` | KMS admin group email | `""` |
+| Name                       | Description                               | Default |
+| -------------------------- | ----------------------------------------- | ------- |
+| `gcp_security_reviewer`    | Security reviewer group email             | `""`    |
+| `gcp_network_viewer`       | Network viewer group email                | `""`    |
+| `gcp_scc_admin`            | Security Command Center admin group email | `""`    |
+| `gcp_global_secrets_admin` | Global Secrets Manager admin group email  | `""`    |
+| `gcp_kms_admin`            | KMS admin group email                     | `""`    |
 
 ### GitHub Actions CI/CD (Default)
 
 These configure the [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) integration with GitHub Actions. Set `github_owner` to enable WIF. See [README-GitHub.md](README-GitHub.md) for full details.
 
-| Name | Description | Default |
-|------|-------------|---------|
-| `github_owner` | GitHub organization or user name. Required to provision WIF. | `""` (WIF disabled) |
-| `github_repo_bootstrap` | Repository name for the bootstrap stage | `""` |
-| `github_repo_org` | Repository name for the organization stage | `""` |
-| `github_repo_env` | Repository name for the environments stage | `""` |
-| `github_repo_net` | Repository name for the networks stage | `""` |
-| `github_repo_proj` | Repository name for the projects stage | `""` |
-| `wif_attribute_condition` | Override the default WIF attribute condition | `"assertion.repository_owner=='{github_owner}'"` |
+| Name                      | Description                                                  | Default                                          |
+| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| `github_owner`            | GitHub organization or user name. Required to provision WIF. | `""` (WIF disabled)                              |
+| `github_repo_bootstrap`   | Repository name for the bootstrap stage                      | `""`                                             |
+| `github_repo_org`         | Repository name for the organization stage                   | `""`                                             |
+| `github_repo_env`         | Repository name for the environments stage                   | `""`                                             |
+| `github_repo_net`         | Repository name for the networks stage                       | `""`                                             |
+| `github_repo_proj`        | Repository name for the projects stage                       | `""`                                             |
+| `wif_attribute_condition` | Override the default WIF attribute condition                 | `"assertion.repository_owner=='{github_owner}'"` |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `seed_project_id` | Project ID of the Seed project (`prj-b-seed`) |
-| `cloudbuild_project_id` | Project ID of the CI/CD project (`prj-b-cicd`) |
-| `bootstrap_folder_id` | Folder ID of the bootstrap folder |
-| `tf_state_bucket` | Name of the GCS bucket for Pulumi state |
-| `state_bucket_kms_key_id` | KMS key ID used for state bucket encryption |
-| `bootstrap_step_terraform_service_account_email` | Bootstrap stage service account email |
-| `org_step_terraform_service_account_email` | Organization stage service account email |
-| `env_step_terraform_service_account_email` | Environment stage service account email |
-| `net_step_terraform_service_account_email` | Network stage service account email |
-| `proj_step_terraform_service_account_email` | Projects stage service account email |
-| `common_config` | Composite config object (org_id, billing_account, regions, prefixes, parent_id, bootstrap_folder_name) consumed by all downstream stages via Stack References |
-| `required_groups` | Map of required group emails (group_org_admins, group_billing_admins, billing_data_users, audit_data_users) |
-| `optional_groups` | Map of optional governance group emails (gcp_security_reviewer, gcp_network_viewer, gcp_scc_admin, gcp_global_secrets_admin, gcp_kms_admin) |
-| `wif_pool_name` | Full resource name of the Workload Identity Pool (only when `github_owner` is set) |
-| `wif_provider_name` | Full resource name of the WIF OIDC provider (only when `github_owner` is set) |
+| Name                                             | Description                                                                                                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `seed_project_id`                                | Project ID of the Seed project (`prj-b-seed`)                                                                                                                 |
+| `cloudbuild_project_id`                          | Project ID of the CI/CD project (`prj-b-cicd`)                                                                                                                |
+| `bootstrap_folder_id`                            | Folder ID of the bootstrap folder                                                                                                                             |
+| `tf_state_bucket`                                | Name of the GCS bucket for Pulumi state                                                                                                                       |
+| `state_bucket_kms_key_id`                        | KMS key ID used for state bucket encryption                                                                                                                   |
+| `bootstrap_step_terraform_service_account_email` | Bootstrap stage service account email                                                                                                                         |
+| `org_step_terraform_service_account_email`       | Organization stage service account email                                                                                                                      |
+| `env_step_terraform_service_account_email`       | Environment stage service account email                                                                                                                       |
+| `net_step_terraform_service_account_email`       | Network stage service account email                                                                                                                           |
+| `proj_step_terraform_service_account_email`      | Projects stage service account email                                                                                                                          |
+| `common_config`                                  | Composite config object (org_id, billing_account, regions, prefixes, parent_id, bootstrap_folder_name) consumed by all downstream stages via Stack References |
+| `required_groups`                                | Map of required group emails (group_org_admins, group_billing_admins, billing_data_users, audit_data_users)                                                   |
+| `optional_groups`                                | Map of optional governance group emails (gcp_security_reviewer, gcp_network_viewer, gcp_scc_admin, gcp_global_secrets_admin, gcp_kms_admin)                   |
+| `wif_pool_name`                                  | Full resource name of the Workload Identity Pool (only when `github_owner` is set)                                                                            |
+| `wif_provider_name`                              | Full resource name of the WIF OIDC provider (only when `github_owner` is set)                                                                                 |
 
 ## CI/CD Providers
 
 The Pulumi foundation supports pluggable CI/CD providers, mirroring the Terraform foundation's approach:
 
-| Provider | Status | README | Code |
-|----------|--------|--------|------|
-| **GitHub Actions** | ✅ Default | [README-GitHub.md](README-GitHub.md) | `build_github_actions.go` |
-| **Cloud Build** | 📄 Example | [README-CloudBuild.md](README-CloudBuild.md) | `build_cloud_build.go.example` |
-| **GitLab CI/CD** | 📄 Example | [README-GitLab.md](README-GitLab.md) | `build_gitlab.go.example` |
+| Provider           | Status     | README                                       | Code                           |
+| ------------------ | ---------- | -------------------------------------------- | ------------------------------ |
+| **GitHub Actions** | ✅ Default | [README-GitHub.md](README-GitHub.md)         | `build_github_actions.go`      |
+| **Cloud Build**    | 📄 Example | [README-CloudBuild.md](README-CloudBuild.md) | `build_cloud_build.go.example` |
+| **GitLab CI/CD**   | 📄 Example | [README-GitLab.md](README-GitLab.md)         | `build_gitlab.go.example`      |
 
 The default is GitHub Actions with Workload Identity Federation. To switch to an alternative provider, follow the instructions in its README.
 
@@ -429,17 +430,16 @@ This bootstrap implements several security controls that match the upstream Terr
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
-| `main.go` | Orchestrates the bootstrap: loads config, creates the folder, coordinates projects, IAM, and CI/CD build, exports common_config, groups, and WIF outputs |
-| `projects.go` | Creates the Seed project (KMS key ring, crypto key, encrypted state bucket) and CI/CD project with labels and deletion protection |
-| `iam.go` | Creates 5 granular service accounts, assigns least-privilege IAM at org/parent/seed/cicd/billing scopes, grants org admins group IAM, configures SA self-impersonation, enforces project creator restriction, and removes editor role from default SAs |
-| `build_github_actions.go` | **Default CI/CD**: provisions WIF pool, OIDC provider, and per-SA repo bindings for GitHub Actions |
-| `build_cloud_build.go.example` | **Alternative CI/CD**: example Cloud Build provisioning (CSR, AR, triggers). Rename to `.go` and update `main.go` to activate |
-| `build_gitlab.go.example` | **Alternative CI/CD**: example GitLab WIF provisioning. Rename to `.go` and update `main.go` to activate |
-| `README-GitHub.md` | GitHub Actions-specific documentation: WIF architecture, workflow examples, migration guide |
-| `README-CloudBuild.md` | Cloud Build-specific documentation: switch instructions, Cloud Build YAML examples |
-| `README-GitLab.md` | GitLab CI/CD-specific documentation: OIDC differences, pipeline YAML, self-hosted support |
-| `Pulumi.yaml` | Pulumi project configuration |
-| `go.mod` / `go.sum` | Go module dependencies |
-
+| File                           | Description                                                                                                                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `main.go`                      | Orchestrates the bootstrap: loads config, creates the folder, coordinates projects, IAM, and CI/CD build, exports common_config, groups, and WIF outputs                                                                                               |
+| `projects.go`                  | Creates the Seed project (KMS key ring, crypto key, encrypted state bucket) and CI/CD project with labels and deletion protection                                                                                                                      |
+| `iam.go`                       | Creates 5 granular service accounts, assigns least-privilege IAM at org/parent/seed/cicd/billing scopes, grants org admins group IAM, configures SA self-impersonation, enforces project creator restriction, and removes editor role from default SAs |
+| `build_github_actions.go`      | **Default CI/CD**: provisions WIF pool, OIDC provider, and per-SA repo bindings for GitHub Actions                                                                                                                                                     |
+| `build_cloud_build.go.example` | **Alternative CI/CD**: example Cloud Build provisioning (CSR, AR, triggers). Rename to `.go` and update `main.go` to activate                                                                                                                          |
+| `build_gitlab.go.example`      | **Alternative CI/CD**: example GitLab WIF provisioning. Rename to `.go` and update `main.go` to activate                                                                                                                                               |
+| `README-GitHub.md`             | GitHub Actions-specific documentation: WIF architecture, workflow examples, migration guide                                                                                                                                                            |
+| `README-CloudBuild.md`         | Cloud Build-specific documentation: switch instructions, Cloud Build YAML examples                                                                                                                                                                     |
+| `README-GitLab.md`             | GitLab CI/CD-specific documentation: OIDC differences, pipeline YAML, self-hosted support                                                                                                                                                              |
+| `Pulumi.yaml`                  | Pulumi project configuration                                                                                                                                                                                                                           |
+| `go.mod` / `go.sum`            | Go module dependencies                                                                                                                                                                                                                                 |

@@ -21,14 +21,14 @@ pulumi-example-foundation/     ← This reference template
 Stages 0–1 manage **shared resources** and use a single `production` branch.
 Stages 2–5 manage **per-environment resources** and use environment branches:
 
-| Repository | Branches | Deploy Trigger |
-|------------|----------|----------------|
-| `gcp-bootstrap` | `production` | Merge to `production` |
-| `gcp-org` | `production` | Merge to `production` |
-| `gcp-environments` | `development`, `nonproduction`, `production` | Merge to each branch |
-| `gcp-networks` | `development`, `nonproduction`, `production` | Merge to each branch |
-| `gcp-projects` | `development`, `nonproduction`, `production` | Merge to each branch |
-| `gcp-app-infra` | `development`, `nonproduction`, `production` | Merge to each branch |
+| Repository         | Branches                                     | Deploy Trigger        |
+| ------------------ | -------------------------------------------- | --------------------- |
+| `gcp-bootstrap`    | `production`                                 | Merge to `production` |
+| `gcp-org`          | `production`                                 | Merge to `production` |
+| `gcp-environments` | `development`, `nonproduction`, `production` | Merge to each branch  |
+| `gcp-networks`     | `development`, `nonproduction`, `production` | Merge to each branch  |
+| `gcp-projects`     | `development`, `nonproduction`, `production` | Merge to each branch  |
+| `gcp-app-infra`    | `development`, `nonproduction`, `production` | Merge to each branch  |
 
 Changes promote through environments via pull requests:
 
@@ -208,12 +208,12 @@ The bootstrap stage creates the Seed project (state storage, KMS encryption, ser
     When `github_owner` and `github:token` are configured, bootstrap automatically
     creates these secrets in each stage repository:
 
-    | Secret | Value | Provisioned By |
-    |--------|-------|----------------|
-    | `WIF_PROVIDER_NAME` | WIF provider full resource name | Bootstrap (auto) |
-    | `SERVICE_ACCOUNT_EMAIL` | Per-stage SA email | Bootstrap (auto) |
-    | `PROJECT_ID` | CI/CD project ID | Bootstrap (auto) |
-    | `PULUMI_ACCESS_TOKEN` | Pulumi Cloud token | **Manual** — set via GitHub UI or `gh secret set` |
+    | Secret                  | Value                           | Provisioned By                                    |
+    | ----------------------- | ------------------------------- | ------------------------------------------------- |
+    | `WIF_PROVIDER_NAME`     | WIF provider full resource name | Bootstrap (auto)                                  |
+    | `SERVICE_ACCOUNT_EMAIL` | Per-stage SA email              | Bootstrap (auto)                                  |
+    | `PROJECT_ID`            | CI/CD project ID                | Bootstrap (auto)                                  |
+    | `PULUMI_ACCESS_TOKEN`   | Pulumi Cloud token              | **Manual** — set via GitHub UI or `gh secret set` |
 
     > **Note:** `PULUMI_ACCESS_TOKEN` is NOT auto-provisioned because it is a
     > Pulumi Cloud credential, not a GCP credential managed by bootstrap. Set it
@@ -446,6 +446,7 @@ The environments stage creates per-environment folders, KMS projects, and Secret
 ## Deploying Step 3: Networks
 
 The networks stage deploys the network infrastructure. **Choose one** topology:
+
 - **Shared VPC** (`3-networks-svpc`) — simple flat network
 - **Hub-and-Spoke** (`3-networks-hub-and-spoke`) — centralized hub with spoke VPCs
 
@@ -499,9 +500,9 @@ The instructions below use Shared VPC. Substitute `3-networks-hub-and-spoke` for
 
 7. Return to the parent directory:
 
-    ```bash
-    cd ..
-    ```
+   ```bash
+   cd ..
+   ```
 
 ---
 
@@ -535,10 +536,10 @@ The app infrastructure stage deploys sample application resources (Cloud Run, Bi
 
 This repository ships two pipeline templates in `build/`:
 
-| Template | Trigger | Action |
-|----------|---------|--------|
+| Template             | Trigger                      | Action                                |
+| -------------------- | ---------------------------- | ------------------------------------- |
 | `pulumi-preview.yml` | Pull request to env branches | Runs `pulumi preview`, comments on PR |
-| `pulumi-up.yml` | Merge to env branches | Runs `pulumi up` to deploy |
+| `pulumi-up.yml`      | Merge to env branches        | Runs `pulumi up` to deploy            |
 
 Both templates authenticate via **Workload Identity Federation** (WIF), configured
 by the 0-bootstrap stage. No service account keys are stored in GitHub.
@@ -547,21 +548,21 @@ by the 0-bootstrap stage. No service account keys are stored in GitHub.
 
 Each repository needs these secrets configured:
 
-| Secret | Description | How to obtain |
-|--------|-------------|---------------|
-| `WIF_PROVIDER_NAME` | WIF provider resource name | `pulumi -C gcp-bootstrap stack output wif_provider_name` |
+| Secret                  | Description                    | How to obtain                                                                       |
+| ----------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
+| `WIF_PROVIDER_NAME`     | WIF provider resource name     | `pulumi -C gcp-bootstrap stack output wif_provider_name`                            |
 | `SERVICE_ACCOUNT_EMAIL` | Stage-specific service account | `pulumi -C gcp-bootstrap stack output <stage>_step_terraform_service_account_email` |
-| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud access token | [Pulumi Cloud console](https://app.pulumi.com/) |
+| `PULUMI_ACCESS_TOKEN`   | Pulumi Cloud access token      | [Pulumi Cloud console](https://app.pulumi.com/)                                     |
 
 ### Branch-to-Stack Mapping
 
 The pipeline uses the **branch name as the Pulumi stack name**:
 
-| Branch | Stack | Effect |
-|--------|-------|--------|
-| `development` | `development` | Deploys to the development environment |
+| Branch          | Stack           | Effect                                   |
+| --------------- | --------------- | ---------------------------------------- |
+| `development`   | `development`   | Deploys to the development environment   |
 | `nonproduction` | `nonproduction` | Deploys to the nonproduction environment |
-| `production` | `production` | Deploys to the production environment |
+| `production`    | `production`    | Deploys to the production environment    |
 
 ### How the Promotion Flow Works
 
@@ -588,13 +589,13 @@ The pipeline uses the **branch name as the Pulumi stack name**:
 
 All stages use the [Vitruvian Software Pulumi Library](https://github.com/VitruvianSoftware/pulumi-library/go) for standardized GCP components:
 
-| Package | Description |
-|---------|-------------|
-| `pkg/project` | Project factory with API activation, budgets, and service account management |
-| `pkg/iam` | Multi-scope IAM bindings (organization, folder, project) |
-| `pkg/policy` | Organization policy enforcement (boolean and list constraints) |
-| `pkg/bootstrap` | Bootstrap component (state bucket, KMS, granular service accounts) |
-| `pkg/networking` | VPC and subnet management |
+| Package          | Description                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `pkg/project`    | Project factory with API activation, budgets, and service account management |
+| `pkg/iam`        | Multi-scope IAM bindings (organization, folder, project)                     |
+| `pkg/policy`     | Organization policy enforcement (boolean and list constraints)               |
+| `pkg/bootstrap`  | Bootstrap component (state bucket, KMS, granular service accounts)           |
+| `pkg/networking` | VPC and subnet management                                                    |
 
 ---
 

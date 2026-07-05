@@ -10,14 +10,14 @@ Pulumi equivalent of the upstream Terraform foundation's
 The default deployment creates a flat hierarchy with environment folders at the
 same level and three special folders:
 
-| Folder | Description |
-|--------|-------------|
-| `fldr-bootstrap` | Contains the seed and CI/CD projects |
-| `fldr-common` | Contains shared resources (logging, SCC, KMS, Secrets) |
-| `fldr-network` | Contains network resources (DNS Hub, Interconnect, SVPCs) |
-| `fldr-production` | Environment folder for production workloads |
-| `fldr-nonproduction` | Environment folder for pre-production testing |
-| `fldr-development` | Environment folder for development and sandboxing |
+| Folder               | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| `fldr-bootstrap`     | Contains the seed and CI/CD projects                      |
+| `fldr-common`        | Contains shared resources (logging, SCC, KMS, Secrets)    |
+| `fldr-network`       | Contains network resources (DNS Hub, Interconnect, SVPCs) |
+| `fldr-production`    | Environment folder for production workloads               |
+| `fldr-nonproduction` | Environment folder for pre-production testing             |
+| `fldr-development`   | Environment folder for development and sandboxing         |
 
 ```
 example-organization/
@@ -66,19 +66,19 @@ const envFolderId = orgStackRef.getOutput("development_folder_name");
 
 // Create business unit sub-folders
 const financeFolder = new gcp.organizations.Folder("finance", {
-    displayName: "finance",
-    parent: envFolderId,
+  displayName: "finance",
+  parent: envFolderId,
 });
 
 const retailFolder = new gcp.organizations.Folder("retail", {
-    displayName: "retail",
-    parent: envFolderId,
+  displayName: "retail",
+  parent: envFolderId,
 });
 
 // Export the folder hierarchy for downstream stages
 export const folderHierarchy = {
-    finance: financeFolder.name,
-    retail: retailFolder.name,
+  finance: financeFolder.name,
+  retail: retailFolder.name,
 };
 ```
 
@@ -122,15 +122,15 @@ const envStackRef = new pulumi.StackReference(envStackName);
 const folderHierarchy = envStackRef.getOutput("folderHierarchy");
 
 // Use the business unit folder instead of the environment folder
-const buFolderID = folderHierarchy.apply(h => h["finance"]);
+const buFolderID = folderHierarchy.apply((h) => h["finance"]);
 
 // Create projects under the BU folder
 const project = new ProjectFactory("finance-app", {
-    projectId: pulumi.interpolate`prj-${envCode}-fin-app-${randomSuffix}`,
-    name: "Finance App",
-    folderID: buFolderID,
-    billingAccount: billingAccount,
-    activateApis: ["compute.googleapis.com"],
+  projectId: pulumi.interpolate`prj-${envCode}-fin-app-${randomSuffix}`,
+  name: "Finance App",
+  folderID: buFolderID,
+  billingAccount: billingAccount,
+  activateApis: ["compute.googleapis.com"],
 });
 ```
 
@@ -162,12 +162,12 @@ To add a new business unit:
 
 ### Key Differences from Terraform
 
-| Aspect | Terraform | Pulumi |
-|--------|-----------|--------|
-| Hierarchy traversal | `tf-wrapper.sh` scans for matching directories by `max_depth` | Branch-to-stack mapping is native; no wrapper needed |
-| Backend configuration | Each BU/env combo needs `backend.tf` with unique prefix | Pulumi stacks handle state isolation automatically |
-| Cross-stage references | `terraform_remote_state` data source | Pulumi Stack References |
-| BU code propagation | `sed` script to rename across `.tf` files | Change `business_code` config value per stack |
+| Aspect                 | Terraform                                                     | Pulumi                                               |
+| ---------------------- | ------------------------------------------------------------- | ---------------------------------------------------- |
+| Hierarchy traversal    | `tf-wrapper.sh` scans for matching directories by `max_depth` | Branch-to-stack mapping is native; no wrapper needed |
+| Backend configuration  | Each BU/env combo needs `backend.tf` with unique prefix       | Pulumi stacks handle state isolation automatically   |
+| Cross-stage references | `terraform_remote_state` data source                          | Pulumi Stack References                              |
+| BU code propagation    | `sed` script to rename across `.tf` files                     | Change `business_code` config value per stack        |
 
 ## Pulumi Advantages
 

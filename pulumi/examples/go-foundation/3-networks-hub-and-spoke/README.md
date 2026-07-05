@@ -84,26 +84,26 @@ When deploying the hub-and-spoke architecture, you may encounter a `CONCURRENT_O
 
 ## Configuration Reference
 
-| Name | Description | Required | Default |
-|------|-------------|:--------:|---------|
-| `env` | Environment name (`development`, `nonproduction`, `production`) | ✅ | — |
-| `hub_project_id` | Hub VPC host project ID | ✅ | — |
-| `spoke_project_id` | Spoke VPC project ID | ✅ | — |
-| `parent_id` | Parent scope for firewall policies | ✅ | — |
-| `region1` | Primary region | | `"us-central1"` |
-| `region2` | Secondary region | | `"us-west1"` |
+| Name               | Description                                                     | Required | Default         |
+| ------------------ | --------------------------------------------------------------- | :------: | --------------- |
+| `env`              | Environment name (`development`, `nonproduction`, `production`) |    ✅    | —               |
+| `hub_project_id`   | Hub VPC host project ID                                         |    ✅    | —               |
+| `spoke_project_id` | Spoke VPC project ID                                            |    ✅    | —               |
+| `parent_id`        | Parent scope for firewall policies                              |    ✅    | —               |
+| `region1`          | Primary region                                                  |          | `"us-central1"` |
+| `region2`          | Secondary region                                                |          | `"us-west1"`    |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| `hierarchical_fw` | Hierarchical firewall policy ID |
-| `hub_vpc_id` | Hub VPC network resource ID |
-| `spoke_vpc_id` | Spoke VPC network resource ID |
+| Name                     | Description                                        |
+| ------------------------ | -------------------------------------------------- |
+| `hierarchical_fw`        | Hierarchical firewall policy ID                    |
+| `hub_vpc_id`             | Hub VPC network resource ID                        |
+| `spoke_vpc_id`           | Spoke VPC network resource ID                      |
 | `service_perimeter_name` | VPC Service Controls perimeter name (when enabled) |
 
 ## File Structure
 
-| File | Description |
-|------|-------------|
+| File      | Description                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `main.go` | Complete hub-and-spoke network stack: hub VPC, spoke VPC, VPC peering, subnets, firewall policies, DNS, NAT, restricted APIs routing |
