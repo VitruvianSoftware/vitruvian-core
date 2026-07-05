@@ -225,6 +225,42 @@ func TestNewNetworking_WithPSA(t *testing.T) {
 	assert.Equal(t, "servicenetworking.googleapis.com", conns[0].Inputs["service"].StringValue())
 }
 
+func TestNewNetworking_WithExplicitPSACidr(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewNetworking(ctx, "test-psa-explicit", &NetworkingArgs{
+			ProjectID:          pulumi.String("prj-psa"),
+			VPCName:            pulumi.String("vpc-psa"),
+			EnablePSA:          true,
+			PrivateServiceCidr: "10.16.56.0/21",
+		})
+		return err
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	addrs := tracker.RequireType(t, "gcp:compute/globalAddress:GlobalAddress", 1)
+	// Explicit address + prefix reserved instead of an auto-allocated /16.
+	assert.Equal(t, "10.16.56.0", addrs[0].Inputs["address"].StringValue())
+	assert.Equal(t, 21.0, addrs[0].Inputs["prefixLength"].NumberValue())
+}
+
+func TestNewNetworking_InvalidPSACidr(t *testing.T) {
+	for _, bad := range []string{"10.16.56.0", "10.16.56.0/xx"} {
+		tracker := testutil.NewTracker()
+		err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+			_, err := NewNetworking(ctx, "test-psa-bad", &NetworkingArgs{
+				ProjectID:          pulumi.String("prj-psa"),
+				VPCName:            pulumi.String("vpc-psa"),
+				EnablePSA:          true,
+				PrivateServiceCidr: bad,
+			})
+			return err
+		}, pulumi.WithMocks("test-project", "test-stack", tracker))
+		require.Error(t, err, "expected error for malformed CIDR %q", bad)
+		assert.Contains(t, err.Error(), "invalid PrivateServiceCidr")
+	}
+}
+
 func TestNewNetworking_WithoutPSA(t *testing.T) {
 	tracker := testutil.NewTracker()
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
