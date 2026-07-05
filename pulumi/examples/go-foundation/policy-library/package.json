@@ -1,0 +1,13 @@
+{
+  "name": "foundation-policies",
+  "version": "1.0.0",
+  "description": "CrossGuard policy pack for the Pulumi Foundation",
+  "main": "index.ts",
+  "dependencies": {
+    "@pulumi/policy": "^1.0.0",
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

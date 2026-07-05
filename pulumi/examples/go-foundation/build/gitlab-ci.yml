@@ -1,0 +1,58 @@
+# GitLab CI/CD Pipeline Templates for Pulumi Go Foundation
+#
+# Copy this file to .gitlab-ci.yml in your foundation repo.
+# Configure the following CI/CD variables in your GitLab project settings:
+#
+# Required Variables:
+#   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
+#   GCP_WORKLOAD_IDENTITY_PROVIDER — WIF provider resource name
+#   GCP_SERVICE_ACCOUNT    — Stage-specific service account email
+#
+# The pipeline maps branch names to Pulumi stack names:
+#   development    → pulumi up (development stack)
+#   nonproduction  → pulumi up (nonproduction stack)
+#   production     → pulumi up (production stack)
+
+stages:
+  - preview
+  - deploy
+
+.pulumi_base:
+  image: golang:1.21
+  # CI_JOB_JWT_V2 was removed in GitLab 16.0; obtain the OIDC token via id_tokens.
+  # The aud must match the audience configured on the WIF provider.
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://iam.googleapis.com/${GCP_WORKLOAD_IDENTITY_PROVIDER}
+  before_script:
+    - apt-get update && apt-get install -y apt-transport-https ca-certificates gnupg curl
+    - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+    - echo "deb https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    - apt-get update && apt-get install -y google-cloud-cli
+
+    - curl -fsSL https://get.pulumi.com | sh
+    - export PATH=$HOME/.pulumi/bin:$PATH
+    - go mod download
+    - echo "${GITLAB_OIDC_TOKEN}" > /tmp/oidc_token.txt
+    - gcloud iam workload-identity-pools create-cred-config ${GCP_WORKLOAD_IDENTITY_PROVIDER} --service-account=${GCP_SERVICE_ACCOUNT} --output-file=/tmp/sts-creds.json --credential-source-file=/tmp/oidc_token.txt
+    - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sts-creds.json
+
+preview:
+  extends: .pulumi_base
+  stage: preview
+  script:
+    - pulumi stack select ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}
+    - pulumi preview --diff --policy-pack ../policy-library
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+
+deploy:
+  extends: .pulumi_base
+  stage: deploy
+  script:
+    - pulumi stack select ${CI_COMMIT_BRANCH}
+    - pulumi up --yes --policy-pack ../policy-library
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(development|nonproduction|production|shared)$/
+      when: on_success
