@@ -43,9 +43,6 @@ func NewOrganizationIAMMember(ctx *pulumi.Context, name string, args *Organizati
 	if args == nil {
 		return nil, fmt.Errorf("args cannot be nil")
 	}
-	if args == nil {
-		return nil, fmt.Errorf("args cannot be nil")
-	}
 	component := &OrganizationIAMMember{}
 	err := ctx.RegisterComponentResource("pkg:iam:OrganizationIAMMember", name, component, opts...)
 	if err != nil {
@@ -82,9 +79,6 @@ type OrganizationIAMBinding struct {
 // organization scope. It will REMOVE any members assigned to this role that
 // are not included in the Members list.
 func NewOrganizationIAMBinding(ctx *pulumi.Context, name string, args *OrganizationIAMBindingArgs, opts ...pulumi.ResourceOption) (*OrganizationIAMBinding, error) {
-	if args == nil {
-		return nil, fmt.Errorf("args cannot be nil")
-	}
 	if args == nil {
 		return nil, fmt.Errorf("args cannot be nil")
 	}
