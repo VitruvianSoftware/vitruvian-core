@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	libcicd "github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/orgpolicy"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -84,13 +85,46 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// ========================================================================
+	// WIF issuer org-policy exception (folder-scoped)
+	// An org may deny all external WIF issuers via
+	// constraints/iam.workloadIdentityPoolProviders (denyAll) — a CFT security
+	// default. Creating a GitHub Actions provider then fails a precondition check.
+	// When deploying under a parent folder, set a FOLDER-scoped policy that allows
+	// ONLY GitHub's issuer for this foundation, leaving the org-wide posture (and
+	// any co-tenant foundation) intact. The WIF provider depends on this policy.
+	// (At the org root we don't touch org policy; manage it out of band.)
+	// ========================================================================
+	var wifDeps []pulumi.Resource
+	if cfg.ParentType == "folder" {
+		issuerPolicy, err := orgpolicy.NewPolicy(ctx, "wif-github-issuer-allow", &orgpolicy.PolicyArgs{
+			Name:   pulumi.Sprintf("folders/%s/policies/iam.workloadIdentityPoolProviders", cfg.ParentID),
+			Parent: pulumi.Sprintf("folders/%s", cfg.ParentID),
+			Spec: &orgpolicy.PolicySpecArgs{
+				Rules: orgpolicy.PolicySpecRuleArray{
+					&orgpolicy.PolicySpecRuleArgs{
+						Values: &orgpolicy.PolicySpecRuleValuesArgs{
+							AllowedValues: pulumi.StringArray{
+								pulumi.String("https://token.actions.githubusercontent.com"),
+							},
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		wifDeps = append(wifDeps, issuerPolicy)
+	}
+
 	githubOidc, err := libcicd.NewGitHubOIDC(ctx, "foundation-wif", &libcicd.GitHubOIDCArgs{
 		ProjectID:          cicd.ProjectID,
 		PoolID:             pulumi.String("foundation-pool"),
 		ProviderID:         pulumi.String("foundation-gh-provider"),
 		AttributeCondition: pulumi.String(attributeCondition),
 		SAMapping:          saMappings,
-	})
+	}, pulumi.DependsOn(wifDeps))
 	if err != nil {
 		return nil, err
 	}
