@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-centralized-logging-v0.6.0...foundation-centralized-logging-v0.7.0) (2026-07-06)
+
+
+### Features
+
+* graft pulumi-library into monorepo (history-preserving) ([39571e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/39571e5e558e8492a0bcc366b5f4576bb0867118))
+* **pulumi/library:** integrate TypeScript packages into the pnpm workspace ([8896936](https://github.com/VitruvianSoftware/vitruvian-core/commit/8896936dd10224cf47503de7a6d8f7212e0f1c03))
+* **pulumi/library:** migrate pulumi-library into the monorepo (PR1) ([da77f88](https://github.com/VitruvianSoftware/vitruvian-core/commit/da77f88e7ce7db43f343b1b98bab4db0e0727090))
+
+
+### Bug Fixes
+
+* **go/logging:** grant bucketWriter for log-bucket destination ([#63](https://github.com/VitruvianSoftware/vitruvian-core/issues/63)) ([1388d02](https://github.com/VitruvianSoftware/vitruvian-core/commit/1388d02c2314a775443713c0ad070bc5afd44826))
+* **pulumi/library:** gazelle-exclude subtree; defer TS Bazel targets ([3cfa7d7](https://github.com/VitruvianSoftware/vitruvian-core/commit/3cfa7d7841d01549585f3a29e7337a1826f0a0b4))
+* **pulumi/library:** npm_package targets + format-clean the subtree ([71ee99c](https://github.com/VitruvianSoftware/vitruvian-core/commit/71ee99c2b1353a01f780cbd18f15140bdf79fdb3))
+* **pulumi/library:** prettier-format the subtree to monorepo style ([57e0b5e](https://github.com/VitruvianSoftware/vitruvian-core/commit/57e0b5e6c4ee72bb9b85897049f56ba269efae05))
+* **ts/centralized-logging:** add Log Analytics, linked dataset, folder sinks ([#66](https://github.com/VitruvianSoftware/vitruvian-core/issues/66)) ([8404e61](https://github.com/VitruvianSoftware/vitruvian-core/commit/8404e61ce508b983cd1e02dd81c38df337c36932))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([f0926e8](https://github.com/VitruvianSoftware/vitruvian-core/commit/f0926e87f57ba78daaebfd51f680607b444aca73))
+* **ts/centralized-logging:** stop clobbering linkedDatasetName ([1c299a6](https://github.com/VitruvianSoftware/vitruvian-core/commit/1c299a6e30cb5d578b7658def24b01999341fba5))
+* **ts/psc:** add support for target, noAutomateDnsZone, and serviceDirectoryRegistrations ([#65](https://github.com/VitruvianSoftware/vitruvian-core/issues/65)) ([8a3d9b1](https://github.com/VitruvianSoftware/vitruvian-core/commit/8a3d9b170214d2296cfbb9d8764841fffc6d954a))
+* **ts:** allow Input&lt;string&gt; for CentralizedLogging bucketName ([#68](https://github.com/VitruvianSoftware/vitruvian-core/issues/68)) ([7b42f10](https://github.com/VitruvianSoftware/vitruvian-core/commit/7b42f10126ff1864ce228185c5f0201b6c456cb8))
+
 ## [0.6.0](https://github.com/VitruvianSoftware/pulumi-library/compare/foundation-centralized-logging-v0.5.3...foundation-centralized-logging-v0.6.0) (2026-07-04)
 
 ### Features

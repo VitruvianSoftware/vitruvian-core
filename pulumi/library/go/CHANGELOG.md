@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.0.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-foundation-v1.0.0...go-foundation-v2.0.0) (2026-07-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* the eight Go modules above changed import paths; update imports to the new module paths.
+
+### Features
+
+* **go/networking:** support configuring VPC flow log options on SubnetArgs ([#61](https://github.com/VitruvianSoftware/vitruvian-core/issues/61)) ([b59626e](https://github.com/VitruvianSoftware/vitruvian-core/commit/b59626e41a03fc13ad98d5d74beeabe160dac64a))
+* graft pulumi-library into monorepo (history-preserving) ([39571e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/39571e5e558e8492a0bcc366b5f4576bb0867118))
+* Phase 7 component parity ([#75](https://github.com/VitruvianSoftware/vitruvian-core/issues/75)) ([8e2647e](https://github.com/VitruvianSoftware/vitruvian-core/commit/8e2647e6d2b1f5312aea5d892339779dc8c97b4f))
+* **pulumi/library:** integrate Go modules into the Bazel workspace ([b95e735](https://github.com/VitruvianSoftware/vitruvian-core/commit/b95e735574f373a9f08a31acb453ae6508ccc0b3))
+* **pulumi/library:** migrate pulumi-library into the monorepo (PR1) ([da77f88](https://github.com/VitruvianSoftware/vitruvian-core/commit/da77f88e7ce7db43f343b1b98bab4db0e0727090))
+* rename Go library packages to descriptive, upstream-consistent names ([2c31485](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c314851ebd368cebf921437f7b615186ab9063d))
+
+
+### Bug Fixes
+
+* go mod tidy ([#72](https://github.com/VitruvianSoftware/vitruvian-core/issues/72)) ([134fc50](https://github.com/VitruvianSoftware/vitruvian-core/commit/134fc50751b20fa405c643c3844bce7258c234e2))
+* **go/logging:** grant bucketWriter for log-bucket destination ([#63](https://github.com/VitruvianSoftware/vitruvian-core/issues/63)) ([1388d02](https://github.com/VitruvianSoftware/vitruvian-core/commit/1388d02c2314a775443713c0ad070bc5afd44826))
+* **go/vpc_sc:** allow ProjectNumbers to be dynamic ([#64](https://github.com/VitruvianSoftware/vitruvian-core/issues/64)) ([79cbecd](https://github.com/VitruvianSoftware/vitruvian-core/commit/79cbecd83c4954f55b4da7cf3a3d604f97d940a5))
+* **logging:** grant bucketWriter instead of logWriter for log-bucket sinks ([#59](https://github.com/VitruvianSoftware/vitruvian-core/issues/59)) ([26800ab](https://github.com/VitruvianSoftware/vitruvian-core/commit/26800aba6753332306c01fba5c47a48036000311))
+* **pulumi/library:** prettier-format the subtree to monorepo style ([57e0b5e](https://github.com/VitruvianSoftware/vitruvian-core/commit/57e0b5e6c4ee72bb9b85897049f56ba269efae05))
+* **pulumi/library:** satisfy conformance-check (canonical versions) ([6b73b37](https://github.com/VitruvianSoftware/vitruvian-core/commit/6b73b37b832ad1e6f5dd2ba1cfe0d2dc0aefd0bf))
+* **tests:** fix library tests struct types ([#71](https://github.com/VitruvianSoftware/vitruvian-core/issues/71)) ([a51a2d8](https://github.com/VitruvianSoftware/vitruvian-core/commit/a51a2d8d805248ffef72d6c4529d17139ac33aeb))
+
 ## [1.0.0](https://github.com/VitruvianSoftware/pulumi-library/compare/go-foundation-v0.4.1...go-foundation-v1.0.0) (2026-07-04)
 
 ### ⚠ BREAKING CHANGES
