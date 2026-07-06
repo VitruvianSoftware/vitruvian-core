@@ -71,6 +71,42 @@ func TestNewProject_Basic(t *testing.T) {
 	tracker.RequireType(t, "gcp:projects/service:Service", 1)
 }
 
+// ---------- API propagation wait ----------
+
+func TestNewProject_ApiPropagationWait(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		// No delay configured: ApisReady falls back to the project, no command.
+		noWait, err := NewProject(ctx, "p-nowait", &ProjectArgs{
+			ProjectID:      pulumi.String("prj-nowait"),
+			Name:           pulumi.String("nowait"),
+			FolderID:       pulumi.String("folders/1"),
+			BillingAccount: pulumi.String("AAAAAA-BBBBBB-CCCCCC"),
+			ActivateApis:   []string{"compute.googleapis.com"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, noWait.Project, noWait.ApisReady, "no delay → ApisReady is the project")
+
+		// Delay configured: ApisReady is a distinct wait resource.
+		wait, err := NewProject(ctx, "p-wait", &ProjectArgs{
+			ProjectID:             pulumi.String("prj-wait"),
+			Name:                  pulumi.String("wait"),
+			FolderID:              pulumi.String("folders/1"),
+			BillingAccount:        pulumi.String("AAAAAA-BBBBBB-CCCCCC"),
+			ActivateApis:          []string{"compute.googleapis.com"},
+			ApiPropagationSeconds: 30,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, wait.ApisReady)
+		assert.NotEqual(t, wait.Project, wait.ApisReady, "delay → ApisReady is the wait, not the project")
+		return nil
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	// Exactly one propagation-wait command (only the delayed project creates one).
+	tracker.RequireType(t, "command:local:Command", 1)
+}
+
 // ---------- AutoCreateNetwork ----------
 
 func TestNewProject_AutoCreateNetworkDefaultsFalse(t *testing.T) {
