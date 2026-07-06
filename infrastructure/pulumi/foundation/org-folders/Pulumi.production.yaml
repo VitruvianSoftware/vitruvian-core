@@ -2,4 +2,4 @@
 # ⚠️ Set org_id before apply:
 #   bazel run //infrastructure/pulumi/foundation/org-folders:config -- set org_id <ID>
 config:
-  foundation-org-folders:org_id: "REPLACE-vitruviansoftware.dev-org-id"
+  foundation-org-folders:org_id: "90456063361"
