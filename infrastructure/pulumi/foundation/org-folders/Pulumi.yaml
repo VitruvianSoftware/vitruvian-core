@@ -1,0 +1,3 @@
+name: foundation-org-folders
+description: Creates the fldr-foundation-1 umbrella folder at the vitruviansoftware.dev org root
+runtime: go

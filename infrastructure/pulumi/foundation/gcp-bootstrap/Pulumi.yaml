@@ -1,0 +1,7 @@
+name: foundation-bootstrap
+description: Bootstrap phase of the vitruviansoftware.dev GCP foundation (monorepo-native, co-tenant under fldr-foundation-1)
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go

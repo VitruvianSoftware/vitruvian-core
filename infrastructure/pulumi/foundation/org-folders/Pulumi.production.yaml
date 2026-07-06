@@ -1,0 +1,5 @@
+# Committed stack config (non-secret identifier only). Backend: Pulumi Cloud.
+# ⚠️ Set org_id before apply:
+#   bazel run //infrastructure/pulumi/foundation/org-folders:config -- set org_id <ID>
+config:
+  foundation-org-folders:org_id: "REPLACE-vitruviansoftware.dev-org-id"
