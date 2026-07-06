@@ -10,22 +10,39 @@
 # and set parent_folder to the fldr-foundation-1 id exported by the org-folders
 # stack (bazel run //infrastructure/pulumi/foundation/org-folders:up).
 config:
-  # --- REQUIRED: real org identifiers (fill before apply) ---
-  foundation-bootstrap:org_id: "REPLACE-vitruviansoftware.dev-org-id"
-  foundation-bootstrap:billing_account: "REPLACE-XXXXXX-XXXXXX-XXXXXX"
-  foundation-bootstrap:group_org_admins: "REPLACE-org-admins@vitruviansoftware.dev"
-  foundation-bootstrap:group_billing_admins: "REPLACE-billing-admins@vitruviansoftware.dev"
-  foundation-bootstrap:billing_data_users: "REPLACE-billing-data@vitruviansoftware.dev"
-  foundation-bootstrap:audit_data_users: "REPLACE-audit-data@vitruviansoftware.dev"
+  # --- Org identifiers (discovered from gcloud) ---
+  foundation-bootstrap:org_id: "90456063361"
+  foundation-bootstrap:billing_account: "013EEF-107C95-8E11BD"
+
+  # --- Required groups: created fresh on @vitruviansoftware.dev via Cloud Identity ---
+  foundation-bootstrap:group_org_admins: "gcp-organization-admins@vitruviansoftware.dev"
+  foundation-bootstrap:group_billing_admins: "gcp-billing-admins@vitruviansoftware.dev"
+  foundation-bootstrap:billing_data_users: "gcp-billing-data@vitruviansoftware.dev"
+  foundation-bootstrap:audit_data_users: "gcp-audit-data@vitruviansoftware.dev"
+  # --- Optional governance groups (created too; consumed by the 1-org stage) ---
+  foundation-bootstrap:gcp_security_reviewer: "gcp-security-reviewer@vitruviansoftware.dev"
+  foundation-bootstrap:gcp_network_viewer: "gcp-network-viewer@vitruviansoftware.dev"
+  foundation-bootstrap:gcp_scc_admin: "gcp-scc-admin@vitruviansoftware.dev"
+  foundation-bootstrap:gcp_global_secrets_admin: "gcp-secrets-admin@vitruviansoftware.dev"
+  foundation-bootstrap:gcp_kms_admin: "gcp-kms-admin@vitruviansoftware.dev"
+  # Create the groups via Cloud Identity (the applying identity becomes owner).
+  foundation-bootstrap:create_required_groups: "true"
+  foundation-bootstrap:create_optional_groups: "true"
+  # Pre-existing project that provides Cloud Identity API quota for group creation
+  # (mirrors upstream var.groups.billing_project). The stack enables
+  # cloudidentity.googleapis.com on it and uses a dedicated provider with
+  # userProjectOverride scoped to the group resources only, so the default
+  # provider (projects/IAM/KMS) is unaffected. NOTE: sandbox-firebase-a7e3e is an
+  # interim anchor — revisit with a dedicated foundation quota project.
+  foundation-bootstrap:groups_billing_project: "sandbox-firebase-a7e3e"
 
   # --- Co-tenant isolation under fldr-foundation-1 (do NOT touch foundation-0) ---
-  # Numeric id of the fldr-foundation-1 umbrella folder created by the
-  # org-folders stack. Nesting under a folder makes org-project-creators a
-  # folder-scoped binding (see sa.go bindParentIAMBinding).
-  foundation-bootstrap:parent_folder: "REPLACE-fldr-foundation-1-numeric-id"
-  # Skip the authoritative org-level billing.creator binding: foundation-0
-  # already enforces it org-wide and a second authoritative binding would
-  # clobber it. (See sa.go step 10.)
+  # Numeric id of the fldr-foundation-1 umbrella folder created by the org-folders
+  # stack (set after `org-folders:up`). Nesting under a folder makes
+  # org-project-creators a folder-scoped binding (see sa.go bindParentIAMBinding).
+  foundation-bootstrap:parent_folder: "823326946563"
+  # Skip the authoritative org-level billing.creator binding: foundation-0 already
+  # enforces it org-wide and a second authoritative binding would clobber it.
   foundation-bootstrap:enforce_org_billing_creator: "false"
 
   # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---

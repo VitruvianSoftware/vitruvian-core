@@ -21,7 +21,11 @@
 package main
 
 import (
+	"fmt"
+
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -34,7 +38,42 @@ func main() {
 		// 1b. Optionally create Google Workspace groups.
 		// Groups must exist before IAM bindings reference them.
 		// Mirrors: 0-bootstrap/groups.tf in the TF foundation.
-		groupResources, err := deployGroups(ctx, cfg)
+		//
+		// The Cloud Identity API requires a quota/billing project on every call.
+		// Upstream handles this by setting user_project_override + billing_project
+		// on its google-beta provider (0-bootstrap/provider.tf) and documenting the
+		// API enablement as a manual prerequisite. We port that config AND codify
+		// the enablement: a dedicated provider scoped to group creation only (so the
+		// default provider used for projects/IAM/KMS is unaffected and does not need
+		// the billing project to carry every API), plus enabling cloudidentity on it.
+		var groupOpts []pulumi.ResourceOption
+		if cfg.CreateRequiredGroups || cfg.CreateOptionalGroups {
+			if cfg.GroupsBillingProject == "" {
+				return fmt.Errorf("groups_billing_project is required when create_required_groups or create_optional_groups is true (it is the pre-existing project that provides Cloud Identity API quota)")
+			}
+			ciAPI, err := projects.NewService(ctx, "groups-cloudidentity-api", &projects.ServiceArgs{
+				Project:                  pulumi.String(cfg.GroupsBillingProject),
+				Service:                  pulumi.String("cloudidentity.googleapis.com"),
+				DisableOnDestroy:         pulumi.Bool(false),
+				DisableDependentServices: pulumi.Bool(false),
+			})
+			if err != nil {
+				return err
+			}
+			ciProvider, err := gcp.NewProvider(ctx, "cloudidentity", &gcp.ProviderArgs{
+				UserProjectOverride: pulumi.Bool(true),
+				BillingProject:      pulumi.String(cfg.GroupsBillingProject),
+			}, pulumi.DependsOn([]pulumi.Resource{ciAPI}))
+			if err != nil {
+				return err
+			}
+			groupOpts = []pulumi.ResourceOption{
+				pulumi.Provider(ciProvider),
+				pulumi.DependsOn([]pulumi.Resource{ciAPI}),
+			}
+		}
+
+		groupResources, err := deployGroups(ctx, cfg, groupOpts...)
 		if err != nil {
 			return err
 		}
@@ -189,6 +228,11 @@ type Config struct {
 	CreateRequiredGroups bool
 	CreateOptionalGroups bool
 	InitialGroupConfig   string // "WITH_INITIAL_OWNER", "EMPTY", etc.
+	// GroupsBillingProject is a pre-existing project that provides the quota for
+	// Cloud Identity API calls during group creation (mirrors upstream's
+	// var.groups.billing_project). Required when CreateRequiredGroups or
+	// CreateOptionalGroups is true.
+	GroupsBillingProject string
 
 	// GitHub Actions CI/CD — default CI/CD provider.
 	// Set github_owner to enable Workload Identity Federation.
@@ -245,6 +289,7 @@ func loadConfig(ctx *pulumi.Context) *Config {
 	c.FolderDeletionProtection = conf.Get("folder_deletion_protection") != "false"
 	c.CreateRequiredGroups = conf.Get("create_required_groups") == "true"
 	c.CreateOptionalGroups = conf.Get("create_optional_groups") == "true"
+	c.GroupsBillingProject = conf.Get("groups_billing_project")
 	c.InitialGroupConfig = conf.Get("initial_group_config")
 	if c.InitialGroupConfig == "" {
 		c.InitialGroupConfig = "WITH_INITIAL_OWNER"
