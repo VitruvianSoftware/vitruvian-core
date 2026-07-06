@@ -211,15 +211,30 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			// Pattern is "main": every synced standalone repo uses main as its
 			// default branch.
 			//
+			// RepositoryId MUST be the repo's node ID, not its name. The provider
+			// stores repository_id as the node ID; passing the name reads back as a
+			// perpetual diff (name => node-id) that forces a REPLACE — illegal on a
+			// freshly-imported resource. repo_config passes repo.NodeId for the same
+			// reason; we resolve it with a LookupRepository since these mirror repos
+			// are referenced by name only and never adopted as a Repository here.
+			mirrorRepo, err := github.LookupRepository(ctx, &github.LookupRepositoryArgs{
+				Name: pulumi.StringRef(project.StandaloneRepo),
+			})
+			if err != nil {
+				return err
+			}
+
 			// ADOPT via pulumi.Import (id "<repo>:main"), the same brownfield
 			// pattern repo_config uses. The pulumi-github provider's Create is NOT
 			// idempotent — it errors "Name already protected: main" when a rule
 			// already exists (these mirrors carried manual protection from their
 			// standalone days). Import adopts the existing rule and reconciles it to
 			// the args below; it is a harmless no-op once the resource is in state,
-			// so it can stay on the resource permanently (as repo_config does).
+			// so it can stay on the resource permanently (as repo_config does). With
+			// the node-id RepositoryId above no replace is planned, so the
+			// import-plus-replace conflict cannot arise.
 			_, err = github.NewBranchProtection(ctx, fmt.Sprintf("%s-mirror-readonly", project.Name), &github.BranchProtectionArgs{
-				RepositoryId:      pulumi.String(project.StandaloneRepo),
+				RepositoryId:      pulumi.String(mirrorRepo.NodeId),
 				Pattern:           pulumi.String("main"),
 				EnforceAdmins:     pulumi.Bool(false),
 				AllowsForcePushes: pulumi.Bool(false),
