@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/billing"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
@@ -81,12 +82,26 @@ type ProjectArgs struct {
 	// Lien adds a lien on the project to prevent accidental deletion.
 	// Mirrors the TF project-factory lien variable.
 	Lien bool
+
+	// ApiPropagationSeconds inserts a delay after the project's APIs are enabled
+	// (ActivateApis) before ApisReady resolves. A freshly-enabled GCP API is not
+	// immediately usable — resources created against it can fail with
+	// "API ... enabled recently, wait a few minutes and retry". Consumers that
+	// create resources using those APIs should `DependsOn(project.ApisReady)`.
+	// Mirrors the upstream Terraform foundation's `time_sleep` after
+	// project_services. 0 (default) inserts no delay.
+	ApiPropagationSeconds int
 }
 
 type Project struct {
 	pulumi.ResourceState
 	Project  *organizations.Project
 	Services []*projects.Service
+	// ApisReady resolves only after ActivateApis are enabled AND (if
+	// ApiPropagationSeconds > 0) the propagation delay has elapsed. DependsOn it
+	// for resources that use the just-enabled APIs. Never nil: falls back to the
+	// project itself when no APIs/delay are configured.
+	ApisReady pulumi.Resource
 }
 
 func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pulumi.ResourceOption) (*Project, error) {
@@ -159,6 +174,29 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 			return nil, err
 		}
 		component.Services = append(component.Services, svc)
+	}
+
+	// 2b. API propagation wait — a freshly-enabled API is not immediately usable,
+	// so resources created against it can fail with "API ... enabled recently,
+	// wait a few minutes and retry". When ApiPropagationSeconds > 0, block on a
+	// local sleep that depends on all Services; ApisReady is that gate (consumers
+	// DependsOn it). Mirrors the upstream foundation's time_sleep. Falls back to
+	// the project itself when there is nothing to wait for.
+	component.ApisReady = p
+	if args.ApiPropagationSeconds > 0 && len(component.Services) > 0 {
+		svcDeps := make([]pulumi.Resource, len(component.Services))
+		for i, s := range component.Services {
+			svcDeps[i] = s
+		}
+		wait, err := local.NewCommand(ctx, name+"-apis-propagation", &local.CommandArgs{
+			Create: pulumi.Sprintf("sleep %d", args.ApiPropagationSeconds),
+			// Re-run the wait if the set of enabled APIs changes.
+			Triggers: pulumi.Array{pulumi.String(strings.Join(args.ActivateApis, ","))},
+		}, pulumi.Parent(p), pulumi.DependsOn(svcDeps))
+		if err != nil {
+			return nil, err
+		}
+		component.ApisReady = wait
 	}
 
 	// 3. Budget alert — conditionally created when BudgetConfig is provided.

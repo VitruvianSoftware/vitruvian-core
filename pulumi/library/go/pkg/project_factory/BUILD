@@ -10,6 +10,7 @@ go_library(
     importpath = "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory",
     visibility = ["//visibility:public"],
     deps = [
+        "@com_github_pulumi_pulumi_command_sdk//go/command/local",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/billing",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/organizations",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/projects",
