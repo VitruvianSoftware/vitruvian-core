@@ -93,8 +93,13 @@ each package whose exported manifest version has no tag yet; idempotent, so the 
    with `--force --ignore-noop`; review the resulting push to `pulumi-library` — verify `catalog:` is
    gone, `workspace:*` remains, and no standalone-owned file was deleted — before relying on routine
    push-triggered runs.
-5. **Lock the standalone read-only.** Branch-protect `pulumi-library` `main` so only the sync bot
-   pushes; document that changes land in `pulumi/library/` in the monorepo.
+5. **Lock the standalone read-only (as code, not click-ops).** Every `OneWay` mirror gets classic
+   branch protection on `main` (require-a-PR, `EnforceAdmins=false`) provisioned by
+   `infrastructure/pulumi/pkg/copybara_sync` and applied by `Copybara Sync-Auth Apply` — so direct
+   human pushes are rejected while the export deploy key keeps its admin-context bypass. `EnforceAdmins`
+   MUST stay false: a deploy key bypasses branch protection only while "Include administrators" is off
+   (GITHUB_TOKEN/App tokens do not), so flipping it true would break the mirror sync and publishing.
+   Document that changes land in `pulumi/library/` in the monorepo.
 
 ## Example mirrors — GATED on the first library publish
 
@@ -119,7 +124,8 @@ each as an `export_only` component mirroring the library pattern:
   `copybara-export-pulumi-ts-example-foundation.yaml`. Keep the concrete `@pulumi/*` ranges as-is.
 
 Each example: provision auth → finalize `standalone_only` by diffing the live standalone → seed with
-`--force` and inspect → lock read-only. No publish-on-version-bump (fork-and-own references).
+`--force` and inspect. Read-only lockdown is automatic (the `OneWay` branch protection in
+`copybara_sync`, step 5 above). No publish-on-version-bump (fork-and-own references).
 
 ## Still flagged (unchanged from the migration PRs)
 
