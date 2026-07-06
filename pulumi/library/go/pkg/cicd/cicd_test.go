@@ -99,6 +99,43 @@ func TestNewGitHubOIDC_ProviderConfig(t *testing.T) {
 		providers[0].Inputs["attributeCondition"].StringValue())
 }
 
+func TestNewGitHubOIDC_ProviderMapsEnvironment(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewGitHubOIDC(ctx, "test-env-mapping", basicGitHubArgs())
+		return err
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	providers := tracker.RequireType(t, gcpWIFProvider, 1)
+	mapping := providers[0].Inputs["attributeMapping"].ObjectValue()
+	val, ok := mapping["attribute.environment"]
+	require.True(t, ok, "provider must map attribute.environment for per-GitHub-Environment SA scoping")
+	assert.Equal(t, "assertion.environment", val.StringValue())
+}
+
+func TestNewGitHubOIDC_EnvironmentScopedBinding(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		args := basicGitHubArgs()
+		// Monorepo pattern: scope a stage SA to a GitHub Environment rather than a repo.
+		args.SAMapping["org"] = SAMappingEntry{
+			SAName:    pulumi.String("projects/prj-cicd-123/serviceAccounts/org@prj-cicd-123.iam.gserviceaccount.com"),
+			Attribute: pulumi.String("attribute.environment/foundation-org"),
+		}
+		gh, err := NewGitHubOIDC(ctx, "test-env-binding", args)
+		require.NoError(t, err)
+		assert.Len(t, gh.Bindings, 2)
+		return nil
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	bindings := tracker.RequireType(t, gcpSAIAM, 2)
+	for _, b := range bindings {
+		assert.Equal(t, "roles/iam.workloadIdentityUser", b.Inputs["role"].StringValue())
+	}
+}
+
 func TestNewGitHubOIDC_SABindings(t *testing.T) {
 	tracker := testutil.NewTracker()
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
