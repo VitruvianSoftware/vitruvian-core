@@ -63,6 +63,21 @@ func main() {
 			return strings.TrimPrefix(name, "folders/")
 		}).(pulumi.StringOutput)
 
+		// Administrative sub-folder that holds the foundation's utility projects
+		// (the Cloud Identity quota project below), so they don't sit loose at the
+		// umbrella folder's root.
+		adminFolder, err := organizations.NewFolder(ctx, "administrative", &organizations.FolderArgs{
+			DisplayName:        pulumi.String("fldr-administrative"),
+			Parent:             folder.Name,
+			DeletionProtection: pulumi.Bool(true),
+		}, pulumi.Protect(true))
+		if err != nil {
+			return err
+		}
+		adminFolderID := adminFolder.Name.ApplyT(func(name string) string {
+			return strings.TrimPrefix(name, "folders/")
+		}).(pulumi.StringOutput)
+
 		// ====================================================================
 		// Cloud Identity quota project
 		// ====================================================================
@@ -87,7 +102,7 @@ func main() {
 		quotaProject, err := organizations.NewProject(ctx, "cloud-identity-quota", &organizations.ProjectArgs{
 			Name:           pulumi.String("prj-b-ci-quota"),
 			ProjectId:      pulumi.Sprintf("prj-b-ci-quota-%s", suffix.Hex),
-			FolderId:       folderID,
+			FolderId:       adminFolderID,
 			BillingAccount: pulumi.String(billingAccount),
 			DeletionPolicy: pulumi.String("DELETE"),
 		})
@@ -108,6 +123,7 @@ func main() {
 
 		ctx.Export("folder_name", folder.Name)
 		ctx.Export("folder_id", folderID)
+		ctx.Export("administrative_folder_id", adminFolderID)
 		// Consumed by foundation-bootstrap's groups_billing_project config.
 		ctx.Export("cloud_identity_quota_project_id", quotaProject.ProjectId)
 		return nil
