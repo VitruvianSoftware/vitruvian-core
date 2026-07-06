@@ -32,9 +32,10 @@ config:
   # (mirrors upstream var.groups.billing_project). The stack enables
   # cloudidentity.googleapis.com on it and uses a dedicated provider with
   # userProjectOverride scoped to the group resources only, so the default
-  # provider (projects/IAM/KMS) is unaffected. NOTE: sandbox-firebase-a7e3e is an
-  # interim anchor — revisit with a dedicated foundation quota project.
-  foundation-bootstrap:groups_billing_project: "sandbox-firebase-a7e3e"
+  # provider (projects/IAM/KMS) is unaffected. This is the dedicated quota project
+  # created by the org-folders prereq stage (its cloud_identity_quota_project_id
+  # output).
+  foundation-bootstrap:groups_billing_project: "prj-b-ci-quota-4bb9"
 
   # --- Co-tenant isolation under fldr-foundation-1 (do NOT touch foundation-0) ---
   # Numeric id of the fldr-foundation-1 umbrella folder created by the org-folders
