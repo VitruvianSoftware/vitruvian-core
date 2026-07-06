@@ -376,15 +376,22 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// admins group. This prevents any other principal from creating new
 	// billing accounts. Mirrors: google_organization_iam_binding
 	// "billing_creator" in TF bootstrap main.tf.
+	//
+	// This is authoritative at the ORG level regardless of parent_folder, so two
+	// foundations in the same org would clobber each other's members. It is gated
+	// behind enforce_org_billing_creator (default true) — set false for a
+	// co-tenant foundation when another foundation already enforces it org-wide.
 	// ========================================================================
-	if _, err := iam.NewOrganizationIAMBinding(ctx, "org-billing-creator", &iam.OrganizationIAMBindingArgs{
-		OrgID: pulumi.String(cfg.OrgID),
-		Role:  pulumi.String("roles/billing.creator"),
-		Members: pulumi.StringArray{
-			pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
-		},
-	}, dependsOnGroups); err != nil {
-		return nil, err
+	if cfg.EnforceOrgBillingCreator {
+		if _, err := iam.NewOrganizationIAMBinding(ctx, "org-billing-creator", &iam.OrganizationIAMBindingArgs{
+			OrgID: pulumi.String(cfg.OrgID),
+			Role:  pulumi.String("roles/billing.creator"),
+			Members: pulumi.StringArray{
+				pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
+			},
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
 	}
 
 	// ========================================================================

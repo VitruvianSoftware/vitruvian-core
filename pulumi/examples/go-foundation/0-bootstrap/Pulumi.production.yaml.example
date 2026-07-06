@@ -15,6 +15,20 @@ config:
   0-bootstrap:billing_data_users: "billing-data@example.com"
   0-bootstrap:audit_data_users: "audit-data@example.com"
 
+  # Automatic group creation (optional). When enabled, the stack creates the
+  # groups above via Cloud Identity and enables cloudidentity.googleapis.com on
+  # groups_billing_project. That project must already exist and the caller needs
+  # roles/serviceusage.serviceUsageConsumer on it (mirrors upstream
+  # var.groups.billing_project). Required whenever create_*_groups is true.
+  # 0-bootstrap:create_required_groups: "false"
+  # 0-bootstrap:create_optional_groups: "false"
+  # 0-bootstrap:groups_billing_project: "YOUR_CLOUD_IDENTITY_QUOTA_PROJECT"
+
+  # Authoritative org-level roles/billing.creator binding. Default true (upstream
+  # behavior). Set "false" for a co-tenant foundation sharing an org with another
+  # foundation that already enforces it (avoids clobbering its members).
+  # 0-bootstrap:enforce_org_billing_creator: "true"
+
   # Optional (defaults shown)
   # 0-bootstrap:project_prefix: "prj"
   # 0-bootstrap:folder_prefix: "fldr"
