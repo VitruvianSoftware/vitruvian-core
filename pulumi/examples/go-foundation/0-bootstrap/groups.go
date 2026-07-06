@@ -29,7 +29,7 @@ import (
 // Groups are only created when create_required_groups or create_optional_groups
 // is set to true in the config. When disabled, the bootstrap assumes the
 // groups already exist and uses their email addresses for IAM bindings.
-func deployGroups(ctx *pulumi.Context, cfg *Config) ([]pulumi.Resource, error) {
+func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOption) ([]pulumi.Resource, error) {
 	var groupResources []pulumi.Resource
 
 	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups {
@@ -68,7 +68,7 @@ func deployGroups(ctx *pulumi.Context, cfg *Config) ([]pulumi.Resource, error) {
 				Description:        key,
 				CustomerID:         customerID,
 				InitialGroupConfig: cfg.InitialGroupConfig,
-			})
+			}, opts...)
 			if err != nil {
 				return nil, err
 			}
@@ -101,7 +101,7 @@ func deployGroups(ctx *pulumi.Context, cfg *Config) ([]pulumi.Resource, error) {
 				Description:        key,
 				CustomerID:         customerID,
 				InitialGroupConfig: cfg.InitialGroupConfig,
-			})
+			}, opts...)
 			if err != nil {
 				return nil, err
 			}
