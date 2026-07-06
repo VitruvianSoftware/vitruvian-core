@@ -1,0 +1,32 @@
+# Committed stack config for the vitruviansoftware.dev foundation bootstrap.
+#
+# Holds ONLY non-secret identifiers (config-as-code, like repo_config/tabula).
+# There are NO secret keys here — the monorepo WIF adaptation removed the
+# github token path. Backend is Pulumi Cloud (ipv1337).
+#
+# ⚠️ The REPLACE-* values below are placeholders. Before the first apply, set
+# the real org identifiers, e.g.:
+#     bazel run //infrastructure/pulumi/foundation/gcp-bootstrap:config -- set org_id <ID>
+# and set parent_folder to the fldr-foundation-1 id exported by the org-folders
+# stack (bazel run //infrastructure/pulumi/foundation/org-folders:up).
+config:
+  # --- REQUIRED: real org identifiers (fill before apply) ---
+  foundation-bootstrap:org_id: "REPLACE-vitruviansoftware.dev-org-id"
+  foundation-bootstrap:billing_account: "REPLACE-XXXXXX-XXXXXX-XXXXXX"
+  foundation-bootstrap:group_org_admins: "REPLACE-org-admins@vitruviansoftware.dev"
+  foundation-bootstrap:group_billing_admins: "REPLACE-billing-admins@vitruviansoftware.dev"
+  foundation-bootstrap:billing_data_users: "REPLACE-billing-data@vitruviansoftware.dev"
+  foundation-bootstrap:audit_data_users: "REPLACE-audit-data@vitruviansoftware.dev"
+
+  # --- Co-tenant isolation under fldr-foundation-1 (do NOT touch foundation-0) ---
+  # Numeric id of the fldr-foundation-1 umbrella folder created by the
+  # org-folders stack. Nesting under a folder makes org-project-creators a
+  # folder-scoped binding (see sa.go bindParentIAMBinding).
+  foundation-bootstrap:parent_folder: "REPLACE-fldr-foundation-1-numeric-id"
+  # Skip the authoritative org-level billing.creator binding: foundation-0
+  # already enforces it org-wide and a second authoritative binding would
+  # clobber it. (See sa.go step 10.)
+  foundation-bootstrap:enforce_org_billing_creator: "false"
+
+  # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---
+  foundation-bootstrap:github_owner: "VitruvianSoftware"
