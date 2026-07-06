@@ -209,8 +209,15 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			// this rule and stay blocked — the one-way-mirror invariant we want.
 			//
 			// Pattern is "main": every synced standalone repo uses main as its
-			// default branch. The provider upserts branch protection (PUT), so
-			// this adopts and overwrites any pre-existing manual rule.
+			// default branch.
+			//
+			// ADOPT via pulumi.Import (id "<repo>:main"), the same brownfield
+			// pattern repo_config uses. The pulumi-github provider's Create is NOT
+			// idempotent — it errors "Name already protected: main" when a rule
+			// already exists (these mirrors carried manual protection from their
+			// standalone days). Import adopts the existing rule and reconciles it to
+			// the args below; it is a harmless no-op once the resource is in state,
+			// so it can stay on the resource permanently (as repo_config does).
 			_, err = github.NewBranchProtection(ctx, fmt.Sprintf("%s-mirror-readonly", project.Name), &github.BranchProtectionArgs{
 				RepositoryId:      pulumi.String(project.StandaloneRepo),
 				Pattern:           pulumi.String("main"),
@@ -222,7 +229,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 						RequiredApprovingReviewCount: pulumi.Int(0),
 					},
 				},
-			})
+			}, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
 			if err != nil {
 				return err
 			}
