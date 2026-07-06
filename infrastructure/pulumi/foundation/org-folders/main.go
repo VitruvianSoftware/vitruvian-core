@@ -32,6 +32,8 @@ import (
 	"strings"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
+	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -61,8 +63,53 @@ func main() {
 			return strings.TrimPrefix(name, "folders/")
 		}).(pulumi.StringOutput)
 
+		// ====================================================================
+		// Cloud Identity quota project
+		// ====================================================================
+		// The foundation-bootstrap stage CREATES Google groups via the Cloud
+		// Identity API (create_required_groups/create_optional_groups). That API
+		// requires a QUOTA/billing project on every call, and groups are created
+		// before the foundation's own seed project exists — so a pre-existing
+		// project must supply the quota (bootstrap points its `groups_billing_project`
+		// config here). We create a small, dedicated project for exactly that
+		// purpose (rather than borrowing an unrelated one) so the config reads
+		// sensibly and the dependency is explicit and self-contained. It only ever
+		// fronts the Cloud Identity API's quota; it holds no other resources.
+		billingAccount := conf.Require("billing_account")
+
+		suffix, err := random.NewRandomId(ctx, "ci-quota-suffix", &random.RandomIdArgs{
+			ByteLength: pulumi.Int(2),
+		})
+		if err != nil {
+			return err
+		}
+
+		quotaProject, err := organizations.NewProject(ctx, "cloud-identity-quota", &organizations.ProjectArgs{
+			Name:           pulumi.String("prj-b-ci-quota"),
+			ProjectId:      pulumi.Sprintf("prj-b-ci-quota-%s", suffix.Hex),
+			FolderId:       folderID,
+			BillingAccount: pulumi.String(billingAccount),
+			DeletionPolicy: pulumi.String("DELETE"),
+		})
+		if err != nil {
+			return err
+		}
+
+		// Enable the Cloud Identity API on the quota project so it can front the
+		// group-creation calls' quota.
+		if _, err := projects.NewService(ctx, "cloud-identity-quota-api", &projects.ServiceArgs{
+			Project:                  quotaProject.ProjectId,
+			Service:                  pulumi.String("cloudidentity.googleapis.com"),
+			DisableOnDestroy:         pulumi.Bool(false),
+			DisableDependentServices: pulumi.Bool(false),
+		}); err != nil {
+			return err
+		}
+
 		ctx.Export("folder_name", folder.Name)
 		ctx.Export("folder_id", folderID)
+		// Consumed by foundation-bootstrap's groups_billing_project config.
+		ctx.Export("cloud_identity_quota_project_id", quotaProject.ProjectId)
 		return nil
 	})
 }
