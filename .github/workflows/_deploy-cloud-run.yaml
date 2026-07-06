@@ -93,6 +93,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Explicit least-privilege floor for this reusable workflow. A called
+    # workflow's permissions can only narrow the caller's grant, never widen it,
+    # so declaring them here makes the job self-documenting and robust against a
+    # future caller that grants more than the deploy needs: checkout
+    # (contents: read) + GCP Workload Identity Federation (id-token: write).
+    # No repo/API/package writes happen in this job.
+    permissions:
+      contents: read
+      id-token: write
     environment: ${{ inputs.app-name }}-${{ inputs.environment }}
     env:
       DEPLOY_ENV: ${{ inputs.environment }}
