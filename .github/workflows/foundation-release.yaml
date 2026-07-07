@@ -42,7 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation--release_created'] }}
+      gcp_org_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-org--release_created'] }}
+      org_folders_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/org-folders--release_created'] }}
+      gcp_bootstrap_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-bootstrap--release_created'] }}
     steps:
       - name: Mint App token for the release PR
         id: app-token
@@ -59,29 +61,12 @@ jobs:
           manifest-file: infrastructure/pulumi/foundation/.release-please-manifest.json
           target-branch: main
 
-  deploy:
+  deploy-gcp-org:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.gcp_org_release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - app: gcp-bootstrap
-            dir: infrastructure/pulumi/foundation/gcp-bootstrap
-            stack: production
-            environment: foundation-bootstrap
-          - app: org-folders
-            dir: infrastructure/pulumi/foundation/org-folders
-            stack: production
-            environment: foundation-bootstrap
-          - app: gcp-org
-            dir: infrastructure/pulumi/foundation/gcp-org
-            stack: production
-            environment: foundation-org
-    environment: ${{ matrix.environment }}
+    environment: foundation-org
     env:
       GOWORK: off
     steps:
@@ -96,11 +81,77 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
-      - name: Pulumi up (${{ matrix.app }} / ${{ matrix.stack }})
+      - name: Pulumi up (gcp-org / production)
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: ${{ matrix.dir }}
+        working-directory: infrastructure/pulumi/foundation/gcp-org
         run: |
           set -euo pipefail
-          pulumi stack select "${{ matrix.stack }}"
+          pulumi stack select "production"
+          pulumi up --yes --non-interactive
+
+  deploy-org-folders:
+    needs: [release-please, deploy-gcp-org]
+    if: |
+      always() &&
+      needs.release-please.result == 'success' &&
+      (needs.deploy-gcp-org.result == 'success' || needs.deploy-gcp-org.result == 'skipped') &&
+      needs.release-please.outputs.org_folders_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-bootstrap
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (org-folders / production)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/org-folders
+        run: |
+          set -euo pipefail
+          pulumi stack select "production"
+          pulumi up --yes --non-interactive
+
+  deploy-gcp-bootstrap:
+    needs: [release-please, deploy-org-folders]
+    if: |
+      always() &&
+      needs.release-please.result == 'success' &&
+      (needs.deploy-org-folders.result == 'success' || needs.deploy-org-folders.result == 'skipped') &&
+      needs.release-please.outputs.gcp_bootstrap_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-bootstrap
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (gcp-bootstrap / production)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
+        run: |
+          set -euo pipefail
+          pulumi stack select "production"
           pulumi up --yes --non-interactive

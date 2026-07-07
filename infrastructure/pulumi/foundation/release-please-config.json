@@ -1,8 +1,16 @@
 {
   "packages": {
-    "infrastructure/pulumi/foundation": {
+    "infrastructure/pulumi/foundation/gcp-org": {
       "release-type": "simple",
-      "component": "foundation"
+      "component": "foundation-gcp-org"
+    },
+    "infrastructure/pulumi/foundation/org-folders": {
+      "release-type": "simple",
+      "component": "foundation-org-folders"
+    },
+    "infrastructure/pulumi/foundation/gcp-bootstrap": {
+      "release-type": "simple",
+      "component": "foundation-gcp-bootstrap"
     }
   }
 }
