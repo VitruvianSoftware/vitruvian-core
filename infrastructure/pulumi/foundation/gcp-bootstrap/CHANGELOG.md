@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.2...foundation-gcp-bootstrap-v0.3.3) (2026-07-07)
+
+
+### Bug Fixes
+
+* **foundation:** grant serviceUsageAdmin to bootstrap SA on seed project ([#649](https://github.com/VitruvianSoftware/vitruvian-core/issues/649)) ([76de6b9](https://github.com/VitruvianSoftware/vitruvian-core/commit/76de6b9e2d414f85d83791ddb27a60654cde07e4))
+
 ## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.1...foundation-gcp-bootstrap-v0.3.2) (2026-07-07)
 
 
