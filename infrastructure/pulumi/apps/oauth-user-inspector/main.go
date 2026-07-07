@@ -84,7 +84,11 @@ func main() {
 			},
 		}
 
-		revisionName := pulumi.Sprintf("oauth-user-inspector-%s-%s", env, imageTag)
+		revisionSuffix := imageTag
+		if len(revisionSuffix) > 7 {
+			revisionSuffix = revisionSuffix[:7]
+		}
+		revisionName := pulumi.Sprintf("oauth-user-inspector-%s-%s", env, revisionSuffix)
 		var traffics cloudrunv2.ServiceTrafficArray
 		if promote || stableRevision == "" {
 			traffics = cloudrunv2.ServiceTrafficArray{
