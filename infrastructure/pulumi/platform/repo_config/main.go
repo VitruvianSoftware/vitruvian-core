@@ -265,10 +265,6 @@ func main() {
 			return err
 		}
 
-		if err := foundationEnvironments(ctx, cfg, repo); err != nil {
-			return err
-		}
-
 		if err := pipelineGates(ctx, cfg, repo); err != nil {
 			return err
 		}
