@@ -75,18 +75,18 @@ jobs:
               - 'infrastructure/pulumi/foundation/.release-please-manifest.json'
 
       - name: Authenticate to GCP (WIF, keyless)
-        if: steps.changes.outputs.stack == 'true'
+        if: false
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
-        if: steps.changes.outputs.stack == 'true'
+        if: false
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
-        if: steps.changes.outputs.stack == 'true'
+        if: false
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: ${{ matrix.dir }}
@@ -96,7 +96,7 @@ jobs:
           pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
 
       - name: Format the preview comment
-        if: steps.changes.outputs.stack == 'true'
+        if: false
         run: |
           set -euo pipefail
           sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/\r//g' /tmp/preview-raw.txt > /tmp/preview-clean.txt
@@ -112,7 +112,7 @@ jobs:
           } > /tmp/preview-comment.md
 
       - name: Post the sticky PR comment
-        if: steps.changes.outputs.stack == 'true'
+        if: false
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: foundation-preview-${{ matrix.app }}

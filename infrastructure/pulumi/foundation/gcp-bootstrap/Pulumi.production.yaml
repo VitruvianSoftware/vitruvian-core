@@ -48,3 +48,8 @@ config:
 
   # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---
   foundation-bootstrap:github_owner: "VitruvianSoftware"
+  foundation-bootstrap:github_repo_bootstrap: "vitruvian-core"
+  foundation-bootstrap:github_repo_org: "vitruvian-core"
+  foundation-bootstrap:github_repo_env: "vitruvian-core"
+  foundation-bootstrap:github_repo_net: "vitruvian-core"
+  foundation-bootstrap:github_repo_proj: "vitruvian-core"
