@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.0...foundation-gcp-bootstrap-v0.3.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **ci:** give each foundation phase its own environment and remove shared concurrency ([#642](https://github.com/VitruvianSoftware/vitruvian-core/issues/642)) ([05ee6ad](https://github.com/VitruvianSoftware/vitruvian-core/commit/05ee6ad6a7f271ac038bbe06000e273c6f3f8ae2))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.2.0...foundation-gcp-bootstrap-v0.3.0) (2026-07-07)
 
 
