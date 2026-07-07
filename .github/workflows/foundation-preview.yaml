@@ -47,15 +47,15 @@ jobs:
           - app: gcp-bootstrap
             dir: infrastructure/pulumi/foundation/gcp-bootstrap
             stack: production
-            environment: foundation-bootstrap
+            environment: foundation-bootstrap-preview
           - app: org-folders
             dir: infrastructure/pulumi/foundation/org-folders
             stack: production
-            environment: foundation-bootstrap
+            environment: foundation-bootstrap-preview
           - app: gcp-org
             dir: infrastructure/pulumi/foundation/gcp-org
             stack: production
-            environment: foundation-org
+            environment: foundation-org-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off

@@ -482,6 +482,16 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 			return err
 		}
 
+		// Preview environment for PRs (no branch policy or reviewers required)
+		previewEnv := env + "-preview"
+		previewEnvRes, err := github.NewRepositoryEnvironment(ctx, previewEnv, &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(previewEnv),
+		})
+		if err != nil {
+			return err
+		}
+
 		// Deterministic resource names: iterate variables in sorted order.
 		vars := foundationVars[env]
 		keys := make([]string, 0, len(vars))
@@ -493,6 +503,16 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", env, k), &github.ActionsEnvironmentVariableArgs{
 				Repository:   repo.Name,
 				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			})
+			if err != nil {
+				return err
+			}
+
+			_, err = github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", previewEnv, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  previewEnvRes.Environment,
 				VariableName: pulumi.String(k),
 				Value:        pulumi.String(vars[k]),
 			})
