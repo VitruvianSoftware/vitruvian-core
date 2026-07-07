@@ -45,7 +45,7 @@ func main() {
 		if region == "" {
 			region = "us-west1"
 		}
-		
+
 		env := cfg.Require("environment")
 		imageTag := envOrConfig("OAUTH_USER_INSPECTOR_IMAGE_TAG", cfg, "imageTag")
 		if imageTag == "" {
