@@ -1,0 +1,110 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Export (pulumi_go-example-foundation)
+
+# EXPORT-ONLY mirror: monorepo pulumi/examples/go-foundation/ ->
+# VitruvianSoftware/pulumi_go-example-foundation (repo root), SQUASH mode. Thin
+# caller; the export_pulumi_go_example_foundation workflow (strip in-tree replaces
+# + repoint go/pkg/* to published versions) is in tools/copybara/copy.bara.sky.
+#
+# go.sum regeneration (tidy-go-sum job below): the text transform rewrites each
+# stage go.mod but cannot recompute Go module hashes, so after the export lands we
+# run `go mod tidy` per stage against the published library tags and push the
+# regenerated go.mod/go.sum back to the mirror. This runs HERE (monorepo side),
+# not on the mirror, because it must push to the mirror's protected `main`, and
+# only the sync deploy key (PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY) is on the
+# branch-protection bypass allowlist — the mirror's own GITHUB_TOKEN is not.
+# go.sum is standalone_only in copy.bara.sky, so a later export never clobbers it.
+#
+# FIRST seed (no MONOREPO_REV_ID baseline yet): dispatch with
+# '--init-history --force --ignore-noop'; INSPECT the push. Normal runs: --ignore-noop.
+on:
+    push:
+        branches: [main]
+        paths: ["pulumi/examples/go-foundation/**"]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. First seed: '--init-history --force --ignore-noop'. Normal runs: --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-export-pulumi-go-example-foundation
+    cancel-in-progress: false
+
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        with:
+            component: pulumi_go-example-foundation
+            standalone_only: ".github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/release.yml .github/workflows/commitlint.yml go.work go.work.sum"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}
+
+    tidy-go-sum:
+        # Regenerate go.sum on the mirror after the export lands. Idempotent: only
+        # commits when `go mod tidy` actually changed a go.mod/go.sum. Pushes over
+        # SSH with the sync deploy key, which bypasses the mirror's branch protection.
+        needs: export
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/setup-go@v6
+              with:
+                  go-version: "1.26.2"
+
+            - name: Clone mirror, go mod tidy each module, push regenerated go.sum
+              env:
+                  SSH_KEY: ${{ secrets.PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}
+                  MIRROR: ${{ github.repository_owner }}/pulumi_go-example-foundation
+              run: |
+                  set -euo pipefail
+                  mkdir -p ~/.ssh
+                  # OpenSSH requires exactly one trailing newline; normalize it.
+                  printf '%s\n' "${SSH_KEY%$'\n'}" > ~/.ssh/id_ed25519
+                  chmod 600 ~/.ssh/id_ed25519
+                  ssh-keyscan -t rsa,ed25519 github.com > ~/.ssh/known_hosts 2>/dev/null
+                  export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_ed25519 -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+
+                  git clone --depth 1 "git@github.com:${MIRROR}.git" mirror
+                  cd mirror
+                  git config user.name "VitruvianSoftware Sync"
+                  git config user.email "sync@vitruviansoftware.com"
+
+                  for gomod in $(git ls-files '*go.mod'); do
+                    d="$(dirname "$gomod")"
+                    echo "::group::go mod tidy $d"
+                    ( cd "$d" && GOWORK=off GOFLAGS=-mod=mod go mod tidy )
+                    echo "::endgroup::"
+                  done
+
+                  git add -A -- '*go.mod' '*go.sum'
+                  if git diff --cached --quiet; then
+                    echo "go.mod/go.sum already tidy — nothing to commit."
+                  else
+                    git commit -m "chore: go mod tidy (regenerate go.sum for published library versions)"
+                    git push origin HEAD:main
+                  fi

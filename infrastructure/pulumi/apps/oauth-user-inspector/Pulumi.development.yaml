@@ -28,3 +28,4 @@ config:
   oauth-user-inspector:project: gen-lang-client-0352693779
   oauth-user-inspector:region: us-west1
   oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector@gen-lang-client-0352693779.iam.gserviceaccount.com
+  oauth-user-inspector:environment: development

@@ -1,0 +1,480 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package main
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/iam"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	parentiammember "foundation-0-bootstrap/modules/parent-iam-member"
+	parentiamremoverole "foundation-0-bootstrap/modules/parent-iam-remove-role"
+)
+
+// deployIAM creates the granular service accounts and assigns least-privilege
+// IAM roles at every scope (org, parent, seed project, CI/CD project, billing).
+// This directly mirrors the Terraform foundation's sa.tf.
+func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource) (map[string]*serviceaccount.Account, error) {
+	dependsOnGroups := pulumi.DependsOn(groupResources)
+	// ========================================================================
+	// 1. Create Granular Service Accounts
+	// Each foundation stage gets a dedicated SA for separation of duty.
+	// ========================================================================
+	granularSAs := map[string]string{
+		"bootstrap": "Foundation Bootstrap SA. Managed by Pulumi.",
+		"org":       "Foundation Organization SA. Managed by Pulumi.",
+		"env":       "Foundation Environment SA. Managed by Pulumi.",
+		"net":       "Foundation Network SA. Managed by Pulumi.",
+		"proj":      "Foundation Projects SA. Managed by Pulumi.",
+	}
+
+	sas := make(map[string]*serviceaccount.Account)
+	for key, desc := range granularSAs {
+		sa, err := serviceaccount.NewAccount(ctx, fmt.Sprintf("sa-terraform-%s", key), &serviceaccount.AccountArgs{
+			Project:                   seed.ProjectID,
+			AccountId:                 pulumi.String(fmt.Sprintf("sa-terraform-%s", key)),
+			DisplayName:               pulumi.String(desc),
+			CreateIgnoreAlreadyExists: pulumi.Bool(true),
+		})
+		if err != nil {
+			return nil, err
+		}
+		sas[key] = sa
+	}
+
+	// Helper: format a service account as an IAM member string
+	memberOf := func(sa *serviceaccount.Account) pulumi.StringOutput {
+		return sa.Email.ApplyT(func(email string) string {
+			return fmt.Sprintf("serviceAccount:%s", email)
+		}).(pulumi.StringOutput)
+	}
+
+	// Helper: create a short resource name from a role
+	roleID := func(role string) string {
+		return strings.ReplaceAll(strings.TrimPrefix(role, "roles/"), ".", "-")
+	}
+
+	// Helper: append common roles to a role list
+	commonRoles := []string{"roles/browser"}
+	withCommon := func(roles ...string) []string {
+		return append(roles, commonRoles...)
+	}
+
+	// ========================================================================
+	// 2. Organization-level IAM
+	// ========================================================================
+	orgRoles := map[string][]string{
+		"bootstrap": withCommon(
+			"roles/resourcemanager.organizationAdmin",
+			"roles/accesscontextmanager.policyAdmin",
+			"roles/serviceusage.serviceUsageConsumer",
+		),
+		"org": withCommon(
+			"roles/orgpolicy.policyAdmin",
+			"roles/logging.configWriter",
+			"roles/resourcemanager.organizationAdmin",
+			"roles/securitycenter.notificationConfigEditor",
+			"roles/resourcemanager.organizationViewer",
+			"roles/accesscontextmanager.policyAdmin",
+			"roles/essentialcontacts.admin",
+			"roles/resourcemanager.tagAdmin",
+			"roles/resourcemanager.tagUser",
+			"roles/cloudasset.owner",
+			"roles/securitycenter.sourcesEditor",
+		),
+		"env": withCommon(
+			"roles/resourcemanager.tagUser",
+			"roles/assuredworkloads.admin",
+		),
+		"net": withCommon(
+			"roles/accesscontextmanager.policyAdmin",
+			"roles/compute.xpnAdmin",
+		),
+		"proj": withCommon(
+			"roles/accesscontextmanager.policyAdmin",
+			"roles/resourcemanager.organizationAdmin",
+			"roles/serviceusage.serviceUsageConsumer",
+			"roles/cloudkms.admin",
+		),
+	}
+
+	for key, roles := range orgRoles {
+		for _, role := range roles {
+			if _, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
+				OrgID:  pulumi.String(cfg.OrgID),
+				Role:   pulumi.String(role),
+				Member: memberOf(sas[key]),
+			}, dependsOnGroups); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// ========================================================================
+	// 3. Parent-level IAM (folder or organization scope)
+	// When deploying under a parent folder, these roles are scoped to that
+	// folder. At the org root, they apply at the organization level.
+	// ========================================================================
+	parentRoles := map[string][]string{
+		"bootstrap": {
+			"roles/resourcemanager.folderAdmin",
+		},
+		"org": {
+			"roles/resourcemanager.folderAdmin",
+		},
+		"env": {
+			"roles/resourcemanager.folderAdmin",
+		},
+		"net": {
+			"roles/resourcemanager.folderViewer",
+			"roles/compute.networkAdmin",
+			"roles/compute.securityAdmin",
+			"roles/compute.orgSecurityPolicyAdmin",
+			"roles/compute.orgSecurityResourceAdmin",
+			"roles/dns.admin",
+		},
+		"proj": {
+			"roles/resourcemanager.folderAdmin",
+			"roles/artifactregistry.admin",
+			"roles/compute.networkAdmin",
+			"roles/compute.xpnAdmin",
+		},
+	}
+
+	for key, roles := range parentRoles {
+		_, err := parentiammember.NewParentIamMember(ctx, fmt.Sprintf("parent-iam-%s", key), &parentiammember.ParentIamMemberArgs{
+			ParentType: cfg.ParentType,
+			ParentId:   pulumi.String(cfg.ParentID),
+			Member:     memberOf(sas[key]),
+			Roles:      roles,
+		}, dependsOnGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
+	// 4. Seed Project IAM
+	// Roles required to manage resources in the Seed project itself.
+	// ========================================================================
+	seedProjectRoles := map[string][]string{
+		"bootstrap": {
+			"roles/storage.admin",
+			"roles/iam.serviceAccountAdmin",
+			"roles/resourcemanager.projectDeleter",
+			"roles/cloudkms.admin",
+		},
+		"org":  {"roles/storage.objectAdmin"},
+		"env":  {"roles/storage.objectAdmin"},
+		"net":  {"roles/storage.objectAdmin"},
+		"proj": {"roles/storage.objectAdmin", "roles/storage.admin"},
+	}
+
+	for key, roles := range seedProjectRoles {
+		_, err := parentiammember.NewParentIamMember(ctx, fmt.Sprintf("seed-iam-%s", key), &parentiammember.ParentIamMemberArgs{
+			ParentType: "project",
+			ParentId:   seed.ProjectID,
+			Member:     memberOf(sas[key]),
+			Roles:      roles,
+		}, dependsOnGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
+	// 5. CI/CD Project IAM
+	// Roles required to manage the CI/CD pipeline infrastructure.
+	// ========================================================================
+	cicdProjectRoles := map[string][]string{
+		"bootstrap": {
+			"roles/storage.admin",
+			"roles/compute.networkAdmin",
+			"roles/cloudbuild.builds.editor",
+			"roles/cloudbuild.workerPoolOwner",
+			"roles/artifactregistry.admin",
+			"roles/source.admin",
+			"roles/iam.serviceAccountAdmin",
+			"roles/workflows.admin",
+			"roles/cloudscheduler.admin",
+			"roles/resourcemanager.projectDeleter",
+			"roles/dns.admin",
+			"roles/iam.workloadIdentityPoolAdmin",
+		},
+	}
+
+	for key, roles := range cicdProjectRoles {
+		_, err := parentiammember.NewParentIamMember(ctx, fmt.Sprintf("cicd-iam-%s", key), &parentiammember.ParentIamMemberArgs{
+			ParentType: "project",
+			ParentId:   cicd.ProjectID,
+			Member:     memberOf(sas[key]),
+			Roles:      roles,
+		}, dependsOnGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
+	// 6. Billing IAM
+	// All SAs need billing.user to create projects with billing association.
+	// All SAs also get billing.admin for full billing management.
+	// The org SA additionally gets logging.configWriter for billing log sinks.
+	// ========================================================================
+	for key := range granularSAs {
+		if _, err := iam.NewBillingIAMMember(ctx, fmt.Sprintf("billing-user-%s", key), &iam.BillingIAMMemberArgs{
+			BillingAccountID: pulumi.String(cfg.BillingAccount),
+			Role:             pulumi.String("roles/billing.user"),
+			Member:           memberOf(sas[key]),
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+
+		if _, err := iam.NewBillingIAMMember(ctx, fmt.Sprintf("billing-admin-%s", key), &iam.BillingIAMMemberArgs{
+			BillingAccountID: pulumi.String(cfg.BillingAccount),
+			Role:             pulumi.String("roles/billing.admin"),
+			Member:           memberOf(sas[key]),
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+
+	// Org SA: billing logging.configWriter for audit log sinks on billing
+	if _, err := iam.NewBillingIAMMember(ctx, "billing-logging-org", &iam.BillingIAMMemberArgs{
+		BillingAccountID: pulumi.String(cfg.BillingAccount),
+		Role:             pulumi.String("roles/logging.configWriter"),
+		Member:           memberOf(sas["org"]),
+	}, dependsOnGroups); err != nil {
+		return nil, err
+	}
+
+	// ========================================================================
+	// 7. Org Admins Group IAM
+	// Grant the org admins group essential org-level roles. This mirrors
+	// the Terraform bootstrap module's org_admins_org_iam_permissions which
+	// grants organizationAdmin + billing.user (and optionally
+	// orgpolicy.policyAdmin) to the group_org_admins group.
+	// ========================================================================
+	orgAdminGroupMember := pulumi.Sprintf("group:%s", cfg.GroupOrgAdmins)
+	orgAdminRoles := []string{
+		"roles/resourcemanager.organizationAdmin",
+		"roles/billing.user",
+	}
+	if cfg.OrgPolicyAdminRole {
+		orgAdminRoles = append(orgAdminRoles, "roles/orgpolicy.policyAdmin")
+	}
+	for _, role := range orgAdminRoles {
+		if _, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-admins-%s", roleID(role)), &iam.OrganizationIAMMemberArgs{
+			OrgID:  pulumi.String(cfg.OrgID),
+			Role:   pulumi.String(role),
+			Member: orgAdminGroupMember,
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+
+	if _, err := iam.NewOrganizationIAMMember(ctx, "org-billing-admins-admin", &iam.OrganizationIAMMemberArgs{
+		OrgID:  pulumi.String(cfg.OrgID),
+		Role:   pulumi.String("roles/billing.admin"),
+		Member: pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
+	}); err != nil {
+		return nil, err
+	}
+
+	// ========================================================================
+	// 8. SA Self-Impersonation
+	// Each granular SA gets roles/iam.serviceAccountTokenCreator on itself.
+	// This is required for Workload Identity Federation flows where the SA
+	// needs to mint its own tokens. Mirrors the Terraform foundation's
+	// build_github.tf self_impersonate resource.
+	// ========================================================================
+	for key, sa := range sas {
+		if _, err := iam.NewServiceAccountIAMMember(ctx, fmt.Sprintf("sa-self-impersonate-%s", key), &iam.ServiceAccountIAMMemberArgs{
+			ServiceAccountID: sa.Name,
+			Role:             pulumi.String("roles/iam.serviceAccountTokenCreator"),
+			Member:           memberOf(sa),
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+
+	// Grant org admins group the ability to impersonate all granular SAs.
+	// This allows org admins to assume any pipeline SA identity for
+	// local development and troubleshooting.
+	// Mirrors: org_admin_sa_impersonate_permissions + org_admin_sa_user in TF
+	for key, sa := range sas {
+		if _, err := iam.NewServiceAccountIAMMember(ctx, fmt.Sprintf("org-admins-impersonate-%s", key), &iam.ServiceAccountIAMMemberArgs{
+			ServiceAccountID: sa.Name,
+			Role:             pulumi.String("roles/iam.serviceAccountTokenCreator"),
+			Member:           orgAdminGroupMember,
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+		// roles/iam.serviceAccountUser allows the admins to "act as" the SA
+		// (not just mint tokens). Required for full impersonation workflows.
+		if _, err := iam.NewServiceAccountIAMMember(ctx, fmt.Sprintf("org-admins-sa-user-%s", key), &iam.ServiceAccountIAMMemberArgs{
+			ServiceAccountID: sa.Name,
+			Role:             pulumi.String("roles/iam.serviceAccountUser"),
+			Member:           orgAdminGroupMember,
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+
+	// Grant org admins serviceusage.serviceUsageConsumer at the parent level
+	// so they can consume API quota while impersonating pipeline SAs.
+	// Mirrors: org_admin_serviceusage_consumer in TF bootstrap
+	_, err := parentiammember.NewParentIamMember(ctx, "org-admins-serviceusage", &parentiammember.ParentIamMemberArgs{
+		ParentType: cfg.ParentType,
+		ParentId:   pulumi.String(cfg.ParentID),
+		Member:     orgAdminGroupMember,
+		Roles:      []string{"roles/serviceusage.serviceUsageConsumer"},
+	}, dependsOnGroups)
+	if err != nil {
+		return nil, err
+	}
+
+	// ========================================================================
+	// 9. Org Project Creators Enforcement
+	// Restrict the Project Creator role at the org/parent level to ONLY the
+	// granular service accounts. This is authoritative — it removes any other
+	// members from this role. Mirrors the Terraform foundation's
+	// org_project_creators enforcement in the bootstrap module.
+	// ========================================================================
+	saMembers := make(pulumi.StringArray, 0, len(granularSAs))
+	for _, sa := range sas {
+		saMembers = append(saMembers, memberOf(sa))
+	}
+	// Also include the org admins group so they retain the ability to create projects
+	saMembers = append(saMembers, pulumi.Sprintf("group:%s", cfg.GroupOrgAdmins))
+
+	if err := bindParentIAMBinding(ctx, "org-project-creators", cfg, pulumi.String("roles/resourcemanager.projectCreator"), saMembers, dependsOnGroups); err != nil {
+		return nil, err
+	}
+
+	// ========================================================================
+	// 10. Authoritative billing.creator Enforcement
+	// Restricts roles/billing.creator at the org level to ONLY the billing
+	// admins group. This prevents any other principal from creating new
+	// billing accounts. Mirrors: google_organization_iam_binding
+	// "billing_creator" in TF bootstrap main.tf.
+	//
+	// CO-TENANCY: this is authoritative at the ORG level regardless of the
+	// parent_folder, so two foundations in the same org would clobber each
+	// other's members on every apply. It is therefore gated behind
+	// enforce_org_billing_creator (default false) — leave it off when another
+	// foundation (e.g. fldr-foundation-0) already enforces this org-wide.
+	// ========================================================================
+	if cfg.EnforceOrgBillingCreator {
+		if _, err := iam.NewOrganizationIAMBinding(ctx, "org-billing-creator", &iam.OrganizationIAMBindingArgs{
+			OrgID: pulumi.String(cfg.OrgID),
+			Role:  pulumi.String("roles/billing.creator"),
+			Members: pulumi.StringArray{
+				pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
+			},
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
+	// 11. Remove roles/editor from bootstrap projects
+	// When projects are created, the Compute Engine default SA gets the
+	// Editor role. This removes all editors from both projects to follow
+	// least-privilege. Mirrors the Terraform foundation's
+	// bootstrap_projects_remove_editor module.
+	// ========================================================================
+	bootstrapProjects := map[string]pulumi.StringOutput{
+		"seed": seed.ProjectID,
+		"cicd": cicd.ProjectID,
+	}
+	for projKey, projID := range bootstrapProjects {
+		_, err := parentiamremoverole.NewParentIamRemoveRole(ctx, fmt.Sprintf("remove-editor-%s", projKey), &parentiamremoverole.ParentIamRemoveRoleArgs{
+			ParentType: "project",
+			ParentId:   projID,
+			Roles:      []string{"roles/editor"},
+		}, dependsOnGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// ========================================================================
+	// 12. State Bucket IAM
+	// Grant each pipeline SA + org admins group roles/storage.admin on the
+	// state bucket. This is done here (not in pkg/bootstrap) because the SAs
+	// don't exist yet when the seed project is created.
+	// Mirrors: google_storage_bucket_iam_member "org_terraform_state_iam"
+	// and "orgadmins_state_iam" in TF bootstrap main.tf.
+	// ========================================================================
+	// Name each binding by its stable key (SA key, sorted) rather than a
+	// positional index over the sas map: a positional index shuffles with the
+	// map's non-deterministic iteration order and spuriously replaces these
+	// bindings on every apply.
+	saKeys := make([]string, 0, len(sas))
+	for k := range sas {
+		saKeys = append(saKeys, k)
+	}
+	sort.Strings(saKeys)
+	for _, key := range saKeys {
+		if _, err := storage.NewBucketIAMMember(ctx, "state-bucket-iam-"+key, &storage.BucketIAMMemberArgs{
+			Bucket: seed.StateBucketName,
+			Role:   pulumi.String("roles/storage.admin"),
+			Member: memberOf(sas[key]),
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := storage.NewBucketIAMMember(ctx, "state-bucket-iam-orgadmins", &storage.BucketIAMMemberArgs{
+		Bucket: seed.StateBucketName,
+		Role:   pulumi.String("roles/storage.admin"),
+		Member: orgAdminGroupMember,
+	}, dependsOnGroups); err != nil {
+		return nil, err
+	}
+
+	return sas, nil
+}
+
+// bindParentIAMBinding creates an authoritative IAM binding at either the
+// organization or folder scope, depending on whether the foundation is
+// deployed under a parent folder or at the org root.
+func bindParentIAMBinding(ctx *pulumi.Context, name string, cfg *Config, role pulumi.StringInput, members pulumi.StringArrayInput, dependsOnGroups pulumi.ResourceOption) error {
+	if cfg.ParentType == "organization" {
+		_, err := iam.NewOrganizationIAMBinding(ctx, name, &iam.OrganizationIAMBindingArgs{
+			OrgID:   pulumi.String(cfg.ParentID),
+			Role:    role,
+			Members: members,
+		}, dependsOnGroups)
+		return err
+	}
+	_, err := iam.NewFolderIAMBinding(ctx, name, &iam.FolderIAMBindingArgs{
+		FolderID: pulumi.String(cfg.ParentID),
+		Role:     role,
+		Members:  members,
+	}, dependsOnGroups)
+	return err
+}

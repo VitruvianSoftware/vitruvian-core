@@ -30,7 +30,8 @@ import (
 // The loggingDeps parameter implements the Gap 3 race condition guard: the
 // domain-restricted sharing policy must wait for log sinks to be created and
 // their writer identities granted IAM, otherwise the sinks may fail with 403.
-// The upstream uses a time_sleep of 30s; in Pulumi we use explicit DependsOn.
+// The upstream uses a time_sleep of 30s depending on module.logs_export; we
+// mirror this exactly with a pulumi-time Sleep resource created in main.go.
 func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi.Resource) error {
 	parentID := "organizations/" + cfg.OrgID
 	if cfg.ParentFolder != "" {
@@ -98,8 +99,8 @@ func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi
 	// Domain-restricted sharing — only allow specified domains
 	// Gap 3 fix: this policy must wait for log sinks to finish deploying.
 	// The upstream uses time_sleep "wait_logs_export" with create_duration = 30s
-	// and depends_on = [module.logs_export]. In Pulumi we use explicit DependsOn
-	// on the logging resources to establish the ordering guarantee.
+	// and depends_on = [module.logs_export]. We mirror this with a pulumi-time
+	// Sleep resource passed via loggingDeps from main.go.
 	if len(cfg.DomainsToAllow) > 0 {
 		domainValues := make(pulumi.StringArray, len(cfg.DomainsToAllow))
 		for i, d := range cfg.DomainsToAllow {

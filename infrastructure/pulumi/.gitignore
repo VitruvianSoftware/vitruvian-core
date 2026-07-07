@@ -7,20 +7,31 @@ Pulumi.*.yaml
 # repo_config's Pulumi.dev.yaml): they hold only non-secret identifiers
 # (project id, region, deployer SA email, adoption flags). Runtime secrets
 # stay in GCP Secret Manager.
-!tabula/Pulumi.*.yaml
+!apps/tabula/Pulumi.*.yaml
 # oauth-user-inspector likewise commits its dev stack config (project id, region).
 # Its deploy workflow only sets oauth-user-inspector:imageTag, so cfg.Require("project")
 # must resolve from this committed file. Runtime secrets stay in GCP Secret Manager.
-!oauth-user-inspector/Pulumi.*.yaml
+!apps/oauth-user-inspector/Pulumi.*.yaml
 # oauth-user-inspector-deploy-identity (the GitHub Actions WIF + deploy/runtime SA
 # bootstrap) likewise commits its dev stack config (project id, region) so
 # cfg.Require("project") resolves on a clean checkout.
-!oauth-user-inspector-deploy-identity/Pulumi.*.yaml
+!apps/oauth-user-inspector-deploy-identity/Pulumi.*.yaml
 # zitadel-apps commits its dev stack config (non-secret Zitadel org/project/app
 # identifiers + redirect URIs) so the deploy workflow resolves them on a clean
 # checkout. The Zitadel machine-user credential is injected from a pipeline
 # secret at apply time, never committed.
-!zitadel-apps/Pulumi.*.yaml
+!platform/zitadel-apps/Pulumi.*.yaml
+# foundation/gcp-bootstrap commits its production stack config: only non-secret
+# identifiers (org id, billing account id, group emails, parent folder id,
+# github owner, the co-tenancy gate flag). It has no secret config keys (the
+# monorepo WIF adaptation removed the github token path), so nothing sensitive
+# is committed. Backend is Pulumi Cloud.
+!foundation/gcp-bootstrap/Pulumi.*.yaml
+# foundation/org-folders commits its stack config: only the org id (non-secret).
+!foundation/org-folders/Pulumi.*.yaml
+# foundation/gcp-org commits its production stack config: org id, billing
+# account, bootstrap stack ref, governance groups, domains — all non-secret.
+!foundation/gcp-org/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -28,3 +39,6 @@ Pulumi.*.yaml
 # Per-project program binary left behind by a stray `go build .` in the project
 # dir (named after that module's last path element).
 /zitadel-apps/zitadel-apps
+/foundation/gcp-bootstrap/foundation-0-bootstrap
+/foundation/org-folders/foundation-org-folders
+/foundation/gcp-org/foundation-org

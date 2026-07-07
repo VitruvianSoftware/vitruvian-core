@@ -1,0 +1,7 @@
+# Committed stack config (non-secret identifier only). Backend: Pulumi Cloud.
+# ⚠️ Set org_id before apply:
+#   bazel run //infrastructure/pulumi/foundation/org-folders:config -- set org_id <ID>
+config:
+  foundation-org-folders:org_id: "90456063361"
+  # Billing account to link the Cloud Identity quota project to.
+  foundation-org-folders:billing_account: "013EEF-107C95-8E11BD"

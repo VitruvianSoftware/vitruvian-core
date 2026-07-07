@@ -1,0 +1,87 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Config Smoke Test
+
+# GUARDRAIL: Copybara evaluates the ENTIRE copy.bara.sky on every workflow run,
+# so a single load/parse error in the config breaks EVERY component's live export
+# at once (devx, homelab, mcp-slack, nexus-agent, oauth-user-inspector, ...), not
+# just the one being edited. This job runs the SAME pinned Copybara image the
+# exports use and `validate`s the whole config on any PR that touches the copybara
+# tooling, turning "the next scheduled export silently breaks" into a red check
+# that blocks the merge. Make this a REQUIRED check on the merge queue.
+on:
+    pull_request:
+        paths:
+            - "tools/copybara/copy.bara.sky"
+            - ".github/workflows/copybara-*.yaml"
+            - ".github/workflows/_copybara-export.yaml"
+            - ".github/workflows/copybara-config-smoketest.yaml"
+    push:
+        branches: [main]
+        paths:
+            - "tools/copybara/copy.bara.sky"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-config-smoketest-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    validate:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Validate copy.bara.sky loads on the pinned Copybara image
+              run: |
+                  set -uo pipefail
+                  # The pinned olivr/copybara build is ENV-driven (COPYBARA_CONFIG /
+                  # COPYBARA_WORKFLOW, exactly like tools/copybara/sync) and has no
+                  # standalone `validate` subcommand. Requesting a deliberately
+                  # nonexistent workflow makes Copybara LOAD + execute the entire
+                  # config — running every core.workflow() registration, which is the
+                  # real check on the Starlark (generalized schema, new component,
+                  # transforms) — and then print the list of valid migrations before
+                  # exiting non-zero. A genuine load/parse error instead aborts BEFORE
+                  # "Validating configuration". So: assert we reached validation and
+                  # that every expected migration is registered.
+                  out="$(docker run --rm \
+                    -v "$GITHUB_WORKSPACE/tools/copybara/copy.bara.sky":/root/copy.bara.sky \
+                    -e COPYBARA_CONFIG=/root/copy.bara.sky \
+                    -e COPYBARA_WORKFLOW=__smoketest_probe__ \
+                    olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679 \
+                    copybara 2>&1 || true)"
+                  echo "$out"
+                  if ! grep -q "Validating configuration" <<<"$out"; then
+                    echo "::error::copy.bara.sky failed to load (never reached configuration validation)"
+                    exit 1
+                  fi
+                  for wf in export_devx export_homelab export_mcp_slack export_nexus_agent export_oauth_user_inspector export_pulumi_library; do
+                    grep -q "$wf" <<<"$out" || {
+                      echo "::error::expected migration '$wf' missing from the config — load incomplete"
+                      exit 1
+                    }
+                  done
+                  echo "copy.bara.sky loaded + validated OK (all expected migrations registered)."

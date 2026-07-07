@@ -23,6 +23,7 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 )
 
 // BootstrapOutputs holds resolved values from the 0-bootstrap StackReference.
@@ -77,9 +78,20 @@ func main() {
 
 		// 5. Deploy Organization Policies (14+ boolean + list)
 		// The domain-restricted sharing policy depends on log sinks via loggingDeps
+		// Race guard: the domain-restricted sharing policy must wait for log
+		// sinks to be created and their writer identities granted IAM,
+		// otherwise the sinks may fail with 403.
+		// Upstream uses time_sleep "wait_logs_export" with create_duration=30s;
+		// we mirror this exactly with a pulumi-time Sleep resource.
 		var loggingDeps []pulumi.Resource
 		if logOutputs.LastResource != nil {
-			loggingDeps = append(loggingDeps, logOutputs.LastResource)
+			waitLogsExport, err := time.NewSleep(ctx, "wait-logs-export", &time.SleepArgs{
+				CreateDuration: pulumi.String("30s"),
+			}, pulumi.DependsOn([]pulumi.Resource{logOutputs.LastResource}))
+			if err != nil {
+				return err
+			}
+			loggingDeps = append(loggingDeps, waitLogsExport)
 		}
 		if err := deployOrgPolicies(ctx, cfg, loggingDeps); err != nil {
 			return err
@@ -346,7 +358,7 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		// SCC
 		SCCNotificationName:      conf.Get("scc_notification_name"),
 		SCCNotificationFilter:    conf.Get("scc_notification_filter"),
-		EnableSCCResources:       conf.Get("enable_scc_resources") == "true",
+		EnableSCCResources:       conf.Get("enable_scc_resources_in_pulumi") == "true",
 		EnableBillingAccountSink: conf.Get("enable_billing_account_sink") != "false",
 
 		// Policies

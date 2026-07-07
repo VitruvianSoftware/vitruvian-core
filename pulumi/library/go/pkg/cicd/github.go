@@ -109,6 +109,12 @@ func NewGitHubOIDC(ctx *pulumi.Context, name string, args *GitHubOIDCArgs, opts 
 			"attribute.aud":              pulumi.String("assertion.aud"),
 			"attribute.repository":       pulumi.String("assertion.repository"),
 			"attribute.repository_owner": pulumi.String("assertion.repository_owner"),
+			// attribute.environment enables per-GitHub-Environment SA scoping so a
+			// single repo (e.g. a monorepo) can bind distinct service accounts to
+			// distinct deployment environments via "attribute.environment/<env>"
+			// principalSets. The claim is only present on tokens minted for jobs
+			// that declare `environment:`.
+			"attribute.environment": pulumi.String("assertion.environment"),
 		},
 		Oidc: &iam.WorkloadIdentityPoolProviderOidcArgs{
 			IssuerUri: pulumi.String("https://token.actions.githubusercontent.com"),

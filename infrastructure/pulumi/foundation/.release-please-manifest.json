@@ -1,0 +1,5 @@
+{
+  "infrastructure/pulumi/foundation/gcp-org": "0.2.0",
+  "infrastructure/pulumi/foundation/org-folders": "0.2.0",
+  "infrastructure/pulumi/foundation/gcp-bootstrap": "0.2.0"
+}

@@ -22,6 +22,7 @@ import { CentralizedLogging } from "@vitruviansoftware/foundation-centralized-lo
 import { deployOrgIAM, OrgProjectRefs } from "./iam";
 import { deployEssentialContacts } from "./essential_contacts";
 import { CAIMonitoring } from "@vitruviansoftware/foundation-cai-monitoring";
+import * as time from "@pulumiverse/time";
 
 export = async () => {
   const cfg = loadOrgConfig(new pulumi.Config());
@@ -470,9 +471,15 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
   // Domain restricted sharing
   // Gap 3 fix: this policy must wait for log sinks to finish deploying.
   // The upstream TF uses time_sleep "wait_logs_export" with create_duration = 30s
-  // and depends_on = [module.logs_export]. In Pulumi we use explicit dependsOn
-  // on the centralizedLogging resource to establish the ordering guarantee.
-  // Placed AFTER logging to avoid forward-reference issues in JS/TS.
+  // and depends_on = [module.logs_export]. We mirror this exactly with a
+  // pulumi-time Sleep resource.
+  const waitLogsExport = new time.Sleep(
+    "wait-logs-export",
+    {
+      createDuration: "30s",
+    },
+    { dependsOn: [centralizedLogging] },
+  );
   if (cfg.domainsToAllow.length > 0) {
     new DomainRestrictedSharing(
       "domain-restricted-sharing",
@@ -481,13 +488,13 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`;
 
         domainsToAllow: cfg.domainsToAllow,
       },
-      { dependsOn: [centralizedLogging] },
+      { dependsOn: [waitLogsExport] },
     );
   }
 
   /*************************************************
       SCC Notification (mirrors scc_notification.tf)
-      Gated behind enable_scc_resources — SCC must be
+      Gated behind enable_scc_resources_in_pulumi — SCC must be
       activated (Standard or Premium tier) before
       these resources can be created.
     *************************************************/

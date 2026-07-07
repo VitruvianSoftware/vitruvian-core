@@ -52,6 +52,47 @@ func TestNewNetworkPeering_Basic(t *testing.T) {
 	tracker.RequireType(t, "gcp:compute/networkPeering:NetworkPeering", 2)
 }
 
+func TestNewNetworkPeering_DefaultNames(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewNetworkPeering(ctx, "np", &NetworkPeeringArgs{
+			LocalNetwork: pulumi.String("projects/a/global/networks/vpc-a"),
+			PeerNetwork:  pulumi.String("projects/b/global/networks/vpc-b"),
+		})
+		require.NoError(t, err)
+		return nil
+	}, pulumi.WithMocks("project", "stack", tracker))
+	require.NoError(t, err)
+
+	// Absent explicit names, the GCP resource names default to <name>-local / <name>-peer.
+	tracker.AssertInputEquals(t, "np-local", "name", "np-local")
+	tracker.AssertInputEquals(t, "np-peer", "name", "np-peer")
+}
+
+func TestNewNetworkPeering_ExplicitNames(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewNetworkPeering(ctx, "np-spoke-hub", &NetworkPeeringArgs{
+			LocalNetwork:       pulumi.String("projects/a/global/networks/vpc-a"),
+			PeerNetwork:        pulumi.String("projects/b/global/networks/vpc-b"),
+			ImportCustomRoutes: true,
+			LocalName:          "np-d-svpc-spoke-vpc-c-svpc-hub",
+			PeerName:           "np-vpc-c-svpc-hub-d-svpc-spoke",
+		})
+		require.NoError(t, err)
+		return nil
+	}, pulumi.WithMocks("project", "stack", tracker))
+	require.NoError(t, err)
+
+	// Explicit names flow through to the GCP resource Name, reproducing the
+	// upstream "np-<local>-<peer>" naming without hand-rolling both peerings.
+	tracker.AssertInputEquals(t, "np-spoke-hub-local", "name", "np-d-svpc-spoke-vpc-c-svpc-hub")
+	tracker.AssertInputEquals(t, "np-spoke-hub-peer", "name", "np-vpc-c-svpc-hub-d-svpc-spoke")
+	// Reciprocal route flags: local imports, peer exports.
+	tracker.AssertInputBool(t, "np-spoke-hub-local", "importCustomRoutes", true)
+	tracker.AssertInputBool(t, "np-spoke-hub-peer", "exportCustomRoutes", true)
+}
+
 func TestNewNetworkPeering_WithStackType(t *testing.T) {
 	tracker := testutil.NewTracker()
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {

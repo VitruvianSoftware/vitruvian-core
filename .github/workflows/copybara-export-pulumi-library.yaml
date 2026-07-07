@@ -1,0 +1,63 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Copybara Export (pulumi-library)
+
+# EXPORT-ONLY mirror: monorepo pulumi/library/ -> VitruvianSoftware/pulumi-library
+# (repo root) on every push under pulumi/library/**. Thin caller — logic lives in
+# _copybara-export.yaml; the export_pulumi_library workflow (subtree->root move +
+# `catalog:`->concrete transforms) is defined in tools/copybara/copy.bara.sky.
+#
+# FIRST SEED IS MANUAL: the standalone already has history, so seed the
+# MONOREPO_REV_ID baseline once via workflow_dispatch with '--force --ignore-noop'
+# and INSPECT the resulting push before enabling routine runs. See
+# docs/copybara-pulumi-oneway-cutover.md. This push-triggered file does NOT fire
+# on the PR that introduces it (that PR touches tooling, not pulumi/library/**),
+# so nothing exports until an operator seeds deliberately.
+on:
+    push:
+        branches: [main]
+        paths: ["pulumi/library/**"]
+    workflow_dispatch:
+        inputs:
+            copybara_options:
+                description: "Copybara CLI options. FIRST seed (no MONOREPO_REV_ID baseline on the mirror yet): '--init-history --force --ignore-noop' -- SQUASH mode lands it as one clean commit; INSPECT the push. Normal runs: --ignore-noop."
+                default: "--ignore-noop"
+                required: false
+
+permissions:
+    contents: read
+
+concurrency:
+    group: copybara-export-pulumi-library
+    cancel-in-progress: false
+
+jobs:
+    export:
+        uses: ./.github/workflows/_copybara-export.yaml
+        with:
+            component: pulumi-library
+            # Standalone-managed files the conflict pre-check must ignore. (For an
+            # export-only mirror the pre-check short-circuits — there is no import
+            # baseline — but keep this aligned with copy.bara.sky's standalone_only.)
+            standalone_only: ".github/workflows/sync-to-monorepo.yaml ts/pnpm-workspace.yaml ts/pnpm-lock.yaml go/go.work go/go.work.sum"
+            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+        secrets:
+            sync_ssh_key: ${{ secrets.PULUMI_LIBRARY_SYNC_SSH_KEY }}

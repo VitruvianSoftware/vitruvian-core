@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/iam"
@@ -376,15 +377,22 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// admins group. This prevents any other principal from creating new
 	// billing accounts. Mirrors: google_organization_iam_binding
 	// "billing_creator" in TF bootstrap main.tf.
+	//
+	// This is authoritative at the ORG level regardless of parent_folder, so two
+	// foundations in the same org would clobber each other's members. It is gated
+	// behind enforce_org_billing_creator (default true) — set false for a
+	// co-tenant foundation when another foundation already enforces it org-wide.
 	// ========================================================================
-	if _, err := iam.NewOrganizationIAMBinding(ctx, "org-billing-creator", &iam.OrganizationIAMBindingArgs{
-		OrgID: pulumi.String(cfg.OrgID),
-		Role:  pulumi.String("roles/billing.creator"),
-		Members: pulumi.StringArray{
-			pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
-		},
-	}, dependsOnGroups); err != nil {
-		return nil, err
+	if cfg.EnforceOrgBillingCreator {
+		if _, err := iam.NewOrganizationIAMBinding(ctx, "org-billing-creator", &iam.OrganizationIAMBindingArgs{
+			OrgID: pulumi.String(cfg.OrgID),
+			Role:  pulumi.String("roles/billing.creator"),
+			Members: pulumi.StringArray{
+				pulumi.Sprintf("group:%s", cfg.GroupBillingAdmins),
+			},
+		}, dependsOnGroups); err != nil {
+			return nil, err
+		}
 	}
 
 	// ========================================================================
@@ -417,20 +425,30 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// Mirrors: google_storage_bucket_iam_member "org_terraform_state_iam"
 	// and "orgadmins_state_iam" in TF bootstrap main.tf.
 	// ========================================================================
-	bucketIAMMembers := make([]pulumi.StringInput, 0, len(sas)+1)
-	for _, sa := range sas {
-		bucketIAMMembers = append(bucketIAMMembers, memberOf(sa))
+	// Name each binding by its stable key (SA key, sorted) rather than a
+	// positional index over the sas map: a positional index shuffles with the
+	// map's non-deterministic iteration order and spuriously replaces these
+	// bindings on every apply.
+	saKeys := make([]string, 0, len(sas))
+	for k := range sas {
+		saKeys = append(saKeys, k)
 	}
-	bucketIAMMembers = append(bucketIAMMembers, orgAdminGroupMember)
-
-	for i, member := range bucketIAMMembers {
-		if _, err := storage.NewBucketIAMMember(ctx, fmt.Sprintf("state-bucket-iam-%d", i), &storage.BucketIAMMemberArgs{
+	sort.Strings(saKeys)
+	for _, key := range saKeys {
+		if _, err := storage.NewBucketIAMMember(ctx, "state-bucket-iam-"+key, &storage.BucketIAMMemberArgs{
 			Bucket: seed.StateBucketName,
 			Role:   pulumi.String("roles/storage.admin"),
-			Member: member,
+			Member: memberOf(sas[key]),
 		}, dependsOnGroups); err != nil {
 			return nil, err
 		}
+	}
+	if _, err := storage.NewBucketIAMMember(ctx, "state-bucket-iam-orgadmins", &storage.BucketIAMMemberArgs{
+		Bucket: seed.StateBucketName,
+		Role:   pulumi.String("roles/storage.admin"),
+		Member: orgAdminGroupMember,
+	}, dependsOnGroups); err != nil {
+		return nil, err
 	}
 
 	return sas, nil

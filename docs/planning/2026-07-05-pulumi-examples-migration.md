@@ -15,16 +15,16 @@ History-preserving graft into `pulumi/examples/go-foundation/` (54 commits prese
 **Library drift ported.** The example was pinned to the library at **v0.4.0 (pre-rename)**. HEAD has
 the `feat!: rename Go library packages…` refactor, so the example's imports had to be repointed:
 
-| example import | in-tree HEAD |
-|---|---|
-| `pkg/networking` | `pkg/network` |
-| `pkg/project` | `pkg/project_factory` |
-| `pkg/group` | `pkg/google_group` |
-| `pkg/policy` | `pkg/org_policy` |
-| `pkg/logging` | `pkg/centralized_logging` |
-| `pkg/vpc_sc` | `pkg/vpc_service_controls` |
-| `pkg/security` | `pkg/cai_monitoring` |
-| `pkg/storage` (`libstorage`, `NewSimpleBucket`) | `pkg/cloud_storage` |
+| example import                                  | in-tree HEAD               |
+| ----------------------------------------------- | -------------------------- |
+| `pkg/networking`                                | `pkg/network`              |
+| `pkg/project`                                   | `pkg/project_factory`      |
+| `pkg/group`                                     | `pkg/google_group`         |
+| `pkg/policy`                                    | `pkg/org_policy`           |
+| `pkg/logging`                                   | `pkg/centralized_logging`  |
+| `pkg/vpc_sc`                                    | `pkg/vpc_service_controls` |
+| `pkg/security`                                  | `pkg/cai_monitoring`       |
+| `pkg/storage` (`libstorage`, `NewSimpleBucket`) | `pkg/cloud_storage`        |
 
 Repointing is done by **import aliasing** — the import path changes, the local qualifier (and every
 call site) stays — so no scattered `storage.`→ edits that would corrupt e.g. `roles/storage.admin`
@@ -67,9 +67,22 @@ they can't all be pnpm workspace members. Approach:
 - Format-clean (prettier/buildifier/shfmt); `pulumi/examples` is already gazelle-excluded and
   license-exempt (PR2). Conformance passes locally (0 fail).
 
-## Deferred (unchanged)
+## Deferred → now specified: one-way mirror-out + publish origin
 
-The examples' `replace => ../../../library/...` directives are monorepo-local; the standalone
-`.github/workflows` are inert here and reference the old proxy setup. Reconciling them for the
-one-way **Copybara** mirror-out (so the public repos stay buildable) is part of the deferred
-mirror + **publish-origin** work.
+Development has shifted to the monorepo (code is on `main`, edited there). The remaining
+public-facing plumbing — one-way **Copybara** mirror-out of the three subtrees + the **publish
+origin** — is captured as an execution-ready runbook in
+[`docs/copybara-pulumi-oneway-cutover.md`](../copybara-pulumi-oneway-cutover.md).
+
+Landed in-repo with that runbook: a backward-compatible `copy.bara.sky` generalization
+(`subtree`≠`repo`, `export_only`, `export_transformations`) + the **library** export mirror
+(`export_pulumi_library`, with `catalog:`→concrete transforms), a config-load smoke-test guardrail,
+the library sync-auth entry, and the `apps-release` trigger fix (monorepo = library publish origin
+via release-please → mirror publish-on-version-bump).
+
+Gated next step: the two **example** mirrors are blocked on the _first library publish_ — the go
+example's stage `go.mod`s carry zero pseudo-versions (`v0.0.0-0001…`) resolvable only via the
+monorepo-local `replace` directives, and the ts example's `foundation-*` deps are `workspace:*`, so
+neither builds standalone until a real published library version exists. The runbook specifies their
+`export_transformations` (strip `replace` + repoint to `${LIBRARY_VERSION}`; `workspace:*` →
+`^${LIBRARY_VERSION}`) to apply once the library publishes. e2e (real GCP org deploy) remains flagged.

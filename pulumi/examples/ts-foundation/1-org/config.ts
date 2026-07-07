@@ -104,7 +104,8 @@ export function loadOrgConfig(config: pulumi.Config): OrgConfig {
       config.get("scc_notification_filter") || 'state = "ACTIVE"',
     createUniqueTagKey: config.getBoolean("create_unique_tag_key") ?? false,
     enableCaiMonitoring: config.getBoolean("enable_cai_monitoring") ?? false,
-    enableSccResources: config.getBoolean("enable_scc_resources") ?? false,
+    enableSccResources:
+      config.getBoolean("enable_scc_resources_in_pulumi") ?? false,
     enableKmsKeyUsageTracking:
       config.getBoolean("enable_kms_key_usage_tracking") ?? true,
     createAccessContextManagerAccessPolicy:

@@ -15,6 +15,13 @@
 #     for any future component that genuinely needs writable-both-ways sync.
 #     Generates export_<comp> + a push-to-main import_<comp>. No current
 #     component uses it; converging on one-way removed the #1 drift risk.
+#   * EXPORT-ONLY (export_only=True) -- emits ONLY export_<comp>; no import path
+#     of any kind. For subtrees developed AND published from the monorepo whose
+#     public repo is a pure read-only mirror (e.g. pulumi-library). Such a
+#     component may set `subtree`/`repo` when its monorepo path differs from the
+#     standalone repo name (pulumi/library -> pulumi-library), plus
+#     `export_transformations` to reverse its monorepo integration (e.g.
+#     `catalog:` -> concrete versions) so the mirror builds standalone.
 #
 # (`-` in a component name becomes `_` in the workflow name, e.g.
 #  export_nexus_agent.) The first run against a fresh destination (no rev-id
@@ -133,6 +140,181 @@ def _monorepo_only(component):
         component + "/BUILD.bazel",
     ]
 
+# pnpm catalog -> concrete version map for the pulumi-library TS export.
+# The monorepo's JS One-Version Rule references shared dep versions as
+# `"<dep>": "catalog:"` (resolved from the root pnpm-workspace.yaml catalog).
+# The standalone pulumi-library mirror has no monorepo catalog, so the export
+# rewrites each `catalog:` back to the concrete range it resolves to here.
+# Keep in sync with the `catalog:` block in //pnpm-workspace.yaml.
+_LIBRARY_CATALOG_VERSIONS = {
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/gcp": "^8.0.0",
+    "@pulumi/random": "^4.0.0",
+    "@pulumi/command": "^1.0.0",
+    "vitest": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.5",
+}
+
+# Verified against the live mirror (2026-07-05): the standalone pulumi-library
+# builds ts with **npm** (package-lock.json), not pnpm, and commits **concrete**
+# cross-ref floors — NOT `workspace:*`. The monorepo replaced those floors with
+# `workspace:*` for in-tree pnpm resolution; the export must restore each package's
+# exact mirror floor, or npm would publish a changed dependency range. These are
+# per-package author choices (a deliberate compat floor below the latest release),
+# so they are pinned literally rather than computed from the current manifest.
+_LIBRARY_WORKSPACE_FLOORS = {
+    "ts/packages/bootstrap/package.json": ("@vitruviansoftware/foundation-project-factory", "^0.3.0"),
+    "ts/packages/cb-private-pool/package.json": ("@vitruviansoftware/foundation-network", "*"),
+}
+
+def _library_export_transforms():
+    """Export transforms that reverse the pulumi-library's monorepo integration so
+    the standalone mirror builds AND publishes on its own. Applied AFTER the
+    subtree->root move, so paths are repo-root-relative (ts/**, not
+    pulumi/library/ts/**):
+
+      1. `catalog:` -> concrete ranges (the mirror has no pnpm catalog).
+      2. `workspace:*` cross-refs -> each package's exact concrete floor (the
+         mirror is npm-based and commits concrete ranges; see above).
+      3. Strip the `pulumi/library/` key prefix from `.release-please-manifest.json`
+         so the mirror's publish-on-version-bump (and its own path-based
+         release-please-config.json) find the right per-package versions. The
+         monorepo authors the version NUMBERS; the mirror owns the tag FORMAT
+         (its release-please-config.json is standalone_only).
+    """
+    _t = [
+        core.replace(
+            before = '"' + _dep + '": "catalog:"',
+            after = '"' + _dep + '": "' + _LIBRARY_CATALOG_VERSIONS[_dep] + '"',
+            # Both patterns: `ts/**/package.json` does NOT match the root
+            # `ts/package.json` (Copybara `**` needs >=1 path segment), and the
+            # private root meta-package carries `catalog:` deps too -- missing it
+            # leaves an npm-unresolvable `catalog:` in the mirror.
+            paths = glob(["ts/package.json", "ts/**/package.json"]),
+        )
+        for _dep in _LIBRARY_CATALOG_VERSIONS
+    ]
+    _t += [
+        core.replace(
+            before = '"' + _LIBRARY_WORKSPACE_FLOORS[_path][0] + '": "workspace:*"',
+            after = '"' + _LIBRARY_WORKSPACE_FLOORS[_path][0] + '": "' + _LIBRARY_WORKSPACE_FLOORS[_path][1] + '"',
+            paths = glob([_path]),
+        )
+        for _path in _LIBRARY_WORKSPACE_FLOORS
+    ]
+    _t.append(core.replace(
+        before = '"pulumi/library/',
+        after = '"',
+        paths = glob([".release-please-manifest.json"]),
+    ))
+    return _t
+
+# Published Go module versions the go-foundation example stages depend on. The
+# in-tree example resolves the library via `replace => ../../../library/...`; the
+# standalone mirror must instead `require` the PUBLISHED version of each go/pkg/*
+# module (verified end-to-end: strip the replaces, repoint these, `go mod tidy`
+# regenerates go.sum, every stage builds). The ROOT `go` module is deliberately
+# NOT repointed -- it has no `go/vX.Y.Z` tag (its release component is
+# `go-foundation`), so the example's own version is left to resolve. Keep in sync
+# with the mirror's published tags.
+_GO_EXAMPLE_LIB_VERSIONS = {
+    "bootstrap": "1.0.1",
+    "cai_monitoring": "1.0.2",
+    "centralized_logging": "1.0.2",
+    "cicd": "0.4.2",
+    "cloud_storage": "1.0.2",
+    "compute_instance": "0.2.3",
+    "google_group": "1.0.2",
+    "iam": "0.4.2",
+    "instance_template": "0.2.4",
+    "network": "1.1.0",
+    "org_policy": "1.0.2",
+    "project_factory": "1.0.2",
+    "vpc_service_controls": "1.0.2",
+}
+
+_GO_LIB_MOD = "github.com/VitruvianSoftware/pulumi-library/go/pkg/"
+
+def _go_example_export_transforms():
+    """Make the go-foundation example build standalone: (1) delete every
+    `replace github.com/VitruvianSoftware/pulumi-library/go... => ../../../library/...`
+    directive (in-tree only), and (2) repoint each go/pkg/* `require` to its
+    published version. The mirror's tidy workflow then regenerates go.sum. Applied
+    after the subtree->root move, so go.mod paths are repo-root-relative."""
+    _t = [
+        core.replace(
+            before = "replace github.com/VitruvianSoftware/pulumi-library/go${rest}\n",
+            after = "",
+            regex_groups = {"rest": "[^\n]*"},
+            # multiline: the pattern spans to the line's newline, which a
+            # line-scoped (default) replace cannot match.
+            multiline = True,
+            paths = glob(["**/go.mod"]),
+        ),
+    ]
+    _t += [
+        core.replace(
+            before = _GO_LIB_MOD + _pkg + " v${ver}",
+            after = _GO_LIB_MOD + _pkg + " v" + _GO_EXAMPLE_LIB_VERSIONS[_pkg],
+            regex_groups = {"ver": "[^\\s]+"},
+            paths = glob(["**/go.mod"]),
+        )
+        for _pkg in _GO_EXAMPLE_LIB_VERSIONS
+    ]
+    return _t
+
+# Published @vitruviansoftware/foundation-* versions the ts-foundation example
+# depends on. In-tree it resolves them via pnpm `workspace:*`; the standalone
+# mirror must reference the PUBLISHED version of each (per-package, so a lookup —
+# not a single regex). Keep in sync with the mirror's published npm versions.
+_TS_EXAMPLE_LIB_VERSIONS = {
+    "bootstrap": "0.2.1",
+    "budget": "0.3.0",
+    "cai-monitoring": "0.2.0",
+    "cb-private-pool": "0.3.1",
+    "centralized-logging": "0.6.0",
+    "cloud-dns": "0.2.0",
+    "cloud-functions": "0.2.0",
+    "cloud-router": "0.2.0",
+    "cloud-storage": "0.2.0",
+    "compute-instance": "0.2.1",
+    "dns-hub": "0.3.0",
+    "gcloud": "0.2.0",
+    "google-group": "0.3.0",
+    "hierarchical-firewall-policy": "0.3.0",
+    "instance-template": "0.5.1",
+    "kms": "0.3.0",
+    "log-export": "0.2.0",
+    "network": "0.3.0",
+    "network-firewall-policy": "0.2.0",
+    "network-peering": "0.3.0",
+    "org-policy": "0.3.2",
+    "parent-iam": "0.3.0",
+    "private-service-connect": "0.3.2",
+    "project-factory": "0.4.1",
+    "pubsub": "0.2.0",
+    "simple-bucket": "0.3.0",
+    "vpc-service-controls": "0.3.0",
+    "vpn-ha": "0.4.0",
+}
+
+def _ts_example_export_transforms():
+    """Make the ts-foundation example resolve standalone: rewrite each
+    `"@vitruviansoftware/foundation-<name>": "workspace:*"` (in-tree pnpm
+    resolution) to `^<published version>`. The mirror is npm-based and re-derives
+    package-lock.json on install (kept standalone_only)."""
+    return [
+        core.replace(
+            before = '"@vitruviansoftware/foundation-' + _name + '": "workspace:*"',
+            after = '"@vitruviansoftware/foundation-' + _name + '": "^' + _TS_EXAMPLE_LIB_VERSIONS[_name] + '"',
+            # `**/package.json` does NOT match the root package.json (Copybara `**`
+            # needs >=1 segment) -- and the ts example's foundation-* deps live ONLY
+            # in the root package.json, so both patterns are required.
+            paths = glob(["package.json", "**/package.json"]),
+        )
+        for _name in _TS_EXAMPLE_LIB_VERSIONS
+    ]
+
 # Source of truth for which components are synced and their per-component knobs.
 #   name              : monorepo subfolder name == standalone repo name
 #   standalone_rev_id : the per-component IMPORT label (must be unique; see above)
@@ -177,6 +359,129 @@ COMPONENTS = [
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
+    # pulumi-library: EXPORT-ONLY mirror (monorepo pulumi/library/ -> the
+    # standalone VitruvianSoftware/pulumi-library, at its repo root). The monorepo
+    # subtree (`subtree`) differs from the standalone repo (`repo`), so both are
+    # given explicitly instead of relying on name==subtree==repo. `export_only`
+    # emits ONLY export_pulumi_library (no import path): the library is developed
+    # in the monorepo and published from there (release-please -> apps-release ->
+    # this export -> the mirror's publish-on-version-bump), so there is nothing to
+    # import back. See docs/copybara-pulumi-oneway-cutover.md.
+    {
+        "name": "pulumi-library",
+        "repo": "pulumi-library",
+        "subtree": "pulumi/library",
+        "standalone_rev_id": "PULUMI_LIBRARY_REV_ID",
+        # export_only mirror -> SQUASH so the seed is a single clean commit (see
+        # _export_mode). Seed once with '--init-history --force --ignore-noop'.
+        "mode": "SQUASH",
+        # Files the STANDALONE owns that the monorepo does not carry, or carries in
+        # a monorepo-specific form the export must NOT push over the mirror. Verified
+        # by diffing the live mirror (2026-07-05):
+        #   * release-please-config.json — the mirror's Go tag config is PATH-based
+        #     (component `go/pkg/<n>` + `tag-separator:/` -> tag `go/pkg/<n>/vX.Y.Z`,
+        #     which `go get` REQUIRES). The monorepo's own config is flat
+        #     (`go-<n>`) for its monorepo-side tags, so it must never overwrite the
+        #     mirror's. The mirror's publish-on-version-bump reads this for tag format;
+        #     the monorepo authors only the version NUMBERS (via the exported manifest).
+        #   * CHANGELOG.md (root + per-package) — the mirror's published release
+        #     history; the monorepo's are the older migration snapshot.
+        #   * ts/package-lock.json — the mirror builds ts with npm; the monorepo uses
+        #     root pnpm. go/go.work(.sum) — the mirror's Go multi-module workspace,
+        #     deleted in the monorepo in favour of the root go.work.
+        # NOTE: .github/workflows/ is NOT standalone_only — the monorepo manages the
+        # mirror's release.yml (publish-on-version-bump) and exports it, per the
+        # standard one-way pattern (devx/homelab/...). ci.yml is dropped in-tree.
+        "standalone_only": [
+            "release-please-config.json",
+            "CHANGELOG.md",
+            "**/CHANGELOG.md",
+            "ts/package-lock.json",
+            "go/go.work",
+            "go/go.work.sum",
+        ],
+        # Files the mirror owns that ALSO exist in the monorepo subtree must be
+        # excluded at the ORIGIN (not just standalone_only): Copybara refuses to
+        # leave a migrated file uncovered by destination_files, so a
+        # destination-only exclude of an origin file errors. Excluding them here
+        # means they are never migrated, so the mirror's own copies stay intact:
+        #   * release-please-config.json — the mirror's path-based Go tag config.
+        #   * CHANGELOG.md (root + per-package) — the mirror's published history.
+        #   * ts/package-lock.json — a stale in-tree lock (pnpm is used at the root).
+        # (go/go.work* live ONLY on the mirror, so standalone_only alone suffices.)
+        "origin_only_exclude": [
+            "pulumi/library/ts/package-lock.json",
+            "pulumi/library/release-please-config.json",
+            "pulumi/library/CHANGELOG.md",
+            "pulumi/library/**/CHANGELOG.md",
+        ],
+        "export_only": True,
+        "export_transformations": _library_export_transforms(),
+    },
+    # pulumi_go-example-foundation: EXPORT-ONLY reference mirror. The example
+    # resolves the library in-tree via `replace => ../../../library/...`; the
+    # transforms strip those + repoint go/pkg/* requires to published versions so
+    # the mirror builds standalone (validated). go.sum is regenerated on the mirror
+    # by the exported tidy workflow; the mirror's own CI/e2e/release/commitlint +
+    # go.work are preserved (origin-excluded).
+    {
+        "name": "pulumi_go-example-foundation",
+        "repo": "pulumi_go-example-foundation",
+        "subtree": "pulumi/examples/go-foundation",
+        "standalone_rev_id": "PULUMI_GO_EXAMPLE_FOUNDATION_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [
+            "**/go.sum",
+            "go.work",
+            "go.work.sum",
+            "CHANGELOG.md",
+            "**/CHANGELOG.md",
+            ".github/workflows/ci.yml",
+            ".github/workflows/e2e.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/commitlint.yml",
+        ],
+        "origin_only_exclude": [
+            "pulumi/examples/go-foundation/**/go.sum",
+            "pulumi/examples/go-foundation/CHANGELOG.md",
+            "pulumi/examples/go-foundation/**/CHANGELOG.md",
+            "pulumi/examples/go-foundation/.github/workflows/ci.yml",
+            "pulumi/examples/go-foundation/.github/workflows/e2e.yml",
+            "pulumi/examples/go-foundation/.github/workflows/release.yml",
+            "pulumi/examples/go-foundation/.github/workflows/commitlint.yml",
+        ],
+        "export_only": True,
+        "export_transformations": _go_example_export_transforms(),
+    },
+    # pulumi_ts-example-foundation: EXPORT-ONLY reference mirror. workspace:*
+    # foundation-* deps are rewritten to published npm versions so `npm install`
+    # resolves standalone. The mirror's own CI/e2e/release/commitlint + CHANGELOG
+    # are preserved (origin-excluded); npm re-derives its lockfile on install.
+    {
+        "name": "pulumi_ts-example-foundation",
+        "repo": "pulumi_ts-example-foundation",
+        "subtree": "pulumi/examples/ts-foundation",
+        "standalone_rev_id": "PULUMI_TS_EXAMPLE_FOUNDATION_REV_ID",
+        "mode": "SQUASH",
+        "standalone_only": [
+            "CHANGELOG.md",
+            "**/CHANGELOG.md",
+            ".github/workflows/ci.yml",
+            ".github/workflows/e2e.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/commitlint.yml",
+        ],
+        "origin_only_exclude": [
+            "pulumi/examples/ts-foundation/CHANGELOG.md",
+            "pulumi/examples/ts-foundation/**/CHANGELOG.md",
+            "pulumi/examples/ts-foundation/.github/workflows/ci.yml",
+            "pulumi/examples/ts-foundation/.github/workflows/e2e.yml",
+            "pulumi/examples/ts-foundation/.github/workflows/release.yml",
+            "pulumi/examples/ts-foundation/.github/workflows/commitlint.yml",
+        ],
+        "export_only": True,
+        "export_transformations": _ts_example_export_transforms(),
+    },
 ]
 
 def _make_skip_guard(workflow_name, peer_label, origin_desc):
@@ -199,14 +504,41 @@ def _make_skip_guard(workflow_name, peer_label, origin_desc):
 # `for` -- Copybara's Starlark forbids top-level `for` STATEMENTS).
 def _define_component(_c):
     _name = _c["name"]
-    _wf = _name.replace("-", "_")
-    _standalone = STANDALONE_SSH_PREFIX + _name + ".git"
+
+    # `repo` (standalone repo name) and `subtree` (monorepo path) default to
+    # `name`, so the historical components (name == subtree == repo) are
+    # byte-for-byte unchanged. Only components whose monorepo path differs from
+    # their standalone repo name (e.g. pulumi/library -> pulumi-library) set them.
+    _repo = _c.get("repo", _name)
+    _subtree = _c.get("subtree", _name)
+    _wf = _repo.replace("-", "_")
+    _standalone = STANDALONE_SSH_PREFIX + _repo + ".git"
     _standalone_rev_id = _c["standalone_rev_id"]
     _standalone_only = _c["standalone_only"]
-    _monorepo_only_files = _monorepo_only(_name)
+
+    # Origin files that must NEVER be exported (in addition to the monorepo-only
+    # Bazel BUILD files) -- e.g. a stale in-tree lockfile the standalone owns.
+    _origin_exclude = _c.get("origin_only_exclude", [])
+
+    # Extra export transforms, applied AFTER the subtree->root move (so they see
+    # repo-root-relative paths). Used to reverse a component's monorepo
+    # integration so its standalone mirror builds on its own.
+    _export_transformations = _c.get("export_transformations", [])
+
+    # export_only: emit ONLY the export workflow (no import path). For mirrors
+    # that are developed-and-published in the monorepo and never take changes back.
+    _export_only = _c.get("export_only", False)
+    _monorepo_only_files = _monorepo_only(_subtree)
     _is_one_way = _c.get("is_one_way", False)
 
-    # Export: vitruvian-core/<name>/  ->  VitruvianSoftware/<name> (repo root).
+    # Export history mode. Bidirectional/one-way components MUST stay ITERATIVE so
+    # the per-commit loop-guard runs on each commit (verified in CI). export_only
+    # mirrors have no import and no loop-guard, so they may use SQUASH: the seed
+    # (and every run) lands as ONE clean commit carrying the whole current state,
+    # instead of ITERATIVE's --init-history replaying the full subtree history.
+    _export_mode = _c.get("mode", "ITERATIVE")
+
+    # Export: vitruvian-core/<subtree>/  ->  VitruvianSoftware/<repo> (repo root).
     # IDENTICAL for bidirectional and one-way components -- the export side is
     # never touched by the one-way cutover, preserving the live export baseline.
     core.workflow(
@@ -220,13 +552,14 @@ def _define_component(_c):
             fetch = "main",
             push = "main",
         ),
-        # Component subtree minus the monorepo-only Bazel BUILD files.
-        origin_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+        # Component subtree minus the monorepo-only Bazel BUILD files (and any
+        # origin_only_exclude paths the component declares).
+        origin_files = glob([_subtree + "/**"], exclude = _monorepo_only_files + _origin_exclude),
         # Manage all standalone files EXCEPT the standalone-only ones (the sync
         # must never delete the dispatch workflow or an npm lockfile).
         destination_files = glob(["**"], exclude = _standalone_only),
         authoring = authoring.pass_thru(default = AUTHOR),
-        mode = "ITERATIVE",
+        mode = _export_mode,
         # Stamp the monorepo's own rev-id, and drop any change the import
         # direction brought in (carries the per-component standalone label).
         experimental_custom_rev_id = MONOREPO_REV_ID,
@@ -234,12 +567,17 @@ def _define_component(_c):
             core.dynamic_transform(impl = _make_skip_guard(
                 "export_" + _wf,
                 _standalone_rev_id,
-                "the standalone " + _name + " repo",
+                "the standalone " + _repo + " repo",
             )),
-            # Strip the `<name>/` prefix so the component lands at the repo root.
-            core.move(_name, ""),
-        ],
+            # Strip the `<subtree>/` prefix so the component lands at the repo root.
+            core.move(_subtree, ""),
+        ] + _export_transformations,
     )
+
+    if _export_only:
+        # No import path: this mirror is source-of-truth in the monorepo and
+        # published from there. Nothing is ever imported back.
+        return
 
     if _is_one_way:
         # One-way PR-import: a labelled PR on VitruvianSoftware/<name> becomes a
@@ -269,22 +607,22 @@ def _define_component(_c):
                 # into a throwaway config copy before invoking copybara. The branch
                 # is per-component (<name>-import-pr-<N>) so two apps' imports of the
                 # same PR number never collide on one branch.
-                pr_branch = _name + "-import-pr-@@PR_NUMBER@@",
+                pr_branch = _repo + "-import-pr-@@PR_NUMBER@@",
                 # Static, self-identifying title (the contributor's commit message
                 # carries the detail; ${GITHUB_PR_TITLE} also does not resolve here).
-                title = "[" + _name + " import] " + _name + "#@@PR_NUMBER@@",
+                title = "[" + _repo + " import] " + _repo + "#@@PR_NUMBER@@",
                 # Body footer carries the standalone repo + PR ref so the
                 # post-merge auto-close workflow (copybara-import-pr-close.yaml)
                 # can find and close the right mirror PR after the monorepo PR
                 # merges. NOTE: a bare GitHub trailer cannot auto-close across
                 # repos; closure is done explicitly by that workflow, not GitHub.
-                body = "Imported from VitruvianSoftware/" + _name + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _name + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
+                body = "Imported from VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@ via Copybara.\n\nMirror-Of: VitruvianSoftware/" + _repo + "#@@PR_NUMBER@@\nMirror-Pr-Number: @@PR_NUMBER@@",
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),
-            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
-            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
             authoring = authoring.pass_thru(default = AUTHOR),
             mode = "ITERATIVE",
             # Stamp the standalone's per-component rev-id (NOT MONOREPO_REV_ID):
@@ -297,9 +635,9 @@ def _define_component(_c):
                     MONOREPO_REV_ID,
                     "the vitruvian-core monorepo export",
                 )),
-                # Re-add the `<name>/` prefix so the standalone root lands under
+                # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
-                core.move("", _name),
+                core.move("", _subtree),
             ],
         )
     else:
@@ -318,9 +656,9 @@ def _define_component(_c):
             ),
             # Standalone-only files must never be imported into the Bazel monorepo.
             origin_files = glob(["**"], exclude = _standalone_only),
-            # Manage the monorepo's <name>/ EXCEPT the monorepo-only Bazel BUILD
+            # Manage the monorepo's <subtree>/ EXCEPT the monorepo-only Bazel BUILD
             # files so the sync never deletes them.
-            destination_files = glob([_name + "/**"], exclude = _monorepo_only_files),
+            destination_files = glob([_subtree + "/**"], exclude = _monorepo_only_files),
             authoring = authoring.pass_thru(default = AUTHOR),
             mode = "ITERATIVE",
             # Stamp the standalone's own per-component rev-id, and drop any change
@@ -332,9 +670,9 @@ def _define_component(_c):
                     MONOREPO_REV_ID,
                     "the vitruvian-core monorepo",
                 )),
-                # Re-add the `<name>/` prefix so the standalone root lands under
+                # Re-add the `<subtree>/` prefix so the standalone root lands under
                 # the component directory in the monorepo.
-                core.move("", _name),
+                core.move("", _subtree),
             ],
         )
 

@@ -1,0 +1,157 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Foundation Release & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/pulumi/foundation/**"
+      - "infrastructure/pulumi/pkg/**"
+      - ".github/workflows/foundation-release.yaml"
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: foundation-release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      gcp_org_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-org--release_created'] }}
+      org_folders_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/org-folders--release_created'] }}
+      gcp_bootstrap_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-bootstrap--release_created'] }}
+    steps:
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/.release-please-manifest.json
+          target-branch: main
+
+  deploy-gcp-org:
+    needs: release-please
+    if: needs.release-please.outputs.gcp_org_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-org
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (gcp-org / production)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/gcp-org
+        run: |
+          set -euo pipefail
+          pulumi stack select "production"
+          pulumi up --yes --non-interactive
+
+  deploy-org-folders:
+    needs: [release-please, deploy-gcp-org]
+    if: |
+      always() &&
+      needs.release-please.result == 'success' &&
+      (needs.deploy-gcp-org.result == 'success' || needs.deploy-gcp-org.result == 'skipped') &&
+      needs.release-please.outputs.org_folders_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-bootstrap
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (org-folders / production)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/org-folders
+        run: |
+          set -euo pipefail
+          pulumi stack select "production"
+          pulumi up --yes --non-interactive
+
+  deploy-gcp-bootstrap:
+    needs: [release-please, deploy-org-folders]
+    if: |
+      always() &&
+      needs.release-please.result == 'success' &&
+      (needs.deploy-org-folders.result == 'success' || needs.deploy-org-folders.result == 'skipped') &&
+      needs.release-please.outputs.gcp_bootstrap_release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-bootstrap
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (gcp-bootstrap / production)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
+        run: |
+          set -euo pipefail
+          pulumi stack select "production"
+          pulumi up --yes --non-interactive

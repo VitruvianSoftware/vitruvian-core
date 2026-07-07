@@ -33,6 +33,12 @@
 //     credentials (<PROJECT>_DISPATCH_APP_ID / <PROJECT>_DISPATCH_APP_PRIVATE_KEY),
 //     consumed by the standalone repo's dispatch workflow to fire a
 //     repository_dispatch back into vitruvian-core (the import trigger).
+//     TWO-WAY components only — a one-way mirror has no import-back workflow.
+//
+// For a ONE-WAY mirror (OneWay:true) it additionally creates read-only branch
+// protection on the standalone repo's main (require-a-PR, EnforceAdmins=false so
+// the export deploy key keeps its admin-context push bypass), codifying the
+// read-only-mirror lockdown as code instead of click-ops.
 //
 // The GitHub App itself is created MANUALLY by the operator; Pulumi only places
 // its credentials, which are supplied as Pulumi config secrets (see below).
@@ -103,6 +109,29 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo: "oauth-user-inspector",
 		OneWay:         true,
 	},
+	{
+		// pulumi-library is EXPORT-ONLY (copy.bara.sky export_only): developed and
+		// published from the monorepo, its public repo a read-only mirror. OneWay
+		// skips the import-back dispatch credentials — it needs only the export
+		// SSH deploy key (PULUMI_LIBRARY_SYNC_SSH_KEY), consumed by
+		// copybara-export-pulumi-library.yaml.
+		Name:           "pulumi-library",
+		StandaloneRepo: "pulumi-library",
+		OneWay:         true,
+	},
+	{
+		// Export-only reference mirror. Name uppercase-snakes to
+		// PULUMI_GO_EXAMPLE_FOUNDATION -> PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY,
+		// consumed by copybara-export-pulumi-go-example-foundation.yaml.
+		Name:           "pulumi_go-example-foundation",
+		StandaloneRepo: "pulumi_go-example-foundation",
+		OneWay:         true,
+	},
+	{
+		Name:           "pulumi_ts-example-foundation",
+		StandaloneRepo: "pulumi_ts-example-foundation",
+		OneWay:         true,
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
@@ -161,6 +190,64 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		})
 		if err != nil {
 			return err
+		}
+
+		if project.OneWay {
+			// A one-way mirror is READ-ONLY: development happens in the monorepo
+			// and Copybara mirrors the subtree out, so the standalone repo must
+			// reject direct human pushes to its default branch. Codify that here
+			// (previously click-ops) with classic branch protection requiring a
+			// pull request — drift-corrected on every apply.
+			//
+			// CRITICAL: EnforceAdmins=false. The export + go.sum-tidy jobs push
+			// over the WRITE deploy key provisioned above, and a deploy key
+			// bypasses branch protection ONLY while "Include administrators" is
+			// off (deploy keys carry admin context; GITHUB_TOKEN and App tokens do
+			// NOT get this bypass — that asymmetry is exactly why the mirror-side
+			// tidy push hit GH006). Flip this to true and the mirror sync AND
+			// publishing break. Humans pushing over HTTPS/PAT are non-admin for
+			// this rule and stay blocked — the one-way-mirror invariant we want.
+			//
+			// Pattern is "main": every synced standalone repo uses main as its
+			// default branch.
+			//
+			// RepositoryId MUST be the repo's node ID, not its name. The provider
+			// stores repository_id as the node ID; passing the name reads back as a
+			// perpetual diff (name => node-id) that forces a REPLACE — illegal on a
+			// freshly-imported resource. repo_config passes repo.NodeId for the same
+			// reason; we resolve it with a LookupRepository since these mirror repos
+			// are referenced by name only and never adopted as a Repository here.
+			mirrorRepo, err := github.LookupRepository(ctx, &github.LookupRepositoryArgs{
+				Name: pulumi.StringRef(project.StandaloneRepo),
+			})
+			if err != nil {
+				return err
+			}
+
+			// ADOPT via pulumi.Import (id "<repo>:main"), the same brownfield
+			// pattern repo_config uses. The pulumi-github provider's Create is NOT
+			// idempotent — it errors "Name already protected: main" when a rule
+			// already exists (these mirrors carried manual protection from their
+			// standalone days). Import adopts the existing rule and reconciles it to
+			// the args below; it is a harmless no-op once the resource is in state,
+			// so it can stay on the resource permanently (as repo_config does). With
+			// the node-id RepositoryId above no replace is planned, so the
+			// import-plus-replace conflict cannot arise.
+			_, err = github.NewBranchProtection(ctx, fmt.Sprintf("%s-mirror-readonly", project.Name), &github.BranchProtectionArgs{
+				RepositoryId:      pulumi.String(mirrorRepo.NodeId),
+				Pattern:           pulumi.String("main"),
+				EnforceAdmins:     pulumi.Bool(false),
+				AllowsForcePushes: pulumi.Bool(false),
+				AllowsDeletions:   pulumi.Bool(false),
+				RequiredPullRequestReviews: github.BranchProtectionRequiredPullRequestReviewArray{
+					&github.BranchProtectionRequiredPullRequestReviewArgs{
+						RequiredApprovingReviewCount: pulumi.Int(0),
+					},
+				},
+			}, pulumi.Import(pulumi.ID(project.StandaloneRepo+":main")))
+			if err != nil {
+				return err
+			}
 		}
 
 		if !project.OneWay { // one-way export has no import-back dispatch workflow

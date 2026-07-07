@@ -32,6 +32,7 @@ Each application type has its own conventions — see the
 | Path | What it is |
 |---|---|
 | [`infrastructure/pulumi/`](infrastructure/pulumi/) | Infrastructure as code (Go/Pulumi): per-app Cloud Run deploys, keyless deploy identities (Workload Identity Federation), this repo's own GitHub settings, and the bootstrap for the dev-local cluster. |
+| [`pulumi/`](pulumi/) | Shared Pulumi library modules (`library/`) and foundation reference examples (`examples/`) consuming the library in-tree. |
 | [`gitops/`](gitops/) | ArgoCD app-of-apps for the **dev-local** k3s homelab — Zitadel (IdP), Prometheus/Grafana/Loki/Tempo, CNPG, MinIO, Cilium, Envoy Gateway, sealed-secrets, cloudflared. Everything reconciles from git. |
 | [`tools/`](tools/) | The monorepo's own tooling: Bazel wrappers for Pulumi & GitOps, Copybara sync, OCI image rules. |
 
@@ -43,6 +44,7 @@ Each application type has its own conventions — see the
 ├── devx/  homelab/                  # Go developer / ops CLIs
 ├── mcp-slack/  nexus-agent/         # agents / MCP services
 ├── infrastructure/pulumi/           # IaC: Cloud Run, deploy identity, repo config, dev-local bootstrap
+├── pulumi/                          # Pulumi library and foundation examples
 ├── gitops/                          # ArgoCD app-of-apps (the self-hosted platform)
 ├── tools/                           # Bazel pulumi/gitops wrappers, Copybara, OCI
 ├── docs/                            # engineering guides, per-app docs, infrastructure, planning
