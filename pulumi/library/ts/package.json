@@ -32,7 +32,7 @@
     "@pulumi/random": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@vitest/coverage-v8": "catalog:",
     "typescript": "^5.0.0",
     "vitest": "catalog:"
