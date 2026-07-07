@@ -83,6 +83,11 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 			SAName:    sa.Name,
 			Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-%s", key)),
 		}
+		// Also allow the -preview environment for PRs
+		saMappings[key+"-preview"] = libcicd.SAMappingEntry{
+			SAName:    sa.Name,
+			Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-%s-preview", key)),
+		}
 	}
 
 	// ========================================================================

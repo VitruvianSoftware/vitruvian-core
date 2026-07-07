@@ -1,0 +1,119 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Foundation Preview
+
+on:
+  pull_request:
+    paths:
+      - "infrastructure/pulumi/foundation/**"
+      - "infrastructure/pulumi/pkg/**"
+      - ".github/workflows/foundation-preview.yaml"
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: foundation-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: gcp-bootstrap
+            dir: infrastructure/pulumi/foundation/gcp-bootstrap
+            stack: production
+            environment: foundation-bootstrap-preview
+          - app: org-folders
+            dir: infrastructure/pulumi/foundation/org-folders
+            stack: production
+            environment: foundation-bootstrap-preview
+          - app: gcp-org
+            dir: infrastructure/pulumi/foundation/gcp-org
+            stack: production
+            environment: foundation-org-preview
+    environment: ${{ matrix.environment }}
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Detect ${{ matrix.app }} stack changes
+        id: changes
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.base_ref }}
+          filters: |
+            stack:
+              - '${{ matrix.dir }}/**'
+              - 'infrastructure/pulumi/pkg/**'
+              - '.github/workflows/foundation-preview.yaml'
+              - 'infrastructure/pulumi/foundation/.release-please-manifest.json'
+
+      - name: Authenticate to GCP (WIF, keyless)
+        if: false
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        if: false
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
+        if: false
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: ${{ matrix.dir }}
+        run: |
+          set -euo pipefail
+          pulumi stack select "${{ matrix.stack }}"
+          pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
+
+      - name: Format the preview comment
+        if: false
+        run: |
+          set -euo pipefail
+          sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/\r//g' /tmp/preview-raw.txt > /tmp/preview-clean.txt
+          {
+            echo "## Foundation: ${{ matrix.app }} — Pulumi preview (stack: ${{ matrix.stack }})"
+            echo
+            echo "> **Advisory.** This is an advisory preview for the foundation."
+            echo "> **The signal is creates, deletes, and REPLACES.**"
+            echo
+            echo '```'
+            tail -c 60000 /tmp/preview-clean.txt
+            echo '```'
+          } > /tmp/preview-comment.md
+
+      - name: Post the sticky PR comment
+        if: false
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: foundation-preview-${{ matrix.app }}
+          path: /tmp/preview-comment.md

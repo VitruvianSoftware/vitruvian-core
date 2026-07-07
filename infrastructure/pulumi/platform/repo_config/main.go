@@ -261,6 +261,10 @@ func main() {
 			return err
 		}
 
+		if err := foundationEnvironments(ctx, cfg, repo); err != nil {
+			return err
+		}
+
 		if err := pipelineGates(ctx, cfg, repo); err != nil {
 			return err
 		}
@@ -432,6 +436,89 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 			Value:        pulumi.String(oauthVars[k]),
 		}, pulumi.Import(pulumi.ID(fmt.Sprintf("%s:%s:%s", nm, envName, k)))); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// foundationEnvironments manages the highly privileged GitHub Environments
+// used by the foundation IaC pipelines. These map to the per-stage Workload
+// Identity Federation (WIF) service accounts provisioned by gcp-bootstrap.
+//
+// Like tabulaEnvironments, only non-credential identifiers live here as
+// Actions VARIABLES (GCP_PROJECT_ID, GCP_SERVICE_ACCOUNT, GCP_WORKLOAD_IDENTITY_PROVIDER).
+//
+//	pulumi config set --path 'foundationVars["foundation-bootstrap"]' \
+//	  '{"GCP_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
+func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	var foundationVars map[string]map[string]string
+	_ = cfg.GetObject("foundationVars", &foundationVars)
+
+	for _, env := range []string{"foundation-bootstrap", "foundation-org"} {
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(env),
+		}
+
+		// Foundation deploys only from protected branches (main) and require
+		// an approval from the repo owner (or the configured reviewer ids),
+		// similar to tabula-production.
+		args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+			ProtectedBranches:    pulumi.Bool(true),
+			CustomBranchPolicies: pulumi.Bool(false),
+		}
+		reviewerIds, err := productionReviewerIds(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+			&github.RepositoryEnvironmentReviewerArgs{
+				Users: pulumi.ToIntArray(reviewerIds),
+			},
+		}
+
+		envRes, err := github.NewRepositoryEnvironment(ctx, env, args)
+		if err != nil {
+			return err
+		}
+
+		// Preview environment for PRs (no branch policy or reviewers required)
+		previewEnv := env + "-preview"
+		previewEnvRes, err := github.NewRepositoryEnvironment(ctx, previewEnv, &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(previewEnv),
+		})
+		if err != nil {
+			return err
+		}
+
+		// Deterministic resource names: iterate variables in sorted order.
+		vars := foundationVars[env]
+		keys := make([]string, 0, len(vars))
+		for k := range vars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", env, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			})
+			if err != nil {
+				return err
+			}
+
+			_, err = github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", previewEnv, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  previewEnvRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
