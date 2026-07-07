@@ -186,6 +186,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/iam.serviceAccountAdmin",
 			"roles/resourcemanager.projectDeleter",
 			"roles/cloudkms.admin",
+			"roles/serviceusage.serviceUsageAdmin",
 		},
 		"org":  {"roles/storage.objectAdmin"},
 		"env":  {"roles/storage.objectAdmin"},
