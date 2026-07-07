@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "infrastructure/pulumi/foundation/gcp-bootstrap": {
+      "release-type": "simple",
+      "component": "foundation-gcp-bootstrap"
+    }
+  }
+}

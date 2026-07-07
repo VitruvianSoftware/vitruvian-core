@@ -72,7 +72,6 @@ jobs:
               - '${{ matrix.dir }}/**'
               - 'infrastructure/pulumi/pkg/**'
               - '.github/workflows/foundation-preview.yaml'
-              - 'infrastructure/pulumi/foundation/.release-please-manifest.json'
 
       - name: Authenticate to GCP (WIF, keyless)
         if: false

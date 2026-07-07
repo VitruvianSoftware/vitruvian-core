@@ -33,17 +33,28 @@ permissions:
   pull-requests: write
   id-token: write
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Each foundation phase has its own release-please config, manifest, release
+# PR, and deploy job. There is NO shared state between phases — merging one
+# release PR never conflicts with another.
+#
+# The operator controls deployment order by merging the individual Release
+# Please PRs in the desired sequence.
+# ──────────────────────────────────────────────────────────────────────────────
 
 jobs:
-  release-please:
+  # ── Release Please ─────────────────────────────────────────────────────────
+  # Three independent release-please invocations, one per phase. Each uses its
+  # own config + manifest file living inside the phase directory, so merging
+  # one release PR does not touch any file shared by the others.
+
+  release-gcp-org:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      gcp_org_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-org--release_created'] }}
-      org_folders_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/org-folders--release_created'] }}
-      gcp_bootstrap_release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-bootstrap--release_created'] }}
+      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-org--release_created'] }}
     steps:
-      - name: Mint App token for the release PR
+      - name: Mint App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -54,20 +65,57 @@ jobs:
         id: release
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/.release-please-manifest.json
+          config-file: infrastructure/pulumi/foundation/gcp-org/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/gcp-org/.release-please-manifest.json
           target-branch: main
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # Each deploy job is INDEPENDENT. They do NOT chain to each other.
-  # The operator controls ordering by merging the individual Release Please
-  # PRs in the desired sequence. Only the phase whose release was created
-  # will deploy; the others are skipped.
-  # ──────────────────────────────────────────────────────────────────────────
+  release-org-folders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/org-folders--release_created'] }}
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/org-folders/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/org-folders/.release-please-manifest.json
+          target-branch: main
+
+  release-gcp-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-bootstrap--release_created'] }}
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/gcp-bootstrap/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/gcp-bootstrap/.release-please-manifest.json
+          target-branch: main
+
+  # ── Deploy jobs ────────────────────────────────────────────────────────────
 
   deploy-gcp-org:
-    needs: release-please
-    if: needs.release-please.outputs.gcp_org_release_created == 'true'
+    needs: release-gcp-org
+    if: needs.release-gcp-org.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: foundation-org
@@ -95,8 +143,8 @@ jobs:
           pulumi up --yes --non-interactive
 
   deploy-org-folders:
-    needs: release-please
-    if: needs.release-please.outputs.org_folders_release_created == 'true'
+    needs: release-org-folders
+    if: needs.release-org-folders.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: foundation-org-folders
@@ -124,8 +172,8 @@ jobs:
           pulumi up --yes --non-interactive
 
   deploy-gcp-bootstrap:
-    needs: release-please
-    if: needs.release-please.outputs.gcp_bootstrap_release_created == 'true'
+    needs: release-gcp-bootstrap
+    if: needs.release-gcp-bootstrap.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: foundation-bootstrap

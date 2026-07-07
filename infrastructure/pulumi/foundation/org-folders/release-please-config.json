@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "infrastructure/pulumi/foundation/org-folders": {
+      "release-type": "simple",
+      "component": "foundation-org-folders"
+    }
+  }
+}
