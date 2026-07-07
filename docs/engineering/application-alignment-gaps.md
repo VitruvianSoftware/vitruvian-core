@@ -185,16 +185,16 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 
 ### 3.10 `actionlint` is claimed but absent; ESLint configured but never gated
 
-**Priority: P1 · Effort: S each**
+**Priority: P1 · Effort: S each (actionlint addressed)**
 
 **Current state.** Two "standards" that don't exist where it counts:
 
-- **`actionlint`** is listed as a CI check (and appears as a manual pre-merge step in `docs/planning/*`) but is **wired nowhere** — no workflow, BUILD, or script references it. The `.github/workflows` tree is large, hand-tuned, and full of `merge_group`/path-gate edge cases — exactly the surface that most needs linting and currently has none.
+- ✅ **`actionlint`** was missing, but has now been added (`.github/workflows/actionlint.yaml`) and wired as a required merge-queue check in `repo_config`.
 - **ESLint** is configured (`eslint.config.mjs`) but **never enforced** — only prettier formatting runs (via `bazel run //:tidy`). TS lint rules can drift or break with no gate.
 
 **Target.** `actionlint` is a required CI job; ESLint runs in the lint gate (a Bazel eslint target or a CI step) so configured rules actually fail PRs. Optionally add a workflow-pinning/`zizmor`-style security check (third-party actions are already mostly SHA-pinned).
 
-**Recommended action.** Add the `actionlint` job (SHA-pinned) and the ESLint gate to monorepo CI, and to the mirror-CI template (3.11).
+**Recommended action.** Add the ESLint gate to monorepo CI, and to the mirror-CI template (3.11). (The `actionlint` job is completed.)
 
 ### 3.11 Two parallel, divergent CI surfaces (the standalone-mirror CIs)
 
@@ -217,13 +217,17 @@ Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` an
 
 ### 3.12 No reusable Cloud Run deploy workflow
 
-**Priority: P1 · Effort: M**
+**Priority: P1 · Effort: M (Partially Addressed)**
 
 **Current state.** tabula and oauth-user-inspector are both Cloud Run + WIF + Pulumi and their deploy workflows are near-identical in *shape* (auth → ensure-AR-repo → build/push image → `pulumi up` → smoke) yet **share zero code**. tabula adds blue-green + a `prisma migrate` step + 3 environments; oauth is single-shot, development-only. A new Cloud Run app has no thin caller to copy.
 
+**Addressed in this PR.** A reusable workflow `_deploy-cloud-run.yaml` was extracted, and `tabula-deploy.yaml` has been converted into a thin caller of this shared pipeline.
+
+**Remaining.** `oauth-user-inspector-deploy.yaml` has not yet been converged onto `_deploy-cloud-run.yaml` (it still uses `docker buildx` natively instead of Bazel OCI rules). Converge it.
+
 **Target (Principles doc).** One reusable `_cloud-run-deploy.yaml` (the oauth pattern as base) with optional blue-green/migrate inputs (tabula's logic), parameterized by GitHub Environment, so a new Cloud Run app is one caller file.
 
-**Recommended action.** Extract the reusable workflow; converge both apps onto it. This folds together cleanly with 3.6 (ladder) and 3.8/3.9 (identity/env codification).
+**Recommended action.** Converge `oauth-user-inspector` onto the new reusable workflow. This folds together cleanly with 3.6 (ladder) and 3.8/3.9 (identity/env codification).
 
 ### 3.13 Documented distribution with no publishing automation
 
@@ -383,9 +387,9 @@ Ordered by leverage (how many gaps a single fix closes) and by live-correctness/
 | 3 | **Make license-check actually enforce MIT + holder**, then relicense homelab/mcp-slack/nexus-agent and fix tabula's holder | 3.14 — a claimed invariant is currently fake | P0 |
 | 4 | **Extend `devx scaffold` to emit a fully-aligned app** (Bazel BUILD + reusable deploy workflow caller + Pulumi deploy-identity + `devx.yaml` + `.env.example` + governance quartet + mirror CI) | 3.3, 3.4, 3.8–3.13, 3.15, 3.19, 3.21 — stops new apps reopening every gap | P0 |
 | 5 | **Codify tabula's WIF deploy-identity as Pulumi** (import click-ops) and **generalize `tabulaEnvironments` → `envForApp`** to cover oauth | 3.8, 3.9 — the two click-ops deploy-identity halves | P0/P1 |
-| 6 | **Commit the missing `Pulumi.<env>.yaml` stacks (≥ production)** or descope apps to development-only; extract the reusable Cloud Run deploy workflow with blue-green/migrate inputs | 3.6, 3.12 — makes promotion real | P0/P1 |
+| 6 | ⏳ **Commit the missing `Pulumi.<env>.yaml` stacks (≥ production)** or descope apps to development-only; ✅ **extract the reusable Cloud Run deploy workflow with blue-green/migrate inputs** (partially rolled out to tabula) | 3.6, 3.12 — makes promotion real | P0/P1 |
 | 7 | **Fix tabula's local-dev docs** (real Bazel+pnpm+Pulumi flow) and add a `devx.yaml` to tabula + oauth; write the `docs/` local-dev index | 3.1 — stops the docs from lying | P0 |
-| 8 | **Add `actionlint` + ESLint gates**; build the shared mirror-CI templates and give mcp-slack/nexus-agent real test+lint jobs | 3.10, 3.11, 3.16 | P1 |
+| 8 | ⏳ **Add `actionlint` (✅ done) + ESLint gates**; build the shared mirror-CI templates and give mcp-slack/nexus-agent real test+lint jobs | 3.10, 3.11, 3.16 | P1 |
 | 9 | **Decide and document the app-type → hosting-target matrix**; resolve tabula's disabled k8s path; decide remote-dev scope | 3.5, 3.2 | P1/P2 |
 
 **The single most valuable move is #4 (the scaffold).** It is the enforcement surface for the Principles doc: most rows in [the matrix](#2-alignment-matrix) are red because apps were hand-wired, and a scaffold that emits an already-aligned app is what stops this backlog from regrowing every time a new app lands.
