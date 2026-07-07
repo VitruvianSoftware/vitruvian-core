@@ -1,0 +1,3 @@
+{
+  "infrastructure/pulumi/foundation/gcp-bootstrap": "0.3.1"
+}
