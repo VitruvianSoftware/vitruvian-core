@@ -350,7 +350,7 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		EnableBillingAccountSink: conf.Get("enable_billing_account_sink") != "false",
 
 		// Policies
-		CreateAccessContextManagerPolicy: conf.Get("create_access_context_manager_policy") != "false",
+		CreateAccessContextManagerPolicy: conf.Get("create_access_context_manager_policy") == "true",
 		EnforceAllowedWorkerPools:        conf.Get("enforce_allowed_worker_pools") == "true",
 		EnableHubAndSpoke:                conf.Get("enable_hub_and_spoke") == "true",
 		AllowedWorkerPoolID:              conf.Get("allowed_worker_pool_id"),

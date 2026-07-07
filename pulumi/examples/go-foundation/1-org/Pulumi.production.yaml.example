@@ -11,5 +11,4 @@ config:
   # foundation-1-org:folder_prefix: "fldr"
   # foundation-1-org:default_region: "us-central1"
   # foundation-1-org:scc_notification_filter: "state=\"ACTIVE\""
-  # foundation-1-org:create_access_context_manager_policy: "true"
   # foundation-1-org:parent_folder: ""

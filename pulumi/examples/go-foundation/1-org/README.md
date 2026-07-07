@@ -228,7 +228,7 @@ Consider the following:
 | `domains_to_allow`                     | Comma-separated list of domains for domain-restricted sharing org policy |          | `""`                 |
 | `essential_contacts_domains`           | Comma-separated list of domains for Essential Contacts                   |          | `""`                 |
 | `scc_notification_filter`              | SCC notification filter expression                                       |          | `"state=\"ACTIVE\""` |
-| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy                       |          | `"true"`             |
+| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy                       |          | `"false"`            |
 | `parent_folder`                        | Deploy under a specific folder instead of org root                       |          | `""`                 |
 
 ## Outputs
