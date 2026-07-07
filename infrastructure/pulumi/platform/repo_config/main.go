@@ -454,7 +454,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	var foundationVars map[string]map[string]string
 	_ = cfg.GetObject("foundationVars", &foundationVars)
 
-	for _, env := range []string{"foundation-bootstrap", "foundation-org"} {
+	for _, env := range []string{"foundation-bootstrap", "foundation-org", "foundation-org-folders"} {
 		args := &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
 			Environment: pulumi.String(env),
