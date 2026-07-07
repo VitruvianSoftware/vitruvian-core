@@ -125,7 +125,7 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: |
           set -euo pipefail
-          pulumi stack select "${{ matrix.stack }}"
+          pulumi stack select -c "${{ matrix.stack }}"
           # Advisory: never fail the PR on a diff; DO fail (visibly) if the
           # preview itself errors — that means the program no longer evaluates.
           pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt

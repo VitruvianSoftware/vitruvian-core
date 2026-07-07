@@ -92,7 +92,7 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: |
           set -euo pipefail
-          pulumi stack select "${{ matrix.stack }}"
+          pulumi stack select -c "${{ matrix.stack }}"
           pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
 
       - name: Format the preview comment
