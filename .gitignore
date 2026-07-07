@@ -1,3 +1,7 @@
+# OS-generated files
+.DS_Store
+Thumbs.db
+
 # User-specific settings file for this repo. May contain secrets such as API tokens.
 .env
 
