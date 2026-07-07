@@ -51,7 +51,7 @@ jobs:
           - app: org-folders
             dir: infrastructure/pulumi/foundation/org-folders
             stack: production
-            environment: foundation-bootstrap-preview
+            environment: foundation-org-folders-preview
           - app: gcp-org
             dir: infrastructure/pulumi/foundation/gcp-org
             stack: production

@@ -90,6 +90,20 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// org-folders uses the bootstrap SA but deploys from its own GitHub
+	// Environment (foundation-org-folders) so operators can approve it
+	// independently from gcp-bootstrap.
+	if bootstrapSA, ok := sas["bootstrap"]; ok {
+		saMappings["org-folders"] = libcicd.SAMappingEntry{
+			SAName:    bootstrapSA.Name,
+			Attribute: pulumi.String("attribute.environment/foundation-org-folders"),
+		}
+		saMappings["org-folders-preview"] = libcicd.SAMappingEntry{
+			SAName:    bootstrapSA.Name,
+			Attribute: pulumi.String("attribute.environment/foundation-org-folders-preview"),
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via
