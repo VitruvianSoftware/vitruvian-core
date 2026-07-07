@@ -160,7 +160,7 @@ If you need to manually trigger a release:
 
    # Create release PR
    release-please release-pr \
-     --repo-url=BlueCentre/tabula \
+     --repo-url=VitruvianSoftware/vitruvian-core \
      --token=$GITHUB_TOKEN
    ```
 
@@ -250,7 +250,7 @@ After an extension release:
 
    ```bash
    # From GitHub release page
-   wget https://github.com/BlueCentre/tabula/releases/download/extension-vX.Y.Z/tabula-extension-chrome-vX.Y.Z.zip
+   wget https://github.com/VitruvianSoftware/vitruvian-core/releases/download/extension-vX.Y.Z/tabula-extension-chrome-vX.Y.Z.zip
    ```
 
 2. **Upload to Chrome Web Store:**
