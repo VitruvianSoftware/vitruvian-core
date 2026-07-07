@@ -55,9 +55,15 @@ on:
         required: true
         type: string
       bazel-image-target:
-        description: "oci_push label, e.g. //tabula/api:image_push"
-        required: true
+        description: 'Bazel target for oci_push (e.g. //tabula/api:image_push). Optional if dockerfile-dir is provided.'
+        required: false
         type: string
+        default: ''
+      dockerfile-dir:
+        description: 'Directory containing the Dockerfile to build and push. Optional if bazel-image-target is provided.'
+        required: false
+        type: string
+        default: ''
       image-repository-path:
         description: "Artifact Registry path under the project, e.g. tabula/api"
         required: true
@@ -79,15 +85,20 @@ on:
         required: true
         type: string
       run-migrations:
-        description: "Run the vendored-Prisma migration step before rollout"
+        description: "Run //tabula/api:schema_engine and //tabula/api:migrate_deploy_bin before Pulumi up"
         required: false
         type: boolean
         default: false
       smoke-url-path:
-        description: "Path curl-ed on the candidate before the traffic shift"
+        description: "Path to append to the service URL for the default curl smoke test, e.g. /health"
         required: false
         type: string
-        default: /health
+        default: "/"
+      custom-smoke-script:
+        description: "Custom bash script to run instead of the default curl check. The candidate URL is available as the CAND env var."
+        required: false
+        type: string
+        default: ""
 
 jobs:
   deploy:
@@ -142,12 +153,25 @@ jobs:
             --repository-format=docker \
             --description="${{ inputs.app-name }} container images (managed by ${{ inputs.pulumi-dir }})"
 
-      - name: Build and push image
+      - name: Build and push image (Bazel)
+        if: ${{ inputs.bazel-image-target != '' }}
         run: |
           bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             ${{ inputs.bazel-image-target }} -- \
             --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${{ inputs.image-repository-path }}" \
             --tag "${GITHUB_SHA}" --tag latest
+
+      - name: Build and push image (Docker)
+        if: ${{ inputs.bazel-image-target == '' && inputs.dockerfile-dir != '' }}
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${{ inputs.image-repository-path }}"
+          # Try to get NODE_VERSION from canonical if present
+          NODE_VERSION="$(cut -d. -f1 .nvmrc 2>/dev/null || echo 22)"
+          docker buildx build --push \
+            --build-arg NODE_VERSION="${NODE_VERSION}" \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            --tag "${IMAGE}:latest" \
+            ${{ inputs.dockerfile-dir }}
 
       - name: Run database migrations
         if: ${{ inputs.run-migrations }}
@@ -214,8 +238,14 @@ jobs:
           if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
             CAND="$(pulumi stack output serviceUrl)"
           fi
-          echo "Smoke-checking ${CAND}${{ inputs.smoke-url-path }}"
-          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}${{ inputs.smoke-url-path }}"
+          if [ -n "${{ inputs.custom-smoke-script }}" ]; then
+            echo "Running custom smoke script against ${CAND}"
+            export CAND
+            ${{ inputs.custom-smoke-script }}
+          else
+            echo "Smoke-checking ${CAND}${{ inputs.smoke-url-path }}"
+            curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}${{ inputs.smoke-url-path }}"
+          fi
 
       - name: Shift 100% traffic to the new revision (Pulumi)
         env:

@@ -18,22 +18,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// OAuth User Inspector infrastructure: Artifact Registry for the Docker-built
+// OAuth User Inspector infrastructure: Artifact Registry for the Bazel-built
 // image, the Cloud Run service, and its runtime service account. The app reads
 // its OAuth client credentials directly from GCP Secret Manager at runtime
-// (server/server.ts -> SecretManagerServiceClient), so the secrets are NOT
-// injected as env here — the runtime service account is simply granted
-// project-level Secret Manager accessor (mirroring the app's old deploy.sh,
-// which bound roles/secretmanager.secretAccessor at the project level).
+// (server/server.ts -> SecretManagerServiceClient).
 //
 // Deploy: bazel run //infrastructure/pulumi/apps/oauth-user-inspector:up
-// The image tag is supplied per deploy:
-//
-//	pulumi config set oauth-user-inspector:imageTag <git-sha>
 package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/artifactregistry"
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/cloudrunv2"
@@ -49,30 +45,24 @@ func main() {
 		if region == "" {
 			region = "us-west1"
 		}
-		imageTag := cfg.Get("imageTag")
+
+		env := cfg.Require("environment")
+		imageTag := envOrConfig("OAUTH_USER_INSPECTOR_IMAGE_TAG", cfg, "imageTag")
 		if imageTag == "" {
 			imageTag = "latest"
 		}
-		// Runtime identity for the Cloud Run service. The SA itself (and its
-		// project-level Secret Manager accessor grant) is owned by the
-		// oauth-user-inspector-deploy-identity bootstrap stack; this stack only
-		// references its email.
+		promote := envOrConfigBool("OAUTH_USER_INSPECTOR_PROMOTE", cfg, "promote")
+		stableRevision := envOrConfig("OAUTH_USER_INSPECTOR_STABLE_REVISION", cfg, "stableRevision")
+
 		runtimeSA := cfg.Require("runtimeServiceAccount")
 
-		// Artifact Registry repository the deploy workflow's docker buildx
-		// publishes into: us-west1-docker.pkg.dev/<project>/oauth-user-inspector/app
-		//
-		// Always adopted via Import: the deploy workflow pre-creates the repo
-		// (the image push happens before pulumi up — bootstrap ordering), so
-		// by the time this program runs the repo exists. Pulumi ignores the
-		// import option once the resource is in state.
 		repo, err := artifactregistry.NewRepository(
 			ctx, "oauth-user-inspector-images", &artifactregistry.RepositoryArgs{
 				Project:      pulumi.String(project),
 				Location:     pulumi.String(region),
 				RepositoryId: pulumi.String("oauth-user-inspector"),
 				Format:       pulumi.String("DOCKER"),
-				Description:  pulumi.String("OAuth User Inspector container images (pushed by docker buildx from the deploy workflow)"),
+				Description:  pulumi.String("OAuth User Inspector container images (pushed by bazel run)"),
 			},
 			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/repositories/oauth-user-inspector", project, region))),
 			pulumi.IgnoreChanges([]string{"description", "labels"}),
@@ -88,21 +78,45 @@ func main() {
 				Name:  pulumi.String("NODE_ENV"),
 				Value: pulumi.String("production"),
 			},
-			// The app reads GOOGLE_CLOUD_PROJECT to resolve the Secret Manager
-			// project (server/server.ts). Cloud Run does not set it implicitly,
-			// so inject it from the stack's project.
 			&cloudrunv2.ServiceTemplateContainerEnvArgs{
 				Name:  pulumi.String("GOOGLE_CLOUD_PROJECT"),
 				Value: pulumi.String(project),
 			},
 		}
 
+		revisionName := pulumi.Sprintf("oauth-user-inspector-%s-%s", env, imageTag)
+		var traffics cloudrunv2.ServiceTrafficArray
+		if promote || stableRevision == "" {
+			traffics = cloudrunv2.ServiceTrafficArray{
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: revisionName,
+					Percent:  pulumi.Int(100),
+				},
+			}
+		} else {
+			traffics = cloudrunv2.ServiceTrafficArray{
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: pulumi.String(stableRevision),
+					Percent:  pulumi.Int(100),
+				},
+				&cloudrunv2.ServiceTrafficArgs{
+					Type:     pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"),
+					Revision: revisionName,
+					Percent:  pulumi.Int(0),
+					Tag:      pulumi.String("candidate"),
+				},
+			}
+		}
+
 		service, err := cloudrunv2.NewService(
 			ctx, "oauth-user-inspector", &cloudrunv2.ServiceArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
-				Name:     pulumi.String("oauth-user-inspector"),
+				Name:     pulumi.Sprintf("oauth-user-inspector-%s", env),
 				Template: &cloudrunv2.ServiceTemplateArgs{
+					Revision:       revisionName,
 					ServiceAccount: pulumi.String(runtimeSA),
 					Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
 						MaxInstanceCount: pulumi.Int(10),
@@ -125,21 +139,16 @@ func main() {
 						},
 					},
 				},
+				Traffics: traffics,
 			},
-			// The Cloud Run service already exists (created by the old Cloud
-			// Build deploy), so adopt it on first run.
-			pulumi.Import(pulumi.ID(fmt.Sprintf("projects/%s/locations/%s/services/oauth-user-inspector", project, region))),
+			pulumi.DependsOn([]pulumi.Resource{repo}),
 			// Ignore fields the old Cloud Build deploy set so they don't churn.
 			pulumi.IgnoreChanges([]string{"client", "clientVersion", "launchStage", "annotations", "labels", "template.labels", "template.annotations"}),
-			pulumi.DependsOn([]pulumi.Resource{repo}),
 		)
 		if err != nil {
 			return err
 		}
 
-		// Public service: --allow-unauthenticated in the old deploy. Clients hit
-		// the React frontend + Express backend directly; there is no upstream
-		// auth proxy.
 		_, err = cloudrunv2.NewServiceIamMember(ctx, "oauth-user-inspector-public", &cloudrunv2.ServiceIamMemberArgs{
 			Project:  pulumi.String(project),
 			Location: pulumi.String(region),
@@ -156,4 +165,25 @@ func main() {
 		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})
+}
+
+// envOrConfig reads a per-invocation deploy input: the environment variable
+// wins (process-scoped, so concurrent invocations can't clobber each other).
+func envOrConfig(envName string, cfg *config.Config, cfgKey string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return cfg.Get(cfgKey)
+}
+
+// envOrConfigBool is envOrConfig for booleans.
+func envOrConfigBool(envName string, cfg *config.Config, cfgKey string) bool {
+	if v := os.Getenv(envName); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			panic(fmt.Sprintf("%s=%q is not a boolean", envName, v))
+		}
+		return b
+	}
+	return cfg.GetBool(cfgKey)
 }

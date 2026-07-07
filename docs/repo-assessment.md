@@ -150,14 +150,14 @@ App-of-apps pattern deploys homelab Kubernetes workloads (~35 platform component
 
 | Dimension | tabula (reference) | oauth-user-inspector (to align) |
 |-----------|-------------------|-------------------------------|
-| Container build | ✅ Bazel `rules_oci` | ❌ Docker Buildx → **migrate to Bazel `rules_oci`** |
-| Deploy mechanism | ✅ Blue-green (candidate → smoke → promote) | ❌ Single-shot → **adopt blue-green** |
+| Container build | ✅ Bazel `rules_oci` | ⚠️ Docker Buildx (Vite 6/Rolldown bindings break in Bazel sandbox; deploy workflow supports Docker via `dockerfile-dir`) |
+| Deploy mechanism | ✅ Blue-green (candidate → smoke → promote) | ✅ Blue-green (via reusable workflow) |
 | DB migrations | ✅ Prisma (vendored, Bazel-built) | ✅ None (by design — no DB backend) |
 | Pre-deploy infra | ✅ Zitadel OAuth app managed by `zitadel-apps/` | ⚠️ All GCP project resources should be IaC-managed |
 | Smoke test | ⚠️ `curl /health` | ⚠️ Headless Chrome → **standardize approach** |
 | Environments | ✅ development / nonproduction / production | ❌ development only → **add nonproduction + production** |
-| Bazel integration | ✅ Full | ❌ None → **adopt full Bazel integration** |
-| Remote cache | ✅ BuildBuddy | ❌ N/A → **enable BuildBuddy** |
+| Bazel integration | ✅ Full | ⚠️ Partial (compiles backend but skips rules_oci) |
+| Remote cache | ✅ BuildBuddy | ❌ N/A |
 
 **Target state — all SaaS/web apps share:**
 
