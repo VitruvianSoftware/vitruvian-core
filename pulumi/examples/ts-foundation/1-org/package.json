@@ -10,6 +10,7 @@
     "@pulumi/gcp": "^8.0.0",
     "@pulumi/pulumi": "^3.113.0",
     "@pulumi/random": "^4.16.0",
+    "@pulumiverse/time": "^0.1.1",
     "@vitruviansoftware/foundation-cai-monitoring": "^0.2.0",
     "@vitruviansoftware/foundation-centralized-logging": "0.5.0",
     "@vitruviansoftware/foundation-org-policy": "^0.3.0",
