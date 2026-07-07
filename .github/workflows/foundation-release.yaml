@@ -87,7 +87,7 @@ jobs:
         working-directory: infrastructure/pulumi/foundation/gcp-org
         run: |
           set -euo pipefail
-          pulumi stack select "production"
+          pulumi stack select -c "production"
           pulumi up --yes --non-interactive
 
   deploy-org-folders:
@@ -120,7 +120,7 @@ jobs:
         working-directory: infrastructure/pulumi/foundation/org-folders
         run: |
           set -euo pipefail
-          pulumi stack select "production"
+          pulumi stack select -c "production"
           pulumi up --yes --non-interactive
 
   deploy-gcp-bootstrap:
@@ -153,5 +153,5 @@ jobs:
         working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
         run: |
           set -euo pipefail
-          pulumi stack select "production"
+          pulumi stack select -c "production"
           pulumi up --yes --non-interactive
