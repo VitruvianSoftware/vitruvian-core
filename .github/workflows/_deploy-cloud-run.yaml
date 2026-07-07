@@ -226,6 +226,7 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
+          CUSTOM_SMOKE_SCRIPT: ${{ inputs.custom-smoke-script }}
         working-directory: ${{ inputs.pulumi-dir }}
         run: |
           pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
@@ -238,10 +239,10 @@ jobs:
           if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
             CAND="$(pulumi stack output serviceUrl)"
           fi
-          if [ -n "${{ inputs.custom-smoke-script }}" ]; then
+          if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then
             echo "Running custom smoke script against ${CAND}"
             export CAND
-            ${{ inputs.custom-smoke-script }}
+            eval "$CUSTOM_SMOKE_SCRIPT"
           else
             echo "Smoke-checking ${CAND}${{ inputs.smoke-url-path }}"
             curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}${{ inputs.smoke-url-path }}"
