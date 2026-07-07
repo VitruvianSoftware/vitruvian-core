@@ -97,6 +97,7 @@ func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 			"essentialcontacts.googleapis.com",
 			"assuredworkloads.googleapis.com",
 			"cloudasset.googleapis.com",
+			"orgpolicy.googleapis.com",
 		},
 
 		// State Bucket
