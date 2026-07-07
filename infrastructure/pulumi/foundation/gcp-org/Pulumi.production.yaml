@@ -1,0 +1,42 @@
+# Committed stack config for the vitruviansoftware.dev foundation Phase 1 (org).
+#
+# Holds ONLY non-secret identifiers (config-as-code). There are NO secret keys
+# here. Backend is Pulumi Cloud (ipv1337).
+#
+# Values populated from bootstrap stack outputs:
+#   pulumi stack output common_config   --stack ipv1337/foundation-bootstrap/production --json
+#   pulumi stack output required_groups --stack ipv1337/foundation-bootstrap/production --json
+#   pulumi stack output optional_groups --stack ipv1337/foundation-bootstrap/production --json
+config:
+  # --- From bootstrap common_config output ---
+  foundation-org:org_id: "90456063361"
+  foundation-org:billing_account: "013EEF-107C95-8E11BD"
+  foundation-org:default_region: "us-central1"
+  foundation-org:project_prefix: "prj"
+  foundation-org:folder_prefix: "fldr"
+  foundation-org:domains_to_allow: "vitruviansoftware.dev"
+
+  # --- Cross-stage references ---
+  # Fully-qualified Pulumi Cloud stack reference for the bootstrap stage.
+  foundation-org:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
+  # Numeric id of the fldr-foundation-1 umbrella folder (from bootstrap common_config.parent_folder).
+  # All org-stage folders/projects nest under this.
+  foundation-org:parent_folder: "823326946563"
+
+  # --- Required groups (from bootstrap required_groups output) ---
+  foundation-org:group_org_admins: "gcp-organization-admins@vitruviansoftware.dev"
+  foundation-org:group_billing_admins: "gcp-billing-admins@vitruviansoftware.dev"
+  foundation-org:billing_data_users: "gcp-billing-data@vitruviansoftware.dev"
+  foundation-org:audit_data_users: "gcp-audit-data@vitruviansoftware.dev"
+
+  # --- Optional groups (from bootstrap optional_groups output) ---
+  foundation-org:gcp_security_reviewer: "gcp-security-reviewer@vitruviansoftware.dev"
+  foundation-org:gcp_network_viewer: "gcp-network-viewer@vitruviansoftware.dev"
+  foundation-org:gcp_scc_admin: "gcp-scc-admin@vitruviansoftware.dev"
+  foundation-org:gcp_global_secrets_admin: "gcp-secrets-admin@vitruviansoftware.dev"
+  foundation-org:gcp_kms_admin: "gcp-kms-admin@vitruviansoftware.dev"
+
+  # --- Feature flags (conservative defaults for initial deployment) ---
+  # foundation-org:enable_scc_resources: "true"
+  # foundation-org:create_access_context_manager_policy: "true"
+  # foundation-org:enable_hub_and_spoke: "false"
