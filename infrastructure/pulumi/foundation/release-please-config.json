@@ -1,4 +1,5 @@
 {
+  "separate-pull-requests": true,
   "packages": {
     "infrastructure/pulumi/foundation/gcp-org": {
       "release-type": "simple",
