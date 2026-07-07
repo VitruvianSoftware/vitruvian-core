@@ -29,6 +29,9 @@ Pulumi.*.yaml
 !foundation/gcp-bootstrap/Pulumi.*.yaml
 # foundation/org-folders commits its stack config: only the org id (non-secret).
 !foundation/org-folders/Pulumi.*.yaml
+# foundation/gcp-org commits its production stack config: org id, billing
+# account, bootstrap stack ref, governance groups, domains — all non-secret.
+!foundation/gcp-org/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -38,3 +41,4 @@ Pulumi.*.yaml
 /zitadel-apps/zitadel-apps
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders
+/foundation/gcp-org/foundation-org
