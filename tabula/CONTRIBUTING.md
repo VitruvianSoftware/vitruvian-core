@@ -37,7 +37,7 @@ contributors to:
 
 ## Tech Stack
 
-Tabula is built with modern, scalable technologies:
+Tabula is built with modern, scalable technologies within the VitruvianSoftware monorepo:
 
 **Browser Extension:**
 
@@ -53,41 +53,27 @@ Tabula is built with modern, scalable technologies:
 - React 18
 - TypeScript (strict mode)
 - Tailwind CSS for styling
-- Deployed on Cloudflare Pages or Vercel
 
 **Backend API:**
 
-- **Option 1**: Go with Gin framework (preferred for performance)
-- **Option 2**: Node.js with Fastify
+- Node.js with Fastify (TypeScript)
+- Prisma ORM
 - JWT authentication (RS256)
 - Deployed on Google Cloud Run
 
-**Database:**
+**Database & Cache:**
 
-- PostgreSQL 16 on Neon (serverless)
-- Migrations with golang-migrate or Prisma
-- Connection pooling via PgBouncer
-
-**Cache & Sync:**
-
-- Upstash Redis (serverless, edge caching)
-- REST API for cache access
-- Used for sessions, sync state, rate limiting
+- PostgreSQL 16
+- Redis for cache/sessions
+- Managed via K3s Homelab / CloudNativePG locally
 
 **Infrastructure:**
 
 - Google Cloud Platform (GCP)
-- Terraform for Infrastructure as Code
+- Pulumi for Infrastructure as Code (Workload Identity Federation)
 - Cloud Run for serverless compute
-- Cloud Storage for backups and assets
-- Cloud Scheduler for cron jobs
-- Pub/Sub for event-driven architecture
-- Google Secret Manager for secrets storage
-
-**Authentication (Phase 4):**
-
-- WorkOS for SSO and SCIM
-- Email/password with JWT (Phase 1-3)
+- K3s Homelab over Tailscale for local development (`gitops/`)
+- Bazel for monorepo builds and testing
 
 ## Getting Started
 
@@ -95,21 +81,20 @@ Tabula is built with modern, scalable technologies:
 
 Before contributing, ensure you have:
 
-- **Node.js** 18+ (for extension and web dashboard)
-- **Go** 1.21+ (for backend API) or Node.js 18+
-- **Docker** (for local development)
+- **Node.js** 22+
+- **Bazel** (via `bazelisk`)
+- **pnpm** (via Corepack or globally installed)
+- **Docker** & **Tailscale** (for local K3s access)
 - **Git** (version control)
-- **Terraform** 1.6+ (for infrastructure changes)
 - **gcloud CLI** (for GCP-related development)
-- **PostgreSQL** client (psql) for database operations
 
 ### Fork and Clone
 
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/tabula.git
-   cd tabula
+   git clone https://github.com/YOUR_USERNAME/vitruvian-core.git
+   cd vitruvian-core
    ```
 3. Add the upstream repository:
    ```bash
@@ -118,69 +103,45 @@ Before contributing, ensure you have:
 
 ### Set Up Development Environment
 
-#### Infrastructure Setup (Optional)
+Tabula uses Bazel for building and testing, and a Tailscale-connected K3s cluster for its backend services.
 
-For backend/infrastructure development:
+1. Ensure your Tailscale is running and connected (required for homelab K3s access).
+2. Set up the Bazel environment:
+   ```bash
+   bazel run //tools:bazel_env
+   direnv allow
+   ```
+
+#### Building the Extension
 
 ```bash
-cd infrastructure/environments/dev
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your GCP project and settings
-terraform init
-terraform apply
+# Build the extension via Bazel
+bazel build //tabula/extension:extension
 ```
 
-See [Infrastructure README](./infrastructure/README.md) for detailed setup.
-
-### Extension Development
-
-See the [Build Guide](./docs/guides/build-guide.md) for detailed instructions on building for
-different environments.
-
+To run a continuous watch loop for extension development:
 ```bash
-cd extension
-npm install
-npm run dev        # Start development build with watch mode
-npm run build      # Production build (defaults to API_URL=http://localhost:8080/api/v1)
-npm run test       # Run tests
+ibazel run //tabula/extension:dev
 ```
 
 Load the extension in Chrome:
-
 1. Navigate to `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select the `extension/dist` folder
+4. Select the output folder in `bazel-bin/tabula/extension/...`
 
-#### API Development (Go)
+#### Running the API Locally
 
 ```bash
-cd api
-go mod download
-go run cmd/api/main.go        # Start development server
-go test ./...                  # Run tests
-golangci-lint run              # Run linter
+# Start the API server via Bazel
+ibazel run //tabula/api:dev
 ```
 
-#### API Development (Node.js Alternative)
+#### Running the Web Dashboard Locally
 
 ```bash
-cd api
-npm install
-npm run dev        # Start development server with hot reload
-npm run test       # Run tests
-npm run lint       # Run ESLint
-```
-
-#### Web Dashboard Development
-
-```bash
-cd dashboard
-npm install
-npm run dev        # Start Next.js development server (http://localhost:3000)
-npm run build      # Production build
-npm run test       # Run tests
-npm run lint       # Run ESLint
+# Start the Web Dashboard via Bazel
+ibazel run //tabula/web:dev
 ```
 
 ## Development Workflow
@@ -391,71 +352,11 @@ function createWorkspace(params: any) {
 - Use nullish coalescing (`??`) and optional chaining (`?.`)
 - Prefer `const` over `let`, never use `var`
 
-### Go
+### Pulumi (Infrastructure as Code)
 
-**Configuration:**
-
-- Go 1.21+ with modules
-- `gofmt` for formatting (automatic)
-- `golangci-lint` for linting
-- Pre-commit hooks enforce formatting
-
-**Code Style:**
-
-- Follow [Effective Go](https://golang.org/doc/effective_go.html)
-- Write idiomatic Go code
-- Add GoDoc comments for exported functions
-- Use standard library where possible
-- Error wrapping with `%w` (Go 1.13+)
-
-**Example:**
-
-```go
-// GetWorkspaces retrieves all workspaces for a user.
-// Returns an error if the database query fails.
-func GetWorkspaces(ctx context.Context, userID string) ([]Workspace, error) {
-    var workspaces []Workspace
-
-    err := db.WithContext(ctx).
-        Where("user_id = ?", userID).
-        Order("position ASC").
-        Find(&workspaces).Error
-    if err != nil {
-        return nil, fmt.Errorf("failed to fetch workspaces: %w", err)
-    }
-
-    return workspaces, nil
-}
-```
-
-**Go Best Practices:**
-
-- Always handle errors (don't ignore them)
-- Use context for cancellation and timeouts
-- Close resources with `defer`
-- Keep functions small and focused
-- Package names are lowercase, single word
-
-### Terraform
-
-- Use modules for reusability
-- Add descriptions to all variables and outputs
-- Use meaningful resource names
-- Mark sensitive outputs appropriately
-
-**Example:**
-
-```hcl
-variable "project_id" {
-  description = "GCP project ID"
-  type        = string
-}
-
-output "api_url" {
-  description = "Cloud Run API URL"
-  value       = google_cloud_run_v2_service.api.uri
-}
-```
+- Use Go for Pulumi programs
+- Manage Workload Identity Federation instead of long-lived keys
+- Store environment configs in `Pulumi.<env>.yaml`
 
 ### React/Next.js
 
@@ -655,17 +556,12 @@ func TestCreateWorkspace(t *testing.T) {
 ### Running Tests
 
 ```bash
-# Extension
-cd extension && npm test
+# Run all tests in the repository
+bazel test //...
 
-# API (Node.js)
-cd api && npm test
-
-# API (Go)
-cd api && go test ./...
-
-# Web
-cd web && npm test
+# Run tests for a specific target
+bazel test //tabula/api/...
+bazel test //tabula/extension/...
 ```
 
 ## Documentation

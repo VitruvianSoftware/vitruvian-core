@@ -18,197 +18,60 @@ This guide will help you set up your local development environment for Tabula.
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js** 18+ ([Download](https://nodejs.org/))
-- **npm** 9+ (comes with Node.js)
-- **Docker** ([Download](https://www.docker.com/get-started))
-- **Git** ([Download](https://git-scm.com/downloads))
-- **VS Code** (recommended) or your preferred editor
+- **Node.js** 22+
+- **Bazel** (via `bazelisk`)
+- **pnpm** (via Corepack or globally installed)
+- **Docker** & **Tailscale** (for local K3s access)
+- **Git**
+- **gcloud CLI**
 
 ### Optional but Recommended
 
 - **PostgreSQL client** (psql) for database debugging
 - **Redis client** (redis-cli) for cache debugging
-- **Postman** or **Insomnia** for API testing
 
 ## Initial Setup
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/BlueCentre/tabula.git
-cd tabula
+git clone https://github.com/VitruvianSoftware/vitruvian-core.git
+cd vitruvian-core
 ```
 
-### 2. Install Dependencies
+### 2. Set Up the Bazel Environment
+
+The monorepo uses Bazel to guarantee reproducible builds and testing.
 
 ```bash
-npm install
+bazel run //tools:bazel_env
+direnv allow
 ```
 
-This will install dependencies for all workspaces (api, extension, web, cli).
+This ensures you're using the correct pinned version of Node, Go, and other toolchains.
 
-### 3. Set up TabCLI (Recommended)
+### 3. Connect to the K3s Homelab
 
-To run `tabcli` commands directly from your shell, build and link the CLI:
+We use a production-ready K3s cluster over Tailscale instead of raw `docker-compose`. Ensure your Tailscale daemon is running and authorized with the `tag:claude-cloud` tag.
+
+The cluster provides PostgreSQL, Redis, and Zitadel (IdP) natively.
+
+### 4. Setup Workload Identity Federation (GCP)
+
+To deploy to Google Cloud Run or interact with GCP resources, you don't need a static service account key. Pulumi handles Workload Identity Federation automatically.
+
+Ensure your `infrastructure/gcp-identities.tsv` maps your environment to the correct account:
 
 ```bash
-# Build the CLI
-npm run build --workspace=cli
-
-# Link globally
-cd cli && npm link && cd ..
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=your.email@gmail.com)"
 ```
 
-Now you can run `tabcli` commands from anywhere.
+### 5. Configure Zitadel Authentication
 
-### 4. Initialize TabCLI Configuration
+Tabula uses Zitadel (deployed in the K3s homelab) for SSO authentication.
 
-```bash
-tabcli init
-```
-
-This will prompt you for configuration values and create `.tabula/config.json`.
-
-> **Note**: The `.tabula/` directory is git-ignored to prevent committing sensitive configuration.
-
-### 5. Authenticate & Setup Cloud Resources
-
-If you are setting up a new cloud environment (GCP Project), run:
-
-```bash
-tabcli infra setup
-```
-
-This will create the project (if needed), enable required APIs, and set up the Terraform state
-bucket.
-
-Then, authenticate with your services:
-
-```bash
-# Authenticate with GCP (CLI + Application Default Credentials)
-tabcli auth gcloud
-
-# Authenticate with Neon (API Key will be stored in Google Secret Manager)
-tabcli auth neon
-```
-
-### 6. Configure Secrets
-
-Secrets are handled automatically during infrastructure bootstrapping.
-
-```bash
-# Deploys infra and automatically syncs DATABASE_URL to your local config
-tabcli infra bootstrap --env dev
-```
-
-If you need to manually pull secrets later:
-
-```bash
-tabcli infra secrets pull
-```
-
-### 7. Set Up Local Environment
-
-```bash
-# Setup local environment configuration (creates api/.env)
-tabcli dev setup
-```
-
-> **Note**: `dev setup` creates `api/.env` from `.env.example`. Ensure `DATABASE_URL` in `api/.env`
-> points to your local Docker Postgres instance
-> (`postgresql://tabula:tabula_dev_password@localhost:5432/tabula_dev`) if you intend to develop
-> locally.
-
-### 8. Configure WorkOS Authentication
-
-Tabula uses WorkOS AuthKit for secure SSO authentication. Set up a WorkOS account:
-
-1. **Create WorkOS Account**:
-   - Go to [workos.com](https://workos.com) and sign up
-   - Create a new application for Tabula
-
-2. **Configure Authentication Methods**:
-   - Enable Google OAuth
-   - Enable Microsoft OAuth (optional)
-   - Enable GitHub OAuth (optional)
-   - Enable Magic Link (optional)
-   - Enable Password authentication (optional)
-
-3. **Set Redirect URIs**:
-   - Development: `http://localhost:8080/api/v1/auth/callback`
-   - Production: `https://api.tabula.app/api/v1/auth/callback`
-
-   > **Note**: You must manually add these URIs in the WorkOS Dashboard under **Configuration >
-   > Redirect URIs**.
-
-4. **Add Credentials to Environment**: Edit `api/.env` and add your WorkOS credentials:
-
-   ```bash
-   WORKOS_API_KEY=sk_test_your_api_key_here
-   WORKOS_CLIENT_ID=client_your_client_id_here
-   ```
-
-   > **Note**: You can find these in the WorkOS Dashboard under "API Keys" and "Configuration"
-
-5. **Generate JWT Secret**:
-
-   ```bash
-   # Generate a secure random secret
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   ```
-
-   Add it to `api/.env`:
-
-   ```bash
-   JWT_SECRET=your_generated_secret_here
-   JWT_REFRESH_SECRET=your_generated_refresh_secret_here
-   ```
-
-### 9. Start Local Services
-
-Start PostgreSQL and Redis using TabCLI:
-
-```bash
-tabcli dev start
-```
-
-This starts:
-
-- PostgreSQL on port 5432
-- Redis on port 6379
-
-### 10. Initialize Database
-
-To initialize the **local** database with the schema:
-
-```bash
-# Initialize local database (uses api/.env)
-tabcli db init --local
-```
-
-> **Note**: Without the `--local` flag, `tabcli db init` targets the globally configured database
-> (e.g., Neon/Cloud). Always use `--local` for local development.
-
-### 11. Verify Setup
-
-**Local Verification:**
-
-```bash
-# Verifies Node.js, dependencies, builds, tests, and linting
-tabcli dev verify
-```
-
-**Infrastructure Verification:**
-
-```bash
-# Lists all deployed cloud resources
-tabcli infra list --env dev
-```
-
-**Expected result:**
-
-- `dev verify`: All checks pass.
-- `infra list`: Displays Terraform state with Cloud Run, Neon DB, etc.
+1. The API and frontend will automatically fetch the OIDC discovery endpoints from `auth.ipv1337.dev`.
+2. To apply new redirect URIs or create new clients, update the Pulumi stack in `infrastructure/pulumi/platform/zitadel-apps/` and run `pulumi up`.
 
 ## Project Structure
 
@@ -261,7 +124,7 @@ tabula/
 ### Start the API Server
 
 ```bash
-npm run dev --workspace=api
+ibazel run //tabula/api:dev
 ```
 
 The API will be available at http://localhost:8080
@@ -269,7 +132,7 @@ The API will be available at http://localhost:8080
 ### Build the Extension
 
 ```bash
-npm run dev --workspace=extension
+ibazel run //tabula/extension:dev
 ```
 
 This watches for changes and rebuilds automatically.
@@ -279,21 +142,8 @@ This watches for changes and rebuilds automatically.
 1. Open Chrome and navigate to `chrome://extensions/`
 2. Enable "Developer mode" (toggle in top right)
 3. Click "Load unpacked"
-4. Select the `extension/dist` directory
+4. Select the `bazel-bin/tabula/extension/...` directory
 5. The extension should now appear in your browser
-
-### Run All Services
-
-```bash
-# Start database and cache
-tabcli dev start
-
-# Start API in one terminal
-npm run dev --workspace=api
-
-# Start extension build in another terminal
-npm run dev --workspace=extension
-```
 
 ## Development Workflows
 
@@ -367,65 +217,58 @@ gitGraph
 You can create ephemeral preview environments for Pull Requests.
 
 ```bash
-# Create preview (Neon Branch + Cloud Run)
-tabcli infra preview up <pr-id>
+# Create preview (Cloud Run via Pulumi)
+pulumi stack select pr-<pr-id> --create
+pulumi up
 
 # Destroy preview
-tabcli infra preview down <pr-id>
+pulumi destroy
+pulumi stack rm pr-<pr-id>
 ```
 
 ### Running Tests
 
 ```bash
 # Run all tests
-tabcli dev test
+bazel test //...
 
-# Run tests in watch mode
-npm run test:watch --workspace=api
+# Run tests in watch mode for a target
+ibazel test //tabula/api/...
 
 # Run tests with coverage
-# Run tests with coverage
-tabcli dev coverage --detailed
-# or
-npm run test:coverage
+bazel coverage //tabula/...
 
 # Run specific test file
-npm test --workspace=api -- tests/unit/auth.service.test.ts
+bazel test //tabula/api/... --test_filter="AuthService"
 
 # Run E2E tests
-npm run test:e2e --workspace=extension
+bazel test //tabula/extension:e2e
 ```
 
 ### Database Operations
 
 ```bash
-# Create a new migration (local)
-tabcli db migrate --local --name add_user_preferences
+# Create a new migration
+npx prisma migrate dev --name add_user_preferences
 
 # Reset database (WARNING: deletes all data)
-tabcli db reset --local
+npx prisma migrate reset
 
 # Open Prisma Studio (database GUI)
-tabcli db studio --local
+npx prisma studio
 
 # Generate Prisma client after schema changes
-tabcli db init --local
+npx prisma generate
 ```
 
 ### Linting and Formatting
 
 ```bash
-# Lint all code
-tabcli dev lint
-
-# Fix linting issues
-npm run lint:fix
-
-# Check formatting
-npm run format:check
+# Lint all code via Aspect CLI
+aspect lint //...
 
 # Format all code
-npm run format
+bazel run //:tidy
 ```
 
 ### Type Checking
@@ -535,9 +378,9 @@ SELECT * FROM users;
 
 ### Adding a New Database Table
 
-1. Update `api/prisma/schema.prisma`
-2. Run `tabcli db migrate --local --name add_table_name`
-3. Update TypeScript types if needed
+1. Update `tabula/api/prisma/schema.prisma`
+2. Run `npx prisma migrate dev --name add_table_name`
+3. Run `npx prisma generate` to update types
 4. Write tests for new functionality
 
 ### Adding a New Extension Feature
@@ -566,15 +409,11 @@ npm install
 ### Database Connection Issues
 
 ```bash
-# Check if PostgreSQL is running
-tabcli dev start
+# Check if PostgreSQL is running on the homelab tailnet
+ping postgres.ipv1337.dev
 
-# Restart services
-tabcli dev stop
-tabcli dev start
-
-# Check logs (using docker directly for now)
-docker-compose logs postgres
+# Or use kubectl to check the pod
+kubectl get pods -n tabula-dev
 ```
 
 ### Build Errors
@@ -592,10 +431,7 @@ npm install
 
 ```bash
 # Regenerate Prisma client
-tabcli db init --local
-
-# Check for TypeScript version conflicts
-npm list typescript
+npx prisma generate
 ```
 
 ### Port Already in Use

@@ -511,8 +511,8 @@ queries, or skipping sync on initial load.
 
 For issues, questions, or contributions:
 
-- GitHub Issues: https://github.com/BlueCentre/tabula/issues
-- Documentation: https://bluecentre.github.io/tabula/
+- GitHub Issues: https://github.com/VitruvianSoftware/vitruvian-core/issues
+- Documentation: https://docs.vitruviansoftware.com/
 - Contributing Guide: See CONTRIBUTING.md
 
 ## License

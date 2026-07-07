@@ -308,6 +308,6 @@ Planned improvements for the web dashboard:
 
 For issues or questions about the web dashboard:
 
-1. Check the [GitHub Issues](https://github.com/BlueCentre/tabula/issues)
+1. Check the [GitHub Issues](https://github.com/VitruvianSoftware/vitruvian-core/issues)
 2. Review the [Contributing Guide](../../CONTRIBUTING.md)
 3. Contact the maintainers

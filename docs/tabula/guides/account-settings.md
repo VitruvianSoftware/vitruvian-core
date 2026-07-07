@@ -225,7 +225,7 @@ Need help? Contact us:
 
 - **Email**: support@tabula.app
 - **GitHub Issues**:
-  [github.com/BlueCentre/tabula/issues](https://github.com/BlueCentre/tabula/issues)
+  [github.com/VitruvianSoftware/vitruvian-core/issues](https://github.com/VitruvianSoftware/vitruvian-core/issues)
 - **Documentation**: [docs.tabula.app](https://docs.tabula.app)
 
 ---
