@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.1...foundation-gcp-bootstrap-v0.3.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* **ci:** isolate release-please config/manifest per foundation phase ([#644](https://github.com/VitruvianSoftware/vitruvian-core/issues/644)) ([1764a59](https://github.com/VitruvianSoftware/vitruvian-core/commit/1764a596793c232280341a8d4b1f4572894cac64))
+* **foundation:** enable orgpolicy.googleapis.com on seed project ([#648](https://github.com/VitruvianSoftware/vitruvian-core/issues/648)) ([26cc978](https://github.com/VitruvianSoftware/vitruvian-core/commit/26cc978139b4d76d5e09edbbe6e882cbefae121b))
+
 ## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.0...foundation-gcp-bootstrap-v0.3.1) (2026-07-07)
 
 
