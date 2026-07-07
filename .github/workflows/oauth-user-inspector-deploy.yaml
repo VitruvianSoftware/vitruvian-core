@@ -156,99 +156,35 @@ jobs:
     # the expand actually failed.
     needs: zitadel-infra
     if: ${{ !cancelled() && needs.zitadel-infra.result != 'failure' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: oauth-user-inspector-${{ inputs.environment || 'development' }}
-    env:
-      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION || 'us-west1' }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      - name: Configure docker for Artifact Registry
-        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-
-      - name: Ensure Artifact Registry repository
-        # Bootstrap ordering: the image push runs before `pulumi up`, but
-        # Pulumi owns the repository resource. Create it idempotently here;
-        # the Pulumi program adopts it (unconditional pulumi.Import — by the
-        # time pulumi runs, this repo always exists).
-        run: |
-          gcloud artifacts repositories describe oauth-user-inspector \
-            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
-          gcloud artifacts repositories create oauth-user-inspector \
-            --project "$GCP_PROJECT_ID" --location "$GCP_REGION" \
-            --repository-format=docker \
-            --description="OAuth User Inspector container images (managed by //infrastructure/pulumi/apps/oauth-user-inspector)"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v3
-
-      - name: Build and push image
-        # The app ships its own Dockerfile (React+Vite frontend + Express+TS
-        # backend served as one container on 8080). Build with buildx and push
-        # the git SHA + latest, matching the SHA Pulumi pins below.
-        run: |
-          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
-          # Source the Node major from the repo canonical (.nvmrc) so the image
-          # always tracks it — the Dockerfile hardcodes nothing.
-          NODE_VERSION="$(cut -d. -f1 .nvmrc)"
-          docker buildx build --push \
-            --build-arg NODE_VERSION="${NODE_VERSION}" \
-            --tag "${IMAGE}:${GITHUB_SHA}" \
-            --tag "${IMAGE}:latest" \
-            oauth-user-inspector/
-
-      - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
-
-      - name: Deploy the new revision (Pulumi)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Pulumi shells out to `go build`; the repo-root go.work does not
-          # include this module (same as tools/pulumi/pulumi_cmd.sh).
-          GOWORK: off
-        working-directory: infrastructure/pulumi/apps/oauth-user-inspector
-        run: |
-          pulumi stack select "$DEPLOY_ENV" --create
-          pulumi config set oauth-user-inspector:imageTag "$GITHUB_SHA"
-          pulumi up --yes
-
-      - name: Smoke-check the service
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          GOWORK: off
-        working-directory: infrastructure/pulumi/apps/oauth-user-inspector
-        run: |
-          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
-          URL="$(pulumi stack output serviceUrl)"
-          echo "Smoke-checking ${URL}/"
-          # 1) Reachable (HTTP 2xx).
-          curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${URL}/" >/dev/null
-          # 2) The SPA actually MOUNTS. index.html is a static shell that returns
-          #    200 even when the React bundle throws on mount — exactly how the
-          #    2026-06-27 react/react-dom mismatch reached prod past the old
-          #    HTTP-200-only check. Headless-render and assert a marker that only
-          #    exists once React has rendered (not in the static #root fallback).
-          CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-          if [ -z "$CHROME" ]; then
-            echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-          fi
-          DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${URL}/" 2>/dev/null || true)"
-          if printf '%s' "$DOM" | grep -q "Select a provider"; then
-            echo "Smoke OK: React app mounted."
-          else
-            echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-            printf '%s' "$DOM" | head -c 800
-            exit 1
-          fi
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: oauth-user-inspector
+      environment: ${{ inputs.environment || 'development' }}
+      dockerfile-dir: oauth-user-inspector/
+      image-repository-path: oauth-user-inspector/app
+      artifact-repository: oauth-user-inspector
+      service-name: oauth-user-inspector
+      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      env-prefix: OAUTH_USER_INSPECTOR
+      custom-smoke-script: |
+        echo "Smoke-checking ${CAND}/"
+        # 1) Reachable (HTTP 2xx).
+        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
+        # 2) The SPA actually MOUNTS. index.html is a static shell that returns
+        #    200 even when the React bundle throws on mount — exactly how the
+        #    2026-06-27 react/react-dom mismatch reached prod past the old
+        #    HTTP-200-only check. Headless-render and assert a marker that only
+        #    exists once React has rendered (not in the static #root fallback).
+        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
+        if [ -z "$CHROME" ]; then
+          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
+        fi
+        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
+        if printf '%s' "$DOM" | grep -q "Select a provider"; then
+          echo "Smoke OK: React app mounted."
+        else
+          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
+          printf '%s' "$DOM" | head -c 800
+          exit 1
+        fi
+    secrets: inherit
