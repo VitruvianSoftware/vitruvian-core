@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.1...foundation-gcp-org-v0.3.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* **gcp-org:** use Cloud Identity customer ID for domain-restricted sharing ([#717](https://github.com/VitruvianSoftware/vitruvian-core/issues/717)) ([296377d](https://github.com/VitruvianSoftware/vitruvian-core/commit/296377d47b819310385c16bf32c71564cd68913e))
+
 ## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.0...foundation-gcp-org-v0.3.1) (2026-07-08)
 
 
