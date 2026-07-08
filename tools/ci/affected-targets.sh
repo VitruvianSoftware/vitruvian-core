@@ -197,7 +197,8 @@ echo "affected-targets: computing affected set since ${BEFORE_REV}..."
 if ! "${TD}" \
       --bazel bazel \
       --targets "//..." \
-      --bazel-opts "--config=remote --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
+      --bazel-opts="--config=remote" \
+      --bazel-opts="--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
       --before-query-error-behavior=ignore-and-build-all \
       --ignore-file .github/workflows/ci.yaml \
       --ignore-file tools/ci/affected-targets.sh \

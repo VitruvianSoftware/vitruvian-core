@@ -133,7 +133,8 @@ echo "deploy-affected: computing affected deploy targets since ${BEFORE_REV} (un
 if ! "${TD}" \
       --bazel bazel \
       --targets "${TD_UNIVERSE}" \
-      --bazel-opts "--config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
+      --bazel-opts="--config=remotecache" \
+      --bazel-opts="--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
       --before-query-error-behavior=ignore-and-build-all \
       "${BEFORE_REV}" > deploy-affected.txt; then
   emit true "target-determinator returned non-zero" degraded
