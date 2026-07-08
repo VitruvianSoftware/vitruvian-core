@@ -44,9 +44,15 @@ permissions:
 
 jobs:
   # ── Release Please ─────────────────────────────────────────────────────────
-  # Three independent release-please invocations, one per phase. Each uses its
-  # own config + manifest file living inside the phase directory, so merging
-  # one release PR does not touch any file shared by the others.
+  # Independent release-please invocations, one per phase. Each uses its
+  # own config + manifest file living inside the phase directory.
+  #
+  # 🤖 AI AGENT WARNING: DO NOT ADD CROSS-PHASE DEPENDENCIES TO THESE JOBS!
+  # All `release-*` jobs MUST run in parallel and independently. Do NOT add `needs:`
+  # pointing to a previous phase's deploy job. Wiring `release-gcp-networks` to
+  # `deploy-env-production` will break the pipeline by skipping deployments when
+  # only a single phase is releasing.
+  # Only the intra-phase `deploy-*` jobs should be chained sequentially.
 
   release-gcp-org:
     runs-on: ubuntu-latest
@@ -206,8 +212,6 @@ jobs:
   # Each environment is a separate Pulumi stack with isolated state.
 
   release-gcp-environments:
-    needs: [deploy-gcp-org, deploy-org-folders, deploy-gcp-bootstrap]
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -256,8 +260,6 @@ jobs:
   # Each environment is a separate Pulumi stack with isolated state.
 
   release-gcp-networks:
-    needs: [deploy-env-production]
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
