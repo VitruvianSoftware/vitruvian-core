@@ -25,6 +25,7 @@ on:
     branches: [main]
     paths:
       - "pulumi/library/**"
+      - ".github/workflows/pulumi-library-release.yml"
 
 permissions:
   contents: write
