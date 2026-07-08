@@ -1,0 +1,86 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Reusable workflow for deploying a single foundation network.
+#
+# This workflow deploys one Pulumi stack (development, nonproduction, or
+# production) for the gcp-networks foundation stage. It is called by
+# the main foundation-release.yaml workflow in a chained sequence:
+#
+#   development (auto) → nonproduction (manual approval) → production (manual approval)
+#
+# Each environment maps to:
+#   - A Pulumi stack with its own state and config (Pulumi.{environment}.yaml)
+#   - A GitHub Environment with optional protection rules (foundation-net-{environment})
+#
+# This pattern replaces the upstream Terraform foundation's branch promotion
+# strategy (development → nonproduction → production branches) with a
+# monorepo-compatible approach using GitHub Environment gates.
+
+name: Foundation Network Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "Target environment: development, nonproduction, or production"
+      working_directory:
+        required: false
+        type: string
+        default: "infrastructure/pulumi/foundation/gcp-networks"
+        description: "Working directory for pulumi commands"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-net-${{ inputs.environment }}
+    env:
+      GOWORK: off
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (${{ inputs.environment }})
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          set -euo pipefail
+          echo "::group::Stack select"
+          pulumi stack select -c "${{ inputs.environment }}"
+          echo "::endgroup::"
+          echo "::group::Pulumi up"
+          pulumi up --yes --non-interactive
+          echo "::endgroup::"

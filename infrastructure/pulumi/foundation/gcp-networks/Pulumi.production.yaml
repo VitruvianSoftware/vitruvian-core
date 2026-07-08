@@ -1,0 +1,30 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 3 — production network.
+#
+# This stack deploys the production spoke VPC in hub-and-spoke topology:
+#   - Shared VPC host project (prj-p-svpc)
+#   - Spoke VPC, subnets, Cloud NAT, DNS, firewall, PSC
+#   - Bi-directional VPC peering to hub
+#
+# Promotion order: development → nonproduction → production
+# This environment requires manual approval.
+config:
+  # --- Environment identity ---
+  foundation-networks:env: "production"
+  foundation-networks:env_code: "p"
+
+  # --- Core identifiers (mirrors 1-org config) ---
+  foundation-networks:org_id: "90456063361"
+  foundation-networks:default_region: "us-central1"
+  foundation-networks:secondary_region: "us-south1"
+
+  # --- Hub project (created by 1-org when enable_hub_and_spoke=true) ---
+  foundation-networks:hub_project_id: "prj-net-hub"
+
+  # --- Cross-stage references ---
+  foundation-networks:org_stack_name: "ipv1337/foundation-org/production"
+
+  # --- Network folder (from 1-org) ---
+  foundation-networks:parent_id: "823326946563"
+
+  # --- DNS ---
+  foundation-networks:domain: "vitruviansoftware.dev."

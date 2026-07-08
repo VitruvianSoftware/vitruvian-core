@@ -248,3 +248,51 @@ jobs:
       environment: production
     secrets: inherit
 
+  # ── Phase 3: Networks ─────────────────────────────────────────────────────
+  # The networks stage uses a chained promotion workflow:
+  #   development (auto) → nonproduction (manual approval) → production (manual approval)
+  # Each environment is a separate Pulumi stack with isolated state.
+
+  release-gcp-networks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-networks--release_created'] }}
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/gcp-networks/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/gcp-networks/.release-please-manifest.json
+          target-branch: main
+
+  deploy-net-development:
+    needs: release-gcp-networks
+    if: needs.release-gcp-networks.outputs.release_created == 'true'
+    uses: ./.github/workflows/foundation-net-deploy.yaml
+    with:
+      environment: development
+    secrets: inherit
+
+  deploy-net-nonproduction:
+    needs: deploy-net-development
+    uses: ./.github/workflows/foundation-net-deploy.yaml
+    with:
+      environment: nonproduction
+    secrets: inherit
+
+  deploy-net-production:
+    needs: deploy-net-nonproduction
+    uses: ./.github/workflows/foundation-net-deploy.yaml
+    with:
+      environment: production
+    secrets: inherit
+

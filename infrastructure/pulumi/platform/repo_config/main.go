@@ -592,6 +592,76 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 	}
 
+	// ── Phase 3: Networks promotion environments ──────────────────────────
+	// The networks stage uses a chained promotion workflow where each
+	// environment is a separate Pulumi stack deployed via the reusable
+	// foundation-net-deploy.yaml workflow:
+	//
+	//   foundation-net-development  → auto-deploy (no reviewers)
+	//   foundation-net-nonproduction → manual approval (requires reviewers)
+	//   foundation-net-production    → manual approval (requires reviewers)
+	//
+	// All three share the same WIF credentials as the foundation-net stage
+	// (the networks SA has equivalent org-level permissions).
+	netPhaseEnvironments := []struct {
+		name            string
+		requireReviewer bool
+	}{
+		{"foundation-net-development", false},
+		{"foundation-net-nonproduction", true},
+		{"foundation-net-production", true},
+	}
+
+	for _, envDef := range netPhaseEnvironments {
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(envDef.name),
+		}
+
+		args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+			ProtectedBranches:    pulumi.Bool(true),
+			CustomBranchPolicies: pulumi.Bool(false),
+		}
+
+		if envDef.requireReviewer {
+			reviewerIds, err := productionReviewerIds(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+				&github.RepositoryEnvironmentReviewerArgs{
+					Users: pulumi.ToIntArray(reviewerIds),
+				},
+			}
+		}
+
+		envRes, err := github.NewRepositoryEnvironment(ctx, envDef.name, args)
+		if err != nil {
+			return err
+		}
+
+		// Propagate foundation WIF variables to the environment so the
+		// reusable deploy workflow resolves ${{ vars.GCP_* }} correctly.
+		// Uses the net SA (sa-terraform-net), not the org SA.
+		envVars := foundationVars["foundation-net"]
+		varKeys := make([]string, 0, len(envVars))
+		for k := range envVars {
+			varKeys = append(varKeys, k)
+		}
+		sort.Strings(varKeys)
+		for _, k := range varKeys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", envDef.name, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(envVars[k]),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
