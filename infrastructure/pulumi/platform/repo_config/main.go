@@ -572,7 +572,8 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 
 		// Propagate foundation WIF variables to the environment so the
 		// reusable deploy workflow resolves ${{ vars.GCP_* }} correctly.
-		envVars := foundationVars["foundation-org"]
+		// Uses the env SA (sa-terraform-env), not the org SA.
+		envVars := foundationVars["foundation-env"]
 		varKeys := make([]string, 0, len(envVars))
 		for k := range envVars {
 			varKeys = append(varKeys, k)
