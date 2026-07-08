@@ -38,17 +38,57 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need history for diff
       - id: set-matrix
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
+          set -euo pipefail
+
+          # Detect changed files in this push. Fall back to all packages if
+          # the before SHA is the zero-ref (branch creation / force push).
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ "${BEFORE_SHA}" = "${ZERO_SHA}" ] || ! git rev-parse --verify --quiet "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            echo "setup: cannot compute diff (new branch or force-push) → releasing all packages"
+            ALL=true
+          else
+            CHANGED_FILES="$(git diff --name-only "${BEFORE_SHA}" HEAD)"
+            ALL=false
+          fi
+
           cd pulumi/library
-          # Find all decentralized release-please configs
-          paths=$(find * -name "release-please-config.json" -exec dirname {} \;)
-          # Convert to JSON array of full paths
-          json_array=$(echo "$paths" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
-          echo "matrix=$json_array" >> $GITHUB_OUTPUT
+          # Discover all packages that have a release-please-config.json
+          ALL_PKGS=$(find * -name "release-please-config.json" -exec dirname {} \;)
+
+          if [ "${ALL}" = "true" ]; then
+            MATCHED_PKGS="${ALL_PKGS}"
+          else
+            # Keep only packages where at least one changed file falls under
+            # the package's directory (prefixed with pulumi/library/).
+            MATCHED_PKGS=""
+            while IFS= read -r pkg; do
+              [ -z "${pkg}" ] && continue
+              pkg_path="pulumi/library/${pkg}"
+              if echo "${CHANGED_FILES}" | grep -q "^${pkg_path}/"; then
+                MATCHED_PKGS="${MATCHED_PKGS}${MATCHED_PKGS:+$'\n'}${pkg}"
+              fi
+            done <<< "${ALL_PKGS}"
+          fi
+
+          if [ -z "${MATCHED_PKGS}" ]; then
+            echo "setup: no library packages changed → empty matrix"
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+          else
+            echo "setup: releasing packages:"
+            echo "${MATCHED_PKGS}" | sed 's/^/  /'
+            json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
+            echo "matrix=$json_array" >> $GITHUB_OUTPUT
+          fi
 
   release-please:
     needs: setup
+    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Per-package concurrency: serialize each package's runs independently
