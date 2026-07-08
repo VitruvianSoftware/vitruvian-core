@@ -70,7 +70,6 @@ func main() {
 		// SPOKE NETWORK (deployed per-environment)
 		// =================================================================
 		var spokeOutputs *networking.Networking
-		var err error
 		if hubDependsOn != nil {
 			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID, hubDependsOn)
 		} else {
@@ -278,7 +277,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		},
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 9. Hub BGP Routers — 4 total (2 per region)
@@ -298,7 +297,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 				EnableNat:          false,
 			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -314,7 +313,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 			NatNumAddresses: cfg.NatNumAddresses,
 		}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
