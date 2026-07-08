@@ -74,7 +74,7 @@ func main() {
 
 		// 4. Deploy Centralized Logging (org sinks → Storage, Pub/Sub, BigQuery)
 		// Must run BEFORE policies so domain-restricted sharing waits for sinks (Gap 3)
-		logOutputs, err := deployCentralizedLogging(ctx, cfg, projOutputs.AuditLogsProjectID, projOutputs.BillingExportProjectID)
+		logOutputs, err := deployCentralizedLogging(ctx, cfg, projOutputs.AuditLogsProjectID, projOutputs.BillingExportProjectID, projOutputs.BillingExportApisReady)
 		if err != nil {
 			return err
 		}

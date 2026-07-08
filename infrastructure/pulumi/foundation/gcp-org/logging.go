@@ -52,7 +52,7 @@ type LoggingOutputs struct {
 //   - Internal project sink (prevents the audit project from being a blind spot)
 //
 // The log filter covers all audit and network logs, matching the upstream.
-func deployCentralizedLogging(ctx *pulumi.Context, cfg *OrgConfig, auditProjectID, billingExportProjectID pulumi.StringOutput) (*LoggingOutputs, error) {
+func deployCentralizedLogging(ctx *pulumi.Context, cfg *OrgConfig, auditProjectID, billingExportProjectID pulumi.StringOutput, billingExportApisReady pulumi.Resource) (*LoggingOutputs, error) {
 	// Comprehensive log filter covering all audit and network logs
 	// Matches upstream log_sinks.tf local.logs_filter
 	logFilter := `logName: /logs/cloudaudit.googleapis.com%2Factivity OR
@@ -121,12 +121,16 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`
 	// (log_sinks.tf google_bigquery_dataset.billing_dataset). The actual
 	// billing export must be configured manually in the Cloud Console.
 	// ====================================================================
+	bqOpts := []pulumi.ResourceOption{}
+	if billingExportApisReady != nil {
+		bqOpts = append(bqOpts, pulumi.DependsOn([]pulumi.Resource{billingExportApisReady}))
+	}
 	if _, err := bigquery.NewDataset(ctx, "billing-dataset", &bigquery.DatasetArgs{
 		Project:      billingExportProjectID,
 		DatasetId:    pulumi.String("billing_data"),
 		FriendlyName: pulumi.String("GCP Billing Data"),
 		Location:     pulumi.String(cfg.BillingExportDatasetLocation),
-	}); err != nil {
+	}, bqOpts...); err != nil {
 		return nil, err
 	}
 
