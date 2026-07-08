@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/cloud-storage": {
+      "release-type": "node",
+      "component": "foundation-cloud-storage"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/cloud_dns": {
+      "release-type": "go",
+      "component": "go-cloud-dns"
+    }
+  }
+}

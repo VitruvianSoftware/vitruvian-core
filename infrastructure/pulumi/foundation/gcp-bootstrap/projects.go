@@ -110,6 +110,9 @@ func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 
 		// State bucket IAM — grant access to all pipeline SAs and org admins
 		StateBucketIAMMembers: bucketIAMMembers,
+
+		// Inject Service Usage Admin for the pipeline SAs before APIs are enabled.
+		SAExecutors: []string{"sa-terraform-bootstrap"},
 	}, pulumi.Protect(true))
 	if err != nil {
 		return nil, err

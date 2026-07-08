@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/log_export": {
+      "release-type": "go",
+      "component": "go-log-export"
+    }
+  }
+}

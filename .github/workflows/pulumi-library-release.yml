@@ -18,49 +18,47 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Monorepo-driven releases for the mirrored apps. release-please authors the
-# version bump + changelog HERE -- the monorepo is the source of truth. The
-# bumped <app>/.release-please-manifest.json + CHANGELOG.md export to the mirror
-# (copybara), whose publish-on-version-bump workflow then tags the exported
-# commit and publishes the artifact with its existing tokens. This replaces the
-# per-mirror release-please job, which authored version/changelog COMMITS in the
-# mirror -- the two-writable-copies drift the one-way migration removed.
-#
-# Onboarding is one app at a time (canary: devx). Each app added here must, in
-# the SAME change, have its mirror release workflow converted to publish-on-
-# version-bump, so the mirror stops opening its own release PRs (no double
-# release).
-name: apps-release
+name: pulumi-library-release
 
 on:
   push:
     branches: [main]
     paths:
-      - "devx/**"
-      - "homelab/**"
-      - "mcp-slack/**"
-      - "nexus-agent/**"
+      - "pulumi/library/**"
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          cd pulumi/library
+          # Find all decentralized release-please configs
+          paths=$(find * -name "release-please-config.json" -exec dirname {} \;)
+          # Convert to JSON array of full paths
+          json_array=$(echo "$paths" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
+          echo "matrix=$json_array" >> $GITHUB_OUTPUT
+
   release-please:
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Per-app concurrency: never cancel a release run; serialize each app's runs
-    # independently (one app's release must not block another's).
+    # Per-package concurrency: serialize each package's runs independently
     concurrency:
-      group: ${{ github.workflow }}-${{ matrix.app }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ matrix.package }}-${{ github.ref }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
-        app: [devx, homelab, mcp-slack, nexus-agent]
+        package: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
-      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
-      # PR triggers the merge queue's required checks -- same as tabula-release.
       - name: Mint App token for the release PR
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -70,6 +68,6 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: ${{ matrix.app }}/release-please-config.json
-          manifest-file: ${{ matrix.app }}/.release-please-manifest.json
+          config-file: ${{ matrix.package }}/release-please-config.json
+          manifest-file: ${{ matrix.package }}/.release-please-manifest.json
           target-branch: main

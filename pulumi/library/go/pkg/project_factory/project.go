@@ -62,6 +62,12 @@ type ProjectArgs struct {
 	Labels            pulumi.StringMapInput
 	DeletionPolicy    pulumi.StringPtrInput
 
+	// SAExecutors is a list of Service Account short names (e.g., "sa-terraform-bootstrap")
+	// that will be granted roles/serviceusage.serviceUsageAdmin on the project BEFORE
+	// any APIs are enabled. This breaks the circular dependency where the CI/CD executor
+	// needs permissions on the newly created project to enable APIs on it.
+	SAExecutors []string
+
 	// RandomProjectID appends a 4-character random hex suffix to ProjectID,
 	// matching the upstream Terraform Example Foundation's use of the
 	// project-factory module's random_project_id feature. The suffix is
@@ -161,15 +167,43 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 	}
 	component.Project = p
 
-	// 2. Enable APIs — each Service is a first-class Pulumi resource,
+	// 2. Pre-API IAM Bindings
+	// Grant Service Usage Admin to the executor SAs BEFORE enabling APIs.
+	// This breaks the circular dependency where the CI/CD pipeline needs permissions
+	// to enable APIs on the newly created project.
+	var apiDeps []pulumi.Resource
+	for _, saName := range args.SAExecutors {
+		// Construct the deterministic email for the SA which lives in this new project
+		member := pulumi.All(p.ProjectId, pulumi.String(saName)).ApplyT(func(vals []interface{}) string {
+			return fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", vals[1], vals[0])
+		}).(pulumi.StringOutput)
+
+		iam, err := projects.NewIAMMember(ctx, fmt.Sprintf("%s-sua-%s", name, saName), &projects.IAMMemberArgs{
+			Project: p.ProjectId,
+			Role:    pulumi.String("roles/serviceusage.serviceUsageAdmin"),
+			Member:  member,
+		}, pulumi.Parent(p))
+		if err != nil {
+			return nil, err
+		}
+		apiDeps = append(apiDeps, iam)
+	}
+
+	// 3. Enable APIs — each Service is a first-class Pulumi resource,
 	// properly tracked in state with correct dependency ordering.
+	var svcOpts []pulumi.ResourceOption
+	svcOpts = append(svcOpts, pulumi.Parent(p))
+	if len(apiDeps) > 0 {
+		svcOpts = append(svcOpts, pulumi.DependsOn(apiDeps))
+	}
+
 	for _, api := range args.ActivateApis {
 		svc, err := projects.NewService(ctx, fmt.Sprintf("%s-%s", name, api), &projects.ServiceArgs{
 			Project:                  p.ProjectId,
 			Service:                  pulumi.String(api),
 			DisableOnDestroy:         pulumi.Bool(false),
 			DisableDependentServices: pulumi.Bool(false),
-		}, pulumi.Parent(p))
+		}, svcOpts...)
 		if err != nil {
 			return nil, err
 		}

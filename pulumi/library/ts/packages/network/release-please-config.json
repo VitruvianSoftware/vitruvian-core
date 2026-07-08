@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/network": {
+      "release-type": "node",
+      "component": "foundation-network"
+    }
+  }
+}

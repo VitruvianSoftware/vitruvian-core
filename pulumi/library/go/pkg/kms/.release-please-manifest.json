@@ -1,0 +1,3 @@
+{
+  "pulumi/library/go/pkg/kms": "0.3.0"
+}

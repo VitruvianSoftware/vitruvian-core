@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/hierarchical-firewall-policy": {
+      "release-type": "node",
+      "component": "foundation-hierarchical-firewall-policy"
+    }
+  }
+}

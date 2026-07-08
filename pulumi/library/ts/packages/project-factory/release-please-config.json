@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/project-factory": {
+      "release-type": "node",
+      "component": "foundation-project-factory"
+    }
+  }
+}

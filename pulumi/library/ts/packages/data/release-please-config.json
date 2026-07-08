@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/data": {
+      "release-type": "node",
+      "component": "foundation-data"
+    }
+  }
+}
