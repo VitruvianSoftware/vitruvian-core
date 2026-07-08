@@ -117,12 +117,15 @@ func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts 
 	// 2. Subnets
 	for _, s := range args.Subnets {
 		subArgs := &compute.SubnetworkArgs{
-			Project:               args.ProjectID,
-			Name:                  pulumi.String(s.Name),
-			Region:                pulumi.String(s.Region),
-			Network:               vpc.ID(),
-			IpCidrRange:           pulumi.String(s.CIDR),
-			PrivateIpGoogleAccess: pulumi.Bool(true), // Standard for enterprise
+			Project:     args.ProjectID,
+			Name:        pulumi.String(s.Name),
+			Region:      pulumi.String(s.Region),
+			Network:     vpc.ID(),
+			IpCidrRange: pulumi.String(s.CIDR),
+		}
+
+		if s.Purpose != "REGIONAL_MANAGED_PROXY" {
+			subArgs.PrivateIpGoogleAccess = pulumi.Bool(true) // Standard for enterprise
 		}
 
 		if s.Purpose != "" {
