@@ -14,7 +14,7 @@ config:
   foundation-org:default_region: "us-central1"
   foundation-org:project_prefix: "prj"
   foundation-org:folder_prefix: "fldr"
-  foundation-org:domains_to_allow: "vitruviansoftware.dev"
+  foundation-org:domains_to_allow: "C0316crd2"  # Cloud Identity customer ID for vitruviansoftware.dev
 
   # --- Cross-stage references ---
   # Fully-qualified Pulumi Cloud stack reference for the bootstrap stage.
