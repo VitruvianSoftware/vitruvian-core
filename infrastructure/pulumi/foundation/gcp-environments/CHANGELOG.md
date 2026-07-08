@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.2.1...foundation-gcp-environments-v0.2.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** correct Shared VPC Hub configuration ([#736](https://github.com/VitruvianSoftware/vitruvian-core/issues/736)) ([ac181ee](https://github.com/VitruvianSoftware/vitruvian-core/commit/ac181ee9a6fa72ebd97771299c4ee446ed20e8c4))
+
 ## [0.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.2.0...foundation-gcp-environments-v0.2.1) (2026-07-08)
 
 
