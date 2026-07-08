@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.2.0...foundation-gcp-networks-v0.2.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** correct Shared VPC Hub configuration ([#736](https://github.com/VitruvianSoftware/vitruvian-core/issues/736)) ([ac181ee](https://github.com/VitruvianSoftware/vitruvian-core/commit/ac181ee9a6fa72ebd97771299c4ee446ed20e8c4))
+* **networks:** restore upstream shared VPC host pattern ([#741](https://github.com/VitruvianSoftware/vitruvian-core/issues/741)) ([d6aa81f](https://github.com/VitruvianSoftware/vitruvian-core/commit/d6aa81fe8c2e8c9ac5a9cfc5cd3efbdccf2a5e3a))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.1.0...foundation-gcp-networks-v0.2.0) (2026-07-08)
 
 
