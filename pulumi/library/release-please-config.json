@@ -1,5 +1,5 @@
 {
-  "group-pull-request-title-pattern": "chore(pulumi-library): release ${branch}",
+  "separate-pull-requests": true,
   "packages": {
     "pulumi/library/ts": {
       "release-type": "node",
