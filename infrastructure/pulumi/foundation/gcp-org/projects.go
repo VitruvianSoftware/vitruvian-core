@@ -308,49 +308,45 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			return nil, err
 		}
 
-		// Enable Shared VPC Host for the Hub project (done here so sa-terraform-org handles it)
-		if _, err := compute.NewSharedVPCHostProject(ctx, "org-net-hub-svpc-host", &compute.SharedVPCHostProjectArgs{
-			Project: netHubProjectID,
-		}); err != nil {
-			return nil, err
-		}
-	}
+		// Shared VPC Host enablement is intentionally kept in the networks phase,
+		// matching the upstream terraform-example-foundation.
 
-	// Per-environment Shared VPC host projects under the Network folder
-	// Mirrors: module "environment_network" in upstream projects.tf
-	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
-	networkProjectIDs := make(map[string]pulumi.StringOutput)
-	for env, code := range envCodes {
-		netProjectID, _, _, err := createProject(
-			ctx,
-			fmt.Sprintf("org-net-%s", env),
-			fmt.Sprintf("%s-%s-svpc", cfg.ProjectPrefix, code),
-			networkFolderID, cfg,
-			[]string{
-				"compute.googleapis.com",
-				"dns.googleapis.com",
-				"servicenetworking.googleapis.com",
-				"container.googleapis.com",
-				"logging.googleapis.com",
-				"cloudresourcemanager.googleapis.com", // Gap 2: matches upstream network module
-				"accesscontextmanager.googleapis.com", // Gap 2: needed for VPC Service Controls
-				"billingbudgets.googleapis.com",
-			},
-			map[string]string{
-				"environment":       env,
-				"application_name":  "shared-vpc-host", // upstream label value
-				"billing_code":      "1234",
-				"primary_contact":   "example1",
-				"secondary_contact": "example2",
-				"business_code":     "shared",
-				"env_code":          code,
-			},
-			budgetFor(getProjectBudget(cfg, "shared_network")),
-		)
-		if err != nil {
-			return nil, err
+		// Per-environment Shared VPC host projects under the Network folder
+		// Mirrors: module "environment_network" in upstream projects.tf
+		envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
+		networkProjectIDs := make(map[string]pulumi.StringOutput)
+		for env, code := range envCodes {
+			netProjectID, _, _, err := createProject(
+				ctx,
+				fmt.Sprintf("org-net-%s", env),
+				fmt.Sprintf("%s-%s-svpc", cfg.ProjectPrefix, code),
+				networkFolderID, cfg,
+				[]string{
+					"compute.googleapis.com",
+					"dns.googleapis.com",
+					"servicenetworking.googleapis.com",
+					"container.googleapis.com",
+					"logging.googleapis.com",
+					"cloudresourcemanager.googleapis.com", // Gap 2: matches upstream network module
+					"accesscontextmanager.googleapis.com", // Gap 2: needed for VPC Service Controls
+					"billingbudgets.googleapis.com",
+				},
+				map[string]string{
+					"environment":       env,
+					"application_name":  "shared-vpc-host", // upstream label value
+					"billing_code":      "1234",
+					"primary_contact":   "example1",
+					"secondary_contact": "example2",
+					"business_code":     "shared",
+					"env_code":          code,
+				},
+				budgetFor(getProjectBudget(cfg, "shared_network")),
+			)
+			if err != nil {
+				return nil, err
+			}
+			networkProjectIDs[env] = netProjectID
 		}
-		networkProjectIDs[env] = netProjectID
 	}
 
 	return &OrgProjects{
