@@ -54,16 +54,28 @@ func main() {
 		// promotion chain (dev → nonprod → prod). Subsequent stacks (nonprod,
 		// prod) only deploy their spoke VPCs and peer to the hub.
 		// =================================================================
+		var hubVpc *networking.Networking
+		var hubDependsOn pulumi.ResourceOption
+
 		if cfg.Env == "development" {
-			if err := deployHubNetwork(ctx, cfg, orgStack); err != nil {
+			var err error
+			hubVpc, err = deployHubNetwork(ctx, cfg, orgStack)
+			if err != nil {
 				return err
 			}
+			hubDependsOn = pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC})
 		}
 
 		// =================================================================
 		// SPOKE NETWORK (deployed per-environment)
 		// =================================================================
-		spokeOutputs, err := deploySpokeNetwork(ctx, cfg, spokeProjectID)
+		var spokeOutputs *networking.Networking
+		var err error
+		if hubDependsOn != nil {
+			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID, hubDependsOn)
+		} else {
+			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID)
+		}
 		if err != nil {
 			return err
 		}
@@ -92,7 +104,7 @@ func main() {
 
 // deployHubNetwork creates the central hub VPC and all shared network resources.
 // This runs only in the development stack (first in the promotion chain).
-func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.StackReference) error {
+func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.StackReference) (*networking.Networking, error) {
 	hubProjectID := orgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
 
 	// Enable Shared VPC Host for the Hub project
@@ -100,7 +112,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		Project: hubProjectID,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 1. Hierarchical Firewall Policy (org/folder level)
@@ -112,7 +124,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		EnableLogging: cfg.FirewallPoliciesEnableLogging,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 3. Hub VPC & Subnets
@@ -153,7 +165,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 
 	hubVpc, err := networking.NewNetworking(ctx, "hub", hubNetOpts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Hub Egress internet route (tag-based, for NAT egress)
@@ -167,7 +179,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		Tags:           pulumi.StringArray{pulumi.String("egress-internet")},
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 4. Hub VPC-Level Firewall
@@ -180,7 +192,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		Rules: networking.BuildFoundationRules("c", cfg.FirewallPoliciesEnableLogging, cfg.PscIP+"/32", []string{cfg.HubSubnet1Cidr, cfg.HubSubnet2Cidr}, false),
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 5. PSC on hub
@@ -192,7 +204,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		ForwardingRuleTarget: "vpc-sc",
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 6. DNS Policy on hub
@@ -208,7 +220,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		},
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 7. DNS forwarding zone on hub
@@ -222,7 +234,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 			TargetNameServerAddresses: cfg.TargetNameServers,
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -243,7 +255,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		FirewallPolicy: hubFw.Policy.Name,
 	}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 8.1. Hub Firewall — Allow Health Checks to Transitivity ILBs
@@ -310,11 +322,11 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 	ctx.Export("hub_network_name", hubVpc.VPC.Name)
 	ctx.Export("hub_network_self_link", hubVpc.VPC.SelfLink)
 
-	return nil
+	return hubVpc, nil
 }
 
 // deploySpokeNetwork creates the per-environment spoke VPC and peers it to the hub.
-func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput) (*networking.Networking, error) {
+func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput, opts ...pulumi.ResourceOption) (*networking.Networking, error) {
 	// Enable Shared VPC Host for the Spoke project
 	_, err := compute.NewSharedVPCHostProject(ctx, fmt.Sprintf("org-net-spoke-%s-svpc-host", cfg.EnvCode), &compute.SharedVPCHostProjectArgs{
 		Project: spokeProjectID,
@@ -399,9 +411,9 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		Network:            spokeVpc.VPC.SelfLink,
 		PeerNetwork:        pulumi.String(hubVpcRef),
 		Name:               pulumi.String(fmt.Sprintf("np-%s-svpc-spoke-vpc-c-svpc-hub", cfg.EnvCode)),
-		ExportCustomRoutes: pulumi.Bool(false),
-		ImportCustomRoutes: pulumi.Bool(true), // Import hub's custom routes
-	})
+		ExportCustomRoutes: pulumi.Bool(true),
+		ImportCustomRoutes: pulumi.Bool(true),
+	}, append(opts, pulumi.DependsOn([]pulumi.Resource{spokeVpc.VPC}))...)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +424,7 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		Name:               pulumi.String(fmt.Sprintf("np-vpc-c-svpc-hub-%s-svpc-spoke", cfg.EnvCode)),
 		ExportCustomRoutes: pulumi.Bool(true), // Export hub's custom routes to spoke
 		ImportCustomRoutes: pulumi.Bool(false),
-	}, pulumi.DependsOn([]pulumi.Resource{spokeToHub})) // Must create after spoke-to-hub
+	}, append(opts, pulumi.DependsOn([]pulumi.Resource{spokeToHub}))...) // Must create after spoke-to-hub
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +478,7 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		Type:                  "peering",
 		NetworkSelfLink:       spokeVpc.VPC.SelfLink,
 		TargetNetworkSelfLink: pulumi.String(hubVpcRef),
-	})
+	}, opts...)
 	if err != nil {
 		return nil, err
 	}
