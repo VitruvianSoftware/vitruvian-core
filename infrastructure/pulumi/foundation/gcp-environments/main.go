@@ -74,7 +74,6 @@ func main() {
 			ctx.Export("assured_workload_resources", outputs.AssuredWorkloadResources)
 		}
 
-
 		return nil
 	})
 }
