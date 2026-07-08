@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.2...foundation-gcp-networks-v0.3.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** add hub VPC dependency to spoke peering and DNS zones ([09f1c67](https://github.com/VitruvianSoftware/vitruvian-core/commit/09f1c67eb0dcb86b29883d30d70147206399503d))
+* **networks:** bump go/pkg/network to v1.2.0 for PSC name fix ([44e052d](https://github.com/VitruvianSoftware/vitruvian-core/commit/44e052df6f24f32b8dfd302c0aa7a884b535dd12))
+* **networks:** bump go/pkg/network to v1.2.1 for transitivity balancing mode fix ([dafc114](https://github.com/VitruvianSoftware/vitruvian-core/commit/dafc114ca291dc149f84fdcfbab10baa25893c82))
+* **networks:** bump go/pkg/network to v1.2.2 for PrivateIpGoogleAccess fix ([2ae7ad0](https://github.com/VitruvianSoftware/vitruvian-core/commit/2ae7ad0509d3eb9d19356420f28ace5625aa565b))
+* **networks:** fix compilation errors from previous commit ([fa4ba12](https://github.com/VitruvianSoftware/vitruvian-core/commit/fa4ba124f2dc07df6c3d84907b6b991a6f12f472))
+* **networks:** use dynamic hubProjectID to fix DNS peering target ([4fe85c6](https://github.com/VitruvianSoftware/vitruvian-core/commit/4fe85c669db6feb50ed54d2e33eaa9b8025b6b1e))
+
 ## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.1...foundation-gcp-networks-v0.3.2) (2026-07-08)
 
 
