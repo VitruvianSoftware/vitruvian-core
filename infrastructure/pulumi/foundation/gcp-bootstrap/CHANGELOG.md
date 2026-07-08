@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.3...foundation-gcp-bootstrap-v0.3.4) (2026-07-08)
+
+
+### Bug Fixes
+
+* **ci:** re-enable foundation preview workflows ([#713](https://github.com/VitruvianSoftware/vitruvian-core/issues/713)) ([c681d75](https://github.com/VitruvianSoftware/vitruvian-core/commit/c681d759b4fceb9a0f944961ca652253b33a585e))
+* **pulumi-library:** decouple API enablement dependency ([#651](https://github.com/VitruvianSoftware/vitruvian-core/issues/651)) ([6a03698](https://github.com/VitruvianSoftware/vitruvian-core/commit/6a036986759a76888dbe279ce53f46ab3f8f5968))
+
 ## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.2...foundation-gcp-bootstrap-v0.3.3) (2026-07-07)
 
 
