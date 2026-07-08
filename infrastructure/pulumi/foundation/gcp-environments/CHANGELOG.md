@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.2.0...foundation-gcp-environments-v0.2.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **foundation:** add missing pulumi-command/sdk to gcp-environments go.sum ([#727](https://github.com/VitruvianSoftware/vitruvian-core/issues/727)) ([cc5ee40](https://github.com/VitruvianSoftware/vitruvian-core/commit/cc5ee40b6d476dcd60f58feddf621c988253d766))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.1.0...foundation-gcp-environments-v0.2.0) (2026-07-08)
 
 
