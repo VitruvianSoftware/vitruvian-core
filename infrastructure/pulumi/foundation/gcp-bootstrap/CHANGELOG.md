@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.4...foundation-gcp-bootstrap-v0.3.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* **gcp-org:** add DependsOn for BigQuery dataset to wait for API enablement ([#714](https://github.com/VitruvianSoftware/vitruvian-core/issues/714)) ([c21b093](https://github.com/VitruvianSoftware/vitruvian-core/commit/c21b093c4ea96a386e0eb376a1007491a3bb7f18))
+
 ## [0.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.3...foundation-gcp-bootstrap-v0.3.4) (2026-07-08)
 
 
