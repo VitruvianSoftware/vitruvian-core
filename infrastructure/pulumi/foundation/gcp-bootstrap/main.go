@@ -30,6 +30,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
+// Trigger redeploy after library fix
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		// 1. Load Configuration
