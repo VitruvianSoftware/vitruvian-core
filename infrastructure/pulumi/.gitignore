@@ -36,6 +36,10 @@ Pulumi.*.yaml
 # org id, billing account, org stack ref, parent folder — all non-secret.
 # Each environment (development, nonproduction, production) is a separate stack.
 !foundation/gcp-environments/Pulumi.*.yaml
+# foundation/gcp-networks commits per-environment stack configs: env name,
+# org id, billing account, network config, firewall rules — all non-secret.
+# Each environment (development, nonproduction, production) is a separate stack.
+!foundation/gcp-networks/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -47,4 +51,5 @@ Pulumi.*.yaml
 /foundation/org-folders/foundation-org-folders
 /foundation/gcp-org/foundation-org
 /foundation/gcp-environments/foundation-environments
+/foundation/gcp-networks/foundation-networks
 

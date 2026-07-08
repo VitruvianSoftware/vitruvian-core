@@ -120,6 +120,21 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// The networks stage uses the same chained promotion workflow with three
+	// separate GitHub Environments (one per promotion stage):
+	//   foundation-net-development  → auto-deploy
+	//   foundation-net-nonproduction → manual approval
+	//   foundation-net-production    → manual approval
+	// Each needs its own WIF binding to the net SA.
+	if netSA, ok := sas["net"]; ok {
+		for _, envName := range []string{"development", "nonproduction", "production"} {
+			saMappings[fmt.Sprintf("net-%s", envName)] = libcicd.SAMappingEntry{
+				SAName:    netSA.Name,
+				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-net-%s", envName)),
+			}
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via
