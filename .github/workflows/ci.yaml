@@ -93,21 +93,22 @@ jobs:
         uses: ./.github/actions/setup-bazel
 
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
-      # PRESUBMIT ONLY. `build-test` is a REQUIRED status check behind the merge
-      # queue, so it must ALWAYS report a result -- a naive `paths-ignore` would
-      # make it never report and wedge the PR "pending" forever, and merge_group
-      # events ignore `paths:` anyway. So we keep triggering on every event and
-      # only short-circuit the pull_request lane: when a PR's diff is
+      # `build-test` is a REQUIRED status check behind the merge queue, so it
+      # must ALWAYS report a result -- a naive `paths-ignore` would make it never
+      # report and wedge the PR "pending" forever, and merge_group events ignore
+      # `paths:` anyway. So we keep triggering on every event and only
+      # short-circuit the pull_request and push lanes: when the diff is
       # docs/gitops/markdown-only the affected-targets step below is skipped and
       # the job reports success fast. Native git diff -- no third-party action;
       # ci.yaml already checks out with fetch-depth: 0 so the merge-base is here.
-      # The push / merge_group lanes below never consult this gate: their
-      # affected-target runs decide scope themselves (and fail safe to //...).
-      - name: Gate on changed paths (PR only)
+      # The merge_group lane never consults this gate: its affected-target run
+      # decides scope itself (and fails safe to //...).
+      - name: Gate on changed paths
         id: gate
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'merge_group'
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: bash tools/ci/relevant-paths.sh
 
       # --- ALL LANES: AFFECTED targets, fall back to //... on any doubt. ------
@@ -150,8 +151,10 @@ jobs:
       # commits were just tested as merge_group, so this is cheap re-verification
       # of the same diff (plus coverage for admin/break-glass direct pushes).
       # event.before is the zero SHA on ref creation -> script full-sweeps.
+      # Additionally gated on relevant-paths: docs-only pushes skip the heavy
+      # work (the nightly full sweep is the backstop).
       - name: Build + test affected targets (push to main)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.gate.outputs.relevant != 'false'
         env:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}

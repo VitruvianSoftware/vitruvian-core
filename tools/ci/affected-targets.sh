@@ -155,12 +155,24 @@ fi
 echo "affected-targets: changed files:"
 echo "${CHANGED_FILES}" | sed 's/^/  /'
 
+# --- docs-only fast path. ----------------------------------------------------
+# If EVERY changed file lives under docs/, gitops/, or is a standalone .md file,
+# there are zero Bazel targets to build or test. Short-circuit before fetching
+# target-determinator (which itself takes minutes for the download + two full
+# Bazel analyses). Same ignore set as tools/ci/relevant-paths.sh.
+NON_DOC="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/)|\.md$' || true)"
+if [ "${NON_DOC}" -eq 0 ]; then
+  echo "::notice::affected-targets: all changed files are docs/gitops/markdown-only → nothing to build or test."
+  exit 0
+fi
+
 # Anchored at start-of-path. `BUILD` and `gazelle_python.yaml` are matched ONLY
 # at the repo root (^BUILD$, ^gazelle_python\.yaml$); nested package BUILD files
 # are intentionally left to the graph diff.
-if echo "${CHANGED_FILES}" | grep -E \
-  '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|tools/|BUILD$|gazelle_python\.yaml$)' \
-  >/dev/null 2>&1; then
+# For `tools/`, we explicitly exclude administrative subdirectories that do not
+# alter the Bazel build graph (e.g. ci, copybara, scripts) to prevent unnecessary sweeps.
+if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
+   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|copybara/|doctor/|gitops/|rotate-buildbuddy-key/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
