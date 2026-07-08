@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.2...foundation-gcp-org-v0.3.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* **gcp-org:** disable Access Context Manager policy creation ([#719](https://github.com/VitruvianSoftware/vitruvian-core/issues/719)) ([67cc97b](https://github.com/VitruvianSoftware/vitruvian-core/commit/67cc97ba238d449172aa68045a1e943a065b049b))
+
 ## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.1...foundation-gcp-org-v0.3.2) (2026-07-08)
 
 
