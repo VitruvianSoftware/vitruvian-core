@@ -8,8 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.0 h1:9atT34bvPVahYHrXp8us2NmKjoFAJurOTO+X26giB8E=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.0/go.mod h1:002oOykJpYvE17dxZkW26G9IUdDK3pbmzMYFg58H6KI=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.1 h1:+S2Z0f+4FI03JCUwlEM1BQZ12VdQ4skkNLe01B7slnk=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.1/go.mod h1:002oOykJpYvE17dxZkW26G9IUdDK3pbmzMYFg58H6KI=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2 h1:CnsBGk19g1OdHXu9kt7DiE2YUBciz7+HgNKV4IQNg4w=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2/go.mod h1:scWvNwl+xQ5v/2zYjFWF/k9n9jAIk0rueiIJ59xbezk=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
