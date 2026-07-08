@@ -24,7 +24,7 @@ config:
   foundation-networks:org_stack_name: "ipv1337/foundation-org/production"
 
   # --- Network folder (from 1-org) ---
-  foundation-networks:parent_id: "823326946563"
+  foundation-networks:parent_id: "folders/823326946563"
 
   # --- DNS ---
   foundation-networks:domain: "vitruviansoftware.dev."
