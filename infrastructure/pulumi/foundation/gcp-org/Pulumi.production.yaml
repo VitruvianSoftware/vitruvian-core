@@ -11,6 +11,7 @@ config:
   # --- From bootstrap common_config output ---
   foundation-org:org_id: "90456063361"
   foundation-org:billing_account: "013EEF-107C95-8E11BD"
+  foundation-org:enable_hub_and_spoke: "true"
   foundation-org:default_region: "us-central1"
   foundation-org:project_prefix: "prj"
   foundation-org:folder_prefix: "fldr"
