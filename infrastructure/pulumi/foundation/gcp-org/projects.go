@@ -307,13 +307,6 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 		if err != nil {
 			return nil, err
 		}
-
-		// Enable Shared VPC Host for the Hub project (done here so sa-terraform-org handles it)
-		if _, err := compute.NewSharedVPCHostProject(ctx, "org-net-hub-svpc-host", &compute.SharedVPCHostProjectArgs{
-			Project: netHubProjectID,
-		}); err != nil {
-			return nil, err
-		}
 	}
 
 	// Per-environment Shared VPC host projects under the Network folder

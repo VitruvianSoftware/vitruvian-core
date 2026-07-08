@@ -24,6 +24,8 @@ import (
 	"fmt"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
+
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
@@ -95,8 +97,16 @@ func main() {
 func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.StackReference) error {
 	hubProjectID := orgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
 
+	// Enable Shared VPC Host for the Hub project
+	_, err := compute.NewSharedVPCHostProject(ctx, "org-net-hub-svpc-host", &compute.SharedVPCHostProjectArgs{
+		Project: hubProjectID,
+	})
+	if err != nil {
+		return err
+	}
+
 	// 1. Hierarchical Firewall Policy (org/folder level)
-	_, err := networking.NewHierarchicalFirewallPolicy(ctx, "hierarchical-fw", &networking.HierarchicalFirewallPolicyArgs{
+	_, err = networking.NewHierarchicalFirewallPolicy(ctx, "hierarchical-fw", &networking.HierarchicalFirewallPolicyArgs{
 		ParentID:      pulumi.String(cfg.ParentID),
 		ShortName:     "fw-hub-svpc-hierarchical",
 		Description:   "Hierarchical firewall rules for hub-and-spoke foundation",
@@ -307,6 +317,14 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 
 // deploySpokeNetwork creates the per-environment spoke VPC and peers it to the hub.
 func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput) (*networking.Networking, error) {
+	// Enable Shared VPC Host for the Spoke project
+	_, err := compute.NewSharedVPCHostProject(ctx, fmt.Sprintf("org-net-spoke-%s-svpc-host", cfg.EnvCode), &compute.SharedVPCHostProjectArgs{
+		Project: spokeProjectID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	// 2. Spoke VPC & Subnets
 	spokeVpcName := fmt.Sprintf("vpc-%s-svpc-spoke", cfg.EnvCode)
 	spokeNetOpts := &networking.NetworkingArgs{
