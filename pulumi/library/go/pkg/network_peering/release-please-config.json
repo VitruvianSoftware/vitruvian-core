@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/network_peering": {
+      "release-type": "go",
+      "component": "go-network-peering"
+    }
+  }
+}

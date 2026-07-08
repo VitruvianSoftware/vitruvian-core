@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/cloud-dns": {
+      "release-type": "node",
+      "component": "foundation-cloud-dns"
+    }
+  }
+}

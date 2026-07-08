@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/instance-template": {
+      "release-type": "node",
+      "component": "foundation-instance-template"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/instance_template": {
+      "release-type": "go",
+      "component": "go-instance-template"
+    }
+  }
+}

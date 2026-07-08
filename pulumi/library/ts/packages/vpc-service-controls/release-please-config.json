@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/vpc-service-controls": {
+      "release-type": "node",
+      "component": "foundation-vpc-service-controls"
+    }
+  }
+}

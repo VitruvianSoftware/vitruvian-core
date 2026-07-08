@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/simple-bucket": {
+      "release-type": "node",
+      "component": "foundation-simple-bucket"
+    }
+  }
+}

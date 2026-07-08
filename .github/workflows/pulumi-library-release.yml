@@ -1,0 +1,53 @@
+name: pulumi-library-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pulumi/library/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          cd pulumi/library
+          # Find all decentralized release-please configs
+          paths=$(find * -name "release-please-config.json" -exec dirname {} \;)
+          # Convert to JSON array of full paths
+          json_array=$(echo "$paths" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
+          echo "matrix=$json_array" >> $GITHUB_OUTPUT
+
+  release-please:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Per-package concurrency: serialize each package's runs independently
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.package }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.setup.outputs.matrix) }}
+    steps:
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: ${{ matrix.package }}/release-please-config.json
+          manifest-file: ${{ matrix.package }}/.release-please-manifest.json
+          target-branch: main

@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/iam": {
+      "release-type": "go",
+      "component": "go-iam"
+    }
+  }
+}

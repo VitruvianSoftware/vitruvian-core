@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/ts/packages/app": {
+      "release-type": "node",
+      "component": "foundation-app"
+    }
+  }
+}
