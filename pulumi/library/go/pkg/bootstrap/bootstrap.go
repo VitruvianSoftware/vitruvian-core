@@ -64,6 +64,12 @@ type BootstrapArgs struct {
 	// ActivateApis is the list of APIs to enable on the seed project.
 	ActivateApis []string
 
+	// SAExecutors is a list of Service Account short names (e.g., "sa-terraform-bootstrap")
+	// that will be granted roles/serviceusage.serviceUsageAdmin on the seed project BEFORE
+	// any APIs are enabled. This breaks the circular dependency where the CI/CD executor
+	// needs permissions on the newly created project to enable APIs on it.
+	SAExecutors []string
+
 	// RandomSuffix appends a 4-char random hex suffix to project ID and bucket name.
 	RandomSuffix bool
 	// DeletionPolicy for the seed project. Defaults to "PREVENT".
@@ -181,6 +187,7 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 		DeletionPolicy:        pulumi.String(deletionPolicy),
 		Labels:                args.ProjectLabels,
 		ActivateApis:          activateApis,
+		SAExecutors:           args.SAExecutors,
 		Lien:                  true, // Always lien the seed project
 		DefaultServiceAccount: defaultSA,
 	}, pulumi.Parent(component))
