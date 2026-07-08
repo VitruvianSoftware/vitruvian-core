@@ -70,10 +70,11 @@ func main() {
 		// SPOKE NETWORK (deployed per-environment)
 		// =================================================================
 		var spokeOutputs *networking.Networking
+		hubProjectID := orgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
 		if hubDependsOn != nil {
-			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID, hubDependsOn)
+			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID, hubProjectID, hubDependsOn)
 		} else {
-			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID)
+			spokeOutputs, err = deploySpokeNetwork(ctx, cfg, spokeProjectID, hubProjectID)
 		}
 		if err != nil {
 			return err
@@ -325,7 +326,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 }
 
 // deploySpokeNetwork creates the per-environment spoke VPC and peers it to the hub.
-func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput, opts ...pulumi.ResourceOption) (*networking.Networking, error) {
+func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput, hubProjectID pulumi.StringOutput, opts ...pulumi.ResourceOption) (*networking.Networking, error) {
 	// Enable Shared VPC Host for the Spoke project
 	_, err := compute.NewSharedVPCHostProject(ctx, fmt.Sprintf("org-net-spoke-%s-svpc-host", cfg.EnvCode), &compute.SharedVPCHostProjectArgs{
 		Project: spokeProjectID,
@@ -404,11 +405,11 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 	}
 
 	// 3. Bi-Directional VPC Peering (Spoke <-> Hub)
-	hubVpcRef := fmt.Sprintf("projects/%s/global/networks/vpc-c-svpc-hub", cfg.HubProjectID)
+	hubVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-c-svpc-hub", hubProjectID)
 
 	spokeToHub, err := compute.NewNetworkPeering(ctx, "spoke-to-hub", &compute.NetworkPeeringArgs{
 		Network:            spokeVpc.VPC.SelfLink,
-		PeerNetwork:        pulumi.String(hubVpcRef),
+		PeerNetwork:        hubVpcRef,
 		Name:               pulumi.String(fmt.Sprintf("np-%s-svpc-spoke-vpc-c-svpc-hub", cfg.EnvCode)),
 		ExportCustomRoutes: pulumi.Bool(true),
 		ImportCustomRoutes: pulumi.Bool(true),
@@ -418,7 +419,7 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 	}
 
 	_, err = compute.NewNetworkPeering(ctx, "hub-to-spoke", &compute.NetworkPeeringArgs{
-		Network:            pulumi.String(hubVpcRef),
+		Network:            hubVpcRef,
 		PeerNetwork:        spokeVpc.VPC.SelfLink,
 		Name:               pulumi.String(fmt.Sprintf("np-vpc-c-svpc-hub-%s-svpc-spoke", cfg.EnvCode)),
 		ExportCustomRoutes: pulumi.Bool(true), // Export hub's custom routes to spoke
@@ -476,7 +477,7 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		Domain:                cfg.Domain,
 		Type:                  "peering",
 		NetworkSelfLink:       spokeVpc.VPC.SelfLink,
-		TargetNetworkSelfLink: pulumi.String(hubVpcRef),
+		TargetNetworkSelfLink: hubVpcRef,
 	}, opts...)
 	if err != nil {
 		return nil, err
