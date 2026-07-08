@@ -85,8 +85,10 @@ func NewPrivateServiceConnect(ctx *pulumi.Context, name string, args *PrivateSer
 
 	// 2. PSC Forwarding Rule
 	fwdArgs := &compute.GlobalForwardingRuleArgs{
-		Project:              args.ProjectID,
-		Name:                 pulumi.String(fmt.Sprintf("%s-%s", name, args.ForwardingRuleTarget)),
+		Project: args.ProjectID,
+		// GCP PSC forwarding rule names: 1-20 chars, lowercase letters+numbers, starts with letter.
+		// Strip hyphens from the generated name (e.g. "hub-psc-vpc-sc" → "hubpscvpcsc") to comply.
+		Name:                 pulumi.String(strings.ReplaceAll(fmt.Sprintf("%s%s", name, args.ForwardingRuleTarget), "-", "")),
 		Target:               pulumi.String(args.ForwardingRuleTarget),
 		Network:              args.NetworkSelfLink,
 		IpAddress:            address.Address,
