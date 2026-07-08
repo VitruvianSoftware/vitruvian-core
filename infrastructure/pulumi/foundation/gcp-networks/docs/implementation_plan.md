@@ -1,209 +1,180 @@
-# Promote 2-environments to Live Foundation with Promotion Workflow
+# Foundation Phase 3: Hub-and-Spoke Networks (`gcp-networks`)
+
+Promote the hub-and-spoke network architecture to the live foundation, following the same one-env-per-stack pattern and chained promotion workflow established by `gcp-environments`.
 
 ## Background
 
-The environments phase (2-environments) introduces per-environment folders (`fldr-development`, `fldr-nonproduction`, `fldr-production`) and their KMS/Secrets projects. In the upstream Terraform foundation, this stage uses a **branch promotion strategy** where three long-lived branches (`development`, `nonproduction`, `production`) each trigger deploys to their respective environments.
+The `gcp-org` phase already creates:
+- **Hub project** (`prj-net-hub`) — conditional on `enable_hub_and_spoke: true` (currently enabled)
+- **Per-env spoke projects** (`prj-d-svpc`, `prj-n-svpc`, `prj-p-svpc`)
+- **Hub IAM bindings** for `sa-terraform-net`
+- The SA `sa-terraform-net` and its WIF base bindings (`foundation-net`, `foundation-net-preview`) already exist
 
-Our monorepo can't use environment-specific branches (merging `development → nonproduction` would carry all monorepo changes). Instead, we'll use **Pulumi stacks + GitHub Environment protection rules** to achieve the same sequential promotion flow.
-
-## Architecture: Stacks + Reusable Workflow (Option C)
-
-```mermaid
-graph LR
-    PR["PR merged to main"] --> RP["release-please"]
-    RP --> DEV["deploy-env-development<br/>(auto)"]
-    DEV --> NONPROD["deploy-env-nonproduction<br/>(manual approval)"]
-    NONPROD --> PROD["deploy-env-production<br/>(manual approval)"]
-
-    subgraph "Pulumi Stacks (isolated state)"
-        DEV -.-> S1["foundation-environments/<br/>development"]
-        NONPROD -.-> S2["foundation-environments/<br/>nonproduction"]
-        PROD -.-> S3["foundation-environments/<br/>production"]
-    end
-```
-
-Each environment is a **separate Pulumi stack** with its own config and state:
-- `Pulumi.development.yaml` — deploys `fldr-development`, `prj-d-kms`, `prj-d-secrets`
-- `Pulumi.nonproduction.yaml` — deploys `fldr-nonproduction`, `prj-n-kms`, `prj-n-secrets`
-- `Pulumi.production.yaml` — deploys `fldr-production`, `prj-p-kms`, `prj-p-secrets`
-
-The reusable workflow chains them with GitHub Environment gates:
-- `foundation-env-development` → auto-approve
-- `foundation-env-nonproduction` → require manual approval
-- `foundation-env-production` → require manual approval
-
-## Key Refactoring Decision
+What's **missing** is the actual network infrastructure inside those projects — VPCs, subnets, firewall rules, Cloud NAT, Cloud Routers, DNS, VPC peering between hub and spokes, and Private Service Connect.
 
 > [!IMPORTANT]
-> ### Single-loop → per-stack refactor
-> The current example ([main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/pulumi/examples/go-foundation/2-environments/main.go)) deploys **all 3 environments in one `for env := range envCodes` loop** within a single Pulumi stack. For the promotion strategy to work, each environment must be its own stack. This means refactoring `main.go` so it reads `env` and `env_code` from config (instead of hardcoding the loop), and deploying a single environment per invocation.
+> The upstream Go example (`pulumi_go-example-foundation/3-networks-hub-and-spoke`) has several known gaps documented in [GAPREPORT.md](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/gap-analysis/port-cft-pulumi/GAPREPORT.md) (hardcoded subnet CIDRs, missing VPC-SC on hub, missing internet egress route, etc.). This plan creates a correct implementation, but the initial deployment will be scoped to the core network topology — VPCs, subnets, firewall, NAT, DNS, and peering. VPC Service Controls can be added incrementally after the base network is operational.
+
 
 ## Proposed Changes
 
-### Source Code (Pulumi project)
+### Pulumi Project (`gcp-networks`)
 
----
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/Pulumi.yaml`
+Project definition (`name: foundation-networks`).
 
-#### [NEW] `infrastructure/pulumi/foundation/gcp-environments/`
-Copy from [pulumi/examples/go-foundation/2-environments/](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/pulumi/examples/go-foundation/2-environments) with the following modifications:
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/main.go`
+One-env-per-stack entrypoint following the `gcp-environments` pattern:
+- Reads `env` / `env_code` from per-stack config
+- Stack references to `gcp-org` (for project IDs, hub project, network folder) and `gcp-environments` (for env folder)
+- Calls `deployNetworkBaseline()` for the spoke
+- Calls `deployHubNetwork()` for the hub (only in the `development` stack, since the hub is shared across all environments — or alternatively each stack can be idempotent about the hub)
+- Exports: `network_name`, `network_self_link`, `subnets`, `nat_ip_addresses`
 
-#### [MODIFY] `main.go`
-Refactor to deploy **one environment per stack** instead of looping over all three:
-- Read `env` (e.g., `"development"`) and `env_code` (e.g., `"d"`) from Pulumi config
-- Remove the `for env, code := range envCodes` loop
-- Call `deployEnvBaseline(ctx, cfg, env, envCode, tagsOutput)` once
-- Export outputs without env prefix (each stack is its own namespace)
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/config.go`
+`NetworkConfig` struct with all configurable fields:
+- `Env`, `EnvCode`, `OrgID`, `BillingAccount`
+- `DefaultRegion`, `SecondaryRegion`
+- `OrgStackName`, `EnvStackName` (for stack references)
+- `EnableHubAndSpoke` (always true for this topology)
+- Subnet CIDR ranges (configurable per-env via stack config)
+- DNS, NAT, firewall settings
 
-#### [MODIFY] `Pulumi.yaml`
-Rename project: `foundation-environments` (matching our naming convention)
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/spoke_network.go`
+Per-environment spoke VPC deployment:
+- **Shared VPC**: Enable the spoke project as a Shared VPC host
+- **VPC Network**: `vpc-{env_code}-svpc` with `delete_default_routes_on_create: true`
+- **Subnets**: Primary subnet + secondary ranges (pods/services for GKE)
+- **Cloud Router** (×2 regions): BGP routers with custom advertised ranges
+- **Cloud NAT** (×2 regions): NAT gateway with manual IP allocation
+- **Firewall rules**: Foundation rules (deny all egress, allow internal, allow Windows KMS)
+- **DNS Policy**: Enable inbound DNS forwarding
+- **Private Service Connect**: PSC endpoint + DNS zones for `googleapis.com`, `gcr.io`, `pkg.dev`
+- **Private Service Access**: Reserved IP range + service networking connection
+- **VPC Peering**: Bidirectional peering between spoke VPC and hub VPC
 
-#### [NEW] `Pulumi.development.yaml`
-```yaml
-config:
-  foundation-environments:org_id: "90456063361"
-  foundation-environments:billing_account: "013EEF-107C95-8E11BD"
-  foundation-environments:org_stack_name: "ipv1337/foundation-org/production"
-  foundation-environments:parent_folder: "823326946563"
-  foundation-environments:env: "development"
-  foundation-environments:env_code: "d"
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/hub_network.go`
+Hub VPC deployment (runs once, shared across envs):
+- **VPC Network**: `vpc-net-hub` with `delete_default_routes_on_create: true`
+- **Hub subnet**: Small subnet for management/transitivity
+- **Cloud Router + NAT**: Hub-level NAT for centralized egress
+- **DNS Hub**: Central DNS zone that spokes peer to
+- **Firewall rules**: Hub-level foundation rules
+- **Private Service Connect**: Hub PSC for restricted APIs
+
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/config_test.go`
+Unit test for config loading (mirrors `gcp-environments/config_test.go` pattern).
+
+#### [NEW] `infrastructure/pulumi/foundation/gcp-networks/go.mod`
+Standalone module (NOT in `go.work`). Dependencies:
+- `pulumi-gcp/sdk/v9`, `pulumi/sdk/v3`
+- `pulumi-library/go/pkg/project_factory` (if needed for labels/APIs)
+
+#### [NEW] Per-stack configs
+- `Pulumi.development.yaml` — `env: development`, `env_code: d`, spoke CIDRs
+- `Pulumi.nonproduction.yaml` — `env: nonproduction`, `env_code: n`, spoke CIDRs
+- `Pulumi.production.yaml` — `env: production`, `env_code: p`, spoke CIDRs
+
+#### [NEW] Release-please configs
+- `release-please-config.json` — component `foundation-gcp-networks`
+- `.release-please-manifest.json` — version `0.1.0`
+
+#### [NEW] `BUILD`
+```python
+pulumi_project(name = "gcp-networks", dir = "infrastructure/pulumi/foundation/gcp-networks")
 ```
-
-#### [NEW] `Pulumi.nonproduction.yaml`
-Same as above with `env: "nonproduction"` and `env_code: "n"`
-
-#### [NEW] `Pulumi.production.yaml`
-Same as above with `env: "production"` and `env_code: "p"`
-
-#### [NEW] `release-please-config.json` + `.release-please-manifest.json`
-Standard release-please config for this foundation stage.
-
-#### [COPY] `env_baseline.go`, `config_test.go`, `go.mod`, `go.sum`
-Copied from the example, with import path adjustments as needed.
 
 ---
 
 ### CI/CD Workflows
 
----
-
-#### [NEW] `.github/workflows/foundation-env-deploy.yaml` (reusable)
-Reusable workflow that accepts `environment` as input and runs `pulumi up` against the matching stack:
-
-```yaml
-name: Foundation Environment Deploy (Reusable)
-on:
-  workflow_call:
-    inputs:
-      environment:
-        required: true
-        type: string
-        description: "Target environment: development, nonproduction, or production"
-    secrets:
-      PULUMI_ACCESS_TOKEN: { required: true }
-      GCP_WORKLOAD_IDENTITY_PROVIDER: { required: true }
-      GCP_SERVICE_ACCOUNT: { required: true }
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    environment: foundation-env-${{ inputs.environment }}
-    env:
-      GOWORK: off
-    steps:
-      - uses: actions/checkout@v7
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      - uses: pulumi/actions@v7.0.0
-      - name: Pulumi up (${{ inputs.environment }})
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/foundation/gcp-environments
-        run: |
-          set -euo pipefail
-          pulumi stack select -c "${{ inputs.environment }}"
-          pulumi up --yes --non-interactive
-```
+#### [NEW] `.github/workflows/foundation-net-deploy.yaml`
+Reusable per-environment deploy workflow — identical structure to `foundation-env-deploy.yaml` but:
+- `environment: foundation-net-${{ inputs.environment }}`
+- `default working_directory: infrastructure/pulumi/foundation/gcp-networks`
 
 #### [MODIFY] `.github/workflows/foundation-release.yaml`
-Add release-please job for `gcp-environments` and chain the three deploy jobs:
+Add:
+- `release-gcp-networks` job (release-please with `foundation-gcp-networks` component)
+- Chained promotion: `deploy-net-development` → `deploy-net-nonproduction` → `deploy-net-production`
 
-```yaml
-release-gcp-environments:
-  # ... release-please config for gcp-environments ...
+---
 
-deploy-env-development:
-  needs: release-gcp-environments
-  if: needs.release-gcp-environments.outputs.release_created == 'true'
-  uses: ./.github/workflows/foundation-env-deploy.yaml
-  with: { environment: development }
-  secrets: inherit
+### WIF & Auth (Bootstrap)
 
-deploy-env-nonproduction:
-  needs: deploy-env-development
-  uses: ./.github/workflows/foundation-env-deploy.yaml
-  with: { environment: nonproduction }
-  secrets: inherit
-
-deploy-env-production:
-  needs: deploy-env-nonproduction
-  uses: ./.github/workflows/foundation-env-deploy.yaml
-  with: { environment: production }
-  secrets: inherit
+#### [MODIFY] `infrastructure/pulumi/foundation/gcp-bootstrap/build_github_actions.go`
+Add per-environment WIF bindings for the `net` SA (same pattern as `env`):
+```go
+if netSA, ok := sas["net"]; ok {
+    for _, envName := range []string{"development", "nonproduction", "production"} {
+        saMappings[fmt.Sprintf("net-%s", envName)] = libcicd.SAMappingEntry{...}
+    }
+}
 ```
 
 ---
 
-### GCP Identity Map
+### GitHub Environments (repo_config)
+
+#### [MODIFY] `infrastructure/pulumi/platform/repo_config/main.go`
+Add network-phase environments block (same pattern as env-phase):
+```go
+netPhaseEnvironments := []struct{ name string; requireReviewer bool }{
+    {"foundation-net-development", false},
+    {"foundation-net-nonproduction", true},
+    {"foundation-net-production", true},
+}
+```
+Using `foundationVars["foundation-net"]` for WIF variables.
+
+#### [MODIFY] `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml`
+Add `foundation-net` config entry:
+```yaml
+foundation-net:
+  GCP_PROJECT_ID: prj-b-seed-8ebb
+  GCP_SERVICE_ACCOUNT: sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com
+  GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/.../foundation-gh-provider
+```
+
+---
+
+### Supporting Config
 
 #### [MODIFY] `infrastructure/gcp-identities.tsv`
-Add entry for the new environments stage:
-```
-infrastructure/pulumi/foundation/gcp-environments  james@vitruviansoftware.dev  -  Foundation Phase 2 – Environments
+Add row for `gcp-networks`.
+
+#### [MODIFY] `infrastructure/pulumi/.gitignore`
+Add:
+```gitignore
+!foundation/gcp-networks/Pulumi.*.yaml
+/foundation/gcp-networks/foundation-networks
 ```
 
 ---
 
-### Documentation
+## Deployment Order
 
-#### [NEW] `docs/foundation-promotion-strategies.md`
-Document all three promotion strategies for future reference (see appendix below).
+The deployment needs to happen in this order (same as `gcp-environments`):
 
----
+1. **PR 1: Core code** — `gcp-networks` project, workflow files, supporting config
+2. **PR 2: WIF bindings** — Bootstrap update (add `net-{dev,nonprod,prod}` WIF mappings)
+3. **Deploy bootstrap** — Merge release-please for bootstrap, approve deploy
+4. **PR 3: repo_config** — GitHub Environments + `foundation-net` vars
+5. **Deploy repo_config** — Auto-deploys on merge
+6. **Merge release-please for networks** — Triggers chained deploy: dev → nonprod → prod
+
+> [!TIP]
+> We can combine PRs 1+3 since repo_config auto-deploys on merge to main. The WIF bindings (PR 2) must deploy before the networks release-please PR is merged, same as the env phase.
 
 ## Verification Plan
 
 ### Automated Tests
-- `bazel test //infrastructure/pulumi/foundation/gcp-environments/...` (config test)
-- `bazel build //infrastructure/pulumi/foundation/gcp-environments/...`
+- `go build ./...` in `gcp-networks/` (CI `build-test` job)
+- `go test ./...` for config loading unit tests
+- Pulumi preview in CI (PR check)
 
 ### Manual Verification
-- `pulumi preview --stack development` from local to verify expected resources
-- Merge PR → confirm development auto-deploys
-- Approve nonproduction gate → confirm nonproduction deploys
-- Approve production gate → confirm production deploys
-- Verify folders and projects appear in GCP Console under `fldr-foundation-1`
-
----
-
-## Appendix: All Three Promotion Strategies
-
-### Option A: Pulumi Stacks with Sequential Deploy (Simplest)
-One Pulumi project, three stacks. A single deploy job runs `pulumi up` against each stack in sequence within the same workflow run. GitHub Environment protection rules gate nonproduction and production.
-
-**Pros:** Minimal workflow complexity. Single workflow file.
-**Cons:** All environments deploy in a single workflow run. No way to "hold" at nonproduction for days before promoting to production without blocking the workflow.
-
-### Option B: Path-Filtered Promotion via Dispatch (Flexible)
-On merge to `main`, only `development` auto-deploys. `workflow_dispatch` events (or `/promote nonproduction` comment triggers) advance to the next environment.
-
-**Pros:** Maximum control. Can wait arbitrarily long between environments. Can re-promote a single environment without touching others.
-**Cons:** Requires manual dispatch. Easy to forget or skip an environment. More workflow files to maintain.
-
-### Option C: Reusable Workflow with Chained Deploys (Recommended) ✅
-A reusable workflow accepts `environment` as input. The release workflow chains three calls (dev → nonprod → prod), each gated by a GitHub Environment with protection rules. Each environment is a separate Pulumi stack with isolated state and config.
-
-**Pros:** Clean separation. GitHub UI shows pending approvals. Each environment has isolated Pulumi state. Scales to 3-networks and 4-projects. Reusable workflow can also be called from `workflow_dispatch` for ad-hoc deploys.
-**Cons:** Slightly more workflow boilerplate than Option A.
+- Approve development deploy → verify VPC, subnets, NAT, DNS in GCP Console
+- Approve nonproduction deploy → verify separate spoke VPC
+- Approve production deploy → verify spoke-to-hub peering is bidirectional
+- Verify DNS resolution via PSC endpoints
