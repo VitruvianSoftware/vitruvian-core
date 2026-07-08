@@ -30,6 +30,7 @@ infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity james.nguyen@gma
 infrastructure/pulumi/foundation/gcp-org                       james@vitruviansoftware.dev          -                           Foundation Phase 1 – Organization (vitruviansoftware.dev, org/folder-scoped, no default project)
 infrastructure/pulumi/foundation/gcp-bootstrap      james@vitruviansoftware.dev          -                           GCP foundation bootstrap for vitruviansoftware.dev org (co-tenant under fldr-foundation-1); org/folder-scoped, no default project
 infrastructure/pulumi/foundation/org-folders        james@vitruviansoftware.dev          -                           Creates the fldr-foundation-1 umbrella folder at org root (feeds gcp-bootstrap parent_folder)
+infrastructure/pulumi/foundation/gcp-environments   james@vitruviansoftware.dev          -                           Foundation Phase 2 – Environments (per-env folders, KMS, Secrets projects)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                             james@nocentre.net                   -                           nocentre.net projects (future)
 -                                             james@sandbox.vitruviansoftware.dev  -                           Vitruvian Software sandbox/company (future)
