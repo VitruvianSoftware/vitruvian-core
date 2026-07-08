@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.5...foundation-gcp-bootstrap-v0.3.6) (2026-07-08)
+
+
+### Bug Fixes
+
+* **bootstrap:** add per-environment WIF bindings for environments stage ([#729](https://github.com/VitruvianSoftware/vitruvian-core/issues/729)) ([3bab9aa](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bab9aa7b5aa36cdd40171844e62c6cb39085361))
+
 ## [0.3.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.4...foundation-gcp-bootstrap-v0.3.5) (2026-07-08)
 
 
