@@ -84,8 +84,18 @@ deploy-environment:
 A reusable workflow (`foundation-env-deploy.yaml`) accepts `environment` as
 input. The release workflow chains three calls:
 
-```
-development (auto) → nonproduction (manual approval) → production (manual approval)
+```mermaid
+graph LR
+    PR["PR merged to main"] --> RP["release-please"]
+    RP --> DEV["deploy-env-development<br/>(auto)"]
+    DEV --> NONPROD["deploy-env-nonproduction<br/>(manual approval)"]
+    NONPROD --> PROD["deploy-env-production<br/>(manual approval)"]
+
+    subgraph "Pulumi Stacks (isolated state)"
+        DEV -.-> S1["foundation-environments/<br/>development"]
+        NONPROD -.-> S2["foundation-environments/<br/>nonproduction"]
+        PROD -.-> S3["foundation-environments/<br/>production"]
+    end
 ```
 
 Each environment maps to:
