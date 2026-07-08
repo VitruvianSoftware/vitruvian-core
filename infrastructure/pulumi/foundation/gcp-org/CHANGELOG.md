@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.1...foundation-gcp-org-v0.4.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** restore upstream shared VPC host pattern ([#741](https://github.com/VitruvianSoftware/vitruvian-core/issues/741)) ([d6aa81f](https://github.com/VitruvianSoftware/vitruvian-core/commit/d6aa81fe8c2e8c9ac5a9cfc5cd3efbdccf2a5e3a))
+
 ## [0.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.0...foundation-gcp-org-v0.4.1) (2026-07-08)
 
 
