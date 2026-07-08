@@ -3,7 +3,7 @@ module foundation-networks
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.1
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/network v1.2.2
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
 	github.com/pulumi/pulumi/sdk/v3 v3.250.0
