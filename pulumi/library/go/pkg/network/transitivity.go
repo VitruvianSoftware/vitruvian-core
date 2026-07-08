@@ -206,6 +206,9 @@ sudo iptables -t nat -A POSTROUTING -j MASQUERADE
 			Backends: compute.RegionBackendServiceBackendArray{
 				&compute.RegionBackendServiceBackendArgs{
 					Group: mig.InstanceGroup,
+					// INTERNAL load balancing requires CONNECTION mode; the provider
+					// defaults to UTILIZATION which is only valid for external LBs.
+					BalancingMode: pulumi.String("CONNECTION"),
 				},
 			},
 		}, pulumi.Parent(component))
