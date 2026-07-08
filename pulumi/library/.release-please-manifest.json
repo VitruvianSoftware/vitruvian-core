@@ -1,5 +1,8 @@
 {
   "pulumi/library/ts": "0.9.0",
+  "pulumi/library/ts/packages/app": "0.3.0",
+  "pulumi/library/ts/packages/cicd": "0.3.0",
+  "pulumi/library/ts/packages/data": "0.3.0",
   "pulumi/library/go": "2.0.0",
   "pulumi/library/ts/packages/budget": "0.4.0",
   "pulumi/library/ts/packages/cb-private-pool": "0.4.0",

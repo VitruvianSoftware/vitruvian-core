@@ -1,6 +1,18 @@
 {
   "separate-pull-requests": true,
   "packages": {
+    "pulumi/library/ts/packages/app": {
+      "release-type": "node",
+      "component": "foundation-app"
+    },
+    "pulumi/library/ts/packages/cicd": {
+      "release-type": "node",
+      "component": "foundation-cicd"
+    },
+    "pulumi/library/ts/packages/data": {
+      "release-type": "node",
+      "component": "foundation-data"
+    },
     "pulumi/library/ts": {
       "release-type": "node",
       "component": "foundation-library"
@@ -191,35 +203,35 @@
     },
     "pulumi/library/go/pkg/project_factory": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-project-factory"
     },
     "pulumi/library/go/pkg/network": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-network"
     },
     "pulumi/library/go/pkg/vpc_service_controls": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-vpc-service-controls"
     },
     "pulumi/library/go/pkg/centralized_logging": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-centralized-logging"
     },
     "pulumi/library/go/pkg/cloud_storage": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-cloud-storage"
     },
     "pulumi/library/go/pkg/org_policy": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-org-policy"
     },
     "pulumi/library/go/pkg/cai_monitoring": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-cai-monitoring"
     },
     "pulumi/library/go/pkg/google_group": {
       "release-type": "go",
-      "release-as": "1.0.1"
+      "component": "go-google-group"
     }
   }
 }
