@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.3...foundation-gcp-org-v0.4.0) (2026-07-08)
+
+
+### Features
+
+* **gcp-org:** enable hub and spoke network topology ([#722](https://github.com/VitruvianSoftware/vitruvian-core/issues/722)) ([9a0d398](https://github.com/VitruvianSoftware/vitruvian-core/commit/9a0d398d774a93db2b6518e5faea16b85583effd))
+
 ## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.3.2...foundation-gcp-org-v0.3.3) (2026-07-08)
 
 
