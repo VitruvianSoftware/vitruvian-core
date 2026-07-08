@@ -37,6 +37,6 @@ config:
   foundation-org:gcp_kms_admin: "gcp-kms-admin@vitruviansoftware.dev"
 
   # --- Feature flags (conservative defaults for initial deployment) ---
-  # foundation-org:enable_scc_resources: "true"
-  # foundation-org:create_access_context_manager_policy: "true"
-  # foundation-org:enable_hub_and_spoke: "false"
+  # Access Context Manager — skip creation; GCP allows only one policy per org
+  # and one already exists for organizations/90456063361.
+  foundation-org:create_access_context_manager_policy: "false"
