@@ -1,0 +1,374 @@
+deploy-gcp-bootstrap	Set up job	﻿2026-07-08T16:42:05.4187963Z Current runner version: '2.335.1'
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4225188Z ##[group]Runner Image Provisioner
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4226506Z Hosted Compute Agent
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4227431Z Version: 20260624.560
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4228698Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4229841Z Build Date: 2026-06-24T18:26:47Z
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4230963Z Worker ID: {af62924c-a13e-4054-907a-cffc4398ed2e}
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4232389Z Azure Region: eastus2
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4233290Z ##[endgroup]
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4235465Z ##[group]Operating System
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4236461Z Ubuntu
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4237258Z 24.04.4
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4238201Z LTS
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4239004Z ##[endgroup]
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4240483Z ##[group]Runner Image
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4241702Z Image: ubuntu-24.04
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4242674Z Version: 20260705.232.1
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4244512Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4247488Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4249129Z ##[endgroup]
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4251351Z ##[group]GITHUB_TOKEN Permissions
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4254331Z Contents: write
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4255271Z Metadata: read
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4256245Z PullRequests: write
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4257118Z ##[endgroup]
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4260155Z Secret source: Actions
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4261907Z Prepare workflow directory
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4824703Z Prepare all required actions
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.4883227Z Getting action download info
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.7245067Z Download action repository 'actions/checkout@v7' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:05.8003132Z Download action repository 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' (SHA:7c6bc770dae815cd3e89ee6cdf493a5fab2cc093)
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:06.0531828Z Download action repository 'pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d' (SHA:8e5e406f4007fca908480587cb9893c07090f58d)
+deploy-gcp-bootstrap	Set up job	2026-07-08T16:42:06.4290479Z Complete job name: deploy-gcp-bootstrap
+deploy-gcp-bootstrap	Run actions/checkout@v7	﻿2026-07-08T16:42:06.5132497Z ##[group]Run actions/checkout@v7
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5133941Z with:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5134779Z   repository: VitruvianSoftware/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5143100Z   token: ***
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5143868Z   ssh-strict: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5144626Z   ssh-user: git
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5145402Z   persist-credentials: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5146247Z   clean: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5147002Z   sparse-checkout-cone-mode: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5147917Z   fetch-depth: 1
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5148660Z   fetch-tags: false
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5149436Z   show-progress: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5150214Z   lfs: false
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5150921Z   submodules: false
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5151858Z   set-safe-directory: true
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5152736Z   allow-unsafe-pr-checkout: false
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5153955Z env:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5154606Z   GOWORK: off
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.5155306Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6268936Z Syncing repository: VitruvianSoftware/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6272479Z ##[group]Getting Git version info
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6273865Z Working directory is '/home/runner/work/vitruvian-core/vitruvian-core'
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6275804Z [command]/usr/bin/git version
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6403715Z git version 2.54.0
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6413291Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6422852Z Temporarily overriding HOME='/home/runner/work/_temp/f24c4e40-e5a0-47e9-9638-184c1ea3db28' before making global git config changes
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6425441Z Adding repository directory to the temporary git global config as a safe directory
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6441664Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/vitruvian-core/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6790989Z Deleting the contents of '/home/runner/work/vitruvian-core/vitruvian-core'
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6794190Z ##[group]Determining repository object format
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6796389Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6797802Z ##[group]Initializing the repository
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.6799295Z [command]/usr/bin/git init /home/runner/work/vitruvian-core/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9751904Z hint: Using 'master' as the name for the initial branch. This default branch name
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9753949Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9755254Z hint: to use in all of your new repositories, which will suppress this warning,
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9756273Z hint: call:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9756867Z hint:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9757596Z hint: 	git config --global init.defaultBranch <name>
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9758503Z hint:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9759370Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9760848Z hint: 'development'. The just-created branch can be renamed via this command:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9762237Z hint:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9762884Z hint: 	git branch -m <name>
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9763717Z hint:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:06.9764750Z hint: Disable this message with "git config set advice.defaultBranchName false"
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0340809Z Initialized empty Git repository in /home/runner/work/vitruvian-core/vitruvian-core/.git/
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0354449Z [command]/usr/bin/git remote add origin https://github.com/VitruvianSoftware/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0836806Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0838444Z ##[group]Disabling automatic garbage collection
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0840245Z [command]/usr/bin/git config --local gc.auto 0
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0884658Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0886365Z ##[group]Setting up auth
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0887654Z Removing SSH command configuration
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0890088Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.0934698Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1266692Z Removing HTTP extra header
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1273790Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1315520Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1560033Z Removing includeIf entries pointing to credentials config files
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1565093Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1605698Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1876725Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1928955Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.1973645Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.2019986Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.2069616Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.2108866Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.2110565Z ##[group]Fetching the repository
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:07.2119638Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +646fe9b6bc0c22cae6d35c30d6562bdbb7909a61:refs/remotes/origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4856371Z From https://github.com/VitruvianSoftware/vitruvian-core
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4857481Z  * [new ref]         646fe9b6bc0c22cae6d35c30d6562bdbb7909a61 -> origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4901679Z [command]/usr/bin/git branch --list --remote origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4939005Z   origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4949875Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4983499Z 646fe9b6bc0c22cae6d35c30d6562bdbb7909a61
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4987718Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4988485Z ##[group]Determining the checkout info
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4992452Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.4996899Z [command]/usr/bin/git sparse-checkout disable
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.5057884Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.5098920Z ##[group]Checking out the ref
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:10.5104746Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5175498Z Updating files:  58% (1701/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5191438Z Updating files:  59% (1712/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5230617Z Updating files:  60% (1741/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5248382Z Updating files:  61% (1770/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5265766Z Updating files:  62% (1799/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5283778Z Updating files:  63% (1828/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5306150Z Updating files:  64% (1857/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5325844Z Updating files:  65% (1886/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5347701Z Updating files:  66% (1915/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5365087Z Updating files:  67% (1944/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5383737Z Updating files:  68% (1973/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5401685Z Updating files:  69% (2002/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5419130Z Updating files:  70% (2031/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5433339Z Updating files:  71% (2060/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5446917Z Updating files:  72% (2089/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5464685Z Updating files:  73% (2118/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5478206Z Updating files:  74% (2147/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5491262Z Updating files:  75% (2176/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5502993Z Updating files:  76% (2205/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5516505Z Updating files:  77% (2234/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5529138Z Updating files:  78% (2263/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5540829Z Updating files:  79% (2292/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5554004Z Updating files:  80% (2321/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5566740Z Updating files:  81% (2350/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5583735Z Updating files:  82% (2379/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5604759Z Updating files:  83% (2408/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5624397Z Updating files:  84% (2437/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5645405Z Updating files:  85% (2466/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5665936Z Updating files:  86% (2495/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5686415Z Updating files:  87% (2524/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5717523Z Updating files:  88% (2553/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5737815Z Updating files:  89% (2582/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5754210Z Updating files:  90% (2611/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5775702Z Updating files:  91% (2640/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5809032Z Updating files:  92% (2669/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5835768Z Updating files:  93% (2698/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5856230Z Updating files:  94% (2727/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5872222Z Updating files:  95% (2756/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5893099Z Updating files:  96% (2785/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5915273Z Updating files:  97% (2814/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5931750Z Updating files:  98% (2843/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5948684Z Updating files:  99% (2872/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5949089Z Updating files: 100% (2901/2901)
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5949535Z Updating files: 100% (2901/2901), done.
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5993860Z Switched to a new branch 'main'
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.5997168Z branch 'main' set up to track 'origin/main'.
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.6050587Z ##[endgroup]
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.6105889Z [command]/usr/bin/git log -1 --format=%H
+deploy-gcp-bootstrap	Run actions/checkout@v7	2026-07-08T16:42:11.6140721Z 646fe9b6bc0c22cae6d35c30d6562bdbb7909a61
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	﻿2026-07-08T16:42:11.6488834Z ##[group]Run google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6489308Z with:
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6489884Z   workload_identity_provider: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6490699Z   service_account: sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6491304Z   create_credentials_file: true
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6491575Z   export_environment_variables: true
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6491856Z   universe: googleapis.com
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6492102Z   cleanup_credentials: true
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6492365Z   access_token_lifetime: 3600s
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6492758Z   access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6493151Z   id_token_include_email: false
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6493430Z env:
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6493627Z   GOWORK: off
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.6493831Z ##[endgroup]
+deploy-gcp-bootstrap	Authenticate to GCP (WIF, keyless)	2026-07-08T16:42:11.8472584Z Created credentials file at "/home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json"
+deploy-gcp-bootstrap	Install Pulumi	﻿2026-07-08T16:42:11.9766973Z ##[group]Run pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9767384Z with:
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9767607Z   work-dir: ./
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9767832Z   comment-on-pr: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9768077Z   comment-on-summary: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9770761Z   github-token: ***
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9771006Z   expect-no-changes: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9771522Z   diff: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9771746Z   exclude-dependents: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9771998Z   target-dependents: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9772233Z   refresh: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9772456Z   upsert: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9772666Z   remove: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9772877Z   edit-pr-comment: true
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9773106Z   color: auto
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9773344Z   exclude-protected: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9773617Z   suppress-outputs: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9773874Z   suppress-progress: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9774126Z   always-include-summary: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9774388Z   continue-on-error: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9774672Z   log-flow: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9774890Z   debug: false
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9775095Z env:
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9775289Z   GOWORK: off
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9775799Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9776598Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9777308Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9777803Z   CLOUDSDK_CORE_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9778107Z   CLOUDSDK_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9778389Z   GCLOUD_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9778662Z   GCP_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9778934Z   GOOGLE_CLOUD_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:11.9779217Z ##[endgroup]
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:12.1263193Z Configured range: 
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:12.1274324Z (node:2258) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:12.1275481Z (Use `node --trace-deprecation ...` to show where the warning was created)
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:12.1319380Z [command]/usr/local/bin/pulumi version
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:17.3484867Z v3.250.0
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:17.3548520Z Pulumi version 3.250.0 is already installed on this machine. Skipping download
+deploy-gcp-bootstrap	Install Pulumi	2026-07-08T16:42:17.3549263Z Pulumi has been successfully installed. Exiting.
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	﻿2026-07-08T16:42:17.3680749Z ##[group]Run set -euo pipefail
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3681409Z ^[[36;1mset -euo pipefail^[[0m
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3681726Z ^[[36;1mpulumi stack select -c "production"^[[0m
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3682312Z ^[[36;1mpulumi up --yes --non-interactive^[[0m
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3859120Z shell: /usr/bin/bash -e {0}
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3859446Z env:
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3859662Z   GOWORK: off
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3860194Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3861019Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3862048Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3862563Z   CLOUDSDK_CORE_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3862867Z   CLOUDSDK_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3863143Z   GCLOUD_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3863516Z   GCP_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3863781Z   GOOGLE_CLOUD_PROJECT: prj-b-seed-8ebb
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3864384Z   PULUMI_ACCESS_TOKEN: ***
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.3864655Z ##[endgroup]
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:17.5265599Z Logging in using access token from PULUMI_ACCESS_TOKEN
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:18.1934767Z warning: A new version of Pulumi is available. To upgrade from version '3.250.0' to '3.251.0', visit https://pulumi.com/docs/install/ for manual instructions and release notes.
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:27.4299121Z Previewing update (production)
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:27.4299539Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:28.4200714Z View Live: https://app.pulumi.com/ipv1337/foundation-bootstrap/production/previews/a94a39b2-b850-4222-8166-df17be3e39e9
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:28.4201464Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.3486500Z @ Previewing update.......
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.3487220Z Downloading plugin command-1.2.1: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.3881885Z Downloading plugin random-4.21.0: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.4073898Z Downloading plugin gcp-9.29.0: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.4553287Z @ Previewing update....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.4557598Z Downloading plugin command-1.2.1: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.4558165Z Installing plugin command-1.2.1: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.5104877Z Downloading plugin random-4.21.0: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.5105697Z Installing plugin random-4.21.0: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.6722118Z Downloading plugin gcp-9.29.0: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.6731489Z Installing plugin gcp-9.29.0: starting
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:33.7710412Z Installing plugin command-1.2.1: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:34.0373472Z Installing plugin random-4.21.0: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:34.8735573Z @ Previewing update....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:34.8736118Z Installing plugin gcp-9.29.0: done
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:34.9095743Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:42:34.9465488Z     pulumi:pulumi:Stack foundation-bootstrap-production  Compiling the program ...
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:42.1830119Z @ Previewing update......................................................................
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:42.1831280Z     pulumi:pulumi:Stack foundation-bootstrap-production  Finished compiling
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:43.5316498Z @ Previewing update.....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:43.5317321Z     pulumi:pulumi:Stack foundation-bootstrap-production running Finished compiling
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.0670399Z @ Previewing update.....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.0671904Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-development create 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.0987984Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-production create 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1000033Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-nonproduction create 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1720995Z     pulumi:pulumi:Stack foundation-bootstrap-production  
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1721832Z Resources:
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1722146Z     + 3 to create
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1722478Z     278 unchanged
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.1722661Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.3936403Z Updating (production)
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:46.3936763Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:47.0820773Z View Live: https://app.pulumi.com/ipv1337/foundation-bootstrap/production/updates/21
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:47.0822496Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:47.1867012Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:47.1887113Z     pulumi:pulumi:Stack foundation-bootstrap-production  Compiling the program ...
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:49.1322107Z @ Updating.....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:49.1323094Z     pulumi:pulumi:Stack foundation-bootstrap-production  Finished compiling
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:43:49.1574647Z     pulumi:pulumi:Stack foundation-bootstrap-production running Finished compiling
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:02.9945963Z @ Updating................
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:02.9946741Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-nonproduction creating (0s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:03.2066555Z @ Updating....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:03.2067364Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-production creating (0s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:03.2253807Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-development creating (0s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:15.9316754Z @ Updating...............
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:15.9317582Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-development created (12s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.0378518Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-production created (12s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.1506719Z @ Updating....
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.1507275Z  +  gcp:serviceaccount:IAMMember foundation-wif-binding-net-nonproduction created (13s) 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3608503Z     pulumi:pulumi:Stack foundation-bootstrap-production  
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3609615Z Outputs:
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3610388Z     bootstrap_step_terraform_service_account_email   : "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3611394Z     cloudbuild_project_id                            : "prj-b-cicd-cb5c"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3611963Z     common_config                                    : {
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3612617Z         billing_account      : "013EEF-107C95-8E11BD"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3613190Z         bootstrap_folder_name: "folders/926718603996"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3613703Z         default_region       : "us-central1"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3614230Z         default_region_2     : "us-west1"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3614733Z         default_region_gcs   : "US"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3615203Z         default_region_kms   : "us"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3615672Z         folder_prefix        : "fldr"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3616143Z         org_id               : "90456063361"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3616631Z         parent_folder        : "823326946563"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3617160Z         parent_id            : "folders/823326946563"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3617654Z         project_prefix       : "prj"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3618097Z     }
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3618752Z     environment_step_terraform_service_account_email : "sa-terraform-env@prj-b-seed-8ebb.iam.gserviceaccount.com"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3619567Z     gcs_bucket_tfstate                               : "bkt-prj-b-seed-tfstate-b922"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3620472Z     networks_step_terraform_service_account_email    : "sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3621395Z     optional_groups                                  : {
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3622125Z         gcp_global_secrets_admin: "gcp-secrets-admin@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3622794Z         gcp_kms_admin           : "gcp-kms-admin@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3623472Z         gcp_network_viewer      : "gcp-network-viewer@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3624100Z         gcp_scc_admin           : "gcp-scc-admin@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3624852Z         gcp_security_reviewer   : "gcp-security-reviewer@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3625410Z     }
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3626093Z     organization_step_terraform_service_account_email: "sa-terraform-org@prj-b-seed-8ebb.iam.gserviceaccount.com"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3627151Z     projects_gcs_bucket_tfstate                      : "bkt-prj-b-seed-8ebb-gcp-projects-tfstate"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3628276Z     projects_step_terraform_service_account_email    : "sa-terraform-proj@prj-b-seed-8ebb.iam.gserviceaccount.com"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3629307Z     required_groups                                  : {
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3629689Z         audit_data_users    : "gcp-audit-data@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3630273Z         billing_data_users  : "gcp-billing-data@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3630709Z         group_billing_admins: "gcp-billing-admins@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3631452Z         group_org_admins    : "gcp-organization-admins@vitruviansoftware.dev"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3631942Z     }
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3632280Z     seed_project_id                                  : "prj-b-seed-8ebb"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3633133Z     state_bucket_kms_key_id                          : "projects/prj-b-seed-8ebb/locations/us/keyRings/prj-keyring/cryptoKeys/prj-key"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3634203Z     wif_pool_name                                    : "projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3635642Z     wif_provider_name                                : "projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider"
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636220Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636309Z Resources:
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636507Z     + 3 created
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636710Z     278 unchanged
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636829Z 
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3636919Z Duration: 30s
+deploy-gcp-bootstrap	Pulumi up (gcp-bootstrap / production)	2026-07-08T16:44:16.3637036Z 
+deploy-gcp-bootstrap	Post Authenticate to GCP (WIF, keyless)	﻿2026-07-08T16:44:16.5976172Z Post job cleanup.
+deploy-gcp-bootstrap	Post Authenticate to GCP (WIF, keyless)	2026-07-08T16:44:16.6829209Z Removed exported credentials at "/home/runner/work/vitruvian-core/vitruvian-core/gha-creds-4cc5f9c19e2aa73e.json".
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	﻿2026-07-08T16:44:16.7013317Z Post job cleanup.
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.7917023Z [command]/usr/bin/git version
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.7965109Z git version 2.54.0
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8005528Z Temporarily overriding HOME='/home/runner/work/_temp/8f570e93-b1c2-4b1e-bb36-0dc9255b084e' before making global git config changes
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8006785Z Adding repository directory to the temporary git global config as a safe directory
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8011932Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/vitruvian-core/vitruvian-core
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8051778Z Removing SSH command configuration
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8056400Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8094950Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8360699Z Removing HTTP extra header
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8366798Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8406840Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8681831Z Removing includeIf entries pointing to credentials config files
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8703783Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8749930Z includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8750632Z includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8751381Z includeif.gitdir:/github/workspace/.git.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8753512Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8755155Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8783047Z /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8795139Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8841797Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8871255Z /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8882783Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8938440Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8970209Z /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.8982625Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.9026045Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.9056617Z /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.9065188Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.9105588Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy-gcp-bootstrap	Post Run actions/checkout@v7	2026-07-08T16:44:16.9346841Z Removing credentials config '/home/runner/work/_temp/git-credentials-6d563028-f396-48a1-9cf3-5c26a3f198eb.config'
+deploy-gcp-bootstrap	Complete job	﻿2026-07-08T16:44:16.9506804Z Cleaning up orphan processes

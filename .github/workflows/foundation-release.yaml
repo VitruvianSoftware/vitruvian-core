@@ -206,6 +206,8 @@ jobs:
   # Each environment is a separate Pulumi stack with isolated state.
 
   release-gcp-environments:
+    needs: [deploy-gcp-org, deploy-org-folders, deploy-gcp-bootstrap]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -254,6 +256,8 @@ jobs:
   # Each environment is a separate Pulumi stack with isolated state.
 
   release-gcp-networks:
+    needs: [deploy-env-production]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

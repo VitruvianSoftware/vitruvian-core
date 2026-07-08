@@ -1,0 +1,580 @@
+deploy-net-development / deploy	UNKNOWN STEP	﻿2026-07-08T16:40:24.5809002Z Current runner version: '2.335.1'
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5834539Z ##[group]Runner Image Provisioner
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5835375Z Hosted Compute Agent
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5836075Z Version: 20260624.560
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5836705Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5837739Z Build Date: 2026-06-24T18:26:47Z
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5838467Z Worker ID: {3aa507b2-8784-48cf-8a02-be508a42ac6d}
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5839206Z Azure Region: westcentralus
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5839874Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5841340Z ##[group]Operating System
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5842004Z Ubuntu
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5842623Z 24.04.4
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5843147Z LTS
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5843704Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5844278Z ##[group]Runner Image
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5844909Z Image: ubuntu-24.04
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5845930Z Version: 20260628.225.1
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5847189Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260628.225/images/ubuntu/Ubuntu2404-Readme.md
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5849300Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260628.225
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5850315Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5851546Z ##[group]GITHUB_TOKEN Permissions
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5853719Z Contents: read
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5854463Z Metadata: read
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5855065Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5857179Z Secret source: Actions
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.5858392Z Prepare workflow directory
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.6252218Z Prepare all required actions
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.6301395Z Getting action download info
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:24.9933238Z Download action repository 'actions/checkout@v7' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:25.0711850Z Download action repository 'google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093' (SHA:7c6bc770dae815cd3e89ee6cdf493a5fab2cc093)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:25.6084680Z Download action repository 'pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d' (SHA:8e5e406f4007fca908480587cb9893c07090f58d)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5496165Z Uses: VitruvianSoftware/vitruvian-core/.github/workflows/foundation-net-deploy.yaml@refs/heads/main (47414c48a13aea9d90cd7577e6fb57b3c566cb0c)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5503326Z ##[group] Inputs
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5504411Z   environment: development
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5505840Z   working_directory: infrastructure/pulumi/foundation/gcp-networks
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5507693Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.5508925Z Complete job name: deploy-net-development / deploy
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6335026Z ##[group]Run actions/checkout@v7
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6336487Z with:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6337723Z   repository: VitruvianSoftware/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6347872Z   token: ***
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6348793Z   ssh-strict: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6349706Z   ssh-user: git
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6350669Z   persist-credentials: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6351712Z   clean: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6352649Z   sparse-checkout-cone-mode: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6353757Z   fetch-depth: 1
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6354680Z   fetch-tags: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6355625Z   show-progress: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6356564Z   lfs: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6357684Z   submodules: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6358669Z   set-safe-directory: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6359742Z   allow-unsafe-pr-checkout: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6361136Z env:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6361963Z   GOWORK: off
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.6362832Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7405382Z Syncing repository: VitruvianSoftware/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7408882Z ##[group]Getting Git version info
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7410697Z Working directory is '/home/runner/work/vitruvian-core/vitruvian-core'
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7413353Z [command]/usr/bin/git version
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7442163Z git version 2.54.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7468080Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7479879Z Temporarily overriding HOME='/home/runner/work/_temp/fe16cb4d-558f-4de7-8ebf-a4e9dde346f2' before making global git config changes
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7482960Z Adding repository directory to the temporary git global config as a safe directory
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7497297Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/vitruvian-core/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7546763Z Deleting the contents of '/home/runner/work/vitruvian-core/vitruvian-core'
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7553254Z ##[group]Determining repository object format
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7555817Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7557804Z ##[group]Initializing the repository
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7560004Z [command]/usr/bin/git init /home/runner/work/vitruvian-core/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7667734Z hint: Using 'master' as the name for the initial branch. This default branch name
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7670994Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7672984Z hint: to use in all of your new repositories, which will suppress this warning,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7674520Z hint: call:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7675408Z hint:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7676575Z hint: 	git config --global init.defaultBranch <name>
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7678539Z hint:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7679740Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7681660Z hint: 'development'. The just-created branch can be renamed via this command:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7683175Z hint:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7684025Z hint: 	git branch -m <name>
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7685021Z hint:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7686311Z hint: Disable this message with "git config set advice.defaultBranchName false"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7720132Z Initialized empty Git repository in /home/runner/work/vitruvian-core/vitruvian-core/.git/
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7726307Z [command]/usr/bin/git remote add origin https://github.com/VitruvianSoftware/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7766762Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7769387Z ##[group]Disabling automatic garbage collection
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7771230Z [command]/usr/bin/git config --local gc.auto 0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7803851Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7806028Z ##[group]Setting up auth
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7807667Z Removing SSH command configuration
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7810685Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.7852690Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8245014Z Removing HTTP extra header
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8252424Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8289874Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8510454Z Removing includeIf entries pointing to credentials config files
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8515004Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8551225Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8786403Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8826293Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8859868Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8897993Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8934323Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8965680Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8967325Z ##[group]Fetching the repository
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:26.8971332Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +47414c48a13aea9d90cd7577e6fb57b3c566cb0c:refs/remotes/origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9508817Z From https://github.com/VitruvianSoftware/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9509911Z  * [new ref]         47414c48a13aea9d90cd7577e6fb57b3c566cb0c -> origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9551917Z [command]/usr/bin/git branch --list --remote origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9582556Z   origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9591179Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9617905Z 47414c48a13aea9d90cd7577e6fb57b3c566cb0c
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9622260Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9622690Z ##[group]Determining the checkout info
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9623783Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9629070Z [command]/usr/bin/git sparse-checkout disable
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9680036Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9712962Z ##[group]Checking out the ref
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:30.9718551Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:31.9661543Z Switched to a new branch 'main'
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:31.9663017Z branch 'main' set up to track 'origin/main'.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:31.9716220Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:31.9769528Z [command]/usr/bin/git log -1 --format=%H
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:31.9803568Z 47414c48a13aea9d90cd7577e6fb57b3c566cb0c
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0139661Z ##[group]Run google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0140128Z with:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0140719Z   workload_identity_provider: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0141499Z   service_account: sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0141910Z   create_credentials_file: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0142178Z   export_environment_variables: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0142476Z   universe: googleapis.com
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0142717Z   cleanup_credentials: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0142957Z   access_token_lifetime: 3600s
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0143326Z   access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0143717Z   id_token_include_email: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0143976Z env:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0144190Z   GOWORK: off
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.0144389Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.3189807Z Created credentials file at "/home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4613948Z ##[group]Run pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4614349Z with:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4614543Z   work-dir: ./
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4614754Z   comment-on-pr: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4614992Z   comment-on-summary: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4618058Z   github-token: ***
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4618301Z   expect-no-changes: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4618534Z   diff: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4618748Z   exclude-dependents: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4618991Z   target-dependents: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4619219Z   refresh: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4619415Z   upsert: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4619607Z   remove: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4619820Z   edit-pr-comment: true
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4620039Z   color: auto
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4620240Z   exclude-protected: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4620478Z   suppress-outputs: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4620714Z   suppress-progress: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4620959Z   always-include-summary: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4621236Z   continue-on-error: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4621468Z   log-flow: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4621855Z   debug: false
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4622047Z env:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4622227Z   GOWORK: off
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4622706Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4623502Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4624218Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4624722Z   CLOUDSDK_CORE_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4625015Z   CLOUDSDK_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4625291Z   GCLOUD_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4625549Z   GCP_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4625808Z   GOOGLE_CLOUD_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.4626075Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.6056083Z Configured range: 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.6066648Z (node:2321) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.6068034Z (Use `node --trace-deprecation ...` to show where the warning was created)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:32.6112785Z [command]/usr/local/bin/pulumi version
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.5984154Z v3.248.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6078308Z Pulumi version 3.248.0 is already installed on this machine. Skipping download
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6079053Z Pulumi has been successfully installed. Exiting.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6195337Z ##[group]Run set -euo pipefail
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6195777Z ^[[36;1mset -euo pipefail^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6196046Z ^[[36;1mecho "::group::Stack select"^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6196365Z ^[[36;1mpulumi stack select -c "development"^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6196670Z ^[[36;1mecho "::endgroup::"^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6196923Z ^[[36;1mecho "::group::Pulumi up"^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6197208Z ^[[36;1mpulumi up --yes --non-interactive^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6198019Z ^[[36;1mecho "::endgroup::"^[[0m
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6368717Z shell: /usr/bin/bash -e {0}
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6368984Z env:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6369175Z   GOWORK: off
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6369677Z   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6370472Z   GOOGLE_APPLICATION_CREDENTIALS: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6371244Z   GOOGLE_GHA_CREDS_PATH: /home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6371739Z   CLOUDSDK_CORE_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6372027Z   CLOUDSDK_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6372299Z   GCLOUD_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6372560Z   GCP_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6372818Z   GOOGLE_CLOUD_PROJECT: prj-b-seed-8ebb
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6373287Z   PULUMI_ACCESS_TOKEN: ***
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6373524Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.6446622Z ##[group]Stack select
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:35.7816230Z Logging in using access token from PULUMI_ACCESS_TOKEN
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:36.6212225Z warning: A new version of Pulumi is available. To upgrade from version '3.248.0' to '3.251.0', visit https://pulumi.com/docs/install/ for manual instructions and release notes.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:36.6242264Z ##[endgroup]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:36.6242693Z ##[group]Pulumi up
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:42.8251988Z Previewing update (development)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:42.8252361Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:43.3246272Z View Live: https://app.pulumi.com/ipv1337/foundation-networks/development/previews/5939291f-fa02-4dc2-b854-e797032f4755
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:43.3248234Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:50.0990195Z @ Previewing update.........
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:50.0990587Z Downloading plugin gcp-9.29.0: starting
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:50.5573114Z @ Previewing update....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:50.5573612Z Downloading plugin gcp-9.29.0: done
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:50.5611552Z Installing plugin gcp-9.29.0: starting
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:51.6792013Z @ Previewing update....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:51.6792781Z Installing plugin gcp-9.29.0: done
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:51.7268714Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:40:51.7501411Z     pulumi:pulumi:Stack foundation-networks-development  Compiling the program ...
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.8770723Z @ Previewing update.........................................................................................................
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.8771612Z     pulumi:pulumi:Stack foundation-networks-development  Finished compiling
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.9065943Z  +  pulumi:pulumi:Stack foundation-networks-development create Finished compiling
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.9070144Z  +  pkg:index:HierarchicalFirewallPolicy hierarchical-fw create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.9088076Z  +  pulumi:pulumi:Stack foundation-networks-development create read pulumi:pulumi:StackReference organization
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:33.9148024Z  +  pkg:index:Networking hub create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:34.1694937Z  +  pulumi:pulumi:Stack foundation-networks-development create read pulumi:pulumi:StackReference organization
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5214433Z @ Previewing update.....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5214987Z  +  gcp:compute:Network hub-vpc create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5220691Z  +  gcp:compute:FirewallPolicy hierarchical-fw-policy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5228707Z  +  gcp:compute:SharedVPCHostProject hub-svpc-host create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5268679Z  +  gcp:compute:FirewallPolicyAssociation hierarchical-fw-assoc-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5292282Z  +  gcp:compute:FirewallPolicyRule hierarchical-fw-allow-windows-activation create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5303671Z  +  gcp:compute:FirewallPolicyRule hierarchical-fw-allow-iap-ssh-rdp create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5335372Z  +  gcp:compute:FirewallPolicyRule hierarchical-fw-delegate-rfc1918-egress create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5358617Z  +  gcp:compute:FirewallPolicyRule hierarchical-fw-allow-google-hbs-hcs create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5384415Z  +  gcp:compute:FirewallPolicyRule hierarchical-fw-delegate-rfc1918-ingress create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5406343Z  +  gcp:compute:Route hub-egress-internet create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5442015Z  +  gcp:compute:GlobalAddress hub-psa-ip create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5463044Z  +  pkg:index:NetworkFirewallPolicy hub-vpc-fw create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5463931Z  +  gcp:compute:Subnetwork hub-sb-c-svpc-hub-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5495936Z  +  gcp:compute:Subnetwork hub-sb-c-svpc-hub-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5506857Z  +  gcp:compute:NetworkFirewallPolicy hub-vpc-fw-policy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5530324Z  +  pkg:index:PrivateServiceConnect hub-psc create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5531693Z  +  gcp:servicenetworking:Connection hub-psa-conn create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5580061Z  +  gcp:dns:ManagedZone hub-psc-pkg-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5595826Z  +  gcp:dns:ManagedZone hub-psc-apis-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5616602Z  +  gcp:dns:ManagedZone hub-psc-gcr-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5639317Z  +  gcp:compute:GlobalAddress hub-psc-ip create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5669947Z  +  pkg:index:DnsZone dns-forwarding create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5670599Z  +  gcp:dns:Policy hub-dns-policy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5705457Z  +  gcp:compute:NetworkFirewallPolicyRule hub-vpc-fw-rule-1000 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5726449Z  +  gcp:compute:NetworkFirewallPolicyRule hub-vpc-fw-rule-65530 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5754401Z  +  gcp:compute:NetworkFirewallPolicyAssociation hub-vpc-fw-assoc-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5789931Z  +  gcp:dns:RecordSet hub-psc-pkg-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5795715Z  +  gcp:dns:RecordSet hub-psc-pkg-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5805708Z  +  gcp:dns:RecordSet hub-psc-apis-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5823150Z  +  gcp:compute:GlobalForwardingRule hub-psc-fwd create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5859391Z  +  gcp:dns:ManagedZone dns-forwarding create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5871725Z  +  pkg:index:TransitivityAppliance transitivity create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5872770Z  +  gcp:dns:RecordSet hub-psc-apis-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5901954Z  +  gcp:dns:RecordSet hub-psc-gcr-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5939284Z  +  gcp:dns:RecordSet hub-psc-gcr-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5961679Z  +  gcp:compute:Firewall fw-hub-allow-health-checks create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5970735Z  +  gcp:serviceaccount:Account transitivity-sa create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5985862Z  +  pkg:index:CloudRouter hub-cr-us-central1-cr5 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.5999426Z  +  gcp:compute:HealthCheck transitivity-hc create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6000824Z  +  pkg:index:CloudRouter hub-cr-us-central1-cr6 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6024314Z  +  pkg:index:CloudRouter hub-cr-us-south1-cr5 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6032763Z  +  gcp:compute:Router hub-cr-us-central1-cr5 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6071913Z  +  pkg:index:CloudRouter hub-cr-us-south1-cr6 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6074410Z  +  gcp:compute:Router hub-cr-us-central1-cr6 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6093453Z  +  gcp:compute:Router hub-cr-us-south1-cr5 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6158192Z  +  gcp:projects:IAMMember transitivity-iam-roles/monitoring.metricWriter create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6211325Z  +  gcp:compute:InstanceTemplate transitivity-it-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6222151Z  +  gcp:compute:NetworkFirewallPolicyRule transitivity-fw-egress create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6231073Z  +  gcp:projects:IAMMember transitivity-iam-roles/logging.logWriter create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6259441Z  +  gcp:compute:InstanceTemplate transitivity-it-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6307262Z  +  pkg:index:CloudRouter hub-nat-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6309781Z  +  gcp:compute:NetworkFirewallPolicyRule transitivity-fw-ingress create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6349392Z  +  gcp:compute:Router hub-cr-us-south1-cr6 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6350854Z  +  pkg:index:CloudRouter hub-nat-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6408712Z  +  pkg:index:Networking spoke create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6409977Z  +  gcp:compute:Router hub-nat-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6421945Z  +  gcp:compute:SharedVPCHostProject spoke-svpc-host create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6461513Z  +  gcp:compute:Router hub-nat-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6489481Z  +  gcp:compute:RegionInstanceGroupManager transitivity-mig-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6496881Z  +  gcp:compute:Network spoke-vpc create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6526520Z  +  gcp:compute:RegionInstanceGroupManager transitivity-mig-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6549603Z  +  gcp:compute:Address hub-nat-us-central1-ip-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6587994Z  +  gcp:compute:Address hub-nat-us-central1-ip-1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6600964Z  +  gcp:compute:Address hub-nat-us-south1-ip-1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6622280Z  +  gcp:compute:Address hub-nat-us-south1-ip-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6663109Z  +  gcp:compute:Subnetwork spoke-sb-d-svpc-spoke-us-south1-proxy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6689217Z  +  gcp:compute:Subnetwork spoke-sb-d-svpc-spoke-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6737715Z  +  gcp:compute:Subnetwork spoke-sb-d-svpc-spoke-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6794164Z  +  gcp:compute:Subnetwork spoke-sb-d-svpc-spoke-us-central1-proxy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6804399Z  +  gcp:compute:GlobalAddress spoke-psa-ip create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6881356Z  +  gcp:compute:Route spoke-egress-internet create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6933922Z  +  pkg:index:NetworkFirewallPolicy spoke-vpc-fw create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6935223Z  +  gcp:compute:NetworkPeering spoke-to-hub create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.6999501Z  +  gcp:compute:RegionBackendService transitivity-bs-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7045892Z  +  gcp:compute:RouterNat hub-nat-us-central1-nat create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7077627Z  +  gcp:compute:RegionBackendService transitivity-bs-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7144171Z  +  gcp:compute:RouterNat hub-nat-us-south1-nat create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7174785Z  +  gcp:servicenetworking:Connection spoke-psa-conn create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7213680Z  +  pkg:index:PrivateServiceConnect spoke-psc create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7214977Z  +  gcp:compute:NetworkFirewallPolicy spoke-vpc-fw-policy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7246789Z  +  gcp:compute:NetworkPeering hub-to-spoke create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7264355Z  +  gcp:compute:GlobalAddress spoke-psc-ip create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7310470Z  +  gcp:dns:ManagedZone spoke-psc-apis-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7336075Z  +  pkg:index:DnsZone dns-peering create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7336991Z  +  gcp:dns:Policy spoke-dns-policy create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7349420Z  +  gcp:dns:ManagedZone spoke-psc-pkg-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7392357Z  +  gcp:dns:ManagedZone spoke-psc-gcr-zone create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7442262Z  +  gcp:compute:NetworkFirewallPolicyRule spoke-vpc-fw-rule-1000 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7463875Z  +  gcp:compute:NetworkFirewallPolicyAssociation spoke-vpc-fw-assoc-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7502736Z  +  gcp:compute:NetworkFirewallPolicyRule spoke-vpc-fw-rule-65530 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7535517Z  +  pkg:index:CloudRouter spoke-nat-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7536024Z  +  gcp:compute:GlobalForwardingRule spoke-psc-fwd create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7583475Z  +  gcp:dns:ManagedZone dns-peering create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7594451Z  +  gcp:dns:RecordSet spoke-psc-apis-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7613310Z  +  gcp:dns:RecordSet spoke-psc-apis-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7642967Z  +  gcp:dns:RecordSet spoke-psc-pkg-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7661763Z  +  gcp:dns:RecordSet spoke-psc-pkg-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7685787Z  +  gcp:dns:RecordSet spoke-psc-gcr-cname create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7705563Z  +  gcp:dns:RecordSet spoke-psc-gcr-a create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7746530Z  +  pkg:index:CloudRouter spoke-nat-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7747277Z  +  gcp:compute:ForwardingRule transitivity-ilb-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7770949Z  +  gcp:compute:Router spoke-nat-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7787050Z  +  gcp:compute:ForwardingRule transitivity-ilb-us-central1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7806273Z  +  gcp:compute:Router spoke-nat-us-south1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7823395Z  +  gcp:compute:Route transitivity-rt-ilb-us-south1-10-1-0-0-16 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7857737Z  +  gcp:compute:Route transitivity-rt-ilb-us-south1-100-66-0-0-18 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7889837Z  +  gcp:compute:Route transitivity-rt-ilb-us-south1-10-9-0-0-16 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7891243Z  +  gcp:compute:Address spoke-nat-us-central1-ip-1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7927896Z  +  gcp:compute:Address spoke-nat-us-central1-ip-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7942685Z  +  gcp:compute:Address spoke-nat-us-south1-ip-0 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7954325Z  +  gcp:compute:Address spoke-nat-us-south1-ip-1 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.7981137Z  +  gcp:compute:Route transitivity-rt-ilb-us-central1-10-8-0-0-16 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8003867Z  +  gcp:compute:Route transitivity-rt-ilb-us-central1-100-64-0-0-18 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8021846Z  +  gcp:compute:Route transitivity-rt-ilb-us-central1-10-0-0-0-16 create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8048067Z  +  gcp:compute:RouterNat spoke-nat-us-central1-nat create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8079243Z  +  gcp:compute:RouterNat spoke-nat-us-south1-nat create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8306854Z  +  pulumi:pulumi:Stack foundation-networks-development create 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8307695Z Outputs:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8308156Z     hub_network_name          : "vpc-c-svpc-hub"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8308478Z     hub_network_self_link     : [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8308786Z     network_name              : "vpc-d-svpc-spoke"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8309088Z     network_self_link         : [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8309412Z     shared_vpc_host_project_id: "prj-d-svpc-5678"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8309712Z     subnets_ips               : [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8309952Z         [0]: "10.8.64.0/18"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8310173Z         [1]: "10.9.64.0/18"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8310386Z         [2]: "10.26.2.0/23"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8310588Z         [3]: "10.27.2.0/23"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8310795Z     ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8310988Z     subnets_names             : [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8311248Z         [0]: "sb-d-svpc-spoke-us-central1"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8311531Z         [1]: "sb-d-svpc-spoke-us-south1"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8312155Z         [2]: "sb-d-svpc-spoke-us-central1-proxy"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8312471Z         [3]: "sb-d-svpc-spoke-us-south1-proxy"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8312737Z     ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8312928Z     subnets_self_links        : [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8313176Z         [0]: [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8313400Z         [1]: [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8313609Z         [2]: [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363016Z         [3]: [unknown]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363351Z     ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363467Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363549Z Resources:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363738Z     + 119 to create
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:35.8363874Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.0823782Z Updating (development)
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.0824093Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.5400580Z View Live: https://app.pulumi.com/ipv1337/foundation-networks/development/updates/1
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.5401107Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.6263200Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:36.6281468Z     pulumi:pulumi:Stack foundation-networks-development  Compiling the program ...
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.1552059Z @ Updating.....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.1552743Z     pulumi:pulumi:Stack foundation-networks-development  Finished compiling
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.1774934Z  +  pulumi:pulumi:Stack foundation-networks-development creating (0s) Finished compiling
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.4151054Z  +  pkg:index:HierarchicalFirewallPolicy hierarchical-fw creating (0s) 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.6873359Z @ Updating....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:39.6875145Z  +  pulumi:pulumi:Stack foundation-networks-development creating (0s) read pulumi:pulumi:StackReference organization
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:40.0579053Z  +  pulumi:pulumi:Stack foundation-networks-development creating (0s) read pulumi:pulumi:StackReference organization
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.0705327Z @ Updating....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.0705639Z  +  pkg:index:Networking hub creating (0s) 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.5582523Z @ Updating....
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.5583173Z  +  gcp:compute:SharedVPCHostProject hub-svpc-host creating (0s) 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.5587144Z  +  gcp:compute:FirewallPolicy hierarchical-fw-policy creating (0s) 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.5595829Z  +  gcp:compute:Network hub-vpc creating (0s) 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9509161Z  +  gcp:compute:SharedVPCHostProject hub-svpc-host creating (0s) error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error enabling Shared VPC Host "prj-net-hub-7d17": Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/enableXpnHost?alt=json&prettyPrint=false": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9511537Z  +  gcp:compute:SharedVPCHostProject hub-svpc-host creating (0s) error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9512285Z  +  gcp:compute:SharedVPCHostProject hub-svpc-host **creating failed** error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9838754Z  +  gcp:compute:FirewallPolicy hierarchical-fw-policy creating (0s) error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error creating FirewallPolicy: Post "https://compute.googleapis.com/compute/beta/locations/global/firewallPolicies?alt=json&parentId=823326946563": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9841053Z  +  gcp:compute:FirewallPolicy hierarchical-fw-policy creating (0s) error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:41.9841933Z  +  gcp:compute:FirewallPolicy hierarchical-fw-policy **creating failed** error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.0317816Z  +  gcp:compute:Network hub-vpc creating (0s) error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error creating Network: Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/global/networks?alt=json": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.0320326Z  +  gcp:compute:Network hub-vpc creating (0s) error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.0321150Z  +  gcp:compute:Network hub-vpc **creating failed** error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2018766Z  +  pulumi:pulumi:Stack foundation-networks-development creating (3s) error: update failed
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2206038Z  +  pkg:index:HierarchicalFirewallPolicy hierarchical-fw created 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2207908Z  +  pulumi:pulumi:Stack foundation-networks-development **creating failed** 1 error
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2208957Z  +  pkg:index:Networking hub created 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2209613Z Diagnostics:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2210213Z   gcp:compute:SharedVPCHostProject (hub-svpc-host):
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2212001Z     error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error enabling Shared VPC Host "prj-net-hub-7d17": Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/enableXpnHost?alt=json&prettyPrint=false": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2213834Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2214156Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2216164Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2218686Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2219124Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2219450Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2219857Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2220474Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2221006Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2221500Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2222454Z               "error_info_id": "CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA==",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2224127Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA%3D%3D",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2225590Z               "permission": "iam.serviceAccounts.getAccessToken"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2226168Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2226503Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2226840Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2227169Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2227752Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2228106Z     : provider=google-beta@9.29.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2228580Z     error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2230066Z     	* Error enabling Shared VPC Host "prj-net-hub-7d17": Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/enableXpnHost?alt=json&prettyPrint=false": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2231625Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2231996Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2234155Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2236552Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2237023Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2238102Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2238591Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2239232Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2239765Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2240243Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2240932Z               "error_info_id": "CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA==",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2241889Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zNzk3LTdiMGEtODdlMC0zZmQ2ODExMjVlY2YSAA%3D%3D",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2242697Z               "permission": "iam.serviceAccounts.getAccessToken"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243014Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243199Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243372Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243540Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243713Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243810Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2243962Z   gcp:compute:FirewallPolicy (hierarchical-fw-policy):
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2245151Z     error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error creating FirewallPolicy: Post "https://compute.googleapis.com/compute/beta/locations/global/firewallPolicies?alt=json&parentId=823326946563": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2246072Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2246268Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2247798Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2249140Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2249405Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2249599Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2249847Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2250193Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2250489Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2250757Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2251040Z               "permission": "iam.serviceAccounts.getAccessToken",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2251515Z               "error_info_id": "CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA==",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2252526Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA%3D%3D"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2253244Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2253422Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2253592Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2253763Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2253929Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2254119Z     : provider=google-beta@9.29.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2254376Z     error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2255114Z     	* Error creating FirewallPolicy: Post "https://compute.googleapis.com/compute/beta/locations/global/firewallPolicies?alt=json&parentId=823326946563": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2255871Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2256060Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2257275Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2258789Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2259047Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2259239Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2259483Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2259822Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2260106Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2260367Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2260652Z               "permission": "iam.serviceAccounts.getAccessToken",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2261127Z               "error_info_id": "CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA==",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2262011Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0xZTZmLTdkOWUtOTdiYi0zNDFlMWIwNWQzNDQSAA%3D%3D"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2262711Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2262889Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2263065Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2263236Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2263408Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2263505Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2263606Z   gcp:compute:Network (hub-vpc):
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2264447Z     error:   sdk-v2/provider2.go:572: sdk.helper_schema: Error creating Network: Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/global/networks?alt=json": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2265278Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2265470Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2267978Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2269311Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2269574Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2269785Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2270038Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2270380Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2270671Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2270937Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2271625Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA%3D%3D",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2272417Z               "permission": "iam.serviceAccounts.getAccessToken",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2272889Z               "error_info_id": "CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA=="
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2273296Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2273476Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2273647Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2273823Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2273993Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2274185Z     : provider=google-beta@9.29.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2274851Z     error: 1 error occurred:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2275719Z     	* Error creating Network: Post "https://compute.googleapis.com/compute/beta/projects/prj-net-hub-7d17/global/networks?alt=json": oauth2/google: status code 403: {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2276408Z       "error": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2276599Z         "code": 403,
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2278066Z         "message": "Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist). Remediate access with this Troubleshooter URL or share it with your administrator - https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA%3D%3D .",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2279350Z         "status": "PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2279604Z         "details": [
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2279809Z           {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2280055Z             "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2280399Z             "reason": "IAM_PERMISSION_DENIED",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2280699Z             "domain": "iam.googleapis.com",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2280967Z             "metadata": {
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2281724Z               "troubleshooter_url": "https://console.cloud.google.com/iam-admin/troubleshooter/summary;errorId=CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA%3D%3D",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2282505Z               "permission": "iam.serviceAccounts.getAccessToken",
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2282979Z               "error_info_id": "CiQwMTlmNDI5Yy0zN2U4LTc5YzgtYTJkNC1hMzc5NzFmMjY1NDISAA=="
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2283540Z             }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2283740Z           }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2283913Z         ]
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284084Z       }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284258Z     }
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284354Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284512Z   pulumi:pulumi:Stack (foundation-networks-development):
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284837Z     error: update failed
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2284977Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2285120Z     [Pulumi Neo] Would you like help with these diagnostics?
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2285622Z     https://app.pulumi.com/ipv1337/foundation-networks/development/updates/1?explainFailure
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286153Z     Or run `pulumi neo` for an interactive agent in your terminal.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286399Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286479Z Resources:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286658Z     + 3 created
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286843Z     4 errored
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2286954Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2287029Z Duration: 6s
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.2287141Z 
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.4890910Z ##[error]Process completed with exit code 1.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.4992847Z Post job cleanup.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.5853686Z Removed exported credentials at "/home/runner/work/vitruvian-core/vitruvian-core/gha-creds-d6948535f5533be1.json".
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.6017027Z Post job cleanup.
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.6897661Z [command]/usr/bin/git version
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.6960220Z git version 2.54.0
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7047271Z Temporarily overriding HOME='/home/runner/work/_temp/9dc50aec-85f7-4276-baa8-2645c140bc9c' before making global git config changes
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7048984Z Adding repository directory to the temporary git global config as a safe directory
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7057757Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/vitruvian-core/vitruvian-core
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7108636Z Removing SSH command configuration
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7118478Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7165508Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7487959Z Removing HTTP extra header
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7495538Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7556271Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7819364Z Removing includeIf entries pointing to credentials config files
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7827763Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7859446Z includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7860571Z includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7861598Z includeif.gitdir:/github/workspace/.git.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7862430Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7868897Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7899861Z /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7911076Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git.path /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7958147Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7985886Z /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.7995388Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/vitruvian-core/vitruvian-core/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8034491Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8060907Z /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8069997Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8107021Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8134530Z /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8143169Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8179551Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8411066Z Removing credentials config '/home/runner/work/_temp/git-credentials-826d527e-564b-40fa-bcd3-51b30ba945e4.config'
+deploy-net-development / deploy	UNKNOWN STEP	2026-07-08T16:42:42.8553421Z Cleaning up orphan processes
