@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.1...foundation-gcp-networks-v0.3.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** remove duplicate compute import ([6d91533](https://github.com/VitruvianSoftware/vitruvian-core/commit/6d91533c1dacd465c9cbc90ff3bb5edeaf57d54f))
+
 ## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.0...foundation-gcp-networks-v0.3.1) (2026-07-08)
 
 
