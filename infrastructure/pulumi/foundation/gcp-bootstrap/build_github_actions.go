@@ -104,6 +104,22 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// The environments stage uses a chained promotion workflow with three
+	// separate GitHub Environments (one per promotion stage):
+	//   foundation-env-development  → auto-deploy
+	//   foundation-env-nonproduction → manual approval
+	//   foundation-env-production    → manual approval
+	// Each needs its own WIF binding to the env SA so the OIDC environment
+	// claim matches the principalSet condition.
+	if envSA, ok := sas["env"]; ok {
+		for _, envName := range []string{"development", "nonproduction", "production"} {
+			saMappings[fmt.Sprintf("env-%s", envName)] = libcicd.SAMappingEntry{
+				SAName:    envSA.Name,
+				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-env-%s", envName)),
+			}
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via
