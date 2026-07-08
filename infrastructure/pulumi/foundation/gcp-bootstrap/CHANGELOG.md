@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.6...foundation-gcp-bootstrap-v0.4.0) (2026-07-08)
+
+
+### Features
+
+* add foundation phase 3 — hub-and-spoke networks (gcp-networks) ([#732](https://github.com/VitruvianSoftware/vitruvian-core/issues/732)) ([efdefab](https://github.com/VitruvianSoftware/vitruvian-core/commit/efdefab4ae809c2731811f16e517716ff12d4e9d))
+
 ## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.3.5...foundation-gcp-bootstrap-v0.3.6) (2026-07-08)
 
 
