@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-library-v0.9.0...foundation-library-v0.10.0) (2026-07-08)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+
+
+### Bug Fixes
+
+* **pulumi-library:** decouple API enablement dependency ([#651](https://github.com/VitruvianSoftware/vitruvian-core/issues/651)) ([6a03698](https://github.com/VitruvianSoftware/vitruvian-core/commit/6a036986759a76888dbe279ce53f46ab3f8f5968))
+* **pulumi/library:** correct invalid ignoreDeprecations value (6.0 -&gt; 5.0) ([#611](https://github.com/VitruvianSoftware/vitruvian-core/issues/611)) ([f33bd93](https://github.com/VitruvianSoftware/vitruvian-core/commit/f33bd936c2e7f7b9ce9541154aa08a0f11688a7f))
+
 ## [0.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-library-v0.8.0...foundation-library-v0.9.0) (2026-07-06)
 
 
