@@ -107,9 +107,8 @@ fi
 # --- 3. global-impact guard (same set as affected-targets.sh). ----------------
 # A build-config change can affect any target in ways a graph diff may
 # misattribute; fail open.
-if echo "${CHANGED_FILES}" | grep -E \
-  '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|tools/|BUILD$|gazelle_python\.yaml$)' \
-  >/dev/null 2>&1; then
+if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
+   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|copybara/|doctor/|gitops/|rotate-buildbuddy-key/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
   emit true "global-impact file changed"
 fi
 

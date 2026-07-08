@@ -56,16 +56,15 @@ jobs:
       # must ALWAYS report a result -- a naive `paths-ignore` would make it never
       # report and wedge the PR "pending" forever. Instead we keep triggering on
       # every event and make the heavy steps no-op to success in seconds when the
-      # PR diff is docs/gitops/markdown-only. Native git diff -- no third-party
-      # action. Runs on pull_request ONLY; on push/merge_group the gate is
-      # skipped and `relevant` is unset (empty), so the steps below -- gated on
-      # `relevant != 'false'`, which fails SAFE to running on any non-'false'
-      # value -- run unconditionally, exactly as before.
-      - name: Gate on changed paths (PR only)
+      # diff is docs/gitops/markdown-only. Native git diff -- no third-party
+      # action. On merge_group the gate is skipped and the steps below run
+      # unconditionally (the merge queue is the final safety floor).
+      - name: Gate on changed paths
         id: gate
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'merge_group'
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: bash tools/ci/relevant-paths.sh
 
       # Free disk BEFORE any Bazel work — same reclaim set + rationale as
