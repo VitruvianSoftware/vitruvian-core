@@ -107,13 +107,6 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 		return err
 	}
 
-	// 2. Hub Shared VPC Host
-	if _, err := compute.NewSharedVPCHostProject(ctx, "hub-svpc-host", &compute.SharedVPCHostProjectArgs{
-		Project: hubProjectID,
-	}); err != nil {
-		return err
-	}
-
 	// 3. Hub VPC & Subnets
 	hubVpcName := "vpc-c-svpc-hub"
 	hubNetOpts := &networking.NetworkingArgs{
@@ -314,13 +307,6 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 
 // deploySpokeNetwork creates the per-environment spoke VPC and peers it to the hub.
 func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulumi.StringOutput) (*networking.Networking, error) {
-	// 1. Spoke Shared VPC Host
-	if _, err := compute.NewSharedVPCHostProject(ctx, "spoke-svpc-host", &compute.SharedVPCHostProjectArgs{
-		Project: spokeProjectID,
-	}); err != nil {
-		return nil, err
-	}
-
 	// 2. Spoke VPC & Subnets
 	spokeVpcName := fmt.Sprintf("vpc-%s-svpc-spoke", cfg.EnvCode)
 	spokeNetOpts := &networking.NetworkingArgs{
