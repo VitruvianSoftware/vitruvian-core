@@ -48,6 +48,21 @@ on:
         type: string
         default: "infrastructure/pulumi/foundation/gcp-networks"
         description: "Working directory for pulumi commands"
+  workflow_dispatch:
+    inputs:
+      environment:
+        required: true
+        type: choice
+        options:
+          - development
+          - nonproduction
+          - production
+        description: "Target environment: development, nonproduction, or production"
+      working_directory:
+        required: false
+        type: string
+        default: "infrastructure/pulumi/foundation/gcp-networks"
+        description: "Working directory for pulumi commands"
 
 permissions:
   contents: read
