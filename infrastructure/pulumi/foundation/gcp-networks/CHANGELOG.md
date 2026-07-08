@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.0...foundation-gcp-networks-v0.3.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **networks:** use fully-qualified folder resource name for parent_id ([#747](https://github.com/VitruvianSoftware/vitruvian-core/issues/747)) ([e9e63ec](https://github.com/VitruvianSoftware/vitruvian-core/commit/e9e63ec2cad6ad4d0cbe45b04f5ee4194acfc6ca))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.2.1...foundation-gcp-networks-v0.3.0) (2026-07-08)
 
 
