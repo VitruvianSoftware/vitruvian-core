@@ -1,0 +1,7 @@
+name: foundation-environments
+description: Foundation Phase 2 - Per-environment folders, KMS, and Secrets projects
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go
