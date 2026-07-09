@@ -117,8 +117,13 @@ func authorizeProjectMetadataUpdates(ctx *pulumi.Context, cfg *Config, groupReso
 	}
 
 	// Absorb folder -> nested-project IAM inheritance lag before the label update.
+	// The custom role is bound at cfg.ParentID (fldr-foundation-1) and the seed/cicd
+	// projects sit TWO folders down (under the bootstrap folder), so the grant must
+	// inherit fldr-foundation-1 -> bootstrap-folder -> project. GCP states IAM
+	// changes can take up to ~7 min to fully propagate; 300s gives a safe margin so
+	// the same-apply label UPDATE never races the freshly-created binding.
 	gate, err := time.NewSleep(ctx, "wait-project-metadata-propagation", &time.SleepArgs{
-		CreateDuration: pulumi.String("60s"),
+		CreateDuration: pulumi.String("300s"),
 	}, pulumi.DependsOn([]pulumi.Resource{projMetaBinding}))
 	if err != nil {
 		return nil, err
