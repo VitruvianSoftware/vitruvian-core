@@ -174,7 +174,7 @@ func main() {
 		}
 
 		// 6. Egress internet route (tag-based, only when NAT is enabled)
-		_, err = compute.NewRoute(ctx, "egress-internet", &compute.RouteArgs{
+		svpcRoute, err := compute.NewRoute(ctx, "egress-internet", &compute.RouteArgs{
 			Project:        pulumi.String(cfg.ProjectID),
 			Name:           pulumi.String(fmt.Sprintf("rt-%s-svpc-1000-egress-internet-default", cfg.EnvCode)),
 			Network:        vpcModule.VPC.ID(),
@@ -214,10 +214,11 @@ func main() {
 			}
 		}
 
+		var routeDependency pulumi.Resource = svpcRoute
 		// 8. BGP Cloud Routers — 4 total (2 per region), matching upstream
 		for _, reg := range []string{cfg.Region1, cfg.Region2} {
 			for _, crIdx := range []string{"5", "6"} {
-				_, err = networking.NewCloudRouter(ctx, fmt.Sprintf("cr-%s-cr%s", reg, crIdx), &networking.RouterArgs{
+				cr, err := networking.NewCloudRouter(ctx, fmt.Sprintf("cr-%s-cr%s", reg, crIdx), &networking.RouterArgs{
 					ProjectID:          pulumi.String(cfg.ProjectID),
 					Region:             reg,
 					Network:            vpcModule.VPC.SelfLink,
@@ -225,26 +226,28 @@ func main() {
 					AdvertisedGroups:   []string{"ALL_SUBNETS"},
 					AdvertisedIpRanges: advertisedRanges,
 					EnableNat:          false, // BGP routers don't have NAT
-				}, pulumi.DependsOn([]pulumi.Resource{vpcModule.VPC}))
+				}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
 				if err != nil {
 					return err
 				}
+				routeDependency = cr.Router
 			}
 		}
 
 		// 9. Separate NAT Routers — 1 per region with static IPs (matches upstream nat.tf)
 		for _, reg := range []string{cfg.Region1, cfg.Region2} {
-			_, err = networking.NewCloudRouter(ctx, fmt.Sprintf("nat-router-%s", reg), &networking.RouterArgs{
+			natRouter, err := networking.NewCloudRouter(ctx, fmt.Sprintf("nat-router-%s", reg), &networking.RouterArgs{
 				ProjectID:       pulumi.String(cfg.ProjectID),
 				Region:          reg,
 				Network:         vpcModule.VPC.SelfLink,
 				BgpAsn:          cfg.NatBgpAsn,
 				EnableNat:       true,
 				NatNumAddresses: cfg.NatNumAddresses,
-			}, pulumi.DependsOn([]pulumi.Resource{vpcModule.VPC}))
+			}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
 			if err != nil {
 				return err
 			}
+			routeDependency = natRouter.Router
 		}
 
 		// Exports — matching TF 3-networks-svpc/envs/{env}/outputs.tf
