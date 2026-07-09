@@ -92,9 +92,13 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.organizationAdmin",
 			"roles/accesscontextmanager.policyAdmin",
 			"roles/serviceusage.serviceUsageConsumer",
-			// Read-only visibility into org custom roles so CI (running as this SA)
-			// can refresh the foundationProjectMetadataUpdater custom role minted below.
-			"roles/iam.organizationRoleViewer",
+			// Lets CI (running as this SA) create + manage the
+			// foundationProjectMetadataUpdater custom role minted below, so the
+			// whole projects.update fix is applied in-code with no org-admin human
+			// in the loop. Self-bound via this SA's organizationAdmin, which already
+			// permits granting any org role — so it's explicit, not an escalation.
+			// Also subsumes iam.roles.get (refresh-on-read).
+			"roles/iam.organizationRoleAdmin",
 		),
 		"org": withCommon(
 			"roles/orgpolicy.policyAdmin",
@@ -125,14 +129,21 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		),
 	}
 
+	// Captured so the custom role below can depend on the bootstrap SA actually
+	// holding organizationRoleAdmin before CI (running as that SA) tries to create it.
+	var bootstrapRoleAdminBinding pulumi.Resource
 	for key, roles := range orgRoles {
 		for _, role := range roles {
-			if _, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
+			binding, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
 				OrgID:  pulumi.String(cfg.OrgID),
 				Role:   pulumi.String(role),
 				Member: memberOf(sas[key]),
-			}, dependsOnGroups); err != nil {
+			}, dependsOnGroups)
+			if err != nil {
 				return nil, err
+			}
+			if key == "bootstrap" && role == "roles/iam.organizationRoleAdmin" {
+				bootstrapRoleAdminBinding = binding
 			}
 		}
 	}
@@ -193,13 +204,21 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// over-granting. net + org-folders manage no labeled projects, so they are
 	// intentionally not bound.
 	//
-	// ONE-TIME BOOTSTRAP: no foundation SA holds iam.roles.create, so the FIRST
-	// apply that introduces this role must be run by an org admin
-	// (gcp-organization-admins@vitruviansoftware.dev). Their creds also carry
-	// projects.update, so any pending label change lands in that same run.
-	// Thereafter CI (each phase SA) owns routine label updates via the bound role
-	// and reads the role on refresh via the organizationRoleViewer grant above.
+	// FULLY IN-CODE: the bootstrap SA holds organizationRoleAdmin (granted in
+	// section 2 above, self-bound via its organizationAdmin), so CI creates and
+	// owns this custom role directly — no org-admin human, nothing applied by hand.
+	// Because the SA grants itself the role and then USES it within the same apply,
+	// IAM propagation means the first bootstrap deploy may need a re-run or two to
+	// converge (roleAdmin binding -> create role; role binding -> project label
+	// update). The apply is idempotent and settles on re-run. Thereafter CI (each
+	// phase SA) owns routine label updates via the bound role.
+	// The DependsOn on the roleAdmin binding orders create-after-grant so the role
+	// is never attempted before the SA can create it.
 	// ========================================================================
+	roleDeps := []pulumi.Resource{}
+	if bootstrapRoleAdminBinding != nil {
+		roleDeps = append(roleDeps, bootstrapRoleAdminBinding)
+	}
 	projMetaRole, roleErr := organizations.NewIAMCustomRole(ctx, "foundation-project-metadata-updater", &organizations.IAMCustomRoleArgs{
 		OrgId:       pulumi.String(cfg.OrgID),
 		RoleId:      pulumi.String("foundationProjectMetadataUpdater"),
@@ -209,7 +228,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			pulumi.String("resourcemanager.projects.get"),
 			pulumi.String("resourcemanager.projects.update"),
 		},
-	}, dependsOnGroups)
+	}, dependsOnGroups, pulumi.DependsOn(roleDeps))
 	if roleErr != nil {
 		return nil, roleErr
 	}
