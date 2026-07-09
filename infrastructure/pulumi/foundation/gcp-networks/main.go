@@ -169,7 +169,7 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 	}
 
 	// Hub Egress internet route (tag-based, for NAT egress)
-	_, err = compute.NewRoute(ctx, "hub-egress-internet", &compute.RouteArgs{
+	hubRoute, err := compute.NewRoute(ctx, "hub-egress-internet", &compute.RouteArgs{
 		Project:        hubProjectID,
 		Name:           pulumi.String("rt-c-hub-1000-egress-internet-default"),
 		Network:        hubVpc.VPC.ID(),
@@ -282,13 +282,15 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 	}
 
 	// 9. Hub BGP Routers — 4 total (2 per region)
+	// We chain these route-modifying resources to avoid "route operation in progress" races
+	var routeDependency pulumi.Resource = hubRoute
 	advertisedRanges := []networking.AdvertisedIPRange{
 		{Range: "35.199.192.0/19", Description: "Google DNS Forwarding Source"},
 		{Range: cfg.PscIP + "/32", Description: "PSC Endpoint"},
 	}
 	for _, reg := range []string{cfg.Region1, cfg.Region2} {
 		for _, crIdx := range []string{"5", "6"} {
-			_, err = networking.NewCloudRouter(ctx, fmt.Sprintf("hub-cr-%s-cr%s", reg, crIdx), &networking.RouterArgs{
+			cr, err := networking.NewCloudRouter(ctx, fmt.Sprintf("hub-cr-%s-cr%s", reg, crIdx), &networking.RouterArgs{
 				ProjectID:          hubProjectID,
 				Region:             reg,
 				Network:            hubVpc.VPC.SelfLink,
@@ -296,26 +298,28 @@ func deployHubNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.Stac
 				AdvertisedGroups:   []string{"ALL_SUBNETS"},
 				AdvertisedIpRanges: advertisedRanges,
 				EnableNat:          false,
-			}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
+			}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
 			if err != nil {
 				return nil, err
 			}
+			routeDependency = cr.Router
 		}
 	}
 
 	// 10. Separate NAT routers on hub
 	for _, reg := range []string{cfg.Region1, cfg.Region2} {
-		_, err = networking.NewCloudRouter(ctx, fmt.Sprintf("hub-nat-%s", reg), &networking.RouterArgs{
+		natRouter, err := networking.NewCloudRouter(ctx, fmt.Sprintf("hub-nat-%s", reg), &networking.RouterArgs{
 			ProjectID:       hubProjectID,
 			Region:          reg,
 			Network:         hubVpc.VPC.SelfLink,
 			BgpAsn:          cfg.NatBgpAsn,
 			EnableNat:       true,
 			NatNumAddresses: cfg.NatNumAddresses,
-		}, pulumi.DependsOn([]pulumi.Resource{hubVpc.VPC}))
+		}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
 		if err != nil {
 			return nil, err
 		}
+		routeDependency = natRouter.Router
 	}
 
 	// Hub exports
@@ -390,21 +394,8 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		return nil, err
 	}
 
-	// Spoke Egress internet route (tag-based)
-	_, err = compute.NewRoute(ctx, "spoke-egress-internet", &compute.RouteArgs{
-		Project:        spokeProjectID,
-		Name:           pulumi.String(fmt.Sprintf("rt-%s-spoke-1000-egress-internet-default", cfg.EnvCode)),
-		Network:        spokeVpc.VPC.ID(),
-		DestRange:      pulumi.String("0.0.0.0/0"),
-		NextHopGateway: pulumi.String("default-internet-gateway"),
-		Priority:       pulumi.Int(1000),
-		Tags:           pulumi.StringArray{pulumi.String("egress-internet")},
-	}, pulumi.DependsOn([]pulumi.Resource{spokeVpc.VPC}))
-	if err != nil {
-		return nil, err
-	}
-
 	// 3. Bi-Directional VPC Peering (Spoke <-> Hub)
+	// We chain peerings, routes, and routers sequentially to prevent "route operation in progress" races
 	hubVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-c-svpc-hub", hubProjectID)
 
 	spokeToHub, err := compute.NewNetworkPeering(ctx, "spoke-to-hub", &compute.NetworkPeeringArgs{
@@ -418,7 +409,7 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 		return nil, err
 	}
 
-	_, err = compute.NewNetworkPeering(ctx, "hub-to-spoke", &compute.NetworkPeeringArgs{
+	hubToSpoke, err := compute.NewNetworkPeering(ctx, "hub-to-spoke", &compute.NetworkPeeringArgs{
 		Network:            hubVpcRef,
 		PeerNetwork:        spokeVpc.VPC.SelfLink,
 		Name:               pulumi.String(fmt.Sprintf("np-vpc-c-svpc-hub-%s-svpc-spoke", cfg.EnvCode)),
@@ -428,6 +419,21 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 	if err != nil {
 		return nil, err
 	}
+
+	// Spoke Egress internet route (tag-based)
+	spokeRoute, err := compute.NewRoute(ctx, "spoke-egress-internet", &compute.RouteArgs{
+		Project:        spokeProjectID,
+		Name:           pulumi.String(fmt.Sprintf("rt-%s-spoke-1000-egress-internet-default", cfg.EnvCode)),
+		Network:        spokeVpc.VPC.ID(),
+		DestRange:      pulumi.String("0.0.0.0/0"),
+		NextHopGateway: pulumi.String("default-internet-gateway"),
+		Priority:       pulumi.Int(1000),
+		Tags:           pulumi.StringArray{pulumi.String("egress-internet")},
+	}, pulumi.DependsOn([]pulumi.Resource{hubToSpoke}))
+	if err != nil {
+		return nil, err
+	}
+	var routeDependency pulumi.Resource = spokeRoute
 
 	// 4. Spoke VPC-Level Firewall
 	_, err = networking.NewNetworkFirewallPolicy(ctx, "spoke-vpc-fw", &networking.NetworkFirewallPolicyArgs{
@@ -485,17 +491,18 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, spokeProjectID pulu
 
 	// 8. NAT routers on spoke (spokes don't get BGP routers in hub-and-spoke)
 	for _, reg := range []string{cfg.Region1, cfg.Region2} {
-		_, err = networking.NewCloudRouter(ctx, fmt.Sprintf("spoke-nat-%s", reg), &networking.RouterArgs{
+		natRouter, err := networking.NewCloudRouter(ctx, fmt.Sprintf("spoke-nat-%s", reg), &networking.RouterArgs{
 			ProjectID:       spokeProjectID,
 			Region:          reg,
 			Network:         spokeVpc.VPC.SelfLink,
 			BgpAsn:          cfg.NatBgpAsn,
 			EnableNat:       true,
 			NatNumAddresses: cfg.NatNumAddresses,
-		}, pulumi.DependsOn([]pulumi.Resource{spokeVpc.VPC}))
+		}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
 		if err != nil {
 			return nil, err
 		}
+		routeDependency = natRouter.Router
 	}
 
 	return spokeVpc, nil
