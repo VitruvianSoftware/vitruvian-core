@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.6...foundation-gcp-networks-v0.3.7) (2026-07-09)
+
+
+### Bug Fixes
+
+* **networks:** set vpc_sc_members so VPC-SC access levels are valid ([#777](https://github.com/VitruvianSoftware/vitruvian-core/issues/777)) ([151bc32](https://github.com/VitruvianSoftware/vitruvian-core/commit/151bc326594e1e85fafc24490541a2fe374b1473))
+
 ## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.5...foundation-gcp-networks-v0.3.6) (2026-07-09)
 
 
