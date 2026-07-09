@@ -56,6 +56,24 @@ jobs:
             dir: infrastructure/pulumi/foundation/gcp-org
             stack: production
             environment: foundation-org-preview
+          # gcp-environments and gcp-networks are multi-environment
+          # (development/nonproduction/production stacks). We preview the
+          # `development` stack as the representative leg per component: it runs
+          # first in the promotion chain and — for networks — is the only stack
+          # that deploys the hub AND a spoke with secondary ranges, so it
+          # exercises the most of main.go (including the subnets_secondary_ranges
+          # export whose nil-pointer panic reached deploy uncaught before #772).
+          # Both read cross-stack StackReferences to the applied
+          # ipv1337/foundation-org/production stack, so `pulumi preview` runs the
+          # program end-to-end and would catch such a program-crashing panic.
+          - app: gcp-environments
+            dir: infrastructure/pulumi/foundation/gcp-environments
+            stack: development
+            environment: foundation-environments-preview
+          - app: gcp-networks
+            dir: infrastructure/pulumi/foundation/gcp-networks
+            stack: development
+            environment: foundation-networks-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
@@ -72,6 +90,17 @@ jobs:
               - '${{ matrix.dir }}/**'
               - 'infrastructure/pulumi/pkg/**'
               - '.github/workflows/foundation-preview.yaml'
+
+      # Hermetic fast-fail before the heavier, cloud-dependent preview: `go vet`
+      # builds every package (using the go.mod-declared toolchain via
+      # GOTOOLCHAIN=auto, same as Pulumi's own build), so a program that fails to
+      # compile or trips a vet check is caught here without any GCP/Pulumi
+      # credentials — even if Pulumi Cloud or a referenced stack is unavailable.
+      # The preview below then runs the program to catch runtime faults (e.g. the
+      # subnets_secondary_ranges nil-pointer panic that reached deploy uncaught).
+      - name: go vet (${{ matrix.app }})
+        working-directory: ${{ matrix.dir }}
+        run: go vet ./...
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
