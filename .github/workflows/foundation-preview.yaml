@@ -69,11 +69,11 @@ jobs:
           - app: gcp-environments
             dir: infrastructure/pulumi/foundation/gcp-environments
             stack: development
-            environment: foundation-environments-preview
+            environment: foundation-env-preview
           - app: gcp-networks
             dir: infrastructure/pulumi/foundation/gcp-networks
             stack: development
-            environment: foundation-networks-preview
+            environment: foundation-net-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
