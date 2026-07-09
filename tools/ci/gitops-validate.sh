@@ -58,18 +58,25 @@ echo "gitops-validate: kubeconform over gitops/argocd ..."
 #
 # -strict                    reject duplicate keys + unknown fields.
 # -ignore-missing-schemas    CRDs not in the catalog (e.g. Cilium, k3s
-#                            HelmChartConfig) are SKIPPED, not failed — so this
-#                            validates everything schema-known without
-#                            false-failing on the exotic CRDs.
-# find … -print0 | xargs -0: portable (no bash-4 mapfile). With `set -o
-# pipefail`, xargs returns non-zero if ANY kubeconform invocation fails, so a
-# malformed manifest fails the job.
+SCHEMA_DIR="/tmp/k8s-json-schema"
+CRD_CATALOG_DIR="/tmp/crd-catalog"
+
+if [ ! -d "${SCHEMA_DIR}" ]; then
+  echo "gitops-validate: cloning kubernetes-json-schema..."
+  git clone --depth 1 https://github.com/yannh/kubernetes-json-schema.git "${SCHEMA_DIR}"
+fi
+
+if [ ! -d "${CRD_CATALOG_DIR}" ]; then
+  echo "gitops-validate: cloning CRDs-catalog..."
+  git clone --depth 1 https://github.com/datreeio/CRDs-catalog.git "${CRD_CATALOG_DIR}"
+fi
+
 find gitops/argocd -name '*.yaml' -print0 \
   | xargs -0 kubeconform \
       -strict \
       -ignore-missing-schemas \
-      -schema-location default \
-      -schema-location "${CATALOG}" \
+      -schema-location "${SCHEMA_DIR}/master-standalone-strict/{{.ResourceKind}}{{.KindSuffix}}.json" \
+      -schema-location "${CRD_CATALOG_DIR}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
       -summary
 
 echo "gitops-validate: OK"
