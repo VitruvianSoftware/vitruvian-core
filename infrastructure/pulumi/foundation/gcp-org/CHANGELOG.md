@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.2...foundation-gcp-org-v0.4.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* remediate 16 foundation audit findings for upstream parity ([#758](https://github.com/VitruvianSoftware/vitruvian-core/issues/758)) ([82aff7f](https://github.com/VitruvianSoftware/vitruvian-core/commit/82aff7f2b5c6bbf0cf3b2559825133b85e0b2ee0))
+
 ## [0.4.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.1...foundation-gcp-org-v0.4.2) (2026-07-08)
 
 
