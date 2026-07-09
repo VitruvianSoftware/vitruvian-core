@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.3...foundation-gcp-org-v0.4.4) (2026-07-09)
+
+
+### Bug Fixes
+
+* **gcp-org:** own the org ACM policy (enable create_access_context_manager_policy) ([#775](https://github.com/VitruvianSoftware/vitruvian-core/issues/775)) ([713c8b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/713c8b432ed74c2e1a723194bab95665ce92615c))
+
 ## [0.4.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.2...foundation-gcp-org-v0.4.3) (2026-07-09)
 
 
