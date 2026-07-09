@@ -296,17 +296,6 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 			}); err != nil {
 				return err
 			}
-
-			// Grant the same roles on all spoke projects
-			for envName, projID := range proj.NetworkProjectIDs {
-				if _, err := projects.NewIAMMember(ctx, fmt.Sprintf("net-spoke-sa-%s-%s", envName, role), &projects.IAMMemberArgs{
-					Project: projID,
-					Role:    pulumi.String(role),
-					Member:  networkSA,
-				}); err != nil {
-					return err
-				}
-			}
 		}
 	}
 

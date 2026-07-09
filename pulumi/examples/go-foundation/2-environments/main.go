@@ -17,8 +17,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -48,29 +46,28 @@ func main() {
 		// The 1-org stage exports a "tags" map with keys like "environment_development".
 		tagsOutput := orgStack.GetOutput(pulumi.String("tags"))
 
-		// 2. Deploy per-environment baselines
-		envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
+		// Deploy baseline for this environment.
+		// Each Pulumi stack (development, nonproduction, production) deploys
+		// exactly one environment. The env and env_code are read from stack
+		// config, enabling sequential promotion via GitHub Environment gates.
+		outputs, err := deployEnvBaseline(ctx, cfg, cfg.Env, cfg.EnvCode, tagsOutput)
+		if err != nil {
+			return err
+		}
 
-		for env, code := range envCodes {
-			outputs, err := deployEnvBaseline(ctx, cfg, env, code, tagsOutput)
-			if err != nil {
-				return err
-			}
+		// Exports — matches upstream TF 2-environments/envs/{env}/outputs.tf exactly.
+		// Since each stack deploys a single environment, outputs are un-prefixed
+		// (matching the TF convention where each env has its own state file).
+		ctx.Export("env_folder", outputs.FolderName)
+		ctx.Export("env_kms_project_id", outputs.KMSProjectID)
+		ctx.Export("env_kms_project_number", outputs.KMSProjectNumber)
+		ctx.Export("env_secrets_project_id", outputs.SecretsProjectID)
 
-			// Exports — matches upstream TF 2-environments/envs/{env}/outputs.tf exactly
-			// TF has separate per-env directories, so outputs are un-prefixed.
-			// Since Go deploys all envs in one program, we namespace with env prefix.
-			ctx.Export(fmt.Sprintf("%s_env_folder", env), outputs.FolderName)
-			ctx.Export(fmt.Sprintf("%s_env_kms_project_id", env), outputs.KMSProjectID)
-			ctx.Export(fmt.Sprintf("%s_env_kms_project_number", env), outputs.KMSProjectNumber)
-			ctx.Export(fmt.Sprintf("%s_env_secrets_project_id", env), outputs.SecretsProjectID)
-
-			// Export Assured Workload outputs when configured.
-			// Matches TF's assured_workload_id and assured_workload_resources outputs.
-			if outputs.AssuredWorkloadID != (pulumi.StringOutput{}) {
-				ctx.Export(fmt.Sprintf("%s_assured_workload_id", env), outputs.AssuredWorkloadID)
-				ctx.Export(fmt.Sprintf("%s_assured_workload_resources", env), outputs.AssuredWorkloadResources)
-			}
+		// Export Assured Workload outputs when configured.
+		// Matches TF's assured_workload_id and assured_workload_resources outputs.
+		if outputs.AssuredWorkloadID != (pulumi.StringOutput{}) {
+			ctx.Export("assured_workload_id", outputs.AssuredWorkloadID)
+			ctx.Export("assured_workload_resources", outputs.AssuredWorkloadResources)
 		}
 
 		return nil
@@ -109,7 +106,15 @@ type AssuredWorkloadConfig struct {
 // are set via Pulumi config rather than inherited from bootstrap stack
 // references. This is because Pulumi stack references return async Outputs,
 // but these values are consumed as synchronous Go strings in resource args.
+//
+// In the monorepo promotion model, each Pulumi stack (development,
+// nonproduction, production) deploys exactly one environment. The Env and
+// EnvCode fields are read from the per-stack config file.
 type EnvConfig struct {
+	// Environment identity (from per-stack config)
+	Env     string // e.g. "development", "nonproduction", "production"
+	EnvCode string // e.g. "d", "n", "p"
+
 	// Core identifiers (from Pulumi config)
 	OrgID          string
 	BillingAccount string
@@ -136,6 +141,8 @@ type EnvConfig struct {
 func loadEnvConfig(ctx *pulumi.Context) *EnvConfig {
 	conf := config.New(ctx, "")
 	c := &EnvConfig{
+		Env:            conf.Require("env"),
+		EnvCode:        conf.Require("env_code"),
 		OrgID:          conf.Require("org_id"),
 		BillingAccount: conf.Require("billing_account"),
 		ProjectPrefix:  conf.Get("project_prefix"),
