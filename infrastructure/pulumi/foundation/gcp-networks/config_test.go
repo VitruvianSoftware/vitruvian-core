@@ -55,9 +55,13 @@ func TestLoadNetConfig(t *testing.T) {
 		assert.Equal(t, "10.26.2.0/23", cfg.SpokeProxy1Cidr)
 		assert.Equal(t, "10.27.2.0/23", cfg.SpokeProxy2Cidr)
 
-		// Verify hub CIDRs
-		assert.Equal(t, "10.0.64.0/18", cfg.HubSubnet1Cidr)
-		assert.Equal(t, "10.1.64.0/18", cfg.HubSubnet2Cidr)
+		// Verify hub CIDRs (matching upstream)
+		assert.Equal(t, "10.8.0.0/18", cfg.HubSubnet1Cidr)
+		assert.Equal(t, "10.9.0.0/18", cfg.HubSubnet2Cidr)
+
+		// Verify hub proxy CIDRs
+		assert.Equal(t, "10.26.0.0/23", cfg.HubProxy1Cidr)
+		assert.Equal(t, "10.27.0.0/23", cfg.HubProxy2Cidr)
 
 		// Verify defaults
 		assert.Equal(t, "us-central1", cfg.Region1)
@@ -67,6 +71,16 @@ func TestLoadNetConfig(t *testing.T) {
 		assert.True(t, cfg.FirewallPoliciesEnableLogging)
 		assert.True(t, cfg.DnsEnableLogging)
 		assert.False(t, cfg.EnforceVpcSc) // Dry-run first
+
+		// Verify feature toggle defaults (all false matching upstream)
+		assert.False(t, cfg.EnableHubAndSpokeTransitivity)
+		assert.False(t, cfg.HubNatEnabled)
+		assert.False(t, cfg.NatEnabled)
+		assert.False(t, cfg.WindowsActivationEnabled)
+
+		// Verify secondary ranges only on R1
+		assert.Equal(t, "100.72.64.0/18", cfg.SpokeGkePod1Cidr)
+		assert.Equal(t, "100.73.64.0/18", cfg.SpokeGkeSvc1Cidr)
 		return nil
 	}, pulumi.WithMocks("project", "stack", mocks(0)))
 	assert.NoError(t, err)

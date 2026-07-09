@@ -68,6 +68,9 @@ type NetConfig struct {
 	// Firewall
 	FirewallPoliciesEnableLogging bool
 
+	// Hierarchical Firewall folder associations (matching upstream 6-folder pattern)
+	HierarchicalFwAssociations []string
+
 	// PSC
 	PscIP string
 
@@ -76,26 +79,37 @@ type NetConfig struct {
 	NatBgpAsn       int
 	NatNumAddresses int
 
+	// Feature toggles (matching upstream defaults)
+	EnableHubAndSpokeTransitivity bool // default false, matching upstream
+	HubNatEnabled                 bool // default false, matching upstream
+	NatEnabled                    bool // default false, matching upstream (spoke NAT)
+	WindowsActivationEnabled      bool // default false, matching upstream
+
 	// VPC Flow Logs
 	VpcFlowLogs *VpcFlowLogsConfig
 
 	// VPC Service Controls
 	VpcScRestrictedServices []string
 	EnforceVpcSc            bool
+	PolicyID                string   // Override ACM policy ID (if not using StackReference)
+	VpcScMembers            []string // Members to add to access levels
+	VpcScProjects           []string // Additional project numbers for perimeter
 
 	// Per-environment spoke CIDRs (assigned based on EnvCode)
 	SpokeSubnet1Cidr string
 	SpokeSubnet2Cidr string
 	SpokeProxy1Cidr  string
 	SpokeProxy2Cidr  string
+	// Secondary ranges only on R1 (matching upstream — R2 has no secondary ranges)
 	SpokeGkePod1Cidr string
 	SpokeGkeSvc1Cidr string
-	SpokeGkePod2Cidr string
-	SpokeGkeSvc2Cidr string
 
 	// Hub CIDRs (shared, only used by development stack)
+	// Matching upstream: 10.8.0.0/18 (R1), 10.9.0.0/18 (R2)
 	HubSubnet1Cidr string
 	HubSubnet2Cidr string
+	HubProxy1Cidr  string // Hub proxy-only subnet R1
+	HubProxy2Cidr  string // Hub proxy-only subnet R2
 }
 
 func loadNetConfig(ctx *pulumi.Context) *NetConfig {
@@ -112,11 +126,16 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		OrgStackName: conf.Get("org_stack_name"),
 		Domain:       conf.Get("domain"),
 		PscIP:        conf.Get("psc_ip"),
+		PolicyID:     conf.Get("access_context_manager_policy_id"),
 	}
 
 	// Structured config
 	conf.GetObject("target_name_servers", &c.TargetNameServers)
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
+	conf.GetObject("vpc_sc_members", &c.VpcScMembers)
+	conf.GetObject("vpc_sc_projects", &c.VpcScProjects)
+
+	conf.GetObject("hierarchical_fw_associations", &c.HierarchicalFwAssociations)
 
 	var flowLogs VpcFlowLogsConfig
 	if err := conf.GetObject("vpc_flow_logs", &flowLogs); err == nil {
@@ -149,6 +168,20 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.EnforceVpcSc = false // TF defaults enforce_vpcsc=false (dry-run first)
 	}
 
+	// Feature toggles — all default false to match upstream TF defaults
+	if val, err := conf.TryBool("enable_hub_and_spoke_transitivity"); err == nil {
+		c.EnableHubAndSpokeTransitivity = val
+	}
+	if val, err := conf.TryBool("hub_nat_enabled"); err == nil {
+		c.HubNatEnabled = val
+	}
+	if val, err := conf.TryBool("nat_enabled"); err == nil {
+		c.NatEnabled = val
+	}
+	if val, err := conf.TryBool("windows_activation_enabled"); err == nil {
+		c.WindowsActivationEnabled = val
+	}
+
 	// Apply defaults
 	if c.Region1 == "" {
 		c.Region1 = "us-central1"
@@ -172,26 +205,32 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.TargetNameServers = []string{"10.0.0.1"}
 	}
 
-	// Hub CIDRs (shared across all envs)
+	// Hub CIDRs — matching upstream TF hub-and-spoke 10.8.0.0/18 + 10.9.0.0/18
 	if c.HubSubnet1Cidr == "" {
-		c.HubSubnet1Cidr = "10.0.64.0/18"
+		c.HubSubnet1Cidr = "10.8.0.0/18"
 	}
 	if c.HubSubnet2Cidr == "" {
-		c.HubSubnet2Cidr = "10.1.64.0/18"
+		c.HubSubnet2Cidr = "10.9.0.0/18"
+	}
+	// Hub proxy-only subnets — matching upstream 10.26.0.0/23 + 10.27.0.0/23
+	if c.HubProxy1Cidr == "" {
+		c.HubProxy1Cidr = "10.26.0.0/23"
+	}
+	if c.HubProxy2Cidr == "" {
+		c.HubProxy2Cidr = "10.27.0.0/23"
 	}
 
 	// Assign spoke CIDRs based on EnvCode to avoid peering overlaps.
-	// Defaults derived from the reference architecture.
+	// Defaults derived from the upstream reference architecture.
 	switch c.EnvCode {
 	case "d":
 		c.SpokeSubnet1Cidr = "10.8.64.0/18"
 		c.SpokeSubnet2Cidr = "10.9.64.0/18"
 		c.SpokeProxy1Cidr = "10.26.2.0/23"
 		c.SpokeProxy2Cidr = "10.27.2.0/23"
+		// Secondary ranges only on R1 (matching upstream)
 		c.SpokeGkePod1Cidr = "100.72.64.0/18"
 		c.SpokeGkeSvc1Cidr = "100.73.64.0/18"
-		c.SpokeGkePod2Cidr = "100.74.64.0/18"
-		c.SpokeGkeSvc2Cidr = "100.75.64.0/18"
 	case "n":
 		c.SpokeSubnet1Cidr = "10.8.128.0/18"
 		c.SpokeSubnet2Cidr = "10.9.128.0/18"
@@ -199,8 +238,6 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.SpokeProxy2Cidr = "10.27.4.0/23"
 		c.SpokeGkePod1Cidr = "100.72.128.0/18"
 		c.SpokeGkeSvc1Cidr = "100.73.128.0/18"
-		c.SpokeGkePod2Cidr = "100.74.128.0/18"
-		c.SpokeGkeSvc2Cidr = "100.75.128.0/18"
 	case "p":
 		c.SpokeSubnet1Cidr = "10.8.192.0/18"
 		c.SpokeSubnet2Cidr = "10.9.192.0/18"
@@ -208,8 +245,6 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.SpokeProxy2Cidr = "10.27.6.0/23"
 		c.SpokeGkePod1Cidr = "100.72.192.0/18"
 		c.SpokeGkeSvc1Cidr = "100.73.192.0/18"
-		c.SpokeGkePod2Cidr = "100.74.192.0/18"
-		c.SpokeGkeSvc2Cidr = "100.75.192.0/18"
 	default:
 		// Fallback to development CIDRs
 		c.SpokeSubnet1Cidr = "10.8.64.0/18"
@@ -218,8 +253,6 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.SpokeProxy2Cidr = "10.27.2.0/23"
 		c.SpokeGkePod1Cidr = "100.72.64.0/18"
 		c.SpokeGkeSvc1Cidr = "100.73.64.0/18"
-		c.SpokeGkePod2Cidr = "100.74.64.0/18"
-		c.SpokeGkeSvc2Cidr = "100.75.64.0/18"
 	}
 
 	c.BgpAsn = 64514

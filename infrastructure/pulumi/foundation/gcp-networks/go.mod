@@ -7,6 +7,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
 	github.com/pulumi/pulumi/sdk/v3 v3.250.0
+	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 

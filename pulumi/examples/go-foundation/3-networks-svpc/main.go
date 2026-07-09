@@ -98,13 +98,9 @@ func main() {
 					FlowLogsMetadata: cfg.VpcFlowLogs.Metadata,
 				},
 				{
-					Name:   fmt.Sprintf("sb-%s-svpc-%s", cfg.EnvCode, cfg.Region2),
-					Region: cfg.Region2,
-					CIDR:   "10.9.64.0/18",
-					SecondaryRanges: []networking.SecondaryRangeArgs{
-						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-pod", cfg.EnvCode, cfg.Region2), CIDR: "100.74.64.0/18"},
-						{RangeName: fmt.Sprintf("rn-%s-svpc-%s-gke-svc", cfg.EnvCode, cfg.Region2), CIDR: "100.75.64.0/18"},
-					},
+					Name:             fmt.Sprintf("sb-%s-svpc-%s", cfg.EnvCode, cfg.Region2),
+					Region:           cfg.Region2,
+					CIDR:             "10.9.64.0/18",
 					FlowLogs:         true,
 					FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
 					FlowLogsSampling: cfg.VpcFlowLogs.FlowSampling,
@@ -215,6 +211,21 @@ func main() {
 		}
 
 		var routeDependency pulumi.Resource = svpcRoute
+
+		// Windows activation KMS route (conditional)
+		if cfg.WindowsActivationEnabled {
+			_, err = compute.NewRoute(ctx, "windows-kms", &compute.RouteArgs{
+				Project:        pulumi.String(cfg.ProjectID),
+				Name:           pulumi.String(fmt.Sprintf("rt-%s-svpc-svpc-1000-all-default-windows-kms", cfg.EnvCode)),
+				Network:        vpcModule.VPC.ID(),
+				DestRange:      pulumi.String("35.190.247.13/32"),
+				NextHopGateway: pulumi.String("default-internet-gateway"),
+				Priority:       pulumi.Int(1000),
+			}, pulumi.DependsOn([]pulumi.Resource{vpcModule.VPC}))
+			if err != nil {
+				return err
+			}
+		}
 		// 8. BGP Cloud Routers — 4 total (2 per region), matching upstream
 		for _, reg := range []string{cfg.Region1, cfg.Region2} {
 			for _, crIdx := range []string{"5", "6"} {
@@ -235,19 +246,21 @@ func main() {
 		}
 
 		// 9. Separate NAT Routers — 1 per region with static IPs (matches upstream nat.tf)
-		for _, reg := range []string{cfg.Region1, cfg.Region2} {
-			natRouter, err := networking.NewCloudRouter(ctx, fmt.Sprintf("nat-router-%s", reg), &networking.RouterArgs{
-				ProjectID:       pulumi.String(cfg.ProjectID),
-				Region:          reg,
-				Network:         vpcModule.VPC.SelfLink,
-				BgpAsn:          cfg.NatBgpAsn,
-				EnableNat:       true,
-				NatNumAddresses: cfg.NatNumAddresses,
-			}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
-			if err != nil {
-				return err
+		if cfg.NatEnabled {
+			for _, reg := range []string{cfg.Region1, cfg.Region2} {
+				natRouter, err := networking.NewCloudRouter(ctx, fmt.Sprintf("nat-router-%s", reg), &networking.RouterArgs{
+					ProjectID:       pulumi.String(cfg.ProjectID),
+					Region:          reg,
+					Network:         vpcModule.VPC.SelfLink,
+					BgpAsn:          cfg.NatBgpAsn,
+					EnableNat:       true,
+					NatNumAddresses: cfg.NatNumAddresses,
+				}, pulumi.DependsOn([]pulumi.Resource{routeDependency}))
+				if err != nil {
+					return err
+				}
+				routeDependency = natRouter.Router
 			}
-			routeDependency = natRouter.Router
 		}
 
 		// Exports — matching TF 3-networks-svpc/envs/{env}/outputs.tf
@@ -292,7 +305,8 @@ func main() {
 			}
 
 			vpcScSleep, err := time.NewSleep(ctx, "vpc-sc-propagation-wait", &time.SleepArgs{
-				CreateDuration: pulumi.String("60s"),
+				CreateDuration:  pulumi.String("60s"),
+				DestroyDuration: pulumi.String("60s"),
 			}, pulumi.DependsOn([]pulumi.Resource{perimeter.Perimeter}))
 			if err != nil {
 				return err
@@ -376,6 +390,8 @@ type NetConfig struct {
 	DnsEnableLogging              bool
 	EnforceVpcSc                  bool
 	EnableDedicatedInterconnect   bool
+	NatEnabled                    bool
+	WindowsActivationEnabled      bool
 	VpcFlowLogs                   *VpcFlowLogsConfig
 }
 
@@ -439,6 +455,18 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 		c.EnableDedicatedInterconnect = val
 	} else {
 		c.EnableDedicatedInterconnect = false
+	}
+
+	if val, err := conf.TryBool("nat_enabled"); err == nil {
+		c.NatEnabled = val
+	} else {
+		c.NatEnabled = false
+	}
+
+	if val, err := conf.TryBool("windows_activation_enabled"); err == nil {
+		c.WindowsActivationEnabled = val
+	} else {
+		c.WindowsActivationEnabled = false
 	}
 
 	if c.Region1 == "" {
