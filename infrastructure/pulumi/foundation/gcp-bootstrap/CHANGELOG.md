@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.1...foundation-gcp-bootstrap-v0.4.2) (2026-07-09)
+
+
+### Bug Fixes
+
+* **foundation:** grant bootstrap SA resourcemanager.projects.update for label upkeep ([#763](https://github.com/VitruvianSoftware/vitruvian-core/issues/763)) ([e0eba1e](https://github.com/VitruvianSoftware/vitruvian-core/commit/e0eba1e55eb091b04951280a1bc089d07ff0c100))
+
 ## [0.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.0...foundation-gcp-bootstrap-v0.4.1) (2026-07-09)
 
 
