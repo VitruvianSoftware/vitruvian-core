@@ -101,19 +101,27 @@ func main() {
 		ctx.Export("subnets_ips", subnetIPs)
 		ctx.Export("subnets_self_links", subnetSelfLinks)
 
-		// Secondary ranges export
-		var secondaryRangesList pulumi.ArrayOutput
+		// Secondary ranges export — flatten every subnet's secondary ranges into one
+		// list. NB: seeding the accumulator with a zero-value pulumi.ArrayOutput{}
+		// (nil OutputState) and passing it to pulumi.All on the first iteration
+		// panics with a nil-pointer deref, so gather the per-subnet inputs and
+		// combine them in a single pulumi.All instead of an N-deep ApplyT chain.
+		secondaryRangeInputs := make([]interface{}, 0, len(spokeOutputs.Subnets))
 		for _, subnet := range spokeOutputs.Subnets {
-			secondaryRangesList = pulumi.All(secondaryRangesList, subnet.SecondaryIpRanges).ApplyT(func(args []interface{}) []interface{} {
-				existing, _ := args[0].([]interface{})
-				ranges, _ := args[1].([]interface{})
-				return append(existing, ranges...)
-			}).(pulumi.ArrayOutput)
+			secondaryRangeInputs = append(secondaryRangeInputs, subnet.SecondaryIpRanges)
 		}
-		if secondaryRangesList == (pulumi.ArrayOutput{}) {
+		if len(secondaryRangeInputs) == 0 {
 			ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))
 		} else {
-			ctx.Export("subnets_secondary_ranges", secondaryRangesList)
+			ctx.Export("subnets_secondary_ranges", pulumi.All(secondaryRangeInputs...).ApplyT(func(args []interface{}) []interface{} {
+				flattened := []interface{}{}
+				for _, r := range args {
+					if ranges, ok := r.([]interface{}); ok {
+						flattened = append(flattened, ranges...)
+					}
+				}
+				return flattened
+			}).(pulumi.ArrayOutput))
 		}
 
 		return nil
