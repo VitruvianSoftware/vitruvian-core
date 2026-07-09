@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.3...foundation-gcp-bootstrap-v0.4.4) (2026-07-09)
+
+
+### Bug Fixes
+
+* **foundation:** deterministically order seed/cicd label updates behind the projects.update grant ([#768](https://github.com/VitruvianSoftware/vitruvian-core/issues/768)) ([0a12386](https://github.com/VitruvianSoftware/vitruvian-core/commit/0a123866bd100bb66a474c78d033ee9f9fee1585))
+* **foundation:** widen bootstrap projects.update propagation gate to 300s ([#770](https://github.com/VitruvianSoftware/vitruvian-core/issues/770)) ([f6b9759](https://github.com/VitruvianSoftware/vitruvian-core/commit/f6b9759692b353e416e3563c6a36f1cc04cfd537))
+* **gcp-bootstrap:** pin cloudidentity provider project to stop preview drift ([#771](https://github.com/VitruvianSoftware/vitruvian-core/issues/771)) ([0b4e40d](https://github.com/VitruvianSoftware/vitruvian-core/commit/0b4e40d502c6c4b086760edf0aa1dd5b8dfd18ab))
+
 ## [0.4.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.2...foundation-gcp-bootstrap-v0.4.3) (2026-07-09)
 
 
