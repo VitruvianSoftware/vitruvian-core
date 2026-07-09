@@ -156,7 +156,11 @@ Consider the following:
    pulumi config set domains_to_allow "example.com"
    ```
 
-1. (Optional) Check if your organization already has an Access Context Manager policy:
+1. (Optional) Access Context Manager. This stage does **not** create an
+   Access Context Manager policy by default (`create_access_context_manager_policy`
+   defaults to `false`), because an organization has a single org-level access
+   policy — creating one is a deliberate, org-wide action. Check whether your
+   organization already has one:
 
    ```bash
    export ORGANIZATION_ID="YOUR_ORG_ID"
@@ -164,8 +168,9 @@ Consider the following:
      --organization ${ORGANIZATION_ID} --format="value(name)")
    echo "access_context_manager_policy_id = ${ACCESS_CONTEXT_MANAGER_ID}"
 
-   # If the above returns a value, set:
-   pulumi config set create_access_context_manager_policy "false"
+   # If the above returns nothing and you want THIS stage to own the org's
+   # access policy, opt in with:
+   pulumi config set create_access_context_manager_policy "true"
    ```
 
 1. (Optional) Check if an SCC notification already exists:
@@ -228,7 +233,7 @@ Consider the following:
 | `domains_to_allow`                     | Comma-separated list of domains for domain-restricted sharing org policy |          | `""`                 |
 | `essential_contacts_domains`           | Comma-separated list of domains for Essential Contacts                   |          | `""`                 |
 | `scc_notification_filter`              | SCC notification filter expression                                       |          | `"state=\"ACTIVE\""` |
-| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy                       |          | `"true"`             |
+| `create_access_context_manager_policy` | Whether to create an Access Context Manager policy (opt-in)               |          | `"false"`            |
 | `parent_folder`                        | Deploy under a specific folder instead of org root                       |          | `""`                 |
 
 ## Outputs
