@@ -94,21 +94,36 @@ func main() {
 			return string(id)
 		}).(pulumi.StringOutput)
 
+		// 2b. Authorize project-metadata (label/name) UPDATES before any project is
+		// created or updated. On a migration apply the seed + cicd label update needs
+		// resourcemanager.projects.update, granted by the foundationProjectMetadataUpdater
+		// custom org role bound to the bootstrap SA. That grant must be effective
+		// (created AND IAM-propagated) before the update runs. When bootstrap_sa_email
+		// is set we bind it via a config-derived STRING member so the grant chain does
+		// NOT depend on the seed project that hosts the SA — breaking the
+		// seed -> SA -> grant -> seed cycle — and return a propagation-wait gate the
+		// projects are ordered behind. When unset (fresh org) this is a no-op and the
+		// legacy in-deployIAM path applies (create-with-labels, no update).
+		grant, err := authorizeProjectMetadataUpdates(ctx, cfg, groupResources)
+		if err != nil {
+			return err
+		}
+
 		// 3. Deploy the Seed Project (state storage and SA hosting)
 		// Bucket IAM members are added later in deployIAM once SAs exist.
-		seed, err := deploySeedProject(ctx, cfg, folderID, nil)
+		seed, err := deploySeedProject(ctx, cfg, folderID, nil, grant)
 		if err != nil {
 			return err
 		}
 
 		// 4. Deploy the CI/CD Project (pipeline hosting)
-		cicd, err := deployCICDProject(ctx, cfg, folderID)
+		cicd, err := deployCICDProject(ctx, cfg, folderID, grant)
 		if err != nil {
 			return err
 		}
 
 		// 5. Deploy IAM: granular service accounts with least-privilege bindings
-		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources)
+		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources, grant)
 		if err != nil {
 			return err
 		}
@@ -244,6 +259,19 @@ type Config struct {
 	GitHubRepoNet         string
 	GitHubRepoProj        string
 	WIFAttributeCondition string // Optional: override the default WIF attribute condition
+
+	// BootstrapSAEmail, when set, is the full email of the PRE-EXISTING bootstrap
+	// service account CI authenticates as via WIF (e.g.
+	// "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"). Setting it
+	// switches projects.update authorization to a DETERMINISTIC single-apply order:
+	// the foundationProjectMetadataUpdater grant is created BEFORE the seed/cicd
+	// projects and bound to this SA via a plain STRING member (no dependency on the
+	// seed project that HOSTS the SA — which would otherwise form a
+	// seed -> SA -> grant -> seed cycle), an IAM-propagation wait is inserted, and
+	// the seed + cicd label UPDATES are ordered behind it. Leave EMPTY on a
+	// brand-new org: projects are CREATED with labels (projects.create, no update)
+	// and the legacy in-deployIAM SA-member grant path runs, ungated.
+	BootstrapSAEmail string
 }
 
 func loadConfig(ctx *pulumi.Context) *Config {
@@ -279,6 +307,7 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		GitHubRepoNet:         conf.Get("github_repo_net"),
 		GitHubRepoProj:        conf.Get("github_repo_proj"),
 		WIFAttributeCondition: conf.Get("wif_attribute_condition"),
+		BootstrapSAEmail:      conf.Get("bootstrap_sa_email"),
 	}
 
 	c.OrgPolicyAdminRole = conf.Get("org_policy_admin_role") == "true"

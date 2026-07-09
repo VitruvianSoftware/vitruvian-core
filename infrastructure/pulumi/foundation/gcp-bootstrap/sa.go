@@ -30,15 +30,107 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 
 	parentiammember "foundation-0-bootstrap/modules/parent-iam-member"
 	parentiamremoverole "foundation-0-bootstrap/modules/parent-iam-remove-role"
 )
 
+// metadataGrant carries the foundationProjectMetadataUpdater custom role and the
+// IAM-propagation gate that authorizes resourcemanager.projects.update for the
+// bootstrap SA ahead of the seed/cicd label updates. Active=false (Role/Gate nil)
+// selects the legacy in-deployIAM grant path (fresh org / examples).
+type metadataGrant struct {
+	Active           bool
+	Role             *organizations.IAMCustomRole
+	Gate             pulumi.CustomResource
+	RoleAdminBinding pulumi.Resource
+}
+
+// newProjectMetadataRole is the single source of truth for the tight custom org
+// role (projects.get + projects.update). Both the deterministic and legacy paths
+// call it, so the role's URN and inputs are byte-identical between them.
+func newProjectMetadataRole(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOption) (*organizations.IAMCustomRole, error) {
+	return organizations.NewIAMCustomRole(ctx, "foundation-project-metadata-updater", &organizations.IAMCustomRoleArgs{
+		OrgId:       pulumi.String(cfg.OrgID),
+		RoleId:      pulumi.String("foundationProjectMetadataUpdater"),
+		Title:       pulumi.String("Foundation Project Metadata Updater"),
+		Description: pulumi.String("resourcemanager.projects.update (labels/name) for the foundation bootstrap SA. Managed by Pulumi."),
+		Permissions: pulumi.StringArray{
+			pulumi.String("resourcemanager.projects.get"),
+			pulumi.String("resourcemanager.projects.update"),
+		},
+	}, opts...)
+}
+
+// gatedLabel wraps a label VALUE in an Output that depends on the propagation gate.
+// The seed/cicd projects are created two component layers deep (bootstrap /
+// project_factory), where a component-level DependsOn does NOT reach the inner
+// organizations.Project (Pulumi inherits only protect/providers/aliases to
+// children, not dependsOn). Pulumi DOES track dependencies through input values,
+// and ProjectLabels/Labels threads to organizations.Project.Labels, so making one
+// label value depend on the gate makes the inner project's UPDATE wait for the
+// grant. The label resolves to `value` unchanged.
+func gatedLabel(gate pulumi.CustomResource, value string) pulumi.StringOutput {
+	return gate.ID().ApplyT(func(pulumi.ID) string { return value }).(pulumi.StringOutput)
+}
+
+// authorizeProjectMetadataUpdates mints the organizationRoleAdmin binding, the
+// custom project-metadata role, and the bootstrap SA's parent-folder binding — all
+// bound via a config-derived STRING member so the chain never depends on the
+// seed-hosted SA — then returns a propagation-wait gate the seed/cicd label updates
+// are ordered behind. Returns Active=false (legacy path) when bootstrap_sa_email is
+// unset. Resource NAMES match the legacy deployIAM resources exactly, so enabling
+// this on the live stack is an in-place code move (no replace).
+func authorizeProjectMetadataUpdates(ctx *pulumi.Context, cfg *Config, groupResources []pulumi.Resource) (*metadataGrant, error) {
+	if cfg.BootstrapSAEmail == "" {
+		return &metadataGrant{Active: false}, nil
+	}
+	dependsOnGroups := pulumi.DependsOn(groupResources)
+	member := pulumi.String("serviceAccount:" + cfg.BootstrapSAEmail)
+
+	// Same NAME as the legacy loop binding; member resolves to the identical email
+	// already in state → in-place, no replace of the org role the SA is using.
+	roleAdmin, err := iam.NewOrganizationIAMMember(ctx, "org-iam-bootstrap-iam-organizationRoleAdmin", &iam.OrganizationIAMMemberArgs{
+		OrgID:  pulumi.String(cfg.OrgID),
+		Role:   pulumi.String("roles/iam.organizationRoleAdmin"),
+		Member: member,
+	}, dependsOnGroups)
+	if err != nil {
+		return nil, err
+	}
+
+	role, err := newProjectMetadataRole(ctx, cfg, dependsOnGroups, pulumi.DependsOn([]pulumi.Resource{roleAdmin}))
+	if err != nil {
+		return nil, err
+	}
+
+	customProjMetaRole := fmt.Sprintf("organizations/%s/roles/foundationProjectMetadataUpdater", cfg.OrgID)
+	projMetaBinding, err := parentiammember.NewParentIamMember(ctx, "parent-iam-bootstrap-project-metadata", &parentiammember.ParentIamMemberArgs{
+		ParentType: cfg.ParentType,
+		ParentId:   pulumi.String(cfg.ParentID),
+		Member:     member,
+		Roles:      []string{customProjMetaRole},
+	}, pulumi.DependsOn([]pulumi.Resource{role}))
+	if err != nil {
+		return nil, err
+	}
+
+	// Absorb folder -> nested-project IAM inheritance lag before the label update.
+	gate, err := time.NewSleep(ctx, "wait-project-metadata-propagation", &time.SleepArgs{
+		CreateDuration: pulumi.String("60s"),
+	}, pulumi.DependsOn([]pulumi.Resource{projMetaBinding}))
+	if err != nil {
+		return nil, err
+	}
+
+	return &metadataGrant{Active: true, Role: role, Gate: gate, RoleAdminBinding: roleAdmin}, nil
+}
+
 // deployIAM creates the granular service accounts and assigns least-privilege
 // IAM roles at every scope (org, parent, seed project, CI/CD project, billing).
 // This directly mirrors the Terraform foundation's sa.tf.
-func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource) (map[string]*serviceaccount.Account, error) {
+func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource, grant *metadataGrant) (map[string]*serviceaccount.Account, error) {
 	dependsOnGroups := pulumi.DependsOn(groupResources)
 	// ========================================================================
 	// 1. Create Granular Service Accounts
@@ -134,6 +226,13 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	var bootstrapRoleAdminBinding pulumi.Resource
 	for key, roles := range orgRoles {
 		for _, role := range roles {
+			// Deterministic path: this binding was already created (config-derived
+			// string member) in authorizeProjectMetadataUpdates under the SAME
+			// resource name — skip here to avoid a duplicate-URN panic.
+			if grant != nil && grant.Active && key == "bootstrap" && role == "roles/iam.organizationRoleAdmin" {
+				bootstrapRoleAdminBinding = grant.RoleAdminBinding
+				continue
+			}
 			binding, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
 				OrgID:  pulumi.String(cfg.OrgID),
 				Role:   pulumi.String(role),
@@ -215,32 +314,38 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	// The DependsOn on the roleAdmin binding orders create-after-grant so the role
 	// is never attempted before the SA can create it.
 	// ========================================================================
-	roleDeps := []pulumi.Resource{}
-	if bootstrapRoleAdminBinding != nil {
-		roleDeps = append(roleDeps, bootstrapRoleAdminBinding)
-	}
-	projMetaRole, roleErr := organizations.NewIAMCustomRole(ctx, "foundation-project-metadata-updater", &organizations.IAMCustomRoleArgs{
-		OrgId:       pulumi.String(cfg.OrgID),
-		RoleId:      pulumi.String("foundationProjectMetadataUpdater"),
-		Title:       pulumi.String("Foundation Project Metadata Updater"),
-		Description: pulumi.String("resourcemanager.projects.update (labels/name) for the foundation bootstrap SA. Managed by Pulumi."),
-		Permissions: pulumi.StringArray{
-			pulumi.String("resourcemanager.projects.get"),
-			pulumi.String("resourcemanager.projects.update"),
-		},
-	}, dependsOnGroups, pulumi.DependsOn(roleDeps))
-	if roleErr != nil {
-		return nil, roleErr
+	// The custom role and the bootstrap-SA binding are the two resources on the
+	// projects.update critical path. In the deterministic path they were created
+	// earlier (string member) in authorizeProjectMetadataUpdates — reuse that role
+	// and bind only the OFF-critical-path org + env SAs here. In the legacy path,
+	// create them here as before via SA-resource members.
+	var projMetaRole *organizations.IAMCustomRole
+	projMetaKeys := []string{"bootstrap", "org", "env"}
+	if grant != nil && grant.Active {
+		projMetaRole = grant.Role
+		projMetaKeys = []string{"org", "env"} // bootstrap binding already created
+	} else {
+		roleDeps := []pulumi.Resource{}
+		if bootstrapRoleAdminBinding != nil {
+			roleDeps = append(roleDeps, bootstrapRoleAdminBinding)
+		}
+		var roleErr error
+		projMetaRole, roleErr = newProjectMetadataRole(ctx, cfg, dependsOnGroups, pulumi.DependsOn(roleDeps))
+		if roleErr != nil {
+			return nil, roleErr
+		}
 	}
 
 	// Bind the custom role to every phase SA that manages labeled projects:
 	// bootstrap (seed + cicd), org (gcp-org projects), and env (per-env kms +
 	// secrets). All of these projects live under cfg.ParentID (fldr-foundation-1),
 	// so one parent-folder binding per SA inherits down to each SA's projects.
-	// net + org-folders are not bound: net manages no project metadata, and
-	// org-folders' only project carries no labels.
+	// net + org-folders are not bound. org + env run in LATER stacks (gcp-org /
+	// gcp-environments), so their projects.update never races this binding — only
+	// bootstrap's same-apply seed/cicd update does, which is why only the bootstrap
+	// binding is hoisted + gated above.
 	customProjMetaRole := fmt.Sprintf("organizations/%s/roles/foundationProjectMetadataUpdater", cfg.OrgID)
-	for _, key := range []string{"bootstrap", "org", "env"} {
+	for _, key := range projMetaKeys {
 		if _, err := parentiammember.NewParentIamMember(ctx, fmt.Sprintf("parent-iam-%s-project-metadata", key), &parentiammember.ParentIamMemberArgs{
 			ParentType: cfg.ParentType,
 			ParentId:   pulumi.String(cfg.ParentID),
