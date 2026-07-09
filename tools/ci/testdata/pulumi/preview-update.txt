@@ -1,0 +1,10 @@
+Previewing update (production):
+  pulumi:pulumi:Stack: (same)
+    [urn=urn:pulumi:production::pf::pulumi:pulumi:Stack::pf-production]
+    ~ command:local:Command: (update)
+        [id=cmd-a831d5fb3]
+        [urn=urn:pulumi:production::pf::command:local:Command::cmd-a]
+      ~ update: "echo v1" => "echo v2-changed"
+Resources:
+    ~ 1 to update
+    5 unchanged
