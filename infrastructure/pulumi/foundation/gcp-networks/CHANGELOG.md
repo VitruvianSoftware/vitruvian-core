@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.3...foundation-gcp-networks-v0.3.4) (2026-07-09)
+
+
+### Bug Fixes
+
+* **networks:** chain network routing dependencies to fix race conditions ([0ff0f53](https://github.com/VitruvianSoftware/vitruvian-core/commit/0ff0f53d267b5a46ec6e2a19bcdc20292858fe96))
+
 ## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.2...foundation-gcp-networks-v0.3.3) (2026-07-08)
 
 
