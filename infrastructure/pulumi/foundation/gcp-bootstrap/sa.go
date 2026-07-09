@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/iam"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -91,6 +92,9 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.organizationAdmin",
 			"roles/accesscontextmanager.policyAdmin",
 			"roles/serviceusage.serviceUsageConsumer",
+			// Read-only visibility into org custom roles so CI (running as this SA)
+			// can refresh the foundationProjectMetadataUpdater custom role minted below.
+			"roles/iam.organizationRoleViewer",
 		),
 		"org": withCommon(
 			"roles/orgpolicy.policyAdmin",
@@ -174,6 +178,47 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// ========================================================================
+	// 3b. Project-metadata custom role for the Bootstrap SA
+	//
+	// organizationAdmin + folderAdmin let the bootstrap SA create/delete/move
+	// projects but NOT resourcemanager.projects.update (label/name edits). No
+	// predefined role grants only that permission, and roles/editor would be far
+	// too broad for this least-privilege stack, so we mint a tight custom role
+	// and bind it to the bootstrap SA at the parent folder. This lets CI keep the
+	// seed + CI/CD project labels current (see projects.go deploySeedProject /
+	// deployCICDProject) without over-granting.
+	//
+	// ONE-TIME BOOTSTRAP: no foundation SA holds iam.roles.create, so the FIRST
+	// apply that introduces this role must be run by an org admin
+	// (gcp-organization-admins@vitruviansoftware.dev). Their creds also carry
+	// projects.update, so any pending label change lands in that same run.
+	// Thereafter CI (this SA) owns routine label updates via the bound role and
+	// reads the role on refresh via the organizationRoleViewer grant above.
+	// ========================================================================
+	projMetaRole, roleErr := organizations.NewIAMCustomRole(ctx, "foundation-project-metadata-updater", &organizations.IAMCustomRoleArgs{
+		OrgId:       pulumi.String(cfg.OrgID),
+		RoleId:      pulumi.String("foundationProjectMetadataUpdater"),
+		Title:       pulumi.String("Foundation Project Metadata Updater"),
+		Description: pulumi.String("resourcemanager.projects.update (labels/name) for the foundation bootstrap SA. Managed by Pulumi."),
+		Permissions: pulumi.StringArray{
+			pulumi.String("resourcemanager.projects.get"),
+			pulumi.String("resourcemanager.projects.update"),
+		},
+	}, dependsOnGroups)
+	if roleErr != nil {
+		return nil, roleErr
+	}
+
+	if _, err := parentiammember.NewParentIamMember(ctx, "parent-iam-bootstrap-project-metadata", &parentiammember.ParentIamMemberArgs{
+		ParentType: cfg.ParentType,
+		ParentId:   pulumi.String(cfg.ParentID),
+		Member:     memberOf(sas["bootstrap"]),
+		Roles:      []string{fmt.Sprintf("organizations/%s/roles/foundationProjectMetadataUpdater", cfg.OrgID)},
+	}, pulumi.DependsOn([]pulumi.Resource{projMetaRole})); err != nil {
+		return nil, err
 	}
 
 	// ========================================================================
