@@ -37,7 +37,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # need history for diff
       - id: set-matrix
@@ -78,12 +78,12 @@ jobs:
 
           if [ -z "${MATCHED_PKGS}" ]; then
             echo "setup: no library packages changed → empty matrix"
-            echo "matrix=[]" >> $GITHUB_OUTPUT
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
           else
             echo "setup: releasing packages:"
             echo "${MATCHED_PKGS}" | sed 's/^/  /'
             json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
-            echo "matrix=$json_array" >> $GITHUB_OUTPUT
+            echo "matrix=$json_array" >> "$GITHUB_OUTPUT"
           fi
 
   release-please:
