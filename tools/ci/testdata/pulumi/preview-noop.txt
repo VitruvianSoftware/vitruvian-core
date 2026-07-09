@@ -1,0 +1,5 @@
+Previewing update (production):
+  pulumi:pulumi:Stack: (same)
+    [urn=urn:pulumi:production::pf::pulumi:pulumi:Stack::pf-production]
+Resources:
+    5 unchanged

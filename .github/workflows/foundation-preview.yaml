@@ -83,31 +83,44 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          STACK: ${{ matrix.stack }}
         working-directory: ${{ matrix.dir }}
         run: |
-          set -euo pipefail
-          pulumi stack select -c "${{ matrix.stack }}"
-          pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi preview --diff (${STACK})"
+          { pulumi stack select -c "${STACK}" \
+              && pulumi preview --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
 
-      - name: Format the preview comment
+      # One digest feeds BOTH the step-summary page and the sticky PR comment, so
+      # the two can never drift. This replaces the previous plain advisory block;
+      # the sticky-comment marker (header:) is preserved so the comment updates in
+      # place on each push. tools/ci/pulumi-summary.sh parses the counts, flags
+      # any destructive replace/delete, and tucks the raw log into a <details>.
+      - name: Build the pulumi digest
+        if: always()
+        env:
+          LABEL: ${{ matrix.app }}
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
         run: |
           set -euo pipefail
-          sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/\r//g' /tmp/preview-raw.txt > /tmp/preview-clean.txt
-          {
-            echo "## Foundation: ${{ matrix.app }} — Pulumi preview (stack: ${{ matrix.stack }})"
-            echo
-            echo "> **Advisory.** This is an advisory preview for the foundation."
-            echo "> **The signal is creates, deletes, and REPLACES.**"
-            echo
-            echo '```'
-            tail -c 60000 /tmp/preview-clean.txt
-            echo '```'
-          } > /tmp/preview-comment.md
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "${LABEL}" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Post the sticky PR comment
+        if: always()
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: foundation-preview-${{ matrix.app }}
-          path: /tmp/preview-comment.md
+          path: ${{ runner.temp }}/pulumi-digest.md

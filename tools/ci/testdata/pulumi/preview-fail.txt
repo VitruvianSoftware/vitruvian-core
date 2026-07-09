@@ -1,0 +1,13 @@
+Previewing update (production):
+  pulumi:pulumi:Stack: (same)
+    [urn=urn:pulumi:production::pf::pulumi:pulumi:Stack::pf-production]
+[31mError[0m: random:index/randomPet:RandomPet is not assignable from {length: string, badProp: string}
+
+Cannot assign '{length: string, badProp: string}' to 'random:index/randomPet:RandomPet':
+
+  length: Cannot assign type 'string' to type 'integer'
+
+  Existing properties are: keepers, length, prefix, separator
+
+Resources:
+    1 unchanged

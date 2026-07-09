@@ -88,14 +88,36 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi up (${{ inputs.environment }})
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ENVIRONMENT: ${{ inputs.environment }}
         working-directory: ${{ inputs.working_directory }}
         run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (${ENVIRONMENT})"
+          { pulumi stack select -c "${ENVIRONMENT}" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      # Render the pulumi output digest onto the run's step-summary page. Runs
+      # even when the deploy fails so the failure — and what it touched — is
+      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
+      # destructive replace/delete, and tucks the raw log into a <details>.
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working_directory }}
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
           set -euo pipefail
-          echo "::group::Stack select"
-          pulumi stack select -c "${{ inputs.environment }}"
-          echo "::endgroup::"
-          echo "::group::Pulumi up"
-          pulumi up --yes --non-interactive
-          echo "::endgroup::"
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "$(basename "${WORKING_DIRECTORY}")" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"

@@ -140,13 +140,33 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi up (gcp-org / production)
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: infrastructure/pulumi/foundation/gcp-org
         run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (production)"
+          { pulumi stack select -c "production" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
           set -euo pipefail
-          pulumi stack select -c "production"
-          pulumi up --yes --non-interactive
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "gcp-org" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
 
   deploy-org-folders:
     needs: release-org-folders
@@ -169,13 +189,33 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi up (org-folders / production)
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: infrastructure/pulumi/foundation/org-folders
         run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (production)"
+          { pulumi stack select -c "production" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
           set -euo pipefail
-          pulumi stack select -c "production"
-          pulumi up --yes --non-interactive
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "org-folders" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
 
   deploy-gcp-bootstrap:
     needs: release-gcp-bootstrap
@@ -198,13 +238,33 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi up (gcp-bootstrap / production)
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
         run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (production)"
+          { pulumi stack select -c "production" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
           set -euo pipefail
-          pulumi stack select -c "production"
-          pulumi up --yes --non-interactive
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "gcp-bootstrap" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
 
   # ── Phase 2: Environments ────────────────────────────────────────────────
   # The environments stage uses a chained promotion workflow:

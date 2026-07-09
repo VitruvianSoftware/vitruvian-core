@@ -1,0 +1,62 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Regression guard for tools/ci/pulumi-summary.sh — the pulumi output digest
+# rendered into the foundation deploy/preview run summaries and the sticky PR
+# comment. The parser keys off quirks in pulumi's `--diff` output (preview vs up
+# tense, the double section `up --diff` emits, "N changes. M unchanged" lines,
+# `+-` replacements, leaked color directives on failure), so it ships with a
+# fixture-backed test built from REAL `pulumi {up,preview} --diff` captures.
+#
+# Runs on the actual runner awk (mawk/gawk), which also proves the POSIX-awk
+# parser is portable off the author's machine.
+
+name: Foundation Pulumi Summary Test
+
+on:
+  pull_request:
+    paths:
+      - "tools/ci/pulumi-summary.sh"
+      - "tools/ci/pulumi-summary_test.sh"
+      - "tools/ci/testdata/pulumi/**"
+      - ".github/workflows/foundation-pulumi-summary-test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/ci/pulumi-summary.sh"
+      - "tools/ci/pulumi-summary_test.sh"
+      - "tools/ci/testdata/pulumi/**"
+      - ".github/workflows/foundation-pulumi-summary-test.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show the runner awk (portability signal)
+        run: awk -W version 2>&1 | head -1 || awk --version 2>&1 | head -1 || true
+
+      - name: Run the pulumi-summary parser tests
+        run: bash tools/ci/pulumi-summary_test.sh

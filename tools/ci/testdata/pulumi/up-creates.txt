@@ -1,0 +1,59 @@
+Previewing update (production):
++ pulumi:pulumi:Stack: (create)
+    [urn=urn:pulumi:production::pf::pulumi:pulumi:Stack::pf-production]
+    + random:index/randomPet:RandomPet: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomPet:RandomPet::pet-a]
+        length: 2
+    + random:index/randomString:RandomString: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomString:RandomString::str-a]
+        length: 8
+    + random:index/randomPet:RandomPet: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomPet:RandomPet::pet-b]
+        length: 3
+    + random:index/randomInteger:RandomInteger: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomInteger:RandomInteger::int-a]
+        max: 100
+        min: 1
+Resources:
+    + 5 to create
+Updating (production):
++ pulumi:pulumi:Stack: (create)
+    [urn=urn:pulumi:production::pf::pulumi:pulumi:Stack::pf-production]
+    + random:index/randomPet:RandomPet: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomPet:RandomPet::pet-a]
+        length: 2
+    + random:index/randomPet:RandomPet: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomPet:RandomPet::pet-b]
+        length: 3
+    + random:index/randomInteger:RandomInteger: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomInteger:RandomInteger::int-a]
+        max: 100
+        min: 1
+    + random:index/randomString:RandomString: (create)
+        [urn=urn:pulumi:production::pf::random:index/randomString:RandomString::str-a]
+        length: 8
+        --outputs:--
+        id                      : "frank-moccasin"
+        separator               : "-"
+        --outputs:--
+        id                      : "14"
+        result                  : 14
+        --outputs:--
+        id                      : "uniquely-needed-mongrel"
+        separator               : "-"
+        --outputs:--
+        id                      : "!V7&-riJ"
+        lower                   : true
+        minLower                : 0
+        minNumeric              : 0
+        minSpecial              : 0
+        minUpper                : 0
+        number                  : true
+        numeric                 : true
+        result                  : "!V7&-riJ"
+        special                 : true
+        upper                   : true
+Resources:
+    + 5 created
+
+Duration: 1s
