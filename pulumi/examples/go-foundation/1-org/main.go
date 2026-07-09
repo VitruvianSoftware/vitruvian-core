@@ -362,7 +362,13 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		EnableBillingAccountSink: conf.Get("enable_billing_account_sink") != "false",
 
 		// Policies
-		CreateAccessContextManagerPolicy: conf.Get("create_access_context_manager_policy") != "false",
+		// Defaults false, matching upstream variables.tf
+		// (create_access_context_manager_access_policy = false). An org has a
+		// single org-level Access Context Manager policy, so creating one is
+		// opt-in: enable only when this stage should own that policy. Defaulting
+		// it true (the prior behavior) silently created an org-level singleton on
+		// every deployment — a footgun for co-tenant foundations sharing an org.
+		CreateAccessContextManagerPolicy: conf.Get("create_access_context_manager_policy") == "true",
 		EnforceAllowedWorkerPools:        conf.Get("enforce_allowed_worker_pools") == "true",
 		EnableHubAndSpoke:                conf.Get("enable_hub_and_spoke") == "true",
 		AllowedWorkerPoolID:              conf.Get("allowed_worker_pool_id"),

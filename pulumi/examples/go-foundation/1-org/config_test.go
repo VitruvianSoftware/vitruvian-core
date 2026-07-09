@@ -53,7 +53,7 @@ func TestOrgConfigDefaults(t *testing.T) {
 		assert.Equal(t, false, cfg.CreateUniqueTagKey)
 		assert.Equal(t, false, cfg.EnableSCCResources)
 		assert.Equal(t, true, cfg.EnableKMSKeyUsageTracking)
-		assert.Equal(t, true, cfg.CreateAccessContextManagerPolicy)
+		assert.Equal(t, false, cfg.CreateAccessContextManagerPolicy)
 		assert.Equal(t, false, cfg.EnforceAllowedWorkerPools)
 		assert.Equal(t, "PREVENT", cfg.ProjectDeletionPolicy)
 		assert.Equal(t, true, cfg.FolderDeletionProtection)
