@@ -36,23 +36,22 @@ DATA="${HERE}/testdata/pulumi"
 fails=0
 run() { bash "$SCRIPT" "$1" "${DATA}/$2" "$3"; }
 
+# Literal substring check via bash pattern matching — NOT `printf | grep -q`,
+# whose early pipe close SIGPIPEs printf and, under pipefail, flips a found match
+# into a spurious failure on large digests. The quoted "$3" is matched literally.
 # assert_has <name> <output> <fixed-substring>
 assert_has() {
-  if printf '%s' "$2" | grep -qF -- "$3"; then
-    printf '  ✓ %s\n' "$1"
-  else
-    printf '  ✗ %s — expected to find: %s\n' "$1" "$3" >&2
-    fails=$((fails + 1))
-  fi
+  case "$2" in
+    *"$3"*) printf '  ✓ %s\n' "$1" ;;
+    *) printf '  ✗ %s — expected to find: %s\n' "$1" "$3" >&2; fails=$((fails + 1)) ;;
+  esac
 }
 # assert_missing <name> <output> <fixed-substring>
 assert_missing() {
-  if printf '%s' "$2" | grep -qF -- "$3"; then
-    printf '  ✗ %s — should NOT contain: %s\n' "$1" "$3" >&2
-    fails=$((fails + 1))
-  else
-    printf '  ✓ %s\n' "$1"
-  fi
+  case "$2" in
+    *"$3"*) printf '  ✗ %s — should NOT contain: %s\n' "$1" "$3" >&2; fails=$((fails + 1)) ;;
+    *) printf '  ✓ %s\n' "$1" ;;
+  esac
 }
 # assert_eq <name> <actual> <expected>
 assert_eq() {
@@ -76,11 +75,11 @@ assert_has  "created row not bold"          "$out" '➕ Created | `random:index/
 # The double section `up --diff` emits must not double-count: exactly 4 change rows.
 # Resource rows are the only lines with a backtick-wrapped Type cell, which
 # distinguishes them from the counts-table header (also '| ➕ Created | …').
-rows="$(printf '%s\n' "$out" | grep -cF '| `')"
+rows="$(printf '%s\n' "$out" | grep -cF '| `' || true)"
 assert_eq   "no double-count (4 rows)"      "$rows" "4"
 # Destructive listed first: the deleted row precedes the created row.
-del_ln="$(printf '%s\n' "$out" | grep -nF '➖ **Deleted** | `' | head -1 | cut -d: -f1)"
-new_ln="$(printf '%s\n' "$out" | grep -nF '➕ Created | `' | head -1 | cut -d: -f1)"
+del_ln="$(printf '%s\n' "$out" | grep -nF '➖ **Deleted** | `' | head -1 | cut -d: -f1 || true)"
+new_ln="$(printf '%s\n' "$out" | grep -nF '➕ Created | `' | head -1 | cut -d: -f1 || true)"
 if [ "${del_ln:-0}" -lt "${new_ln:-0}" ]; then echo "  ✓ destructive-first ordering"; else echo "  ✗ destructive-first ordering ($del_ln !< $new_ln)" >&2; fails=$((fails+1)); fi
 assert_has  "collapsible log"               "$out" '<summary>📜 Full pulumi log</summary>'
 
@@ -130,7 +129,7 @@ assert_missing "no leaked ANSI"             "$out" '['$'\x1b'
 echo "row cap (destructive survive):"
 # up-creates has 5 change rows; cap at 2 → 3 dropped, note shown.
 out="$(PULUMI_SUMMARY_ROW_MAX=2 run gcp-org up-creates.txt 0)"
-capped="$(printf '%s\n' "$out" | grep -cF '| `')"
+capped="$(printf '%s\n' "$out" | grep -cF '| `' || true)"
 assert_eq   "table capped to 2 rows"        "$capped" "2"
 assert_has  "truncation note (3 more)"      "$out" '… and 3 more'
 # Mixed run capped at 1 → only the single most-destructive (delete) row survives.
