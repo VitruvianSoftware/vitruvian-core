@@ -88,6 +88,34 @@ func TestConfigParentFolder(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestConfigBootstrapSAEmail guards the key that selects the deterministic
+// projects.update ordering: unset => empty => legacy in-deployIAM grant path
+// (metadataGrant.Active=false); set => loaded verbatim as the string member that
+// binds the grant and gates the seed/cicd label updates. A wrong value here would
+// bind the wrong principal / replace the org-role binding the SA uses, so the exact
+// round-trip matters.
+func TestConfigBootstrapSAEmail(t *testing.T) {
+	base := `"project:org_id":"123456789", "project:billing_account":"000000-000000-000000", "project:group_org_admins":"org-admins@example.com", "project:group_billing_admins":"billing-admins@example.com", "project:billing_data_users":"billing-users@example.com", "project:audit_data_users":"audit-users@example.com"`
+
+	// Unset => empty => legacy path.
+	os.Setenv("PULUMI_CONFIG", "{"+base+"}")
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		assert.Empty(t, loadConfig(ctx).BootstrapSAEmail, "unset => empty => legacy grant path")
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
+	os.Unsetenv("PULUMI_CONFIG")
+
+	// Set => loaded verbatim (deterministic path member).
+	os.Setenv("PULUMI_CONFIG", "{"+base+`, "project:bootstrap_sa_email":"sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+	err = pulumi.RunErr(func(ctx *pulumi.Context) error {
+		assert.Equal(t, "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com", loadConfig(ctx).BootstrapSAEmail)
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
+}
+
 func TestConfigExplicitFalseDefaults(t *testing.T) {
 	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123456789", "project:billing_account":"000000-000000-000000", "project:group_org_admins":"org-admins@example.com", "project:group_billing_admins":"billing-admins@example.com", "project:billing_data_users":"billing-users@example.com", "project:audit_data_users":"audit-users@example.com", "project:random_suffix":"false", "project:folder_deletion_protection":"false"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")

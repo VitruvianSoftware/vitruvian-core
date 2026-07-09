@@ -54,8 +54,16 @@ type CICDProject struct {
 //   - GCS state bucket with KMS encryption and versioning
 //   - Org policy for cross-project SA usage
 //   - State bucket IAM grants
-func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringOutput, bucketIAMMembers []pulumi.StringInput) (*SeedProject, error) {
+func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringOutput, bucketIAMMembers []pulumi.StringInput, grant *metadataGrant) (*SeedProject, error) {
 	kmsPrevent := !cfg.BucketTFStateKMSForceDestroy
+	// Deterministic path: gate the label UPDATE behind the IAM-propagation wait by
+	// deriving a label VALUE from the gate. This is the only way to make the inner
+	// organizations.Project (created two component layers deep) wait for the grant;
+	// a component-level DependsOn would not reach it.
+	var seedBusinessCode pulumi.StringInput = pulumi.String("shared")
+	if grant != nil && grant.Active {
+		seedBusinessCode = gatedLabel(grant.Gate, "shared")
+	}
 	b, err := bootstrap.NewBootstrap(ctx, "seed-bootstrap", &bootstrap.BootstrapArgs{
 		OrgID:            cfg.OrgID,
 		FolderID:         folderID,
@@ -71,7 +79,7 @@ func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 			"billing_code":      pulumi.String("1234"),
 			"primary_contact":   pulumi.String("james_nguyen"),
 			"secondary_contact": pulumi.String("christine_kim"),
-			"business_code":     pulumi.String("shared"),
+			"business_code":     seedBusinessCode,
 			"env_code":          pulumi.String("b"),
 			"vpc":               pulumi.String("none"),
 		},
@@ -153,7 +161,11 @@ func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 // This is the equivalent of prj-b-cicd in the Terraform foundation.
 // The CI/CD project uses pkg/project directly (not pkg/bootstrap) because
 // it doesn't need state bucket or KMS — those live in the seed project.
-func deployCICDProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringOutput) (*CICDProject, error) {
+func deployCICDProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringOutput, grant *metadataGrant) (*CICDProject, error) {
+	var cicdBusinessCode pulumi.StringInput = pulumi.String("shared")
+	if grant != nil && grant.Active {
+		cicdBusinessCode = gatedLabel(grant.Gate, "shared")
+	}
 	cicd, err := project.NewProject(ctx, "cicd-project", &project.ProjectArgs{
 		ProjectID:             pulumi.String(fmt.Sprintf("%s-b-cicd", cfg.ProjectPrefix)),
 		Name:                  pulumi.String(fmt.Sprintf("%s-b-cicd", cfg.ProjectPrefix)),
@@ -168,7 +180,7 @@ func deployCICDProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 			"billing_code":      pulumi.String("1234"),
 			"primary_contact":   pulumi.String("james_nguyen"),
 			"secondary_contact": pulumi.String("christine_kim"),
-			"business_code":     pulumi.String("shared"),
+			"business_code":     cicdBusinessCode,
 			"env_code":          pulumi.String("b"),
 			"vpc":               pulumi.String("none"),
 		},

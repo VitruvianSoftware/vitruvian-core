@@ -46,6 +46,13 @@ config:
   # enforces it org-wide and a second authoritative binding would clobber it.
   foundation-bootstrap:enforce_org_billing_creator: "false"
 
+  # Full email of the pre-existing bootstrap SA (the WIF identity CI runs as).
+  # Enables the DETERMINISTIC projects.update ordering in main.go (string-member
+  # grant + IAM-propagation gate → seed/cicd label updates ordered behind it, so a
+  # single apply converges with no re-run). Must EXACTLY equal the live seed SA
+  # email, or the org-role binding it's a member of would be replaced mid-apply.
+  foundation-bootstrap:bootstrap_sa_email: "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"
+
   # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---
   foundation-bootstrap:github_owner: "VitruvianSoftware"
   foundation-bootstrap:github_repo_bootstrap: "vitruvian-core"
