@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.5...foundation-gcp-networks-v0.3.6) (2026-07-09)
+
+
+### Bug Fixes
+
+* **networks:** stop nil-pointer panic when exporting subnet secondary ranges ([#772](https://github.com/VitruvianSoftware/vitruvian-core/issues/772)) ([7646175](https://github.com/VitruvianSoftware/vitruvian-core/commit/76461754478e88e1e370aae28c04bbc3a1fa8433))
+
 ## [0.3.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.4...foundation-gcp-networks-v0.3.5) (2026-07-09)
 
 
