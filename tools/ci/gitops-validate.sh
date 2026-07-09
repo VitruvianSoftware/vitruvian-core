@@ -61,13 +61,11 @@ echo "gitops-validate: kubeconform over gitops/argocd ..."
 #                            HelmChartConfig) are SKIPPED, not failed — so this
 #                            validates everything schema-known without
 #                            false-failing on the exotic CRDs.
-# find … -print0 | xargs -0: portable (no bash-4 mapfile). With `set -o
-# pipefail`, xargs returns non-zero if ANY kubeconform invocation fails, so a
-# malformed manifest fails the job.
 mkdir -p /tmp/kubeconform-cache
 
 find gitops/argocd -name '*.yaml' -print0 \
   | xargs -0 kubeconform \
+      -n 1 \
       -cache /tmp/kubeconform-cache \
       -strict \
       -ignore-missing-schemas \
