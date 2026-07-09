@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.2...foundation-gcp-bootstrap-v0.4.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* **foundation:** make projects.update remediation fully CI-deployable (org+env SAs + bootstrap self-mints custom role) ([#765](https://github.com/VitruvianSoftware/vitruvian-core/issues/765)) ([2b8e90d](https://github.com/VitruvianSoftware/vitruvian-core/commit/2b8e90d42e7d4128a44b53e895499a3a96e56260))
+
 ## [0.4.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.1...foundation-gcp-bootstrap-v0.4.2) (2026-07-09)
 
 
