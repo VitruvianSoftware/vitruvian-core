@@ -61,7 +61,16 @@ func main() {
 			if err != nil {
 				return err
 			}
+			// Pin Project explicitly to the quota/billing project. Left unset, the
+			// provider infers its project from the ambient environment, so the field
+			// flip-flops in previews: CI (which has an ambient GCP project) records one
+			// value while a local run (no ambient project) records none, producing
+			// perpetual benign drift on this stack. Since UserProjectOverride +
+			// BillingProject already route Cloud Identity quota through
+			// GroupsBillingProject, pinning Project to the same value makes previews
+			// deterministic regardless of runner environment.
 			ciProvider, err := gcp.NewProvider(ctx, "cloudidentity", &gcp.ProviderArgs{
+				Project:             pulumi.String(cfg.GroupsBillingProject),
 				UserProjectOverride: pulumi.Bool(true),
 				BillingProject:      pulumi.String(cfg.GroupsBillingProject),
 			}, pulumi.DependsOn([]pulumi.Resource{ciAPI}))
