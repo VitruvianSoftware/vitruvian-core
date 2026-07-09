@@ -662,6 +662,49 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 	}
 
+	// ── Preview environments for the env & net promotion stages ───────────
+	// The environments and networks stages are previewed on PRs by
+	// .github/workflows/foundation-preview.yaml (the `development` stack of
+	// each). Their DEPLOY environments (foundation-{env,net}-<stage>) are gated
+	// to protected branches, so — like the Phase-1 stages above — the PR preview
+	// needs a dedicated, UNGATED environment (no branch policy, no reviewers).
+	//
+	// Each preview env reuses its stage's WIF variables/SA (foundation-env uses
+	// sa-terraform-env, foundation-net uses sa-terraform-net). The matching WIF
+	// principalSet already exists: gcp-bootstrap's generic per-stage binding
+	// grants attribute.environment/foundation-<stage>-preview for every stage SA,
+	// so no gcp-bootstrap change is needed. PULUMI_ACCESS_TOKEN is repo-level
+	// (see tabulaEnvironments), so only the GCP_* variables are set here.
+	for _, stage := range []string{"foundation-env", "foundation-net"} {
+		previewEnv := stage + "-preview"
+		previewEnvRes, err := github.NewRepositoryEnvironment(ctx, previewEnv, &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(previewEnv),
+		})
+		if err != nil {
+			return err
+		}
+
+		// Deterministic resource names: iterate variables in sorted order.
+		vars := foundationVars[stage]
+		keys := make([]string, 0, len(vars))
+		for k := range vars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", previewEnv, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  previewEnvRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
