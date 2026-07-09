@@ -37,7 +37,9 @@ config:
   foundation-org:gcp_global_secrets_admin: "gcp-secrets-admin@vitruviansoftware.dev"
   foundation-org:gcp_kms_admin: "gcp-kms-admin@vitruviansoftware.dev"
 
-  # --- Feature flags (conservative defaults for initial deployment) ---
-  # Access Context Manager — skip creation; GCP allows only one policy per org
-  # and one already exists for organizations/90456063361.
-  foundation-org:create_access_context_manager_policy: "false"
+  # --- Feature flags ---
+  # Access Context Manager — this foundation OWNS the org's single ACM policy.
+  # GCP allows only one policy per org; the prior foundation-0 policy (19322871804,
+  # unused) was migrated/deleted 2026-07-09 so gcp-org can create a fresh one here.
+  # Its id feeds the access_context_manager_policy_id export → gcp-networks VPC-SC.
+  foundation-org:create_access_context_manager_policy: "true"
