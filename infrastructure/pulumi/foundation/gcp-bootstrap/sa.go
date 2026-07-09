@@ -92,9 +92,13 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.organizationAdmin",
 			"roles/accesscontextmanager.policyAdmin",
 			"roles/serviceusage.serviceUsageConsumer",
-			// Read-only visibility into org custom roles so CI (running as this SA)
-			// can refresh the foundationProjectMetadataUpdater custom role minted below.
-			"roles/iam.organizationRoleViewer",
+			// Lets CI (running as this SA) create + manage the
+			// foundationProjectMetadataUpdater custom role minted below, so the
+			// whole projects.update fix is applied in-code with no org-admin human
+			// in the loop. Self-bound via this SA's organizationAdmin, which already
+			// permits granting any org role — so it's explicit, not an escalation.
+			// Also subsumes iam.roles.get (refresh-on-read).
+			"roles/iam.organizationRoleAdmin",
 		),
 		"org": withCommon(
 			"roles/orgpolicy.policyAdmin",
@@ -125,14 +129,21 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		),
 	}
 
+	// Captured so the custom role below can depend on the bootstrap SA actually
+	// holding organizationRoleAdmin before CI (running as that SA) tries to create it.
+	var bootstrapRoleAdminBinding pulumi.Resource
 	for key, roles := range orgRoles {
 		for _, role := range roles {
-			if _, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
+			binding, err := iam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-%s-%s", key, roleID(role)), &iam.OrganizationIAMMemberArgs{
 				OrgID:  pulumi.String(cfg.OrgID),
 				Role:   pulumi.String(role),
 				Member: memberOf(sas[key]),
-			}, dependsOnGroups); err != nil {
+			}, dependsOnGroups)
+			if err != nil {
 				return nil, err
+			}
+			if key == "bootstrap" && role == "roles/iam.organizationRoleAdmin" {
+				bootstrapRoleAdminBinding = binding
 			}
 		}
 	}
@@ -181,23 +192,33 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 	}
 
 	// ========================================================================
-	// 3b. Project-metadata custom role for the Bootstrap SA
+	// 3b. Project-metadata custom role for the project-managing phase SAs
 	//
-	// organizationAdmin + folderAdmin let the bootstrap SA create/delete/move
+	// organizationAdmin + folderAdmin let the foundation SAs create/delete/move
 	// projects but NOT resourcemanager.projects.update (label/name edits). No
 	// predefined role grants only that permission, and roles/editor would be far
 	// too broad for this least-privilege stack, so we mint a tight custom role
-	// and bind it to the bootstrap SA at the parent folder. This lets CI keep the
-	// seed + CI/CD project labels current (see projects.go deploySeedProject /
-	// deployCICDProject) without over-granting.
+	// and bind it (below) to every phase SA that manages labeled projects. This
+	// lets CI keep those project labels current — see projects.go (seed + cicd),
+	// gcp-org/projects.go, and gcp-environments/env_baseline.go — without
+	// over-granting. net + org-folders manage no labeled projects, so they are
+	// intentionally not bound.
 	//
-	// ONE-TIME BOOTSTRAP: no foundation SA holds iam.roles.create, so the FIRST
-	// apply that introduces this role must be run by an org admin
-	// (gcp-organization-admins@vitruviansoftware.dev). Their creds also carry
-	// projects.update, so any pending label change lands in that same run.
-	// Thereafter CI (this SA) owns routine label updates via the bound role and
-	// reads the role on refresh via the organizationRoleViewer grant above.
+	// FULLY IN-CODE: the bootstrap SA holds organizationRoleAdmin (granted in
+	// section 2 above, self-bound via its organizationAdmin), so CI creates and
+	// owns this custom role directly — no org-admin human, nothing applied by hand.
+	// Because the SA grants itself the role and then USES it within the same apply,
+	// IAM propagation means the first bootstrap deploy may need a re-run or two to
+	// converge (roleAdmin binding -> create role; role binding -> project label
+	// update). The apply is idempotent and settles on re-run. Thereafter CI (each
+	// phase SA) owns routine label updates via the bound role.
+	// The DependsOn on the roleAdmin binding orders create-after-grant so the role
+	// is never attempted before the SA can create it.
 	// ========================================================================
+	roleDeps := []pulumi.Resource{}
+	if bootstrapRoleAdminBinding != nil {
+		roleDeps = append(roleDeps, bootstrapRoleAdminBinding)
+	}
 	projMetaRole, roleErr := organizations.NewIAMCustomRole(ctx, "foundation-project-metadata-updater", &organizations.IAMCustomRoleArgs{
 		OrgId:       pulumi.String(cfg.OrgID),
 		RoleId:      pulumi.String("foundationProjectMetadataUpdater"),
@@ -207,18 +228,27 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			pulumi.String("resourcemanager.projects.get"),
 			pulumi.String("resourcemanager.projects.update"),
 		},
-	}, dependsOnGroups)
+	}, dependsOnGroups, pulumi.DependsOn(roleDeps))
 	if roleErr != nil {
 		return nil, roleErr
 	}
 
-	if _, err := parentiammember.NewParentIamMember(ctx, "parent-iam-bootstrap-project-metadata", &parentiammember.ParentIamMemberArgs{
-		ParentType: cfg.ParentType,
-		ParentId:   pulumi.String(cfg.ParentID),
-		Member:     memberOf(sas["bootstrap"]),
-		Roles:      []string{fmt.Sprintf("organizations/%s/roles/foundationProjectMetadataUpdater", cfg.OrgID)},
-	}, pulumi.DependsOn([]pulumi.Resource{projMetaRole})); err != nil {
-		return nil, err
+	// Bind the custom role to every phase SA that manages labeled projects:
+	// bootstrap (seed + cicd), org (gcp-org projects), and env (per-env kms +
+	// secrets). All of these projects live under cfg.ParentID (fldr-foundation-1),
+	// so one parent-folder binding per SA inherits down to each SA's projects.
+	// net + org-folders are not bound: net manages no project metadata, and
+	// org-folders' only project carries no labels.
+	customProjMetaRole := fmt.Sprintf("organizations/%s/roles/foundationProjectMetadataUpdater", cfg.OrgID)
+	for _, key := range []string{"bootstrap", "org", "env"} {
+		if _, err := parentiammember.NewParentIamMember(ctx, fmt.Sprintf("parent-iam-%s-project-metadata", key), &parentiammember.ParentIamMemberArgs{
+			ParentType: cfg.ParentType,
+			ParentId:   pulumi.String(cfg.ParentID),
+			Member:     memberOf(sas[key]),
+			Roles:      []string{customProjMetaRole},
+		}, pulumi.DependsOn([]pulumi.Resource{projMetaRole})); err != nil {
+			return nil, err
+		}
 	}
 
 	// ========================================================================
