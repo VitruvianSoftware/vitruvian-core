@@ -99,4 +99,61 @@ if [ "$PROJECT_DIR" = "infrastructure/pulumi/platform/dev-local" ]; then
   [ -n "$_has_stack" ] || set -- --stack local "$@"
 fi
 
+# --- foundation stacks: Pulumi Cloud (ipv1337) backend + org pin ------------
+# The foundation stages (gcp-bootstrap, gcp-org, org-folders, gcp-environments,
+# gcp-networks) all live on the Pulumi Cloud backend under org `ipv1337` (see
+# each project's BUILD: "Backend: Pulumi Cloud (ipv1337)"). As with dev-local
+# above, `current` in ~/.pulumi/credentials.json is GLOBAL state shared with
+# every other Pulumi project — a sibling project on a self-managed backend
+# (`pulumi login --local`, which dev-local's README instructs) flips it. A bare
+# `--stack development` then resolves against that wrong backend, so `pulumi
+# stack ls` lists an unrelated `organization/…` (the self-managed backend's
+# pseudo-org) instead of the foundation stacks. Pin the cloud backend so these
+# projects self-target it, and org-qualify a bare `--stack NAME` to
+# `ipv1337/NAME` so it resolves regardless of the caller's Pulumi default org
+# (the multi-env stacks are selected as `development`/`nonproduction`/
+# `production`, not fully qualified). An explicit PULUMI_BACKEND_URL, or a
+# `--stack` value that is already org-qualified (`org/NAME`), still wins.
+case "$PROJECT_DIR" in
+  infrastructure/pulumi/foundation/*)
+    : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
+    export PULUMI_BACKEND_URL
+
+    # Rebuild the forwarded args, qualifying a bare `--stack`/`-s` value with the
+    # `ipv1337/` org. Rotate the positional params (consume one from the front,
+    # append one to the back, exactly $# times) so this stays bash 3.2-safe (no
+    # arrays) and preserves order. Handles `--stack NAME`, `--stack=NAME`,
+    # `-s NAME`, and `-s=NAME`; a value already containing `/` is left as-is.
+    _n=$#
+    _i=0
+    _want_stack_value=
+    while [ "$_i" -lt "$_n" ]; do
+      _a="$1"
+      shift
+      _i=$((_i + 1))
+      if [ -n "$_want_stack_value" ]; then
+        case "$_a" in */*) : ;; *) _a="ipv1337/$_a" ;; esac
+        _want_stack_value=
+        set -- "$@" "$_a"
+        continue
+      fi
+      case "$_a" in
+        --stack | -s)
+          _want_stack_value=1
+          set -- "$@" "$_a"
+          ;;
+        --stack=* | -s=*)
+          _flag="${_a%%=*}"
+          _val="${_a#*=}"
+          case "$_val" in */*) : ;; *) _val="ipv1337/$_val" ;; esac
+          set -- "$@" "$_flag=$_val"
+          ;;
+        *)
+          set -- "$@" "$_a"
+          ;;
+      esac
+    done
+    ;;
+esac
+
 exec pulumi "$SUBCMD" "$@"
