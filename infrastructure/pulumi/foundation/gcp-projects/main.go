@@ -127,6 +127,7 @@ func main() {
 		ctx.Export("shared_vpc_project", projects.SVPCProjectID)
 		ctx.Export("shared_vpc_project_number", projects.SVPCProjectNumber)
 		ctx.Export("floating_project", projects.FloatingProjectID)
+		ctx.Export("oss_floating_project", projects.OSSFloatingProjectID)
 		ctx.Export("peering_project", projects.PeeringProjectID)
 		ctx.Export("peering_network", projects.PeeringNetworkSelfLink)
 		ctx.Export("peering_subnetwork_self_link", projects.PeeringSubnetSelfLink)
@@ -186,10 +187,11 @@ type ProjectsConfig struct {
 	// project types a given go-live needs (e.g. floating-only). Gating these
 	// also lets the stack skip the org/network StackReferences whose outputs are
 	// only consumed by the disabled types.
-	SVPCProjectEnabled     bool
-	FloatingProjectEnabled bool
-	PeeringProjectEnabled  bool
-	InfraPipelineEnabled   bool
+	SVPCProjectEnabled        bool
+	FloatingProjectEnabled    bool
+	OSSFloatingProjectEnabled bool
+	PeeringProjectEnabled     bool
+	InfraPipelineEnabled      bool
 
 	// VPC-SC
 	EnforceVpcSc bool
@@ -312,6 +314,10 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	} else {
 		c.FloatingProjectEnabled = true
 	}
+	// Defaults false: the OSS floating project is a monorepo-specific addition
+	// (a home for open-source apps like oauth-user-inspector), not part of the
+	// upstream reference set, so the example stays unchanged unless opted in.
+	c.OSSFloatingProjectEnabled = conf.Get("oss_floating_project_enabled") == "true"
 	if val, err := conf.TryBool("peering_project_enabled"); err == nil {
 		c.PeeringProjectEnabled = val
 	} else {

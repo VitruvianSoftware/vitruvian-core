@@ -66,6 +66,8 @@ func TestLoadProjectsConfigDefaults(t *testing.T) {
 		assert.True(t, cfg.FloatingProjectEnabled)
 		assert.True(t, cfg.PeeringProjectEnabled)
 		assert.True(t, cfg.InfraPipelineEnabled)
+		// OSS floating project is a monorepo-specific opt-in; defaults false.
+		assert.False(t, cfg.OSSFloatingProjectEnabled)
 
 		// Feature defaults
 		assert.True(t, cfg.EnforceVpcSc)

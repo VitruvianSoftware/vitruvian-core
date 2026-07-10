@@ -22,6 +22,8 @@ config:
 
   # --- Project-type enablement: FLOATING ONLY ---
   foundation-projects:floating_project_enabled: "true"
+  # OSS apps home (e.g. oauth-user-inspector): second floating project prj-{env}-bu1-oss-floating
+  foundation-projects:oss_floating_project_enabled: "true"
   foundation-projects:svpc_project_enabled: "false"
   foundation-projects:peering_project_enabled: "false"
   foundation-projects:infra_pipeline_enabled: "false"
