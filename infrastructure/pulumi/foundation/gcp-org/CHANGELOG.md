@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.4...foundation-gcp-org-v0.4.5) (2026-07-10)
+
+
+### Bug Fixes
+
+* **org:** export per-env network project NUMBERS for VPC-SC ([#841](https://github.com/VitruvianSoftware/vitruvian-core/issues/841)) ([1ef71c7](https://github.com/VitruvianSoftware/vitruvian-core/commit/1ef71c7b9495da5ae02b84f18959d2362bf87a39))
+
 ## [0.4.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.3...foundation-gcp-org-v0.4.4) (2026-07-09)
 
 
