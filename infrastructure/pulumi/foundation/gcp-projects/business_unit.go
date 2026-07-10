@@ -34,6 +34,7 @@ type BUProjects struct {
 	SVPCProjectID                pulumi.StringOutput
 	SVPCProjectNumber            pulumi.StringOutput
 	FloatingProjectID            pulumi.StringOutput
+	OSSFloatingProjectID         pulumi.StringOutput
 	PeeringProjectID             pulumi.StringOutput
 	PeeringNetworkSelfLink       pulumi.StringOutput
 	PeeringSubnetSelfLink        pulumi.StringOutput
@@ -75,6 +76,7 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	result.SVPCProjectID = emptyStr
 	result.SVPCProjectNumber = emptyStr
 	result.FloatingProjectID = emptyStr
+	result.OSSFloatingProjectID = emptyStr
 	result.PeeringProjectID = emptyStr
 	result.PeeringNetworkSelfLink = emptyStr
 	result.PeeringSubnetSelfLink = emptyStr
@@ -187,6 +189,38 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 			return nil, err
 		}
 		result.FloatingProjectID = floatingProject.Project.ProjectId
+	}
+
+	// ========================================================================
+	// 2b. OSS Floating Project (not attached to any VPC, toggle-gated)
+	// A second floating project in the same BU folder, dedicated to hosting the
+	// monorepo's open-source applications (e.g. oauth-user-inspector) on
+	// org-managed infrastructure instead of a personal-account project. Distinct
+	// from the -sample-floating reference project above.
+	// ========================================================================
+	if cfg.OSSFloatingProjectEnabled {
+		ossFloatingProject, err := project.NewProject(ctx, "bu-oss-floating-project", &project.ProjectArgs{
+			DefaultServiceAccount: "deprivilege",
+			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-oss-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-oss-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			FolderID:              folderID,
+			BillingAccount:        pulumi.String(cfg.BillingAccount),
+			RandomProjectID:       cfg.RandomSuffix,
+			Labels:                projectLabels(cfg, "oss-application", "none"),
+			Budget:                budgetConfig(cfg),
+			ActivateApis: []string{
+				"compute.googleapis.com",
+				"container.googleapis.com",
+				"run.googleapis.com",
+				"artifactregistry.googleapis.com",
+				"billingbudgets.googleapis.com",
+				"logging.googleapis.com",
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		result.OSSFloatingProjectID = ossFloatingProject.Project.ProjectId
 	}
 
 	// ========================================================================
