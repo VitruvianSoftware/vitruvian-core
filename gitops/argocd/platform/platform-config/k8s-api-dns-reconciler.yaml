@@ -134,8 +134,11 @@ spec:
                     exit 1
                   fi
 
-                  current="$(kubectl get dnsendpoint "$DE_NAME" -n "$DE_NS" \
-                    -o jsonpath='{range .spec.endpoints[0].targets[*]}{.}{"\n"}{end}' \
+                  # kubectl jsonpath 'range' over a scalar list returns empty, so read
+                  # the targets array and expand it with jq instead.
+                  raw="$(kubectl get dnsendpoint "$DE_NAME" -n "$DE_NS" \
+                    -o jsonpath='{.spec.endpoints[0].targets}' 2>/dev/null || true)"
+                  current="$(printf '%s' "$raw" | jq -r '.[]?' 2>/dev/null \
                     | grep -E '^[0-9]' | sort -u || true)"
 
                   if [ "$desired" = "$current" ]; then
