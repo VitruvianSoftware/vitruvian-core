@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.0...go-network-v2.0.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **network:** stop transitivity instance-template perpetual replace ([#782](https://github.com/VitruvianSoftware/vitruvian-core/issues/782)) ([513da0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/513da0f72aad949010f0b76de2471af571e7444c))
+* **pulumi-library/network:** avoid setting PrivateIpGoogleAccess on proxy subnets ([6062b15](https://github.com/VitruvianSoftware/vitruvian-core/commit/6062b15a42b23d7d9bc0cb3ce0fa77443cead52c))
+* **pulumi-library/network:** set CONNECTION balancing mode for INTERNAL backend service ([6c367e4](https://github.com/VitruvianSoftware/vitruvian-core/commit/6c367e4911fbe72f0dd302ccd245a26efea0bc7b))
+
 ## [2.0.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v1.0.1...go-network-v2.0.0) (2026-07-08)
 
 
