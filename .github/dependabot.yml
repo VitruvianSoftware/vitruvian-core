@@ -31,7 +31,6 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       go-minor-patch:
         update-types:
@@ -47,7 +46,6 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       go-minor-patch:
         update-types:
@@ -64,7 +62,6 @@ updates:
       - "ci"
     commit-message:
       prefix: "chore(ci)"
-      include: "scope"
     groups:
       actions-minor-patch:
         update-types:
@@ -90,7 +87,6 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       # react + react-dom MUST share a major version or the app fails to mount at
       # runtime (react 19 + react-dom 18 broke prod 2026-06-27). Group them (+ their
@@ -178,7 +174,6 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       go-minor-patch:
         update-types:
@@ -199,7 +194,6 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       go-minor-patch:
         update-types:
@@ -219,7 +213,6 @@ updates:
       - "go"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       go-minor-patch:
         update-types:

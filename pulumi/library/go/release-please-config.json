@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/go": {
-      "release-type": "go",
-      "component": "go-foundation"
-    }
-  }
-}
