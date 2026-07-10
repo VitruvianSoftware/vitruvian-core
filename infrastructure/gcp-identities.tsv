@@ -19,7 +19,7 @@
 # james@nocentre.net is the go-forward account for future (company) projects.
 #
 # AD-HOC GCP WORK: look up the account here, then:
-#   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
+#   export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token --account=<account>)
 #
 # infra_dir                                   account                              gcp_project                 purpose
 infrastructure/pulumi/accounts/personal                         james.nguyen@gmail.com  personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
