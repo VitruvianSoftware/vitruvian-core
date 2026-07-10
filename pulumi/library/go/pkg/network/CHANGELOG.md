@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.1...go-network-v2.0.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* **network:** declare v2 module path so v2 releases are consumable ([#784](https://github.com/VitruvianSoftware/vitruvian-core/issues/784)) ([d106303](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1063037485d08a287882281e503347bcda847fc))
+
 ## [2.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.0...go-network-v2.0.1) (2026-07-10)
 
 
