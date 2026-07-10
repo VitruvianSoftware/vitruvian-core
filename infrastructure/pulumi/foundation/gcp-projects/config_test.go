@@ -1,12 +1,22 @@
-/*
- * Copyright 2026 Vitruvian Software
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- */
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 package main
 
@@ -30,18 +40,26 @@ func (projectsMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error
 }
 
 // TestLoadProjectsConfigDefaults verifies the loader's default posture — most
-// importantly that every project-type enable toggle defaults to true, preserving
-// upstream behavior (all three BU project types plus the infra-pipeline project
-// are created unless a consumer explicitly disables one).
+// importantly that every project-type enable toggle defaults to true (preserving
+// upstream behavior; our live stacks flip them off in committed config), that the
+// env code is derived, and that the environment StackReference defaults to the
+// live per-env Pulumi Cloud stack.
 func TestLoadProjectsConfigDefaults(t *testing.T) {
-	os.Setenv("PULUMI_CONFIG", `{ "project:env": "development", "project:business_code": "bu1", "project:billing_account": "AAAAAA-BBBBBB-CCCCCC", "project:org_stack_name": "organization/vitruvian/1-org/production" }`)
+	// config.New(ctx, "") namespaces on the project name, which WithMocks sets to
+	// "project" — so test config keys use the "project:" prefix (as in the sibling
+	// foundation stacks' config tests), not the live "foundation-projects:" prefix.
+	os.Setenv("PULUMI_CONFIG", `{ "project:env": "development", "project:business_code": "bu1", "project:billing_account": "AAAAAA-BBBBBB-CCCCCC" }`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := loadProjectsConfig(ctx)
 
+		// Derived + defaulted identity
 		assert.Equal(t, "development", cfg.Env)
 		assert.Equal(t, "d", cfg.EnvCode)
+		assert.Equal(t, "bu1", cfg.BusinessCode)
+		assert.Equal(t, "prj", cfg.ProjectPrefix)
+		assert.Equal(t, "fldr", cfg.FolderPrefix)
 
 		// Project-type enablement — all default true (upstream parity)
 		assert.True(t, cfg.SVPCProjectEnabled)
@@ -49,9 +67,14 @@ func TestLoadProjectsConfigDefaults(t *testing.T) {
 		assert.True(t, cfg.PeeringProjectEnabled)
 		assert.True(t, cfg.InfraPipelineEnabled)
 
-		// Network/env stack names derive from org_stack_name by stage substitution
-		assert.Equal(t, "organization/vitruvian/3-networks-svpc/production", cfg.NetworkStackName)
-		assert.Equal(t, "organization/vitruvian/2-environments/production", cfg.EnvStackName)
+		// Feature defaults
+		assert.True(t, cfg.EnforceVpcSc)
+		assert.True(t, cfg.CMEKEnabled)
+		assert.True(t, cfg.PeeringEnabled)
+		assert.True(t, cfg.RandomSuffix)
+
+		// Cross-stage reference defaults to the live per-env env stack
+		assert.Equal(t, "ipv1337/foundation-environments/development", cfg.EnvStackName)
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", projectsMocks(0)))

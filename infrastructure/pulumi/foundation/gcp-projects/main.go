@@ -1,18 +1,22 @@
-/*
- * Copyright 2026 Vitruvian Software
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 package main
 
@@ -39,11 +43,13 @@ func main() {
 		if err != nil {
 			return err
 		}
-		// TF reads this from the 2-environments remote state (env_folder_name).
-		// The Go 2-environments stack exports "{env}_env_folder" (e.g. "development_env_folder").
-		folderID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_folder", cfg.Env)))
-		// Per-environment KMS project ID (upstream: environments_env.env_kms_project_id).
-		kmsProjectID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_kms_project_id", cfg.Env)))
+		// Live-integration note: unlike upstream's single 2-environments stack
+		// (which exports per-env keys like "development_env_folder"), our live
+		// gcp-environments is a PER-ENV stack (dev/nonprod/prod) that exports bare
+		// "env_folder" / "env_kms_project_id". cfg.EnvStackName already targets the
+		// per-env stack, so we read the bare keys here.
+		folderID := envStack.GetStringOutput(pulumi.String("env_folder"))
+		kmsProjectID := envStack.GetStringOutput(pulumi.String("env_kms_project_id"))
 
 		// 1b. Organization StackReference (Stage 1) — only when a project type
 		// that consumes its outputs is enabled (SVPC host, peering-to-host,
@@ -226,15 +232,23 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		BillingAccount:   conf.Require("billing_account"),
 		ProjectPrefix:    conf.Get("project_prefix"),
 		FolderPrefix:     conf.Get("folder_prefix"),
-		OrgStackName:     conf.Require("org_stack_name"),
+		OrgStackName:     conf.Get("org_stack_name"),
 		NetworkStackName: conf.Get("network_stack_name"),
 		EnvStackName:     conf.Get("env_stack_name"),
 	}
-	if c.NetworkStackName == "" {
-		c.NetworkStackName = strings.Replace(c.OrgStackName, "1-org", "3-networks-svpc", 1)
-	}
+	// Cross-stage references default to the live Pulumi Cloud stacks (ipv1337 org).
+	// The environment and network stacks are per-env; the org stack is a single
+	// production stack. Only the environment reference is always consumed; the
+	// org/network references are used only when a project type that needs them is
+	// enabled (see main()), so org_stack_name is optional here.
 	if c.EnvStackName == "" {
-		c.EnvStackName = strings.Replace(c.OrgStackName, "1-org", "2-environments", 1)
+		c.EnvStackName = fmt.Sprintf("ipv1337/foundation-environments/%s", c.Env)
+	}
+	if c.OrgStackName == "" {
+		c.OrgStackName = "ipv1337/foundation-org/production"
+	}
+	if c.NetworkStackName == "" {
+		c.NetworkStackName = fmt.Sprintf("ipv1337/foundation-networks/%s", c.Env)
 	}
 	if c.ProjectPrefix == "" {
 		c.ProjectPrefix = "prj"
