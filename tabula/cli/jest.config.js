@@ -30,6 +30,24 @@ module.exports = {
   testEnvironment: "node",
   testMatch: ["**/?(*.)+(test).ts"],
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  // ts-first so jest resolves TypeScript SOURCES, never the stale compiled .js
+  // siblings the ts_project emits into Bazel's bin tree. jest 30's resolver can
+  // realpath modules into that tree; the default js-before-ts order then loads
+  // the compiled `.js` while jest.mock() registered the `.ts`, so mocks no-op.
+  // cli passes today only by build-order luck — pin the correct order. See
+  // tabula/api/jest.config.js for the full mechanism.
+  moduleFileExtensions: [
+    "ts",
+    "mts",
+    "cts",
+    "tsx",
+    "js",
+    "mjs",
+    "cjs",
+    "jsx",
+    "json",
+    "node",
+  ],
   // chalk 5 is ESM-only: exempt it from the node_modules transform skip so
   // @swc/jest converts it to CJS for the test runtime (the production CLI
   // runs on node >= 22.12, where require(esm) is native). The optional
