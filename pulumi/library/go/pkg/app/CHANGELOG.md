@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-app-v0.5.0...go-app-v0.6.0) (2026-07-10)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+
+
+### Bug Fixes
+
+* **pulumi-library:** decouple API enablement dependency ([#651](https://github.com/VitruvianSoftware/vitruvian-core/issues/651)) ([6a03698](https://github.com/VitruvianSoftware/vitruvian-core/commit/6a036986759a76888dbe279ce53f46ab3f8f5968))
+
 ## [0.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-app-v0.4.2...go-app-v0.5.0) (2026-07-06)
 
 
