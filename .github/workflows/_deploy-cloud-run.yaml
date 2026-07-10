@@ -178,6 +178,14 @@ jobs:
         # Before the new revision takes traffic; vendored schema-engine keeps
         # this hermetic apart from the database connection itself. (The
         # vendored-Prisma pattern -- tabula's; see the caller-contract note.)
+        #
+        # EXPAND phase (issue #819): the OLD revision keeps serving against the
+        # just-migrated schema during the traffic shift below, so this must only
+        # apply backward-COMPATIBLE (expand) migrations. `--phase expand` makes
+        # the wrapper REFUSE if a pending *_contract (backward-incompatible)
+        # migration would be swept in; those are applied deliberately post-soak
+        # via `--phase contract`. The migration-safety check already blocks an
+        # un-marked backward-incompatible migration from reaching main.
         run: |
           bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
@@ -192,7 +200,7 @@ jobs:
           fi
           export DATABASE_URL
           bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma
+            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

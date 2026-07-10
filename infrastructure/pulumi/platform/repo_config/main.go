@@ -225,6 +225,12 @@ func main() {
 					// PRs. Both validate their whole dir on every queued commit, so they
 					// always report — safe to require.
 					"gitops-validate", "actionlint",
+					// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a
+					// backward-incompatible change can't reach main and break the OLD Cloud
+					// Run revision during the blue-green traffic shift. Its job runs a
+					// self-test on every event (and carries no pull_request paths filter),
+					// so it always reports — safe to require.
+					"migration-safety",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}

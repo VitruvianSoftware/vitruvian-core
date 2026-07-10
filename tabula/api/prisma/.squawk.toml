@@ -1,0 +1,76 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Squawk (https://squawkhq.com) migration-safety config for Tabula's Prisma
+# migrations. The blue-green Cloud Run rollout (_deploy-cloud-run.yaml) runs
+# `prisma migrate deploy` BEFORE the new revision takes traffic, so the OLD
+# revision keeps serving against the just-migrated schema during the shift
+# window. A backward-INCOMPATIBLE migration (drop/rename a column the old code
+# still reads, narrow a type, add a validated constraint) therefore breaks the
+# live revision the instant it applies -- and can't be rolled back to. This
+# config makes Squawk FAIL on exactly that class so the gate (tools/ci/
+# migration-safety.sh, run by the `migration-safety` workflow) blocks it.
+#
+# The kept rules are the backward-incompatibility set: changing-column-type,
+# ban-drop-column/table/not-null, renaming-column/table, disallowed-unique-
+# constraint, constraint-missing-not-valid, adding-required/not-null-field.
+# Two escape hatches keep those rules from ever needing to be disabled globally:
+#   - A deliberate, post-soak destructive change is done as a *_contract
+#     migration (see docs/engineering/application-development-principles.md),
+#     which the gate script exempts by path.
+#   - A change the author has VERIFIED is safe but Squawk flags conservatively
+#     (a type WIDENING is the classic case: changing-column-type fires on every
+#     type change, safe or not) takes a per-statement `-- squawk-ignore <rule>`
+#     comment on the line above it, and flows through as a normal expand
+#     migration. The ignore is rule-scoped, so it never masks another hazard.
+
+# Postgres major matches Neon prod and the hermetic itest harness (Postgres 16).
+pg_version = "16.0"
+
+# Prisma wraps each migration file in a transaction, so Squawk's transaction-
+# aware advice (and its lock analysis) is accurate under that assumption.
+assume_in_transaction = true
+
+# Excluded: operational/lock-hygiene and stylistic rules. These fire on SAFE
+# additive DDL (they flagged 0 of 9 backward-compatible historical migrations
+# only once excluded) and are NOT backward-compatibility hazards, so gating on
+# them would reject correct expand-phase migrations:
+#   - require-timeout-settings / prefer-robust-stmts: lock_timeout / IF EXISTS
+#     hygiene -- good practice, but not a compatibility break.
+#   - require-concurrent-index-*: CREATE/DROP INDEX CONCURRENTLY can't run in a
+#     transaction (which Prisma uses), so this is unactionable here.
+#   - adding-field-with-default: safe (metadata-only default) on Postgres 11+.
+#   - prefer-text-field / ban-char-field / prefer-bigint-over-int /
+#     prefer-timestamptz / prefer-identity: schema-style preferences owned by
+#     schema.prisma, not migration-safety.
+#   - transaction-nesting: Prisma manages the wrapping transaction itself.
+excluded_rules = [
+  "require-timeout-settings",
+  "prefer-robust-stmts",
+  "require-concurrent-index-creation",
+  "require-concurrent-index-deletion",
+  "adding-field-with-default",
+  "prefer-text-field",
+  "prefer-bigint-over-int",
+  "prefer-timestamptz",
+  "ban-char-field",
+  "prefer-identity",
+  "transaction-nesting",
+]
