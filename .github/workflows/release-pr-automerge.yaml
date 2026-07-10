@@ -47,18 +47,28 @@ name: Auto-merge release PRs
 # workflow_run instead).
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    # labeled/unlabeled + ready_for_review so toggling the `do-not-automerge`
+    # hold label (or un-drafting a held PR) re-triggers this and releases the PR
+    # back into the auto-merge flow.
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
 
 permissions:
   contents: read
 
 jobs:
   auto-merge:
-    # Only release-please's bot-authored PRs. The branch prefix is the primary
-    # selector (only release-please creates it); the Bot check is belt-and-braces.
+    # Only NON-DRAFT, bot-authored release-please PRs that are NOT held. The
+    # branch prefix is the primary selector (only release-please creates it);
+    # the Bot check is belt-and-braces. A `do-not-automerge` label OR leaving the
+    # PR a draft HOLDS a release so a maintainer can act on it deliberately --
+    # e.g. a deploy-triggering phase release, or a breaking major that needs a
+    # coordinated cut. To release a held PR into the auto-merge flow, remove the
+    # label (and mark it ready if drafted).
     if: >-
+      github.event.pull_request.draft == false &&
       startsWith(github.event.pull_request.head.ref, 'release-please--') &&
-      github.event.pull_request.user.type == 'Bot'
+      github.event.pull_request.user.type == 'Bot' &&
+      !contains(github.event.pull_request.labels.*.name, 'do-not-automerge')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
