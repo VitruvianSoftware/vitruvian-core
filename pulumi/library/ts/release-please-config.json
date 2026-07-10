@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts": {
-      "release-type": "node",
-      "component": "foundation-library"
-    }
-  }
-}
