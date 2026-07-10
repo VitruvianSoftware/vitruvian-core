@@ -354,6 +354,7 @@ jest_test(
         ":node_modules/supertest",
         ":node_modules/zod",
         ":prisma_client",
+        "//tabula:jest_resolver",
     ],
     node_modules = ":node_modules",
     node_options = ["--no-experimental-require-module"],

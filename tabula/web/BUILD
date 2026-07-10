@@ -50,6 +50,7 @@ jest_test(
         ],
         allow_empty = True,
     ) + [
+        "//tabula:jest_resolver",
         "jest.setup.js",
         "next.config.ts",
         "postcss.config.mjs",
