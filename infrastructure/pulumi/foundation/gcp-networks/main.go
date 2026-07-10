@@ -642,19 +642,29 @@ func deploySpokeNetwork(ctx *pulumi.Context, cfg *NetConfig, orgStack *pulumi.St
 	// Bridge perimeter from spoke to hub (required for VPC-SC across peered VPCs)
 	// Matching upstream PERIMETER_TYPE_BRIDGE — only created on spoke, not hub
 	bridgeName := fmt.Sprintf("spb_c_to_%s_spoke_bridge", cfg.EnvCode)
-	_, err = accesscontextmanager.NewServicePerimeter(ctx, "vpc-sc-bridge", &accesscontextmanager.ServicePerimeterArgs{
+	// A dry-run foundation keeps the bridge's members in the dry-run Spec and leaves the
+	// enforced Status empty; only populate Status when EnforceVpcSc. This mirrors the
+	// regular perimeter (vpc_service_controls module, which sets Status only when
+	// enforcing). GCP rejects an ENFORCED bridge member whose regular perimeter is
+	// dry-run-only ("projects/... is in service perimeter bridge(s) ... but not in a
+	// regular service perimeter"), so the bridge's enforcement must match the regular
+	// perimeter's.
+	bridgeResources := pulumi.StringArray{
+		pulumi.Sprintf("projects/%s", spokeProjectNumber),
+		pulumi.Sprintf("projects/%s", hubProjectNumber),
+	}
+	bridgeArgs := &accesscontextmanager.ServicePerimeterArgs{
 		PerimeterType:         pulumi.String("PERIMETER_TYPE_BRIDGE"),
 		Parent:                pulumi.Sprintf("accessPolicies/%s", policyID),
 		Name:                  pulumi.Sprintf("accessPolicies/%s/servicePerimeters/%s", policyID, bridgeName),
 		Title:                 pulumi.String(bridgeName),
 		UseExplicitDryRunSpec: pulumi.Bool(!cfg.EnforceVpcSc),
-		Status: &accesscontextmanager.ServicePerimeterStatusArgs{
-			Resources: pulumi.StringArray{
-				pulumi.Sprintf("projects/%s", spokeProjectNumber),
-				pulumi.Sprintf("projects/%s", hubProjectNumber),
-			},
-		},
-	}, pulumi.DependsOn([]pulumi.Resource{vpcScSleep}))
+		Spec:                  &accesscontextmanager.ServicePerimeterSpecArgs{Resources: bridgeResources},
+	}
+	if cfg.EnforceVpcSc {
+		bridgeArgs.Status = &accesscontextmanager.ServicePerimeterStatusArgs{Resources: bridgeResources}
+	}
+	_, err = accesscontextmanager.NewServicePerimeter(ctx, "vpc-sc-bridge", bridgeArgs, pulumi.DependsOn([]pulumi.Resource{vpcScSleep}))
 	if err != nil {
 		return nil, err
 	}
