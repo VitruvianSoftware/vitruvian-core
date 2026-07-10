@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-foundation-v2.0.0...go-foundation-v2.1.0) (2026-07-10)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+
+
+### Bug Fixes
+
+* **foundation:** bootstrap polish before 1-org — deterministic bucket IAM + API-propagation wait ([#620](https://github.com/VitruvianSoftware/vitruvian-core/issues/620)) ([c41629f](https://github.com/VitruvianSoftware/vitruvian-core/commit/c41629fcbc38cc5dea1cf039b3885b0242de5a1e))
+* **network:** declare v2 module path so v2 releases are consumable ([#784](https://github.com/VitruvianSoftware/vitruvian-core/issues/784)) ([d106303](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1063037485d08a287882281e503347bcda847fc))
+* **network:** enforce transitivity MIG-before-template teardown ordering ([#830](https://github.com/VitruvianSoftware/vitruvian-core/issues/830)) ([4f03633](https://github.com/VitruvianSoftware/vitruvian-core/commit/4f036335b366027c0b556eadc644258e0de2e80a))
+* **network:** stop transitivity instance-template perpetual replace ([#782](https://github.com/VitruvianSoftware/vitruvian-core/issues/782)) ([513da0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/513da0f72aad949010f0b76de2471af571e7444c))
+* **pulumi-library/network:** avoid setting PrivateIpGoogleAccess on proxy subnets ([6062b15](https://github.com/VitruvianSoftware/vitruvian-core/commit/6062b15a42b23d7d9bc0cb3ce0fa77443cead52c))
+* **pulumi-library/network:** sanitize PSC forwarding rule name for GCP compliance ([#751](https://github.com/VitruvianSoftware/vitruvian-core/issues/751)) ([2c4bb46](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c4bb46b59571f1d69c30dbcebc31bea4aaa489c))
+* **pulumi-library/network:** set CONNECTION balancing mode for INTERNAL backend service ([6c367e4](https://github.com/VitruvianSoftware/vitruvian-core/commit/6c367e4911fbe72f0dd302ccd245a26efea0bc7b))
+* **pulumi-library:** decouple API enablement dependency ([#651](https://github.com/VitruvianSoftware/vitruvian-core/issues/651)) ([6a03698](https://github.com/VitruvianSoftware/vitruvian-core/commit/6a036986759a76888dbe279ce53f46ab3f8f5968))
+
 ## [2.0.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-foundation-v1.0.0...go-foundation-v2.0.0) (2026-07-06)
 
 
