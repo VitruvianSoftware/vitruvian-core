@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-org-folders-v0.3.0...foundation-org-folders-v0.3.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **ci:** isolate release-please config/manifest per foundation phase ([#644](https://github.com/VitruvianSoftware/vitruvian-core/issues/644)) ([1764a59](https://github.com/VitruvianSoftware/vitruvian-core/commit/1764a596793c232280341a8d4b1f4572894cac64))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-org-folders-v0.2.0...foundation-org-folders-v0.3.0) (2026-07-07)
 
 
