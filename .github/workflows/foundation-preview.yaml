@@ -105,6 +105,7 @@ jobs:
       # The preview below then runs the program to catch runtime faults (e.g. the
       # subnets_secondary_ranges nil-pointer panic that reached deploy uncaught).
       - name: go vet (${{ matrix.app }})
+        if: steps.changes.outputs.stack == 'true'
         working-directory: ${{ matrix.dir }}
         run: go vet ./...
 
@@ -112,19 +113,23 @@ jobs:
       # same hermetic pre-preview slot -- 4 of the 5 stacks ship *_test.go that no
       # workflow was executing (#806). No-ops cleanly for a stack with no tests.
       - name: go test (${{ matrix.app }})
+        if: steps.changes.outputs.stack == 'true'
         working-directory: ${{ matrix.dir }}
         run: go test ./...
 
       - name: Authenticate to GCP (WIF, keyless)
+        if: steps.changes.outputs.stack == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
+        if: steps.changes.outputs.stack == 'true'
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
+        if: steps.changes.outputs.stack == 'true'
         id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -153,8 +158,18 @@ jobs:
         env:
           LABEL: ${{ matrix.app }}
           PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+          STACK_CHANGED: ${{ steps.changes.outputs.stack }}
         run: |
           set -euo pipefail
+          # When this stack was unchanged in the PR, vet/test/preview were skipped
+          # (no pulumi-out.txt, empty exit_code) -- emit an "unchanged" digest rather
+          # than running pulumi-summary.sh on a missing log (which would read as a
+          # false failure). The sticky comment still posts, showing the leg is clean.
+          if [ "${STACK_CHANGED}" != "true" ]; then
+            printf '### %s\n\n_No changes to `%s` in this PR — preview skipped._\n' \
+              "${LABEL}" "${LABEL}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
           "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
             "${LABEL}" \
             "${RUNNER_TEMP}/pulumi-out.txt" \
