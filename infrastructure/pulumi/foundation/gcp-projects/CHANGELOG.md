@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.0.0...foundation-gcp-projects-v1.1.0) (2026-07-10)
+
+
+### Features
+
+* **foundation:** add OSS floating project (prj-{env}-bu1-oss-floating) ([#854](https://github.com/VitruvianSoftware/vitruvian-core/issues/854)) ([8fb12e7](https://github.com/VitruvianSoftware/vitruvian-core/commit/8fb12e7ad95e711e864e17398369d20caa91748d))
+
 ## 1.0.0 (2026-07-10)
 
 
