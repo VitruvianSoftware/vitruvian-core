@@ -45,5 +45,5 @@ spec:
       recordTTL: 60
       targets:
         - 100.97.82.15    # fedora
-        - 100.98.214.120  # james-macbook-pro
-        - 100.90.162.27   # james-mbp32
+        - 100.96.128.107  # nuc9i5
+        - 100.86.106.117  # nuc9i9
