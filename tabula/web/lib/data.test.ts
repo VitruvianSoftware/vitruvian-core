@@ -270,21 +270,9 @@ describe("DataService", () => {
       expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:url");
     });
 
-    it("should warn in non-window context", () => {
-      const originalWindow = global.window;
-      // @ts-expect-error Mocking window
-      delete global.window;
-      const consoleSpy = jest.spyOn(console, "warn").mockImplementation();
-
-      DataService.downloadFile("c", "f", "m");
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Cannot download file in server context"),
-      );
-
-      global.window = originalWindow;
-      consoleSpy.mockRestore();
-    });
+    // The non-window (server context) case lives in data.server.test.ts:
+    // jsdom 26 (jest-environment-jsdom 30) makes `window` a non-configurable
+    // [Unforgeable] global, so `delete global.window` no longer simulates SSR.
   });
 
   describe("seedDemoData", () => {
@@ -301,16 +289,7 @@ describe("DataService", () => {
       expect(dispatchSpy.mock.calls[0][0].type).toBe("storage");
     });
 
-    it("should do nothing in non-window context", () => {
-      const originalWindow = global.window;
-      // @ts-expect-error Mocking window
-      delete global.window;
-
-      // Should not throw
-      DataService.seedDemoData();
-
-      global.window = originalWindow;
-    });
+    // The non-window (server context) case lives in data.server.test.ts.
   });
 
   describe("edge cases", () => {
@@ -404,17 +383,7 @@ describe("DataService", () => {
       expect(result).toContain('"Test","",0,0,0,0,0');
     });
 
-    it("should handle getDataSourceInfo in non-window context", () => {
-      const originalWindow = global.window;
-      // @ts-expect-error Mocking window
-      delete global.window;
-
-      const info = DataService.getDataSourceInfo();
-      expect(info.type).toBe("none");
-      expect(info.available).toBe(false);
-
-      global.window = originalWindow;
-    });
+    // getDataSourceInfo in a non-window context lives in data.server.test.ts.
 
     it("should handle localStorage access error in getDataSourceInfo", () => {
       // Mock localStorage.getItem to throw for the data check but not for the token check
