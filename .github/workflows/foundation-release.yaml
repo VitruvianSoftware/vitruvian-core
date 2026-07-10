@@ -402,3 +402,51 @@ jobs:
       environment: production
     secrets: inherit
 
+  # ── Phase 4: Projects ─────────────────────────────────────────────────────
+  # The projects stage (gcp-projects, stage 4) uses a chained promotion workflow:
+  #   development (auto) → nonproduction (manual approval) → production (manual approval)
+  # Each environment is a separate Pulumi stack with isolated state.
+
+  release-gcp-projects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-projects--release_created'] }}
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/gcp-projects/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/gcp-projects/.release-please-manifest.json
+          target-branch: main
+
+  deploy-proj-development:
+    needs: release-gcp-projects
+    if: needs.release-gcp-projects.outputs.release_created == 'true'
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: development
+    secrets: inherit
+
+  deploy-proj-nonproduction:
+    needs: deploy-proj-development
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: nonproduction
+    secrets: inherit
+
+  deploy-proj-production:
+    needs: deploy-proj-nonproduction
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: production
+    secrets: inherit
+

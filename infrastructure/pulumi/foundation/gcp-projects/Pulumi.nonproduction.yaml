@@ -1,0 +1,33 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 4 — nonproduction projects.
+#
+# Deploys business unit "bu1" under fldr-{nonproduction}-bu1 (parented off the live
+# gcp-environments nonproduction env folder, i.e. under fldr-foundation-1).
+#
+# Hybrid go-live posture: FLOATING project type only (see development stack notes).
+#
+# Promotion order: development → nonproduction → production
+# Gated by GitHub Environment protection.
+config:
+  # --- Environment + business unit identity ---
+  foundation-projects:env: "nonproduction"
+  foundation-projects:business_code: "bu1"
+
+  # --- Core identifiers ---
+  foundation-projects:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects:project_prefix: "prj"
+  foundation-projects:folder_prefix: "fldr"
+
+  # --- Cross-stage reference ---
+  foundation-projects:env_stack_name: "ipv1337/foundation-environments/nonproduction"
+
+  # --- Project-type enablement: FLOATING ONLY ---
+  foundation-projects:floating_project_enabled: "true"
+  foundation-projects:svpc_project_enabled: "false"
+  foundation-projects:peering_project_enabled: "false"
+  foundation-projects:infra_pipeline_enabled: "false"
+  foundation-projects:confidential_space_enabled: "false"
+
+  # --- Features off for the floating-only first cut ---
+  foundation-projects:cmek_enabled: "false"
+  foundation-projects:peering_enabled: "false"
+  foundation-projects:enforce_vpcsc: "false"
