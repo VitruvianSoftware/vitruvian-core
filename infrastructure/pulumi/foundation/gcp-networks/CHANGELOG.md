@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.8...foundation-gcp-networks-v0.3.9) (2026-07-10)
+
+
+### Bug Fixes
+
+* **networks:** consume network/v2 v2.0.3 (transitivity delete-ordering fix) ([#838](https://github.com/VitruvianSoftware/vitruvian-core/issues/838)) ([ec39eba](https://github.com/VitruvianSoftware/vitruvian-core/commit/ec39eba8ee3bf81073bbde1ac352ef33e6a60b9a))
+
 ## [0.3.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.7...foundation-gcp-networks-v0.3.8) (2026-07-10)
 
 
