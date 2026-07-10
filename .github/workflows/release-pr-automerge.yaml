@@ -81,8 +81,12 @@ jobs:
           set -euo pipefail
           # Idempotent: on `synchronize` (release-please pushing an update) the PR
           # may already have auto-merge enabled -- don't error, just no-op.
-          current="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest')"
-          if [ "$current" != "null" ]; then
+          # NOTE: `gh --jq '.autoMergeRequest'` prints an EMPTY string (not "null")
+          # when auto-merge is unset, so a `!= "null"` test misfires and skips
+          # enabling on EVERY PR. Compare the boolean `!= null` expression instead,
+          # which prints a clean "true"/"false".
+          enabled="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [ "$enabled" = "true" ]; then
             echo "Auto-merge already enabled on release PR #$PR."
             exit 0
           fi
