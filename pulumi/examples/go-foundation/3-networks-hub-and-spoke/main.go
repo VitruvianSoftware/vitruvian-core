@@ -26,7 +26,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 
-	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
+	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 	vpc_sc "github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls"
 )
 

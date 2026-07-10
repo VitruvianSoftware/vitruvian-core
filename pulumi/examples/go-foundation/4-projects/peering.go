@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/network"
+	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"

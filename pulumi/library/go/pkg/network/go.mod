@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/pulumi-library/go/pkg/network
+module github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2
 
 go 1.26.2
 
