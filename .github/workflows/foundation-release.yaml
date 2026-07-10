@@ -38,8 +38,15 @@ permissions:
 # PR, and deploy job. There is NO shared state between phases — merging one
 # release PR never conflicts with another.
 #
-# The operator controls deployment order by merging the individual Release
-# Please PRs in the desired sequence.
+# Release PRs auto-merge on green CI (release-pr-automerge.yaml enables auto-merge
+# on each `release-please--*` PR via the bypass App), so the operator no longer
+# controls deploy order by merge timing. Deploy ORDER is instead controlled where
+# it is enforceable: development deploys automatically, while nonproduction and
+# production each gate on their GitHub Environment approval — the operator
+# approves those in the desired sequence. For a coordinated CROSS-PHASE change
+# (e.g. gcp-org must export an output before gcp-networks consumes it), land the
+# producing phase's code on main first so its release + dev deploy run ahead of
+# the consumer's; prod ordering is held by the environment approvals.
 # ──────────────────────────────────────────────────────────────────────────────
 
 jobs:
