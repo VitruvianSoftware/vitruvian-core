@@ -3,7 +3,7 @@ module foundation-3-networks-hub-and-spoke
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/network v0.0.0-00010101000000-000000000000
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
 	github.com/pulumi/pulumi/sdk/v3 v3.250.0
@@ -124,7 +124,7 @@ require (
 	lukechampine.com/frand v1.4.2 // indirect
 )
 
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/network => ../../../library/go/pkg/network
+replace github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 => ../../../library/go/pkg/network
 
 replace github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls => ../../../library/go/pkg/vpc_service_controls
 
