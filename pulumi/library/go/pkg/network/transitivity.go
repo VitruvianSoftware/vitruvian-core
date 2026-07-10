@@ -198,7 +198,17 @@ sudo iptables -t nat -A POSTROUTING -j MASQUERADE
 				ReplacementMethod:           pulumi.String("SUBSTITUTE"),
 				MostDisruptiveAllowedAction: pulumi.String("REPLACE"),
 			},
-		}, pulumi.Parent(component))
+		}, pulumi.Parent(component),
+			// DELETE-ORDERING WORKAROUND (Pulumi-specific; replicates upstream terraform
+			// behaviour). Upstream's MIG references its instance template and relies on
+			// terraform's dependency graph to tear the MIG down BEFORE the template.
+			// Pulumi does not reliably derive that teardown order from the
+			// it.SelfLinkUnique input reference alone, so on delete it attempts to remove
+			// the still-referenced template first and fails with "instance_template ...
+			// is already being used by instanceGroupManagers/...". Pin the dependency
+			// explicitly so the MIG is always deleted before its template, matching the
+			// upstream teardown behaviour.
+			pulumi.DependsOn([]pulumi.Resource{it}))
 		if err != nil {
 			return nil, err
 		}
