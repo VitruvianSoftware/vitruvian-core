@@ -31,6 +31,10 @@ config:
       GCP_PROJECT_ID: prj-b-seed-8ebb
       GCP_SERVICE_ACCOUNT: sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    foundation-proj:
+      GCP_PROJECT_ID: prj-b-seed-8ebb
+      GCP_SERVICE_ACCOUNT: sa-terraform-proj@prj-b-seed-8ebb.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   # oauth-user-inspector deploy environment — non-secret identifiers only (keyless
   # WIF). The matching GitHub-side SECRETS are NOT here; they are synced from a
   # gitignored, Bitwarden-backed store by //tools/sync-env-secrets (§2.4, §2.18).

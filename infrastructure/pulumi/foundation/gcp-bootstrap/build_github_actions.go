@@ -135,6 +135,23 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// The projects stage (gcp-projects) uses the same chained promotion workflow
+	// with three separate GitHub Environments (one per promotion stage):
+	//   foundation-proj-development  → auto-deploy
+	//   foundation-proj-nonproduction → manual approval
+	//   foundation-proj-production    → manual approval
+	// Each needs its own WIF binding to the proj SA. (The generic loop above
+	// already binds the single foundation-proj / foundation-proj-preview
+	// environments; these add the per-env promotion bindings.)
+	if projSA, ok := sas["proj"]; ok {
+		for _, envName := range []string{"development", "nonproduction", "production"} {
+			saMappings[fmt.Sprintf("proj-%s", envName)] = libcicd.SAMappingEntry{
+				SAName:    projSA.Name,
+				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-proj-%s", envName)),
+			}
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via
