@@ -60,6 +60,12 @@ jobs:
     environment: foundation-env-${{ inputs.environment }}
     env:
       GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads (e.g. pulumiverse
+      # pulumi-resource-time used for time.Sleep propagation gates) so the job
+      # does not hit the 60/hr/IP unauthenticated GitHub API rate limit that CI
+      # runners routinely exhaust (intermittent 403s); GITHUB_TOKEN raises this
+      # to 5000/hr. Same class of fix as #756.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
