@@ -142,7 +142,8 @@ func main() {
 		// as code here alongside the other repo governance settings. These security
 		// PRs are authored by Dependabot and auto-merged via the sync App, which
 		// bypasses the required-review rule (#804), so they are never blocked.
-		if _, err := github.NewRepositoryDependabotSecurityUpdates(ctx, repoName+"-dependabot-security-updates",
+		if _, err := github.NewRepositoryDependabotSecurityUpdates(
+			ctx, repoName+"-dependabot-security-updates",
 			&github.RepositoryDependabotSecurityUpdatesArgs{
 				Repository: repo.Name,
 				Enabled:    pulumi.Bool(true),
