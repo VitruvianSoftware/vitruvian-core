@@ -52,7 +52,7 @@ packages:
 catalog:
   "@swc/core": ^1.15.43
   "@swc/jest": ^0.2.39
-  jest: ^29.7.0
+  jest: ^30.4.2
   "@pulumi/pulumi": ^3.0.0
   "@pulumi/gcp": ^9.29.0
   "@pulumi/random": ^4.0.0
