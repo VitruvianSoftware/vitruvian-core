@@ -151,6 +151,9 @@ func main() {
 		for env, id := range projOutputs.NetworkProjectIDs {
 			ctx.Export(fmt.Sprintf("%s_network_project_id", env), id)
 		}
+		for env, number := range projOutputs.NetworkProjectNumbers {
+			ctx.Export(fmt.Sprintf("%s_network_project_number", env), number)
+		}
 
 		// Shared VPC projects grouped by environment (upstream: shared_vpc_projects)
 		sharedVPCMap := pulumi.Map{}
