@@ -1,0 +1,99 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Dependabot lock rebase
+
+# Closes the loop on #531 (dependabot lock diffs go stale through the merge queue).
+#
+# Every npm Dependabot PR shares the single root pnpm-lock.yaml. Dependabot
+# resolves each PR's lock against the base at PR-creation time; the ALLGREEN merge
+# queue then rebases sibling PRs textually -- the package.json hunks apply, but the
+# lock diff is NOT re-resolved. So the moment one npm PR merges, every OTHER open
+# npm PR carries a lock that no longer matches the (now-moved) root manifests. CI
+# stays green against the stale lock; tidy-check's lockfile-sync guard catches the
+# skew on the queue's rebased check and fails it, but the PR then sits stuck until
+# someone manually rebases it.
+#
+# This workflow automates that recovery: when the root pnpm-lock.yaml changes on
+# main (a dep PR merged, or any dep-touching PR landed), it asks Dependabot to
+# rebase every open npm PR. The rebase pushes a synchronize event, which re-runs
+# dependabot-bazel-reconcile.yml -- the SAME hermetic `@pnpm//:pnpm install
+# --lockfile-only` + `//:tidy` reconcile that runs at PR-creation time -- now
+# against the new base. CI and dependabot-auto-merge then re-run cleanly. If the
+# freshly-resolved versions actually break the build (the skew has hidden real
+# breakage before), CI now fails LOUDLY on the PR instead of detonating later on
+# an innocent `pnpm install`.
+#
+# Trigger is push-to-main so it runs in the base context with full Actions secrets
+# (SYNC_APP_*); the just-merged PR is already closed and thus excluded. Dependabot
+# only honors `@dependabot` commands from a write-access identity, so the comment
+# is posted with the App token -- the same SYNC_APP the reconcile and auto-merge
+# workflows already use, not the plain GITHUB_TOKEN (which Dependabot ignores).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+# Serialize: if two lock-changing merges land back-to-back, rebase in order rather
+# than dropping one. A repeated `@dependabot rebase` while a rebase is already in
+# flight is a no-op on Dependabot's side, so serialization is safe and idempotent.
+concurrency:
+  group: dependabot-lock-rebase
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Rebase open Dependabot npm PRs against the new root lock
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # GitHub runs steps as `bash -eo pipefail`; clear the inherited -e so a
+          # single failed comment doesn't abort the rest (best-effort per PR).
+          set +e -u -o pipefail
+          prs="$(gh pr list -R "$REPO" --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("dependabot/npm_and_yarn/")) | .number')"
+          if [ -z "$prs" ]; then
+            echo "No open Dependabot npm PRs — nothing to rebase."
+            exit 0
+          fi
+          rc=0
+          for num in $prs; do
+            echo "Requesting rebase of Dependabot npm PR #$num (root pnpm-lock.yaml changed on main)."
+            if ! gh pr comment "$num" -R "$REPO" --body "@dependabot rebase"; then
+              echo "::warning::failed to request rebase on #$num"
+              rc=1
+            fi
+          done
+          exit "$rc"
