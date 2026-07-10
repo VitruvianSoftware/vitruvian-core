@@ -34,7 +34,11 @@ name: Repo Config Preview
 # in the APP_PRIVATE_KEY secret, plus PULUMI_ACCESS_TOKEN for the Pulumi backend.
 on:
     pull_request:
-        paths: ["infrastructure/pulumi/platform/repo_config/**"]
+        # repo_config compiles + deploys the shared pkg/secrets it imports (local
+        # `replace` in go.mod), so a pkg/secrets change must also preview/apply here.
+        paths:
+            - "infrastructure/pulumi/platform/repo_config/**"
+            - "infrastructure/pulumi/pkg/secrets/**"
 
 permissions:
     contents: read

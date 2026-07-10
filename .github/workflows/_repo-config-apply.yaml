@@ -37,7 +37,11 @@ on:
         # branch name — repos whose default branch isn't "main" should edit this
         # list to match.
         branches: ["main"]
-        paths: ["infrastructure/pulumi/platform/repo_config/**"]
+        # repo_config compiles + deploys the shared pkg/secrets it imports (local
+        # `replace` in go.mod), so a pkg/secrets change must also preview/apply here.
+        paths:
+            - "infrastructure/pulumi/platform/repo_config/**"
+            - "infrastructure/pulumi/pkg/secrets/**"
     # Manual apply: break-glass + the bootstrap run that first applies the
     # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
     # Bypasses the variable gate below — a dispatch is an explicit human act.
