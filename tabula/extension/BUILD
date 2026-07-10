@@ -141,6 +141,7 @@ jest_test(
         ":node_modules/react",
         ":node_modules/react-dom",
         ":node_modules/zustand",
+        "//tabula:jest_resolver",
     ],
     node_modules = ":node_modules",
     # jest 29's requireOrImportModule only catches ERR_REQUIRE_ESM; Node 22.12+

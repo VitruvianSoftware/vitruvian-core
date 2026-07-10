@@ -31,31 +31,12 @@ module.exports = {
   testEnvironment: "node",
   roots: ["<rootDir>/tests", "<rootDir>/src"],
   testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
-  // TypeScript first (jest's default puts js first). Under Bazel the :lib
-  // ts_project emits compiled .js next to the copied .ts sources in the
-  // shared bazel-out bin tree. jest 30's resolver (unrs-resolver) realpaths
-  // resolved modules out of the test's runfiles symlink tree into that bin
-  // tree, where extensionless relative imports then prefer the stale .js
-  // sibling — while jest.mock() calls in tests (resolved from the runfiles
-  // tree, which only stages the .ts) register against the .ts module ID.
-  // The IDs diverge, every jest.mock() silently stops intercepting, real
-  // prisma/ioredis/WorkOS modules load, and their open handles hang the
-  // --runInBand jest process to the bazel test timeout (only when :lib has
-  // been built into the same output base — CI always has). Preferring .ts
-  // makes both resolution paths converge on the same file. The generated
-  // Prisma client is unaffected: its tree ships .js/.d.ts only.
-  moduleFileExtensions: [
-    "ts",
-    "mts",
-    "cts",
-    "tsx",
-    "js",
-    "mjs",
-    "cjs",
-    "jsx",
-    "json",
-    "node",
-  ],
+  // Keep resolved modules inside the runfiles symlink tree (symlinks:false) so
+  // jest.mock() IDs and coverage attribution stay consistent under Bazel. This
+  // replaces the earlier ts-first moduleFileExtensions workaround, which fixed
+  // `bazel test` but not `bazel coverage`. See ../jest-resolver.cjs for the
+  // full mechanism.
+  resolver: "<rootDir>/../jest-resolver.cjs",
   transform: {
     "^.+\\.(t|j)s$": [
       "@swc/jest",

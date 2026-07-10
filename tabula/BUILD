@@ -23,6 +23,7 @@
 # This package-root BUILD hosts only the developer-environment check target.
 # gazelle:ignore
 
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # Inter-app boundary (#82): targets in this package default to tabula-internal
@@ -30,6 +31,16 @@ load("//tools/doctor:defs.bzl", "doctor")
 # same firewall the other five app roots already declare. The subpackages
 # (api/cli/extension/shared/web) each carry their own matching default.
 package(default_visibility = ["//tabula:__subpackages__"])
+
+# Shared jest resolver (jest 30 + rules_js symlink fix) consumed by every
+# tabula jest_test via `resolver: "<rootDir>/../jest-resolver.cjs"`. Wrapped in
+# a js_library (rules_jest requires jest_test data to be same-package or a
+# js_library dep) and staged at its package-relative path tabula/jest-resolver.cjs.
+js_library(
+    name = "jest_resolver",
+    srcs = ["jest-resolver.cjs"],
+    visibility = ["//tabula:__subpackages__"],
+)
 
 # Developer-environment check: `bazel run //tabula:doctor`.
 doctor(

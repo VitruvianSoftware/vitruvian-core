@@ -105,6 +105,7 @@ jest_test(
         ":node_modules/@swc/jest",
         ":node_modules/chalk",
         ":node_modules/commander",
+        "//tabula:jest_resolver",
     ],
     node_modules = ":node_modules",
     # See //tabula/extension:unit_tests for why this flag is needed.

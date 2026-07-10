@@ -34,6 +34,10 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testEnvironment: "jest-environment-jsdom",
+  // Keep resolved modules inside the runfiles symlink tree (symlinks:false) so
+  // jest.mock() IDs and coverage attribution stay consistent under Bazel. See
+  // ../jest-resolver.cjs for the full mechanism.
+  resolver: "<rootDir>/../jest-resolver.cjs",
   collectCoverageFrom: [
     "app/**/*.{js,jsx,ts,tsx}",
     "lib/**/*.{js,jsx,ts,tsx}",
