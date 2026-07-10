@@ -201,6 +201,7 @@ jobs:
       # traffic, smoke its dedicated candidate URL, then shift 100% only on
       # success.
       - name: Deploy the new revision without traffic (Pulumi)
+        id: deploy
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           # Pulumi shells out to `go build`; the repo-root go.work does not
@@ -216,6 +217,17 @@ jobs:
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
           echo "Current live revision: ${STABLE:-<none, first deploy>}"
+          # Publish whether this is a first-ever deploy + the stable revision, so
+          # the smoke and promote steps consume THESE values instead of re-deriving
+          # from an order-assumed traffic[0] later (#808): the smoke step must not
+          # fall back to the live (stable) URL on a normal deploy, and the promote
+          # step must re-pin the same stable captured here.
+          if [ -z "$STABLE" ]; then
+            echo "first_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "first_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "stable_revision=${STABLE}" >> "$GITHUB_OUTPUT"
           # Per-invocation env, NOT `pulumi config set` (#499 de-race).
           export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
           export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
@@ -227,17 +239,30 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
           CUSTOM_SMOKE_SCRIPT: ${{ inputs.custom-smoke-script }}
+          FIRST_DEPLOY: ${{ steps.deploy.outputs.first_deploy }}
         working-directory: ${{ inputs.pulumi-dir }}
         run: |
+          set -euo pipefail
           pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
-          # The candidate's dedicated tag URL. On the first deploy there is no
-          # candidate (traffic went straight to the new revision), so fall back
-          # to the live service URL.
+          # The candidate's dedicated tag URL (the new revision at 0% traffic).
           CAND="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --format=json | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
           if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
-            CAND="$(pulumi stack output serviceUrl)"
+            if [ "$FIRST_DEPLOY" = "true" ]; then
+              # First-ever deploy: there is no candidate tag because traffic went
+              # straight to the new revision, so the live service URL IS the new
+              # revision -- smoke that.
+              CAND="$(pulumi stack output serviceUrl)"
+              echo "First deploy: smoking the live service URL (it is the new revision)."
+            else
+              # NOT a first deploy: the candidate URL must resolve. Falling back to
+              # the live service URL here would smoke the STABLE (old) revision, go
+              # green against untested code, and then promote the new revision to
+              # 100% -- the exact false-green in #808. Fail the deploy instead.
+              echo "::error::Could not resolve the candidate revision URL on a non-first deploy. Refusing to smoke the stable revision (that would false-green and promote an untested revision). Failing the deploy."
+              exit 1
+            fi
           fi
           if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then
             echo "Running custom smoke script against ${CAND}"
@@ -252,15 +277,15 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
+          STABLE_REVISION: ${{ steps.deploy.outputs.stable_revision }}
         working-directory: ${{ inputs.pulumi-dir }}
         run: |
           pulumi stack select "$DEPLOY_ENV"
-          # Re-pin the SAME stable revision + tag from the first phase so the
-          # promote update is self-consistent even if the service moved.
+          # Re-pin the SAME stable revision captured in phase 1 -- NOT a fresh
+          # traffic[0] read (the traffic array order isn't guaranteed, so this
+          # could pin the wrong revision) -- so the promote update is
+          # self-consistent with the candidate that was just smoked (#808).
           export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
-          STABLE="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
-            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
-          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
+          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE_REVISION}"
           export "${{ inputs.env-prefix }}_PROMOTE=true"
           pulumi up --yes
