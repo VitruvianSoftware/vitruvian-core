@@ -65,148 +65,165 @@ func budgetConfig(cfg *ProjectsConfig) *project.BudgetConfig {
 func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folderID, networkProjectID, perimeterName, kmsProjectID, acmPolicyID pulumi.StringOutput) (*BUProjects, error) {
 	result := &BUProjects{}
 
+	// Default every StringOutput to an empty string so exports remain well-typed
+	// when a project type is disabled.
+	emptyStr := pulumi.String("").ToStringOutput()
+	result.SVPCProjectID = emptyStr
+	result.SVPCProjectNumber = emptyStr
+	result.FloatingProjectID = emptyStr
+	result.PeeringProjectID = emptyStr
+	result.PeeringNetworkSelfLink = emptyStr
+	result.PeeringSubnetSelfLink = emptyStr
+	result.IAPFirewallTags = pulumi.Map{}.ToMapOutput()
+
 	// ========================================================================
-	// 1. SVPC-attached Project
+	// 1. SVPC-attached Project (toggle-gated)
 	// This project is attached as a service project to the environment's
-	// Shared VPC host, enabling shared network resource access.
+	// Shared VPC host, enabling shared network resource access. CMEK storage,
+	// the Shared-VPC attachment, and the VPC-SC perimeter attach all hang off
+	// this project, so they live inside the same gate.
 	// ========================================================================
-	svpcApis := []string{
-		"compute.googleapis.com",
-		"container.googleapis.com",
-		"run.googleapis.com",
-		"artifactregistry.googleapis.com",
-		"billingbudgets.googleapis.com",
-		"logging.googleapis.com",
-		"accesscontextmanager.googleapis.com",
-	}
-
-	svpcProject, err := project.NewProject(ctx, "bu-svpc-project", &project.ProjectArgs{
-		DefaultServiceAccount: "deprivilege",
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		Labels:                projectLabels(cfg, "sample-application", "svpc"),
-		Budget:                budgetConfig(cfg),
-		ActivateApis:          svpcApis,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	result.RestrictedEnabledApis = svpcApis
-
-	// Attach as a Shared VPC service project
-	if _, err := compute.NewSharedVPCServiceProject(ctx, "svpc-attachment", &compute.SharedVPCServiceProjectArgs{
-		HostProject:    networkProjectID,
-		ServiceProject: svpcProject.Project.ProjectId,
-	}); err != nil {
-		return nil, err
-	}
-
-	// VPC-SC Perimeter attachment — attach the SVPC project to the perimeter
-	// matching upstream's vpc_service_control_attach_enabled behavior.
-	if cfg.EnforceVpcSc {
-		_, err := accesscontextmanager.NewServicePerimeterResource(ctx, "svpc-vpcsc-attach", &accesscontextmanager.ServicePerimeterResourceArgs{
-			PerimeterName: perimeterName,
-			Resource: svpcProject.Project.Number.ApplyT(func(n string) string {
-				return fmt.Sprintf("projects/%s", n)
-			}).(pulumi.StringOutput),
-		})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		_, err := accesscontextmanager.NewServicePerimeterDryRunResource(ctx, "svpc-vpcsc-attach-dry-run", &accesscontextmanager.ServicePerimeterDryRunResourceArgs{
-			PerimeterName: perimeterName,
-			Resource: svpcProject.Project.Number.ApplyT(func(n string) string {
-				return fmt.Sprintf("projects/%s", n)
-			}).(pulumi.StringOutput),
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	result.SVPCProjectID = svpcProject.Project.ProjectId
-	result.SVPCProjectNumber = svpcProject.Project.Number
-
-	// ========================================================================
-	// 2. Floating Project (not attached to any VPC)
-	// ========================================================================
-	floatingProject, err := project.NewProject(ctx, "bu-floating-project", &project.ProjectArgs{
-		DefaultServiceAccount: "deprivilege",
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		Labels:                projectLabels(cfg, "sample-application", "none"),
-		Budget:                budgetConfig(cfg),
-		ActivateApis: []string{
+	if cfg.SVPCProjectEnabled {
+		svpcApis := []string{
 			"compute.googleapis.com",
 			"container.googleapis.com",
 			"run.googleapis.com",
 			"artifactregistry.googleapis.com",
 			"billingbudgets.googleapis.com",
 			"logging.googleapis.com",
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	result.FloatingProjectID = floatingProject.Project.ProjectId
+			"accesscontextmanager.googleapis.com",
+		}
 
-	// ========================================================================
-	// 3. Peering Project — full VPC, subnet, DNS, peering, firewall
-	// ========================================================================
-	peeringProject, err := project.NewProject(ctx, "bu-peering-project", &project.ProjectArgs{
-		DefaultServiceAccount: "deprivilege",
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		Labels:                projectLabels(cfg, "sample-peering", "none"),
-		Budget:                budgetConfig(cfg),
-		ActivateApis: []string{
-			"compute.googleapis.com",
-			"dns.googleapis.com",
-			"billingbudgets.googleapis.com",
-			"logging.googleapis.com",
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	result.PeeringProjectID = peeringProject.Project.ProjectId
-
-	// Deploy peering network infrastructure (VPC, subnet, DNS, peering, firewall)
-	if cfg.PeeringEnabled {
-		peeringResult, err := deployPeeringNetwork(ctx, cfg, peeringProject, networkProjectID)
+		svpcProject, err := project.NewProject(ctx, "bu-svpc-project", &project.ProjectArgs{
+			DefaultServiceAccount: "deprivilege",
+			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			FolderID:              folderID,
+			BillingAccount:        pulumi.String(cfg.BillingAccount),
+			RandomProjectID:       cfg.RandomSuffix,
+			Labels:                projectLabels(cfg, "sample-application", "svpc"),
+			Budget:                budgetConfig(cfg),
+			ActivateApis:          svpcApis,
+		})
 		if err != nil {
 			return nil, err
 		}
-		result.PeeringNetworkSelfLink = peeringResult.NetworkSelfLink
-		result.PeeringSubnetSelfLink = peeringResult.SubnetSelfLink
-		result.IAPFirewallTags = peeringResult.IAPFirewallTags
+
+		result.RestrictedEnabledApis = svpcApis
+
+		// Attach as a Shared VPC service project
+		if _, err := compute.NewSharedVPCServiceProject(ctx, "svpc-attachment", &compute.SharedVPCServiceProjectArgs{
+			HostProject:    networkProjectID,
+			ServiceProject: svpcProject.Project.ProjectId,
+		}); err != nil {
+			return nil, err
+		}
+
+		// VPC-SC Perimeter attachment — attach the SVPC project to the perimeter
+		// matching upstream's vpc_service_control_attach_enabled behavior.
+		if cfg.EnforceVpcSc {
+			_, err := accesscontextmanager.NewServicePerimeterResource(ctx, "svpc-vpcsc-attach", &accesscontextmanager.ServicePerimeterResourceArgs{
+				PerimeterName: perimeterName,
+				Resource: svpcProject.Project.Number.ApplyT(func(n string) string {
+					return fmt.Sprintf("projects/%s", n)
+				}).(pulumi.StringOutput),
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			_, err := accesscontextmanager.NewServicePerimeterDryRunResource(ctx, "svpc-vpcsc-attach-dry-run", &accesscontextmanager.ServicePerimeterDryRunResourceArgs{
+				PerimeterName: perimeterName,
+				Resource: svpcProject.Project.Number.ApplyT(func(n string) string {
+					return fmt.Sprintf("projects/%s", n)
+				}).(pulumi.StringOutput),
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		result.SVPCProjectID = svpcProject.Project.ProjectId
+		result.SVPCProjectNumber = svpcProject.Project.Number
+
+		// CMEK Storage — KMS keyring + encrypted GCS bucket on the SVPC project
+		if cfg.CMEKEnabled {
+			cmekResult, err := deployCMEKStorage(ctx, cfg, svpcProject, kmsProjectID)
+			if err != nil {
+				return nil, err
+			}
+			result.CMEKBucket = &cmekResult.BucketName
+			result.CMEKKeyring = &cmekResult.KeyringName
+		}
 	}
 
 	// ========================================================================
-	// 4. CMEK Storage — KMS keyring + encrypted GCS bucket on SVPC project
+	// 2. Floating Project (not attached to any VPC, toggle-gated)
 	// ========================================================================
-	if cfg.CMEKEnabled {
-		cmekResult, err := deployCMEKStorage(ctx, cfg, svpcProject, kmsProjectID)
+	if cfg.FloatingProjectEnabled {
+		floatingProject, err := project.NewProject(ctx, "bu-floating-project", &project.ProjectArgs{
+			DefaultServiceAccount: "deprivilege",
+			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			FolderID:              folderID,
+			BillingAccount:        pulumi.String(cfg.BillingAccount),
+			RandomProjectID:       cfg.RandomSuffix,
+			Labels:                projectLabels(cfg, "sample-application", "none"),
+			Budget:                budgetConfig(cfg),
+			ActivateApis: []string{
+				"compute.googleapis.com",
+				"container.googleapis.com",
+				"run.googleapis.com",
+				"artifactregistry.googleapis.com",
+				"billingbudgets.googleapis.com",
+				"logging.googleapis.com",
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
-		result.CMEKBucket = &cmekResult.BucketName
-		result.CMEKKeyring = &cmekResult.KeyringName
+		result.FloatingProjectID = floatingProject.Project.ProjectId
+	}
+
+	// ========================================================================
+	// 3. Peering Project — full VPC, subnet, DNS, peering, firewall (toggle-gated)
+	// ========================================================================
+	if cfg.PeeringProjectEnabled {
+		peeringProject, err := project.NewProject(ctx, "bu-peering-project", &project.ProjectArgs{
+			DefaultServiceAccount: "deprivilege",
+			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
+			FolderID:              folderID,
+			BillingAccount:        pulumi.String(cfg.BillingAccount),
+			RandomProjectID:       cfg.RandomSuffix,
+			Labels:                projectLabels(cfg, "sample-peering", "none"),
+			Budget:                budgetConfig(cfg),
+			ActivateApis: []string{
+				"compute.googleapis.com",
+				"dns.googleapis.com",
+				"billingbudgets.googleapis.com",
+				"logging.googleapis.com",
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		result.PeeringProjectID = peeringProject.Project.ProjectId
+
+		// Deploy peering network infrastructure (VPC, subnet, DNS, peering, firewall)
+		if cfg.PeeringEnabled {
+			peeringResult, err := deployPeeringNetwork(ctx, cfg, peeringProject, networkProjectID)
+			if err != nil {
+				return nil, err
+			}
+			result.PeeringNetworkSelfLink = peeringResult.NetworkSelfLink
+			result.PeeringSubnetSelfLink = peeringResult.SubnetSelfLink
+			result.IAPFirewallTags = peeringResult.IAPFirewallTags
+		}
 	}
 
 	// Populate TF-parity outputs
-	if cfg.PeeringEnabled {
+	if cfg.PeeringProjectEnabled && cfg.PeeringEnabled {
 		result.SubnetsSelfLinks = pulumi.StringArray{result.PeeringSubnetSelfLink}.ToStringArrayOutput()
 		result.PeeringComplete = pulumi.Bool(true).ToBoolOutput()
 	} else {

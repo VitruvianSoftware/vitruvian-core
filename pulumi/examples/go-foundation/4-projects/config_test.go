@@ -11,10 +11,53 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
+
+type projectsMocks int
+
+func (projectsMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
+}
+
+func (projectsMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
+
+// TestLoadProjectsConfigDefaults verifies the loader's default posture — most
+// importantly that every project-type enable toggle defaults to true, preserving
+// upstream behavior (all three BU project types plus the infra-pipeline project
+// are created unless a consumer explicitly disables one).
+func TestLoadProjectsConfigDefaults(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{ "project:env": "development", "project:business_code": "bu1", "project:billing_account": "AAAAAA-BBBBBB-CCCCCC", "project:org_stack_name": "organization/vitruvian/1-org/production" }`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadProjectsConfig(ctx)
+
+		assert.Equal(t, "development", cfg.Env)
+		assert.Equal(t, "d", cfg.EnvCode)
+
+		// Project-type enablement — all default true (upstream parity)
+		assert.True(t, cfg.SVPCProjectEnabled)
+		assert.True(t, cfg.FloatingProjectEnabled)
+		assert.True(t, cfg.PeeringProjectEnabled)
+		assert.True(t, cfg.InfraPipelineEnabled)
+
+		// Network/env stack names derive from org_stack_name by stage substitution
+		assert.Equal(t, "organization/vitruvian/3-networks-svpc/production", cfg.NetworkStackName)
+		assert.Equal(t, "organization/vitruvian/2-environments/production", cfg.EnvStackName)
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", projectsMocks(0)))
+
+	assert.NoError(t, err)
+}
 
 // TestProjectLabels verifies the label generation function produces
 // the correct set of labels matching the Terraform foundation's pattern.

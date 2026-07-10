@@ -29,42 +29,54 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadProjectsConfig(ctx)
 
-		// 1. Stack References to resolve folder and network project IDs
-		orgStack, err := pulumi.NewStackReference(ctx, "organization", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.OrgStackName),
-		})
-		if err != nil {
-			return err
-		}
+		emptyStr := pulumi.String("").ToStringOutput()
 
-		// 1b. Stack Reference to resolve network outputs (VPC-SC perimeter)
-		netStack, err := pulumi.NewStackReference(ctx, "network", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.NetworkStackName),
-		})
-		if err != nil {
-			return err
-		}
-
-		// 1c. Stack Reference to resolve environment outputs (KMS project)
+		// 1. Environment StackReference (Stage 2) — always required: it provides
+		// the environment folder (BU-folder parent) and the per-env KMS project.
 		envStack, err := pulumi.NewStackReference(ctx, "environment", &pulumi.StackReferenceArgs{
 			Name: pulumi.String(cfg.EnvStackName),
 		})
 		if err != nil {
 			return err
 		}
-
-		// 2. Resolve the environment folder from Stage 2 outputs
 		// TF reads this from the 2-environments remote state (env_folder_name).
 		// The Go 2-environments stack exports "{env}_env_folder" (e.g. "development_env_folder").
 		folderID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_folder", cfg.Env)))
+		// Per-environment KMS project ID (upstream: environments_env.env_kms_project_id).
+		kmsProjectID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_kms_project_id", cfg.Env)))
 
-		// Resolve the SVPC host project for this environment
-		networkProjectID := orgStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_network_project_id", cfg.Env)))
+		// 1b. Organization StackReference (Stage 1) — only when a project type
+		// that consumes its outputs is enabled (SVPC host, peering-to-host,
+		// confidential space, or the common-folder infra pipeline).
+		networkProjectID := emptyStr
+		commonFolderID := emptyStr
+		acmPolicyID := emptyStr
+		if cfg.SVPCProjectEnabled || cfg.PeeringProjectEnabled || cfg.ConfidentialSpaceEnabled || cfg.InfraPipelineEnabled {
+			orgStack, err := pulumi.NewStackReference(ctx, "organization", &pulumi.StackReferenceArgs{
+				Name: pulumi.String(cfg.OrgStackName),
+			})
+			if err != nil {
+				return err
+			}
+			networkProjectID = orgStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_network_project_id", cfg.Env)))
+			commonFolderID = orgStack.GetStringOutput(pulumi.String("common_folder_id"))
+			acmPolicyID = orgStack.GetStringOutput(pulumi.String("access_context_manager_policy_id"))
+		}
 
-		// Resolve VPC-SC perimeter name from the network stack
-		perimeterName := netStack.GetStringOutput(pulumi.String("service_perimeter_name"))
+		// 1c. Network StackReference (Stage 3) — only when a project attaches to
+		// the VPC-SC perimeter (SVPC-attached or confidential-space projects).
+		perimeterName := emptyStr
+		if cfg.SVPCProjectEnabled || cfg.ConfidentialSpaceEnabled {
+			netStack, err := pulumi.NewStackReference(ctx, "network", &pulumi.StackReferenceArgs{
+				Name: pulumi.String(cfg.NetworkStackName),
+			})
+			if err != nil {
+				return err
+			}
+			perimeterName = netStack.GetStringOutput(pulumi.String("service_perimeter_name"))
+		}
 
-		// 3. Create the Business Unit folder under the environment folder
+		// 2. Create the Business Unit folder under the environment folder
 		buFolder, err := organizations.NewFolder(ctx, "bu-folder", &organizations.FolderArgs{
 			DisplayName: folderID.ApplyT(func(_ string) string {
 				return fmt.Sprintf("%s-%s-%s", cfg.FolderPrefix, cfg.Env, cfg.BusinessCode)
@@ -78,21 +90,16 @@ func main() {
 			return err
 		}
 
-		// Fetch per-environment KMS project ID (from 2-environments, matching upstream's
-		// data.terraform_remote_state.environments_env.outputs.env_kms_project_id)
-		kmsProjectID := envStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_env_kms_project_id", cfg.Env)))
-
-		// 4. Deploy Business Unit Projects
+		// 3. Deploy Business Unit Projects (each type internally toggle-gated)
 		buFolderID := buFolder.ID().ApplyT(func(id pulumi.ID) string {
 			return string(id)
 		}).(pulumi.StringOutput)
-		acmPolicyID := orgStack.GetStringOutput(pulumi.String("access_context_manager_policy_id"))
 		projects, err := deployBusinessUnitProjects(ctx, cfg, buFolderID, networkProjectID, perimeterName, kmsProjectID, acmPolicyID)
 		if err != nil {
 			return err
 		}
 
-		// 5. Deploy Confidential Space Project (optional, toggle-gated)
+		// 4. Deploy Confidential Space Project (optional, toggle-gated)
 		if cfg.ConfidentialSpaceEnabled {
 			confResult, err := deployConfidentialSpaceProject(ctx, cfg, buFolderID, networkProjectID, perimeterName)
 			if err != nil {
@@ -103,11 +110,11 @@ func main() {
 			projects.ConfSpaceWorkloadSA = &confResult.WorkloadSAEmail
 		}
 
-		// 6. Deploy Infra Pipeline Project (under common folder)
-		commonFolderID := orgStack.GetStringOutput(pulumi.String("common_folder_id"))
-		_, err = deployInfraPipelineProject(ctx, cfg, commonFolderID)
-		if err != nil {
-			return err
+		// 5. Deploy Infra Pipeline Project (under common folder, toggle-gated)
+		if cfg.InfraPipelineEnabled {
+			if _, err = deployInfraPipelineProject(ctx, cfg, commonFolderID); err != nil {
+				return err
+			}
 		}
 
 		// 7. Exports — matching TF 4-projects/business_unit_1/{env}/outputs.tf
@@ -166,6 +173,17 @@ type ProjectsConfig struct {
 	BudgetAmount        float64
 	BudgetAlertPercents []float64
 	BudgetSpendBasis    string
+
+	// Project-type enablement (all default true → upstream behavior: every BU
+	// gets an SVPC-attached, a floating, and a peering project, plus the common
+	// infra-pipeline project). Set individually to false to deploy only the
+	// project types a given go-live needs (e.g. floating-only). Gating these
+	// also lets the stack skip the org/network StackReferences whose outputs are
+	// only consumed by the disabled types.
+	SVPCProjectEnabled     bool
+	FloatingProjectEnabled bool
+	PeeringProjectEnabled  bool
+	InfraPipelineEnabled   bool
 
 	// VPC-SC
 	EnforceVpcSc bool
@@ -266,6 +284,29 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	c.BudgetSpendBasis = conf.Get("budget_spend_basis")
 	if c.BudgetSpendBasis == "" {
 		c.BudgetSpendBasis = "FORECASTED_SPEND"
+	}
+
+	// Project-type enablement — default true to preserve upstream behavior
+	// (all three BU project types + the infra-pipeline project are created).
+	if val, err := conf.TryBool("svpc_project_enabled"); err == nil {
+		c.SVPCProjectEnabled = val
+	} else {
+		c.SVPCProjectEnabled = true
+	}
+	if val, err := conf.TryBool("floating_project_enabled"); err == nil {
+		c.FloatingProjectEnabled = val
+	} else {
+		c.FloatingProjectEnabled = true
+	}
+	if val, err := conf.TryBool("peering_project_enabled"); err == nil {
+		c.PeeringProjectEnabled = val
+	} else {
+		c.PeeringProjectEnabled = true
+	}
+	if val, err := conf.TryBool("infra_pipeline_enabled"); err == nil {
+		c.InfraPipelineEnabled = val
+	} else {
+		c.InfraPipelineEnabled = true
 	}
 
 	// VPC-SC
