@@ -37,6 +37,25 @@ module.exports = {
     "**/?(*.)+(test).tsx",
   ],
   testPathIgnorePatterns: ["/node_modules/", "/tests/e2e"],
+  // ts-first so jest resolves TypeScript SOURCES, never the stale tsc/swc
+  // compiled .js siblings that the ts_project emits into Bazel's bin tree.
+  // jest 30's resolver realpaths modules out of the runfiles symlink tree into
+  // that bin tree; with the default js-before-ts order the module-under-test
+  // then loads the compiled `.js` while jest.mock() registered the `.ts` — the
+  // IDs mismatch and every jest.mock() silently no-ops (real chrome/network
+  // calls run). See tabula/api/jest.config.js for the full mechanism.
+  moduleFileExtensions: [
+    "ts",
+    "mts",
+    "cts",
+    "tsx",
+    "js",
+    "mjs",
+    "cjs",
+    "jsx",
+    "json",
+    "node",
+  ],
   transform: {
     "^.+\\.(t|j)sx?$": [
       "@swc/jest",

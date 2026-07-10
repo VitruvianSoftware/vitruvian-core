@@ -33,19 +33,20 @@ import {
   getRelayIdFromUrl,
   clearRelayIdFromUrl,
 } from "./router";
+import { setWindowUrl } from "../testUtils/jsdomLocation";
 
 describe("router", () => {
-  // Store original location
-  const originalLocation = window.location;
   const originalHistoryPushState = window.history.pushState;
   const originalHistoryReplaceState = window.history.replaceState;
 
   beforeEach(() => {
-    // Reset location mock before each test
-    delete (window as any).location;
-    (window as any).location = new URL(
-      "chrome-extension://test-id/dashboard.html",
-    );
+    // jsdom 26 makes window.location unforgeable, so tests drive the URL
+    // through the real history API instead of replacing location. jsdom only
+    // lets http(s) documents rewrite their query string (a chrome-extension://
+    // document URL would throw SecurityError even for query changes), so the
+    // tests run on jest's default http://localhost origin — the router helpers
+    // only read and write query params, never the scheme.
+    setWindowUrl("http://localhost/dashboard.html");
 
     // Mock history.pushState / replaceState
     window.history.pushState = jest.fn();
@@ -60,30 +61,24 @@ describe("router", () => {
   });
 
   afterEach(() => {
-    // Restore original location
-    (window as any).location = originalLocation;
     window.history.pushState = originalHistoryPushState;
     window.history.replaceState = originalHistoryReplaceState;
   });
 
   describe("getSpaceIdFromUrl", () => {
     it("should return null when no spaceId param exists", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html",
-      );
+      setWindowUrl("http://localhost/dashboard.html");
       expect(getSpaceIdFromUrl()).toBeNull();
     });
 
     it("should return spaceId when param exists", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?spaceId=workspace-123",
-      );
+      setWindowUrl("http://localhost/dashboard.html?spaceId=workspace-123");
       expect(getSpaceIdFromUrl()).toBe("workspace-123");
     });
 
     it("should return spaceId with other params present", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?view=note&spaceId=workspace-456&noteId=abc",
+      setWindowUrl(
+        "http://localhost/dashboard.html?view=note&spaceId=workspace-456&noteId=abc",
       );
       expect(getSpaceIdFromUrl()).toBe("workspace-456");
     });
@@ -91,9 +86,7 @@ describe("router", () => {
 
   describe("setSpaceIdInUrl", () => {
     it("should update URL with spaceId", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html",
-      );
+      setWindowUrl("http://localhost/dashboard.html");
       setSpaceIdInUrl("workspace-789");
 
       expect(window.history.pushState).toHaveBeenCalledWith(
@@ -106,9 +99,7 @@ describe("router", () => {
 
   describe("clearSpaceIdFromUrl", () => {
     it("should remove spaceId from URL", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?spaceId=workspace-123",
-      );
+      setWindowUrl("http://localhost/dashboard.html?spaceId=workspace-123");
 
       clearSpaceIdFromUrl();
 
@@ -137,25 +128,19 @@ describe("router", () => {
 
   describe("getRelayIdFromUrl", () => {
     it("should return null when no relayId param exists", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?spaceId=ws-1",
-      );
+      setWindowUrl("http://localhost/dashboard.html?spaceId=ws-1");
       expect(getRelayIdFromUrl()).toBeNull();
     });
 
     it("should return relayId when the param exists", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
-      );
+      setWindowUrl("http://localhost/dashboard.html?relayId=relay-abc");
       expect(getRelayIdFromUrl()).toBe("relay-abc");
     });
   });
 
   describe("clearRelayIdFromUrl", () => {
     it("should remove relayId via replaceState (not pushState)", () => {
-      (window as any).location = new URL(
-        "chrome-extension://test-id/dashboard.html?relayId=relay-abc",
-      );
+      setWindowUrl("http://localhost/dashboard.html?relayId=relay-abc");
 
       clearRelayIdFromUrl();
 
