@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.4...foundation-gcp-bootstrap-v0.5.0) (2026-07-10)
+
+
+### Features
+
+* **foundation:** provision proj-stage WIF bindings + GitHub environments (stage-4 CI enablement) ([#802](https://github.com/VitruvianSoftware/vitruvian-core/issues/802)) ([335371c](https://github.com/VitruvianSoftware/vitruvian-core/commit/335371c19282e77161036d2edae5e26209d6d523))
+
 ## [0.4.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.3...foundation-gcp-bootstrap-v0.4.4) (2026-07-09)
 
 
