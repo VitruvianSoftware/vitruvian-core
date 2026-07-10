@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "infrastructure/pulumi/foundation/gcp-projects": {
+      "release-type": "simple",
+      "component": "foundation-gcp-projects"
+    }
+  }
+}

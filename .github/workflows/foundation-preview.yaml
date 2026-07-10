@@ -74,6 +74,15 @@ jobs:
             dir: infrastructure/pulumi/foundation/gcp-networks
             stack: development
             environment: foundation-net-preview
+          # gcp-projects (stage 4) is multi-environment (development/nonproduction/
+          # production stacks, one per business-unit cell). Preview the
+          # `development` stack as the representative leg. It reads only the
+          # 2-environments StackReference (env_folder) for the floating-only
+          # deployment, so `pulumi preview` runs the program end-to-end.
+          - app: gcp-projects
+            dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: development
+            environment: foundation-proj-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
