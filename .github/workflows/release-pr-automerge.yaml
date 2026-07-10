@@ -1,0 +1,90 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Auto-merge release PRs
+
+# release-please (foundation-release, apps-release, tabula-release,
+# pulumi-library-release) opens ONE PR per released component on a
+# `release-please--*` branch, authored by the vitruvian-copybara-sync App. That
+# App is a bypass actor on the merge-queue ruleset's required-review rule (#804),
+# so its release PRs are ALLOWED to merge without a human review -- but
+# release-please never enables auto-merge, so each release PR sat in
+# REVIEW_REQUIRED until a maintainer merged it by hand (the friction #804's
+# bypass actor was meant to remove). This enables auto-merge on those PRs, as the
+# bypass App, the moment they open, so they flow THROUGH the merge queue on green
+# CI with no human step -- realizing the intent documented on the #804 bypass.
+#
+# Scope + safety:
+#   * Only `release-please--*` branches authored by a bot are matched. Those
+#     branches are created solely by release-please. Human PRs still require a
+#     code-owner review; nothing here touches them.
+#   * Merging a foundation release PR triggers only the AUTO development deploy;
+#     nonproduction/production still gate on their GitHub Environment approvals,
+#     so a maintainer remains the human gate for prod. (See #804.)
+#
+# pull_request (not workflow_run): a GitHub App installation token is NOT the
+# recursion-blocked default GITHUB_TOKEN, so App-authored PRs DO trigger
+# pull_request workflows (verified: the release PRs' full PR check suite runs).
+# Secrets are available because release-please--* branches are in-repo (this is
+# not a fork or a Dependabot PR, which is why dependabot-auto-merge.yml must use
+# workflow_run instead).
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    # Only release-please's bot-authored PRs. The branch prefix is the primary
+    # selector (only release-please creates it); the Bot check is belt-and-braces.
+    if: >-
+      startsWith(github.event.pull_request.head.ref, 'release-please--') &&
+      github.event.pull_request.user.type == 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: release-automerge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.SYNC_APP_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Enable auto-merge so the PR merges through the queue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Idempotent: on `synchronize` (release-please pushing an update) the PR
+          # may already have auto-merge enabled -- don't error, just no-op.
+          current="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest --jq '.autoMergeRequest')"
+          if [ "$current" != "null" ]; then
+            echo "Auto-merge already enabled on release PR #$PR."
+            exit 0
+          fi
+          echo "Enabling auto-merge for release PR #$PR; the merge queue merges it on green CI."
+          gh pr merge "$PR" -R "$REPO" --squash --auto
