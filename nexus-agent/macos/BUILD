@@ -1,5 +1,16 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+
+# Pure, UI-free logic (version parse/compare) in its own module so the test binary
+# can link it WITHOUT the app's `@main` (App.swift), which would otherwise collide
+# with XCTest's own `main` ("duplicate symbol _main") (#807).
+swift_library(
+    name = "NexusAgentCore",
+    srcs = glob(["Sources/NexusAgentCore/**/*.swift"]),
+    module_name = "NexusAgentCore",
+    target_compatible_with = ["@platforms//os:macos"],
+)
 
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
 # Swift has no Gazelle, so this BUILD file is hand-written. The library is
@@ -10,6 +21,19 @@ swift_library(
     srcs = glob(["Sources/NexusAgent/**/*.swift"]),
     module_name = "NexusAgent",
     target_compatible_with = ["@platforms//os:macos"],
+    deps = [":NexusAgentCore"],
+)
+
+# Unit tests for the pure-logic pieces. Depends on NexusAgentCore only (NOT the
+# app lib), so no `@main` is linked in. macOS-only + `manual` like the app bundle,
+# so a Linux `bazel build/test //...` skips it; the macОС CI leg runs it by
+# explicit label (#807).
+swift_test(
+    name = "NexusAgent_tests",
+    srcs = glob(["Tests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":NexusAgentCore"],
 )
 
 # Produces bazel-bin/nexus-agent/macos/NexusAgent.app.

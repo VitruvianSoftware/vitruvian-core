@@ -20,6 +20,7 @@
 
 import Foundation
 import AppKit
+import NexusAgentCore
 
 /// Checks GitHub Releases for newer versions and handles download-and-replace updates.
 @MainActor
@@ -61,9 +62,9 @@ class UpdateChecker: ObservableObject {
                   let htmlURL = json["html_url"] as? String else { return }
 
             // Extract just the semantic version from tags like "nexus-agent-v1.4.0"
-            let remoteVersion = extractVersion(from: tagName)
+            let remoteVersion = VersionCompare.extractVersion(from: tagName)
 
-            if isNewerVersion(remote: remoteVersion, current: appVersion) {
+            if VersionCompare.isNewerVersion(remote: remoteVersion, current: appVersion) {
                 latestVersion = remoteVersion
                 releaseURL = URL(string: htmlURL)
                 releaseNotes = (json["body"] as? String) ?? ""
@@ -88,14 +89,6 @@ class UpdateChecker: ObservableObject {
         } catch {
             errorMessage = "Update check failed: \(error.localizedDescription)"
         }
-    }
-    
-    private func extractVersion(from tag: String) -> String {
-        // Find the first occurrence of a digit followed by dots (e.g. "1.4.0")
-        if let range = tag.range(of: "\\d+\\.\\d+\\.\\d+", options: .regularExpression) {
-            return String(tag[range])
-        }
-        return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
     }
 
     /// Download the latest release and replace the current app bundle.
@@ -240,19 +233,6 @@ class UpdateChecker: ObservableObject {
         }
     }
 
-    /// Semantic version comparison (supports major.minor.patch)
-    private func isNewerVersion(remote: String, current: String) -> Bool {
-        let remoteParts = remote.split(separator: ".").compactMap { Int($0) }
-        let currentParts = current.split(separator: ".").compactMap { Int($0) }
-
-        for i in 0..<max(remoteParts.count, currentParts.count) {
-            let r = i < remoteParts.count ? remoteParts[i] : 0
-            let c = i < currentParts.count ? currentParts[i] : 0
-            if r > c { return true }
-            if r < c { return false }
-        }
-        return false
-    }
 }
 
 enum UpdateError: LocalizedError {
