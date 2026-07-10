@@ -65,7 +65,9 @@ describe("Icon", () => {
   it("should accept custom style", () => {
     render(<Icon name="home" style={{ color: "red" }} />);
     const icon = screen.getByText("home");
-    expect(icon).toHaveStyle({ color: "red" });
+    // jsdom 26 (jest-environment-jsdom 30) serializes named colors to their
+    // rgb() form when the style is read back, so match that serialization.
+    expect(icon).toHaveStyle({ color: "rgb(255, 0, 0)" });
   });
 });
 

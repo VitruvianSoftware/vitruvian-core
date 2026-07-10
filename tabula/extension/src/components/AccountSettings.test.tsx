@@ -29,6 +29,7 @@ import { StorageService } from "../services/storage";
 import { TabService } from "../services/tabs";
 import { AuthService } from "../services/auth";
 import { UpdateCheckService } from "../services/updateCheck";
+import { mockLocationReload } from "../testUtils/jsdomLocation";
 
 jest.mock("../services/updateCheck", () => ({
   UpdateCheckService: {
@@ -85,12 +86,9 @@ const mockChromeStorage = {
   },
 };
 
-// Mock window.location.reload
-const mockReload = jest.fn();
-Object.defineProperty(window, "location", {
-  value: { reload: mockReload },
-  writable: true,
-});
+// Absorb the component's window.location.reload() calls (jsdom 26 makes
+// location unforgeable, so the old defineProperty override throws).
+mockLocationReload();
 
 // Mock Modal component
 jest.mock("./Modal", () => ({

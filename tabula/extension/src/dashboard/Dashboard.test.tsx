@@ -28,6 +28,10 @@ import { WorkspaceService } from "../services/workspace";
 import { AuthService } from "../services/auth";
 import { useWorkspaceStore } from "../stores/workspace";
 import { UpdateCheckService } from "../services/updateCheck";
+import {
+  mockLocationReload,
+  restoreLocationReload,
+} from "../testUtils/jsdomLocation";
 
 // Mock dependencies
 jest.mock("../services/workspace");
@@ -819,12 +823,9 @@ describe("Dashboard", () => {
   });
 
   it("should handle logout", async () => {
-    // Mock window.location.reload
-    const originalReload = window.location.reload;
-    Object.defineProperty(window, "location", {
-      writable: true,
-      value: { reload: jest.fn() },
-    });
+    // Mock window.location.reload (jsdom 26 makes location unforgeable, so
+    // the old defineProperty override throws).
+    const reloadMock = mockLocationReload();
 
     await act(async () => {
       render(<Dashboard />);
@@ -837,10 +838,10 @@ describe("Dashboard", () => {
     });
 
     expect(AuthService.logout).toHaveBeenCalled();
-    expect(window.location.reload).toHaveBeenCalled();
+    expect(reloadMock).toHaveBeenCalled();
 
     // Restore
-    window.location.reload = originalReload;
+    restoreLocationReload();
   });
 
   it("should handle account settings modal", async () => {
