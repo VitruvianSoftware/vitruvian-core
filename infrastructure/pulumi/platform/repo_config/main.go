@@ -83,6 +83,19 @@ func main() {
 				// merge queue via the auto-merge mechanism, so "Allow auto-merge"
 				// must be enabled for the queue to function.
 				AllowAutoMerge: pulumi.Bool(true),
+				// Governance (#803): enable secret scanning + push protection as code
+				// (both free on public repos). advanced_security is intentionally
+				// omitted -- GitHub Advanced Security is not applicable to public
+				// repos. Removed from IgnoreChanges below so Pulumi manages exactly
+				// these two settings and nothing else the developer owns.
+				SecurityAndAnalysis: &github.RepositorySecurityAndAnalysisArgs{
+					SecretScanning: &github.RepositorySecurityAndAnalysisSecretScanningArgs{
+						Status: pulumi.String("enabled"),
+					},
+					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
+						Status: pulumi.String("enabled"),
+					},
+				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
 			pulumi.IgnoreChanges([]string{
@@ -115,7 +128,6 @@ func main() {
 				"squashMergeCommitTitle",
 				"squashMergeCommitMessage",
 				"vulnerabilityAlerts",
-				"securityAndAnalysis",
 				"pages",
 				"name",
 			}),
