@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.2...go-network-v2.0.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* **network:** enforce transitivity MIG-before-template teardown ordering ([#830](https://github.com/VitruvianSoftware/vitruvian-core/issues/830)) ([4f03633](https://github.com/VitruvianSoftware/vitruvian-core/commit/4f036335b366027c0b556eadc644258e0de2e80a))
+
 ## [2.0.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.1...go-network-v2.0.2) (2026-07-10)
 
 
