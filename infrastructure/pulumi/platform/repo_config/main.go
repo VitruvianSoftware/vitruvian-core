@@ -714,20 +714,92 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 	}
 
-	// ── Preview environments for the env & net promotion stages ───────────
-	// The environments and networks stages are previewed on PRs by
+	// ── Phase 4: Projects promotion environments ──────────────────────────
+	// The projects stage (gcp-projects, stage 4) uses a chained promotion
+	// workflow where each environment is a separate Pulumi stack deployed via
+	// the reusable foundation-proj-deploy.yaml workflow:
+	//
+	//   foundation-proj-development  → auto-deploy (no reviewers)
+	//   foundation-proj-nonproduction → manual approval (requires reviewers)
+	//   foundation-proj-production    → manual approval (requires reviewers)
+	//
+	// Uses the projects SA (sa-terraform-proj), whose per-env WIF principalSet
+	// bindings (foundation-proj-<stage>) are provisioned by gcp-bootstrap.
+	projPhaseEnvironments := []struct {
+		name            string
+		requireReviewer bool
+	}{
+		{"foundation-proj-development", false},
+		{"foundation-proj-nonproduction", true},
+		{"foundation-proj-production", true},
+	}
+
+	for _, envDef := range projPhaseEnvironments {
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(envDef.name),
+		}
+
+		args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+			ProtectedBranches:    pulumi.Bool(true),
+			CustomBranchPolicies: pulumi.Bool(false),
+		}
+
+		if envDef.requireReviewer {
+			reviewerIds, err := productionReviewerIds(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+				&github.RepositoryEnvironmentReviewerArgs{
+					Users: pulumi.ToIntArray(reviewerIds),
+				},
+			}
+		}
+
+		envRes, err := github.NewRepositoryEnvironment(ctx, envDef.name, args)
+		if err != nil {
+			return err
+		}
+
+		// Propagate foundation WIF variables to the environment so the reusable
+		// deploy workflow resolves ${{ vars.GCP_* }} correctly. Uses the proj SA
+		// (sa-terraform-proj), not the org SA.
+		envVars := foundationVars["foundation-proj"]
+		varKeys := make([]string, 0, len(envVars))
+		for k := range envVars {
+			varKeys = append(varKeys, k)
+		}
+		sort.Strings(varKeys)
+		for _, k := range varKeys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", envDef.name, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(envVars[k]),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// ── Preview environments for the env, net & proj promotion stages ─────
+	// The environments, networks, and projects stages are previewed on PRs by
 	// .github/workflows/foundation-preview.yaml (the `development` stack of
-	// each). Their DEPLOY environments (foundation-{env,net}-<stage>) are gated
-	// to protected branches, so — like the Phase-1 stages above — the PR preview
-	// needs a dedicated, UNGATED environment (no branch policy, no reviewers).
+	// each). Their DEPLOY environments (foundation-{env,net,proj}-<stage>) are
+	// gated to protected branches, so — like the Phase-1 stages above — the PR
+	// preview needs a dedicated, UNGATED environment (no branch policy, no
+	// reviewers).
 	//
 	// Each preview env reuses its stage's WIF variables/SA (foundation-env uses
-	// sa-terraform-env, foundation-net uses sa-terraform-net). The matching WIF
-	// principalSet already exists: gcp-bootstrap's generic per-stage binding
-	// grants attribute.environment/foundation-<stage>-preview for every stage SA,
-	// so no gcp-bootstrap change is needed. PULUMI_ACCESS_TOKEN is repo-level
-	// (see tabulaEnvironments), so only the GCP_* variables are set here.
-	for _, stage := range []string{"foundation-env", "foundation-net"} {
+	// sa-terraform-env, foundation-net uses sa-terraform-net, foundation-proj
+	// uses sa-terraform-proj). The matching WIF principalSet already exists:
+	// gcp-bootstrap's generic per-stage binding grants
+	// attribute.environment/foundation-<stage>-preview for every stage SA, so no
+	// gcp-bootstrap change is needed for the preview leg. PULUMI_ACCESS_TOKEN is
+	// repo-level (see tabulaEnvironments), so only the GCP_* variables are set here.
+	for _, stage := range []string{"foundation-env", "foundation-net", "foundation-proj"} {
 		previewEnv := stage + "-preview"
 		previewEnvRes, err := github.NewRepositoryEnvironment(ctx, previewEnv, &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
