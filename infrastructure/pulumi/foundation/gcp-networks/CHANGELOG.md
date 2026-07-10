@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.7...foundation-gcp-networks-v0.3.8) (2026-07-10)
+
+
+### Bug Fixes
+
+* **networks:** consume network/v2 v2.0.2 (transitivity perpetual-replace fix) ([#797](https://github.com/VitruvianSoftware/vitruvian-core/issues/797)) ([1269417](https://github.com/VitruvianSoftware/vitruvian-core/commit/1269417196c0330787976fcaa2a145a1fe05bf6f))
+
 ## [0.3.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.6...foundation-gcp-networks-v0.3.7) (2026-07-09)
 
 
