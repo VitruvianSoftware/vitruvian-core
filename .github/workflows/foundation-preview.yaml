@@ -108,6 +108,13 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: go vet ./...
 
+      # Run the module's own unit tests (config validation, transforms) in the
+      # same hermetic pre-preview slot -- 4 of the 5 stacks ship *_test.go that no
+      # workflow was executing (#806). No-ops cleanly for a stack with no tests.
+      - name: go test (${{ matrix.app }})
+        working-directory: ${{ matrix.dir }}
+        run: go test ./...
+
       - name: Authenticate to GCP (WIF, keyless)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
