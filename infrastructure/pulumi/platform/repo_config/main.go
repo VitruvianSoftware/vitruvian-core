@@ -232,6 +232,16 @@ func main() {
 						ActorType:  pulumi.String("RepositoryRole"),
 						BypassMode: pulumi.String("always"),
 					},
+					// The vitruvian-copybara-sync App (id 3863936) drives the merge
+					// automation -- Dependabot auto-merge, release-please PRs, and PR
+					// imports -- so it must bypass the required-review rule below, or
+					// that automation would wedge waiting on a human approval that a
+					// bot cannot give. Human contributor PRs still require review.
+					&github.RepositoryRulesetBypassActorArgs{
+						ActorId:    pulumi.Int(3863936),
+						ActorType:  pulumi.String("Integration"),
+						BypassMode: pulumi.String("always"),
+					},
 				},
 				Conditions: &github.RepositoryRulesetConditionsArgs{
 					RefName: &github.RepositoryRulesetConditionsRefNameArgs{
@@ -258,6 +268,20 @@ func main() {
 					RequiredStatusChecks: &github.RepositoryRulesetRulesRequiredStatusChecksArgs{
 						RequiredChecks:                   requiredChecks,
 						StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
+					},
+					// Required review (#804): the CODEOWNERS catch-all owns every
+					// path, so a PR needs a code-owner approval before it can merge
+					// -- code can no longer self-merge with zero human review. The
+					// admin + sync-App bypass actors above preserve the solo
+					// maintainer's break-glass and keep the merge automation flowing.
+					// dismiss-stale + require-last-push-approval so an approval can't
+					// be gamed by a later push.
+					PullRequest: &github.RepositoryRulesetRulesPullRequestArgs{
+						RequireCodeOwnerReview:       pulumi.Bool(true),
+						RequiredApprovingReviewCount: pulumi.Int(1),
+						DismissStaleReviewsOnPush:    pulumi.Bool(true),
+						RequireLastPushApproval:      pulumi.Bool(true),
+						AllowedMergeMethods:          pulumi.StringArray{pulumi.String("squash")},
 					},
 				},
 			}); err != nil {
