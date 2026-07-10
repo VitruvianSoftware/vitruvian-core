@@ -40,6 +40,12 @@ Pulumi.*.yaml
 # org id, billing account, network config, firewall rules — all non-secret.
 # Each environment (development, nonproduction, production) is a separate stack.
 !foundation/gcp-networks/Pulumi.*.yaml
+# foundation/gcp-projects commits per-environment stack configs: env name,
+# business code, billing account, env stack ref, project-type toggles — all
+# non-secret. Each environment (development, nonproduction, production) is a
+# separate stack. cfg.Require("env") must resolve on a clean checkout, so these
+# MUST be committed (not gitignored).
+!foundation/gcp-projects/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -52,4 +58,5 @@ Pulumi.*.yaml
 /foundation/gcp-org/foundation-org
 /foundation/gcp-environments/foundation-environments
 /foundation/gcp-networks/foundation-networks
+/foundation/gcp-projects/foundation-projects
 
