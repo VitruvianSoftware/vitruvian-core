@@ -21,7 +21,7 @@
 import Foundation
 
 /// App version — auto-managed by release-please. Do not edit manually.
-let appVersion = "1.10.2" // x-release-please-version
+let appVersion = "1.11.0" // x-release-please-version
 
 /// GitHub repository for update checks
 let appRepoOwner = "VitruvianSoftware"
