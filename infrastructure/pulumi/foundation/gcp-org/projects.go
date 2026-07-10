@@ -40,6 +40,7 @@ type OrgProjects struct {
 	NetHubProjectID           pulumi.StringOutput
 	NetHubProjectNumber       pulumi.StringOutput // upstream: net_hub_project_number
 	NetworkProjectIDs         map[string]pulumi.StringOutput
+	NetworkProjectNumbers     map[string]pulumi.StringOutput
 }
 
 // createProject is a helper that creates a standardized project using the
@@ -313,8 +314,9 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// Mirrors: module "environment_network" in upstream projects.tf
 	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
 	networkProjectIDs := make(map[string]pulumi.StringOutput)
+	networkProjectNumbers := make(map[string]pulumi.StringOutput)
 	for env, code := range envCodes {
-		netProjectID, _, _, err := createProject(
+		netProjectID, netProjectNumber, _, err := createProject(
 			ctx,
 			fmt.Sprintf("org-net-%s", env),
 			fmt.Sprintf("%s-%s-svpc", cfg.ProjectPrefix, code),
@@ -344,6 +346,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			return nil, err
 		}
 		networkProjectIDs[env] = netProjectID
+		networkProjectNumbers[env] = netProjectNumber
 	}
 
 	return &OrgProjects{
@@ -358,5 +361,6 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 		NetHubProjectID:           netHubProjectID,
 		NetHubProjectNumber:       netHubProjectNumber,
 		NetworkProjectIDs:         networkProjectIDs,
+		NetworkProjectNumbers:     networkProjectNumbers,
 	}, nil
 }
