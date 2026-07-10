@@ -1,0 +1,171 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Keeps the `k8s-api` DNSEndpoint's A targets in sync with the live control-plane
+# apiservers so the record can't drift when CP membership changes. Reads the
+# default/kubernetes Endpoints (the registered apiserver IPs, which equal the CP
+# tailnet IPs) every 5 min and patches ONLY /spec/endpoints/0/targets. ArgoCD
+# ignores that field on this CR (see gitops/argocd/applications/platform-config.yaml
+# → ignoreDifferences + RespectIgnoreDifferences), so selfHeal and this job don't
+# fight. Guards: never writes an empty list; only patches when the set changes.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-api-dns-reconciler
+  namespace: external-dns
+---
+# Read the apiserver endpoints (the kubernetes Endpoints live in the default ns).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8s-api-dns-reconciler-endpoints
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: [endpoints]
+    resourceNames: [kubernetes]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k8s-api-dns-reconciler-endpoints
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8s-api-dns-reconciler-endpoints
+subjects:
+  - kind: ServiceAccount
+    name: k8s-api-dns-reconciler
+    namespace: external-dns
+---
+# Patch only the k8s-api DNSEndpoint.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8s-api-dns-reconciler
+  namespace: external-dns
+rules:
+  - apiGroups: [externaldns.k8s.io]
+    resources: [dnsendpoints]
+    resourceNames: [k8s-api]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k8s-api-dns-reconciler
+  namespace: external-dns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8s-api-dns-reconciler
+subjects:
+  - kind: ServiceAccount
+    name: k8s-api-dns-reconciler
+    namespace: external-dns
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-api-dns-reconciler
+  namespace: external-dns
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: k8s-api-dns-reconciler
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconcile
+              image: alpine/k8s:1.35.3  # bundles kubectl+jq+bash; pin to server minor
+              imagePullPolicy: IfNotPresent
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -euo pipefail
+
+                  DNS_NAME="k8s-api.lab.ipv1337.dev"
+                  DE_NAME="k8s-api"
+                  DE_NS="external-dns"
+                  EP_NS="default"
+
+                  # Live, registered apiserver IPs (== control-plane tailnet IPs).
+                  desired="$(kubectl get endpoints kubernetes -n "$EP_NS" \
+                    -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' \
+                    | grep -E '^[0-9]' | sort -u || true)"
+
+                  # Guard: never publish an empty record (transient API blip, etc.).
+                  if [ -z "$desired" ]; then
+                    echo "ERROR: no apiserver endpoints found; leaving record untouched" >&2
+                    exit 1
+                  fi
+
+                  current="$(kubectl get dnsendpoint "$DE_NAME" -n "$DE_NS" \
+                    -o jsonpath='{range .spec.endpoints[0].targets[*]}{.}{"\n"}{end}' \
+                    | grep -E '^[0-9]' | sort -u || true)"
+
+                  if [ "$desired" = "$current" ]; then
+                    echo "in sync: $(echo "$desired" | tr '\n' ' ')"
+                    exit 0
+                  fi
+
+                  targets="$(echo "$desired" | jq -R . | jq -cs .)"
+                  patch="$(jq -cn --argjson t "$targets" \
+                    '[{op:"replace",path:"/spec/endpoints/0/targets",value:$t}]')"
+
+                  echo "updating: [$(echo "$current" | tr '\n' ' ')] -> [$(echo "$desired" | tr '\n' ' ')]"
+                  kubectl patch dnsendpoint "$DE_NAME" -n "$DE_NS" --type=json -p "$patch"
+              env:
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
