@@ -164,7 +164,15 @@ sudo iptables -t nat -A POSTROUTING -j MASQUERADE
 				"block-project-ssh-keys": pulumi.String("true"),
 			},
 			Tags: pulumi.StringArray{pulumi.String(fmt.Sprintf("allow-%s", name))},
-		}, pulumi.Parent(component))
+		}, pulumi.Parent(component),
+			// SourceImage is an image FAMILY ("debian-cloud/debian-12"): GCP resolves
+			// it to a concrete image at create and the provider stores that resolved
+			// value, so the family-vs-resolved mismatch diffs on every apply and
+			// force-replaces the (immutable) instance template. Because the MIG is
+			// OPPORTUNISTIC (existing instances never migrate to a new version), the
+			// old template stays in use and cannot be deleted, wedging the apply.
+			// Ignore the resolved-image drift so the gateway template stays stable.
+			pulumi.IgnoreChanges([]string{"disks[0].sourceImage"}))
 		if err != nil {
 			return nil, err
 		}
