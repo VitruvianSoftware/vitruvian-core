@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.9...foundation-gcp-networks-v0.3.10) (2026-07-10)
+
+
+### Bug Fixes
+
+* **networks:** put VPC-SC bridge members in dry-run Spec (not enforced Status) ([#846](https://github.com/VitruvianSoftware/vitruvian-core/issues/846)) ([89a592f](https://github.com/VitruvianSoftware/vitruvian-core/commit/89a592ffe1bf96a215eeeae524966dd1fa131207))
+
 ## [0.3.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.8...foundation-gcp-networks-v0.3.9) (2026-07-10)
 
 
