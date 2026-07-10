@@ -7,6 +7,13 @@ config:
   # requireStatusChecks stays false to avoid the strict-up-to-date conflict
   # with the queue (the queue rebases entries itself).
   vitruvian-core-repo-config:mergeQueue: "true"
+  # Required code-owner review on main (#804). OFF while this is a solo repo:
+  # with one maintainer there is no second reviewer (it produces zero reviews),
+  # and a ruleset bypass actor cannot satisfy it through the merge queue (bypass
+  # applies only to a DIRECT merge, not auto-merge), so it only blocks
+  # release-please/Dependabot auto-merge. Flip to "true" once a second reviewer
+  # exists — the merge queue + required CI checks stay enforced regardless.
+  vitruvian-core-repo-config:requireCodeOwnerReview: "false"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
   vitruvian-core-repo-config:tabulaVars:

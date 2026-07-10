@@ -234,6 +234,22 @@ func main() {
 				})
 			}
 
+			// #804 code-owner review is gated behind requireCodeOwnerReview
+			// (default false). A single maintainer has no second reviewer, so the
+			// rule produces zero real reviews; and a ruleset bypass actor's bypass
+			// applies only to a DIRECT merge -- NEVER to auto-merge INTO the merge
+			// queue -- so bot automation (release-please / Dependabot) cannot
+			// satisfy it either and sits REVIEW_REQUIRED forever (verified on a
+			// canary). While solo it therefore only blocks auto-merge and forces
+			// manual admin merges. Flip requireCodeOwnerReview=true once a second
+			// reviewer exists; the merge queue + required status checks below stay
+			// enforced either way.
+			codeOwnerReview := cfg.GetBool("requireCodeOwnerReview")
+			approvals := 0
+			if codeOwnerReview {
+				approvals = 1
+			}
+
 			if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
 				Name:        pulumi.String("merge-queue"),
 				Repository:  repo.Name,
@@ -285,18 +301,19 @@ func main() {
 						RequiredChecks:                   requiredChecks,
 						StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
 					},
-					// Required review (#804): the CODEOWNERS catch-all owns every
-					// path, so a PR needs a code-owner approval before it can merge
-					// -- code can no longer self-merge with zero human review. The
-					// admin + sync-App bypass actors above preserve the solo
-					// maintainer's break-glass and keep the merge automation flowing.
-					// dismiss-stale + require-last-push-approval so an approval can't
-					// be gamed by a later push.
+					// Require a PR before merging + squash-only, ALWAYS. The
+					// code-owner REVIEW requirement (#804) is gated by
+					// requireCodeOwnerReview (computed above the ruleset; default
+					// OFF for the solo team). When on, the CODEOWNERS catch-all owns
+					// every path so a PR needs a code-owner approval, with
+					// dismiss-stale + require-last-push-approval so it can't be gamed
+					// by a later push. When off, RequiredApprovingReviewCount is 0
+					// and no review blocks the merge queue.
 					PullRequest: &github.RepositoryRulesetRulesPullRequestArgs{
-						RequireCodeOwnerReview:       pulumi.Bool(true),
-						RequiredApprovingReviewCount: pulumi.Int(1),
-						DismissStaleReviewsOnPush:    pulumi.Bool(true),
-						RequireLastPushApproval:      pulumi.Bool(true),
+						RequireCodeOwnerReview:       pulumi.Bool(codeOwnerReview),
+						RequiredApprovingReviewCount: pulumi.Int(approvals),
+						DismissStaleReviewsOnPush:    pulumi.Bool(codeOwnerReview),
+						RequireLastPushApproval:      pulumi.Bool(codeOwnerReview),
 						AllowedMergeMethods:          pulumi.StringArray{pulumi.String("squash")},
 					},
 				},
