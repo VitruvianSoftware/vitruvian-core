@@ -9,9 +9,9 @@
 # FORMAT: columns separated by any whitespace (awk default), aligned with spaces for
 # readability (the .tsv extension is nominal). Consumers MUST skip `#` comment and blank
 # lines (the reference parser //tools/pulumi/resolve_identity.sh does). Columns:
-#   infra_dir    workspace-relative Pulumi project dir (resolver key); "-" = reference-only row
+#   infra_dir    workspace-relative Pulumi project dir (resolver key); '-' = reference-only row
 #   account      Google account email to authenticate as
-#   gcp_project  default GCP project (exported as GOOGLE_CLOUD_PROJECT); "-" if N/A
+#   gcp_project  default GCP project (exported as GOOGLE_CLOUD_PROJECT); '-' if N/A
 #   purpose      free text; may contain spaces; MUST be the last column
 #
 # NOTE: every first-party app that deploys to / uses GCP in this repo authenticates as the
@@ -19,19 +19,19 @@
 # james@nocentre.net is the go-forward account for future (company) projects.
 #
 # AD-HOC GCP WORK: look up the account here, then:
-#   export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"
+#   export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token --account=<account>)
 #
 # infra_dir                                   account                              gcp_project                 purpose
-infrastructure/pulumi/accounts/personal               james.nguyen@gmail.com               personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
-infrastructure/pulumi/apps/tabula                  james.nguyen@gmail.com               tabula-dev-0001             Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
-infrastructure/pulumi/apps/oauth-user-inspector    james.nguyen@gmail.com               gen-lang-client-0352693779  OAuth User Inspector Cloud Run + Secret Manager (pulumi oauth-user-inspector)
+infrastructure/pulumi/accounts/personal                         james.nguyen@gmail.com  personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
+infrastructure/pulumi/apps/tabula                               james.nguyen@gmail.com  tabula-dev-0001             Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
+infrastructure/pulumi/apps/oauth-user-inspector                 james.nguyen@gmail.com  gen-lang-client-0352693779  OAuth User Inspector Cloud Run + Secret Manager (pulumi oauth-user-inspector)
 infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity james.nguyen@gmail.com  gen-lang-client-0352693779  GitHub Actions WIF + deploy/runtime SAs for oauth-user-inspector (pulumi bootstrap)
 # --- foundation stages (vitruviansoftware.dev org) ---
-infrastructure/pulumi/foundation/gcp-org                       james@vitruviansoftware.dev          -                           Foundation Phase 1 – Organization (vitruviansoftware.dev, org/folder-scoped, no default project)
-infrastructure/pulumi/foundation/gcp-bootstrap      james@vitruviansoftware.dev          -                           GCP foundation bootstrap for vitruviansoftware.dev org (co-tenant under fldr-foundation-1); org/folder-scoped, no default project
-infrastructure/pulumi/foundation/org-folders        james@vitruviansoftware.dev          -                           Creates the fldr-foundation-1 umbrella folder at org root (feeds gcp-bootstrap parent_folder)
-infrastructure/pulumi/foundation/gcp-environments   james@vitruviansoftware.dev          -                           Foundation Phase 2 – Environments (per-env folders, KMS, Secrets projects)
-infrastructure/pulumi/foundation/gcp-networks	james@vitruviansoftware.dev	-	Foundation Phase 3 – Networks (hub-and-spoke VPC, DNS, firewall)
+infrastructure/pulumi/foundation/org-folders        james@vitruviansoftware.dev    -                           Creates the fldr-foundation-1 umbrella folder at org root (feeds gcp-bootstrap parent_folder)
+infrastructure/pulumi/foundation/gcp-bootstrap      james@vitruviansoftware.dev    -                           GCP foundation bootstrap for vitruviansoftware.dev org (co-tenant under fldr-foundation-1); org/folder-scoped, no default project
+infrastructure/pulumi/foundation/gcp-org            james@vitruviansoftware.dev    -                           Foundation Phase 1 – Organization (vitruviansoftware.dev, org/folder-scoped, no default project)
+infrastructure/pulumi/foundation/gcp-environments   james@vitruviansoftware.dev    -                           Foundation Phase 2 – Environments (per-env folders, KMS, Secrets projects)
+infrastructure/pulumi/foundation/gcp-networks	      james@vitruviansoftware.dev	   -	                         Foundation Phase 3 – Networks (hub-and-spoke VPC, DNS, firewall)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                             james@nocentre.net                   -                           nocentre.net projects (future)
 -                                             james@sandbox.vitruviansoftware.dev  -                           Vitruvian Software sandbox/company (future)
