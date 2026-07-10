@@ -1,5 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
+load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
 # Swift has no Gazelle, so this BUILD file is hand-written. The library is
@@ -10,6 +11,17 @@ swift_library(
     srcs = glob(["Sources/NexusAgent/**/*.swift"]),
     module_name = "NexusAgent",
     target_compatible_with = ["@platforms//os:macos"],
+)
+
+# Unit tests for the pure-logic pieces (`@testable import NexusAgent`). macOS-only
+# + `manual` like the app bundle, so a Linux `bazel build/test //...` skips it; the
+# macOS CI leg runs it by explicit label (#807).
+swift_test(
+    name = "NexusAgent_tests",
+    srcs = glob(["Tests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":NexusAgent_lib"],
 )
 
 # Produces bazel-bin/nexus-agent/macos/NexusAgent.app.

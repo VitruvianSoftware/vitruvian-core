@@ -1,4 +1,4 @@
-load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
 
 # Plain ESM JavaScript — no TypeScript compilation needed.
 
@@ -12,6 +12,21 @@ js_library(
     name = "sessions",
     srcs = ["sessions.js"],
     visibility = ["//nexus-agent/src:__pkg__"],
+)
+
+# Unit tests for the pure-logic bridge modules, run with Node's built-in
+# `node:test` runner (no jest/devDep plumbing). These run in the standard
+# `bazel test //...` lane, so nexus JS is finally covered in monorepo CI (#807).
+js_test(
+    name = "formatter_test",
+    data = [":formatter"],
+    entry_point = "formatter.test.js",
+)
+
+js_test(
+    name = "sessions_test",
+    data = [":sessions"],
+    entry_point = "sessions.test.js",
 )
 
 js_library(

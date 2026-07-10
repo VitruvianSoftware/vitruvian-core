@@ -220,7 +220,11 @@ jobs:
       # Node bridge, hooks) on macOS.
       - name: Build macOS app (postsubmit floor on push to main)
         if: github.event_name == 'push'
-        run: bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+        run: |
+          bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
+          # by explicit label here where Xcode/XCTest is available (#807).
+          bazel test --config=macos-app //nexus-agent/macos:NexusAgent_tests
 
       # PRESUBMIT (merge queue + PR): build only when the diff touches a
       # macOS-relevant path. On merge_group we build UNLESS the filter is certain
@@ -231,7 +235,11 @@ jobs:
         if: >-
           (github.event_name == 'merge_group' && steps.changes.outputs.macos != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.macos == 'true')
-        run: bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+        run: |
+          bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
+          # by explicit label here where Xcode/XCTest is available (#807).
+          bazel test --config=macos-app //nexus-agent/macos:NexusAgent_tests
 
   license-check:
     # Whole-repo MIT license-header check, now hermetic via Bazel. The addlicense
