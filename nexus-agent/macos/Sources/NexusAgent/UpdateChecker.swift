@@ -20,6 +20,7 @@
 
 import Foundation
 import AppKit
+import NexusAgentCore
 
 /// Checks GitHub Releases for newer versions and handles download-and-replace updates.
 @MainActor

@@ -21,11 +21,12 @@
 import Foundation
 
 /// Pure semantic-version helpers, factored out of the @MainActor `UpdateChecker`
-/// so the parsing/comparison logic can be unit-tested without the UI object (#807).
-enum VersionCompare {
+/// into their own module (NexusAgentCore) so they can be unit-tested without
+/// linking the app's `@main` (which duplicates the test binary's main) (#807).
+public enum VersionCompare {
     /// Extract a dotted semantic version (e.g. "1.4.0") from a release tag such as
     /// "nexus-agent-v1.4.0" or "v1.4.0". Falls back to stripping a leading "v".
-    static func extractVersion(from tag: String) -> String {
+    public static func extractVersion(from tag: String) -> String {
         if let range = tag.range(of: "\\d+\\.\\d+\\.\\d+", options: .regularExpression) {
             return String(tag[range])
         }
@@ -34,7 +35,7 @@ enum VersionCompare {
 
     /// True when `remote` is a strictly newer dotted version than `current`.
     /// Missing trailing components compare as 0 (so "1.2" == "1.2.0").
-    static func isNewerVersion(remote: String, current: String) -> Bool {
+    public static func isNewerVersion(remote: String, current: String) -> Bool {
         let remoteParts = remote.split(separator: ".").compactMap { Int($0) }
         let currentParts = current.split(separator: ".").compactMap { Int($0) }
 

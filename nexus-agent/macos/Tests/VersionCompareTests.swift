@@ -20,7 +20,7 @@
 
 import XCTest
 
-@testable import NexusAgent
+import NexusAgentCore
 
 final class VersionCompareTests: XCTestCase {
     func testExtractVersionFromComponentPrefixedTag() {
