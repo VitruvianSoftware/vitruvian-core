@@ -127,6 +127,13 @@ jobs:
     environment: foundation-org
     env:
       GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads so the deploy does not
+      # hit the 60/hr/IP unauthenticated GitHub API rate limit that CI runners
+      # routinely exhaust (intermittent 403s); GITHUB_TOKEN raises this to
+      # 5000/hr. The pulumiverse pulumi-resource-time plugin (gcp-bootstrap /
+      # gcp-networks, for time.Sleep propagation gates) is the github://
+      # dependency today. Same class of fix as #756.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -176,6 +183,13 @@ jobs:
     environment: foundation-org-folders
     env:
       GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads so the deploy does not
+      # hit the 60/hr/IP unauthenticated GitHub API rate limit that CI runners
+      # routinely exhaust (intermittent 403s); GITHUB_TOKEN raises this to
+      # 5000/hr. The pulumiverse pulumi-resource-time plugin (gcp-bootstrap /
+      # gcp-networks, for time.Sleep propagation gates) is the github://
+      # dependency today. Same class of fix as #756.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -225,6 +239,13 @@ jobs:
     environment: foundation-bootstrap
     env:
       GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads so the deploy does not
+      # hit the 60/hr/IP unauthenticated GitHub API rate limit that CI runners
+      # routinely exhaust (intermittent 403s); GITHUB_TOKEN raises this to
+      # 5000/hr. The pulumiverse pulumi-resource-time plugin (gcp-bootstrap /
+      # gcp-networks, for time.Sleep propagation gates) is the github://
+      # dependency today. Same class of fix as #756.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
