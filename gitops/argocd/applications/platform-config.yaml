@@ -35,9 +35,19 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: default
+  ignoreDifferences:
+    # `targets` is reconciled from the live apiservers by the
+    # k8s-api-dns-reconciler CronJob; ArgoCD must not revert it.
+    - group: externaldns.k8s.io
+      kind: DNSEndpoint
+      name: k8s-api
+      namespace: external-dns
+      jsonPointers:
+        - /spec/endpoints/0/targets
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true

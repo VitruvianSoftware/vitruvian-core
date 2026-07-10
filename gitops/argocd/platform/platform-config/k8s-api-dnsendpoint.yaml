@@ -29,8 +29,9 @@
 # is the intended remote-access path). The `sync-enabled` annotation satisfies
 # external-dns's annotationFilter; with policy=sync + the txt registry, external-dns
 # adopts the pre-existing manual record by writing its ownership TXT (A records are
-# unchanged), so the cutover is non-disruptive. Update `targets` if a control plane's
-# tailnet IP changes (e.g. after re-provisioning a node).
+# unchanged), so the cutover is non-disruptive. `targets` is kept in sync with the
+# live control-plane apiservers by the k8s-api-dns-reconciler CronJob (ArgoCD ignores
+# /spec/endpoints/0/targets); the values below are only the seed used on first apply.
 apiVersion: externaldns.k8s.io/v1alpha1
 kind: DNSEndpoint
 metadata:
