@@ -136,6 +136,21 @@ func main() {
 			return err
 		}
 
+		// Dependabot automated security fixes (#815): open PRs to fix dependencies
+		// with a known vulnerability. Free on every repo; on a public repo the
+		// dependency graph + Dependabot alerts it needs are on by default. Managed
+		// as code here alongside the other repo governance settings. These security
+		// PRs are authored by Dependabot and auto-merged via the sync App, which
+		// bypasses the required-review rule (#804), so they are never blocked.
+		if _, err := github.NewRepositoryDependabotSecurityUpdates(ctx, repoName+"-dependabot-security-updates",
+			&github.RepositoryDependabotSecurityUpdatesArgs{
+				Repository: repo.Name,
+				Enabled:    pulumi.Bool(true),
+			},
+		); err != nil {
+			return err
+		}
+
 		// Assemble the branch-protection args from config. Only attach the PR
 		// review / status check blocks when their respective toggles are on.
 		protectionArgs := &github.BranchProtectionArgs{
