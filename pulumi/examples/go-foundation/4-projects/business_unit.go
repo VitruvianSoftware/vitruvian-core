@@ -84,6 +84,13 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	// this project, so they live inside the same gate.
 	// ========================================================================
 	if cfg.SVPCProjectEnabled {
+		// NOTE: this API set is intentionally BROADER than upstream 4-projects
+		// (which enables only accesscontextmanager on the svpc project, dns on
+		// peering, and nothing on floating). We pre-enable the common workload APIs
+		// (compute/container/run/artifactregistry/logging) so applications deployed
+		// into these projects don't each have to turn them on; this also widens the
+		// `restricted_enabled_apis` export. The floating/peering blocks below share
+		// this posture.
 		svpcApis := []string{
 			"compute.googleapis.com",
 			"container.googleapis.com",
@@ -114,6 +121,15 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 		}
 
 		result.RestrictedEnabledApis = svpcApis
+
+		// TODO(vpc-sc enablement): upstream project-factory serializes the perimeter
+		// attach BEFORE the shared-VPC attach and waits vpc_service_control_sleep_
+		// duration = "60s" between them, so the project is inside the perimeter
+		// before it joins the shared VPC. Here the shared-VPC attach (below) and the
+		// VPC-SC attach (further down) both hang only off the project and race. When
+		// SVPC/VPC-SC are enabled for real, order them: DependsOn(perimeter-attach)
+		// + a 60s propagation gate on this attach (the dependsOn+propagation-wait
+		// pattern used elsewhere in the foundation).
 
 		// Attach as a Shared VPC service project
 		if _, err := compute.NewSharedVPCServiceProject(ctx, "svpc-attachment", &compute.SharedVPCServiceProjectArgs{
@@ -231,6 +247,13 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	}
 
 	// Populate TF-parity outputs
+	// TODO(shared-VPC enablement): upstream's `subnets_self_links` output is the
+	// SHARED-VPC HOST's subnets (local.subnets_self_links, from the 3-networks
+	// remote state), consumed by 5-app-infra to place service-project resources.
+	// We currently export the PEERING project's subnet here — the wrong network
+	// (the peering subnet already has its own `peering_subnetwork_self_link`
+	// export). When shared-VPC projects are enabled, read `subnets_self_links` from
+	// the gcp-networks stack (it exports exactly that) and export that instead.
 	if cfg.PeeringProjectEnabled && cfg.PeeringEnabled {
 		result.SubnetsSelfLinks = pulumi.StringArray{result.PeeringSubnetSelfLink}.ToStringArrayOutput()
 		result.PeeringComplete = pulumi.Bool(true).ToBoolOutput()
@@ -244,9 +267,23 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	return result, nil
 }
 
-// deployInfraPipelineProject creates the infrastructure pipeline project under
-// the common folder. This project hosts the CI/CD pipeline for deploying
+// deployInfraPipelineProject creates the shared infrastructure-pipeline project
+// under the COMMON folder. This project hosts the CI/CD pipeline for deploying
 // application infrastructure (Stage 5).
+//
+// ⚠️ ONCE-PER-BU, NOT ONCE-PER-ENV. Upstream 4-projects creates this project a
+// single time in the `shared` workspace (environment=common). Our foundation is
+// split into per-env stacks (dev/nonprod/prod), so `infra_pipeline_enabled` MUST
+// be true in EXACTLY ONE env's config — enabling it in more than one mints
+// duplicate `prj-c-<bu>-infra-pipeline-*` projects (the random suffix dodges the
+// ID collision but not the duplication). (A cleaner long-term shape is a dedicated
+// common/shared stack; deferred until Stage-5 CI/CD.)
+//
+// TODO(stage-5 enablement): upstream `single_project` also seeds the pipeline
+// service accounts with `sa_roles` on each app project, `roles/compute.networkViewer`
+// on the BU folder, and `roles/compute.networkUser` on the shared-VPC subnets so
+// the deploy identity can act. That per-project IAM has no GitHub-WIF equivalent
+// here yet — wire it (in WIF form) when the Stage-5 deploy identity is designed.
 func deployInfraPipelineProject(ctx *pulumi.Context, cfg *ProjectsConfig, commonFolderID pulumi.StringOutput) (pulumi.StringOutput, error) {
 	infraProject, err := project.NewProject(ctx, "infra-pipeline-project", &project.ProjectArgs{
 		ProjectID:       pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", cfg.ProjectPrefix, cfg.BusinessCode)),
@@ -254,8 +291,11 @@ func deployInfraPipelineProject(ctx *pulumi.Context, cfg *ProjectsConfig, common
 		FolderID:        commonFolderID,
 		BillingAccount:  pulumi.String(cfg.BillingAccount),
 		RandomProjectID: cfg.RandomSuffix,
-		Labels:          projectLabels(cfg, "app-infra-pipelines", "none"),
-		Budget:          budgetConfig(cfg),
+		// COMMON-folder project → environment=common/env_code=c labels + a raw
+		// application_name, matching upstream (the per-env `projectLabels` would
+		// mislabel it with this stack's dev/nonprod/prod identity).
+		Labels: commonProjectLabels(cfg, "app-infra-pipelines"),
+		Budget: budgetConfig(cfg),
 		ActivateApis: []string{
 			"cloudbuild.googleapis.com",
 			"cloudkms.googleapis.com",

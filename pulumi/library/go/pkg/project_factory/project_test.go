@@ -68,7 +68,48 @@ func TestNewProject_Basic(t *testing.T) {
 	tracker.RequireType(t, "gcp:billing/budget:Budget", 1)
 	tracker.RequireType(t, "gcp:resourcemanager/lien:Lien", 1)
 	tracker.RequireType(t, "gcp:projects/defaultServiceAccounts:DefaultServiceAccounts", 1)
-	tracker.RequireType(t, "gcp:projects/service:Service", 1)
+
+	// Budget is set but ActivateApis omits billingbudgets → the module AUTO-ENABLES
+	// billingbudgets.googleapis.com (upstream project-factory does the same, so a
+	// caller can't request a budget without the API it needs). So there are TWO
+	// services: the requested compute one + the auto-added budget API.
+	services := tracker.RequireType(t, gcpService, 2)
+	svcNames := []string{
+		services[0].Inputs["service"].StringValue(),
+		services[1].Inputs["service"].StringValue(),
+	}
+	assert.Contains(t, svcNames, "compute.googleapis.com")
+	assert.Contains(t, svcNames, "billingbudgets.googleapis.com", "Budget set → billingbudgets API auto-enabled")
+
+	// disableOnDestroy / disableDependentServices default to false (our Pulumi
+	// destroy-safety posture; DisableServicesOnDestroy overrides it).
+	assert.False(t, services[0].Inputs["disableOnDestroy"].BoolValue())
+	assert.False(t, services[0].Inputs["disableDependentServices"].BoolValue())
+}
+
+// ---------- disable-on-destroy override (#8) ----------
+
+func TestNewProject_DisableServicesOnDestroyOverride(t *testing.T) {
+	tracker := testutil.NewTracker()
+	tru := true
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewProject(ctx, "p-dsod", &ProjectArgs{
+			ProjectID:                pulumi.String("prj-dsod"),
+			Name:                     pulumi.String("dsod"),
+			FolderID:                 pulumi.String("folders/1"),
+			BillingAccount:           pulumi.String("AAAAAA-BBBBBB-CCCCCC"),
+			ActivateApis:             []string{"compute.googleapis.com"},
+			DisableServicesOnDestroy: &tru,
+		})
+		require.NoError(t, err)
+		return nil
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	// No Budget → no billingbudgets auto-add → exactly the one requested service.
+	svcs := tracker.RequireType(t, gcpService, 1)
+	assert.True(t, svcs[0].Inputs["disableOnDestroy"].BoolValue(), "override → disableOnDestroy true (matches upstream default)")
+	assert.True(t, svcs[0].Inputs["disableDependentServices"].BoolValue())
 }
 
 // ---------- API propagation wait ----------

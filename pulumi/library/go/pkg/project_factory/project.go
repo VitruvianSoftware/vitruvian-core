@@ -97,6 +97,14 @@ type ProjectArgs struct {
 	// Mirrors the upstream Terraform foundation's `time_sleep` after
 	// project_services. 0 (default) inserts no delay.
 	ApiPropagationSeconds int
+
+	// DisableServicesOnDestroy controls whether the ActivateApis services are
+	// DISABLED when the Service resource / project is torn down, and whether their
+	// dependent services are disabled with them. Upstream project-factory defaults
+	// BOTH to true; we default to FALSE (nil) as a Pulumi destroy-safety stance —
+	// disabling a service on teardown can cascade into dependent projects and is
+	// rarely wanted during a `pulumi destroy`. Set true to match upstream exactly.
+	DisableServicesOnDestroy *bool
 }
 
 type Project struct {
@@ -197,12 +205,36 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 		svcOpts = append(svcOpts, pulumi.DependsOn(apiDeps))
 	}
 
-	for _, api := range args.ActivateApis {
+	// Auto-enable billingbudgets.googleapis.com whenever a Budget is requested —
+	// the google_billing_budget created below needs that API on. Upstream
+	// project-factory appends it to activate_apis for exactly this reason; doing
+	// it here means a caller who sets Budget can never forget the API.
+	activateApis := args.ActivateApis
+	if args.Budget != nil {
+		hasBudgetAPI := false
+		for _, a := range activateApis {
+			if a == "billingbudgets.googleapis.com" {
+				hasBudgetAPI = true
+				break
+			}
+		}
+		if !hasBudgetAPI {
+			activateApis = append(append([]string{}, activateApis...), "billingbudgets.googleapis.com")
+		}
+	}
+
+	// disable-on-destroy: default false (Pulumi destroy-safety), override via arg.
+	disableOnDestroy := false
+	if args.DisableServicesOnDestroy != nil {
+		disableOnDestroy = *args.DisableServicesOnDestroy
+	}
+
+	for _, api := range activateApis {
 		svc, err := projects.NewService(ctx, fmt.Sprintf("%s-%s", name, api), &projects.ServiceArgs{
 			Project:                  p.ProjectId,
 			Service:                  pulumi.String(api),
-			DisableOnDestroy:         pulumi.Bool(false),
-			DisableDependentServices: pulumi.Bool(false),
+			DisableOnDestroy:         pulumi.Bool(disableOnDestroy),
+			DisableDependentServices: pulumi.Bool(disableOnDestroy),
 		}, svcOpts...)
 		if err != nil {
 			return nil, err
@@ -225,7 +257,7 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 		wait, err := local.NewCommand(ctx, name+"-apis-propagation", &local.CommandArgs{
 			Create: pulumi.Sprintf("sleep %d", args.ApiPropagationSeconds),
 			// Re-run the wait if the set of enabled APIs changes.
-			Triggers: pulumi.Array{pulumi.String(strings.Join(args.ActivateApis, ","))},
+			Triggers: pulumi.Array{pulumi.String(strings.Join(activateApis, ","))},
 		}, pulumi.Parent(p), pulumi.DependsOn(svcDeps))
 		if err != nil {
 			return nil, err

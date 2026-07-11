@@ -423,3 +423,16 @@ func projectLabels(cfg *ProjectsConfig, suffix, vpc string) pulumi.StringMap {
 		"vpc":               pulumi.String(vpc),
 	}
 }
+
+// commonProjectLabels is projectLabels for a project that lives in the COMMON
+// folder (env-independent) rather than an environment folder — e.g. the shared
+// infra-pipeline project. Upstream labels these `environment = "common"`,
+// `env_code = "c"`, and passes application_name RAW (not BU-prefixed), unlike the
+// per-env projects. applicationName is used verbatim.
+func commonProjectLabels(cfg *ProjectsConfig, applicationName string) pulumi.StringMap {
+	l := projectLabels(cfg, applicationName, "none")
+	l["environment"] = pulumi.String("common")
+	l["env_code"] = pulumi.String("c")
+	l["application_name"] = pulumi.String(applicationName)
+	return l
+}
