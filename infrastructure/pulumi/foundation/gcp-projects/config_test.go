@@ -171,3 +171,25 @@ func TestPeeringResultStruct(t *testing.T) {
 	pr := &PeeringResult{}
 	assert.NotNil(t, pr)
 }
+
+// TestCommonProjectLabels asserts the COMMON-folder label overrides used by the
+// shared infra-pipeline project: upstream labels it environment=common/env_code=c
+// with a RAW application_name, not this stack's per-env identity.
+func TestCommonProjectLabels(t *testing.T) {
+	cfg := &ProjectsConfig{
+		Env:              "development",
+		EnvCode:          "d",
+		BusinessCode:     "bu1",
+		BillingCode:      "1234",
+		PrimaryContact:   "james@example.com",
+		SecondaryContact: "kim@example.com",
+	}
+	l := commonProjectLabels(cfg, "app-infra-pipelines")
+
+	assert.Equal(t, pulumi.String("common"), l["environment"], "common-folder → environment=common, not the per-env value")
+	assert.Equal(t, pulumi.String("c"), l["env_code"], "common-folder → env_code=c")
+	assert.Equal(t, pulumi.String("app-infra-pipelines"), l["application_name"], "raw application_name, not BU-prefixed")
+	// Non-overridden labels still flow through from projectLabels.
+	assert.Equal(t, pulumi.String("bu1"), l["business_code"])
+	assert.Equal(t, pulumi.String("james"), l["primary_contact"])
+}
