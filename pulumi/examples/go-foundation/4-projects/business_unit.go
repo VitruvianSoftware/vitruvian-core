@@ -95,7 +95,11 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 		}
 
 		svpcProject, err := project.NewProject(ctx, "bu-svpc-project", &project.ProjectArgs{
-			DefaultServiceAccount: "deprivilege",
+			// "disable" turns the project's default compute SA OFF, matching upstream
+			// 4-projects (which relies on project-factory's default
+			// default_service_account = "disable"). "deprivilege" — the softer posture
+			// we shipped first — would leave the SA active, only de-editored.
+			DefaultServiceAccount: "disable",
 			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-svpc", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			FolderID:              folderID,
@@ -166,7 +170,7 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	// ========================================================================
 	if cfg.FloatingProjectEnabled {
 		floatingProject, err := project.NewProject(ctx, "bu-floating-project", &project.ProjectArgs{
-			DefaultServiceAccount: "deprivilege",
+			DefaultServiceAccount: "disable", // upstream default; see the svpc project above
 			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-floating", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			FolderID:              folderID,
@@ -194,7 +198,7 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	// ========================================================================
 	if cfg.PeeringProjectEnabled {
 		peeringProject, err := project.NewProject(ctx, "bu-peering-project", &project.ProjectArgs{
-			DefaultServiceAccount: "deprivilege",
+			DefaultServiceAccount: "disable", // upstream default; see the svpc project above
 			ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-sample-peering", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 			FolderID:              folderID,

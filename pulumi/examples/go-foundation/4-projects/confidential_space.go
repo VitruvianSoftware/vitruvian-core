@@ -54,7 +54,9 @@ func deployConfidentialSpaceProject(
 ) (*ConfidentialSpaceResult, error) {
 	// 1. Create the Confidential Space project
 	confProject, err := project.NewProject(ctx, "bu-conf-space-project", &project.ProjectArgs{
-		DefaultServiceAccount: "deprivilege",
+		// "disable" (off), matching upstream 4-projects' project-factory default —
+		// not the softer "deprivilege". See business_unit.go for the rationale.
+		DefaultServiceAccount: "disable",
 		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
 		FolderID:              folderID,
