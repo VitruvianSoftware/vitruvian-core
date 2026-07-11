@@ -1,14 +1,11 @@
-module foundation-5-app-infra
+module github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run
 
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.1.0
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d
+	github.com/VitruvianSoftware/pulumi-library/go v0.5.1
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
 	github.com/pulumi/pulumi/sdk/v3 v3.251.0
-	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -83,7 +80,6 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v5 v5.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
-	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/texttheater/golang-levenshtein v1.0.1 // indirect
@@ -123,9 +119,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run => ../../../library/go/pkg/cloud_run
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance => ../../../library/go/pkg/compute_instance
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template => ../../../library/go/pkg/instance_template

@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/cloud_run": {
+      "release-type": "go",
+      "component": "go-cloud-run"
+    }
+  }
+}

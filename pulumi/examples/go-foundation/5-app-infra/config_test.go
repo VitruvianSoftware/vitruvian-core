@@ -38,6 +38,9 @@ func TestAppConfigDefaultsReal(t *testing.T) {
 
 		assert.Equal(t, "development", cfg.Env)
 		assert.Equal(t, "bu1", cfg.BusinessCode)
+		// Serverless workload is opt-in: no image digest configured by default,
+		// so the reference stack applies without a build.
+		assert.Empty(t, cfg.ServerlessImageDigest)
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", mocks(0)))
