@@ -69,6 +69,26 @@ Legend: ✅ has module · ⚠️ partial/inline · ❌ monolith (logic inline in
 3. **`main.go` must become thin** — read env, call modules. All current inline `.go` logic moves into
    `modules/` matching upstream names.
 
+## ⭐ Key reframe: no teardown needed (the refactor is a no-op)
+
+The `gcp-environments` refactor's **CI preview came back 18 unchanged / 0 changes** — a verified
+URN-preserving **no-op** against the live foundation. That changes the whole approach:
+
+- The module extraction is a **pure code reorganization** — the resources are byte-identical, only the
+  code is restructured into `modules/`. Merging it refactors the foundation **in place, with zero resource
+  churn** — **no teardown, no downtime, no risk.**
+- So the original "teardown + fresh provision" is **unnecessary** for the structural refactor. (It was
+  premised on the refactor changing resources; it doesn't, if we preserve logical names.)
+- CI previews authenticate via **WIF (foundation-pool)**, which is live — so **each stage's refactor is
+  CI-verified as a no-op** even while local `gcloud` reauth is pending. No reauth needed for the refactor.
+
+**Two-phase split:**
+- **Phase A (no teardown, no reauth):** extract modules preserving every logical name → CI preview no-op →
+  merge. Do this for all stages.
+- **Phase B (optional, gated):** the stack-topology changes (org `production`→`shared`; dedicated `shared`
+  stacks for the networks DNS hub + the projects infra-pipeline) — these are `pulumi state move`s, the only
+  part that touches live state. Defer/gate these; they're cosmetic stack-naming, not structural fidelity.
+
 ## Execution plan
 
 1. **Teardown** live foundation, reverse-dep order (`gcp-projects → gcp-networks → gcp-environments →
