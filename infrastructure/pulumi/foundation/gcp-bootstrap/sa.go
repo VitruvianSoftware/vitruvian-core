@@ -280,6 +280,14 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/artifactregistry.admin",
 			"roles/compute.networkAdmin",
 			"roles/compute.xpnAdmin",
+			// Stage 5 (app-infra): the per-env app identity stacks run AS this SA
+			// and must create the app deploy/runtime service accounts and manage
+			// Secret Manager inside the oss-floating projects (two folders below
+			// fldr-foundation-1). folderAdmin does not include SA-admin or
+			// Secret Manager, so grant them explicitly at the parent folder rather
+			// than relying on the implicit creator-owner grant from projects.create.
+			"roles/iam.serviceAccountAdmin",
+			"roles/secretmanager.admin",
 		},
 	}
 
