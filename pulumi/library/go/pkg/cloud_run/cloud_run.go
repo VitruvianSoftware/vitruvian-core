@@ -55,6 +55,23 @@ type CloudRunArgs struct {
 	CpuLimit            string            // default "1"
 	MemoryLimit         string            // default "512Mi"
 	Labels              map[string]string
+	// RevisionName, when set, names the created revision. Blue-green promotion
+	// needs stable, referenceable revision names (the deploy pipeline pins the
+	// stable revision and tags the new one as a candidate).
+	RevisionName string
+	// Traffics, when set, controls how traffic is split across revisions. When
+	// empty, Cloud Run defaults to 100% on the latest revision.
+	Traffics []TrafficTarget
+}
+
+// TrafficTarget is one entry in a Cloud Run service's traffic split — the unit
+// of blue-green promotion (e.g. 100% to the stable revision, 0% to a tagged
+// "candidate" revision that a smoke test hits before promotion).
+type TrafficTarget struct {
+	Revision string // target revision name; ignored when Latest is true
+	Latest   bool   // route to the latest ready revision instead of a named one
+	Percent  int    // percent of traffic (0-100)
+	Tag      string // optional traffic tag (e.g. "candidate") — yields a taggable URL
 }
 
 // CloudRun is the component wrapping the Cloud Run service.
@@ -131,33 +148,60 @@ func NewCloudRun(ctx *pulumi.Context, name string, args *CloudRunArgs, opts ...p
 		})
 	}
 
+	tmpl := &cloudrunv2.ServiceTemplateArgs{
+		ServiceAccount: args.ServiceAccountEmail,
+		Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
+			MinInstanceCount: pulumi.Int(args.MinInstances),
+			MaxInstanceCount: pulumi.Int(maxInstances),
+		},
+		Containers: cloudrunv2.ServiceTemplateContainerArray{
+			&cloudrunv2.ServiceTemplateContainerArgs{
+				Image: args.Image,
+				Ports: &cloudrunv2.ServiceTemplateContainerPortsArgs{
+					ContainerPort: pulumi.Int(port),
+				},
+				Envs: envs,
+				Resources: &cloudrunv2.ServiceTemplateContainerResourcesArgs{
+					Limits: pulumi.StringMap{
+						"cpu":    pulumi.String(cpu),
+						"memory": pulumi.String(memory),
+					},
+				},
+			},
+		},
+	}
+	if args.RevisionName != "" {
+		tmpl.Revision = pulumi.String(args.RevisionName)
+	}
+
 	svcArgs := &cloudrunv2.ServiceArgs{
 		Project:  args.ProjectID,
 		Location: pulumi.String(args.Region),
 		Name:     pulumi.String(args.Name),
 		Ingress:  pulumi.String(ingress),
-		Template: &cloudrunv2.ServiceTemplateArgs{
-			ServiceAccount: args.ServiceAccountEmail,
-			Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
-				MinInstanceCount: pulumi.Int(args.MinInstances),
-				MaxInstanceCount: pulumi.Int(maxInstances),
-			},
-			Containers: cloudrunv2.ServiceTemplateContainerArray{
-				&cloudrunv2.ServiceTemplateContainerArgs{
-					Image: args.Image,
-					Ports: &cloudrunv2.ServiceTemplateContainerPortsArgs{
-						ContainerPort: pulumi.Int(port),
-					},
-					Envs: envs,
-					Resources: &cloudrunv2.ServiceTemplateContainerResourcesArgs{
-						Limits: pulumi.StringMap{
-							"cpu":    pulumi.String(cpu),
-							"memory": pulumi.String(memory),
-						},
-					},
-				},
-			},
-		},
+		Template: tmpl,
+	}
+
+	// Blue-green traffic split. Each target is either a named revision or the
+	// latest ready revision, with a percent and an optional tag.
+	if len(args.Traffics) > 0 {
+		var traffics cloudrunv2.ServiceTrafficArray
+		for _, t := range args.Traffics {
+			ta := &cloudrunv2.ServiceTrafficArgs{
+				Percent: pulumi.Int(t.Percent),
+			}
+			if t.Latest {
+				ta.Type = pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST")
+			} else {
+				ta.Type = pulumi.String("TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION")
+				ta.Revision = pulumi.String(t.Revision)
+			}
+			if t.Tag != "" {
+				ta.Tag = pulumi.String(t.Tag)
+			}
+			traffics = append(traffics, ta)
+		}
+		svcArgs.Traffics = traffics
 	}
 
 	if len(args.Labels) > 0 {

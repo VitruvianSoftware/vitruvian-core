@@ -78,6 +78,29 @@ func TestNewCloudRun_WithSecretEnv(t *testing.T) {
 	tracker.RequireType(t, "gcp:cloudrunv2/service:Service", 1)
 }
 
+func TestNewCloudRun_BlueGreenTraffic(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewCloudRun(ctx, "app", &CloudRunArgs{
+			ProjectID:           pulumi.String("test-proj"),
+			Region:              "us-west1",
+			Name:                "app",
+			Image:               pulumi.String("img@sha256:abc"),
+			ServiceAccountEmail: pulumi.String("rt@test.iam.gserviceaccount.com"),
+			RevisionName:        "app-dev-abc1234",
+			Traffics: []TrafficTarget{
+				{Revision: "app-dev-stable0", Percent: 100},
+				{Revision: "app-dev-abc1234", Percent: 0, Tag: "candidate"},
+			},
+		})
+		require.NoError(t, err)
+		return nil
+	}, pulumi.WithMocks("project", "stack", tracker))
+	require.NoError(t, err)
+
+	tracker.RequireType(t, "gcp:cloudrunv2/service:Service", 1)
+}
+
 func TestNewCloudRun_RequiresRegionAndName(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewCloudRun(ctx, "test", &CloudRunArgs{Name: "x"})

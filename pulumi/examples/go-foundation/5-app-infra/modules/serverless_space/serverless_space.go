@@ -54,6 +54,16 @@ type ServerlessSpaceArgs struct {
 	PublicInvoker bool
 	MinInstances  int
 	MaxInstances  int
+
+	// Blue-green promotion. When RevisionSuffix is set, the new revision is named
+	// <ServiceName>-<Env>-<RevisionSuffix> and traffic is split:
+	//   - Promote==true or StableRevision=="" (first deploy): 100% to the new revision.
+	//   - otherwise: 100% stays on StableRevision, 0% to the new revision tagged
+	//     "candidate" (a smoke test hits the candidate URL before promotion).
+	// When RevisionSuffix is empty, the default 100%-to-latest behaviour is used.
+	RevisionSuffix string
+	StableRevision string
+	Promote        bool
 }
 
 // ServerlessSpaceResult holds outputs from the serverless_space deployment.
@@ -100,7 +110,22 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 		envVars["SECRET_PREFIX"] = args.SecretPrefix
 	}
 
-	// 3. Cloud Run service (promoted digest image).
+	// 3. Blue-green revision naming + traffic split.
+	var revisionName string
+	var traffics []cloud_run.TrafficTarget
+	if args.RevisionSuffix != "" {
+		revisionName = fmt.Sprintf("%s-%s-%s", serviceName, args.Env, args.RevisionSuffix)
+		if args.Promote || args.StableRevision == "" {
+			traffics = []cloud_run.TrafficTarget{{Revision: revisionName, Percent: 100}}
+		} else {
+			traffics = []cloud_run.TrafficTarget{
+				{Revision: args.StableRevision, Percent: 100},
+				{Revision: revisionName, Percent: 0, Tag: "candidate"},
+			}
+		}
+	}
+
+	// 4. Cloud Run service (promoted digest image).
 	cr, err := cloud_run.NewCloudRun(ctx, name, &cloud_run.CloudRunArgs{
 		ProjectID:           args.ProjectID,
 		Region:              args.Region,
@@ -109,6 +134,8 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 		ServiceAccountEmail: runtimeSAEmail,
 		Env:                 envVars,
 		SecretEnv:           args.SecretEnv,
+		RevisionName:        revisionName,
+		Traffics:            traffics,
 		MinInstances:        args.MinInstances,
 		MaxInstances:        args.MaxInstances,
 		Labels: map[string]string{
