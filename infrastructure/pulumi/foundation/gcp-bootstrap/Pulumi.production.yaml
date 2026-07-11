@@ -54,6 +54,15 @@ config:
   foundation-bootstrap:bootstrap_sa_email: "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"
 
   # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---
+  # Pin the WIF provider to accept tokens ONLY from the monorepo, restoring the
+  # per-repository scoping upstream terraform-example-foundation has (each stage
+  # SA bound to attribute.repository/<owner>/<repo>). Our monorepo adaptation
+  # scopes per GitHub Environment (attribute.environment/<stage>) instead, which
+  # dropped the repo pin — so any sibling org repo (incl. one-way copybara
+  # mirrors) could declare a matching environment and impersonate a stage SA.
+  # Pinning the provider condition to this exact repo closes that at token
+  # exchange; per-SA scoping still uses attribute.environment.
+  foundation-bootstrap:wif_attribute_condition: "assertion.repository=='VitruvianSoftware/vitruvian-core'"
   foundation-bootstrap:github_owner: "VitruvianSoftware"
   foundation-bootstrap:github_repo_bootstrap: "vitruvian-core"
   foundation-bootstrap:github_repo_org: "vitruvian-core"
