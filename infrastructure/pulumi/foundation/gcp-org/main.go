@@ -283,6 +283,14 @@ type OrgConfig struct {
 	DomainsToAllow           []string
 	EssentialContactsDomains []string
 
+	// OSS public-invoker exception: project ids that receive a project-scoped
+	// override of constraints/iam.allowedPolicyMemberDomains (AllowAll) so that
+	// public principals (allUsers) can be granted run.invoker on the OSS Cloud
+	// Run services. Applied by the org SA (holds orgpolicy.policyAdmin). This is
+	// a deliberate, data-driven exception to Domain Restricted Sharing scoped to
+	// the prj-{env}-bu1-oss-floating projects only.
+	OSSPublicInvokerProjects []string
+
 	// SCC
 	SCCNotificationName   string
 	SCCNotificationFilter string
@@ -407,6 +415,13 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 	}
 	if contactsDomains := conf.Get("essential_contacts_domains"); contactsDomains != "" {
 		c.EssentialContactsDomains = strings.Split(contactsDomains, ",")
+	}
+	if ossProjects := conf.Get("oss_public_invoker_projects"); ossProjects != "" {
+		for _, p := range strings.Split(ossProjects, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				c.OSSPublicInvokerProjects = append(c.OSSPublicInvokerProjects, p)
+			}
+		}
 	}
 
 	// Apply defaults

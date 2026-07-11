@@ -16,6 +16,12 @@ config:
   foundation-org:project_prefix: "prj"
   foundation-org:folder_prefix: "fldr"
   foundation-org:domains_to_allow: "C0316crd2"  # Cloud Identity customer ID for vitruviansoftware.dev
+  # OSS public-invoker exception: project-scoped DRS override (AllowAll) so the
+  # OSS Cloud Run demo services (e.g. oauth-user-inspector) can bind allUsers
+  # run.invoker. Scoped to the prj-{env}-bu1-oss-floating projects only. Applied
+  # by the org SA (orgpolicy.policyAdmin). Ids sourced from foundation-projects
+  # oss_floating_project outputs (dev/nonprod/prod).
+  foundation-org:oss_public_invoker_projects: "prj-d-bu1-oss-floating-2ad6,prj-n-bu1-oss-floating-cf11,prj-p-bu1-oss-floating-8e16"
 
   # --- Cross-stage references ---
   # Fully-qualified Pulumi Cloud stack reference for the bootstrap stage.
