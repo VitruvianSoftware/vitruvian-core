@@ -131,6 +131,24 @@ CI (per the merged Phase-3 plan #885, adjusted to this structure).
 
 ---
 
+## ✅ Status (Phase A complete + CI-verified)
+
+All live stages refactored to faithful structure as **no-ops** (CI preview via WIF, 0 changes):
+
+| stage | modules now | preview |
+|---|---|---|
+| gcp-bootstrap | (already faithful) | — |
+| gcp-org | cai_monitoring, centralized_logging, network filled | **193 unchanged** |
+| gcp-environments | env_baseline extracted | **18 unchanged** |
+| gcp-networks | shared_vpc, base_env, hierarchical_firewall_policy, transitivity | **89 unchanged** |
+| gcp-projects | base_env, single_project filled | **27 unchanged** |
+
+**No teardown / no redeploy / no reauth was needed** — the foundation is refactored in place with zero
+resource churn. Example tree mirrored in lockstep (2-environments, 1-org done; 3-networks-h&s, 4-projects
+in progress). Remaining: **stage 5** (`gcp-app-infra`, new — needs `cloud_run@0.3.0` published + the
+projects `infra_pipelines`) and optional **Phase B** stack renames (`production`→`shared`, dedicated
+`shared` stacks) via `pulumi state move` — cosmetic, gated.
+
 ## Execution order (post-reauth)
 
 Teardown (runbook) → refactor+redeploy bottom-up: bootstrap (as-is) → org (fill 3 modules, rename→shared) →
