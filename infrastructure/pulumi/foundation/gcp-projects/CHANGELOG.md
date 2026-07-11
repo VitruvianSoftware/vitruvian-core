@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.1.0...foundation-gcp-projects-v1.2.0) (2026-07-11)
+
+
+### Features
+
+* **foundation:** stage-5 app-tier APIs + infra-pipeline + exports (fix infra_pipeline_project_id port bug) ([#866](https://github.com/VitruvianSoftware/vitruvian-core/issues/866)) ([a1a8495](https://github.com/VitruvianSoftware/vitruvian-core/commit/a1a8495c922adf41de7416f0b50aa30708a47a26))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.0.0...foundation-gcp-projects-v1.1.0) (2026-07-10)
 
 
