@@ -52,14 +52,23 @@ config:
       GCP_PROJECT_ID: prj-b-seed-8ebb
       GCP_SERVICE_ACCOUNT: sa-terraform-proj@prj-b-seed-8ebb.iam.gserviceaccount.com
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
-  # oauth-user-inspector deploy environment — non-secret identifiers only (keyless
-  # WIF). The matching GitHub-side SECRETS are NOT here; they are synced from a
-  # gitignored, Bitwarden-backed store by //tools/sync-env-secrets (§2.4, §2.18).
+  # oauth-user-inspector deploy environments — non-secret identifiers only (keyless
+  # WIF), keyed per GitHub Environment. The matching GitHub-side SECRETS are NOT
+  # here; they are synced from a gitignored, Bitwarden-backed store by
+  # //tools/sync-env-secrets (§2.4, §2.18).
+  #
+  # Only `development` is populated (its current, single-env personal-project
+  # deployment, preserved so the imported GitHub vars map cleanly). The
+  # nonproduction / production / build environments are created empty here (env +
+  # protection rules only) — their per-env oss-project deploy SA + foundation-pool
+  # WIF provider are minted by the Phase-3 identity stacks, which set these vars
+  # then. Do not add placeholder values.
   vitruvian-core-repo-config:oauthVars:
-    GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@gen-lang-client-0352693779.iam.gserviceaccount.com
-    GCP_PROJECT_ID: gen-lang-client-0352693779
-    GCP_REGION: us-west1
-    GCP_WORKLOAD_IDENTITY_PROVIDER: projects/724518326928/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
+    development:
+      GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@gen-lang-client-0352693779.iam.gserviceaccount.com
+      GCP_PROJECT_ID: gen-lang-client-0352693779
+      GCP_REGION: us-west1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/724518326928/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
   # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
   # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline
   # secret; a local run may `pulumi config set --secret buildbuddyApiKey`

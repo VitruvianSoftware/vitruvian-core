@@ -463,14 +463,24 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 // DELETED by the next CI apply. Those secrets are synced from a gitignored,
 // Bitwarden-backed store by //tools/sync-env-secrets instead (§2.4, §2.18).
 //
-// These resources were created out-of-band during bring-up, so each is ADOPTED
-// via pulumi.Import. The provider's variable Create is a create-only POST that
-// 409s when the name already exists, so declare-and-overwrite is unsafe — import
-// is mandatory for the variables (and clean for the environment).
+// The `development` environment + its variables were created out-of-band during
+// single-env bring-up, so they are ADOPTED via pulumi.Import. The provider's
+// variable Create is a create-only POST that 409s when the name already exists,
+// so declare-and-overwrite is unsafe — import is mandatory for the pre-existing
+// development resources (and clean for its environment). The nonproduction /
+// production / build / preview environments are NEW (created here as the OSS
+// application stage graduates oauth-user-inspector to multi-env), so they must
+// NOT carry an Import option.
 //
-// Variable values are committed config (identifiers, not secrets):
+// Variable values are committed per-env config (identifiers, not secrets):
 //
-//	pulumi config set --path 'oauthVars["GCP_PROJECT_ID"]' '<value>' --stack dev
+//	pulumi config set --path 'oauthVars["development"]["GCP_PROJECT_ID"]' '<value>' --stack dev
+//
+// nonproduction / production / build carry no vars yet: their deploy service
+// accounts + WIF provider are minted by the Phase-3 per-env identity stacks
+// (which land in the prj-{env}-bu1-oss-floating projects). The environments are
+// created now — empty but with protection rules — so the gate exists before the
+// first deploy, mirroring tabulaEnvironments. Their vars are set in Phase 3.
 func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
 	nm := repoName(cfg)
 
@@ -485,32 +495,79 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 		return err
 	}
 
-	const envName = "oauth-user-inspector-development"
-	envRes, err := github.NewRepositoryEnvironment(ctx, envName, &github.RepositoryEnvironmentArgs{
-		Repository:  repo.Name,
-		Environment: pulumi.String(envName),
-	}, pulumi.Import(pulumi.ID(nm+":"+envName)))
-	if err != nil {
-		return err
-	}
-
-	var oauthVars map[string]string
+	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 
-	// Deterministic resource names: iterate variables in sorted order.
-	keys := make([]string, 0, len(oauthVars))
-	for k := range oauthVars {
-		keys = append(keys, k)
+	// Environment set. `development` is adopted (imported); the rest are new.
+	// nonproduction + production are reviewer-gated deploy pauses; build (the
+	// build-once image stage) and preview (PR previews) are ungated.
+	envs := []struct {
+		env      string
+		gated    bool
+		imported bool
+	}{
+		{"development", false, true},
+		{"nonproduction", true, false},
+		{"production", true, false},
+		{"build", false, false},
+		{"preview", false, false},
 	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if _, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", envName, k), &github.ActionsEnvironmentVariableArgs{
-			Repository:   repo.Name,
-			Environment:  envRes.Environment,
-			VariableName: pulumi.String(k),
-			Value:        pulumi.String(oauthVars[k]),
-		}, pulumi.Import(pulumi.ID(fmt.Sprintf("%s:%s:%s", nm, envName, k)))); err != nil {
+
+	for _, e := range envs {
+		name := "oauth-user-inspector-" + e.env
+
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(name),
+		}
+		if e.gated {
+			// Deploy only from protected branches (main), with an approval from
+			// the configured reviewer(s). GitHub permits self-approval, so on a
+			// single-maintainer repo this is a deliberate "break glass" pause.
+			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+				ProtectedBranches:    pulumi.Bool(true),
+				CustomBranchPolicies: pulumi.Bool(false),
+			}
+			reviewerIds, err := productionReviewerIds(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+				&github.RepositoryEnvironmentReviewerArgs{
+					Users: pulumi.ToIntArray(reviewerIds),
+				},
+			}
+		}
+
+		var envOpts []pulumi.ResourceOption
+		if e.imported {
+			envOpts = append(envOpts, pulumi.Import(pulumi.ID(nm+":"+name)))
+		}
+		envRes, err := github.NewRepositoryEnvironment(ctx, name, args, envOpts...)
+		if err != nil {
 			return err
+		}
+
+		// Deterministic resource names: iterate variables in sorted order.
+		vars := oauthVars[e.env]
+		keys := make([]string, 0, len(vars))
+		for k := range vars {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			var varOpts []pulumi.ResourceOption
+			if e.imported {
+				varOpts = append(varOpts, pulumi.Import(pulumi.ID(fmt.Sprintf("%s:%s:%s", nm, name, k))))
+			}
+			if _, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", name, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(vars[k]),
+			}, varOpts...); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
