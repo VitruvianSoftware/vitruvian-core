@@ -160,22 +160,28 @@ jobs:
           FORCED_PUSH: ${{ github.event.forced }}
         run: bash tools/ci/affected-targets.sh
 
-  build-macos:
-    runs-on: macos-latest
-    timeout-minutes: 45
+  # macOS build, split so a premium macOS runner is claimed ONLY when a macOS-
+  # relevant path actually changed (#821). Previously the whole build-macos job
+  # ran on macos-latest and claimed a macOS runner on every PR/merge_group just
+  # to run a path filter and then no-op. Three jobs now:
+  #   detect-macos (Linux) -- cheap path filter; decides if the build is needed.
+  #   macos-build  (macOS) -- the actual build; the ONLY macOS-runner claim.
+  #   build-macos  (Linux) -- the REQUIRED merge-queue check; always reports and
+  #                           reflects macos-build's result.
+  detect-macos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      macos: ${{ steps.changes.outputs.macos }}
     steps:
       - uses: actions/checkout@v7
         with:
-          # Need history so the PR path filter can diff against the merge-base.
+          # Need history so the path filter can diff against the merge-base.
           fetch-depth: 0
-
-      # Path-aware guard for the heavy macOS build on BOTH presubmit lanes:
-      # regular PRs and merge_group (the merge queue). On push to main the filter
-      # is skipped and the unconditional postsubmit build below is the safety
-      # floor. dorny/paths-filter does a cheap name-only diff and never fails the
-      # job on its own; it only decides whether to run the build, so the required
-      # `build-macos` check always reports a result (fast when nothing macOS
-      # changed, instead of a full macOS build on every queued PR).
+      # dorny/paths-filter does a cheap name-only diff and never fails the job;
+      # it only decides whether macos-build runs. Skipped on push (the postsubmit
+      # floor always builds), so outputs.macos is empty there and macos-build's
+      # own `push` branch triggers the build.
       - name: Detect macOS-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -200,46 +206,61 @@ jobs:
               - 'MODULE.bazel.lock'
               - '.github/workflows/ci.yaml'
 
+  macos-build:
+    # The ONLY job that needs a macOS runner, so the ONLY place one is claimed.
+    # Runs: always on push (postsubmit floor); on merge_group UNLESS the filter is
+    # sure nothing macOS-relevant changed (filter uncertainty -> build, failing
+    # safe); on a PR only when the filter matched. When it does not run it is
+    # `skipped`, which build-macos treats as a pass. Not a required check itself.
+    needs: detect-macos
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'merge_group' && needs.detect-macos.outputs.macos != 'false') ||
+      (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
       - name: Set up Bazel
-        # Set up Bazel only when we are going to build: always on push (floor),
-        # on merge_group unless the filter is SURE no macOS path changed, and on
-        # a PR only when the filter matched.
-        if: >-
-          github.event_name == 'push' ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.macos != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.macos == 'true')
         uses: ./.github/actions/setup-bazel
-
-      # POSTSUBMIT (push to main): ALWAYS build the macOS app -- the safety floor
-      # for anything that lands on main outside the queue (direct / admin push).
-      #
       # --config=macos-app activates Apple's CC toolchain (needed for the
       # objc-executable link). NexusAgent (macos_application) carries
       # tags=["manual"], so the wildcard skips it -- build it explicitly by
       # label. The wildcard still builds the rest of nexus-agent (Swift lib,
       # Node bridge, hooks) on macOS.
-      - name: Build macOS app (postsubmit floor on push to main)
-        if: github.event_name == 'push'
+      - name: Build macOS app
         run: |
           bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
           bazel test --config=macos-app //nexus-agent/macos:NexusAgent_tests
 
-      # PRESUBMIT (merge queue + PR): build only when the diff touches a
-      # macOS-relevant path. On merge_group we build UNLESS the filter is certain
-      # nothing macOS-relevant changed (macos == 'false'), so any filter
-      # uncertainty (empty/missing result) fails safe to building rather than
-      # letting a macOS-breaking change merge unbuilt.
-      - name: Build macOS app (merge queue / PR, if macOS-relevant)
-        if: >-
-          (github.event_name == 'merge_group' && steps.changes.outputs.macos != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.macos == 'true')
+  build-macos:
+    # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
+    # queue never wedges), reflecting macos-build's result: pass when the build
+    # SUCCEEDED or was correctly SKIPPED (no macOS-relevant change), fail when it
+    # failed/was cancelled. This keeps the macOS-runner claim off the majority of
+    # PRs that touch no macOS path (#821) WITHOUT the skipped-required-check
+    # ambiguity this repo avoids -- the required job itself always runs + reports.
+    needs: [detect-macos, macos-build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reflect the macOS build result
+        env:
+          DETECT_RESULT: ${{ needs.detect-macos.result }}
+          MACOS_RESULT: ${{ needs.macos-build.result }}
         run: |
-          bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
-          # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
-          # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test --config=macos-app //nexus-agent/macos:NexusAgent_tests
+          echo "detect-macos=${DETECT_RESULT}  macos-build=${MACOS_RESULT}"
+          if [ "$DETECT_RESULT" != "success" ]; then
+            echo "::error::detect-macos ${DETECT_RESULT} -- cannot determine macOS relevance; refusing to green build-macos."
+            exit 1
+          fi
+          case "$MACOS_RESULT" in
+            success|skipped) echo "macOS build OK (${MACOS_RESULT})." ;;
+            *) echo "::error::macOS build ${MACOS_RESULT}." ; exit 1 ;;
+          esac
 
   license-check:
     # Whole-repo MIT license-header check, now hermetic via Bazel. The addlicense
