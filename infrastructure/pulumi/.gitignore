@@ -77,3 +77,6 @@ Pulumi.*.yaml
 /foundation/gcp-projects/business_unit_1/nonproduction/foundation-projects-bu1-nonproduction
 /foundation/gcp-projects/business_unit_1/production/foundation-projects-bu1-production
 
+
+# Compiled Go pulumi-program binary — never track.
+apps/oauth-user-inspector-deploy-identity/oauth-user-inspector-deploy-identity
