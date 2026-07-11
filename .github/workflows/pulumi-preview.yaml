@@ -120,38 +120,31 @@ jobs:
 
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
         if: steps.changes.outputs.stack == 'true'
+        id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         working-directory: ${{ matrix.dir }}
         run: |
-          set -euo pipefail
-          pulumi stack select -c "${{ matrix.stack }}"
-          # Advisory: never fail the PR on a diff; DO fail (visibly) if the
-          # preview itself errors — that means the program no longer evaluates.
-          pulumi preview --diff --non-interactive 2>&1 | tee /tmp/preview-raw.txt
+          # Disable -e so a failing preview does not abort before we capture its
+          # exit code. Advisory: never fail the PR on a diff, but DO fail visibly
+          # if the preview itself errors (the program no longer evaluates).
+          set +e -u -o pipefail
+          { pulumi stack select -c "${{ matrix.stack }}" \
+              && pulumi preview --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
 
-      - name: Format the preview comment
-        if: steps.changes.outputs.stack == 'true'
-        run: |
-          set -euo pipefail
-          # Strip ANSI escapes for a readable comment (mirrors
-          # _repo-config-preview.yaml's processing).
-          sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/\r//g' /tmp/preview-raw.txt > /tmp/preview-clean.txt
-          {
-            echo "## ${{ matrix.app }} — Pulumi preview (stack: ${{ matrix.stack }})"
-            echo
-            echo "> **Advisory.** \`imageTag\`/\`promote\`/\`stableRevision\` are deploy-time"
-            echo "> inputs not present in the committed stack config, so image/traffic update"
-            echo "> lines are expected noise. **The signal is creates, deletes, and REPLACES.**"
-            echo
-            echo '```'
-            tail -c 60000 /tmp/preview-clean.txt
-            echo '```'
-          } > /tmp/preview-comment.md
-
-      - name: Post the sticky PR comment
-        if: steps.changes.outputs.stack == 'true'
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      # Structured digest (creates/updates/replaces/deletes, destructive flagged)
+      # → step summary + the same sticky PR comment, replacing the prior raw-dump
+      # comment. pulumi-summary tucks the raw log into a <details> and highlights
+      # the real signal (creates/deletes/REPLACES) over expected update-noise.
+      - name: Pulumi digest → summary + sticky comment
+        if: always()
+        uses: ./.github/actions/pulumi-summary
         with:
-          header: pulumi-preview-${{ matrix.app }}
-          path: /tmp/preview-comment.md
+          label: ${{ matrix.app }}
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          sticky-header: pulumi-preview-${{ matrix.app }}

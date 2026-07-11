@@ -1,0 +1,78 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Pulumi summary digest
+description: >-
+  Render tools/ci/pulumi-summary.sh's markdown digest of a `pulumi preview`/`up`
+  log -- creates / updates / replaces / deletes, with destructive ops (replace +
+  delete) flagged -- to the Actions step summary and, on a pull_request, an
+  in-place sticky PR comment. One digest feeds both sinks so they never drift.
+  Feed it the log a prior step captured with `2>&1 | tee "$OUT_FILE"` plus that
+  step's PIPESTATUS exit code. Requires the repo to be checked out (for the
+  script) before use.
+
+inputs:
+  label:
+    description: Human label for the stack, shown in the digest title.
+    required: true
+  out-file:
+    description: Path to the teed `pulumi preview`/`up` output log.
+    required: true
+  exit-code:
+    description: The pulumi command's exit code (captured from PIPESTATUS).
+    required: true
+  sticky-header:
+    description: >-
+      When non-empty AND the event is a pull_request, post/update a sticky
+      comment under this (unique) header. Leave empty for apply/push runs, which
+      then write only the step summary.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Build the pulumi digest
+      shell: bash
+      env:
+        LABEL: ${{ inputs.label }}
+        OUT_FILE: ${{ inputs.out-file }}
+        EXIT_CODE: ${{ inputs.exit-code }}
+      run: |
+        set -euo pipefail
+        # A missing/empty log means the pulumi step was skipped for this stack
+        # (e.g. an unchanged matrix leg) -- emit a clean "no changes" digest
+        # rather than letting pulumi-summary.sh read a false failure off an
+        # absent file. digest.md is reused by the sticky-comment step below.
+        if [ ! -s "${OUT_FILE}" ]; then
+          printf '### %s\n\n_No pulumi output — preview/apply was skipped for this stack._\n' \
+            "${LABEL}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
+          exit 0
+        fi
+        "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+          "${LABEL}" "${OUT_FILE}" "${EXIT_CODE:-1}" \
+          | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
+
+    - name: Post the sticky PR comment
+      if: ${{ inputs.sticky-header != '' && github.event_name == 'pull_request' }}
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+      with:
+        header: ${{ inputs.sticky-header }}
+        path: ${{ runner.temp }}/pulumi-digest.md
