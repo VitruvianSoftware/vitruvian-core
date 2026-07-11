@@ -24,6 +24,9 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumiverse/pulumi-time/sdk/go/time"
+
+	"foundation-1-org/modules/cai_monitoring"
+	"foundation-1-org/modules/centralized_logging"
 )
 
 // BootstrapOutputs holds resolved values from the 0-bootstrap StackReference.
@@ -71,7 +74,30 @@ func main() {
 
 		// 4. Deploy Centralized Logging (org sinks → Storage, Pub/Sub, BigQuery)
 		// Must run BEFORE policies so domain-restricted sharing waits for sinks (Gap 3)
-		logOutputs, err := deployCentralizedLogging(ctx, cfg, projOutputs.AuditLogsProjectID, projOutputs.BillingExportProjectID)
+		var retentionEnabled, retentionLocked bool
+		var retentionDays int
+		if cfg.LogExportStorageRetentionPolicy != nil {
+			retentionEnabled = true
+			retentionLocked = cfg.LogExportStorageRetentionPolicy.IsLocked
+			retentionDays = cfg.LogExportStorageRetentionPolicy.RetentionPeriodDays
+		}
+		logOutputs, err := centralized_logging.New(ctx, "logs-export", &centralized_logging.Args{
+			ParentID:                     cfg.ParentID,
+			ParentType:                   cfg.ParentType,
+			BillingAccount:               cfg.BillingAccount,
+			EnableBillingAccountSink:     cfg.EnableBillingAccountSink,
+			LogExportStorageLocation:     cfg.LogExportStorageLocation,
+			LogExportStorageForceDestroy: cfg.LogExportStorageForceDestroy,
+			LogExportStorageVersioning:   cfg.LogExportStorageVersioning,
+			RetentionEnabled:             retentionEnabled,
+			RetentionLocked:              retentionLocked,
+			RetentionDays:                retentionDays,
+			DefaultRegion:                cfg.DefaultRegion,
+			BillingExportDatasetLocation: cfg.BillingExportDatasetLocation,
+			AuditProjectID:               projOutputs.AuditLogsProjectID,
+			BillingExportProjectID:       projOutputs.BillingExportProjectID,
+			BillingExportApisReady:       projOutputs.BillingExportApisReady,
+		})
 		if err != nil {
 			return err
 		}
@@ -105,9 +131,13 @@ func main() {
 		}
 
 		// 6b. Deploy CAI Monitoring infrastructure (Gap 2)
-		var caiOutputs *CAIMonitoringOutputs
+		var caiOutputs *cai_monitoring.Result
 		if cfg.EnableSCCResources {
-			caiOutputs, err = deployCAIMonitoring(ctx, cfg, projOutputs.SCCProjectID)
+			caiOutputs, err = cai_monitoring.New(ctx, "cai-monitoring", &cai_monitoring.Args{
+				OrgID:         cfg.OrgID,
+				DefaultRegion: cfg.DefaultRegion,
+				SCCProjectID:  projOutputs.SCCProjectID,
+			})
 			if err != nil {
 				return err
 			}
@@ -158,6 +188,9 @@ func main() {
 		}
 		for env, id := range projOutputs.NetworkProjectIDs {
 			ctx.Export(fmt.Sprintf("%s_network_project_id", env), id)
+		}
+		for env, number := range projOutputs.NetworkProjectNumbers {
+			ctx.Export(fmt.Sprintf("%s_network_project_number", env), number)
 		}
 
 		// Shared VPC projects grouped by environment (upstream: shared_vpc_projects)

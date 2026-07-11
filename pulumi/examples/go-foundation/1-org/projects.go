@@ -21,12 +21,15 @@ import (
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"foundation-1-org/modules/network"
 )
 
 // OrgProjects holds outputs from all org-level project deployments.
 type OrgProjects struct {
 	AuditLogsProjectID        pulumi.StringOutput
 	BillingExportProjectID    pulumi.StringOutput
+	BillingExportApisReady    pulumi.Resource // gates resources that need BigQuery API on the billing-export project
 	SCCProjectID              pulumi.StringOutput
 	OrgKMSProjectID           pulumi.StringOutput
 	OrgSecretsProjectID       pulumi.StringOutput
@@ -35,6 +38,7 @@ type OrgProjects struct {
 	NetHubProjectID           pulumi.StringOutput
 	NetHubProjectNumber       pulumi.StringOutput // upstream: net_hub_project_number
 	NetworkProjectIDs         map[string]pulumi.StringOutput
+	NetworkProjectNumbers     map[string]pulumi.StringOutput
 }
 
 // createProject is a helper that creates a standardized project using the
@@ -42,7 +46,7 @@ type OrgProjects struct {
 // Labels mirror the Terraform foundation's project labeling convention (D3).
 // Budget and DefaultServiceAccount are optional — pass nil/empty to skip.
 // Returns both the project ID and project number for cross-stage exports.
-func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.StringOutput, cfg *OrgConfig, apis []string, labels map[string]string, budget *project.BudgetConfig) (pulumi.StringOutput, pulumi.StringOutput, error) {
+func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.StringOutput, cfg *OrgConfig, apis []string, labels map[string]string, budget *project.BudgetConfig) (pulumi.StringOutput, pulumi.StringOutput, pulumi.Resource, error) {
 	// Convert labels to Pulumi StringMap
 	pulumiLabels := pulumi.StringMap{}
 	for k, v := range labels {
@@ -62,9 +66,9 @@ func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.
 		DefaultServiceAccount: cfg.DefaultServiceAccount,
 	})
 	if err != nil {
-		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, nil, err
 	}
-	return p.Project.ProjectId, p.Project.Number, nil
+	return p.Project.ProjectId, p.Project.Number, p.ApisReady, nil
 }
 
 // budgetFor converts a PerProjectBudget to a BudgetConfig for the project
@@ -136,7 +140,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// ========================================================================
 
 	// Audit Logs — centralized logging destination
-	auditLogsProjectID, _, err := createProject(
+	auditLogsProjectID, _, _, err := createProject(
 		ctx, "org-logging",
 		fmt.Sprintf("%s-c-logging", cfg.ProjectPrefix),
 		commonFolderID, cfg,
@@ -158,7 +162,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Billing Export — BigQuery dataset for billing data
-	billingExportProjectID, _, err := createProject(
+	billingExportProjectID, _, billingExportApisReady, err := createProject(
 		ctx, "org-billing-export",
 		fmt.Sprintf("%s-c-billing-export", cfg.ProjectPrefix),
 		commonFolderID, cfg,
@@ -180,7 +184,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Security Command Center — SCC notifications via Pub/Sub
-	sccProjectID, _, err := createProject(
+	sccProjectID, _, _, err := createProject(
 		ctx, "org-scc",
 		fmt.Sprintf("%s-c-scc", cfg.ProjectPrefix),
 		commonFolderID, cfg,
@@ -202,7 +206,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// KMS — org-level key management
-	orgKMSProjectID, _, err := createProject(
+	orgKMSProjectID, _, _, err := createProject(
 		ctx, "org-kms",
 		fmt.Sprintf("%s-c-kms", cfg.ProjectPrefix),
 		commonFolderID, cfg,
@@ -224,7 +228,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Secrets — org-level secret storage
-	orgSecretsProjectID, _, err := createProject(
+	orgSecretsProjectID, _, _, err := createProject(
 		ctx, "org-secrets",
 		fmt.Sprintf("%s-c-secrets", cfg.ProjectPrefix),
 		commonFolderID, cfg,
@@ -250,7 +254,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// ========================================================================
 
 	// Interconnect — Dedicated/Partner Interconnect connections
-	interconnectProjectID, interconnectProjectNumber, err := createProject(
+	interconnectProjectID, interconnectProjectNumber, _, err := createProject(
 		ctx, "org-interconnect",
 		fmt.Sprintf("%s-net-interconnect", cfg.ProjectPrefix),
 		networkFolderID, cfg,
@@ -275,7 +279,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	var netHubProjectID pulumi.StringOutput
 	var netHubProjectNumber pulumi.StringOutput
 	if cfg.EnableHubAndSpoke {
-		netHubProjectID, netHubProjectNumber, err = createProject(
+		netHubProjectID, netHubProjectNumber, _, err = createProject(
 			ctx, "org-net-hub",
 			fmt.Sprintf("%s-net-hub", cfg.ProjectPrefix),
 			networkFolderID, cfg,
@@ -305,45 +309,34 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Per-environment Shared VPC host projects under the Network folder
-	// Mirrors: module "environment_network" in upstream projects.tf
+	// Mirrors: module "environment_network" in upstream projects.tf. Each
+	// project is created by the network module (modules/network).
 	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
 	networkProjectIDs := make(map[string]pulumi.StringOutput)
+	networkProjectNumbers := make(map[string]pulumi.StringOutput)
 	for env, code := range envCodes {
-		netProjectID, _, err := createProject(
-			ctx,
-			fmt.Sprintf("org-net-%s", env),
-			fmt.Sprintf("%s-%s-svpc", cfg.ProjectPrefix, code),
-			networkFolderID, cfg,
-			[]string{
-				"compute.googleapis.com",
-				"dns.googleapis.com",
-				"servicenetworking.googleapis.com",
-				"container.googleapis.com",
-				"logging.googleapis.com",
-				"cloudresourcemanager.googleapis.com", // Gap 2: matches upstream network module
-				"accesscontextmanager.googleapis.com", // Gap 2: needed for VPC Service Controls
-				"billingbudgets.googleapis.com",
-			},
-			map[string]string{
-				"environment":       env,
-				"application_name":  "shared-vpc-host", // upstream label value
-				"billing_code":      "1234",
-				"primary_contact":   "example1",
-				"secondary_contact": "example2",
-				"business_code":     "shared",
-				"env_code":          code,
-			},
-			budgetFor(getProjectBudget(cfg, "shared_network")),
-		)
+		netRes, err := network.New(ctx, fmt.Sprintf("org-net-%s", env), &network.Args{
+			Env:                   env,
+			EnvCode:               code,
+			ProjectPrefix:         cfg.ProjectPrefix,
+			FolderID:              networkFolderID,
+			BillingAccount:        cfg.BillingAccount,
+			RandomSuffix:          cfg.RandomSuffix,
+			ProjectDeletionPolicy: cfg.ProjectDeletionPolicy,
+			DefaultServiceAccount: cfg.DefaultServiceAccount,
+			Budget:                budgetFor(getProjectBudget(cfg, "shared_network")),
+		})
 		if err != nil {
 			return nil, err
 		}
-		networkProjectIDs[env] = netProjectID
+		networkProjectIDs[env] = netRes.ProjectID
+		networkProjectNumbers[env] = netRes.ProjectNumber
 	}
 
 	return &OrgProjects{
 		AuditLogsProjectID:        auditLogsProjectID,
 		BillingExportProjectID:    billingExportProjectID,
+		BillingExportApisReady:    billingExportApisReady,
 		SCCProjectID:              sccProjectID,
 		OrgKMSProjectID:           orgKMSProjectID,
 		OrgSecretsProjectID:       orgSecretsProjectID,
@@ -352,5 +345,6 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 		NetHubProjectID:           netHubProjectID,
 		NetHubProjectNumber:       netHubProjectNumber,
 		NetworkProjectIDs:         networkProjectIDs,
+		NetworkProjectNumbers:     networkProjectNumbers,
 	}, nil
 }
