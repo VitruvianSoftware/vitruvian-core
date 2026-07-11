@@ -228,7 +228,11 @@ _GO_EXAMPLE_LIB_VERSIONS = {
     "google_group": "1.0.2",
     "iam": "0.4.2",
     "instance_template": "0.2.4",
-    "network": "1.1.0",
+    # network migrated to the /v2 major line (the v1.2.x line is frozen); every
+    # go-foundation example now imports network/v2, so pin the published v2 tag.
+    # The transform key must be "network/v2" — its before-pattern (".../network/v2
+    # v<ver>") is what matches the require line; a bare "network" key would not.
+    "network/v2": "2.0.3",
     "org_policy": "1.0.2",
     "project_factory": "1.0.2",
     "vpc_service_controls": "1.0.2",
