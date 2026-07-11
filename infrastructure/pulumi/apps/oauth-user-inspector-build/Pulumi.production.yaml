@@ -1,0 +1,8 @@
+# Shared build stack for oauth-user-inspector. Single stack (production) — it owns
+# cross-env singletons (Artifact Registry + build SA) in the foundation's shared
+# infra-pipeline project (prj-c-bu1-infra-pipeline-*), resolved via StackReference
+# to ipv1337/foundation-projects-bu1-shared/production (infra_pipeline_project_id). The per-env
+# Cloud Run service-agent AR-reader grants read each env's oss_floating_project_number
+# from ipv1337/foundation-projects-bu1-{development,nonproduction,production}/production.
+config:
+  oauth-user-inspector-build:region: "us-west1"
