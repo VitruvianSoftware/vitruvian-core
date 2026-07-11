@@ -45,10 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The relevant-paths gate (below) diffs HEAD against the PR merge-base,
-          # so the merge-base must be present locally. The default shallow fetch
-          # (depth 1) lacks it; full history makes the merge-base reliable. On
-          # push/merge_group the gate is skipped and the full check always runs.
+          # The relevant-paths gate (below) diffs HEAD against a base commit (the
+          # PR merge-base, the pre-push tip, or the merge_group base_sha), so that
+          # base must be present locally. The default shallow fetch (depth 1)
+          # lacks it; full history makes every base reliable.
           fetch-depth: 0
 
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
@@ -57,14 +57,19 @@ jobs:
       # report and wedge the PR "pending" forever. Instead we keep triggering on
       # every event and make the heavy steps no-op to success in seconds when the
       # diff is docs/gitops/markdown-only. Native git diff -- no third-party
-      # action. On merge_group the gate is skipped and the steps below run
-      # unconditionally (the merge queue is the final safety floor).
+      # action.
+      #
+      # This runs on merge_group too (#822): the full-repo gazelle + pnpm resolve
+      # is the biggest per-queued-PR cost, and a docs/gitops-only queued PR has
+      # nothing for //:tidy to reformat or gazelle to regenerate. relevant-paths
+      # FAILS SAFE (any diff it cannot compute -> relevant=true -> run), and the
+      # job still runs + reports either way, so the required check never wedges.
+      # Same base-resolution build-test already uses on merge_group (base_sha).
       - name: Gate on changed paths
         id: gate
-        if: github.event_name != 'merge_group'
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
-          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: bash tools/ci/relevant-paths.sh
 
       # Free disk BEFORE any Bazel work — same reclaim set + rationale as
