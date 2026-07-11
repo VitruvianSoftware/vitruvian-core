@@ -222,7 +222,7 @@ _GO_EXAMPLE_LIB_VERSIONS = {
     "cai_monitoring": "1.0.2",
     "centralized_logging": "1.0.2",
     "cicd": "0.4.2",
-    "cloud_run": "0.1.0",
+    "cloud_run": "0.2.0",
     "cloud_storage": "1.0.2",
     "compute_instance": "0.2.3",
     "google_group": "1.0.2",
