@@ -116,11 +116,17 @@ func main() {
 			projects.ConfSpaceWorkloadSA = &confResult.WorkloadSAEmail
 		}
 
-		// 5. Deploy Infra Pipeline Project (under common folder, toggle-gated)
+		// 5. Deploy Infra Pipeline Project (under common folder, toggle-gated).
+		// Export its project id (upstream terraform-example-foundation exports
+		// infra_pipeline_project_id; our port previously discarded the return — a
+		// port bug, fixed here and in the example). Stage 5 consumes this from the
+		// single stack that enables it (production) as the shared build/artifact home.
 		if cfg.InfraPipelineEnabled {
-			if _, err = deployInfraPipelineProject(ctx, cfg, commonFolderID); err != nil {
+			infraPipelineID, err := deployInfraPipelineProject(ctx, cfg, commonFolderID)
+			if err != nil {
 				return err
 			}
+			ctx.Export("infra_pipeline_project_id", infraPipelineID)
 		}
 
 		// 7. Exports — matching TF 4-projects/business_unit_1/{env}/outputs.tf
@@ -128,6 +134,7 @@ func main() {
 		ctx.Export("shared_vpc_project_number", projects.SVPCProjectNumber)
 		ctx.Export("floating_project", projects.FloatingProjectID)
 		ctx.Export("oss_floating_project", projects.OSSFloatingProjectID)
+		ctx.Export("oss_floating_project_number", projects.OSSFloatingProjectNumber)
 		ctx.Export("peering_project", projects.PeeringProjectID)
 		ctx.Export("peering_network", projects.PeeringNetworkSelfLink)
 		ctx.Export("peering_subnetwork_self_link", projects.PeeringSubnetSelfLink)

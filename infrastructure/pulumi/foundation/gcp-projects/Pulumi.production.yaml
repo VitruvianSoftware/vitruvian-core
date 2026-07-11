@@ -26,7 +26,13 @@ config:
   foundation-projects:oss_floating_project_enabled: "true"
   foundation-projects:svpc_project_enabled: "false"
   foundation-projects:peering_project_enabled: "false"
-  foundation-projects:infra_pipeline_enabled: "false"
+  # Enabled in the PRODUCTION stack ONLY (deployInfraPipelineProject has no env
+  # discriminator + random suffix, so enabling in all three env stacks would
+  # create three duplicate prj-c-bu1-infra-pipeline-* projects). This shared,
+  # cross-env project (common folder) hosts stage-5 app CI/CD + the build-once
+  # Artifact Registry; production owns it for lifecycle stability. dev/nonprod
+  # app stacks consume infra_pipeline_project_id from ipv1337/foundation-projects/production.
+  foundation-projects:infra_pipeline_enabled: "true"
   foundation-projects:confidential_space_enabled: "false"
 
   # --- Features off for the floating-only first cut ---

@@ -110,11 +110,16 @@ func main() {
 			projects.ConfSpaceWorkloadSA = &confResult.WorkloadSAEmail
 		}
 
-		// 5. Deploy Infra Pipeline Project (under common folder, toggle-gated)
+		// 5. Deploy Infra Pipeline Project (under common folder, toggle-gated).
+		// Upstream terraform-example-foundation exports infra_pipeline_project_id;
+		// this port previously discarded the return value — a port bug. Capture and
+		// export it so the reference matches upstream (5-app-infra consumes it).
 		if cfg.InfraPipelineEnabled {
-			if _, err = deployInfraPipelineProject(ctx, cfg, commonFolderID); err != nil {
+			infraPipelineID, err := deployInfraPipelineProject(ctx, cfg, commonFolderID)
+			if err != nil {
 				return err
 			}
+			ctx.Export("infra_pipeline_project_id", infraPipelineID)
 		}
 
 		// 7. Exports — matching TF 4-projects/business_unit_1/{env}/outputs.tf
