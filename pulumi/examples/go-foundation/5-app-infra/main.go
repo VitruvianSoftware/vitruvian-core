@@ -6,6 +6,7 @@ import (
 
 	"foundation-5-app-infra/modules/confidential_space"
 	"foundation-5-app-infra/modules/env_base"
+	"foundation-5-app-infra/modules/serverless_space"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -90,6 +91,31 @@ func main() {
 			return err
 		}
 
+		// 6. Deploy Serverless (Cloud Run) Workload — the serverless peer to
+		//    env_base/confidential_space. Only deployed when an image digest is
+		//    configured, so the reference stack stays applyable without a build.
+		if cfg.ServerlessImageDigest != "" {
+			ssRegion := cfg.Region
+			if ssRegion == "" {
+				ssRegion = "us-central1"
+			}
+			ss, err := serverless_space.DeployServerlessSpace(ctx, "serverless-space", &serverless_space.ServerlessSpaceArgs{
+				Env:           cfg.Env,
+				BusinessUnit:  cfg.BusinessCode,
+				ProjectID:     appProjectID,
+				Region:        ssRegion,
+				ServiceName:   cfg.EnvCode + "-serverless-space",
+				ImageDigest:   pulumi.String(cfg.ServerlessImageDigest),
+				SecretPrefix:  "EXAMPLE_APP_",
+				PublicInvoker: true,
+				MaxInstances:  2,
+			})
+			if err != nil {
+				return err
+			}
+			ctx.Export("serverless_service_uri", ss.ServiceUri)
+		}
+
 		return nil
 	})
 }
@@ -102,6 +128,7 @@ type AppInfraConfig struct {
 	ProjectsStackName       string
 	BootstrapStackName      string
 	ConfidentialImageDigest string
+	ServerlessImageDigest   string
 }
 
 func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
@@ -113,6 +140,7 @@ func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 		ProjectsStackName:       conf.Get("projects_stack_name"),
 		BootstrapStackName:      conf.Get("bootstrap_stack_name"),
 		ConfidentialImageDigest: conf.Get("confidential_image_digest"),
+		ServerlessImageDigest:   conf.Get("serverless_image_digest"),
 	}
 
 	if c.BusinessCode == "" {

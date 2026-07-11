@@ -8,3 +8,5 @@ config:
   # foundation-5-app-infra:business_code: "bu1"
   # foundation-5-app-infra:region: "us-central1"
   # foundation-5-app-infra:confidential_image_digest: ""
+  # Set to a promoted Cloud Run image digest to enable the serverless_space workload:
+  # foundation-5-app-infra:serverless_image_digest: ""
