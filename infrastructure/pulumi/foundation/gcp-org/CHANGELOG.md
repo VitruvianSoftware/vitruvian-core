@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.5...foundation-gcp-org-v0.5.0) (2026-07-11)
+
+
+### Features
+
+* **foundation:** DRS override permitting public invoker on the OSS projects ([#867](https://github.com/VitruvianSoftware/vitruvian-core/issues/867)) ([b4e9cdf](https://github.com/VitruvianSoftware/vitruvian-core/commit/b4e9cdfe24956a182d7c7a6d4eb786e64f652bb4))
+
 ## [0.4.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.4.4...foundation-gcp-org-v0.4.5) (2026-07-10)
 
 
