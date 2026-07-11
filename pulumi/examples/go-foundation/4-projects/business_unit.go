@@ -279,11 +279,21 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 // ID collision but not the duplication). (A cleaner long-term shape is a dedicated
 // common/shared stack; deferred until Stage-5 CI/CD.)
 //
-// TODO(stage-5 enablement): upstream `single_project` also seeds the pipeline
-// service accounts with `sa_roles` on each app project, `roles/compute.networkViewer`
-// on the BU folder, and `roles/compute.networkUser` on the shared-VPC subnets so
-// the deploy identity can act. That per-project IAM has no GitHub-WIF equivalent
-// here yet — wire it (in WIF form) when the Stage-5 deploy identity is designed.
+// NOTE (deploy-SA IAM — deliberately NOT here in our model): upstream
+// `single_project` seeds the pipeline service accounts with `sa_roles` on each
+// app project, `roles/compute.networkViewer` on the BU folder, and
+// `roles/compute.networkUser` on the shared-VPC subnets — for its VM + Cloud-Build
+// deploy model. We don't replicate that here: our stage-5 apps are serverless
+// (Cloud Run) on FLOATING projects, deployed from GitHub Actions via Workload
+// Identity Federation, so deploy permissions live in each APP's own deploy-identity
+// stack — e.g. infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity,
+// which grants its deploy SA run.admin/artifactregistry.admin/iam.serviceAccountUser/…
+// on the target project plus a WIF impersonation binding. This infra-pipeline
+// project is NOT in that deploy path (nothing references it); it's a placeholder
+// carried over from the upstream shape. When stage-5 moves an app onto the org's
+// oss-floating projects, extend that app's deploy-identity stack to the target
+// project per env, following the existing pattern — do NOT add upstream's
+// Cloud-Build / shared-VPC pipeline-SA roles to this project.
 func deployInfraPipelineProject(ctx *pulumi.Context, cfg *ProjectsConfig, commonFolderID pulumi.StringOutput) (pulumi.StringOutput, error) {
 	infraProject, err := project.NewProject(ctx, "infra-pipeline-project", &project.ProjectArgs{
 		ProjectID:       pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", cfg.ProjectPrefix, cfg.BusinessCode)),
