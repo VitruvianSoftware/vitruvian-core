@@ -51,6 +51,7 @@ func TestOrgConfigDefaults(t *testing.T) {
 		assert.Equal(t, false, cfg.EnableHubAndSpoke)
 		assert.Empty(t, cfg.DomainsToAllow)
 		assert.Empty(t, cfg.EssentialContactsDomains)
+		assert.Empty(t, cfg.OSSPublicInvokerProjects)
 		assert.Equal(t, "en", cfg.EssentialContactsLanguage)
 		assert.Equal(t, "scc-notify", cfg.SCCNotificationName)
 		assert.Equal(t, "state = \"ACTIVE\"", cfg.SCCNotificationFilter)

@@ -157,6 +157,31 @@ func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi
 	}
 
 	// ========================================================================
+	// OSS public-invoker exception (project-scoped DRS override)
+	// Domain Restricted Sharing (constraints/iam.allowedPolicyMemberDomains) is
+	// enforced org/folder-wide above, which blocks binding public principals
+	// (allUsers) anywhere. The OSS application projects (prj-{env}-bu1-oss-
+	// floating) host intentionally-public demo services (e.g. oauth-user-
+	// inspector) whose Cloud Run service needs an allUsers run.invoker binding.
+	//
+	// We grant a narrowly-scoped exception: a project-level policy with AllowAll
+	// on each named OSS project, overriding the inherited restriction for those
+	// projects only. Applied here (gcp-org) because only the org SA holds
+	// orgpolicy.policyAdmin; the downstream app/identity stacks (run as the proj
+	// SA) cannot set org policies. The project list is data-driven config so the
+	// exception surface stays explicit and reviewable.
+	// ========================================================================
+	for _, projectID := range cfg.OSSPublicInvokerProjects {
+		if _, err := policy.NewOrgPolicy(ctx, "policy-oss-public-invoker-"+projectID, &policy.OrgPolicyArgs{
+			ParentID:   pulumi.String("projects/" + projectID),
+			Constraint: pulumi.String("constraints/iam.allowedPolicyMemberDomains"),
+			AllowAll:   pulumi.Bool(true),
+		}); err != nil {
+			return err
+		}
+	}
+
+	// ========================================================================
 	// Access Context Manager
 	// NOTE: The AccessPolicy resource is created in main.go (step 9.5) because
 	// its output feeds the access_context_manager_policy_id stack export.
