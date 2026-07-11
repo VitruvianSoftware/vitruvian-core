@@ -81,7 +81,11 @@ The design is NOT four stacks; write the whole set so nothing is discovered mid-
    env's oss project (§8). Singletons that must NOT be created per-env.
 6. **Per-env identity stacks** (`apps/oauth-user-inspector-deploy-identity/`, `Pulumi.{development,nonproduction,
    production}.yaml`) — per-env deploy + runtime SAs + env-scoped WIF binding (deploy SA only) + per-app
-   least-priv IAM. Runs as `sa-terraform-proj`.
+   least-priv IAM. Runs as `sa-terraform-proj`. **This stack's current per-app WIF pool + provider
+   (`github-actions-dev-1` / `github-actions-dev`) and its project-wide IAM grants are REMOVED** — the deploy
+   identity now federates against the shared **`foundation-pool`** (in `prj-b-cicd`, from bootstrap) via an
+   env-scoped `principalSet` binding, and IAM is scoped per-app (§8), not project-wide. (Approved
+   2026-07-10.)
 7. **Per-env app stacks** (`apps/oauth-user-inspector/`, `Pulumi.{development,nonproduction,production}.yaml`) —
    call `serverless_space`; consume the env's `oss_floating_project`(+number) and the shared build project via
    StackReference to `ipv1337/foundation-projects/{env}`; deploy the promoted **digest**. Runs as the per-env
@@ -93,6 +97,25 @@ The design is NOT four stacks; write the whole set so nothing is discovered mid-
 9. `pulumi/library/go/pkg/cloud_run` (new published primitive).
 10. `serverless_space` module in `pulumi/examples/go-foundation/5-app-infra/modules/serverless_space` (faithful
     reference peer to `env_base`/`confidential_space`), consumed by the live app stacks.
+
+### 4.1 Consolidation of the existing app IaC (decided 2026-07-10)
+
+The app already has live IaC under `infrastructure/pulumi/apps/` — `oauth-user-inspector/` (AR repo + Cloud Run
+v2 + `allUsers` invoker, three env config files that all point at the personal `gen-lang-client-*` project, image
+ref `.../app:<tag>`, `pulumi-gcp` **sdk v7**) and `oauth-user-inspector-deploy-identity/` (its own per-app WIF
+pool `github-actions-dev-1`, deploy/runtime SAs, project-wide IAM, dev-only). These are **evolved in place, not
+duplicated** — `apps/` is the established home for app stacks (`tabula/` lives here too), so there is no separate
+stage-5 tree.
+
+- **App stack (`apps/oauth-user-inspector/`)** — refactored in place: internals swap to the `serverless_space`
+  module; the three env config files are **repointed** at `prj-{env}-bu1-oss-floating` (per-env project / region /
+  runtime SA); the image ref becomes the promoted **digest** (build-once), not `:<tag>`; `pulumi-gcp` bumped
+  **v7 → v9** to match the foundation. One source of truth for the app.
+- **Deploy-identity stack (`apps/oauth-user-inspector-deploy-identity/`)** — the per-app WIF pool/provider and
+  project-wide grants are **removed** and replaced by the `foundation-pool` env-scoped binding + per-app IAM
+  (item 6). This is the only piece that touches live WIF; retiring the per-app pool was **explicitly approved**.
+- **Personal-project deployment** stays running until the oss-project multi-env is live and smoke-tested, then
+  Phase 4 (§14 deferred) retires it — no flag-day cutover.
 
 ## 5. Application source & the SECRET_PREFIX change
 
