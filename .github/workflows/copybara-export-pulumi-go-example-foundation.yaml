@@ -80,6 +80,15 @@ jobs:
               env:
                   SSH_KEY: ${{ secrets.PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}
                   MIRROR: ${{ github.repository_owner }}/pulumi_go-example-foundation
+                  # Resolve our own freshly-published library modules via direct git
+                  # (bypassing the public module proxy) and skip the checksum DB for
+                  # them. proxy.golang.org / sum.golang.org lag minutes-to-~30min
+                  # behind a just-created go/pkg/<n>/vX.Y.Z tag, which otherwise fails
+                  # this tidy ("unknown revision" / sumdb 404) on every new library
+                  # release until propagation. The h1: hashes go mod tidy computes
+                  # from the direct fetch are content-derived, so they match sumdb
+                  # once it does propagate — no integrity loss for downstream consumers.
+                  GOPRIVATE: github.com/VitruvianSoftware/*
               run: |
                   set -euo pipefail
                   mkdir -p ~/.ssh
