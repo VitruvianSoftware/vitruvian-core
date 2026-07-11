@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.2...foundation-gcp-projects-v1.2.3) (2026-07-11)
+
+
+### Bug Fixes
+
+* **gcp-projects:** address upstream-fidelity findings from the 4-projects review ([#889](https://github.com/VitruvianSoftware/vitruvian-core/issues/889)) ([2ca876a](https://github.com/VitruvianSoftware/vitruvian-core/commit/2ca876a4dc7df2206608acef3a356fab0bc71e54))
+
 ## [1.2.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.1...foundation-gcp-projects-v1.2.2) (2026-07-11)
 
 
