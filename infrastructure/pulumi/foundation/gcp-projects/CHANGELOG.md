@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.1...foundation-gcp-projects-v1.2.2) (2026-07-11)
+
+
+### Bug Fixes
+
+* **gcp-projects:** disable default compute SA (match upstream), not deprivilege ([#883](https://github.com/VitruvianSoftware/vitruvian-core/issues/883)) ([9662226](https://github.com/VitruvianSoftware/vitruvian-core/commit/9662226c9ee5fafb9f79e51610bb5b15322f4758))
+
 ## [1.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.0...foundation-gcp-projects-v1.2.1) (2026-07-11)
 
 
