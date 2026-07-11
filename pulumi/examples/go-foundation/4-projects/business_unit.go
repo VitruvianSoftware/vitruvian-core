@@ -146,7 +146,8 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 		result.SVPCProjectID = svpcProject.Project.ProjectId
 		result.SVPCProjectNumber = svpcProject.Project.Number
 
-		// CMEK Storage — KMS keyring + encrypted GCS bucket on the SVPC project
+		// CMEK Storage — KMS keyring + crypto key in the env KMS project, encrypted
+		// GCS bucket on the SVPC project.
 		if cfg.CMEKEnabled {
 			cmekResult, err := deployCMEKStorage(ctx, cfg, svpcProject, kmsProjectID)
 			if err != nil {
@@ -154,6 +155,9 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 			}
 			result.CMEKBucket = &cmekResult.BucketName
 			result.CMEKKeyring = &cmekResult.KeyringName
+			// Populate CMEKKeys so main.go's `keys` export is the crypto-key list
+			// (upstream `keys(module.kms.keys)`), not the empty stub it was before.
+			result.CMEKKeys = &cmekResult.Keys
 		}
 	}
 

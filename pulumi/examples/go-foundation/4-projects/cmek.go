@@ -30,16 +30,22 @@ import (
 type CMEKResult struct {
 	BucketName  pulumi.StringOutput
 	KeyringName pulumi.StringOutput
+	// Keys is the list of crypto-key names in the keyring, surfaced so the stack
+	// can export `keys` to match upstream's `output "keys" = keys(module.kms.keys)`
+	// (consumed by 5-app-infra). We create a single key, so it is a one-element list.
+	Keys pulumi.StringArrayOutput
 }
 
-// deployCMEKStorage creates a KMS keyring with a crypto key and a CMEK-encrypted
-// GCS bucket on the SVPC project, matching upstream's example_storage_cmek.tf.
+// deployCMEKStorage creates a KMS keyring + crypto key in the env's KMS project
+// and a CMEK-encrypted GCS bucket on the SVPC project, matching upstream's
+// example_storage_cmek.tf.
 //
 // Upstream creates:
-//   - KMS keyring (in a separate KMS project, but we use the SVPC project)
-//   - Crypto key with rotation period
-//   - IAM binding for the GCS service account as encrypter/decrypter
-//   - CMEK-encrypted GCS bucket
+//   - a KMS keyring + rotation-period crypto key in the env KMS project (upstream
+//     local.kms_project_id; here kmsProjectID, wired from 2-environments) — NOT the
+//     SVPC project (the bucket, below, is what lands on the SVPC project)
+//   - an IAM binding granting the GCS service account encrypter/decrypter on the key
+//   - a CMEK-encrypted GCS bucket on the SVPC project
 func deployCMEKStorage(
 	ctx *pulumi.Context,
 	cfg *ProjectsConfig,
@@ -126,5 +132,11 @@ func deployCMEKStorage(
 	return &CMEKResult{
 		BucketName:  bucket.Name,
 		KeyringName: keyring.Name,
+		// One crypto key → the `keys` export is [keyName]. Mirrors upstream
+		// `keys(module.kms.keys)`. Derived from the created key's Name output so it
+		// stays correct if the key set grows.
+		Keys: cryptoKey.Name.ApplyT(func(n string) []string {
+			return []string{n}
+		}).(pulumi.StringArrayOutput),
 	}, nil
 }
