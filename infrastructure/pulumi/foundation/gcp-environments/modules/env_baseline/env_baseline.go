@@ -18,7 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package main
+// Package env_baseline is the reusable per-environment baseline module, the
+// faithful Pulumi port of upstream terraform-example-foundation
+// 2-environments/modules/env_baseline. The thin stage root (main.go) reads the
+// environment identity + core identifiers from stack config and calls Deploy;
+// all resource creation lives here (env folder + tag binding, KMS project,
+// Secrets project, optional Assured Workload).
+package env_baseline
 
 import (
 	"fmt"
@@ -30,8 +36,55 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// EnvBaselineOutputs holds all outputs from a single environment's baseline deployment.
-type EnvBaselineOutputs struct {
+// PerProjectBudget holds the budget configuration for a single project.
+type PerProjectBudget struct {
+	Amount             float64
+	AlertSpentPercents []float64
+	AlertPubSubTopic   string
+	AlertSpendBasis    string
+}
+
+// EnvProjectBudgetConfig mirrors the upstream project_budget variable.
+// SharedNetwork is retained for config-schema parity with upstream variables.tf
+// but is a no-op here: env_baseline creates only the KMS + Secrets projects (the
+// network project belongs to stage 3).
+type EnvProjectBudgetConfig struct {
+	SharedNetwork PerProjectBudget
+	KMS           PerProjectBudget
+	Secret        PerProjectBudget
+}
+
+// AssuredWorkloadConfig mirrors the upstream assured_workload_configuration variable.
+type AssuredWorkloadConfig struct {
+	Enabled          bool
+	Location         string
+	DisplayName      string
+	ComplianceRegime string
+	ResourceType     string
+}
+
+// Args are the inputs to the env_baseline module — the 6 upstream module inputs
+// plus the values our port resolves from Pulumi config / a stack reference
+// instead of terraform_remote_state (org_id, billing, prefixes, parent, tags).
+type Args struct {
+	Env                      string // upstream env
+	EnvCode                  string // upstream environment_code
+	Parent                   string // remote.tf local.parent
+	OrgID                    string
+	BillingAccount           string
+	ProjectPrefix            string
+	FolderPrefix             string
+	RandomSuffix             bool
+	DefaultServiceAccount    string
+	ProjectDeletionPolicy    string
+	FolderDeletionProtection bool
+	ProjectBudget            *EnvProjectBudgetConfig
+	AssuredWorkload          AssuredWorkloadConfig
+	Tags                     pulumi.Output // 1-org "tags" map (StackReference output); may be nil
+}
+
+// Result holds the outputs of a single environment's baseline deployment.
+type Result struct {
 	FolderName               pulumi.StringOutput
 	FolderID                 pulumi.IDOutput
 	KMSProjectID             pulumi.StringOutput
@@ -41,50 +94,45 @@ type EnvBaselineOutputs struct {
 	AssuredWorkloadResources assuredworkloads.WorkloadResourceArrayOutput
 }
 
-// deployEnvBaseline creates all per-environment resources for a single environment.
-// This mirrors the upstream Terraform foundation's 2-environments/modules/env_baseline.
-//
-// Resources created per environment:
-//   - Environment folder ({folder_prefix}-{env}) under parent
-//   - Folder tag binding (environment_{env} tag from 1-org)
-//   - KMS project ({project_prefix}-{code}-kms) with 8 labels, 3 APIs, budget
-//   - Secrets project ({project_prefix}-{code}-secrets) with 8 labels, 2 APIs, budget
-//   - (Optional) Assured Workload for FedRAMP compliance
-func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string, tagsOutput pulumi.Output) (*EnvBaselineOutputs, error) {
-	outputs := &EnvBaselineOutputs{}
+// Deploy creates all per-environment baseline resources. Mirrors upstream
+// 2-environments/modules/env_baseline (folders.tf, kms.tf, secrets.tf,
+// assured_workload.tf).
+func Deploy(ctx *pulumi.Context, args *Args) (*Result, error) {
+	env := args.Env
+	envCode := args.EnvCode
+	res := &Result{}
 
 	// ========================================================================
-	// 1. Environment Folder
-	// Mirrors: folders.tf — google_folder.env
+	// 1. Environment Folder — folders.tf google_folder.env
 	// ========================================================================
 	var folderOpts []pulumi.ResourceOption
-	if cfg.FolderDeletionProtection {
+	if args.FolderDeletionProtection {
 		folderOpts = append(folderOpts, pulumi.Protect(true))
 	}
 
 	envFolder, err := organizations.NewFolder(ctx, fmt.Sprintf("env-folder-%s", env), &organizations.FolderArgs{
-		DisplayName:        pulumi.String(fmt.Sprintf("%s-%s", cfg.FolderPrefix, env)),
-		Parent:             pulumi.String(cfg.Parent),
-		DeletionProtection: pulumi.Bool(cfg.FolderDeletionProtection),
+		DisplayName:        pulumi.String(fmt.Sprintf("%s-%s", args.FolderPrefix, env)),
+		Parent:             pulumi.String(args.Parent),
+		DeletionProtection: pulumi.Bool(args.FolderDeletionProtection),
 	}, folderOpts...)
 	if err != nil {
 		return nil, err
 	}
-	outputs.FolderName = envFolder.Name
-	outputs.FolderID = envFolder.ID()
+	res.FolderName = envFolder.Name
+	res.FolderID = envFolder.ID()
 
-	// Convert IDOutput to StringOutput for folder ID usage in project creation
 	folderID := envFolder.ID().ApplyT(func(id pulumi.ID) string {
 		return string(id)
 	}).(pulumi.StringOutput)
 
 	// ========================================================================
-	// 2. Folder Tag Binding
-	// Mirrors: folders.tf — google_tags_tag_binding.folder_env
+	// 2. Folder Tag Binding — folders.tf google_tags_tag_binding.folder_env
 	// Binds the environment_{env} tag value from the 1-org stage to this folder.
+	// Upstream parity: TF's time_sleep.wait_60_seconds is a destroy-only delay;
+	// Pulumi handles destroy ordering via its dependency graph (DependsOn).
 	// ========================================================================
-	if tagsOutput != nil {
-		tagValueID := tagsOutput.ApplyT(func(v interface{}) string {
+	if args.Tags != nil {
+		tagValueID := args.Tags.ApplyT(func(v interface{}) string {
 			if m, ok := v.(map[string]interface{}); ok {
 				key := fmt.Sprintf("environment_%s", env)
 				if val, exists := m[key]; exists {
@@ -94,37 +142,27 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 			return ""
 		}).(pulumi.StringOutput)
 
-		_, err := tags.NewTagBinding(ctx, fmt.Sprintf("tag-binding-%s", env), &tags.TagBindingArgs{
+		if _, err := tags.NewTagBinding(ctx, fmt.Sprintf("tag-binding-%s", env), &tags.TagBindingArgs{
 			Parent: envFolder.Name.ApplyT(func(name string) string {
 				return fmt.Sprintf("//cloudresourcemanager.googleapis.com/%s", name)
 			}).(pulumi.StringOutput),
 			TagValue: tagValueID,
-		}, pulumi.DependsOn([]pulumi.Resource{envFolder}))
-		if err != nil {
+		}, pulumi.DependsOn([]pulumi.Resource{envFolder})); err != nil {
 			return nil, err
 		}
 	}
 
 	// ========================================================================
-	// 3. KMS Project
-	// Mirrors: kms.tf — module "env_kms"
-	//
-	// Upstream TF parity notes:
-	// - TF uses time_sleep.wait_60_seconds (destroy_duration=60s) between folder
-	//   creation and project creation. In Pulumi, DependsOn on envFolder provides
-	//   create-time ordering; the 60s delay is destroy-time only and is not
-	//   replicated since Pulumi handles destroy ordering via its dependency graph.
-	// - TF sets disable_services_on_destroy=false. Pulumi's project component
-	//   does not disable services on destroy by default, which matches.
+	// 3. KMS Project — kms.tf module "env_kms"
 	// ========================================================================
 	kmsProject, err := project.NewProject(ctx, fmt.Sprintf("env-kms-%s", env), &project.ProjectArgs{
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-kms", cfg.ProjectPrefix, envCode)),
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-kms", args.ProjectPrefix, envCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-kms", args.ProjectPrefix, envCode)),
 		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		DeletionPolicy:        pulumi.String(cfg.ProjectDeletionPolicy),
-		DefaultServiceAccount: cfg.DefaultServiceAccount,
+		BillingAccount:        pulumi.String(args.BillingAccount),
+		RandomProjectID:       args.RandomSuffix,
+		DeletionPolicy:        pulumi.String(args.ProjectDeletionPolicy),
+		DefaultServiceAccount: args.DefaultServiceAccount,
 		ActivateApis: []string{
 			"logging.googleapis.com",
 			"cloudkms.googleapis.com",
@@ -140,30 +178,25 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 			"env_code":          pulumi.String(envCode),
 			"vpc":               pulumi.String("none"),
 		},
-		Budget: budgetFor(getEnvProjectBudget(cfg, "kms")),
+		Budget: budgetFor(getEnvProjectBudget(args.ProjectBudget, "kms")),
 	}, pulumi.DependsOn([]pulumi.Resource{envFolder}))
 	if err != nil {
 		return nil, err
 	}
-	outputs.KMSProjectID = kmsProject.Project.ProjectId
-	outputs.KMSProjectNumber = kmsProject.Project.Number
+	res.KMSProjectID = kmsProject.Project.ProjectId
+	res.KMSProjectNumber = kmsProject.Project.Number
 
 	// ========================================================================
-	// 4. Secrets Project
-	// Mirrors: secrets.tf — module "env_secrets"
-	//
-	// Same upstream TF parity notes as KMS project above:
-	// - destroy_duration=60s from time_sleep not replicated (Pulumi graph ordering)
-	// - disable_services_on_destroy=false matches Pulumi default
+	// 4. Secrets Project — secrets.tf module "env_secrets"
 	// ========================================================================
 	secretsProject, err := project.NewProject(ctx, fmt.Sprintf("env-secrets-%s", env), &project.ProjectArgs{
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-secrets", cfg.ProjectPrefix, envCode)),
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-secrets", args.ProjectPrefix, envCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-%s-secrets", args.ProjectPrefix, envCode)),
 		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		DeletionPolicy:        pulumi.String(cfg.ProjectDeletionPolicy),
-		DefaultServiceAccount: cfg.DefaultServiceAccount,
+		BillingAccount:        pulumi.String(args.BillingAccount),
+		RandomProjectID:       args.RandomSuffix,
+		DeletionPolicy:        pulumi.String(args.ProjectDeletionPolicy),
+		DefaultServiceAccount: args.DefaultServiceAccount,
 		ActivateApis: []string{
 			"logging.googleapis.com",
 			"secretmanager.googleapis.com",
@@ -178,43 +211,42 @@ func deployEnvBaseline(ctx *pulumi.Context, cfg *EnvConfig, env, envCode string,
 			"env_code":          pulumi.String(envCode),
 			"vpc":               pulumi.String("none"),
 		},
-		Budget: budgetFor(getEnvProjectBudget(cfg, "secret")),
+		Budget: budgetFor(getEnvProjectBudget(args.ProjectBudget, "secret")),
 	}, pulumi.DependsOn([]pulumi.Resource{envFolder}))
 	if err != nil {
 		return nil, err
 	}
-	outputs.SecretsProjectID = secretsProject.Project.ProjectId
+	res.SecretsProjectID = secretsProject.Project.ProjectId
 
 	// ========================================================================
-	// 5. Assured Workload (optional — FedRAMP compliance)
-	// Mirrors: assured_workload.tf — google_assured_workloads_workload.workload
+	// 5. Assured Workload (optional) — assured_workload.tf
 	// ========================================================================
-	if cfg.AssuredWorkload.Enabled {
+	if args.AssuredWorkload.Enabled {
 		workload, err := assuredworkloads.NewWorkload(ctx, fmt.Sprintf("assured-workload-%s", env), &assuredworkloads.WorkloadArgs{
-			Organization:   pulumi.String(cfg.OrgID),
-			BillingAccount: pulumi.String(fmt.Sprintf("billingAccounts/%s", cfg.BillingAccount)),
+			Organization:   pulumi.String(args.OrgID),
+			BillingAccount: pulumi.String(fmt.Sprintf("billingAccounts/%s", args.BillingAccount)),
 			ProvisionedResourcesParent: envFolder.ID().ApplyT(func(id pulumi.ID) string {
 				return string(id)
 			}).(pulumi.StringOutput),
-			ComplianceRegime: pulumi.String(cfg.AssuredWorkload.ComplianceRegime),
-			DisplayName:      pulumi.String(cfg.AssuredWorkload.DisplayName),
-			Location:         pulumi.String(cfg.AssuredWorkload.Location),
+			ComplianceRegime: pulumi.String(args.AssuredWorkload.ComplianceRegime),
+			DisplayName:      pulumi.String(args.AssuredWorkload.DisplayName),
+			Location:         pulumi.String(args.AssuredWorkload.Location),
 			ResourceSettings: assuredworkloads.WorkloadResourceSettingArray{
 				&assuredworkloads.WorkloadResourceSettingArgs{
-					ResourceType: pulumi.String(cfg.AssuredWorkload.ResourceType),
+					ResourceType: pulumi.String(args.AssuredWorkload.ResourceType),
 				},
 			},
 		}, pulumi.DependsOn([]pulumi.Resource{envFolder}))
 		if err != nil {
 			return nil, err
 		}
-		outputs.AssuredWorkloadID = workload.ID().ApplyT(func(id pulumi.ID) string {
+		res.AssuredWorkloadID = workload.ID().ApplyT(func(id pulumi.ID) string {
 			return string(id)
 		}).(pulumi.StringOutput)
-		outputs.AssuredWorkloadResources = workload.Resources
+		res.AssuredWorkloadResources = workload.Resources
 	}
 
-	return outputs, nil
+	return res, nil
 }
 
 func budgetFor(pb *PerProjectBudget) *project.BudgetConfig {
@@ -241,18 +273,18 @@ func budgetFor(pb *PerProjectBudget) *project.BudgetConfig {
 	}
 }
 
-// getEnvProjectBudget returns the per-project budget config for the named project type.
-func getEnvProjectBudget(cfg *EnvConfig, projectType string) *PerProjectBudget {
-	if cfg.ProjectBudget == nil {
+// getEnvProjectBudget returns the per-project budget for the named project type.
+func getEnvProjectBudget(pb *EnvProjectBudgetConfig, projectType string) *PerProjectBudget {
+	if pb == nil {
 		return nil
 	}
 	switch projectType {
 	case "shared_network":
-		return &cfg.ProjectBudget.SharedNetwork
+		return &pb.SharedNetwork
 	case "kms":
-		return &cfg.ProjectBudget.KMS
+		return &pb.KMS
 	case "secret":
-		return &cfg.ProjectBudget.Secret
+		return &pb.Secret
 	default:
 		return nil
 	}
