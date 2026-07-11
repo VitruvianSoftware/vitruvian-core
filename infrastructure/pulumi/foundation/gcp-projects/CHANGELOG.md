@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.0...foundation-gcp-projects-v1.2.1) (2026-07-11)
+
+
+### Bug Fixes
+
+* **gcp-projects:** populate the CMEK `keys` export (was always empty) ([#877](https://github.com/VitruvianSoftware/vitruvian-core/issues/877)) ([9daa856](https://github.com/VitruvianSoftware/vitruvian-core/commit/9daa856baa1058cfe2f15bc2eecc5d2e7211c55e))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.1.0...foundation-gcp-projects-v1.2.0) (2026-07-11)
 
 
