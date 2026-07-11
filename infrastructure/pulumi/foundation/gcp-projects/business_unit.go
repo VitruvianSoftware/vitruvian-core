@@ -35,6 +35,7 @@ type BUProjects struct {
 	SVPCProjectNumber            pulumi.StringOutput
 	FloatingProjectID            pulumi.StringOutput
 	OSSFloatingProjectID         pulumi.StringOutput
+	OSSFloatingProjectNumber     pulumi.StringOutput
 	PeeringProjectID             pulumi.StringOutput
 	PeeringNetworkSelfLink       pulumi.StringOutput
 	PeeringSubnetSelfLink        pulumi.StringOutput
@@ -77,6 +78,7 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 	result.SVPCProjectNumber = emptyStr
 	result.FloatingProjectID = emptyStr
 	result.OSSFloatingProjectID = emptyStr
+	result.OSSFloatingProjectNumber = emptyStr
 	result.PeeringProjectID = emptyStr
 	result.PeeringNetworkSelfLink = emptyStr
 	result.PeeringSubnetSelfLink = emptyStr
@@ -215,12 +217,23 @@ func deployBusinessUnitProjects(ctx *pulumi.Context, cfg *ProjectsConfig, folder
 				"artifactregistry.googleapis.com",
 				"billingbudgets.googleapis.com",
 				"logging.googleapis.com",
+				// Stage-5 app-tier (serverless OSS apps deployed here via WIF):
+				// secretmanager for per-app runtime secrets; iam for the app
+				// deploy/runtime service accounts; iamcredentials so a WIF-federated
+				// job can mint an access token by impersonating a deploy SA homed
+				// in this project. (Monorepo/serverless-WIF specific — upstream's
+				// VM/Cloud-Build model does not need these, so they are not in the
+				// go-foundation example.)
+				"secretmanager.googleapis.com",
+				"iam.googleapis.com",
+				"iamcredentials.googleapis.com",
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
 		result.OSSFloatingProjectID = ossFloatingProject.Project.ProjectId
+		result.OSSFloatingProjectNumber = ossFloatingProject.Project.Number
 	}
 
 	// ========================================================================
@@ -294,6 +307,10 @@ func deployInfraPipelineProject(ctx *pulumi.Context, cfg *ProjectsConfig, common
 			"cloudresourcemanager.googleapis.com",
 			"billingbudgets.googleapis.com",
 			"confidentialcomputing.googleapis.com",
+			// Stage-5 app-tier: iamcredentials so a WIF-federated CI job can mint
+			// an access token by impersonating the per-app build SA homed in this
+			// shared infra-pipeline project (monorepo/serverless-WIF specific).
+			"iamcredentials.googleapis.com",
 		},
 	})
 	if err != nil {
