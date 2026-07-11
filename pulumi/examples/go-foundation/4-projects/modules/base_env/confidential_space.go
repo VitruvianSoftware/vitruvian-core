@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-package main
+package base_env
 
 import (
 	"fmt"
 
-	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	gcpproject "github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"foundation-4-projects/modules/single_project"
 )
 
 // ConfidentialSpaceResult holds outputs from the Confidential Space project.
@@ -34,36 +35,33 @@ type ConfidentialSpaceResult struct {
 	WorkloadSAEmail pulumi.StringOutput
 }
 
-// deployConfidentialSpaceProject creates a Confidential Space project with a
+// DeployConfidentialSpaceProject creates a Confidential Space project with a
 // workload service account, matching upstream's example_confidential_space_project.tf.
 //
 // Unlike upstream, which gates this on enable_cloudbuild_deploy, we use a
 // dedicated toggle (confidential_space_enabled) to keep the project independent
-// of the CI/CD platform choice.
+// of the CI/CD platform choice. The stage root calls this separately from New,
+// so it is an exported entrypoint on the module.
 //
 // Creates:
 //   - Project attached to Shared VPC host with VPC-SC perimeter
 //   - Workload Service Account for Confidential Space
 //   - IAM role bindings for the workload SA
-func deployConfidentialSpaceProject(
+func DeployConfidentialSpaceProject(
 	ctx *pulumi.Context,
-	cfg *ProjectsConfig,
-	folderID pulumi.StringOutput,
-	networkProjectID pulumi.StringOutput,
-	perimeterName pulumi.StringOutput,
+	args *Args,
 ) (*ConfidentialSpaceResult, error) {
 	// 1. Create the Confidential Space project
-	confProject, err := project.NewProject(ctx, "bu-conf-space-project", &project.ProjectArgs{
+	confProject, err := single_project.New(ctx, "bu-conf-space-project", &single_project.Args{
 		// "disable" (off), matching upstream 4-projects' project-factory default —
-		// not the softer "deprivilege". See business_unit.go for the rationale.
+		// not the softer "deprivilege". See base_env.go for the rationale.
 		DefaultServiceAccount: "disable",
-		ProjectID:             pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		Name:                  pulumi.String(fmt.Sprintf("%s-%s-%s-conf-space", cfg.ProjectPrefix, cfg.EnvCode, cfg.BusinessCode)),
-		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
-		RandomProjectID:       cfg.RandomSuffix,
-		Labels:                projectLabels(cfg, "sample-instance", "svpc"),
-		Budget:                budgetConfig(cfg),
+		ProjectID:             fmt.Sprintf("%s-%s-%s-conf-space", args.ProjectPrefix, args.EnvCode, args.BusinessCode),
+		FolderID:              args.FolderID,
+		BillingAccount:        args.BillingAccount,
+		RandomProjectID:       args.RandomSuffix,
+		Labels:                args.Labels("sample-instance", "svpc"),
+		Budget:                args.Budget,
 		ActivateApis: []string{
 			"accesscontextmanager.googleapis.com",
 			"artifactregistry.googleapis.com",
@@ -80,17 +78,17 @@ func deployConfidentialSpaceProject(
 
 	// 2. Attach as a Shared VPC service project
 	if _, err := compute.NewSharedVPCServiceProject(ctx, "conf-space-svpc-attachment", &compute.SharedVPCServiceProjectArgs{
-		HostProject:    networkProjectID,
-		ServiceProject: confProject.Project.ProjectId,
+		HostProject:    args.NetworkProjectID,
+		ServiceProject: confProject.Project.Project.ProjectId,
 	}); err != nil {
 		return nil, err
 	}
 
 	// 3. VPC-SC Perimeter attachment
-	if cfg.EnforceVpcSc {
+	if args.EnforceVpcSc {
 		_, err := accesscontextmanager.NewServicePerimeterResource(ctx, "conf-space-vpcsc-attach", &accesscontextmanager.ServicePerimeterResourceArgs{
-			PerimeterName: perimeterName,
-			Resource: confProject.Project.Number.ApplyT(func(n string) string {
+			PerimeterName: args.PerimeterName,
+			Resource: confProject.Project.Project.Number.ApplyT(func(n string) string {
 				return fmt.Sprintf("projects/%s", n)
 			}).(pulumi.StringOutput),
 		})
@@ -99,8 +97,8 @@ func deployConfidentialSpaceProject(
 		}
 	} else {
 		_, err := accesscontextmanager.NewServicePerimeterDryRunResource(ctx, "conf-space-vpcsc-attach-dry-run", &accesscontextmanager.ServicePerimeterDryRunResourceArgs{
-			PerimeterName: perimeterName,
-			Resource: confProject.Project.Number.ApplyT(func(n string) string {
+			PerimeterName: args.PerimeterName,
+			Resource: confProject.Project.Project.Number.ApplyT(func(n string) string {
 				return fmt.Sprintf("projects/%s", n)
 			}).(pulumi.StringOutput),
 		})
@@ -113,7 +111,7 @@ func deployConfidentialSpaceProject(
 	workloadSA, err := serviceaccount.NewAccount(ctx, "conf-space-workload-sa", &serviceaccount.AccountArgs{
 		AccountId:   pulumi.String("confidential-space-workload-sa"),
 		DisplayName: pulumi.String("Workload Service Account for confidential space"),
-		Project:     confProject.Project.ProjectId,
+		Project:     confProject.Project.Project.ProjectId,
 	})
 	if err != nil {
 		return nil, err
@@ -129,7 +127,7 @@ func deployConfidentialSpaceProject(
 	}
 	for _, role := range workloadRoles {
 		_, err := gcpproject.NewIAMMember(ctx, fmt.Sprintf("conf-space-sa-%s", role), &gcpproject.IAMMemberArgs{
-			Project: confProject.Project.ProjectId,
+			Project: confProject.Project.Project.ProjectId,
 			Role:    pulumi.String(role),
 			Member:  pulumi.Sprintf("serviceAccount:%s", workloadSA.Email),
 		})
@@ -139,8 +137,8 @@ func deployConfidentialSpaceProject(
 	}
 
 	return &ConfidentialSpaceResult{
-		ProjectID:       confProject.Project.ProjectId,
-		ProjectNumber:   confProject.Project.Number,
+		ProjectID:       confProject.ProjectID,
+		ProjectNumber:   confProject.ProjectNumber,
 		WorkloadSAEmail: workloadSA.Email,
 	}, nil
 }

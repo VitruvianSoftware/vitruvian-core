@@ -23,6 +23,8 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+
+	"foundation-4-projects/modules/base_env"
 )
 
 func main() {
@@ -94,14 +96,59 @@ func main() {
 		buFolderID := buFolder.ID().ApplyT(func(id pulumi.ID) string {
 			return string(id)
 		}).(pulumi.StringOutput)
-		projects, err := deployBusinessUnitProjects(ctx, cfg, buFolderID, networkProjectID, perimeterName, kmsProjectID, acmPolicyID)
+
+		// base_env.Args carries the subset of cfg the module needs plus the
+		// cross-stage StackReference outputs. Labels/Budget are supplied from the
+		// root's tested helpers so label/budget behaviour is preserved exactly.
+		beArgs := &base_env.Args{
+			ProjectPrefix:  cfg.ProjectPrefix,
+			EnvCode:        cfg.EnvCode,
+			BusinessCode:   cfg.BusinessCode,
+			BillingAccount: cfg.BillingAccount,
+			RandomSuffix:   cfg.RandomSuffix,
+
+			SVPCProjectEnabled:     cfg.SVPCProjectEnabled,
+			FloatingProjectEnabled: cfg.FloatingProjectEnabled,
+			PeeringProjectEnabled:  cfg.PeeringProjectEnabled,
+
+			EnforceVpcSc:   cfg.EnforceVpcSc,
+			CMEKEnabled:    cfg.CMEKEnabled,
+			PeeringEnabled: cfg.PeeringEnabled,
+
+			SubnetRegion:           cfg.SubnetRegion,
+			SubnetIPRange:          cfg.SubnetIPRange,
+			PeeringIAPFWEnabled:    cfg.PeeringIAPFWEnabled,
+			FirewallEnableLogging:  cfg.FirewallEnableLogging,
+			WindowsActivation:      cfg.WindowsActivation,
+			OptionalFWRulesEnabled: cfg.OptionalFWRulesEnabled,
+
+			KeyringName:         cfg.KeyringName,
+			KMSLocation:         cfg.KMSLocation,
+			KeyName:             cfg.KeyName,
+			KeyRotationPeriod:   cfg.KeyRotationPeriod,
+			GCSBucketPrefix:     cfg.GCSBucketPrefix,
+			GCSLocation:         cfg.GCSLocation,
+			GCSPlacementRegions: cfg.GCSPlacementRegions,
+
+			FolderID:         buFolderID,
+			NetworkProjectID: networkProjectID,
+			PerimeterName:    perimeterName,
+			KMSProjectID:     kmsProjectID,
+			ACMPolicyID:      acmPolicyID,
+
+			Labels: func(suffix, vpc string) pulumi.StringMap {
+				return projectLabels(cfg, suffix, vpc)
+			},
+			Budget: budgetConfig(cfg),
+		}
+		projects, err := base_env.New(ctx, beArgs)
 		if err != nil {
 			return err
 		}
 
 		// 4. Deploy Confidential Space Project (optional, toggle-gated)
 		if cfg.ConfidentialSpaceEnabled {
-			confResult, err := deployConfidentialSpaceProject(ctx, cfg, buFolderID, networkProjectID, perimeterName)
+			confResult, err := base_env.DeployConfidentialSpaceProject(ctx, beArgs)
 			if err != nil {
 				return err
 			}
