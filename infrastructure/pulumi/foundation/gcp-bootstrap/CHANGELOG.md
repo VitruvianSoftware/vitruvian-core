@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.5.0...foundation-gcp-bootstrap-v0.6.0) (2026-07-11)
+
+
+### Features
+
+* **foundation:** WIF repo-pin + proj-SA folder grants (stage-5 bootstrap prereqs) ([#865](https://github.com/VitruvianSoftware/vitruvian-core/issues/865)) ([21d7370](https://github.com/VitruvianSoftware/vitruvian-core/commit/21d737051dfec8b9f2f43ee71a0f0549bd12eb45))
+
 ## [0.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.4.4...foundation-gcp-bootstrap-v0.5.0) (2026-07-10)
 
 
