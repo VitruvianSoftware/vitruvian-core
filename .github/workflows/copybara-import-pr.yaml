@@ -68,8 +68,11 @@ name: Copybara Import PR
 
 on:
     schedule:
-        # Poll every 15 minutes for newly-labelled import PRs across all mirrors.
-        - cron: "*/15 * * * *"
+        # Poll hourly for newly-labelled import PRs across all mirrors (#823).
+        # 15-minute polling was ~96 no-op runner spins/day; import PRs are rare
+        # and wait for human review + merge anyway, so hourly latency is fine.
+        # Use workflow_dispatch (below) for an immediate on-demand import.
+        - cron: "0 * * * *"
     workflow_dispatch:
         inputs:
             only_component:
