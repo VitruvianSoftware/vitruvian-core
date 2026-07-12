@@ -34,6 +34,10 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    # Just a full-history checkout + changed-package diff; cap it so a hung
+    # clone/step can't pin a runner. Matches the 10-min floor other lightweight
+    # jobs use (the release-please job below is capped separately at 45).
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
