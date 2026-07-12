@@ -258,8 +258,17 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	// ========================================================================
 	var kmsBinding *kms.CryptoKeyIAMMember
 	if encryptBucket {
+		// Gate the lookup on the project's creation-time Number output rather than
+		// the input-echo ProjectId (which resolves immediately from the RandomId,
+		// before the project exists). Without this, a from-empty deploy races the
+		// seed project create and the invoke fails with "Unknown project id: …,
+		// invalid", aborting eval before the seed is ever created. Pairing Number
+		// (assigned by GCP at creation) with ProjectId defers the invoke until the
+		// project actually exists, while still passing the project ID string.
+		seedProjectForLookup := pulumi.All(seed.Project.Number, seed.Project.ProjectId).
+			ApplyT(func(v []interface{}) string { return v[1].(string) }).(pulumi.StringOutput)
 		sa := storage.GetProjectServiceAccountOutput(ctx, storage.GetProjectServiceAccountOutputArgs{
-			Project: seed.Project.ProjectId,
+			Project: seedProjectForLookup,
 		}, pulumi.Parent(component))
 
 		storageSA := sa.EmailAddress().ApplyT(func(email string) string {
