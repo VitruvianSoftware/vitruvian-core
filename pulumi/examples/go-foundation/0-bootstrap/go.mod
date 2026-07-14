@@ -9,9 +9,9 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.4.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.2
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi-github/sdk/v6 v6.14.0
-	github.com/pulumi/pulumi/sdk/v3 v3.251.0
+	github.com/pulumi/pulumi/sdk/v3 v3.252.0
 	github.com/stretchr/testify v1.11.1
 )
 
