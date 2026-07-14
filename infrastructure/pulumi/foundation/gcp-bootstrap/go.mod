@@ -4,13 +4,13 @@ go 1.26.2
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap v1.0.2-0.20260708005801-f50a49298456
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.5.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.6.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage v1.0.2
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v1.0.2
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.5.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.6.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
-	github.com/pulumi/pulumi/sdk/v3 v3.251.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
+	github.com/pulumi/pulumi/sdk/v3 v3.252.0
 	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
