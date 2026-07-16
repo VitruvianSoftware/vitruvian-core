@@ -100,6 +100,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ steps.bisect.outputs.culprit }}
           SUBJECT: ${{ steps.bisect.outputs.culprit_subject }}
+          # Route the dispatch input through env rather than `${{ }}`-interpolating
+          # it into the script body, so a hostile issue value can't break out of
+          # the argument and inject shell (script-injection hardening, #824).
+          ISSUE: ${{ inputs.issue }}
         run: |
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ -n "$RESULT" ]; then
@@ -107,4 +111,4 @@ jobs:
           else
             body="culprit-finder: bisect did NOT converge (flaky in range, or the good/bad inputs are wrong). Run: ${run_url}"
           fi
-          gh issue comment "${{ inputs.issue }}" --body "$body"
+          gh issue comment "$ISSUE" --body "$body"
