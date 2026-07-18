@@ -3,12 +3,12 @@ module foundation-0-bootstrap
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.3-0.20260718120304-7261b27b083a
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.4-0.20260718212957-b0aa3a454016
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.6.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage v1.0.2
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v1.0.2
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.6.0
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718120304-7261b27b083a
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.33.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0
@@ -127,8 +127,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.5.1 // indirect
 )
-
-// FAST-ITERATION (local, do not commit): resolve bootstrap/v2 + project_factory to the local
-// worktree copies so cold-deploy ordering fixes can be tested via direct `pulumi up` without a release.
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 => ../../../../pulumi/library/go/pkg/bootstrap
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory => ../../../../pulumi/library/go/pkg/project_factory

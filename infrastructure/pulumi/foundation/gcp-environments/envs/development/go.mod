@@ -12,7 +12,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -122,9 +122,4 @@ require (
 	lukechampine.com/frand v1.5.1 // indirect
 )
 
-// TEMP (cold-deploy race fixes): the pinned project_factory release is pre-#908
-// and lacks ApiPropagationSeconds/ApisReady + the billingbudgets/iam API
-// auto-appends. Build against the monorepo copy until a post-#908 tag is cut.
 replace foundation-environments/modules => ../../modules
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory => ../../../../../../pulumi/library/go/pkg/project_factory

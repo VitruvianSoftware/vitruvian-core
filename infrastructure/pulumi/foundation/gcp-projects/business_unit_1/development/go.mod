@@ -4,9 +4,9 @@ go 1.26.2
 
 require (
 	foundation-projects/modules v0.0.0-00010101000000-000000000000
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0
-	github.com/pulumi/pulumi/sdk/v3 v3.251.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
+	github.com/pulumi/pulumi/sdk/v3 v3.252.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -14,7 +14,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.3 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016 // indirect
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect

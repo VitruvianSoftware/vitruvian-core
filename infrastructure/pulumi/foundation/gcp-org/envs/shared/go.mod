@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	foundation-org/modules v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy v1.0.2
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016
 	github.com/pulumi/pulumi-command/sdk v1.2.1
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0
@@ -17,8 +17,8 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring v1.0.2 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging v1.0.2 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring v1.0.3-0.20260718212957-b0aa3a454016 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging v1.0.3-0.20260718212957-b0aa3a454016 // indirect
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
@@ -127,12 +127,4 @@ require (
 	lukechampine.com/frand v1.4.2 // indirect
 )
 
-// TEMP local replaces for cold-deploy race fixes — build/deploy against the
-// worktree library sources until the edited packages are published.
 replace foundation-org/modules => ../../modules
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory => ../../../../../../pulumi/library/go/pkg/project_factory
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging => ../../../../../../pulumi/library/go/pkg/centralized_logging
-
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring => ../../../../../../pulumi/library/go/pkg/cai_monitoring
