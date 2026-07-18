@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.0...go-bootstrap-v2.1.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **bootstrap:** defer state-bucket SA lookup until the seed project exists ([#894](https://github.com/VitruvianSoftware/vitruvian-core/issues/894)) ([430fef4](https://github.com/VitruvianSoftware/vitruvian-core/commit/430fef493adcd0853d285fd041f129ae4025d1d9))
+
 ## [2.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.0.0...go-bootstrap-v2.1.0) (2026-07-08)
 
 
