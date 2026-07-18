@@ -19,3 +19,8 @@
 
 - Initial release: Cloud Run v2 service component with autoscaling defaults,
   resource limits, ingress control, plain + Secret Manager-backed env vars.
+
+## 0.3.0
+
+- Add blue-green support: `RevisionName` (named revisions) and `Traffics`
+  (per-revision traffic split with optional tags) for candidate→promote deploys.
