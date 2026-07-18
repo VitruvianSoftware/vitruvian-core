@@ -72,15 +72,20 @@ READMEs in the TypeScript foundation.
 | `envs/production/main.go` (+config.go)   |  ~320 | Thin env root pinning production/p + spoke CIDRs; calls `modules/base_env`, exports           |
 | `modules/{shared_vpc,base_env,hierarchical_firewall_policy,transitivity}` | ~800 | Shared VPC (hub/spoke modes), spoke orchestrator, hierarchical firewall, transitivity gateway |
 
-## 4-projects (5 files, ~1,171 lines)
+## 4-projects (11+ files, ~2,400 lines)
 
-| File                    | Lines | Description                                                                                   |
-| ----------------------- | ----: | --------------------------------------------------------------------------------------------- |
-| `main.go`               |  ~200 | Config, Stack References, folder creation, BU orchestration, project labels helper            |
-| `business_unit.go`      |  ~400 | 4 project types (SVPC, floating, peering, confidential space), labels, budgets, VPC-SC        |
-| `peering.go`            |  ~250 | Full peering network: VPC, subnet, DNS, bi-directional peering, firewall with IAP secure tags |
-| `cmek.go`               |  ~150 | KMS keyring, crypto key, GCS SA IAM, CMEK-encrypted GCS bucket                                |
-| `confidential_space.go` |  ~170 | Confidential Space project, workload SA, IAM, SVPC + VPC-SC attachment                        |
+| File                                     | Lines | Description                                                                                    |
+| ---------------------------------------- | ----: | ---------------------------------------------------------------------------------------------- |
+| `business_unit_1/shared/main.go`         |  ~250 | Thin shared leaf pinning common/c; BU infra-pipeline project via `modules/infra_pipelines`     |
+| `business_unit_1/development/main.go`    |  ~470 | Thin env leaf pinning development/d; Stack References, BU folder, calls `modules/base_env`     |
+| `business_unit_1/nonproduction/main.go`  |  ~470 | Thin env leaf pinning nonproduction/n; Stack References, BU folder, calls `modules/base_env`   |
+| `business_unit_1/production/main.go`     |  ~470 | Thin env leaf pinning production/p; Stack References, BU folder, calls `modules/base_env`      |
+| `modules/base_env/base_env.go`           |  ~330 | Per-env project set (SVPC, floating, peering), labels, budgets, VPC-SC, API-propagation gating |
+| `modules/base_env/peering.go`            |  ~250 | Full peering network: VPC, subnet, DNS, bi-directional peering, firewall with IAP secure tags  |
+| `modules/base_env/cmek.go`               |  ~150 | KMS keyring, crypto key, GCS SA IAM (API lookup), CMEK-encrypted GCS bucket                    |
+| `modules/base_env/confidential_space.go` |  ~170 | Confidential Space project, workload SA, IAM, SVPC + VPC-SC attachment                         |
+| `modules/single_project/`                |  ~120 | Single-project wrapper over the project factory (gated ApisReadyProjectID)                     |
+| `modules/infra_pipelines/`               |  ~340 | App-infra pipeline project (WIF model) + Cloud Build reference behind the `example` build tag  |
 
 ## 5-app-infra (3 files, ~479 lines)
 
@@ -90,7 +95,7 @@ READMEs in the TypeScript foundation.
 | `env_base.go`           |  ~200 | Standard Compute Instances with Service Accounts and IAP tag bindings           |
 | `confidential_space.go` |  ~130 | Confidential Space VMs, Workload Identity Pool/Provider, attestation config     |
 
-## Total: 27 Go files, ~6,068 lines
+## Total: 33+ Go files, ~7,300 lines
 
 ## Related
 

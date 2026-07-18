@@ -46,12 +46,14 @@ Pulumi.*.yaml
 # layout) with a single `production` stack; the env identity and spoke CIDR
 # plan are pinned in each leaf's main.go.
 !foundation/gcp-networks/envs/*/Pulumi.*.yaml
-# foundation/gcp-projects commits per-environment stack configs: env name,
+# foundation/gcp-projects commits per-leaf stack configs:
 # business code, billing account, env stack ref, project-type toggles — all
-# non-secret. Each environment (development, nonproduction, production) is a
-# separate stack. cfg.Require("env") must resolve on a clean checkout, so these
-# MUST be committed (not gitignored).
-!foundation/gcp-projects/Pulumi.*.yaml
+# non-secret. Each business-unit leaf (shared + development/nonproduction/
+# production) is its own leaf Pulumi project under business_unit_1/ (upstream
+# 4-projects/business_unit_1/<leaf> layout) with a single `production` stack;
+# the env identity is pinned in each leaf's main.go. These MUST be committed
+# (not gitignored) so required config resolves on a clean checkout.
+!foundation/gcp-projects/business_unit_1/*/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -70,5 +72,8 @@ Pulumi.*.yaml
 /foundation/gcp-networks/envs/development/foundation-networks-development
 /foundation/gcp-networks/envs/nonproduction/foundation-networks-nonproduction
 /foundation/gcp-networks/envs/production/foundation-networks-production
-/foundation/gcp-projects/foundation-projects
+/foundation/gcp-projects/business_unit_1/shared/foundation-projects-bu1-shared
+/foundation/gcp-projects/business_unit_1/development/foundation-projects-bu1-development
+/foundation/gcp-projects/business_unit_1/nonproduction/foundation-projects-bu1-nonproduction
+/foundation/gcp-projects/business_unit_1/production/foundation-projects-bu1-production
 

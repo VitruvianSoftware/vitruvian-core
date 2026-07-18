@@ -70,17 +70,23 @@ func DeployConfidentialSpaceProject(
 			"confidentialcomputing.googleapis.com",
 			"cloudkms.googleapis.com",
 			"billingbudgets.googleapis.com",
+			// iam: the workload SA below is created IN this project — the IAM API
+			// must be enabled (and propagated, via ApisReady) for that create.
+			"iam.googleapis.com",
 		},
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Attach as a Shared VPC service project
+	// 2. Attach as a Shared VPC service project. DependsOn(ApisReady): the attach
+	// needs compute.googleapis.com usable on the service project — wait out the
+	// cold-deploy API propagation gate.
 	if _, err := compute.NewSharedVPCServiceProject(ctx, "conf-space-svpc-attachment", &compute.SharedVPCServiceProjectArgs{
 		HostProject:    args.NetworkProjectID,
 		ServiceProject: confProject.Project.Project.ProjectId,
-	}); err != nil {
+	}, pulumi.DependsOn([]pulumi.Resource{confProject.Project.ApisReady})); err != nil {
 		return nil, err
 	}
 
@@ -107,12 +113,14 @@ func DeployConfidentialSpaceProject(
 		}
 	}
 
-	// 4. Workload Service Account for Confidential Space
+	// 4. Workload Service Account for Confidential Space. DependsOn(ApisReady):
+	// the iam API (in ActivateApis above) must be usable before the SA create on
+	// a cold deploy.
 	workloadSA, err := serviceaccount.NewAccount(ctx, "conf-space-workload-sa", &serviceaccount.AccountArgs{
 		AccountId:   pulumi.String("confidential-space-workload-sa"),
 		DisplayName: pulumi.String("Workload Service Account for confidential space"),
 		Project:     confProject.Project.Project.ProjectId,
-	})
+	}, pulumi.DependsOn([]pulumi.Resource{confProject.Project.ApisReady}))
 	if err != nil {
 		return nil, err
 	}

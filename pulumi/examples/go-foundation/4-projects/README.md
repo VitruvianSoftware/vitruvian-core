@@ -8,15 +8,23 @@ the example.com reference architecture described in
 
 The purpose of this step is to set up the folder structure, projects, and infrastructure pipelines for applications that are connected as service projects to the Shared VPC created in the previous stage.
 
+The stage mirrors upstream's `business_unit_1/{shared,development,nonproduction,production}` layout: each
+environment is its own thin leaf Pulumi project (environment identity pinned in the leaf's `main.go`), and the
+`shared` leaf owns the BU's once-per-BU, environment-independent resources. All resource logic lives in the
+shared `modules/` packages (`base_env`, `infra_pipelines`, `single_project`).
+
 For each business unit, this stage creates:
 
 - A **business unit subfolder** under each environment folder (e.g., `fldr-development-bu1`)
-- **Four project types** per business unit:
+- **Four project types** per business unit and environment (the `business_unit_1/<env>` leaves):
   - **SVPC-attached** (`prj-{env}-{bu}-sample-svpc`) — Connected as a service project to the Shared VPC host, with VPC-SC perimeter attachment
   - **Floating** (`prj-{env}-{bu}-sample-floating`) — Standalone project not attached to any VPC
   - **Peering** (`prj-{env}-{bu}-sample-peering`) — Project with its own VPC, subnet, DNS policy, and bi-directional peering to the Shared VPC host, with a full firewall policy including IAP secure tags
   - **Confidential Space** (`prj-{env}-{bu}-conf-space`) — (Optional) Project for Confidential Computing workloads with a dedicated workload service account and IAM bindings, attached to Shared VPC and VPC-SC perimeter
-- An **infrastructure pipeline project** (`prj-c-{bu}-infra-pipeline`) under the common folder with Cloud Build APIs
+- An **infrastructure pipeline project** (`prj-c-{bu}-infra-pipeline`) under the common folder (the
+  `business_unit_1/shared` leaf, via `modules/infra_pipelines`). Per the approved deviation, Go/TS foundations
+  deploy app infrastructure from GitHub Actions via Workload Identity Federation; the faithful Cloud Build
+  pipeline port is kept as the build-tagged reference in `modules/infra_pipelines/example_infra_pipelines.go`
 - **CMEK storage** — KMS keyring, crypto key, and CMEK-encrypted GCS bucket on the SVPC project
 - **Budget alerts** on every project with configurable thresholds
 - **Project labels** matching the upstream foundation's metadata convention (8 labels per project)
@@ -44,7 +52,7 @@ example-organization/
         ├── prj-p-bu1-sample-peering
         └── prj-p-bu1-conf-space
 └── fldr-common
-    └── prj-c-bu1-infra-pipeline
+    └── prj-c-bu1-infra-pipeline       (business_unit_1/shared)
 ```
 
 ## Prerequisites
@@ -64,20 +72,38 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ### Deploying with GitHub Actions
 
-1. Navigate to the `4-projects` directory and initialize a stack for each environment:
+1. Each environment is its own thin leaf Pulumi project under `business_unit_1/`
+   (mirroring upstream `4-projects/business_unit_1/<env>`); the environment
+   identity is pinned in each leaf's `main.go`. Deploy the `shared` leaf first
+   (the BU's common infra-pipeline project), then the env leaves in promotion
+   order. Navigate to a leaf and initialize its stack:
 
    ```bash
-   cd 4-projects
-   pulumi stack init development
+   cd 4-projects/business_unit_1/shared
+   pulumi stack init production
    ```
 
-1. Set the required configuration:
+1. Set the required configuration for the `shared` leaf:
 
    ```bash
-   pulumi config set env "development"
    pulumi config set business_code "bu1"
    pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
-   pulumi config set org_stack_name "organization/vitruvian/1-org/production"
+   pulumi config set org_stack_name "organization/vitruvian/foundation-org-shared/production"
+   ```
+
+1. For each env leaf (`business_unit_1/development`, `business_unit_1/nonproduction`,
+   `business_unit_1/production`), initialize its `production` stack and set:
+
+   ```bash
+   cd ../development
+   pulumi stack init production
+   pulumi config set business_code "bu1"
+   pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
+   pulumi config set org_stack_name "organization/vitruvian/foundation-org-shared/production"
+   pulumi config set env_stack_name "organization/vitruvian/foundation-environments-development/production"
+   # network_stack_name defaults to the matching 3-networks-svpc leaf
+   # (derived by name substitution); hub-and-spoke users set it explicitly:
+   # pulumi config set network_stack_name "organization/vitruvian/foundation-3-networks-hub-and-spoke-development/production"
    ```
 
 1. (Optional) Override prefixes and feature toggles:
@@ -105,6 +131,9 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
    pulumi config set keyring_name "bu1-sample-keyring"
    pulumi config set key_rotation_period "7776000s"
 
+   # Cold-deploy API propagation wait (seconds; 0 disables)
+   pulumi config set api_propagation_seconds 120  # default: 120
+
    # Metadata (applied as project labels)
    pulumi config set primary_contact "example@example.com"
    pulumi config set billing_code "1234"
@@ -117,41 +146,54 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
    pulumi up
    ```
 
-1. **Repeat for each environment** (`nonproduction`, `production`).
+1. **Repeat for each env leaf** (`nonproduction`, `production`).
 
 1. Proceed to the [5-app-infra](../5-app-infra/README.md) step.
 
 ### Adding Additional Business Units
 
-To create a new business unit (e.g., `bu2`), deploy additional stacks with different `business_code` values:
+To create a new business unit (e.g., `bu2`), copy the `business_unit_1` leaf
+tree to `business_unit_2` (as upstream does), then set `business_code: "bu2"`
+in each leaf's stack configuration:
 
 ```bash
-pulumi stack init development-bu2
-pulumi config set env "development"
+cp -r business_unit_1 business_unit_2
+cd business_unit_2/shared
+pulumi stack init production
 pulumi config set business_code "bu2"
 pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
-pulumi config set org_stack_name "organization/vitruvian/1-org/production"
+pulumi config set org_stack_name "organization/vitruvian/foundation-org-shared/production"
 pulumi up
 ```
 
-Repeat for each environment and business unit combination.
+Repeat for each environment leaf in the new business unit.
 
 ### Running Pulumi Locally
 
-Same process as above — navigate, initialize, configure, and deploy.
+Same process as above — navigate to each leaf, initialize, configure, and deploy.
 
 ## Configuration Reference
 
+The environment identity (`development`, `nonproduction`, `production` — or `common` for the shared leaf) is
+pinned in each leaf's `main.go`, not configured.
+
+### Env leaves (`business_unit_1/<env>`)
+
 | Name                           | Description                                                     | Required | Default                  |
 | ------------------------------ | --------------------------------------------------------------- | :------: | ------------------------ |
-| `env`                          | Environment name (`development`, `nonproduction`, `production`) |    ✅    | —                        |
 | `business_code`                | Short business unit identifier (e.g., `bu1`, `bu2`)             |    ✅    | —                        |
 | `billing_account`              | Billing account ID                                              |    ✅    | —                        |
 | `org_stack_name`               | Fully qualified Pulumi stack name of the 1-org stage            |    ✅    | —                        |
+| `env_stack_name`               | Stack name of this environment's 2-environments leaf            |    ✅    | —                        |
+| `network_stack_name`           | Stack name of this environment's 3-networks leaf                |          | derived from `env_stack_name` (svpc) |
 | `project_prefix`               | Project name prefix                                             |          | `"prj"`                  |
 | `folder_prefix`                | Folder name prefix                                              |          | `"fldr"`                 |
 | `budget_amount`                | Budget amount per project (USD)                                 |          | `1000`                   |
 | `budget_spend_basis`           | Budget threshold basis: `CURRENT_SPEND` or `FORECASTED_SPEND`   |          | `"FORECASTED_SPEND"`     |
+| `svpc_project_enabled`         | Deploy the SVPC-attached project                                |          | `true`                   |
+| `floating_project_enabled`     | Deploy the floating project                                     |          | `true`                   |
+| `peering_project_enabled`      | Deploy the peering project                                      |          | `true`                   |
+| `api_propagation_seconds`      | Cold-deploy wait after enabling APIs (0 disables)               |          | `120`                    |
 | `enforce_vpcsc`                | Attach SVPC project to VPC-SC perimeter                         |          | `true`                   |
 | `peering_enabled`              | Deploy peering VPC infrastructure                               |          | `true`                   |
 | `peering_iap_fw_rules_enabled` | Create IAP SSH/RDP firewall rules + secure tags                 |          | `true`                   |
@@ -172,30 +214,50 @@ Same process as above — navigate, initialize, configure, and deploy.
 | `billing_code`                 | Billing code for project labels                                 |          | `"1234"`                 |
 | `folder_deletion_protection`   | Prevent accidental folder deletion                              |          | `true`                   |
 
+### Shared leaf (`business_unit_1/shared`)
+
+| Name                        | Description                                              | Required | Default                 |
+| --------------------------- | -------------------------------------------------------- | :------: | ----------------------- |
+| `business_code`             | Short business unit identifier                           |    ✅    | —                       |
+| `billing_account`           | Billing account ID                                       |    ✅    | —                       |
+| `org_stack_name`            | Fully qualified Pulumi stack name of the 1-org stage     |    ✅    | —                       |
+| `infra_pipeline_enabled`    | Deploy the app-infra pipeline project                    |          | `true`                  |
+| `project_prefix`            | Project name prefix                                      |          | `"prj"`                 |
+| `budget_amount`             | Budget amount (USD)                                      |          | `1000`                  |
+| `api_propagation_seconds`   | Cold-deploy wait after enabling APIs (0 disables)        |          | `120`                   |
+| `region`                    | Exported as `default_region`                             |          | `"us-central1"`         |
+
 ## Outputs
+
+Each env leaf exports (matching upstream `4-projects/business_unit_1/<env>/outputs.tf`):
 
 | Name                             | Description                                                                   |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `bu_folder_id`                   | Business unit folder ID                                                       |
-| `svpc_project_id`                | SVPC-attached project ID                                                      |
-| `floating_project_id`            | Floating project ID                                                           |
-| `peering_project_id`             | Peering project ID                                                            |
+| `shared_vpc_project`             | SVPC-attached project ID                                                      |
+| `floating_project`               | Floating project ID                                                           |
+| `peering_project`                | Peering project ID                                                            |
 | `peering_network`                | Peering VPC network self-link                                                 |
 | `peering_subnetwork_self_link`   | Peering subnet self-link (used by 5-app-infra for instance placement)         |
 | `iap_firewall_tags`              | Map of IAP secure tag values for SSH/RDP (used by 5-app-infra for VM tagging) |
-| `infra_pipeline_project_id`      | Infrastructure pipeline project ID                                            |
-| `network_project_id`             | Network project ID (passed through from Stage 1)                              |
-| `cmek_bucket`                    | CMEK-encrypted GCS bucket name                                                |
-| `cmek_keyring`                   | KMS keyring name                                                              |
-| `confidential_space_project_id`  | Confidential Space project ID (when enabled)                                  |
+| `bucket` / `keyring` / `keys`    | CMEK bucket, KMS keyring, and crypto key names (when CMEK enabled)            |
+| `confidential_space_project`     | Confidential Space project ID (when enabled)                                  |
 | `confidential_space_workload_sa` | Confidential Space workload service account email (when enabled)              |
+
+The shared leaf exports:
+
+| Name                        | Description                                        |
+| --------------------------- | -------------------------------------------------- |
+| `infra_pipeline_project_id` | Infrastructure pipeline project ID                 |
+| `default_region`            | Default region for pipeline resources              |
 
 ## File Structure
 
-| File                    | Description                                                                                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `main.go`               | Configuration loading, folder creation, orchestration, project labels helper                                                                           |
-| `business_unit.go`      | Creates four project types (SVPC, floating, peering, confidential space) with labels, budget, VPC-SC attachment; delegates to peering and CMEK modules |
-| `peering.go`            | Full peering network: VPC, subnet, DNS policy, bi-directional peering, firewall policy with IAP secure tags                                            |
-| `cmek.go`               | KMS keyring, crypto key, GCS service account IAM, CMEK-encrypted GCS bucket                                                                            |
-| `confidential_space.go` | Confidential Space project with workload SA, IAM bindings, SVPC + VPC-SC attachment                                                                    |
+| File                                        | Description                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `business_unit_1/shared/main.go`            | Thin shared leaf pinning `common`/`c`; deploys the BU's infra-pipeline project via `modules/infra_pipelines`  |
+| `business_unit_1/development/main.go`       | Thin env leaf pinning `development`/`d`; BU folder + per-env projects via `modules/base_env`                  |
+| `business_unit_1/nonproduction/main.go`     | Thin env leaf pinning `nonproduction`/`n`; BU folder + per-env projects via `modules/base_env`                |
+| `business_unit_1/production/main.go`        | Thin env leaf pinning `production`/`p`; BU folder + per-env projects via `modules/base_env`                   |
+| `modules/base_env/`                         | Per-env project orchestrator: SVPC/floating/peering project types, CMEK, peering network, Confidential Space |
+| `modules/single_project/`                   | Single-project wrapper over the project factory (labels, budget, APIs, VPC-SC, API-propagation gating)       |
+| `modules/infra_pipelines/`                  | App-infra pipeline project (WIF model); Cloud Build reference port behind the `example` build tag            |

@@ -1,0 +1,7 @@
+name: foundation-projects-bu1-production
+description: Ported 4-projects/business_unit_1/production from Terraform Foundation
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go

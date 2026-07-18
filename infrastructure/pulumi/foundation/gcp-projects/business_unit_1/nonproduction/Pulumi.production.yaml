@@ -1,0 +1,38 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 4 — bu1 nonproduction leaf.
+#
+# Deploys business unit "bu1" under fldr-nonproduction-bu1 (parented off the live
+# gcp-environments nonproduction env folder, i.e. under fldr-foundation-1). The
+# environment identity (nonproduction/n) is pinned in this leaf's main.go, not
+# configured here (upstream business_unit_1/nonproduction layout).
+#
+# Hybrid go-live posture: FLOATING project type only (see development leaf notes).
+# The BU's shared infra-pipeline project lives in the sibling
+# business_unit_1/shared leaf.
+#
+# Promotion order: development → nonproduction → production
+# Gated by GitHub Environment protection.
+config:
+  # --- Business unit identity ---
+  foundation-projects-bu1-nonproduction:business_code: "bu1"
+
+  # --- Core identifiers ---
+  foundation-projects-bu1-nonproduction:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu1-nonproduction:project_prefix: "prj"
+  foundation-projects-bu1-nonproduction:folder_prefix: "fldr"
+
+  # --- Cross-stage reference (per-env env leaf stack; org/network refs unused
+  #     while only the floating type is enabled, so they are omitted) ---
+  foundation-projects-bu1-nonproduction:env_stack_name: "ipv1337/foundation-environments-nonproduction/production"
+
+  # --- Project-type enablement: FLOATING ONLY ---
+  foundation-projects-bu1-nonproduction:floating_project_enabled: "true"
+  # OSS apps home (e.g. oauth-user-inspector): second floating project prj-{env}-bu1-oss-floating
+  foundation-projects-bu1-nonproduction:oss_floating_project_enabled: "true"
+  foundation-projects-bu1-nonproduction:svpc_project_enabled: "false"
+  foundation-projects-bu1-nonproduction:peering_project_enabled: "false"
+  foundation-projects-bu1-nonproduction:confidential_space_enabled: "false"
+
+  # --- Features off for the floating-only first cut ---
+  foundation-projects-bu1-nonproduction:cmek_enabled: "false"
+  foundation-projects-bu1-nonproduction:peering_enabled: "false"
+  foundation-projects-bu1-nonproduction:enforce_vpcsc: "false"
