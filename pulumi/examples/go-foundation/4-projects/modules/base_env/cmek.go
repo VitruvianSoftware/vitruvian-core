@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package main
+package base_env
 
 import (
 	"fmt"
@@ -48,7 +48,7 @@ type CMEKResult struct {
 //   - a CMEK-encrypted GCS bucket on the SVPC project
 func deployCMEKStorage(
 	ctx *pulumi.Context,
-	cfg *ProjectsConfig,
+	args *Args,
 	svpcProject *libproject.Project,
 	kmsProjectID pulumi.StringOutput,
 ) (*CMEKResult, error) {
@@ -56,8 +56,8 @@ func deployCMEKStorage(
 
 	// 1. KMS Keyring
 	keyring, err := kms.NewKeyRing(ctx, "cmek-keyring", &kms.KeyRingArgs{
-		Name:     pulumi.String(cfg.KeyringName),
-		Location: pulumi.String(cfg.KMSLocation),
+		Name:     pulumi.String(args.KeyringName),
+		Location: pulumi.String(args.KMSLocation),
 		Project:  kmsProjectID,
 	})
 	if err != nil {
@@ -66,9 +66,9 @@ func deployCMEKStorage(
 
 	// 2. Crypto Key with rotation
 	cryptoKey, err := kms.NewCryptoKey(ctx, "cmek-crypto-key", &kms.CryptoKeyArgs{
-		Name:           pulumi.String(cfg.KeyName),
+		Name:           pulumi.String(args.KeyName),
 		KeyRing:        keyring.ID(),
-		RotationPeriod: pulumi.String(cfg.KeyRotationPeriod),
+		RotationPeriod: pulumi.String(args.KeyRotationPeriod),
 		Purpose:        pulumi.String("ENCRYPT_DECRYPT"),
 	}, pulumi.Parent(keyring))
 	if err != nil {
@@ -103,13 +103,13 @@ func deployCMEKStorage(
 
 	// 5. CMEK-encrypted GCS bucket
 	bucketName := pulumi.All(projectID, bucketSuffix.Result).ApplyT(func(vals []interface{}) string {
-		return fmt.Sprintf("%s-%s-cmek-encrypted-%s", cfg.GCSBucketPrefix, vals[0], vals[1])
+		return fmt.Sprintf("%s-%s-cmek-encrypted-%s", args.GCSBucketPrefix, vals[0], vals[1])
 	}).(pulumi.StringOutput)
 
 	bucketArgs := &storage.BucketArgs{
 		Project:                  projectID,
 		Name:                     bucketName,
-		Location:                 pulumi.String(cfg.GCSLocation),
+		Location:                 pulumi.String(args.GCSLocation),
 		UniformBucketLevelAccess: pulumi.Bool(true),
 		Encryption: &storage.BucketEncryptionArgs{
 			DefaultKmsKeyName: cryptoKey.ID(),
@@ -117,9 +117,9 @@ func deployCMEKStorage(
 	}
 
 	// Custom placement config for dual-region buckets (matches upstream)
-	if len(cfg.GCSPlacementRegions) == 2 {
+	if len(args.GCSPlacementRegions) == 2 {
 		bucketArgs.CustomPlacementConfig = &storage.BucketCustomPlacementConfigArgs{
-			DataLocations: pulumi.ToStringArray(cfg.GCSPlacementRegions),
+			DataLocations: pulumi.ToStringArray(args.GCSPlacementRegions),
 		}
 	}
 
