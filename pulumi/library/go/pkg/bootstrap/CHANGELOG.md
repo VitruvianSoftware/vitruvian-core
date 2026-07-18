@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.2...go-bootstrap-v2.1.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* **library:** race-free cold apply for the bootstrap chain (project_factory + bootstrap) ([#908](https://github.com/VitruvianSoftware/vitruvian-core/issues/908)) ([ca2c814](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca2c8148864aaf20141029c8a8996340e92358c0))
+
 ## [2.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.1...go-bootstrap-v2.1.2) (2026-07-18)
 
 
