@@ -152,8 +152,10 @@ func TestNewProject_ApiPropagationWait(t *testing.T) {
 
 // ---------- SAExecutors ----------
 
-const gcpSAAccount = "gcp:serviceaccount/account:Account"
-const gcpProjectIAMMember = "gcp:projects/iAMMember:IAMMember"
+const (
+	gcpSAAccount        = "gcp:serviceaccount/account:Account"
+	gcpProjectIAMMember = "gcp:projects/iAMMember:IAMMember"
+)
 
 func TestNewProject_SAExecutorsCreatesSAThenGrant(t *testing.T) {
 	tracker := testutil.NewTracker()
