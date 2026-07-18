@@ -67,8 +67,16 @@ const SECRET_CACHE_TTL_MS = 60_000;
 const secretCache = new Map<string, { value: string; expires: number }>();
 
 // Helper function to retrieve secrets from Google Secret Manager (TTL-cached).
-async function getSecret(secretName: string): Promise<string> {
-  const cached = secretCache.get(secretName);
+// SECRET_PREFIX (default "") is prepended to the secret id so co-tenant apps
+// sharing one project can namespace their secrets (e.g.
+// OAUTH_USER_INSPECTOR_GITHUB_APP_OAUTH_CLIENT_ID); an empty prefix preserves
+// the historical bare-name behaviour. The cache is keyed on the prefixed id so
+// two apps in the same instance can't collide on a cache entry.
+export async function getSecret(secretName: string): Promise<string> {
+  const prefix = process.env.SECRET_PREFIX ?? "";
+  const fullName = `${prefix}${secretName}`;
+
+  const cached = secretCache.get(fullName);
   if (cached && Date.now() < cached.expires) {
     return cached.value;
   }
@@ -82,7 +90,7 @@ async function getSecret(secretName: string): Promise<string> {
       );
     }
 
-    const name = `projects/${projectId}/secrets/${secretName}/versions/latest`;
+    const name = `projects/${projectId}/secrets/${fullName}/versions/latest`;
     const [version] = await secretManagerClient.accessSecretVersion({ name });
 
     if (!version.payload?.data) {
@@ -90,7 +98,7 @@ async function getSecret(secretName: string): Promise<string> {
     }
 
     const value = version.payload.data.toString();
-    secretCache.set(secretName, {
+    secretCache.set(fullName, {
       value,
       expires: Date.now() + SECRET_CACHE_TTL_MS,
     });
