@@ -1,0 +1,7 @@
+name: foundation-3-networks-svpc-production
+description: Ported 3-networks-svpc/envs/production from Terraform Foundation
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go

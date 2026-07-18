@@ -47,52 +47,48 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ### Deploying with GitHub Actions
 
-1. Navigate to the `3-networks-svpc` directory and initialize a stack for each environment:
+1. Each leaf is its own thin Pulumi project under `envs/` (mirroring upstream
+   `3-networks-svpc/envs/<env>`); the environment identity is pinned in each
+   leaf's `main.go`. Start with the shared root (hierarchical firewall):
 
    ```bash
-   cd 3-networks-svpc
-   pulumi stack init development
-   ```
-
-1. Set the required configuration:
-
-   ```bash
-   pulumi config set env "development"
-   pulumi config set project_id "prj-d-svpc"        # from Stage 1 output
+   cd 3-networks-svpc/envs/shared
+   pulumi stack init production
    pulumi config set parent_id "organizations/YOUR_ORG_ID"
+   pulumi up
    ```
 
-1. (Optional) Override default regions:
+1. Deploy each environment leaf — **production first**, as it includes the DNS
+   Hub that other environments depend on:
+
+   ```bash
+   cd ../production
+   pulumi stack init production
+   pulumi config set project_id "prj-p-svpc"        # from Stage 1 output
+   pulumi up
+   ```
+
+1. (Optional) Override default regions in any leaf:
 
    ```bash
    pulumi config set region1 "us-central1"   # default
    pulumi config set region2 "us-west1"      # default
    ```
 
-1. Preview and deploy:
+1. **Repeat for the remaining environments** (`envs/nonproduction`,
+   `envs/development`):
 
    ```bash
-   pulumi preview
-   pulumi up
-   ```
-
-1. **Repeat for each environment** (`nonproduction`, `production`):
-
-   ```bash
-   pulumi stack init nonproduction
-   pulumi config set env "nonproduction"
-   pulumi config set project_id "prj-n-svpc"
-   pulumi config set parent_id "organizations/YOUR_ORG_ID"
-   pulumi up
-
+   cd ../nonproduction
    pulumi stack init production
-   pulumi config set env "production"
-   pulumi config set project_id "prj-p-svpc"
-   pulumi config set parent_id "organizations/YOUR_ORG_ID"
+   pulumi config set project_id "prj-n-svpc"
+   pulumi up
+
+   cd ../development
+   pulumi stack init production
+   pulumi config set project_id "prj-d-svpc"
    pulumi up
    ```
-
-   **Note:** The **production** environment should be deployed first as it includes the DNS Hub that other environments depend on.
 
 1. Commit and push:
 
@@ -118,13 +114,15 @@ If you cannot use Dedicated or Partner Interconnect, you can use an HA Cloud VPN
 
 ## Configuration Reference
 
-| Name         | Description                                                               | Required | Default         |
-| ------------ | ------------------------------------------------------------------------- | :------: | --------------- |
-| `env`        | Environment name (`development`, `nonproduction`, `production`)           |    ✅    | —               |
-| `project_id` | Shared VPC host project ID                                                |    ✅    | —               |
-| `parent_id`  | Parent scope for firewall policies (`organizations/123` or `folders/456`) |    ✅    | —               |
-| `region1`    | Primary region for subnets and NAT                                        |          | `"us-central1"` |
-| `region2`    | Secondary region for subnets and NAT                                      |          | `"us-west1"`    |
+The environment identity (`development`/`nonproduction`/`production`, and the
+shared root) is pinned in each leaf's `main.go`, not stack config.
+
+| Name         | Leaf         | Description                                                               | Required | Default         |
+| ------------ | ------------ | ------------------------------------------------------------------------- | :------: | --------------- |
+| `project_id` | env leaves   | Shared VPC host project ID                                                |    ✅    | —               |
+| `parent_id`  | shared       | Parent scope for firewall policies (`organizations/123` or `folders/456`) |    ✅    | —               |
+| `region1`    | env leaves   | Primary region for subnets and NAT                                        |          | `"us-central1"` |
+| `region2`    | env leaves   | Secondary region for subnets and NAT                                      |          | `"us-west1"`    |
 
 ## Outputs
 
@@ -136,6 +134,15 @@ If you cannot use Dedicated or Partner Interconnect, you can use an HA Cloud VPN
 
 ## File Structure
 
-| File      | Description                                                                                                                |
-| --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `main.go` | Complete network stack: SVPC host, VPC, subnets with GKE ranges, PSA, firewall policies, DNS, NAT, restricted APIs routing |
+Mirrors upstream `terraform-example-foundation/3-networks-svpc`: a shared root
+plus three thin env roots that pin their environment and call the shared
+`base_env` module.
+
+| File                            | Description                                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `envs/shared/main.go`           | Thin shared root: org/folder-level hierarchical firewall policy                                                  |
+| `envs/development/main.go`      | Thin env root pinning `development`/`d`; loads config and calls `modules/base_env`                               |
+| `envs/nonproduction/main.go`    | Thin env root pinning `nonproduction`/`n`; loads config and calls `modules/base_env`                             |
+| `envs/production/main.go`       | Thin env root pinning `production`/`p`; loads config and calls `modules/base_env`                                |
+| `modules/base_env/base_env.go`  | Per-env network stack: SVPC host, VPC, subnets with GKE ranges, PSA, DNS, NAT, VPC-SC, restricted APIs routing  |
+| `modules/hierarchical_firewall_policy/` | Org/folder-level hierarchical firewall policy module (used by `envs/shared`)                             |

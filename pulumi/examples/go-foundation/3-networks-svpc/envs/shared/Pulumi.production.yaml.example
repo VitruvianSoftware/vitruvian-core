@@ -1,0 +1,8 @@
+# Pulumi Configuration for 3-networks-svpc/envs/shared (production stack).
+# The shared identity is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-3-networks-svpc-shared:parent_id: "organizations/YOUR_ORG_ID"
+
+  # Optional
+  # foundation-3-networks-svpc-shared:firewall_associations: '["folders/123", "folders/456"]'

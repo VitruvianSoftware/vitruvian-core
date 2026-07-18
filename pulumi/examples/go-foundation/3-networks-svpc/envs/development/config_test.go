@@ -29,15 +29,20 @@ func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	return args.Args, nil
 }
 
+// TestPinnedEnvIdentity validates the environment identity pinned by this leaf
+// project, mirroring upstream 3-networks-svpc/envs/development.
+func TestPinnedEnvIdentity(t *testing.T) {
+	assert.Equal(t, "development", pinnedEnv)
+	assert.Equal(t, "d", pinnedEnvCode)
+}
+
 func TestNetConfigDefaultsReal(t *testing.T) {
-	os.Setenv("PULUMI_CONFIG", `{"project:env":"development", "project:env_code":"d", "project:project_id":"prj-d-svpc", "project:parent_id":"folders/123"}`)
+	os.Setenv("PULUMI_CONFIG", `{"project:project_id":"prj-d-svpc"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := loadNetConfig(ctx)
 
-		assert.Equal(t, "development", cfg.Env)
-		assert.Equal(t, "d", cfg.EnvCode)
 		assert.Equal(t, "prj-d-svpc", cfg.ProjectID)
 		// Default values
 		assert.Equal(t, "us-central1", cfg.Region1)
