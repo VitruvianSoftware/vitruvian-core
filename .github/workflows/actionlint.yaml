@@ -25,8 +25,10 @@
 # `${{ }}` expression errors, job/needs graph mistakes, deprecated action
 # versions, and (via shellcheck) issues in `run:` blocks. Issue #458.
 #
-# Advisory today; the intent is to add "actionlint" to the merge-queue required
-# set (repo-config `mergeQueueRequiredChecks`) once it has baked.
+# Required merge-queue check: "actionlint" is in repo-config's
+# `mergeQueueRequiredChecks` set (infrastructure/pulumi/platform/repo_config/main.go),
+# so this job must REPORT on every pull_request and merge_group (see the `on:`
+# block below — no `paths` filter, or the queue would hang pending).
 name: actionlint
 
 on:
