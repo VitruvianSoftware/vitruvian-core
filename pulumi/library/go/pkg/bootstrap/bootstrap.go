@@ -33,6 +33,7 @@ import (
 	"fmt"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
+	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/kms"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
@@ -306,11 +307,30 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 			return fmt.Sprintf("serviceAccount:%s", email)
 		}).(pulumi.StringOutput)
 
+		// GCS service-agent propagation wait. The getProjectServiceAccount lookup
+		// JIT-provisions the seed's GCS service agent, but a freshly-created service
+		// agent is not immediately referenceable in an IAM policy — a from-empty
+		// first apply races it and fails with "Service account service-…@gs-project-
+		// accounts.iam.gserviceaccount.com does not exist". Upstream terraform's
+		// google_storage_project_service_account data source + provider-side IAM
+		// retry masks this; pulumi-gcp's invoke returns the (deterministic) email
+		// immediately and the binding does not retry long enough. Mirror upstream's
+		// behaviour with a short propagation wait, gated on the resolved agent email
+		// so it only runs once the invoke has completed (and re-runs if the agent
+		// changes). See [[replicate-upstream-behavior-with-documented-workaround]].
+		agentWait, err := local.NewCommand(ctx, fmt.Sprintf("%s-gcs-agent-propagation", name), &local.CommandArgs{
+			Create:   pulumi.String("sleep 60"),
+			Triggers: pulumi.Array{sa.EmailAddress()},
+		}, pulumi.Parent(component), pulumi.DependsOn(apisReady))
+		if err != nil {
+			return nil, err
+		}
+
 		kmsBinding, err = kms.NewCryptoKeyIAMMember(ctx, fmt.Sprintf("%s-kms-sa", name), &kms.CryptoKeyIAMMemberArgs{
 			CryptoKeyId: cryptoKeyID,
 			Role:        pulumi.String("roles/cloudkms.cryptoKeyEncrypterDecrypter"),
 			Member:      storageSA,
-		}, pulumi.Parent(component))
+		}, pulumi.Parent(component), pulumi.DependsOn([]pulumi.Resource{agentWait}))
 		if err != nil {
 			return nil, err
 		}
