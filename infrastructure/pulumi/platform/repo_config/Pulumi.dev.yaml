@@ -23,13 +23,13 @@ config:
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
   vitruvian-core-repo-config:foundationVars:
     foundation-bootstrap:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     foundation-org:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-org@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     # org-folders creates the org-root fldr-foundation-1 umbrella folder and
     # deploys as the BOOTSTRAP SA (matching the WIF binding in
     # gcp-bootstrap/build_github_actions.go) from its own foundation-org-folders
@@ -37,21 +37,21 @@ config:
     # but these vars were never added here, so the env had no credentials and the
     # deploy's WIF auth failed with an empty workload_identity_provider.
     foundation-org-folders:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     foundation-env:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-env@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-env@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     foundation-net:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-net@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     foundation-proj:
-      GCP_PROJECT_ID: prj-b-seed-8ebb
-      GCP_SERVICE_ACCOUNT: sa-terraform-proj@prj-b-seed-8ebb.iam.gserviceaccount.com
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1007864396578/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+      GCP_PROJECT_ID: prj-b-seed-c010
+      GCP_SERVICE_ACCOUNT: sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   # oauth-user-inspector deploy environments — non-secret identifiers only (keyless
   # WIF), keyed per GitHub Environment. The matching GitHub-side SECRETS are NOT
   # here; they are synced from a gitignored, Bitwarden-backed store by

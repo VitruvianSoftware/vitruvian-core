@@ -23,7 +23,7 @@ config:
   # oss_floating_project outputs (dev/nonprod/prod).
   # OSS public-invoker DRS override targets — the prj-{d,n,p}-bu1-oss-floating-* projects from
   # foundation-projects outputs (refreshed 2026-07-18 after the teardown/redeploy assigned new random IDs).
-  foundation-org-shared:oss_public_invoker_projects: "prj-d-bu1-oss-floating-1140,prj-n-bu1-oss-floating-5c19,prj-p-bu1-oss-floating-3ffc"
+  foundation-org-shared:oss_public_invoker_projects: "prj-d-bu1-oss-floating-648a,prj-n-bu1-oss-floating-630b,prj-p-bu1-oss-floating-16e0"
 
   # --- Cross-stage references ---
   # Fully-qualified Pulumi Cloud stack reference for the bootstrap stage.
