@@ -11,6 +11,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pulumi/library/go/pkg/project_factory",
+        "@com_github_pulumi_pulumi_command_sdk//go/command/local",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/kms",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/projects",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/storage",
