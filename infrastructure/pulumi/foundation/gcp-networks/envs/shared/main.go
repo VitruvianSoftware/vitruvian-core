@@ -41,14 +41,13 @@ package main
 
 import (
 	"fmt"
+	"foundation-networks/modules/hierarchical_firewall_policy"
+	"foundation-networks/modules/shared_vpc"
+	"foundation-networks/modules/transitivity"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
-
-	"foundation-networks/modules/hierarchical_firewall_policy"
-	"foundation-networks/modules/shared_vpc"
-	"foundation-networks/modules/transitivity"
 )
 
 // Shared/hub identity pinned by this leaf project — upstream

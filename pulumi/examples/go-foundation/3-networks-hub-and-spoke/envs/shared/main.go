@@ -35,14 +35,13 @@ package main
 
 import (
 	"fmt"
+	"foundation-3-networks-hub-and-spoke/modules/hierarchical_firewall_policy"
+	"foundation-3-networks-hub-and-spoke/modules/shared_vpc"
+	"foundation-3-networks-hub-and-spoke/modules/transitivity"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
-
-	"foundation-3-networks-hub-and-spoke/modules/hierarchical_firewall_policy"
-	"foundation-3-networks-hub-and-spoke/modules/shared_vpc"
-	"foundation-3-networks-hub-and-spoke/modules/transitivity"
 )
 
 // Shared/hub identity pinned by this leaf project — upstream

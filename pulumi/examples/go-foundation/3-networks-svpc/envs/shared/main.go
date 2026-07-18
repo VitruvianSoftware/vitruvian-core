@@ -22,10 +22,10 @@
 package main
 
 import (
+	"foundation-3-networks-svpc/modules/hierarchical_firewall_policy"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-
-	"foundation-3-networks-svpc/modules/hierarchical_firewall_policy"
 )
 
 // Shared identity pinned by this leaf project — upstream

@@ -479,7 +479,8 @@ users:
         https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
       provideClusterInfo: true
 `, name, endpoint, ca)
-			}).(pulumi.StringOutput)
+			},
+		).(pulumi.StringOutput)
 
 		k8sProvider, err := kubernetes.NewProvider(ctx, fmt.Sprintf("%s-k8s", name), &kubernetes.ProviderArgs{
 			Kubeconfig: kubeconfig,
@@ -511,7 +512,8 @@ users:
 		// pre-seeded Autopilot resource-adjustment annotation.
 		resourceAdjustment := pulumi.Sprintf(
 			`{"input":{"containers":[{"name":"%[1]s","requests":{"cpu":"%[2]s","memory":"%[3]s","ephemeral-storage":"%[4]s"}}]},"modified":true,"output":{"containers":[{"limits":{"cpu":"%[2]s","ephemeral-storage":"%[4]s","memory":"%[3]s"},"name":"%[1]s","requests":{"cpu":"%[2]s","ephemeral-storage":"%[4]s","memory":"%[3]s"}}]}}`,
-			agentName, agentCpuRequest, agentMemoryRequest, agentEphemeralStorage)
+			agentName, agentCpuRequest, agentMemoryRequest, agentEphemeralStorage,
+		)
 
 		resourceList := pulumi.StringMap{
 			"memory":            pulumi.String(agentMemoryRequest),

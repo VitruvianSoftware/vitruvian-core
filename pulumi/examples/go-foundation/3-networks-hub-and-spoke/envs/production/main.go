@@ -32,9 +32,9 @@
 package main
 
 import (
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-
 	"foundation-3-networks-hub-and-spoke/modules/base_env"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // Environment identity and spoke CIDR plan pinned by this leaf project —

@@ -39,10 +39,9 @@ package main
 
 import (
 	"fmt"
+	"foundation-networks/modules/base_env"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-
-	"foundation-networks/modules/base_env"
 )
 
 // Environment identity and spoke CIDR plan pinned by this leaf project —

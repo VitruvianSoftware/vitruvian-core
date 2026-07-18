@@ -32,13 +32,12 @@
 package main
 
 import (
+	"foundation-projects/modules/infra_pipelines"
 	"strings"
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-
-	"foundation-projects/modules/infra_pipelines"
 )
 
 // Environment identity pinned by this leaf — upstream's shared workspace

@@ -24,14 +24,13 @@ package main
 
 import (
 	"fmt"
+	"foundation-5-app-infra/modules/confidential_space"
+	"foundation-5-app-infra/modules/env_base"
+	"foundation-5-app-infra/modules/serverless_space"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-
-	"foundation-5-app-infra/modules/confidential_space"
-	"foundation-5-app-infra/modules/env_base"
-	"foundation-5-app-infra/modules/serverless_space"
 )
 
 // Environment pinned by this leaf project — upstream

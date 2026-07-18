@@ -25,14 +25,13 @@ package main
 
 import (
 	"fmt"
+	"foundation-4-projects/modules/base_env"
 	"strings"
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-
-	"foundation-4-projects/modules/base_env"
 )
 
 // Environment pinned by this leaf project — upstream

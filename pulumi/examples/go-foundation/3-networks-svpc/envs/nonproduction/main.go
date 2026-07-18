@@ -23,9 +23,9 @@
 package main
 
 import (
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-
 	"foundation-3-networks-svpc/modules/base_env"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
 // Environment identity pinned by this leaf project — upstream
