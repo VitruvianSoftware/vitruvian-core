@@ -17,6 +17,7 @@
 package main
 
 import (
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
@@ -29,54 +30,54 @@ type VpcFlowLogsConfig struct {
 	Metadata            string  `json:"metadata"`
 }
 
-// NetSharedConfig holds the configuration for the shared/hub root of the
-// networks stage, mirroring upstream 3-networks-hub-and-spoke/envs/shared
-// variables.tf: the shared/global network settings (hub CIDRs, DNS hub,
-// hierarchical firewall associations, transitivity toggle) plus the common
-// identifiers shared with the spoke leaves.
-type NetSharedConfig struct {
-	HubProjectID                  string
+// NetConfig holds the per-environment (spoke) configuration, mirroring
+// upstream 3-networks-hub-and-spoke/envs/<env> variables.tf. The environment
+// identity and the spoke CIDR plan are pinned as consts in this leaf's
+// main.go; the shared/hub settings live in the sibling envs/shared leaf.
+type NetConfig struct {
+	SpokeProjectID                string
 	Region1                       string
 	Region2                       string
-	ParentID                      string
 	Domain                        string
 	PolicyID                      string
 	OrgStackName                  string
 	PscIP                         string
-	BgpAsn                        int
 	NatBgpAsn                     int
 	NatNumAddresses               int
-	TargetNameServers             []string
 	VpcScMembers                  []string
+	VpcScProjects                 []string
 	VpcScRestrictedServices       []string
-	HubSubnet1Cidr                string
-	HubSubnet2Cidr                string
-	FirewallAssociations          []string
+	VpcScIngressPolicies          accesscontextmanager.ServicePerimeterStatusIngressPolicyArray
+	VpcScEgressPolicies           accesscontextmanager.ServicePerimeterStatusEgressPolicyArray
+	VpcScIngressPoliciesDryRun    accesscontextmanager.ServicePerimeterSpecIngressPolicyArray
+	VpcScEgressPoliciesDryRun     accesscontextmanager.ServicePerimeterSpecEgressPolicyArray
 	FirewallPoliciesEnableLogging bool
 	DnsEnableLogging              bool
 	EnforceVpcSc                  bool
-	EnableHubAndSpokeTransitivity bool
-	HubNatEnabled                 bool
+	NatEnabled                    bool
+	WindowsActivationEnabled      bool
 	VpcFlowLogs                   *VpcFlowLogsConfig
 }
 
-func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
+func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	conf := config.New(ctx, "")
 
-	c := &NetSharedConfig{
-		HubProjectID: conf.Require("hub_project_id"),
-		Region1:      conf.Get("region1"),
-		Region2:      conf.Get("region2"),
-		ParentID:     conf.Require("parent_id"),
-		Domain:       conf.Get("domain"),
-		PolicyID:     conf.Get("policy_id"),
-		OrgStackName: conf.Get("org_stack_name"),
-		PscIP:        conf.Get("psc_ip"),
+	c := &NetConfig{
+		SpokeProjectID: conf.Get("spoke_project_id"),
+		Region1:        conf.Get("region1"),
+		Region2:        conf.Get("region2"),
+		Domain:         conf.Get("domain"),
+		PolicyID:       conf.Get("policy_id"),
+		OrgStackName:   conf.Get("org_stack_name"),
+		PscIP:          conf.Get("psc_ip"),
 	}
 	conf.GetObject("vpc_sc_members", &c.VpcScMembers)
+	conf.GetObject("vpc_sc_projects", &c.VpcScProjects)
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
-	conf.GetObject("target_name_servers", &c.TargetNameServers)
-	conf.GetObject("firewall_associations", &c.FirewallAssociations)
+	conf.GetObject("vpc_sc_ingress_policies", &c.VpcScIngressPolicies)
+	conf.GetObject("vpc_sc_egress_policies", &c.VpcScEgressPolicies)
+	conf.GetObject("vpc_sc_ingress_policies_dry_run", &c.VpcScIngressPoliciesDryRun)
+	conf.GetObject("vpc_sc_egress_policies_dry_run", &c.VpcScEgressPoliciesDryRun)
 
 	var flowLogs VpcFlowLogsConfig
 	if err := conf.GetObject("vpc_flow_logs", &flowLogs); err == nil {
@@ -108,16 +109,16 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 		c.EnforceVpcSc = false // TF defaults enforce_vpcsc=false (dry-run first)
 	}
 
-	if val, err := conf.TryBool("enable_hub_and_spoke_transitivity"); err == nil {
-		c.EnableHubAndSpokeTransitivity = val
+	if val, err := conf.TryBool("nat_enabled"); err == nil {
+		c.NatEnabled = val
 	} else {
-		c.EnableHubAndSpokeTransitivity = false
+		c.NatEnabled = false
 	}
 
-	if val, err := conf.TryBool("hub_nat_enabled"); err == nil {
-		c.HubNatEnabled = val
+	if val, err := conf.TryBool("windows_activation_enabled"); err == nil {
+		c.WindowsActivationEnabled = val
 	} else {
-		c.HubNatEnabled = false
+		c.WindowsActivationEnabled = false
 	}
 
 	if c.Region1 == "" {
@@ -138,22 +139,7 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	if len(c.VpcScRestrictedServices) == 0 {
 		c.VpcScRestrictedServices = vpc_sc.GetDefaultRestrictedServices()
 	}
-	if len(c.FirewallAssociations) == 0 {
-		c.FirewallAssociations = []string{c.ParentID} // Fallback to parent
-	}
-	if len(c.TargetNameServers) == 0 {
-		c.TargetNameServers = []string{"10.0.0.1"}
-	}
 
-	// Hub CIDRs — defaults derived from the upstream reference architecture
-	if c.HubSubnet1Cidr == "" {
-		c.HubSubnet1Cidr = "10.8.0.0/18"
-	}
-	if c.HubSubnet2Cidr == "" {
-		c.HubSubnet2Cidr = "10.9.0.0/18"
-	}
-
-	c.BgpAsn = 64514
 	c.NatBgpAsn = 64514
 	c.NatNumAddresses = 2
 

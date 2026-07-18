@@ -1,5 +1,5 @@
-name: foundation-3-networks-hub-and-spoke
-description: Ported 3-networks-hub-and-spoke from Terraform Foundation
+name: foundation-networks-shared
+description: Ported 3-networks-hub-and-spoke/envs/shared from Terraform Foundation
 runtime: go
 config:
   pulumi:tags:

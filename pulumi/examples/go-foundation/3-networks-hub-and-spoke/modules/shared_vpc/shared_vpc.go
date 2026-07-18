@@ -222,13 +222,24 @@ func New(ctx *pulumi.Context, args *Args, opts ...pulumi.ResourceOption) (*Resul
 func createPeering(ctx *pulumi.Context, args *Args, vpc *networking.Networking, opts ...pulumi.ResourceOption) (pulumi.Resource, error) {
 	hubVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-c-svpc-hub", args.HubProjectID)
 
+	// Serialize the spoke peering behind the spoke's PSA servicenetworking
+	// connection: GCP allows only one peering-mutating operation at a time per
+	// VPC, and both the PSA connection and this peering mutate the spoke VPC's
+	// peering set. Upstream terraform orders peering-before-PSA (via module
+	// depends_on); we order PSA-before-peering, which is equally deadlock-free
+	// — only the direction of the serialization differs, per the repo's
+	// replicate-upstream-behaviour-with-documented-workaround convention.
+	peeringDeps := []pulumi.Resource{vpc.VPC}
+	if vpc.PSAConnection != nil {
+		peeringDeps = append(peeringDeps, vpc.PSAConnection)
+	}
 	spokeToHub, err := compute.NewNetworkPeering(ctx, "spoke-to-hub", &compute.NetworkPeeringArgs{
 		Network:            vpc.VPC.SelfLink,
 		PeerNetwork:        hubVpcRef,
 		Name:               pulumi.String(fmt.Sprintf("np-%s-svpc-spoke-vpc-c-svpc-hub", args.Code)),
 		ExportCustomRoutes: pulumi.Bool(false),
 		ImportCustomRoutes: pulumi.Bool(true), // Import hub's custom routes
-	}, append(opts, pulumi.DependsOn([]pulumi.Resource{vpc.VPC}))...)
+	}, append(opts, pulumi.DependsOn(peeringDeps))...)
 	if err != nil {
 		return nil, err
 	}

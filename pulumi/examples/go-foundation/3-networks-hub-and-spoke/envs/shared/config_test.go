@@ -11,35 +11,54 @@
 package main
 
 import (
+	"os"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestHubAndSpokeNetConfigStruct validates the hub-and-spoke network config.
-func TestHubAndSpokeNetConfigStruct(t *testing.T) {
-	cfg := &NetConfig{
-		Env:     "production",
-		Region1: "us-central1",
-		Region2: "us-west1",
-	}
+type mocks int
 
-	assert.Equal(t, "production", cfg.Env)
-	assert.Equal(t, "us-central1", cfg.Region1)
-	assert.Equal(t, "us-west1", cfg.Region2)
+func (mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	return args.Name + "_id", args.Inputs, nil
 }
 
-// TestHubAndSpokeNetConfigDefaults validates defaults match TF upstream.
-func TestHubAndSpokeNetConfigDefaults(t *testing.T) {
-	cfg := &NetConfig{}
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
 
-	if cfg.Region1 == "" {
-		cfg.Region1 = "us-central1"
-	}
-	if cfg.Region2 == "" {
-		cfg.Region2 = "us-west1"
-	}
+// TestPinnedSharedIdentity validates the shared/hub identity pinned by this
+// leaf project, mirroring upstream 3-networks-hub-and-spoke/envs/shared.
+func TestPinnedSharedIdentity(t *testing.T) {
+	assert.Equal(t, "shared", pinnedEnv)
+	assert.Equal(t, "c", pinnedEnvCode)
+}
 
-	assert.Equal(t, "us-central1", cfg.Region1)
-	assert.Equal(t, "us-west1", cfg.Region2)
+// TestLoadNetSharedConfig validates defaults match TF upstream.
+func TestLoadNetSharedConfig(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{"project:hub_project_id":"prj-c-hub-and-spoke", "project:parent_id":"organizations/123"}`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadNetSharedConfig(ctx)
+
+		assert.Equal(t, "prj-c-hub-and-spoke", cfg.HubProjectID)
+
+		// Hub CIDR defaults
+		assert.Equal(t, "10.8.0.0/18", cfg.HubSubnet1Cidr)
+		assert.Equal(t, "10.9.0.0/18", cfg.HubSubnet2Cidr)
+
+		// Defaults
+		assert.Equal(t, "us-central1", cfg.Region1)
+		assert.Equal(t, "us-west1", cfg.Region2)
+		assert.True(t, cfg.FirewallPoliciesEnableLogging)
+		assert.True(t, cfg.DnsEnableLogging)
+		assert.False(t, cfg.EnforceVpcSc)
+		assert.False(t, cfg.EnableHubAndSpokeTransitivity)
+		assert.False(t, cfg.HubNatEnabled)
+		return nil
+	}, pulumi.WithMocks("project", "stack", mocks(0)))
+	assert.NoError(t, err)
 }

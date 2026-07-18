@@ -51,17 +51,26 @@ READMEs in the TypeScript foundation.
 | `envs/production/main.go`              |  ~210 | Thin env root pinning production/p; config + Stack Reference to Stage 1 |
 | `modules/env_baseline/env_baseline.go` |  ~320 | Per-environment KMS + Secrets project creation with labels             |
 
-## 3-networks-svpc (1 file, ~364 lines)
+## 3-networks-svpc (6 files, ~750 lines)
 
-| File      | Lines | Description                                                                                                                             |
-| --------- | ----: | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `main.go` |  ~364 | Complete network stack: SVPC host, VPC, subnets with GKE ranges, PSA, hierarchical firewall policies, DNS, NAT, restricted APIs routing |
+| File                                    | Lines | Description                                                                                                    |
+| --------------------------------------- | ----: | --------------------------------------------------------------------------------------------------------------- |
+| `envs/shared/main.go`                   |   ~85 | Thin shared root pinning shared; hierarchical firewall policy                                                   |
+| `envs/development/main.go` (+config.go) |  ~340 | Thin env root pinning development/d; config + exports, calls `modules/base_env`                                 |
+| `envs/nonproduction/main.go` (+config.go)| ~340 | Thin env root pinning nonproduction/n; config + exports, calls `modules/base_env`                               |
+| `envs/production/main.go` (+config.go)  |  ~340 | Thin env root pinning production/p; config + exports, calls `modules/base_env`                                  |
+| `modules/base_env/base_env.go`          |  ~360 | Per-env network stack: SVPC host, VPC, subnets with GKE ranges, PSA, DNS, NAT, VPC-SC, restricted APIs routing |
+| `modules/hierarchical_firewall_policy/` |   ~50 | Org/folder-level hierarchical firewall policy (envs/shared)                                                     |
 
-## 3-networks-hub-and-spoke (1 file, ~493 lines)
+## 3-networks-hub-and-spoke (10+ files, ~1,600 lines)
 
-| File      | Lines | Description                                                                                                        |
-| --------- | ----: | ------------------------------------------------------------------------------------------------------------------ |
-| `main.go` |  ~493 | Hub VPC, spoke VPC, VPC peering with route exchange, subnets, firewall policies, DNS, NAT, restricted APIs routing |
+| File                                     | Lines | Description                                                                                 |
+| ---------------------------------------- | ----: | -------------------------------------------------------------------------------------------- |
+| `envs/shared/main.go` (+config.go)       |  ~330 | Thin shared root pinning shared/c; hub VPC, hierarchical firewall, DNS hub, transitivity     |
+| `envs/development/main.go` (+config.go)  |  ~320 | Thin env root pinning development/d + spoke CIDRs; calls `modules/base_env`, exports          |
+| `envs/nonproduction/main.go` (+config.go)|  ~320 | Thin env root pinning nonproduction/n + spoke CIDRs; calls `modules/base_env`, exports        |
+| `envs/production/main.go` (+config.go)   |  ~320 | Thin env root pinning production/p + spoke CIDRs; calls `modules/base_env`, exports           |
+| `modules/{shared_vpc,base_env,hierarchical_firewall_policy,transitivity}` | ~800 | Shared VPC (hub/spoke modes), spoke orchestrator, hierarchical firewall, transitivity gateway |
 
 ## 4-projects (5 files, ~1,171 lines)
 
