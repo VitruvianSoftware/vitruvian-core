@@ -1,0 +1,39 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 3 — shared hub network.
+#
+# This stack deploys the shared/global network resources in hub-and-spoke
+# topology (upstream 3-networks-hub-and-spoke/envs/shared):
+#   - Central hub Shared VPC on the hub host project (prj-net-hub, from 1-org)
+#   - Hub subnets, DNS hub forwarding zone, BGP routers, firewall, PSC
+#   - Org/folder-level hierarchical firewall policy
+#   - Transitivity appliance (when enabled; default off, matching upstream)
+#
+# Deploy order: shared → development → nonproduction → production. The spoke
+# stacks peer into the hub VPC created here, so this stack MUST be fully
+# applied first (it also serializes the hub PSA connection before any spoke
+# peering mutates the hub VPC's peering set).
+config:
+  # --- Core identifiers (mirrors 1-org config) ---
+  foundation-networks-shared:org_id: "90456063361"
+  foundation-networks-shared:default_region: "us-central1"
+  foundation-networks-shared:secondary_region: "us-south1"
+
+  # --- Cross-stage references ---
+  foundation-networks-shared:org_stack_name: "ipv1337/foundation-org-shared/production"
+
+  # --- Network folder (from 1-org; hierarchical firewall parent) ---
+  foundation-networks-shared:parent_id: "folders/823326946563"
+
+  # --- DNS ---
+  foundation-networks-shared:domain: "vitruviansoftware.dev."
+
+  # --- VPC-SC access level members (dry-run baseline; enforce_vpcsc=false) ---
+  # Foundation SAs that operate resources through the service perimeters. GCP
+  # rejects an access level with no non-trivial condition, so this trusted set is
+  # required; refine it (and flip enforce_vpcsc=true) once the perimeter posture
+  # is validated. Migrated from foundation-0's VPC-SC (2026-07-09).
+  foundation-networks-shared:vpc_sc_members:
+    - "serviceAccount:sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-env@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-net@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com"

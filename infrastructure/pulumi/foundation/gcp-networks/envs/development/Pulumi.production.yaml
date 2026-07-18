@@ -1,40 +1,32 @@
 # Stack config for the vitruviansoftware.dev foundation Phase 3 — development network.
 #
-# This stack deploys the development spoke VPC in hub-and-spoke topology:
-#   - Shared VPC host project (prj-d-svpc)
+# This leaf deploys the development spoke VPC in hub-and-spoke topology
+# (upstream 3-networks-hub-and-spoke/envs/development):
+#   - Shared VPC host project (prj-d-svpc, from 1-org)
 #   - Spoke VPC, subnets, Cloud NAT, DNS, firewall, PSC
-#   - Bi-directional VPC peering to hub
+#   - Bi-directional VPC peering to the hub (created by envs/shared)
 #
-# Promotion order: development → nonproduction → production
-# This is the first environment deployed (auto-approve).
+# The environment identity (development/d) and the spoke CIDR plan are pinned
+# in this leaf's main.go. Deploy order: shared → development → nonproduction →
+# production; this is the first spoke deployed (auto-approve).
 config:
-  # --- Environment identity ---
-  foundation-networks:env: "development"
-  foundation-networks:env_code: "d"
-
   # --- Core identifiers (mirrors 1-org config) ---
-  foundation-networks:org_id: "90456063361"
-  foundation-networks:default_region: "us-central1"
-  foundation-networks:secondary_region: "us-south1"
-
-  # --- Hub project (created by 1-org when enable_hub_and_spoke=true) ---
-  foundation-networks:hub_project_id: "prj-net-hub"
+  foundation-networks-development:org_id: "90456063361"
+  foundation-networks-development:default_region: "us-central1"
+  foundation-networks-development:secondary_region: "us-south1"
 
   # --- Cross-stage references ---
-  foundation-networks:org_stack_name: "ipv1337/foundation-org/production"
-
-  # --- Network folder (from 1-org) ---
-  foundation-networks:parent_id: "folders/823326946563"
+  foundation-networks-development:org_stack_name: "ipv1337/foundation-org-shared/production"
 
   # --- DNS ---
-  foundation-networks:domain: "vitruviansoftware.dev."
+  foundation-networks-development:domain: "vitruviansoftware.dev."
 
   # --- VPC-SC access level members (dry-run baseline; enforce_vpcsc=false) ---
   # Foundation SAs that operate resources through the service perimeters. GCP
   # rejects an access level with no non-trivial condition, so this trusted set is
   # required; refine it (and flip enforce_vpcsc=true) once the perimeter posture
   # is validated. Migrated from foundation-0's VPC-SC (2026-07-09).
-  foundation-networks:vpc_sc_members:
+  foundation-networks-development:vpc_sc_members:
     - "serviceAccount:sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com"
     - "serviceAccount:sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com"
     - "serviceAccount:sa-terraform-env@prj-b-seed-c010.iam.gserviceaccount.com"

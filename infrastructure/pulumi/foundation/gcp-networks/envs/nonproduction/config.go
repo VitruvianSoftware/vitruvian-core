@@ -34,16 +34,14 @@ type VpcFlowLogsConfig struct {
 	Metadata            string  `json:"metadata"`
 }
 
-// NetSharedConfig holds the configuration for the shared/hub root of the
-// networks stage. This mirrors the upstream Terraform foundation's
-// 3-networks-hub-and-spoke/envs/shared variables.tf: the shared/global
-// network settings (hub CIDRs, DNS hub, hierarchical firewall associations,
-// transitivity toggle) plus the common identifiers shared with the spoke
-// leaves.
-type NetSharedConfig struct {
+// NetConfig holds the per-environment (spoke) configuration for the networks
+// stage. This mirrors the upstream Terraform foundation's
+// 3-networks-hub-and-spoke/envs/<env> variables.tf. The environment identity
+// and the spoke CIDR plan are pinned as consts in this leaf's main.go; the
+// shared/hub settings live in the sibling envs/shared leaf.
+type NetConfig struct {
 	// Core identifiers
-	OrgID    string
-	ParentID string // Network folder ID (from 1-org)
+	OrgID string
 
 	// Regions
 	Region1 string // Primary region
@@ -52,29 +50,23 @@ type NetSharedConfig struct {
 	// Cross-stage references
 	OrgStackName string
 
-	// DNS (hub forwarding zone)
-	Domain            string
-	TargetNameServers []string
-	DnsEnableLogging  bool
+	// DNS (spoke peering zone to the DNS hub)
+	Domain           string
+	DnsEnableLogging bool
 
 	// Firewall
 	FirewallPoliciesEnableLogging bool
 
-	// Hierarchical Firewall folder associations (matching upstream 6-folder pattern)
-	HierarchicalFwAssociations []string
-
 	// PSC
 	PscIP string
 
-	// BGP / NAT
-	BgpAsn          int
+	// NAT
 	NatBgpAsn       int
 	NatNumAddresses int
 
 	// Feature toggles (matching upstream defaults)
-	EnableHubAndSpokeTransitivity bool // default false, matching upstream
-	HubNatEnabled                 bool // default false, matching upstream
-	WindowsActivationEnabled      bool // default false, matching upstream
+	NatEnabled               bool // default false, matching upstream (spoke NAT)
+	WindowsActivationEnabled bool // default false, matching upstream
 
 	// VPC Flow Logs
 	VpcFlowLogs *VpcFlowLogsConfig
@@ -84,20 +76,13 @@ type NetSharedConfig struct {
 	EnforceVpcSc            bool
 	PolicyID                string   // Override ACM policy ID (if not using StackReference)
 	VpcScMembers            []string // Members to add to access levels
-
-	// Hub CIDRs — matching upstream: 10.8.0.0/18 (R1), 10.9.0.0/18 (R2)
-	HubSubnet1Cidr string
-	HubSubnet2Cidr string
-	HubProxy1Cidr  string // Hub proxy-only subnet R1
-	HubProxy2Cidr  string // Hub proxy-only subnet R2
 }
 
-func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
+func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	conf := config.New(ctx, "")
 
-	c := &NetSharedConfig{
+	c := &NetConfig{
 		OrgID:        conf.Require("org_id"),
-		ParentID:     conf.Get("parent_id"),
 		Region1:      conf.Get("default_region"),
 		Region2:      conf.Get("secondary_region"),
 		OrgStackName: conf.Get("org_stack_name"),
@@ -107,11 +92,8 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	}
 
 	// Structured config
-	conf.GetObject("target_name_servers", &c.TargetNameServers)
 	conf.GetObject("vpc_sc_restricted_services", &c.VpcScRestrictedServices)
 	conf.GetObject("vpc_sc_members", &c.VpcScMembers)
-
-	conf.GetObject("hierarchical_fw_associations", &c.HierarchicalFwAssociations)
 
 	var flowLogs VpcFlowLogsConfig
 	if err := conf.GetObject("vpc_flow_logs", &flowLogs); err == nil {
@@ -145,11 +127,8 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	}
 
 	// Feature toggles — all default false to match upstream TF defaults
-	if val, err := conf.TryBool("enable_hub_and_spoke_transitivity"); err == nil {
-		c.EnableHubAndSpokeTransitivity = val
-	}
-	if val, err := conf.TryBool("hub_nat_enabled"); err == nil {
-		c.HubNatEnabled = val
+	if val, err := conf.TryBool("nat_enabled"); err == nil {
+		c.NatEnabled = val
 	}
 	if val, err := conf.TryBool("windows_activation_enabled"); err == nil {
 		c.WindowsActivationEnabled = val
@@ -174,26 +153,7 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	if len(c.VpcScRestrictedServices) == 0 {
 		c.VpcScRestrictedServices = vpc_sc.GetDefaultRestrictedServices()
 	}
-	if len(c.TargetNameServers) == 0 {
-		c.TargetNameServers = []string{"10.0.0.1"}
-	}
 
-	// Hub CIDRs — matching upstream TF hub-and-spoke 10.8.0.0/18 + 10.9.0.0/18
-	if c.HubSubnet1Cidr == "" {
-		c.HubSubnet1Cidr = "10.8.0.0/18"
-	}
-	if c.HubSubnet2Cidr == "" {
-		c.HubSubnet2Cidr = "10.9.0.0/18"
-	}
-	// Hub proxy-only subnets — matching upstream 10.26.0.0/23 + 10.27.0.0/23
-	if c.HubProxy1Cidr == "" {
-		c.HubProxy1Cidr = "10.26.0.0/23"
-	}
-	if c.HubProxy2Cidr == "" {
-		c.HubProxy2Cidr = "10.27.0.0/23"
-	}
-
-	c.BgpAsn = 64514
 	c.NatBgpAsn = 64514
 	c.NatNumAddresses = 2
 

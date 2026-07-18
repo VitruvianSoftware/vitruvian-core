@@ -39,41 +39,42 @@ func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	return args.Args, nil
 }
 
-func TestPinnedSharedIdentity(t *testing.T) {
-	// The shared/hub identity is pinned by this leaf project, mirroring
-	// upstream 3-networks-hub-and-spoke/envs/shared.
-	assert.Equal(t, "shared", pinnedEnv)
-	assert.Equal(t, "c", pinnedEnvCode)
+func TestPinnedEnvIdentity(t *testing.T) {
+	// The environment identity and spoke CIDR plan are pinned by this leaf
+	// project, mirroring upstream 3-networks-hub-and-spoke/envs/nonproduction.
+	assert.Equal(t, "nonproduction", pinnedEnv)
+	assert.Equal(t, "n", pinnedEnvCode)
+
+	// Spoke CIDRs must not overlap the hub (10.8.0.0/18, 10.9.0.0/18) or the
+	// other environments (see the sibling leaves).
+	assert.Equal(t, "10.8.128.0/18", spokeSubnet1Cidr)
+	assert.Equal(t, "10.9.128.0/18", spokeSubnet2Cidr)
+	assert.Equal(t, "10.26.4.0/23", spokeProxy1Cidr)
+	assert.Equal(t, "10.27.4.0/23", spokeProxy2Cidr)
+
+	// Secondary ranges only on R1 (matching upstream)
+	assert.Equal(t, "100.72.128.0/18", spokeGkePod1Cidr)
+	assert.Equal(t, "100.73.128.0/18", spokeGkeSvc1Cidr)
 }
 
-func TestLoadNetSharedConfig(t *testing.T) {
+func TestLoadNetConfig(t *testing.T) {
 	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		cfg := loadNetSharedConfig(ctx)
-
-		// Verify hub CIDRs (matching upstream)
-		assert.Equal(t, "10.8.0.0/18", cfg.HubSubnet1Cidr)
-		assert.Equal(t, "10.9.0.0/18", cfg.HubSubnet2Cidr)
-
-		// Verify hub proxy CIDRs
-		assert.Equal(t, "10.26.0.0/23", cfg.HubProxy1Cidr)
-		assert.Equal(t, "10.27.0.0/23", cfg.HubProxy2Cidr)
+		cfg := loadNetConfig(ctx)
 
 		// Verify defaults
 		assert.Equal(t, "us-central1", cfg.Region1)
 		assert.Equal(t, "us-south1", cfg.Region2)
 		assert.Equal(t, "ipv1337/foundation-org-shared/production", cfg.OrgStackName)
-		assert.Equal(t, 64514, cfg.BgpAsn)
 		assert.Equal(t, 2, cfg.NatNumAddresses)
 		assert.True(t, cfg.FirewallPoliciesEnableLogging)
 		assert.True(t, cfg.DnsEnableLogging)
 		assert.False(t, cfg.EnforceVpcSc) // Dry-run first
 
 		// Verify feature toggle defaults (all false matching upstream)
-		assert.False(t, cfg.EnableHubAndSpokeTransitivity)
-		assert.False(t, cfg.HubNatEnabled)
+		assert.False(t, cfg.NatEnabled)
 		assert.False(t, cfg.WindowsActivationEnabled)
 		return nil
 	}, pulumi.WithMocks("project", "stack", mocks(0)))

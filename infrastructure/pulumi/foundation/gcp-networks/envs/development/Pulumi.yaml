@@ -18,8 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: foundation-networks-shared
-description: Foundation Phase 3 - Shared hub network (hub VPC, DNS hub, hierarchical firewall, transitivity)
+name: foundation-networks-development
+description: Foundation Phase 3 - Development spoke VPC (subnets, NAT, DNS, firewall, hub peering)
 runtime: go
 config:
   pulumi:tags:
