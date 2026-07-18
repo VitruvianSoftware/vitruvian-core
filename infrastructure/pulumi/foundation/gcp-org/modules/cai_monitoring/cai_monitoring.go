@@ -30,6 +30,7 @@ import (
 	"fmt"
 
 	libsecurity "github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -50,6 +51,17 @@ type Args struct {
 	OrgID         string
 	DefaultRegion string // upstream location
 	SCCProjectID  pulumi.StringOutput
+
+	// BuilderSA is the pre-created cai-monitoring-builder service account used
+	// as the Cloud Build service account. Passing the resource (not a
+	// string-built email) makes the SA a data-driven dependency edge, so a
+	// cold deploy cannot reference the SA before it exists.
+	BuilderSA *serviceaccount.Account
+
+	// Dependencies gate every child of the library component on external
+	// resources (e.g. the SCC project's ApisReady) — required on a cold deploy
+	// because freshly-enabled APIs are not immediately usable.
+	Dependencies []pulumi.Resource
 }
 
 // Result holds resource names for downstream exports.
@@ -76,19 +88,28 @@ type Result struct {
 //  4. The function checks for IAM bindings with monitored roles
 //  5. Violations are reported as SCC findings via the SCC Source
 func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
-	// The builder SA (cai-monitoring-builder) was created in iam.go section 11.
-	// It's used as the build_service_account for Cloud Build.
-	builderSAEmail := args.SCCProjectID.ApplyT(func(id string) string {
-		return fmt.Sprintf("projects/%s/serviceAccounts/cai-monitoring-builder@%s.iam.gserviceaccount.com", id, id)
+	// The builder SA (cai-monitoring-builder) is created in main.go BEFORE this
+	// module runs and passed in as a resource. Deriving the fully-qualified
+	// name from sa.Email (instead of string-building it) gives Pulumi a real
+	// dependency edge — the Cloud Function build cannot start before the SA
+	// exists (cold-deploy "service account does not exist" fix).
+	builderSAEmail := pulumi.All(args.SCCProjectID, args.BuilderSA.Email).ApplyT(func(vs []interface{}) string {
+		return fmt.Sprintf("projects/%s/serviceAccounts/%s", vs[0].(string), vs[1].(string))
 	}).(pulumi.StringOutput)
+
+	// Include the SA itself in the dependency gate applied to every child.
+	deps := append([]pulumi.Resource{args.BuilderSA}, args.Dependencies...)
 
 	cai, err := libsecurity.NewCAIMonitoring(ctx, name, &libsecurity.CAIMonitoringArgs{
 		OrgID:               pulumi.String(args.OrgID),
 		ProjectID:           args.SCCProjectID,
 		Location:            args.DefaultRegion,
 		BuildServiceAccount: builderSAEmail,
-		FunctionSourcePath:  "./cai-monitoring-function",
-		RolesToMonitor:      caiRolesToMonitor,
+		// Relative to the Pulumi project dir (envs/shared) — upstream keeps the
+		// function source inside the module at modules/cai-monitoring/function-source.
+		FunctionSourcePath: "../../modules/cai_monitoring/function-source",
+		RolesToMonitor:     caiRolesToMonitor,
+		Dependencies:       deps,
 	})
 	if err != nil {
 		return nil, err

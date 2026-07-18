@@ -76,6 +76,10 @@ type Networking struct {
 	pulumi.ResourceState
 	VPC     *compute.Network
 	Subnets map[string]*compute.Subnetwork
+	// PSAConnection is the Private Service Access servicenetworking peering.
+	// Exposed so callers can serialize other peering-mutating operations behind
+	// it (GCP allows only one peering-mutating op at a time per VPC).
+	PSAConnection *servicenetworking.Connection // nil unless EnablePSA
 }
 
 func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts ...pulumi.ResourceOption) (*Networking, error) {
@@ -199,7 +203,7 @@ func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts 
 			return nil, err
 		}
 
-		_, err = servicenetworking.NewConnection(ctx, name+"-psa-conn", &servicenetworking.ConnectionArgs{
+		psaConn, err := servicenetworking.NewConnection(ctx, name+"-psa-conn", &servicenetworking.ConnectionArgs{
 			Network:               vpc.ID(),
 			Service:               pulumi.String("servicenetworking.googleapis.com"),
 			ReservedPeeringRanges: pulumi.StringArray{reservedIP.Name},
@@ -207,6 +211,7 @@ func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts 
 		if err != nil {
 			return nil, err
 		}
+		component.PSAConnection = psaConn
 	}
 
 	ctx.RegisterResourceOutputs(component, pulumi.Map{

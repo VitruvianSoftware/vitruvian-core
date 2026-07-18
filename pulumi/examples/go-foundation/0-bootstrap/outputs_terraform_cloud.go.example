@@ -1,0 +1,57 @@
+/*
+ * Copyright 2026 Vitruvian Software
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* ----------------------------------------
+   Specific to tfc_bootstrap
+  ---------------------------------------- */
+// Mirrors: 0-bootstrap/outputs_terraform_cloud.tf.example in the TF
+// foundation. Upstream's "Terraform Cloud" builder is ADAPTED to Pulumi
+// Cloud in this port (see modules/tfc-agent-gke); the upstream output names
+// are preserved for structural parity.
+//
+// To use: rename this file outputs_terraform_cloud.go.example →
+// outputs_terraform_cloud.go alongside build_terraform_cloud.go (see
+// build_terraform_cloud.go.example) and call
+// exportTerraformCloudOutputs(ctx, tfc) from main.go.
+
+package main
+
+import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+// exportTerraformCloudOutputs exports the (adapted) Terraform-Cloud-builder
+// outputs, mirroring upstream outputs_terraform_cloud.tf.example names.
+func exportTerraformCloudOutputs(ctx *pulumi.Context, tfc *TFCBuildOutputs) {
+	// Project where the CI/CD infrastructure resides.
+	ctx.Export("cicd_project_id", tfc.CICDProjectID)
+
+	// ADAPTED: upstream exports var.tfc_org_name (the Terraform Cloud
+	// organization); here it carries the Pulumi Cloud organization name.
+	// The upstream output name is preserved for structural parity.
+	ctx.Export("tfc_org_name", pulumi.String("your-pulumi-cloud-org"))
+
+	/* ----------------------------------------
+	   Specific to tfc_bootstrap with (Pulumi) Cloud Agents
+	  ---------------------------------------- */
+	// Un-comment if you deploy the agent cluster (modules/tfc-agent-gke via
+	// build_terraform_cloud.go), mirroring upstream's commented block:
+	//
+	// ctx.Export("kubernetes_endpoint", pulumi.ToSecret(tfc.AgentGke.KubernetesEndpoint))
+	// ctx.Export("service_account", tfc.AgentGke.ServiceAccount)
+	// ctx.Export("cluster_name", tfc.AgentGke.ClusterName)
+	// ctx.Export("hub_cluster_membership_id", tfc.AgentGke.HubClusterMembershipID)
+}

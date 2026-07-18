@@ -120,14 +120,16 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
-	// The networks stage uses the same chained promotion workflow with three
-	// separate GitHub Environments (one per promotion stage):
+	// The networks stage uses the same chained promotion workflow with four
+	// separate GitHub Environments (one per promotion leg; the upstream-leaf
+	// layout added the envs/shared hub leaf, gated like production):
 	//   foundation-net-development  → auto-deploy
 	//   foundation-net-nonproduction → manual approval
+	//   foundation-net-shared        → manual approval (hub)
 	//   foundation-net-production    → manual approval
 	// Each needs its own WIF binding to the net SA.
 	if netSA, ok := sas["net"]; ok {
-		for _, envName := range []string{"development", "nonproduction", "production"} {
+		for _, envName := range []string{"shared", "development", "nonproduction", "production"} {
 			saMappings[fmt.Sprintf("net-%s", envName)] = libcicd.SAMappingEntry{
 				SAName:    netSA.Name,
 				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-net-%s", envName)),
@@ -136,15 +138,18 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 	}
 
 	// The projects stage (gcp-projects) uses the same chained promotion workflow
-	// with three separate GitHub Environments (one per promotion stage):
+	// with four separate GitHub Environments (one per promotion leg; the
+	// upstream-leaf layout added the business_unit_1/shared infra-pipeline
+	// leaf, gated like production):
 	//   foundation-proj-development  → auto-deploy
 	//   foundation-proj-nonproduction → manual approval
+	//   foundation-proj-shared        → manual approval (BU infra-pipeline)
 	//   foundation-proj-production    → manual approval
 	// Each needs its own WIF binding to the proj SA. (The generic loop above
 	// already binds the single foundation-proj / foundation-proj-preview
 	// environments; these add the per-env promotion bindings.)
 	if projSA, ok := sas["proj"]; ok {
-		for _, envName := range []string{"development", "nonproduction", "production"} {
+		for _, envName := range []string{"shared", "development", "nonproduction", "production"} {
 			saMappings[fmt.Sprintf("proj-%s", envName)] = libcicd.SAMappingEntry{
 				SAName:    projSA.Name,
 				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-proj-%s", envName)),

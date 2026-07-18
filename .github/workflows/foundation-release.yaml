@@ -54,6 +54,13 @@ jobs:
   # Independent release-please invocations, one per phase. Each uses its
   # own config + manifest file living inside the phase directory.
   #
+  # DELIBERATE: release-please tracks each STAGE ROOT (e.g. .../gcp-networks),
+  # not the per-leaf Pulumi projects under it. All stage logic lives in the
+  # shared modules/ package; a per-leaf package split would fail to attribute
+  # modules/-only commits to any package and silently stop cutting releases
+  # (and therefore deploys) for the very changes that affect every leaf. One
+  # stage release fans out to all of that stage's leaf deploys via the chains.
+  #
   # 🤖 AI AGENT WARNING: DO NOT ADD CROSS-PHASE DEPENDENCIES TO THESE JOBS!
   # All `release-*` jobs MUST run in parallel and independently. Do NOT add `needs:`
   # pointing to a previous phase's deploy job. Wiring `release-gcp-networks` to
@@ -157,11 +164,14 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
-      - name: Pulumi up (gcp-org / production)
+      - name: Pulumi up (gcp-org / envs/shared / production)
         id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/foundation/gcp-org
+        # Upstream-leaf layout: 1-org's Pulumi project root is the envs/shared
+        # leaf (stack ipv1337/foundation-org-shared/production); the stage logic
+        # lives in the sibling modules/.
+        working-directory: infrastructure/pulumi/foundation/gcp-org/envs/shared
         run: |
           # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
           # pipeline does not abort here and we capture pulumi's real exit code.
@@ -309,7 +319,9 @@ jobs:
   # ── Phase 2: Environments ────────────────────────────────────────────────
   # The environments stage uses a chained promotion workflow:
   #   development (auto) → nonproduction (manual approval) → production (manual approval)
-  # Each environment is a separate Pulumi stack with isolated state.
+  # Each environment is its own leaf Pulumi project (envs/<env>, upstream
+  # 2-environments layout) with a single `production` stack and isolated state;
+  # the reusable workflow maps the environment name onto the leaf dir.
 
   release-gcp-environments:
     runs-on: ubuntu-latest
@@ -356,8 +368,15 @@ jobs:
 
   # ── Phase 3: Networks ─────────────────────────────────────────────────────
   # The networks stage uses a chained promotion workflow:
-  #   development (auto) → nonproduction (manual approval) → production (manual approval)
-  # Each environment is a separate Pulumi stack with isolated state.
+  #   development (auto) → nonproduction (manual approval)
+  #     → shared (manual approval) → production (manual approval)
+  # Each leaf is its own leaf Pulumi project (envs/<leaf>, upstream
+  # 3-networks-hub-and-spoke layout) with a single `production` stack and
+  # isolated state; the reusable workflow maps the leaf name onto the dir.
+  # The `shared` leaf (hub VPC / DNS hub / hierarchical firewall) is
+  # production-tier — upstream applies envs/shared from the production branch —
+  # so it sits behind nonproduction's soak and its own approval gate, ahead of
+  # the production spoke (hub changes land before the prod spoke consumes them).
 
   release-gcp-networks:
     runs-on: ubuntu-latest
@@ -395,8 +414,15 @@ jobs:
       environment: nonproduction
     secrets: inherit
 
-  deploy-net-production:
+  deploy-net-shared:
     needs: deploy-net-nonproduction
+    uses: ./.github/workflows/foundation-net-deploy.yaml
+    with:
+      environment: shared
+    secrets: inherit
+
+  deploy-net-production:
+    needs: deploy-net-shared
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: production
@@ -404,8 +430,15 @@ jobs:
 
   # ── Phase 4: Projects ─────────────────────────────────────────────────────
   # The projects stage (gcp-projects, stage 4) uses a chained promotion workflow:
-  #   development (auto) → nonproduction (manual approval) → production (manual approval)
-  # Each environment is a separate Pulumi stack with isolated state.
+  #   development (auto) → nonproduction (manual approval)
+  #     → shared (manual approval) → production (manual approval)
+  # Each business-unit leaf is its own leaf Pulumi project
+  # (business_unit_1/<leaf>, upstream 4-projects layout) with a single
+  # `production` stack and isolated state; the reusable workflow maps the leaf
+  # name onto the dir. The `shared` leaf (BU infra-pipeline,
+  # modules/infra_pipelines) is production-tier — upstream applies
+  # business_unit_1/shared from the production branch — so it sits behind
+  # nonproduction's soak and its own approval gate, ahead of production.
 
   release-gcp-projects:
     runs-on: ubuntu-latest
@@ -443,8 +476,15 @@ jobs:
       environment: nonproduction
     secrets: inherit
 
-  deploy-proj-production:
+  deploy-proj-shared:
     needs: deploy-proj-nonproduction
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: shared
+    secrets: inherit
+
+  deploy-proj-production:
+    needs: deploy-proj-shared
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: production

@@ -29,6 +29,7 @@ package single_project
 
 import (
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
+	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -45,6 +46,10 @@ type Args struct {
 	Budget                *project.BudgetConfig
 	ActivateApis          []string
 	DefaultServiceAccount string
+	// ApiPropagationSeconds is forwarded to the project factory: >0 makes the
+	// factory's ApisReady handle a `sleep N` gated on all enabled Services (see
+	// project_factory.ProjectArgs), 0 leaves ApisReady = the project itself.
+	ApiPropagationSeconds int
 }
 
 // Result holds the created project. Project is the raw project-factory handle,
@@ -55,6 +60,13 @@ type Result struct {
 	Project       *project.Project
 	ProjectID     pulumi.StringOutput
 	ProjectNumber pulumi.StringOutput
+	// ApisReadyProjectID is the project id as a DATA dependency on the API
+	// propagation gate: it resolves only after the factory's ApisReady wait has
+	// run. Thread it (instead of ProjectID) into library components whose inner
+	// resources must not race freshly-enabled APIs — a component-level DependsOn
+	// does NOT propagate to a component's children in the Pulumi Go SDK, so a
+	// data dependency is the only way to gate them from outside the library.
+	ApisReadyProjectID pulumi.StringOutput
 }
 
 // New creates a single project via the project-factory library. The logical
@@ -71,14 +83,28 @@ func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		Labels:                args.Labels,
 		Budget:                args.Budget,
 		ActivateApis:          args.ActivateApis,
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Gate the project id on the API-propagation wait when one exists. The
+	// factory's ApisReady is a *local.Command only when ApiPropagationSeconds > 0;
+	// combining the id with the command's Stdout makes any resource that consumes
+	// ApisReadyProjectID wait for the sleep to complete (data dependency), even
+	// inside library components we cannot DependsOn into.
+	gatedID := proj.Project.ProjectId
+	if cmd, ok := proj.ApisReady.(*local.Command); ok {
+		gatedID = pulumi.All(proj.Project.ProjectId, cmd.Stdout).ApplyT(func(v []interface{}) string {
+			return v[0].(string)
+		}).(pulumi.StringOutput)
+	}
+
 	return &Result{
-		Project:       proj,
-		ProjectID:     proj.Project.ProjectId,
-		ProjectNumber: proj.Project.Number,
+		Project:            proj,
+		ProjectID:          proj.Project.ProjectId,
+		ProjectNumber:      proj.Project.Number,
+		ApisReadyProjectID: gatedID,
 	}, nil
 }

@@ -75,13 +75,20 @@ func deployCMEKStorage(
 		return nil, err
 	}
 
-	// 3. Grant the GCS service account permission to use the crypto key
-	// The GCS service account is service-{project_number}@gs-project-accounts.iam.gserviceaccount.com
-	gcsServiceAccount := svpcProject.Project.Number.ApplyT(func(n string) string {
-		return fmt.Sprintf("serviceAccount:service-%s@gs-project-accounts.iam.gserviceaccount.com", n)
+	// 3. Grant the GCS service account permission to use the crypto key.
+	// Look the agent up via the API (like upstream's data
+	// google_storage_project_service_account) instead of hand-assembling
+	// service-{number}@gs-project-accounts...: on a cold deploy the agent does not
+	// exist until first use, and this provisioning lookup CREATES it — a Sprintf'd
+	// email would race agent provisioning and fail the IAM grant.
+	gcsSA := storage.GetProjectServiceAccountOutput(ctx, storage.GetProjectServiceAccountOutputArgs{
+		Project: projectID,
+	})
+	gcsServiceAccount := gcsSA.EmailAddress().ApplyT(func(e string) string {
+		return "serviceAccount:" + e
 	}).(pulumi.StringOutput)
 
-	_, err = kms.NewCryptoKeyIAMMember(ctx, "cmek-gcs-encrypter", &kms.CryptoKeyIAMMemberArgs{
+	gcsEncrypter, err := kms.NewCryptoKeyIAMMember(ctx, "cmek-gcs-encrypter", &kms.CryptoKeyIAMMemberArgs{
 		CryptoKeyId: cryptoKey.ID(),
 		Role:        pulumi.String("roles/cloudkms.cryptoKeyEncrypterDecrypter"),
 		Member:      gcsServiceAccount,
@@ -123,8 +130,12 @@ func deployCMEKStorage(
 		}
 	}
 
+	// The bucket must wait for (a) the key, (b) the GCS-agent encrypter grant —
+	// creating a CMEK bucket before the agent can use the key fails — and (c) the
+	// SVPC project's API-propagation gate (storage API freshly enabled on cold
+	// deploy).
 	bucket, err := storage.NewBucket(ctx, "cmek-bucket", bucketArgs,
-		pulumi.DependsOn([]pulumi.Resource{cryptoKey}))
+		pulumi.DependsOn([]pulumi.Resource{cryptoKey, gcsEncrypter, svpcProject.ApisReady}))
 	if err != nil {
 		return nil, err
 	}

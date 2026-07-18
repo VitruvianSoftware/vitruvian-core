@@ -63,6 +63,11 @@ type Args struct {
 	CMEKEnabled    bool
 	PeeringEnabled bool
 
+	// ApiPropagationSeconds is forwarded to every single_project call so each
+	// project's ApisReady gate (and gated project id) reflects the stage-level
+	// api_propagation_seconds config. 0 disables the wait.
+	ApiPropagationSeconds int
+
 	// Peering network configuration.
 	SubnetRegion           string
 	SubnetIPRange          string
@@ -158,6 +163,10 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 			"billingbudgets.googleapis.com",
 			"logging.googleapis.com",
 			"accesscontextmanager.googleapis.com",
+			// storage: the CMEK bucket (deployCMEKStorage) lands on this project and
+			// its GCS service agent is looked up via the API — enable it explicitly
+			// so the cold-deploy path doesn't depend on implicit activation.
+			"storage.googleapis.com",
 		}
 
 		svpcProject, err := single_project.New(ctx, "bu-svpc-project", &single_project.Args{
@@ -173,6 +182,7 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 			Labels:                args.Labels("sample-application", "svpc"),
 			Budget:                args.Budget,
 			ActivateApis:          svpcApis,
+			ApiPropagationSeconds: args.ApiPropagationSeconds,
 		})
 		if err != nil {
 			return nil, err
@@ -189,11 +199,13 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 		// + a 60s propagation gate on this attach (the dependsOn+propagation-wait
 		// pattern used elsewhere in the foundation).
 
-		// Attach as a Shared VPC service project
+		// Attach as a Shared VPC service project. DependsOn(ApisReady): the attach
+		// requires compute.googleapis.com to be usable on the service project — on
+		// a cold deploy it must wait out the API propagation gate.
 		if _, err := compute.NewSharedVPCServiceProject(ctx, "svpc-attachment", &compute.SharedVPCServiceProjectArgs{
 			HostProject:    args.NetworkProjectID,
 			ServiceProject: svpcProject.Project.Project.ProjectId,
-		}); err != nil {
+		}, pulumi.DependsOn([]pulumi.Resource{svpcProject.Project.ApisReady})); err != nil {
 			return nil, err
 		}
 
@@ -259,6 +271,7 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 				"billingbudgets.googleapis.com",
 				"logging.googleapis.com",
 			},
+			ApiPropagationSeconds: args.ApiPropagationSeconds,
 		})
 		if err != nil {
 			return nil, err
@@ -284,6 +297,7 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 				"billingbudgets.googleapis.com",
 				"logging.googleapis.com",
 			},
+			ApiPropagationSeconds: args.ApiPropagationSeconds,
 		})
 		if err != nil {
 			return nil, err
@@ -292,7 +306,7 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 
 		// Deploy peering network infrastructure (VPC, subnet, DNS, peering, firewall)
 		if args.PeeringEnabled {
-			peeringResult, err := deployPeeringNetwork(ctx, args, peeringProject.Project, args.NetworkProjectID)
+			peeringResult, err := deployPeeringNetwork(ctx, args, peeringProject, args.NetworkProjectID)
 			if err != nil {
 				return nil, err
 			}
@@ -303,6 +317,7 @@ func New(ctx *pulumi.Context, args *Args) (*BUProjects, error) {
 	}
 
 	// Populate TF-parity outputs
+	//
 	// TODO(shared-VPC enablement): upstream's `subnets_self_links` output is the
 	// SHARED-VPC HOST's subnets (local.subnets_self_links, from the 3-networks
 	// remote state), consumed by 5-app-infra to place service-project resources.

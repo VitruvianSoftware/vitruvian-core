@@ -23,7 +23,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap"
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2"
 	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage"
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
@@ -36,6 +36,11 @@ type SeedProject struct {
 	StateBucketName         pulumi.StringOutput
 	ProjectsStateBucketName pulumi.StringOutput // Separate bucket for 4-projects stage
 	KMSKeyID                pulumi.StringOutput
+	// APIsReady gates on the seed project's ActivateApis being enabled AND
+	// propagated (project_factory's ApisReady). Downstream resources that call a
+	// seed-project API on a COLD deploy — the granular SAs (iam API), bucket-IAM,
+	// etc. — must DependsOn it so the first apply never races API enablement.
+	APIsReady pulumi.Resource
 }
 
 // CICDProject holds outputs from the CI/CD project deployment.
@@ -153,6 +158,7 @@ func deploySeedProject(ctx *pulumi.Context, cfg *Config, folderID pulumi.StringO
 		StateBucketName:         b.StateBucketName,
 		ProjectsStateBucketName: projectsStateBucket.Bucket.Name,
 		KMSKeyID:                b.KMSKeyID,
+		APIsReady:               b.SeedProject.ApisReady,
 	}, nil
 }
 

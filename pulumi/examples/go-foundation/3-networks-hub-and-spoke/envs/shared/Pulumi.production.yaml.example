@@ -1,0 +1,12 @@
+# Pulumi Configuration for 3-networks-hub-and-spoke/envs/shared (production stack).
+# The shared/hub identity (shared/c) is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-networks-shared:hub_project_id: "prj-c-hub-and-spoke"
+  foundation-networks-shared:parent_id: "organizations/YOUR_ORG_ID"
+
+  # Optional
+  # foundation-networks-shared:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+  # foundation-networks-shared:region1: "us-central1"
+  # foundation-networks-shared:region2: "us-west1"
+  # foundation-networks-shared:enable_hub_and_spoke_transitivity: "true"

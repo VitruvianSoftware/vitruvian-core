@@ -19,6 +19,8 @@ vendor/
 # Compiled stage binaries
 /foundation-*
 0-bootstrap/foundation-0-bootstrap
-1-org/foundation-1-org
-2-environments/foundation-2-environments
+1-org/envs/shared/foundation-1-org
+2-environments/envs/development/foundation-2-environments-development
+2-environments/envs/nonproduction/foundation-2-environments-nonproduction
+2-environments/envs/production/foundation-2-environments-production
 node_modules/

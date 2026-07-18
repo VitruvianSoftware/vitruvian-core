@@ -20,11 +20,12 @@ import (
 	"fmt"
 
 	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
-	libproject "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/tags"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"foundation-4-projects/modules/single_project"
 )
 
 // PeeringResult holds outputs from the peering network deployment.
@@ -47,10 +48,16 @@ type PeeringResult struct {
 func deployPeeringNetwork(
 	ctx *pulumi.Context,
 	args *Args,
-	peeringProject *libproject.Project,
+	peeringProject *single_project.Result,
 	networkProjectID pulumi.StringOutput,
 ) (*PeeringResult, error) {
-	projectID := peeringProject.Project.ProjectId
+	// Use the API-propagation-GATED project id: the VPC, subnets, DNS policy,
+	// peerings, and firewall policy below are created inside library components
+	// (NewNetworking / NewNetworkFirewallPolicy) whose children a component-level
+	// DependsOn would NOT reach (Pulumi Go SDK limitation) — threading the gated
+	// id as a data dependency is what makes every child wait for the compute/dns
+	// APIs to actually be usable on a cold deploy.
+	projectID := peeringProject.ApisReadyProjectID
 	vpcName := fmt.Sprintf("vpc-%s-peering-base", args.EnvCode)
 
 	// 1. VPC + Subnet

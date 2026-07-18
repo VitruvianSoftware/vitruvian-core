@@ -8,6 +8,8 @@ It is a port of Google's [terraform-example-foundation](https://github.com/terra
 
 This repo contains several distinct Pulumi projects, each within their own directory that must be applied separately, but in sequence. Stage `0-bootstrap` is manually executed, and subsequent stages are executed using the included GitHub Actions CI/CD pipeline.
 
+The directory layout mirrors the upstream Terraform foundation exactly: every multi-environment stage is a set of **thin per-leaf Pulumi projects** at the upstream env/BU leaves (`envs/{shared,development,nonproduction,production}/` for stages 1–3, `business_unit_1/{shared,development,nonproduction,production}/` for stages 4–5), each with a single `production` stack and its own committed config. All resource logic lives in the stage's shared `modules/` package, which the leaves call with their pinned environment identity — so a leaf can deliberately diverge when needed, and the one-project-multi-stack model still works for forks that prefer it (point one project at the same `modules/`). See [docs/ENVIRONMENTS.md](./docs/ENVIRONMENTS.md) for the per-leaf deployment guide.
+
 ### [0. Bootstrap](./0-bootstrap/)
 
 Bootstraps the GCP organization by creating:
@@ -117,16 +119,16 @@ example-organization
 
 ## Branching Strategy
 
-The deployment pipeline (`build/pulumi-ci.yml`) uses a trunk-based development model and is copied into the operator's repository during onboarding (see [ONBOARDING.md](./ONBOARDING.md)). The branching model varies by stage:
+The deployment pipeline (`build/pulumi-ci.yml`) uses a trunk-based development model and is copied into the operator's repository during onboarding (see [ONBOARDING.md](./ONBOARDING.md)). Each leaf directory is its own Pulumi project with a single `production` stack; the branching model selects which leaf directories a branch applies:
 
-| Stage            | Branches                                     | Rationale                                        |
-| ---------------- | -------------------------------------------- | ------------------------------------------------ |
-| `0-bootstrap`    | `production`                                 | Shared infrastructure — single environment       |
-| `1-org`          | `production`                                 | Organization-wide resources — single environment |
-| `2-environments` | `development`, `nonproduction`, `production` | Per-environment resources                        |
-| `3-networks-*`   | `development`, `nonproduction`, `production` | Per-environment networks                         |
-| `4-projects`     | `development`, `nonproduction`, `production` | Per-environment projects                         |
-| `5-app-infra`    | `development`, `nonproduction`, `production` | Per-environment app infra                        |
+| Stage            | Leaf Pulumi projects                                         | Branches                                     | Rationale                                        |
+| ---------------- | ------------------------------------------------------------ | -------------------------------------------- | ------------------------------------------------ |
+| `0-bootstrap`    | stage root                                                    | `production`                                 | Shared infrastructure — single environment       |
+| `1-org`          | `envs/shared/`                                                | `production`                                 | Organization-wide resources — single environment |
+| `2-environments` | `envs/{development,nonproduction,production}/`                | `development`, `nonproduction`, `production` | Per-environment resources                        |
+| `3-networks-*`   | `envs/{shared,development,nonproduction,production}/`         | `development`, `nonproduction`, `production` | Per-environment networks (`shared` = hub, applied with `production`) |
+| `4-projects`     | `business_unit_1/{shared,development,nonproduction,production}/` | `development`, `nonproduction`, `production` | Per-environment projects (`shared` = BU infra-pipeline, applied with `production`) |
+| `5-app-infra`    | `business_unit_1/{development,nonproduction,production}/`     | `development`, `nonproduction`, `production` | Per-environment app infra                        |
 
 | Action                         | Trigger                      |
 | ------------------------------ | ---------------------------- |

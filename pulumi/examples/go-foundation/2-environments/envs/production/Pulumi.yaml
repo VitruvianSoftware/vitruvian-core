@@ -1,0 +1,7 @@
+name: foundation-environments-production
+description: Ported 2-environments/envs/production from Terraform Foundation
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go

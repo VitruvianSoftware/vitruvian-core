@@ -79,8 +79,13 @@ type Args struct {
 	ProjectDeletionPolicy    string
 	FolderDeletionProtection bool
 	ProjectBudget            *EnvProjectBudgetConfig
-	AssuredWorkload          AssuredWorkloadConfig
-	Tags                     pulumi.Output // 1-org "tags" map (StackReference output); may be nil
+	// ApiPropagationSeconds gates project children (Budget, default-SA
+	// deprivilege) on a post-enablement wait: on a cold deploy a
+	// freshly-enabled API (billingbudgets, iam, ...) is not immediately
+	// usable, so dependents race it without this propagation delay.
+	ApiPropagationSeconds int
+	AssuredWorkload       AssuredWorkloadConfig
+	Tags                  pulumi.Output // 1-org "tags" map (StackReference output); may be nil
 }
 
 // Result holds the outputs of a single environment's baseline deployment.
@@ -163,6 +168,9 @@ func Deploy(ctx *pulumi.Context, args *Args) (*Result, error) {
 		RandomProjectID:       args.RandomSuffix,
 		DeletionPolicy:        pulumi.String(args.ProjectDeletionPolicy),
 		DefaultServiceAccount: args.DefaultServiceAccount,
+		// Cold-deploy race fix: wait for freshly-enabled APIs to propagate
+		// before dependents (Budget, default-SA deprivilege) use them.
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
 		ActivateApis: []string{
 			"logging.googleapis.com",
 			"cloudkms.googleapis.com",
@@ -197,6 +205,9 @@ func Deploy(ctx *pulumi.Context, args *Args) (*Result, error) {
 		RandomProjectID:       args.RandomSuffix,
 		DeletionPolicy:        pulumi.String(args.ProjectDeletionPolicy),
 		DefaultServiceAccount: args.DefaultServiceAccount,
+		// Cold-deploy race fix: wait for freshly-enabled APIs to propagate
+		// before dependents (Budget, default-SA deprivilege) use them.
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
 		ActivateApis: []string{
 			"logging.googleapis.com",
 			"secretmanager.googleapis.com",

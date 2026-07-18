@@ -1,0 +1,11 @@
+# Pulumi Configuration for 3-networks-hub-and-spoke/envs/development (production stack).
+# The environment identity (development/d) and the spoke CIDR plan are pinned
+# in this leaf's main.go; the hub lives in the sibling envs/shared leaf.
+config:
+  # Required
+  foundation-networks-development:spoke_project_id: "prj-d-svpc"
+  foundation-networks-development:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+
+  # Optional
+  # foundation-networks-development:region1: "us-central1"
+  # foundation-networks-development:region2: "us-west1"

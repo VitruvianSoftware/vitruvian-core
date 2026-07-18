@@ -172,6 +172,12 @@ func main() {
 			ctx.Export("wif_provider_name", buildOutputs.WIFProviderName)
 		}
 
+		// 10. Builder-specific outputs — mirrors upstream's per-builder
+		// outputs_*.tf files (outputs_github.tf.example here; swap for
+		// exportCloudBuildOutputs / exportGitLabOutputs /
+		// exportTerraformCloudOutputs when switching builders).
+		exportGitHubOutputs(ctx, cicd)
+
 		return nil
 	})
 }

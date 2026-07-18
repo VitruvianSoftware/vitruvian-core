@@ -1,0 +1,7 @@
+name: foundation-environments-nonproduction
+description: Ported 2-environments/envs/nonproduction from Terraform Foundation
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go
