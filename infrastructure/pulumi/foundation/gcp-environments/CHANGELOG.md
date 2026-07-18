@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.2.3...foundation-gcp-environments-v0.2.4) (2026-07-18)
+
+
+### Bug Fixes
+
+* **foundation:** drop temp local replaces, pin published pulumi-library versions ([#915](https://github.com/VitruvianSoftware/vitruvian-core/issues/915)) ([946c3ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/946c3ba8f0e98806dcacaaee778df6929819e5a9))
+
 ## [0.2.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-environments-v0.2.2...foundation-gcp-environments-v0.2.3) (2026-07-09)
 
 
