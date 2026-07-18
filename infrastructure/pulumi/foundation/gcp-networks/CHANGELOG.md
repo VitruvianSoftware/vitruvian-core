@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.10...foundation-gcp-networks-v0.3.11) (2026-07-18)
+
+
+### Bug Fixes
+
+* **foundation:** drop temp local replaces, pin published pulumi-library versions ([#915](https://github.com/VitruvianSoftware/vitruvian-core/issues/915)) ([946c3ba](https://github.com/VitruvianSoftware/vitruvian-core/commit/946c3ba8f0e98806dcacaaee778df6929819e5a9))
+
 ## [0.3.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.9...foundation-gcp-networks-v0.3.10) (2026-07-10)
 
 
