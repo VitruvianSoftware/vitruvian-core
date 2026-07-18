@@ -86,6 +86,13 @@ type CAIMonitoringArgs struct {
 
 	// Labels applied to supporting resources (Artifact Registry, Cloud Function).
 	Labels map[string]string
+
+	// Dependencies are external resources every child of this component
+	// depends on (e.g. the host project's ApisReady gate and the pre-created
+	// build service account). Needed because a component-level DependsOn does
+	// NOT propagate to children of in-process ComponentResources — on a cold
+	// deploy the pipeline would otherwise race freshly-enabled APIs.
+	Dependencies []pulumi.Resource
 }
 
 // CAIMonitoring is a Pulumi component that deploys the complete Cloud Asset
@@ -144,6 +151,12 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 
 	parent := pulumi.Parent(comp)
 
+	// External dependency gate (cold-deploy fix): a component-level DependsOn
+	// does not reach children of in-process components, so the caller-supplied
+	// dependencies are applied to every child explicitly. An empty slice is a
+	// no-op.
+	extDeps := pulumi.DependsOn(args.Dependencies)
+
 	// Apply defaults
 	location := args.Location
 	if location == "" {
@@ -162,7 +175,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		Project:     args.ProjectID,
 		AccountId:   pulumi.String("cai-monitoring"),
 		Description: pulumi.String("Service account for CAI monitoring Cloud Function"),
-	}, parent)
+	}, parent, extDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +190,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		OrgId:  args.OrgID,
 		Role:   pulumi.String("roles/securitycenter.findingsEditor"),
 		Member: caiSAMember,
-	}, parent)
+	}, parent, extDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +208,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 			Project: args.ProjectID,
 			Role:    pulumi.String(role),
 			Member:  caiSAMember,
-		}, parent)
+		}, parent, extDeps)
 		if err != nil {
 			return nil, err
 		}
@@ -216,7 +229,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		if _, err := projects.NewServiceIdentity(ctx, fmt.Sprintf("%s-identity-%s", name, svc), &projects.ServiceIdentityArgs{
 			Project: args.ProjectID,
 			Service: pulumi.String(svc),
-		}, parent); err != nil {
+		}, parent, extDeps); err != nil {
 			return nil, err
 		}
 	}
@@ -237,7 +250,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 	}
 
 	arRepo, err := artifactregistry.NewRepository(ctx, name+"-ar", arArgs,
-		parent, pulumi.DependsOn(iamDeps))
+		parent, extDeps, pulumi.DependsOn(iamDeps))
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +267,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		Location:                 pulumi.String(location),
 		ForceDestroy:             pulumi.Bool(true),
 		UniformBucketLevelAccess: pulumi.Bool(true),
-	}, parent, pulumi.DependsOn(iamDeps))
+	}, parent, extDeps, pulumi.DependsOn(iamDeps))
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +276,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		Bucket: sourceBucket.Name,
 		Name:   pulumi.String("cai-monitoring-function.zip"),
 		Source: pulumi.NewFileArchive(args.FunctionSourcePath),
-	}, parent)
+	}, parent, extDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +288,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 	caiTopic, err := pubsub.NewTopic(ctx, name+"-topic", &pubsub.TopicArgs{
 		Project: args.ProjectID,
 		Name:    pulumi.String("top-cai-monitoring-event"),
-	}, parent, pulumi.DependsOn(iamDeps))
+	}, parent, extDeps, pulumi.DependsOn(iamDeps))
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +304,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 				Topic: caiTopic.ID(),
 			},
 		},
-	}, parent)
+	}, parent, extDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +317,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 		Organization: args.OrgID,
 		DisplayName:  pulumi.String("CAI Monitoring"),
 		Description:  pulumi.String("SCC Finding Source for caiMonitoring Cloud Functions."),
-	}, parent)
+	}, parent, extDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +359,7 @@ func NewCAIMonitoring(ctx *pulumi.Context, name string, args *CAIMonitoringArgs,
 			RetryPolicy:         pulumi.String("RETRY_POLICY_RETRY"),
 			ServiceAccountEmail: caiSA.Email,
 		},
-	}, parent, pulumi.DependsOn(iamDeps)); err != nil {
+	}, parent, extDeps, pulumi.DependsOn(iamDeps)); err != nil {
 		return nil, err
 	}
 

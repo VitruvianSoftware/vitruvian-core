@@ -139,6 +139,13 @@ type CentralizedLoggingArgs struct {
 	// ProjectOptions configures the Logging project bucket destination.
 	// Nil means no project sink is created.
 	ProjectOptions *ProjectOptions
+
+	// Dependencies are external resources every child of this component
+	// depends on (e.g. the destination project's ApisReady gate). Needed
+	// because a component-level DependsOn does NOT propagate to children of
+	// in-process ComponentResources — on a cold deploy the sink destinations
+	// (bucket, topic, log bucket) would otherwise race freshly-enabled APIs.
+	Dependencies []pulumi.Resource
 }
 
 // CentralizedLoggingOutputs holds output references from the component.
@@ -195,6 +202,11 @@ func NewCentralizedLogging(ctx *pulumi.Context, name string, args *CentralizedLo
 	}
 
 	childOpts := []pulumi.ResourceOption{pulumi.Parent(component)}
+	if len(args.Dependencies) > 0 {
+		// Gate every child on the external dependencies (cold-deploy API
+		// propagation): component-level DependsOn does not reach children.
+		childOpts = append(childOpts, pulumi.DependsOn(args.Dependencies))
+	}
 
 	// Random suffix for globally unique names
 	suffix, err := random.NewRandomString(ctx, name+"-suffix", &random.RandomStringArgs{
