@@ -98,6 +98,11 @@ jobs:
         if: ${{ always() && inputs.issue != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          # Pass the dispatch input through the environment and reference it as
+          # "$ISSUE" below — never `${{ }}`-interpolate a workflow_dispatch input
+          # straight into the script body (script-injection shape, even though
+          # dispatch is maintainer-only). #824.
+          ISSUE: ${{ inputs.issue }}
           RESULT: ${{ steps.bisect.outputs.culprit }}
           SUBJECT: ${{ steps.bisect.outputs.culprit_subject }}
           # Route the dispatch input through env rather than `${{ }}`-interpolating
@@ -105,6 +110,13 @@ jobs:
           # the argument and inject shell (script-injection hardening, #824).
           ISSUE: ${{ inputs.issue }}
         run: |
+          # Guard: the target must be a plain issue number (gh accepts a number,
+          # URL, or branch name — pin it to digits so a malformed input can't be
+          # coerced into a different target or a flag).
+          if ! printf '%s' "$ISSUE" | grep -Eq '^[0-9]+$'; then
+            echo "::error::'issue' input must be a bare issue number, got: $ISSUE"
+            exit 1
+          fi
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ -n "$RESULT" ]; then
             body="culprit-finder: first bad commit is \`${RESULT}\` — ${SUBJECT} (bisect run: ${run_url})"
