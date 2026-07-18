@@ -14,8 +14,10 @@ Chained Deploys), which is currently implemented in
 > with a single `production` stack, all calling the stage's shared `modules/`.
 > The promotion mechanics are unchanged: the reusable deploy workflows map the
 > environment name onto the leaf directory instead of onto `pulumi stack
-> select <env>`, and the networks/projects chains gained an approval-gated
-> `shared` leg (hub / BU infra-pipeline) between nonproduction and production.
+> select <env>`, and the networks/projects chains gained a `shared` leg (hub /
+> BU infra-pipeline) that deploys **first** — `shared → development →
+> nonproduction → production` — since dev/nonprod/prod depend on shared's outputs
+> (per upstream's 3-networks README).
 > Read "stack" as "leaf project's production stack" throughout.
 
 ## Context

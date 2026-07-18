@@ -399,9 +399,19 @@ jobs:
           manifest-file: infrastructure/pulumi/foundation/gcp-networks/.release-please-manifest.json
           target-branch: main
 
-  deploy-net-development:
+  # shared holds the hub VPC the spokes peer into, so it MUST apply first —
+  # dev/nonprod/prod depend on it (upstream 3-networks README). Then the standard
+  # dev → nonprod → prod promotion (envs are independent of each other).
+  deploy-net-shared:
     needs: release-gcp-networks
     if: needs.release-gcp-networks.outputs.release_created == 'true'
+    uses: ./.github/workflows/foundation-net-deploy.yaml
+    with:
+      environment: shared
+    secrets: inherit
+
+  deploy-net-development:
+    needs: deploy-net-shared
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: development
@@ -414,15 +424,8 @@ jobs:
       environment: nonproduction
     secrets: inherit
 
-  deploy-net-shared:
-    needs: deploy-net-nonproduction
-    uses: ./.github/workflows/foundation-net-deploy.yaml
-    with:
-      environment: shared
-    secrets: inherit
-
   deploy-net-production:
-    needs: deploy-net-shared
+    needs: deploy-net-nonproduction
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: production
@@ -461,9 +464,18 @@ jobs:
           manifest-file: infrastructure/pulumi/foundation/gcp-projects/.release-please-manifest.json
           target-branch: main
 
-  deploy-proj-development:
+  # shared holds the BU infra-pipeline project; apply it first, then the standard
+  # dev → nonprod → prod promotion (mirrors the networks chain + upstream ordering).
+  deploy-proj-shared:
     needs: release-gcp-projects
     if: needs.release-gcp-projects.outputs.release_created == 'true'
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: shared
+    secrets: inherit
+
+  deploy-proj-development:
+    needs: deploy-proj-shared
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: development
@@ -476,15 +488,8 @@ jobs:
       environment: nonproduction
     secrets: inherit
 
-  deploy-proj-shared:
-    needs: deploy-proj-nonproduction
-    uses: ./.github/workflows/foundation-proj-deploy.yaml
-    with:
-      environment: shared
-    secrets: inherit
-
   deploy-proj-production:
-    needs: deploy-proj-shared
+    needs: deploy-proj-nonproduction
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: production
