@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	foundation-networks/modules v0.0.0-00010101000000-000000000000
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.3
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2
 	github.com/pulumi/pulumi/sdk/v3 v3.252.0
 	github.com/stretchr/testify v1.11.1
@@ -125,7 +125,3 @@ require (
 )
 
 replace foundation-networks/modules => ../../modules
-
-// TEMP: local replace so this stage builds against the worktree's network
-// library (PSAConnection export) until a v2.x release ships the change.
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 => ../../../../../../pulumi/library/go/pkg/network

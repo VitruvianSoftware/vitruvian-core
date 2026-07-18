@@ -3,7 +3,7 @@ module foundation-environments/modules
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi/sdk/v3 v3.252.0
 )
@@ -118,7 +118,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )
-
-// TEMP local replace for cold-deploy race fixes — build/deploy against the
-// worktree library sources until the edited packages are published.
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory => ../../../../../pulumi/library/go/pkg/project_factory

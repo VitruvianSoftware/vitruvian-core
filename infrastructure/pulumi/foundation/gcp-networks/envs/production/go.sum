@@ -8,6 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016 h1:uRa7nnmUk19hIO+ilAohj1wIV5F13JaM+bQyvTcdLVc=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016/go.mod h1:DZFnD9k8yL+CTP/0hkMJLRbVwtlgpGSvFSkG0DJy78Q=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2 h1:CnsBGk19g1OdHXu9kt7DiE2YUBciz7+HgNKV4IQNg4w=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2/go.mod h1:scWvNwl+xQ5v/2zYjFWF/k9n9jAIk0rueiIJ59xbezk=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=

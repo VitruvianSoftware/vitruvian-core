@@ -8,6 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.4-0.20260718212957-b0aa3a454016 h1:GF31JKkUI9LFrjyCqxhHBVWaOXkRtE8yKbDNFZ0UjL0=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.4-0.20260718212957-b0aa3a454016/go.mod h1:gzJx8q0jKSfaSYVdRRXE7OXMfCAo7eWAstnMyebg/T4=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.6.0 h1:MDvjTNGqiHCaxCAbM9c1RiSZLr2LaxIQdvZHwrJgaak=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.6.0/go.mod h1:D6W9M1mGCkjwHJxJlEyIt+poEWPn2MAqzCqpAUS3CCg=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage v1.0.2 h1:VY6ykuGq5J3bKw0J2qCZHbhPlk+5k7cqh3TfZWdGpMA=
@@ -16,6 +18,8 @@ github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v1.0.2 h1:nRJnM7
 github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v1.0.2/go.mod h1:gBTGV7qJeBlI15pfcackFVrGxTUwH2mxxaScwX/pxG0=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.6.0 h1:paV5N1Do9qQdOE45DR/wFLIIBGvIxM1fTb5SpgU99jk=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.6.0/go.mod h1:mp0qqCVovaiRezndOhXF1M1H9u5J0cZliAMiD62Vppg=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016 h1:plSgpSSE4zBED4KpX/sVIuO7Qsx2Z4X2ncBAHR6xxfk=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016/go.mod h1:ZaF7/BHzjDauUgK0cHcPk18tZRBceqKXAbwafIDbV3c=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
 github.com/agext/levenshtein v1.2.3/go.mod h1:JEDfjyjHDjOF/1e4FlBE/PkbqA9OfWu2ki2W0IB5558=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=

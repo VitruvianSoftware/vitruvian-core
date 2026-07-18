@@ -3,7 +3,7 @@ module foundation-networks/modules
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.3
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi/sdk/v3 v3.252.0
@@ -118,7 +118,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )
-
-// TEMP: local replace so this stage builds against the worktree's network
-// library (PSAConnection export) until a v2.x release ships the change.
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 => ../../../../../pulumi/library/go/pkg/network
