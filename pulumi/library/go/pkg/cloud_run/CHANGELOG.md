@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-run-v0.2.0...go-cloud-run-v0.3.0) (2026-07-18)
+
+
+### Features
+
+* **cloud_run:** v0.3.0 blue-green (revision naming + traffic split) + serverless_space passthrough ([#892](https://github.com/VitruvianSoftware/vitruvian-core/issues/892)) ([56268ac](https://github.com/VitruvianSoftware/vitruvian-core/commit/56268ace09d0150dc9abc2dbe4875517237acce0))
+
 ## [0.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-run-v0.1.0...go-cloud-run-v0.2.0) (2026-07-11)
 
 
