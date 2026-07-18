@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: foundation-org
+name: foundation-org-shared
 description: Organization stage of the vitruviansoftware.dev GCP foundation (monorepo-native, Phase 1 under fldr-foundation-1)
 runtime: go
 config:

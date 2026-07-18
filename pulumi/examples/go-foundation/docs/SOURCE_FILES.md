@@ -40,7 +40,7 @@ READMEs in the TypeScript foundation.
 
 | File                       | Description                                      |
 | -------------------------- | ------------------------------------------------ |
-| `cai-monitoring-function/` | Node.js Cloud Function source for CAI monitoring |
+| `modules/cai_monitoring/function-source/` | Node.js Cloud Function source for CAI monitoring |
 
 ## 2-environments (2 files, ~477 lines)
 

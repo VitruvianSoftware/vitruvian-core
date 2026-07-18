@@ -140,10 +140,10 @@ Consider the following:
 
 1. Ensure the `0-bootstrap` stage has been deployed and the CI/CD pipeline is configured.
 
-1. Navigate to the `1-org` directory and initialize the stack:
+1. Navigate to the `1-org/envs/shared` directory and initialize the stack:
 
    ```bash
-   cd 1-org
+   cd 1-org/envs/shared
    pulumi stack init production
    ```
 
@@ -205,10 +205,10 @@ Consider the following:
 
 ### Running Pulumi Locally
 
-1. Navigate to the `1-org` directory:
+1. Navigate to the `1-org/envs/shared` directory:
 
    ```bash
-   cd pulumi-example-foundation/1-org
+   cd pulumi-example-foundation/1-org/envs/shared
    ```
 
 1. Initialize the stack and set configuration as described above.

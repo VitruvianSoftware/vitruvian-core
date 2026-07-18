@@ -105,9 +105,11 @@ func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		ProjectID:           args.SCCProjectID,
 		Location:            args.DefaultRegion,
 		BuildServiceAccount: builderSAEmail,
-		FunctionSourcePath:  "./cai-monitoring-function",
-		RolesToMonitor:      caiRolesToMonitor,
-		Dependencies:        deps,
+		// Relative to the Pulumi project dir (envs/shared) — upstream keeps the
+		// function source inside the module at modules/cai-monitoring/function-source.
+		FunctionSourcePath: "../../modules/cai_monitoring/function-source",
+		RolesToMonitor:     caiRolesToMonitor,
+		Dependencies:       deps,
 	})
 	if err != nil {
 		return nil, err

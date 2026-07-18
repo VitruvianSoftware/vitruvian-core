@@ -1,4 +1,4 @@
-name: foundation-1-org
+name: foundation-org-shared
 description: Ported 1-org from Terraform Foundation
 runtime: go
 config:
