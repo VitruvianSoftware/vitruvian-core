@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap"
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2"
 	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage"
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"

@@ -7,7 +7,7 @@ go_library(
     srcs = [
         "bootstrap.go",
     ],
-    importpath = "github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap",
+    importpath = "github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2",
     visibility = ["//visibility:public"],
     deps = [
         "//pulumi/library/go/pkg/project_factory",

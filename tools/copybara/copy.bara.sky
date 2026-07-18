@@ -218,7 +218,7 @@ def _library_export_transforms():
 # `go-foundation`), so the example's own version is left to resolve. Keep in sync
 # with the mirror's published tags.
 _GO_EXAMPLE_LIB_VERSIONS = {
-    "bootstrap": "1.0.1",
+    "bootstrap/v2": "2.1.2",
     "cai_monitoring": "1.0.2",
     "centralized_logging": "1.0.2",
     "cicd": "0.4.2",
