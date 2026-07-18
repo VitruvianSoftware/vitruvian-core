@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.1...go-bootstrap-v2.1.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **bootstrap:** add /v2 suffix to module path to match its major version ([#905](https://github.com/VitruvianSoftware/vitruvian-core/issues/905)) ([b87a229](https://github.com/VitruvianSoftware/vitruvian-core/commit/b87a2297fdf3827e33425711b7810d904ee3afec))
+
 ## [2.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.0...go-bootstrap-v2.1.1) (2026-07-18)
 
 
