@@ -33,10 +33,12 @@ Pulumi.*.yaml
 # account, bootstrap stack ref, governance groups, domains — all non-secret.
 # The Pulumi project root lives at envs/shared (upstream 1-org/envs/shared layout).
 !foundation/gcp-org/envs/shared/Pulumi.*.yaml
-# foundation/gcp-environments commits per-environment stack configs: env name,
-# org id, billing account, org stack ref, parent folder — all non-secret.
-# Each environment (development, nonproduction, production) is a separate stack.
-!foundation/gcp-environments/Pulumi.*.yaml
+# foundation/gcp-environments commits per-environment stack configs: org id,
+# billing account, org stack ref, parent folder — all non-secret. Each
+# environment is its own leaf Pulumi project under envs/ (upstream
+# 2-environments/envs/<env> layout) with a single `production` stack; the env
+# identity is pinned in each leaf's main.go.
+!foundation/gcp-environments/envs/*/Pulumi.*.yaml
 # foundation/gcp-networks commits per-environment stack configs: env name,
 # org id, billing account, network config, firewall rules — all non-secret.
 # Each environment (development, nonproduction, production) is a separate stack.
@@ -58,7 +60,9 @@ Pulumi.*.yaml
 /foundation/org-folders/foundation-org-folders
 /foundation/gcp-org/envs/shared/foundation-org-shared
 /foundation/gcp-org/envs/shared/foundation-org
-/foundation/gcp-environments/foundation-environments
+/foundation/gcp-environments/envs/development/foundation-environments-development
+/foundation/gcp-environments/envs/nonproduction/foundation-environments-nonproduction
+/foundation/gcp-environments/envs/production/foundation-environments-production
 /foundation/gcp-networks/foundation-networks
 /foundation/gcp-projects/foundation-projects
 

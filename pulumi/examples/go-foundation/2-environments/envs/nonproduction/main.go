@@ -18,21 +18,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Foundation stage 2 (environments) — thin stage root.
+// Foundation stage 2 (environments) — thin env root for the nonproduction environment.
 //
-// Faithful to upstream terraform-example-foundation 2-environments/envs/<env>:
-// the root reads the environment identity + core identifiers from stack config
-// and a StackReference to 1-org (for tag values), then calls the reusable
-// env_baseline module. All resource creation lives in modules/env_baseline.
-// Each Pulumi stack (development, nonproduction, production) deploys one
-// environment (the Pulumi-idiomatic form of upstream's per-env root dirs).
+// Faithful to upstream terraform-example-foundation 2-environments/envs/nonproduction:
+// this leaf pins the environment identity (nonproduction/n), reads the core
+// identifiers from stack config and a StackReference to 1-org (for tag values),
+// then calls the shared env_baseline module. All resource creation lives in
+// ../../modules/env_baseline; the sibling envs/ leaves deploy the other
+// environments.
 package main
 
 import (
-	"foundation-environments/modules/env_baseline"
+	"foundation-2-environments/modules/env_baseline"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+)
+
+// Environment pinned by this leaf project — upstream 2-environments/envs/nonproduction
+// hardcodes env = "nonproduction" in its main.tf; the leaf dir is the pin, not
+// per-stack config.
+const (
+	pinnedEnv     = "nonproduction"
+	pinnedEnvCode = "n"
 )
 
 func main() {
@@ -63,8 +71,8 @@ func main() {
 			DefaultServiceAccount:    cfg.DefaultServiceAccount,
 			ProjectDeletionPolicy:    cfg.ProjectDeletionPolicy,
 			FolderDeletionProtection: cfg.FolderDeletionProtection,
-			ProjectBudget:            cfg.ProjectBudget,
 			ApiPropagationSeconds:    cfg.ApiPropagationSeconds,
+			ProjectBudget:            cfg.ProjectBudget,
 			AssuredWorkload:          cfg.AssuredWorkload,
 			Tags:                     tagsOutput,
 		})
@@ -91,7 +99,7 @@ func main() {
 // per-env root variables.tf + the remote.tf locals). The structured budget /
 // assured-workload types live in the env_baseline module (its inputs).
 type EnvConfig struct {
-	// Environment identity (from per-stack config)
+	// Environment identity (pinned by this leaf project)
 	Env     string // "development" | "nonproduction" | "production"
 	EnvCode string // "d" | "n" | "p"
 
@@ -122,8 +130,8 @@ type EnvConfig struct {
 func loadEnvConfig(ctx *pulumi.Context) *EnvConfig {
 	conf := config.New(ctx, "")
 	c := &EnvConfig{
-		Env:            conf.Require("env"),
-		EnvCode:        conf.Require("env_code"),
+		Env:            pinnedEnv,
+		EnvCode:        pinnedEnvCode,
 		OrgID:          conf.Require("org_id"),
 		BillingAccount: conf.Require("billing_account"),
 		ProjectPrefix:  conf.Get("project_prefix"),

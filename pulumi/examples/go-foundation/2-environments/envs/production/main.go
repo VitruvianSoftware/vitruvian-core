@@ -18,14 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Foundation stage 2 (environments) — thin stage root.
+// Foundation stage 2 (environments) — thin env root for the production environment.
 //
-// Faithful to upstream terraform-example-foundation 2-environments/envs/<env>:
-// the root reads the environment identity + core identifiers from stack config
-// and a StackReference to 1-org (for tag values), then calls the reusable
-// env_baseline module. All resource creation lives in modules/env_baseline.
-// Each Pulumi stack (development, nonproduction, production) deploys one
-// environment (the Pulumi-idiomatic form of upstream's per-env root dirs).
+// Faithful to upstream terraform-example-foundation 2-environments/envs/production:
+// this leaf pins the environment identity (production/p), reads the core
+// identifiers from stack config and a StackReference to 1-org (for tag values),
+// then calls the shared env_baseline module. All resource creation lives in
+// ../../modules/env_baseline; the sibling envs/ leaves deploy the other
+// environments.
 package main
 
 import (
@@ -33,6 +33,14 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+)
+
+// Environment pinned by this leaf project — upstream 2-environments/envs/production
+// hardcodes env = "production" in its main.tf; the leaf dir is the pin, not
+// per-stack config.
+const (
+	pinnedEnv     = "production"
+	pinnedEnvCode = "p"
 )
 
 func main() {
@@ -63,6 +71,7 @@ func main() {
 			DefaultServiceAccount:    cfg.DefaultServiceAccount,
 			ProjectDeletionPolicy:    cfg.ProjectDeletionPolicy,
 			FolderDeletionProtection: cfg.FolderDeletionProtection,
+			ApiPropagationSeconds:    cfg.ApiPropagationSeconds,
 			ProjectBudget:            cfg.ProjectBudget,
 			AssuredWorkload:          cfg.AssuredWorkload,
 			Tags:                     tagsOutput,
@@ -90,7 +99,7 @@ func main() {
 // per-env root variables.tf + the remote.tf locals). The structured budget /
 // assured-workload types live in the env_baseline module (its inputs).
 type EnvConfig struct {
-	// Environment identity (from per-stack config)
+	// Environment identity (pinned by this leaf project)
 	Env     string // "development" | "nonproduction" | "production"
 	EnvCode string // "d" | "n" | "p"
 
@@ -109,6 +118,9 @@ type EnvConfig struct {
 	ProjectDeletionPolicy    string
 	FolderDeletionProtection bool
 	DefaultServiceAccount    string
+	// ApiPropagationSeconds: cold-deploy propagation wait for freshly-enabled
+	// project APIs (see env_baseline.Args.ApiPropagationSeconds). Default 120.
+	ApiPropagationSeconds int
 
 	// Module inputs
 	ProjectBudget   *env_baseline.EnvProjectBudgetConfig
@@ -118,8 +130,8 @@ type EnvConfig struct {
 func loadEnvConfig(ctx *pulumi.Context) *EnvConfig {
 	conf := config.New(ctx, "")
 	c := &EnvConfig{
-		Env:            conf.Require("env"),
-		EnvCode:        conf.Require("env_code"),
+		Env:            pinnedEnv,
+		EnvCode:        pinnedEnvCode,
 		OrgID:          conf.Require("org_id"),
 		BillingAccount: conf.Require("billing_account"),
 		ProjectPrefix:  conf.Get("project_prefix"),
@@ -170,6 +182,12 @@ func loadEnvConfig(ctx *pulumi.Context) *EnvConfig {
 	}
 	if c.DefaultServiceAccount == "" {
 		c.DefaultServiceAccount = "deprivilege"
+	}
+	// Cold-deploy race fix: freshly-enabled APIs (billingbudgets, iam) are not
+	// immediately usable; default a 120s propagation wait, overridable per-stack.
+	c.ApiPropagationSeconds = 120
+	if v, err := conf.TryInt("api_propagation_seconds"); err == nil {
+		c.ApiPropagationSeconds = v
 	}
 	if c.AssuredWorkload.Location == "" {
 		c.AssuredWorkload.Location = "us-central1"

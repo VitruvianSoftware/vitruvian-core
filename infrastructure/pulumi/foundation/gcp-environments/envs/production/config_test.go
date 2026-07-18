@@ -40,13 +40,13 @@ func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 }
 
 func TestDeployEnvBaseline(t *testing.T) {
-	os.Setenv("PULUMI_CONFIG", `{"project:env":"development", "project:env_code":"d", "project:org_id":"123", "project:billing_account":"123", "project:org_stack_name":"org-stack"}`)
+	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123", "project:billing_account":"123", "project:org_stack_name":"org-stack"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := loadEnvConfig(ctx)
-		assert.Equal(t, "development", cfg.Env)
-		assert.Equal(t, "d", cfg.EnvCode)
+		assert.Equal(t, "production", cfg.Env)
+		assert.Equal(t, "p", cfg.EnvCode)
 		assert.Equal(t, "org-stack", cfg.OrgStackName)
 		return nil
 	}, pulumi.WithMocks("project", "stack", mocks(0)))

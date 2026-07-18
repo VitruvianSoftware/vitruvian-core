@@ -39,10 +39,14 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ### Deploying with GitHub Actions
 
-1. Navigate to the `2-environments` directory and initialize the stack:
+1. Each environment is its own thin leaf Pulumi project under `envs/`
+   (mirroring upstream `2-environments/envs/<env>`); the environment identity
+   is pinned in each leaf's `main.go`. Navigate to the environment's directory
+   and initialize its stack — repeat these steps for `envs/development`,
+   `envs/nonproduction`, and `envs/production` in promotion order:
 
    ```bash
-   cd 2-environments
+   cd 2-environments/envs/development
    pulumi stack init production
    ```
 
@@ -51,7 +55,7 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
    ```bash
    pulumi config set org_id "YOUR_ORG_ID"
    pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
-   pulumi config set org_stack_name "organization/vitruvian/1-org/production"
+   pulumi config set org_stack_name "organization/vitruvian/foundation-org-shared/production"
    ```
 
 1. (Optional) Override the project prefix:
@@ -79,7 +83,7 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ### Running Pulumi Locally
 
-1. Navigate to `2-environments`, initialize, and set configuration as described above.
+1. Navigate to the environment leaf (e.g. `2-environments/envs/development`), initialize, and set configuration as described above.
 
 1. Preview and deploy:
 
@@ -98,9 +102,10 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `project_prefix`                     | Project name prefix                                  |          | `"prj"`              |
 | `folder_prefix`                      | Name prefix for folders                              |          | `"fldr"`             |
 | `project_deletion_policy`            | Deletion policy for created projects                 |          | `"PREVENT"`          |
-| `default_service_account`            | Default service account setting                      |          | `"delete"`           |
+| `default_service_account`            | Default service account setting                      |          | `"deprivilege"`      |
 | `folder_deletion_protection`         | Prevent Terraform from destroying folders            |          | `true`               |
 | `random_suffix`                      | Append random suffix to project IDs                  |          | `true`               |
+| `api_propagation_seconds`            | Cold-deploy wait for freshly-enabled project APIs    |          | `120`                |
 | `project_budget`                     | Budget configuration for projects                    |          | `{}`                 |
 | `assured_workload_enabled`           | Enable Assured Workload                              |          | `false`              |
 | `assured_workload_location`          | Assured Workload location                            |          | `"us-central1"`      |
@@ -110,20 +115,26 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ## Outputs
 
-| Name                               | Description                                                     |
-| ---------------------------------- | --------------------------------------------------------------- |
-| `development_kms_project_id`       | KMS project ID for development                                  |
-| `development_secrets_project_id`   | Secrets project ID for development                              |
-| `nonproduction_kms_project_id`     | KMS project ID for nonproduction                                |
-| `nonproduction_secrets_project_id` | Secrets project ID for nonproduction                            |
-| `production_kms_project_id`        | KMS project ID for production                                   |
-| `production_secrets_project_id`    | Secrets project ID for production                               |
-| `{env}_folder_id`                  | Folder ID for each environment (passed through from Stage 1)    |
-| `{env}_assured_workload_id`        | Assured Workload ID for each environment (if configured)        |
-| `{env}_assured_workload_resources` | Assured Workload resources for each environment (if configured) |
+Each environment leaf exports its own (un-prefixed) outputs, mirroring
+upstream `2-environments/envs/<env>/outputs.tf`:
+
+| Name                         | Description                                            |
+| ---------------------------- | ------------------------------------------------------ |
+| `env_folder`                 | Environment folder name                                |
+| `env_kms_project_id`         | KMS project ID for the environment                     |
+| `env_kms_project_number`     | KMS project number for the environment                 |
+| `env_secrets_project_id`     | Secrets project ID for the environment                 |
+| `assured_workload_id`        | Assured Workload ID (if configured)                    |
+| `assured_workload_resources` | Assured Workload resources (if configured)             |
 
 ## File Structure
 
-| File      | Description                                                                                                    |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| `main.go` | Creates per-environment KMS and Secrets projects under each environment folder via Stack References to Stage 1 |
+Mirrors upstream `terraform-example-foundation/2-environments`: three thin env
+roots that pin their environment and call the shared `env_baseline` module.
+
+| File                                    | Description                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `envs/development/main.go`              | Thin root pinning `development`/`d`; loads config and calls `modules/env_baseline`      |
+| `envs/nonproduction/main.go`            | Thin root pinning `nonproduction`/`n`; loads config and calls `modules/env_baseline`    |
+| `envs/production/main.go`               | Thin root pinning `production`/`p`; loads config and calls `modules/env_baseline`       |
+| `modules/env_baseline/env_baseline.go`  | Shared logic: env folder, KMS + Secrets projects, budgets, optional Assured Workload    |

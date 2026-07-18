@@ -42,12 +42,14 @@ READMEs in the TypeScript foundation.
 | -------------------------- | ------------------------------------------------ |
 | `modules/cai_monitoring/function-source/` | Node.js Cloud Function source for CAI monitoring |
 
-## 2-environments (2 files, ~477 lines)
+## 2-environments (4 files, ~950 lines)
 
-| File              | Lines | Description                                                 |
-| ----------------- | ----: | ----------------------------------------------------------- |
-| `main.go`         |  ~180 | Config, Stack Reference to Stage 1, iterates 3 environments |
-| `env_baseline.go` |  ~297 | Per-environment KMS + Secrets project creation with labels  |
+| File                                   | Lines | Description                                                            |
+| -------------------------------------- | ----: | ---------------------------------------------------------------------- |
+| `envs/development/main.go`             |  ~210 | Thin env root pinning development/d; config + Stack Reference to Stage 1 |
+| `envs/nonproduction/main.go`           |  ~210 | Thin env root pinning nonproduction/n; config + Stack Reference to Stage 1 |
+| `envs/production/main.go`              |  ~210 | Thin env root pinning production/p; config + Stack Reference to Stage 1 |
+| `modules/env_baseline/env_baseline.go` |  ~320 | Per-environment KMS + Secrets project creation with labels             |
 
 ## 3-networks-svpc (1 file, ~364 lines)
 
