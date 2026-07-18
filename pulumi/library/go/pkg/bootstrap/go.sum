@@ -8,8 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.2 h1:SDqkkSArop8MK9wzESw+1JqOE282cB8ku9SowwUYWkQ=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.2/go.mod h1:iomobDL3f/YLmhazoesfr+zA2iSPAVEp3+eNItzsixE=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936 h1:nVHzRmt1RoUmGkbm2ZPn3OKpJS4cKnMe6VfRdNTo+qk=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936/go.mod h1:eYsLH86xUhkqPPUGjk5dObUPFHwKkbRqVnx09fLwMlc=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
@@ -178,6 +178,8 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 h1:vkHw5I/plNdTr435cARxCW6q9gc0S/Yxz7Mkd38pOb0=
 github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231/go.mod h1:murToZ2N9hNJzewjHBgfFdXhZKjY3z5cYC1VXk+lbFE=
+github.com/pulumi/pulumi-command/sdk v1.2.1 h1:mAziZ91a/9U+5IjZH5Skcar80OSmpBSYljeQNRblTWQ=
+github.com/pulumi/pulumi-command/sdk v1.2.1/go.mod h1:hQxv9DXg6bFjcd9BEiNdMImQ/V1rnC9D115q5VXYNps=
 github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0 h1:IqV/xBowPn4y7xaOB77plp7n6Vftr/aNoA2UF0YTw+s=
 github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0/go.mod h1:d60JuN+7L+PscwZK++AlFyrfia1s1fWsO1EiSzbrelw=
 github.com/pulumi/pulumi-random/sdk/v4 v4.21.0 h1:j6LtoXue77y16trYOR40iqCUxXxv8TnxvOCOP/a0zVI=

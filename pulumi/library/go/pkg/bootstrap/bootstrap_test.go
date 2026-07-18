@@ -222,8 +222,9 @@ func TestNewBootstrap_CloudKMSAPIAutoAdded(t *testing.T) {
 	require.NoError(t, err)
 
 	// compute (input) + cloudkms (encryption) + serviceusage + iamcredentials
-	// (impersonation APIs always added, matching terraform-google-bootstrap).
-	services := tracker.RequireType(t, gcpService, 4)
+	// (impersonation APIs always added, matching terraform-google-bootstrap)
+	// + storage-api (state bucket) + iam (seed hosts SAs / default-SA disable).
+	services := tracker.RequireType(t, gcpService, 6)
 	apis := map[string]bool{}
 	for _, svc := range services {
 		apis[svc.Inputs["service"].StringValue()] = true
@@ -234,6 +235,10 @@ func TestNewBootstrap_CloudKMSAPIAutoAdded(t *testing.T) {
 		"serviceusage should be auto-added for impersonation")
 	assert.True(t, apis["iamcredentials.googleapis.com"],
 		"iamcredentials should be auto-added for impersonation")
+	assert.True(t, apis["storage-api.googleapis.com"],
+		"storage-api should be auto-added for the state bucket")
+	assert.True(t, apis["iam.googleapis.com"],
+		"iam should be auto-added for seed-hosted service accounts")
 }
 
 func TestAppendIfMissing(t *testing.T) {
