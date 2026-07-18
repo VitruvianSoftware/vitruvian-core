@@ -1,0 +1,7 @@
+name: foundation-app-infra-bu1-development
+description: Ported 5-app-infra/business_unit_1/development from Terraform Foundation
+runtime: go
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-go

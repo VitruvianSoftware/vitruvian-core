@@ -1,21 +1,53 @@
+/*
+ * Copyright 2026 Vitruvian Software
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Foundation stage 5 (app-infra) — thin business-unit leaf for the production
+// environment, mirroring upstream terraform-example-foundation
+// 5-app-infra/business_unit_1/production. This leaf pins the environment
+// identity (production/p) and calls the shared modules/{env_base,
+// confidential_space,serverless_space} packages with outputs resolved from the
+// 4-projects leaves of this business unit.
 package main
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+
 	"foundation-5-app-infra/modules/confidential_space"
 	"foundation-5-app-infra/modules/env_base"
 	"foundation-5-app-infra/modules/serverless_space"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+)
+
+// Environment pinned by this leaf project — upstream
+// 5-app-infra/business_unit_1/production hardcodes environment = "production"
+// in its main.tf locals; the leaf dir is the pin, not per-stack config.
+const (
+	pinnedEnv     = "production"
+	pinnedEnvCode = "p"
 )
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadAppInfraConfig(ctx)
 
-		// 1. Stack Reference: 4-projects (per-environment)
+		// 1. Stack Reference: this environment's 4-projects leaf
+		// (business_unit_1/<env> — upstream's projects_env remote state).
 		projStack, err := pulumi.NewStackReference(ctx, "projects", &pulumi.StackReferenceArgs{
 			Name: pulumi.String(cfg.ProjectsStackName),
 		})
@@ -23,15 +55,18 @@ func main() {
 			return err
 		}
 
-		// 2. Stack Reference: 0-bootstrap (shared / common — not per-environment)
-		bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.BootstrapStackName),
+		// 2. Stack Reference: the BU's 4-projects shared leaf
+		// (business_unit_1/shared — upstream's business_unit_shared remote
+		// state, which supplies the project that hosts the Confidential Space
+		// workload image registry).
+		projSharedStack, err := pulumi.NewStackReference(ctx, "projects_shared", &pulumi.StackReferenceArgs{
+			Name: pulumi.String(cfg.ProjectsSharedStackName),
 		})
 		if err != nil {
 			return err
 		}
 
-		// --- Resolve outputs from 4-projects ---
+		// --- Resolve outputs from the 4-projects env leaf ---
 		appProjectID := projStack.GetStringOutput(pulumi.String("shared_vpc_project"))
 		appProjectNumber := projStack.GetStringOutput(pulumi.String("shared_vpc_project_number"))
 		subnetsSelfLinks := projStack.GetOutput(pulumi.String("subnets_self_links")).ApplyT(func(v interface{}) string {
@@ -42,7 +77,14 @@ func main() {
 		}).(pulumi.StringOutput)
 		workloadSAEmail := projStack.GetStringOutput(pulumi.String("confidential_space_workload_sa"))
 
-		cloudbuildProjectID := bootstrapStack.GetStringOutput(pulumi.String("cloudbuild_project_id"))
+		// Upstream's confidential_space module reads
+		// bootstrap_cloudbuild_project_id from the 4-projects shared workspace
+		// (the project whose Artifact Registry hosts the workload image). Our
+		// WIF port has no Cloud Build project chain: the BU's shared
+		// build/artifact home is the app-infra pipeline project owned by the
+		// 4-projects business_unit_1/shared leaf, exported as
+		// infra_pipeline_project_id (documented engine-difference workaround).
+		imageProjectID := projSharedStack.GetStringOutput(pulumi.String("infra_pipeline_project_id"))
 
 		appRegion := pulumi.String(cfg.Region).ToStringOutput()
 		if cfg.Region == "" {
@@ -85,7 +127,7 @@ func main() {
 			ConfidentialMachineType:  "n2d-standard-2",
 			ConfidentialInstanceType: "SEV",
 			CpuPlatform:              "AMD Milan",
-			CloudBuildProjectID:      cloudbuildProjectID,
+			CloudBuildProjectID:      imageProjectID,
 		})
 		if err != nil {
 			return err
@@ -120,13 +162,16 @@ func main() {
 	})
 }
 
+// AppInfraConfig holds configuration for this environment leaf of the
+// app-infra stage. The environment identity is pinned by the leaf (pinnedEnv /
+// pinnedEnvCode), not read from config.
 type AppInfraConfig struct {
 	Env                     string
 	EnvCode                 string
 	BusinessCode            string
 	Region                  string
 	ProjectsStackName       string
-	BootstrapStackName      string
+	ProjectsSharedStackName string
 	ConfidentialImageDigest string
 	ServerlessImageDigest   string
 }
@@ -134,11 +179,12 @@ type AppInfraConfig struct {
 func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 	conf := config.New(ctx, "")
 	c := &AppInfraConfig{
-		Env:                     conf.Require("env"),
+		Env:                     pinnedEnv,
+		EnvCode:                 pinnedEnvCode,
 		BusinessCode:            conf.Get("business_code"),
 		Region:                  conf.Get("region"),
 		ProjectsStackName:       conf.Get("projects_stack_name"),
-		BootstrapStackName:      conf.Get("bootstrap_stack_name"),
+		ProjectsSharedStackName: conf.Get("projects_shared_stack_name"),
 		ConfidentialImageDigest: conf.Get("confidential_image_digest"),
 		ServerlessImageDigest:   conf.Get("serverless_image_digest"),
 	}
@@ -146,16 +192,16 @@ func loadAppInfraConfig(ctx *pulumi.Context) *AppInfraConfig {
 	if c.BusinessCode == "" {
 		c.BusinessCode = "bu1"
 	}
+	// The projects reference targets this environment's 4-projects env leaf
+	// stack; the shared reference defaults to the sibling business_unit_1/shared
+	// leaf, derived by name substitution.
 	if c.ProjectsStackName == "" {
-		c.ProjectsStackName = fmt.Sprintf("VitruvianSoftware/foundation-4-projects/%s", c.Env)
+		c.ProjectsStackName = fmt.Sprintf("organization/vitruvian/foundation-projects-%s-%s/production", c.BusinessCode, pinnedEnv)
 	}
-	if c.BootstrapStackName == "" {
-		c.BootstrapStackName = strings.Replace(c.ProjectsStackName, "foundation-4-projects/"+c.Env, "foundation-0-bootstrap/shared", 1)
-	}
-	envCodes := map[string]string{"development": "d", "nonproduction": "n", "production": "p"}
-	c.EnvCode = envCodes[c.Env]
-	if c.EnvCode == "" {
-		c.EnvCode = c.Env[:1]
+	if c.ProjectsSharedStackName == "" {
+		c.ProjectsSharedStackName = strings.Replace(c.ProjectsStackName,
+			fmt.Sprintf("foundation-projects-%s-%s", c.BusinessCode, pinnedEnv),
+			fmt.Sprintf("foundation-projects-%s-shared", c.BusinessCode), 1)
 	}
 	return c
 }

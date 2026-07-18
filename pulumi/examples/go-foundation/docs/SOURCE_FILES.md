@@ -87,13 +87,16 @@ READMEs in the TypeScript foundation.
 | `modules/single_project/`                |  ~120 | Single-project wrapper over the project factory (gated ApisReadyProjectID)                     |
 | `modules/infra_pipelines/`               |  ~340 | App-infra pipeline project (WIF model) + Cloud Build reference behind the `example` build tag  |
 
-## 5-app-infra (3 files, ~479 lines)
+## 5-app-infra (6 files, ~1,150 lines)
 
-| File                    | Lines | Description                                                                     |
-| ----------------------- | ----: | ------------------------------------------------------------------------------- |
-| `main.go`               |  ~150 | Stack References to Stages 0 + 4, compute instance coordination, output exports |
-| `env_base.go`           |  ~200 | Standard Compute Instances with Service Accounts and IAP tag bindings           |
-| `confidential_space.go` |  ~130 | Confidential Space VMs, Workload Identity Pool/Provider, attestation config     |
+| File                                             | Lines | Description                                                                                    |
+| ------------------------------------------------ | ----: | ---------------------------------------------------------------------------------------------- |
+| `business_unit_1/development/main.go`            |  ~210 | Thin env leaf pinning development/d; 4-projects Stack References, calls shared modules         |
+| `business_unit_1/nonproduction/main.go`          |  ~210 | Thin env leaf pinning nonproduction/n; same shape                                              |
+| `business_unit_1/production/main.go`             |  ~210 | Thin env leaf pinning production/p; same shape                                                 |
+| `modules/env_base/env_base.go`                   |  ~155 | Standard Compute Instances with Service Accounts and IAP tag bindings                          |
+| `modules/confidential_space/confidential_space.go` | ~200 | Confidential Space VMs, Workload Identity Pool/Provider, attestation config                    |
+| `modules/serverless_space/serverless_space.go`   |  ~170 | Cloud Run service + SA + secret wiring (serverless addition to the upstream module set)        |
 
 ## Total: 33+ Go files, ~7,300 lines
 
