@@ -3,7 +3,7 @@ module foundation-0-bootstrap
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap v0.4.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.2
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd v0.4.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v0.0.0-00010101000000-000000000000
@@ -127,7 +127,7 @@ require (
 	lukechampine.com/frand v1.5.1 // indirect
 )
 
-replace github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap => ../../../library/go/pkg/bootstrap
+replace github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 => ../../../library/go/pkg/bootstrap
 
 replace github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd => ../../../library/go/pkg/cicd
 

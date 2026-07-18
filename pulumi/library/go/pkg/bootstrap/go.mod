@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap
+module github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2
 
 go 1.26.2
 
