@@ -23,3 +23,8 @@ vendor/bundle/
 
 # Claude Code working dir (transient worktrees from spawned tasks; pollutes bazel //... + gazelle)
 .claude/
+
+# Raw GitHub Actions log dumps accidentally saved to the repo root
+/log.txt
+/job.txt
+/bootstrap_log.txt
