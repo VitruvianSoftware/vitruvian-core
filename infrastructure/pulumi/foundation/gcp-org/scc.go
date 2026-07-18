@@ -30,12 +30,20 @@ import (
 // pipeline: a Pub/Sub topic + subscription, and an SCC notification config
 // that streams all active findings to the topic.
 // This mirrors the Terraform foundation's scc_notification.tf.
-func deploySCCNotification(ctx *pulumi.Context, cfg *OrgConfig, sccProjectID pulumi.StringOutput) error {
+// apisReady is the SCC project's API-propagation gate: on a cold deploy the
+// pubsub/securitycenter APIs are freshly enabled and not yet usable, so the
+// topic and notification config must wait for it.
+func deploySCCNotification(ctx *pulumi.Context, cfg *OrgConfig, sccProjectID pulumi.StringOutput, apisReady pulumi.Resource) error {
+	var apiGate []pulumi.ResourceOption
+	if apisReady != nil {
+		apiGate = append(apiGate, pulumi.DependsOn([]pulumi.Resource{apisReady}))
+	}
+
 	// 1. Pub/Sub Topic for SCC findings
 	sccTopic, err := pubsub.NewTopic(ctx, "scc-notification-topic", &pubsub.TopicArgs{
 		Project: sccProjectID,
 		Name:    pulumi.String("top-scc-notification"),
-	})
+	}, apiGate...)
 	if err != nil {
 		return err
 	}
@@ -58,7 +66,7 @@ func deploySCCNotification(ctx *pulumi.Context, cfg *OrgConfig, sccProjectID pul
 		StreamingConfig: &securitycenter.V2OrganizationNotificationConfigStreamingConfigArgs{
 			Filter: pulumi.String(cfg.SCCNotificationFilter),
 		},
-	}); err != nil {
+	}, apiGate...); err != nil {
 		return err
 	}
 

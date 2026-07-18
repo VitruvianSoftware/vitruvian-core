@@ -8,8 +8,6 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.3 h1:Hwy0sV8K2udgXxiHiWtzfJyiR1SUJKa2NnVxubOt0z0=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.3/go.mod h1:cYnpFcMuh7B4o/w9iJzClXQgaVEiYAwzPu6Yjyvsfno=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2 h1:CnsBGk19g1OdHXu9kt7DiE2YUBciz7+HgNKV4IQNg4w=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v1.0.2/go.mod h1:scWvNwl+xQ5v/2zYjFWF/k9n9jAIk0rueiIJ59xbezk=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
@@ -180,10 +178,10 @@ github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRI
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 h1:vkHw5I/plNdTr435cARxCW6q9gc0S/Yxz7Mkd38pOb0=
 github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231/go.mod h1:murToZ2N9hNJzewjHBgfFdXhZKjY3z5cYC1VXk+lbFE=
-github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0 h1:Iuge/kZ7CrpQ8IHGa61nelS4/kmhI/kC9Fdao7MpXJU=
-github.com/pulumi/pulumi-gcp/sdk/v9 v9.29.0/go.mod h1:d60JuN+7L+PscwZK++AlFyrfia1s1fWsO1EiSzbrelw=
-github.com/pulumi/pulumi/sdk/v3 v3.251.0 h1:H1D42Jra2jvnEij0M0dZcNGz3Q9DyANsvzQqalncsXU=
-github.com/pulumi/pulumi/sdk/v3 v3.251.0/go.mod h1:ZXd0WRd89VLX2juP+HEXMZ+J2AFPfcJTXhdmmv9cMgY=
+github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0 h1:IqV/xBowPn4y7xaOB77plp7n6Vftr/aNoA2UF0YTw+s=
+github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0/go.mod h1:d60JuN+7L+PscwZK++AlFyrfia1s1fWsO1EiSzbrelw=
+github.com/pulumi/pulumi/sdk/v3 v3.252.0 h1:tg32wCRrbyU3pEwZwCgLid82jqFkX2EXh40V+XWtXsI=
+github.com/pulumi/pulumi/sdk/v3 v3.252.0/go.mod h1:ZXd0WRd89VLX2juP+HEXMZ+J2AFPfcJTXhdmmv9cMgY=
 github.com/pulumiverse/pulumi-time/sdk v0.1.0 h1:xfi9HKDgV+GgDxQ23oSv9KxC3DQqViGTcMrJICRgJv0=
 github.com/pulumiverse/pulumi-time/sdk v0.1.0/go.mod h1:NUa1zA74DF002WrM6iF111A6UjX9knPpXufVRvBwNyg=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=

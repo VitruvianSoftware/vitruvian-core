@@ -21,7 +21,9 @@ config:
   # run.invoker. Scoped to the prj-{env}-bu1-oss-floating projects only. Applied
   # by the org SA (orgpolicy.policyAdmin). Ids sourced from foundation-projects
   # oss_floating_project outputs (dev/nonprod/prod).
-  foundation-org:oss_public_invoker_projects: "prj-d-bu1-oss-floating-2ad6,prj-n-bu1-oss-floating-cf11,prj-p-bu1-oss-floating-8e16"
+  # OSS public-invoker DRS override targets — the prj-{d,n,p}-bu1-oss-floating-* projects from
+  # foundation-projects outputs (refreshed 2026-07-18 after the teardown/redeploy assigned new random IDs).
+  foundation-org:oss_public_invoker_projects: "prj-d-bu1-oss-floating-1140,prj-n-bu1-oss-floating-5c19,prj-p-bu1-oss-floating-3ffc"
 
   # --- Cross-stage references ---
   # Fully-qualified Pulumi Cloud stack reference for the bootstrap stage.

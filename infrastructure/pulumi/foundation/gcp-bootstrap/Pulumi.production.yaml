@@ -13,7 +13,6 @@ config:
   # --- Org identifiers (discovered from gcloud) ---
   foundation-bootstrap:org_id: "90456063361"
   foundation-bootstrap:billing_account: "013EEF-107C95-8E11BD"
-
   # --- Required groups: created fresh on @vitruviansoftware.dev via Cloud Identity ---
   foundation-bootstrap:group_org_admins: "gcp-organization-admins@vitruviansoftware.dev"
   foundation-bootstrap:group_billing_admins: "gcp-billing-admins@vitruviansoftware.dev"
@@ -36,7 +35,6 @@ config:
   # created by the org-folders prereq stage (its cloud_identity_quota_project_id
   # output).
   foundation-bootstrap:groups_billing_project: "prj-b-ci-quota-4bb9"
-
   # --- Co-tenant isolation under fldr-foundation-1 (do NOT touch foundation-0) ---
   # Numeric id of the fldr-foundation-1 umbrella folder created by the org-folders
   # stack (set after `org-folders:up`). Nesting under a folder makes
@@ -45,14 +43,6 @@ config:
   # Skip the authoritative org-level billing.creator binding: foundation-0 already
   # enforces it org-wide and a second authoritative binding would clobber it.
   foundation-bootstrap:enforce_org_billing_creator: "false"
-
-  # Full email of the pre-existing bootstrap SA (the WIF identity CI runs as).
-  # Enables the DETERMINISTIC projects.update ordering in main.go (string-member
-  # grant + IAM-propagation gate → seed/cicd label updates ordered behind it, so a
-  # single apply converges with no re-run). Must EXACTLY equal the live seed SA
-  # email, or the org-role binding it's a member of would be replaced mid-apply.
-  foundation-bootstrap:bootstrap_sa_email: "sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"
-
   # --- CI/WIF: single monorepo repo, per-GitHub-Environment SA scoping ---
   # Pin the WIF provider to accept tokens ONLY from the monorepo, restoring the
   # per-repository scoping upstream terraform-example-foundation has (each stage

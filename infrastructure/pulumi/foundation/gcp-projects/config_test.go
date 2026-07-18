@@ -69,6 +69,9 @@ func TestLoadProjectsConfigDefaults(t *testing.T) {
 		// OSS floating project is a monorepo-specific opt-in; defaults false.
 		assert.False(t, cfg.OSSFloatingProjectEnabled)
 
+		// API propagation wait defaults to 120s (cold-deploy race hardening)
+		assert.Equal(t, 120, cfg.ApiPropagationSeconds)
+
 		// Feature defaults
 		assert.True(t, cfg.EnforceVpcSc)
 		assert.True(t, cfg.CMEKEnabled)

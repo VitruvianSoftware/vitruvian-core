@@ -32,9 +32,11 @@ import (
 // OrgProjects holds outputs from all org-level project deployments.
 type OrgProjects struct {
 	AuditLogsProjectID        pulumi.StringOutput
+	AuditLogsApisReady        pulumi.Resource // gates log-sink destinations that need Logging/BigQuery/Pub/Sub APIs on a cold deploy
 	BillingExportProjectID    pulumi.StringOutput
 	BillingExportApisReady    pulumi.Resource // gates resources that need BigQuery API on the billing-export project
 	SCCProjectID              pulumi.StringOutput
+	SCCApisReady              pulumi.Resource // gates SCC notification + CAI monitoring resources on freshly-enabled APIs
 	OrgKMSProjectID           pulumi.StringOutput
 	OrgSecretsProjectID       pulumi.StringOutput
 	InterconnectProjectID     pulumi.StringOutput
@@ -68,6 +70,9 @@ func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.
 		DeletionPolicy:        pulumi.String(cfg.ProjectDeletionPolicy),
 		Budget:                budget,
 		DefaultServiceAccount: cfg.DefaultServiceAccount,
+		// Cold-deploy fix: wait for freshly-enabled APIs to propagate before
+		// ApisReady resolves; consumers gate on it via DependsOn.
+		ApiPropagationSeconds: cfg.ApiPropagationSeconds,
 	})
 	if err != nil {
 		return pulumi.StringOutput{}, pulumi.StringOutput{}, nil, err
@@ -144,11 +149,13 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	// ========================================================================
 
 	// Audit Logs — centralized logging destination
-	auditLogsProjectID, _, _, err := createProject(
+	// pubsub + storage-api are required on a cold deploy: the centralized
+	// logging component creates a Pub/Sub topic and a GCS bucket here.
+	auditLogsProjectID, _, auditLogsApisReady, err := createProject(
 		ctx, "org-logging",
 		fmt.Sprintf("%s-c-logging", cfg.ProjectPrefix),
 		commonFolderID, cfg,
-		[]string{"logging.googleapis.com", "bigquery.googleapis.com", "billingbudgets.googleapis.com"},
+		[]string{"logging.googleapis.com", "bigquery.googleapis.com", "billingbudgets.googleapis.com", "pubsub.googleapis.com", "storage-api.googleapis.com"},
 		map[string]string{
 			"environment":       "common",
 			"application_name":  "org-logging",
@@ -188,11 +195,29 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 	}
 
 	// Security Command Center — SCC notifications via Pub/Sub
-	sccProjectID, _, _, err := createProject(
+	// The CAI monitoring pipeline (asset feed → Pub/Sub → Cloud Function v2)
+	// also lives here, so on a cold deploy this project additionally needs:
+	// cloudasset (org feed), cloudbuild/cloudfunctions/artifactregistry/run/
+	// eventarc (Cloud Function v2 build + trigger), and storage-api (source
+	// bucket). Without them the first apply hard-fails.
+	sccProjectID, _, sccApisReady, err := createProject(
 		ctx, "org-scc",
 		fmt.Sprintf("%s-c-scc", cfg.ProjectPrefix),
 		commonFolderID, cfg,
-		[]string{"logging.googleapis.com", "securitycenter.googleapis.com", "pubsub.googleapis.com", "billingbudgets.googleapis.com", "cloudkms.googleapis.com"},
+		[]string{
+			"logging.googleapis.com",
+			"securitycenter.googleapis.com",
+			"pubsub.googleapis.com",
+			"billingbudgets.googleapis.com",
+			"cloudkms.googleapis.com",
+			"cloudasset.googleapis.com",
+			"cloudbuild.googleapis.com",
+			"cloudfunctions.googleapis.com",
+			"artifactregistry.googleapis.com",
+			"run.googleapis.com",
+			"eventarc.googleapis.com",
+			"storage-api.googleapis.com",
+		},
 		map[string]string{
 			"environment":       "common",
 			"application_name":  "org-scc",
@@ -329,6 +354,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			ProjectDeletionPolicy: cfg.ProjectDeletionPolicy,
 			DefaultServiceAccount: cfg.DefaultServiceAccount,
 			Budget:                budgetFor(getProjectBudget(cfg, "shared_network")),
+			ApiPropagationSeconds: cfg.ApiPropagationSeconds,
 		})
 		if err != nil {
 			return nil, err
@@ -339,9 +365,11 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 
 	return &OrgProjects{
 		AuditLogsProjectID:        auditLogsProjectID,
+		AuditLogsApisReady:        auditLogsApisReady,
 		BillingExportProjectID:    billingExportProjectID,
 		BillingExportApisReady:    billingExportApisReady,
 		SCCProjectID:              sccProjectID,
+		SCCApisReady:              sccApisReady,
 		OrgKMSProjectID:           orgKMSProjectID,
 		OrgSecretsProjectID:       orgSecretsProjectID,
 		InterconnectProjectID:     interconnectProjectID,

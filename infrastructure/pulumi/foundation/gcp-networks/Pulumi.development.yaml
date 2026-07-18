@@ -35,8 +35,8 @@ config:
   # required; refine it (and flip enforce_vpcsc=true) once the perimeter posture
   # is validated. Migrated from foundation-0's VPC-SC (2026-07-09).
   foundation-networks:vpc_sc_members:
-    - "serviceAccount:sa-terraform-bootstrap@prj-b-seed-8ebb.iam.gserviceaccount.com"
-    - "serviceAccount:sa-terraform-org@prj-b-seed-8ebb.iam.gserviceaccount.com"
-    - "serviceAccount:sa-terraform-env@prj-b-seed-8ebb.iam.gserviceaccount.com"
-    - "serviceAccount:sa-terraform-net@prj-b-seed-8ebb.iam.gserviceaccount.com"
-    - "serviceAccount:sa-terraform-proj@prj-b-seed-8ebb.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-env@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-net@prj-b-seed-c010.iam.gserviceaccount.com"
+    - "serviceAccount:sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com"

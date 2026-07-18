@@ -149,6 +149,14 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		"proj":      "Foundation Projects SA. Managed by Pulumi.",
 	}
 
+	// Gate SA creation on the seed project's ActivateApis being enabled AND
+	// propagated (iam.googleapis.com). On a COLD (from-empty) apply the SA create
+	// otherwise races iam-API enablement → "Service account ... does not exist" /
+	// API-not-enabled. Consumes the seed's APIsReady gate (project_factory).
+	saOpts := []pulumi.ResourceOption{}
+	if seed.APIsReady != nil {
+		saOpts = append(saOpts, pulumi.DependsOn([]pulumi.Resource{seed.APIsReady}))
+	}
 	sas := make(map[string]*serviceaccount.Account)
 	for key, desc := range granularSAs {
 		sa, err := serviceaccount.NewAccount(ctx, fmt.Sprintf("sa-terraform-%s", key), &serviceaccount.AccountArgs{
@@ -156,7 +164,7 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			AccountId:                 pulumi.String(fmt.Sprintf("sa-terraform-%s", key)),
 			DisplayName:               pulumi.String(desc),
 			CreateIgnoreAlreadyExists: pulumi.Bool(true),
-		})
+		}, saOpts...)
 		if err != nil {
 			return nil, err
 		}

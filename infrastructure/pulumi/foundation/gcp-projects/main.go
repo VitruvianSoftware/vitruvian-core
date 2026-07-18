@@ -122,6 +122,8 @@ func main() {
 			CMEKEnabled:    cfg.CMEKEnabled,
 			PeeringEnabled: cfg.PeeringEnabled,
 
+			ApiPropagationSeconds: cfg.ApiPropagationSeconds,
+
 			SubnetRegion:           cfg.SubnetRegion,
 			SubnetIPRange:          cfg.SubnetIPRange,
 			PeeringIAPFWEnabled:    cfg.PeeringIAPFWEnabled,
@@ -247,6 +249,13 @@ type ProjectsConfig struct {
 	OSSFloatingProjectEnabled bool
 	PeeringProjectEnabled     bool
 	InfraPipelineEnabled      bool
+
+	// ApiPropagationSeconds is passed to every project_factory project. When >0
+	// the factory gates its ApisReady handle on a `sleep N` that depends on all
+	// enabled Services, so consumers that DependsOn(ApisReady) (or read a gated
+	// project id) don't race freshly-enabled APIs on a cold deploy. Mirrors
+	// upstream project-factory's time_sleep. 0 disables the wait.
+	ApiPropagationSeconds int
 
 	// VPC-SC
 	EnforceVpcSc bool
@@ -382,6 +391,14 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		c.InfraPipelineEnabled = val
 	} else {
 		c.InfraPipelineEnabled = true
+	}
+
+	// API propagation wait — default 120s (the upstream foundation waits 60–180s
+	// after enabling APIs; 120 is the middle of that band). Set to 0 to disable.
+	if v, err := conf.TryInt("api_propagation_seconds"); err == nil {
+		c.ApiPropagationSeconds = v
+	} else {
+		c.ApiPropagationSeconds = 120
 	}
 
 	// VPC-SC

@@ -65,7 +65,18 @@ func main() {
 			if err != nil {
 				return err
 			}
-			hubDependsOn = pulumi.DependsOn([]pulumi.Resource{hubRes.Networking.VPC})
+			// Gate the spoke resources behind the hub VPC AND the hub's PSA
+			// servicenetworking connection: GCP allows only one peering-mutating
+			// op at a time per VPC, and the spoke's hub-to-spoke peering mutates
+			// the hub VPC's peering set just like the hub PSA connection does.
+			// This serializes PSA-before-peering (upstream terraform runs
+			// peering-before-PSA), which is equally deadlock-free — per the
+			// replicate-upstream-behaviour-with-documented-workaround convention.
+			hubDeps := []pulumi.Resource{hubRes.Networking.VPC}
+			if hubRes.Networking.PSAConnection != nil {
+				hubDeps = append(hubDeps, hubRes.Networking.PSAConnection)
+			}
+			hubDependsOn = pulumi.DependsOn(hubDeps)
 		}
 
 		// =================================================================

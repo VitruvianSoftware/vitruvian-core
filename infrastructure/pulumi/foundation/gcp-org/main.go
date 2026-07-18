@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
@@ -84,6 +85,17 @@ func main() {
 			retentionLocked = cfg.LogExportStorageRetentionPolicy.IsLocked
 			retentionDays = cfg.LogExportStorageRetentionPolicy.RetentionPeriodDays
 		}
+		// Cold-deploy gate: every child of the logging component (bucket,
+		// topic, log bucket, sinks) must wait for the audit-logs project's
+		// freshly-enabled APIs to propagate; belt-and-braces also gate on the
+		// billing-export project's APIs (the billing dataset lives there).
+		var loggingApiDeps []pulumi.Resource
+		if projOutputs.AuditLogsApisReady != nil {
+			loggingApiDeps = append(loggingApiDeps, projOutputs.AuditLogsApisReady)
+		}
+		if projOutputs.BillingExportApisReady != nil {
+			loggingApiDeps = append(loggingApiDeps, projOutputs.BillingExportApisReady)
+		}
 		logOutputs, err := centralized_logging.New(ctx, "logs-export", &centralized_logging.Args{
 			ParentID:                     cfg.ParentID,
 			ParentType:                   cfg.ParentType,
@@ -100,6 +112,7 @@ func main() {
 			AuditProjectID:               projOutputs.AuditLogsProjectID,
 			BillingExportProjectID:       projOutputs.BillingExportProjectID,
 			BillingExportApisReady:       projOutputs.BillingExportApisReady,
+			Dependencies:                 loggingApiDeps,
 		})
 		if err != nil {
 			return err
@@ -116,19 +129,47 @@ func main() {
 		}
 
 		// 6. Deploy SCC Notifications
+		// Gated on the SCC project's ApisReady (cold-deploy API propagation).
 		if cfg.EnableSCCResources {
-			if err := deploySCCNotification(ctx, cfg, projOutputs.SCCProjectID); err != nil {
+			if err := deploySCCNotification(ctx, cfg, projOutputs.SCCProjectID, projOutputs.SCCApisReady); err != nil {
 				return err
 			}
 		}
 
 		// 6b. Deploy CAI Monitoring infrastructure (Gap 2)
+		// The cai-monitoring-builder SA must exist BEFORE the CAI monitoring
+		// Cloud Function references it as the Cloud Build SA — on a cold deploy
+		// a string-built email with no dependency edge guarantees a
+		// "service account does not exist" failure. Create it here (moved from
+		// iam.go section 11; same logical name so the URN is unchanged) and
+		// pass the resource into the module.
 		var caiOutputs *cai_monitoring.Result
+		var caiBuilderSA *serviceaccount.Account
 		if cfg.EnableSCCResources {
+			var saOpts []pulumi.ResourceOption
+			if projOutputs.SCCApisReady != nil {
+				// IAM API propagation gate on the freshly-created SCC project.
+				saOpts = append(saOpts, pulumi.DependsOn([]pulumi.Resource{projOutputs.SCCApisReady}))
+			}
+			caiBuilderSA, err = serviceaccount.NewAccount(ctx, "cai-monitoring-builder", &serviceaccount.AccountArgs{
+				Project:     projOutputs.SCCProjectID,
+				AccountId:   pulumi.String("cai-monitoring-builder"),
+				Description: pulumi.String("Service account for Cloud Build to provision CAI monitoring Cloud Functions"),
+			}, saOpts...)
+			if err != nil {
+				return err
+			}
+
+			var caiDeps []pulumi.Resource
+			if projOutputs.SCCApisReady != nil {
+				caiDeps = append(caiDeps, projOutputs.SCCApisReady)
+			}
 			caiOutputs, err = cai_monitoring.New(ctx, "cai-monitoring", &cai_monitoring.Args{
 				OrgID:         cfg.OrgID,
 				DefaultRegion: cfg.DefaultRegion,
 				SCCProjectID:  projOutputs.SCCProjectID,
+				BuilderSA:     caiBuilderSA,
+				Dependencies:  caiDeps,
 			})
 			if err != nil {
 				return err
@@ -142,7 +183,7 @@ func main() {
 		}
 
 		// 8. Deploy IAM bindings for groups
-		if err := deployOrgIAM(ctx, cfg, projOutputs, bootstrapRef); err != nil {
+		if err := deployOrgIAM(ctx, cfg, projOutputs, bootstrapRef, caiBuilderSA); err != nil {
 			return err
 		}
 
@@ -343,6 +384,11 @@ type OrgConfig struct {
 	ProjectDeletionPolicy    string
 	FolderDeletionProtection bool
 	DefaultServiceAccount    string
+	// ApiPropagationSeconds is the cold-deploy propagation wait applied after a
+	// project's APIs are enabled before dependent resources are created.
+	// Freshly-enabled GCP APIs are not immediately usable; consumers gate on
+	// each project's ApisReady. Default 120s.
+	ApiPropagationSeconds int
 
 	// Project Budgets (H2)
 	ProjectBudget *ProjectBudgetConfig
@@ -478,6 +524,14 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 	}
 	if c.EssentialContactsLanguage == "" {
 		c.EssentialContactsLanguage = "en"
+	}
+
+	// API propagation wait for cold deploys — default 120s, overridable via
+	// api_propagation_seconds (set to 0 to disable the wait entirely).
+	if conf.Get("api_propagation_seconds") != "" {
+		c.ApiPropagationSeconds = conf.GetInt("api_propagation_seconds")
+	} else {
+		c.ApiPropagationSeconds = 120
 	}
 
 	// Log storage retention policy (H8)

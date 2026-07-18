@@ -102,6 +102,7 @@ func deployInfraPipelineProject(ctx *pulumi.Context, cfg *ProjectsConfig, common
 			// shared infra-pipeline project (monorepo/serverless-WIF specific).
 			"iamcredentials.googleapis.com",
 		},
+		ApiPropagationSeconds: cfg.ApiPropagationSeconds,
 	})
 	if err != nil {
 		return pulumi.StringOutput{}, err

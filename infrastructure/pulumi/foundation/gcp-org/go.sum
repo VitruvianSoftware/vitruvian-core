@@ -8,14 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring v1.0.2 h1:nT4jtxVallObnXGOD8ZKZdmbkwBqaYfwEb50oOz+7zQ=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring v1.0.2/go.mod h1:MoRLxhK9mqYVd66E1LIOHZJGqN4vgTYfXxn9TaHjK4E=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging v1.0.2 h1:SAYZ3O4Jz04rcjper8wFsH+JGMHpea0OyRdsxpeNfBY=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/centralized_logging v1.0.2/go.mod h1:sluWwx3vQyg1SlkSBJ2AOIUWG7ftw75hhC3LYlhPDUE=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy v1.0.2 h1:jJnw+bPf2bBNcxq0DmBkKD30nLvbo1m78EDfgw5caLI=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy v1.0.2/go.mod h1:W+mUM4Ls8i7ip4zXbXDeSVTEl5iP7ClMthkteT6MMHI=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936 h1:nVHzRmt1RoUmGkbm2ZPn3OKpJS4cKnMe6VfRdNTo+qk=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936/go.mod h1:eYsLH86xUhkqPPUGjk5dObUPFHwKkbRqVnx09fLwMlc=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=

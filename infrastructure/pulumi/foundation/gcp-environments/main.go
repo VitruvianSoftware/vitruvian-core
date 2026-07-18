@@ -64,6 +64,7 @@ func main() {
 			ProjectDeletionPolicy:    cfg.ProjectDeletionPolicy,
 			FolderDeletionProtection: cfg.FolderDeletionProtection,
 			ProjectBudget:            cfg.ProjectBudget,
+			ApiPropagationSeconds:    cfg.ApiPropagationSeconds,
 			AssuredWorkload:          cfg.AssuredWorkload,
 			Tags:                     tagsOutput,
 		})
@@ -109,6 +110,9 @@ type EnvConfig struct {
 	ProjectDeletionPolicy    string
 	FolderDeletionProtection bool
 	DefaultServiceAccount    string
+	// ApiPropagationSeconds: cold-deploy propagation wait for freshly-enabled
+	// project APIs (see env_baseline.Args.ApiPropagationSeconds). Default 120.
+	ApiPropagationSeconds int
 
 	// Module inputs
 	ProjectBudget   *env_baseline.EnvProjectBudgetConfig
@@ -170,6 +174,12 @@ func loadEnvConfig(ctx *pulumi.Context) *EnvConfig {
 	}
 	if c.DefaultServiceAccount == "" {
 		c.DefaultServiceAccount = "deprivilege"
+	}
+	// Cold-deploy race fix: freshly-enabled APIs (billingbudgets, iam) are not
+	// immediately usable; default a 120s propagation wait, overridable per-stack.
+	c.ApiPropagationSeconds = 120
+	if v, err := conf.TryInt("api_propagation_seconds"); err == nil {
+		c.ApiPropagationSeconds = v
 	}
 	if c.AssuredWorkload.Location == "" {
 		c.AssuredWorkload.Location = "us-central1"

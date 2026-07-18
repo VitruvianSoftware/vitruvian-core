@@ -58,7 +58,9 @@ func orgOrFolderIAMMember(ctx *pulumi.Context, name string, cfg *OrgConfig, role
 
 // deployOrgIAM creates all IAM bindings for governance groups on
 // org-level projects. This mirrors the Terraform foundation's iam.tf.
-func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootstrapRef *pulumi.StackReference) error {
+// caiBuilderSA is the cai-monitoring-builder service account created in
+// main.go (before the CAI monitoring deploy) — its role bindings live here.
+func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootstrapRef *pulumi.StackReference, caiBuilderSA *serviceaccount.Account) error {
 	// ========================================================================
 	// 1. Audit Logs Project — IAM for audit_data_users
 	// ========================================================================
@@ -238,11 +240,24 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 		}
 
 		kmsServiceAgent := fmt.Sprintf("serviceAccount:service-org-%s@gcp-sa-cloudkms.iam.gserviceaccount.com", cfg.OrgID)
+
+		// Cold-deploy fix: `services identity create` returns before the agent
+		// is visible to IAM — binding immediately after fails with "principal
+		// does not exist". Copy bootstrap's GCS-agent pattern: a deterministic
+		// sleep gated on the identity create (never fix races by re-running).
+		kmsAgentWait, err := local.NewCommand(ctx, "kms-org-agent-propagation", &local.CommandArgs{
+			Create:   pulumi.String("sleep 60"),
+			Triggers: pulumi.Array{pulumi.String(kmsServiceAgent)},
+		}, pulumi.DependsOn([]pulumi.Resource{kmsIdentity}))
+		if err != nil {
+			return err
+		}
+
 		if _, err := organizations.NewIAMMember(ctx, "kms-usage-tracking", &organizations.IAMMemberArgs{
 			OrgId:  pulumi.String(cfg.OrgID),
 			Role:   pulumi.String("roles/cloudkms.orgServiceAgent"),
 			Member: pulumi.String(kmsServiceAgent),
-		}, pulumi.DependsOn([]pulumi.Resource{kmsIdentity})); err != nil {
+		}, pulumi.DependsOn([]pulumi.Resource{kmsAgentWait})); err != nil {
 			return err
 		}
 	}
@@ -300,22 +315,18 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 	}
 
 	// ========================================================================
-	// 11. CAI Monitoring Builder SA + IAM (G4+G5)
-	// Create a dedicated SA for the CAI monitoring Cloud Build pipeline
-	// and grant it the roles needed to build and deploy Cloud Functions.
+	// 11. CAI Monitoring Builder SA IAM (G4+G5)
+	// The SA itself is created in main.go BEFORE the CAI monitoring deploy
+	// (cold-deploy fix: the Cloud Function references it as its build SA, so
+	// creating it here — after step 6b — guaranteed "service account does not
+	// exist" on a fresh apply). Only its role bindings remain here.
 	// Mirrors: sa.tf + iam.tf cai_monitoring_builder in TF foundation
 	// ========================================================================
-	if cfg.EnableSCCResources {
-		if _, err := serviceaccount.NewAccount(ctx, "cai-monitoring-builder", &serviceaccount.AccountArgs{
-			Project:     proj.SCCProjectID,
-			AccountId:   pulumi.String("cai-monitoring-builder"),
-			Description: pulumi.String("Service account for Cloud Build to provision CAI monitoring Cloud Functions"),
-		}); err != nil {
-			return err
-		}
-
-		caiSAMember := proj.SCCProjectID.ApplyT(func(id string) string {
-			return fmt.Sprintf("serviceAccount:cai-monitoring-builder@%s.iam.gserviceaccount.com", id)
+	if cfg.EnableSCCResources && caiBuilderSA != nil {
+		// Member derived from the SA resource's Email output (data-driven
+		// edge) instead of a string-built email with no dependency.
+		caiSAMember := caiBuilderSA.Email.ApplyT(func(email string) string {
+			return fmt.Sprintf("serviceAccount:%s", email)
 		}).(pulumi.StringOutput)
 		caiRoles := []struct{ name, role string }{
 			{"cai-log-writer", "roles/logging.logWriter"},
@@ -327,7 +338,7 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 				Project: proj.SCCProjectID,
 				Role:    pulumi.String(r.role),
 				Member:  caiSAMember,
-			}); err != nil {
+			}, pulumi.DependsOn([]pulumi.Resource{caiBuilderSA})); err != nil {
 				return err
 			}
 		}
