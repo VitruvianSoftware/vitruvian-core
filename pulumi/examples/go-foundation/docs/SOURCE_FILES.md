@@ -16,31 +16,43 @@ READMEs in the TypeScript foundation.
 
 **Alternative CI/CD files (not compiled by default):**
 
-| File                           | Description                                                 |
-| ------------------------------ | ----------------------------------------------------------- |
-| `build_cloud_build.go.example` | Cloud Build provisioning (CSR, Artifact Registry, triggers) |
-| `build_gitlab.go.example`      | GitLab WIF OIDC provisioning                                |
+| File                               | Description                                                 |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `build_cloud_build.go.example`     | Cloud Build provisioning (CSR, Artifact Registry, triggers) |
+| `build_gitlab.go.example`          | GitLab WIF OIDC provisioning                                |
+| `build_local.go.example`           | Local (no-CI) apply path                                    |
+| `build_terraform_cloud.go.example` | Pulumi Cloud agent equivalent of upstream Terraform Cloud   |
+| `outputs_cb.go.example` etc.       | Per-builder output exports (`cb`, `github`, `gitlab`, `terraform_cloud`; `outputs_github.go` compiled by default) |
 
-## 1-org (10 files, ~1,870 lines)
+**Builder modules (`modules/`):** `cb-private-pool` (Cloud Build private worker
+pool), `gitlab-oidc` (GitLab WIF pool/provider + SA bindings), `tfc-agent-gke`
+(Pulumi Cloud agent on GKE, upstream tfc-agent-gke equivalent),
+`parent-iam-member`, `parent-iam-remove-role`.
 
-| File                    | Lines | Description                                                                                |
-| ----------------------- | ----: | ------------------------------------------------------------------------------------------ |
-| `main.go`               |  ~180 | Config loading, orchestration, output exports (29 outputs)                                 |
-| `folders.go`            |   ~80 | Common, network, and 3 environment folders                                                 |
-| `projects.go`           |  ~250 | 8+ shared projects: logging, billing-export, SCC, KMS, secrets, DNS, interconnect, network |
-| `policies.go`           |  ~300 | 14+ boolean + list organization policies via `pkg/policy`                                  |
-| `logging.go`            |  ~200 | Org-level sinks to Storage, Pub/Sub, BigQuery; billing log sink                            |
-| `scc.go`                |  ~100 | SCC notification with Pub/Sub topic and subscription                                       |
-| `tags.go`               |   ~80 | Org-level environment classification tags                                                  |
-| `iam.go`                |  ~150 | Org admin IAM, Essential Contacts permissions                                              |
-| `essential_contacts.go` |   ~80 | Essential Contacts notification channels                                                   |
-| `cai_monitoring.go`     |  ~150 | Cloud Asset Inventory monitoring (Cloud Function v2, feeds, topics)                        |
+## 1-org (10+ files, ~1,870 lines)
 
-**Supporting:**
+The Pulumi project root is the `envs/shared/` leaf (upstream `1-org/envs/shared`
+layout); reusable pieces live in the sibling `modules/` package.
 
-| File                       | Description                                      |
-| -------------------------- | ------------------------------------------------ |
-| `modules/cai_monitoring/function-source/` | Node.js Cloud Function source for CAI monitoring |
+| File                                | Lines | Description                                                                                |
+| ----------------------------------- | ----: | ------------------------------------------------------------------------------------------ |
+| `envs/shared/main.go`               |  ~180 | Config loading, orchestration, output exports (29 outputs)                                 |
+| `envs/shared/folders.go`            |   ~80 | Common, network, and 3 environment folders                                                 |
+| `envs/shared/projects.go`           |  ~250 | 8+ shared projects: logging, billing-export, SCC, KMS, secrets, DNS, interconnect, network |
+| `envs/shared/policies.go`           |  ~300 | 14+ boolean + list organization policies via `pkg/policy`                                  |
+| `envs/shared/scc.go`                |  ~100 | SCC notification with Pub/Sub topic and subscription                                       |
+| `envs/shared/tags.go`               |   ~80 | Org-level environment classification tags                                                  |
+| `envs/shared/iam.go`                |  ~150 | Org admin IAM, Essential Contacts permissions                                              |
+| `envs/shared/essential_contacts.go` |   ~80 | Essential Contacts notification channels                                                   |
+
+**Shared modules (`modules/`):**
+
+| File                                      | Description                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `modules/centralized_logging/`            | Org-level sinks to Storage, Pub/Sub, BigQuery; billing log sink     |
+| `modules/cai_monitoring/`                 | Cloud Asset Inventory monitoring (Cloud Function v2, feeds, topics) |
+| `modules/cai_monitoring/function-source/` | Node.js Cloud Function source for CAI monitoring                    |
+| `modules/network/`                        | Shared network helpers for the org projects                         |
 
 ## 2-environments (4 files, ~950 lines)
 
