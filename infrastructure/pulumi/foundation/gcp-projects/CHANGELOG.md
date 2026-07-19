@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.1...foundation-gcp-projects-v1.3.2) (2026-07-19)
+
+
+### Bug Fixes
+
+* **foundation:** enable siteverification on the DEV oss floating project via the project factory ([#950](https://github.com/VitruvianSoftware/vitruvian-core/issues/950)) ([dadf4f5](https://github.com/VitruvianSoftware/vitruvian-core/commit/dadf4f551be75f59c0d535de2b322327e465afe9))
+
 ## [1.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.0...foundation-gcp-projects-v1.3.1) (2026-07-19)
 
 
