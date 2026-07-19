@@ -36,7 +36,7 @@ on:
   workflow_dispatch:
     inputs:
       pulumi_dir:
-        description: Pulumi project dir holding Pulumi.yaml (e.g. infrastructure/pulumi/apps/oauth-user-inspector)
+        description: Pulumi project dir holding Pulumi.yaml (e.g. oauth-user-inspector/infra/app)
         required: true
         type: string
       stack:

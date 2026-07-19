@@ -132,12 +132,21 @@ MONOREPO_REV_ID = "MONOREPO_REV_ID"
 # sync must never export them to the standalone nor delete them on import. The
 # explicit top-level entries belt-and-suspender the `**/` form in case a given
 # Copybara build does not treat `**` as matching zero path segments.
+#
+# `<component>/infra/**` is monorepo-only BY CONVENTION for every component:
+# `<app>/infra/` holds the app's co-located Pulumi deployment stacks (GCP
+# project ids, service accounts, WIF wiring — INTERNAL details that must never
+# reach a public mirror). Excluding it here covers both directions structurally
+# — never exported (origin_files), never deleted by a PR-import
+# (destination_files) — so a future co-located app cannot silently leak its
+# infra. Guarded by tools/conformance/check.sh (check_copybara_infra_exclude).
 def _monorepo_only(component):
     return [
         component + "/**/BUILD",
         component + "/**/BUILD.bazel",
         component + "/BUILD",
         component + "/BUILD.bazel",
+        component + "/infra/**",
     ]
 
 # pnpm catalog -> concrete version map for the pulumi-library TS export.

@@ -285,7 +285,7 @@ with:
   app-name: oauth-user-inspector
   environment: ${{ inputs.environment || 'development' }}
   bazel-image-target: //oauth-user-inspector:image_push
-  pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+  pulumi-dir: oauth-user-inspector/infra/app
   smoke-script: oauth-user-inspector/scripts/smoke-playwright.sh
 ```
 

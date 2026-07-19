@@ -21,6 +21,6 @@
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
-    name = "oauth-user-inspector",
-    dir = "infrastructure/pulumi/apps/oauth-user-inspector",
+    name = "oauth-user-inspector-deploy-identity",
+    dir = "oauth-user-inspector/infra/identity",
 )

@@ -60,7 +60,7 @@ import (
 // deploy model. We don't replicate that here: our stage-5 apps are serverless
 // (Cloud Run) on FLOATING projects, deployed from GitHub Actions via Workload
 // Identity Federation, so deploy permissions live in each APP's own deploy-identity
-// stack — e.g. infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity,
+// stack — e.g. oauth-user-inspector/infra/identity,
 // which grants its deploy SA run.admin/artifactregistry.admin/iam.serviceAccountUser/…
 // on the target project plus a WIF impersonation binding. When stage-5 moves an
 // app onto the org's oss-floating projects, extend that app's deploy-identity

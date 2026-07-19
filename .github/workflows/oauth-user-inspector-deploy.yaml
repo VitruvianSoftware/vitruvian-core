@@ -53,8 +53,12 @@ on:
     # Bazel rules_oci (docs/repo-assessment.md §5.1) -- then it gates via
     # tools/ci/deploy-affected.sh like tabula.
     paths:
+      # NOTE: "oauth-user-inspector/**" already covers the co-located app stack
+      # (oauth-user-inspector/infra/app). The identity stack is carved OUT to
+      # preserve the pre-move trigger set: identity changes never triggered a
+      # deploy when the stack lived under infrastructure/pulumi/apps/.
       - "oauth-user-inspector/**"
-      - "infrastructure/pulumi/apps/oauth-user-inspector/**"
+      - "!oauth-user-inspector/infra/identity/**"
       - "infrastructure/pulumi/platform/zitadel-apps/**"
       - ".github/workflows/oauth-user-inspector-deploy.yaml"
       - ".github/workflows/_deploy-cloud-run.yaml"
@@ -181,7 +185,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-west1
       service-name: oauth-user-inspector
-      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"
@@ -225,7 +229,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-west1
       service-name: oauth-user-inspector
-      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"
@@ -265,7 +269,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-west1
       service-name: oauth-user-inspector
-      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"

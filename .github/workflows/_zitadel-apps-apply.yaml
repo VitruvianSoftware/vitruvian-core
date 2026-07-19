@@ -115,7 +115,7 @@ jobs:
         id: appstack
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/apps/oauth-user-inspector
+        working-directory: oauth-user-inspector/infra/app
         run: |
           set -euo pipefail
           STACK="ipv1337/pulumi_oauth_user_inspector/${DEPLOY_ENV}"

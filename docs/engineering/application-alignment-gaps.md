@@ -137,8 +137,8 @@ A new app has nothing authoritative to follow. tabula even straddles two targets
 **Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `infrastructure/pulumi/apps/tabula/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
 
 ```
-infrastructure/pulumi/apps/oauth-user-inspector/Pulumi.development.yaml
-infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity/Pulumi.development.yaml
+oauth-user-inspector/infra/app/Pulumi.development.yaml
+oauth-user-inspector/infra/identity/Pulumi.development.yaml
 infrastructure/pulumi/apps/tabula/Pulumi.development.yaml
 infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml
 infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml

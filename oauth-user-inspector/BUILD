@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # oauth-user-inspector: a Vite/React frontend + Express/TS backend served as one
-# container (see Dockerfile + infrastructure/pulumi/apps/oauth-user-inspector for the
+# container (see Dockerfile + oauth-user-inspector/infra/app for the
 # Cloud Run deploy). The production build runs via pnpm/vite/tsc (the monorepo
 # does not bazel-build frontends — cf. tabula/web); bazel runs the jest suite so
 # the server tests land in CI. gazelle:ignore stops the JS/TS extension from
@@ -30,6 +30,10 @@
 # gazelle:exclude scripts
 # gazelle:exclude dist
 # gazelle:exclude dist-server
+# infra/ holds the per-app Pulumi deployment stacks (standalone Go modules run
+# by the Pulumi CLI via //tools/pulumi wrappers, never Bazel-built — same rule
+# as the root `gazelle:exclude infrastructure`). Keep gazelle out of them.
+# gazelle:exclude infra
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")

@@ -372,6 +372,7 @@ ROWS_MERGEQ=""
 ROWS_SWEEP=""
 ROWS_IAC=""
 ROWS_META=""
+ROWS_COPYBARA=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -388,6 +389,7 @@ emit() {
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
+    copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
   esac
 }
 
@@ -1061,6 +1063,79 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Copybara infra-leak guard. Every publicly-mirrored component subtree (the
+# components in tools/copybara/copy.bara.sky) may co-locate its PER-APP Pulumi
+# deployment stacks under `<app>/infra/` (repo-wide convention). Those stacks
+# carry internal GCP details (project ids, service accounts, WIF wiring) that
+# must NEVER reach a public mirror. The config enforces this STRUCTURALLY:
+# `_monorepo_only()` lists `<component>/infra/**`, and every generated workflow
+# excludes `_monorepo_only_files` from its export origin_files AND its import
+# destination_files. This check fails if that structural guarantee is ever
+# weakened — so a future co-located app cannot silently start leaking.
+# ---------------------------------------------------------------------------
+COPYBARA_CONFIG_FILE="$ROOT/tools/copybara/copy.bara.sky"
+
+check_copybara_infra_exclude() {
+  cb="$COPYBARA_CONFIG_FILE"
+  [ -f "$cb" ] || return 0
+  cbrel="tools/copybara/copy.bara.sky"
+  ok=1
+
+  # 1. The structural exclude: _monorepo_only()'s returned list must contain
+  #    the `<component>/infra/**` entry.
+  monorepo_only_body="$(awk '/^def _monorepo_only\(/{f=1} f{print} f&&/^ *\]/{exit}' "$cb")"
+  if ! printf '%s' "$monorepo_only_body" | grep -qF 'component + "/infra/**"'; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "$cbrel" "no infra exclude" "component + \"/infra/**\"" \
+      "_monorepo_only() no longer lists <component>/infra/** — a mirrored app's co-located Pulumi stacks (internal GCP details) would be EXPORTED to its public mirror" \
+      "add 'component + \"/infra/**\"' back to the _monorepo_only() list in tools/copybara/copy.bara.sky"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+
+  # 2. The generator must still route BOTH directions through the monorepo-only
+  #    exclude list: the export's origin_files and every import's
+  #    destination_files (a destination_files regression would let a PR-import
+  #    DELETE the monorepo's infra/ dirs).
+  if ! grep -qE 'origin_files = glob\(\[_subtree \+ "/\*\*"\], exclude = _monorepo_only_files' "$cb"; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "$cbrel" "export not excluding" "origin_files excludes _monorepo_only_files" \
+      "the export workflow's origin_files no longer excludes _monorepo_only_files — BUILD files and <app>/infra/** would be exported to the public mirrors" \
+      "restore 'exclude = _monorepo_only_files + _origin_exclude' on the export origin_files glob"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+  if ! grep -qE 'destination_files = glob\(\[_subtree \+ "/\*\*"\], exclude = _monorepo_only_files\)' "$cb"; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "$cbrel" "import not excluding" "destination_files excludes _monorepo_only_files" \
+      "the import workflows' destination_files no longer exclude _monorepo_only_files — an import could delete the monorepo's <app>/infra/** (and BUILD files)" \
+      "restore 'exclude = _monorepo_only_files' on the import destination_files globs"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+
+  [ "$ok" -eq 1 ] || return 0
+
+  # 3. Report every mirrored subtree that actually has an on-disk infra/ dir as
+  #    covered (names what the guard is protecting today). Subtree defaults to
+  #    the component name; explicit "subtree": overrides it (pulumi-library etc).
+  covered=""
+  subtrees="$(awk '
+    /"name":/    { gsub(/[",]/, "", $2); name=$2; sub_=""; next }
+    /"subtree":/ { gsub(/[",]/, "", $2); sub_=$2; next }
+    /"standalone_rev_id":/ { print (sub_ != "" ? sub_ : name) }
+  ' "$cb" | sort -u)"
+  for st in $subtrees; do
+    [ -d "$ROOT/$st/infra" ] && covered="$covered $st/infra"
+  done
+  if [ -n "$covered" ]; then
+    for c in $covered; do
+      emit "copybara" "$GLYPH_OK" "$C_GREEN" "$c" "monorepo-only" "never exported" \
+        "co-located per-app Pulumi stacks are excluded from the public-mirror export (structural _monorepo_only guarantee)" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    done
+  else
+    emit "copybara" "$GLYPH_OK" "$C_GREEN" "$cbrel" "structural exclude" "never exported" \
+      "<component>/infra/** is monorepo-only for every mirrored component (none on disk yet)" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # App metadata catalog (#500). Every app directory carries a machine-readable
 # catalog-info.yaml (Backstage Component) that is the single per-app source
 # for ownership + deploy identity. Enforced invariants:
@@ -1184,6 +1259,7 @@ check_app_metadata
 check_merge_queue
 check_sweep_backstop
 check_zitadel_import
+check_copybara_infra_exclude
 
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -1199,6 +1275,7 @@ print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$RO
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
+print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
