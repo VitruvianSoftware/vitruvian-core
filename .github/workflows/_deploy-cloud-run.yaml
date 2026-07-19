@@ -64,14 +64,35 @@ on:
         required: false
         type: string
         default: ''
+      image-digest:
+        description: >-
+          Pre-built immutable image ref (<ar>/<image>@sha256:...) from a
+          build-once job. When set, the in-job build/push (and the Artifact
+          Registry bootstrap) are skipped and the digest is promoted as-is:
+          the Pulumi program receives <env-prefix>_IMAGE_DIGEST instead of
+          <env-prefix>_IMAGE_TAG (build-once / promote-by-digest).
+        required: false
+        type: string
+        default: ""
       image-repository-path:
-        description: "Artifact Registry path under the project, e.g. tabula/api"
-        required: true
+        description: "Artifact Registry path under the project, e.g. tabula/api (build path only; unused when image-digest is set)"
+        required: false
         type: string
+        default: ""
       artifact-repository:
-        description: "Artifact Registry repository name (first path segment), e.g. tabula"
-        required: true
+        description: "Artifact Registry repository name (first path segment), e.g. tabula (build path only; unused when image-digest is set)"
+        required: false
         type: string
+        default: ""
+      default-region:
+        description: >-
+          Fallback region when the GitHub Environment defines no GCP_REGION
+          variable. Kept caller-scoped because different apps live in
+          different regions (tabula: us-central1, oauth-user-inspector:
+          us-west1).
+        required: false
+        type: string
+        default: "us-central1"
       service-name:
         description: "Cloud Run service name pattern; '-<environment>' is appended, e.g. tabula-api"
         required: true
@@ -117,7 +138,7 @@ jobs:
     env:
       DEPLOY_ENV: ${{ inputs.environment }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      GCP_REGION: ${{ vars.GCP_REGION || inputs.default-region }}
       # Cache-only BuildBuddy access (--config=remotecache): reuse the image /
       # schema-engine actions CI already cached instead of a cold rebuild on
       # the deploy critical path. No RBE, so outputs stay local for the push.
@@ -138,13 +159,17 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Configure docker for Artifact Registry
+        if: ${{ inputs.image-digest == '' }}
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
       - name: Ensure Artifact Registry repository
         # Bootstrap ordering: the image push runs before `pulumi up`, but
         # Pulumi owns the repository resource. Create it idempotently here;
         # the Pulumi program adopts it (unconditional pulumi.Import — by the
-        # time pulumi runs, this repo always exists).
+        # time pulumi runs, this repo always exists). Skipped entirely on the
+        # promote-by-digest path: the shared repository is owned by the app's
+        # build stack and the image was already pushed by the build job.
+        if: ${{ inputs.image-digest == '' }}
         run: |
           gcloud artifacts repositories describe "${{ inputs.artifact-repository }}" \
             --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1 || \
@@ -154,7 +179,7 @@ jobs:
             --description="${{ inputs.app-name }} container images (managed by ${{ inputs.pulumi-dir }})"
 
       - name: Build and push image (Bazel)
-        if: ${{ inputs.bazel-image-target != '' }}
+        if: ${{ inputs.image-digest == '' && inputs.bazel-image-target != '' }}
         run: |
           bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             ${{ inputs.bazel-image-target }} -- \
@@ -162,7 +187,7 @@ jobs:
             --tag "${GITHUB_SHA}" --tag latest
 
       - name: Build and push image (Docker)
-        if: ${{ inputs.bazel-image-target == '' && inputs.dockerfile-dir != '' }}
+        if: ${{ inputs.image-digest == '' && inputs.bazel-image-target == '' && inputs.dockerfile-dir != '' }}
         run: |
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${{ inputs.image-repository-path }}"
           # Try to get NODE_VERSION from canonical if present
@@ -237,7 +262,13 @@ jobs:
           fi
           echo "stable_revision=${STABLE}" >> "$GITHUB_OUTPUT"
           # Per-invocation env, NOT `pulumi config set` (#499 de-race).
-          export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          if [ -n "${{ inputs.image-digest }}" ]; then
+            # Promote-by-digest: every env deploys the SAME immutable artifact
+            # the build-once job produced; nothing is rebuilt per env.
+            export "${{ inputs.env-prefix }}_IMAGE_DIGEST=${{ inputs.image-digest }}"
+          else
+            export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          fi
           export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
           export "${{ inputs.env-prefix }}_PROMOTE=false"
           pulumi up --yes
@@ -293,7 +324,11 @@ jobs:
           # traffic[0] read (the traffic array order isn't guaranteed, so this
           # could pin the wrong revision) -- so the promote update is
           # self-consistent with the candidate that was just smoked (#808).
-          export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          if [ -n "${{ inputs.image-digest }}" ]; then
+            export "${{ inputs.env-prefix }}_IMAGE_DIGEST=${{ inputs.image-digest }}"
+          else
+            export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
+          fi
           export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE_REVISION}"
           export "${{ inputs.env-prefix }}_PROMOTE=true"
           pulumi up --yes
