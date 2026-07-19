@@ -1,0 +1,183 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# CI apply for the per-env oauth-user-inspector DEPLOY/RUNTIME IDENTITY stacks
+# (oauth-user-inspector/infra/identity): the per-env deploy + runtime service
+# accounts on each prj-{env}-bu1-oss-floating project, their foundation-pool WIF
+# bindings, per-app least-privilege IAM, and — for the DEV stack — the
+# custom-domain verification anchor (siteverification API-enable on the dev
+# floating project + secretAccessor grants on the human-seeded
+# CLOUDFLARE_API_TOKEN secret for all three env deploy SAs).
+#
+# IDENTITY (chicken-and-egg): the deploy SA this stack CREATES cannot be the
+# identity that APPLIES it. The apply instead runs as sa-terraform-proj — the
+# stage-4 projects SA behind the foundation-proj-shared GitHub Environment,
+# whose leaves created and own the oss-floating projects. Its existing
+# gcp-bootstrap grants at the foundation parent folder already cover everything
+# these stacks manage (mirrors oauth-user-inspector-build-stack.yaml):
+#   * roles/iam.serviceAccountAdmin   → deploy/runtime SA create + SA IAM policy
+#   * roles/resourcemanager.projectIamAdmin → per-app project IAM bindings
+#   * roles/serviceusage.serviceUsageAdmin  → siteverification API enable (dev)
+#   * roles/secretmanager.admin       → CLOUDFLARE_API_TOKEN secret IAM (dev)
+# All of these are folder-scoped from Phase 1 (see the identity stack's own
+# main.go NOTEs), so NO additional role grant to any principal is needed — the
+# reason this rework parks the API-enable + secret IAM in THIS stack rather
+# than the app deploy SA's stack (which lacks that reach). The app deploy SA is
+# deliberately NOT this workflow's identity.
+#
+# The foundation-proj-shared environment is reviewer-gated (protected branches
+# only) — appropriate, since these applies mint production-tier service
+# accounts and set project IAM on the shared oss-floating projects.
+#
+# COLD-DEPLOY ORDERING (the app promotion chain + domain verification depend on
+# this stack):
+#   1. repo_config apply — creates the per-env oauth-user-inspector-<env>
+#      GitHub Environments + their WIF vars.
+#   2. THIS workflow (development) — mints the dev deploy/runtime SAs, enables
+#      siteverification.googleapis.com on the dev floating project, and grants
+#      every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
+#      secret. (nonproduction / production legs mint their own SAs; they carry
+#      no verification-anchor resources.)
+#   3. oauth-user-inspector-deploy.yaml `verify-domain` job — federates the dev
+#      deploy SA, reads the token from Secret Manager, and self-verifies the
+#      zone + delegates ownership; then each env's DomainMapping create is
+#      authorized.
+# Step 2 (at least its development leg) must have completed once before step 3
+# can ever succeed.
+
+name: oauth-user-inspector Identity Stack Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "oauth-user-inspector/infra/identity/**"
+      - ".github/workflows/oauth-user-inspector-identity-stack.yaml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which env stack(s) to apply (dev carries the verification anchor this rework needs)
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - development
+          - nonproduction
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Compute the matrix from the trigger: a push (or dispatch "all") applies all
+  # three env stacks; a targeted dispatch narrows to one. Doing this in an
+  # UNGATED prep job (rather than a job-level `if`, where the matrix context is
+  # unavailable) means a targeted dispatch never spins up spurious gated jobs
+  # for the envs it isn't applying.
+  prep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      stacks: ${{ steps.pick.outputs.stacks }}
+    steps:
+      - id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CHOICE: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$CHOICE" != "all" ]; then
+            stacks="[\"${CHOICE}\"]"
+          else
+            stacks='["development","nonproduction","production"]'
+          fi
+          echo "Applying identity stacks: ${stacks}"
+          echo "stacks=${stacks}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    # Per-env leg: dev carries the new API-enable + accessor grants; nonprod /
+    # prod mint only their own SAs (no anchor resources). Each leg is
+    # independently reviewer-gated by the foundation-proj-shared environment.
+    needs: [prep]
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ fromJSON(needs.prep.outputs.stacks) }}
+    # Serialize applies of the SAME stack; never cancel an in-flight pulumi up.
+    # Keyed by matrix.stack so the three legs do not cancel each other.
+    concurrency:
+      group: oauth-user-inspector-identity-stack-deploy-${{ matrix.stack }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: foundation-proj-shared
+    env:
+      GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads so the job does not hit
+      # the 60/hr/IP unauthenticated GitHub API rate limit CI runners routinely
+      # exhaust (intermittent 403s); GITHUB_TOKEN raises this to 5000/hr. Same
+      # class of fix as #756 / the build-stack workflow.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (oauth-user-inspector identity / ${{ matrix.stack }})
+        id: pulumi
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: oauth-user-inspector/infra/identity
+        run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (${{ matrix.stack }})"
+          { pulumi stack select -c "${{ matrix.stack }}" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      # Render the pulumi output digest onto the run's step-summary page. Runs
+      # even when the deploy fails so the failure — and what it touched — is
+      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
+      # destructive replace/delete, and tucks the raw log into a <details>.
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "oauth-user-inspector-identity-${{ matrix.stack }}" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
