@@ -23,12 +23,12 @@
 // To activate:
 // 1. Rename: interconnect.go.example → interconnect.go
 // 2. Update the configuration values below for your environment
-// 3. Call deployDedicatedInterconnect() from main.go
+// 3. Wire deployDedicatedInterconnect() into base_env.New
 // 4. Run `pulumi up` in each environment stack
 //
 // ============================================================================
 
-package main
+package base_env
 
 import (
 	"fmt"

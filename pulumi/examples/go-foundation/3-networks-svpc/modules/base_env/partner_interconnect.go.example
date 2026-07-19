@@ -23,7 +23,7 @@
 // To activate:
 // 1. Rename: partner_interconnect.go.example → partner_interconnect.go
 // 2. Update the configuration values below for your environment
-// 3. Call deployPartnerInterconnect() from main.go
+// 3. Wire deployPartnerInterconnect() into base_env.New
 // 4. Run `pulumi up` in each environment stack
 // 5. Contact your service provider to complete the pairing
 //
@@ -33,7 +33,7 @@
 // - Interconnect locations must be known
 // ============================================================================
 
-package main
+package base_env
 
 import (
 	"fmt"

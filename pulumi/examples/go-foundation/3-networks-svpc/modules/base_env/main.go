@@ -27,7 +27,6 @@ package base_env
 import (
 	"fmt"
 
-	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -36,69 +35,6 @@ import (
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 	vpc_sc "github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls"
 )
-
-// Args are the inputs to the base_env module — the per-environment identity
-// plus the network/DNS/NAT/VPC-SC settings from the leaf's stack config.
-type Args struct {
-	Env     string // "development" | "nonproduction" | "production"
-	EnvCode string // "d" | "n" | "p"
-
-	// Shared VPC host project for this environment.
-	ProjectID string
-
-	// Regions.
-	Region1 string
-	Region2 string
-
-	// DNS.
-	Domain       string
-	DNSProjectID string // DNS hub project (peering target for non-prod envs)
-
-	// Cross-stage references.
-	OrgStackName string
-
-	// VPC Service Controls.
-	PolicyID                   string
-	VpcScMembers               []string
-	VpcScProjects              []string
-	VpcScRestrictedServices    []string
-	VpcScIngressPolicies       accesscontextmanager.ServicePerimeterStatusIngressPolicyArray
-	VpcScEgressPolicies        accesscontextmanager.ServicePerimeterStatusEgressPolicyArray
-	VpcScIngressPoliciesDryRun accesscontextmanager.ServicePerimeterSpecIngressPolicyArray
-	VpcScEgressPoliciesDryRun  accesscontextmanager.ServicePerimeterSpecEgressPolicyArray
-	EnforceVpcSc               bool
-
-	// PSC.
-	PscIP string
-
-	// BGP / NAT.
-	BgpAsn          int
-	NatBgpAsn       int
-	NatNumAddresses int
-	NatEnabled      bool
-
-	// DNS / firewall logging toggles.
-	TargetNameServers             []string
-	FirewallPoliciesEnableLogging bool
-	DnsEnableLogging              bool
-
-	// Routes.
-	WindowsActivationEnabled bool
-
-	// VPC flow logs.
-	FlowLogsInterval string
-	FlowLogsSampling float64
-	FlowLogsMetadata string
-}
-
-// Result holds the per-environment outputs consumed by the leaf root exports.
-type Result struct {
-	Networking            *networking.Networking
-	AcmPolicyID           pulumi.StringOutput
-	PerimeterName         pulumi.StringOutput
-	AccessLevelName       pulumi.StringOutput
-	AccessLevelDryRunName pulumi.StringOutput
-}
 
 // New deploys the per-environment Shared VPC: host designation, VPC + subnets
 // with GKE secondary ranges, VPC-level firewall, PSC, DNS policy and zones,
@@ -311,18 +247,10 @@ func New(ctx *pulumi.Context, args *Args) (*Result, error) {
 	}
 
 	// Resolve the ACM policy from the org stack (for the exports and, when no
-	// local override is configured, the perimeter).
-	var acmPolicyID pulumi.StringOutput
-	if args.OrgStackName != "" {
-		orgStack, err := pulumi.NewStackReference(ctx, "org", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(args.OrgStackName),
-		})
-		if err != nil {
-			return nil, err
-		}
-		acmPolicyID = orgStack.GetStringOutput(pulumi.String("access_context_manager_policy_id"))
-	} else {
-		acmPolicyID = pulumi.String("").ToStringOutput()
+	// local override is configured, the perimeter) — see remote.go.
+	acmPolicyID, err := resolveAcmPolicyID(ctx, args)
+	if err != nil {
+		return nil, err
 	}
 
 	// 10. VPC Service Controls Perimeter
