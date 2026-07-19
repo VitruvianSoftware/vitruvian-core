@@ -166,9 +166,13 @@ func main() {
 		// and an orange-cloud proxy would intercept that and break issuance.
 		// Absent/empty config keeps the env mapping-free (opt-in preserved).
 		//
-		// Prereq (runbook): the deploying SA must be a VERIFIED OWNER of the
-		// domain (Google Search Console) or the DomainMapping create is
-		// rejected by the API.
+		// Prereq (AUTOMATED): the deploying SA must be a verified owner of
+		// the domain or the DomainMapping create is rejected by the API. The
+		// deploy workflow's build job converges this as code BEFORE any env
+		// deploy (tools/ci/ensure-site-verification.sh: the build SA
+		// self-verifies the zone via Site Verification DNS-TXT + a persistent
+		// Cloudflare TXT record, then delegates ownership to every env's
+		// deploy SA). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
 			mapping, err := cloudrun.NewDomainMapping(ctx, "oauth-user-inspector-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),

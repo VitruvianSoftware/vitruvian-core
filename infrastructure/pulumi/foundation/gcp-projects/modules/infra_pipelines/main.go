@@ -91,6 +91,14 @@ func Deploy(ctx *pulumi.Context, args *Args) (*Result, error) {
 			// an access token by impersonating the per-app build SA homed in this
 			// shared infra-pipeline project (monorepo/serverless-WIF specific).
 			"iamcredentials.googleapis.com",
+			// Stage-5 app-tier: Site Verification API for automated custom-domain
+			// ownership (tools/ci/ensure-site-verification.sh). The build SAs
+			// homed here CALL this API (self-verify the zone via DNS-TXT, then
+			// delegate ownership to the per-env deploy SAs — the Cloud Run
+			// DomainMapping precondition); an SA's API calls are quota-attributed
+			// to its home project, so the service must be enabled HERE
+			// (monorepo/serverless-WIF specific, like iamcredentials above).
+			"siteverification.googleapis.com",
 		},
 		ApiPropagationSeconds: args.ApiPropagationSeconds,
 	})
