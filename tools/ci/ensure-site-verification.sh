@@ -302,38 +302,54 @@ for zone in $zones; do
   current_owners="$(jq -r '.owners // [] | join(" ")' "$workdir/resource.json")"
   echo "ensure-site-verification: $zone current owners: ${current_owners:-<none>}"
 
-  missing=""
-  for owner in $owners_wanted; do
-    case " $current_owners " in
-      *" $owner "*) ;;
-      *) missing="$missing $owner" ;;
-    esac
-  done
+  # The wanted deploy SAs as a JSON array. Built with jq (NOT positional
+  # word-splitting) so a stray space or empty field can never corrupt an owner.
+  # shellcheck disable=SC2086  # intentional split of the space-joined SA list
+  wanted_json="$(printf '%s\n' $owners_wanted | jq -Rc 'select(length > 0)' | jq -sc .)"
 
-  if [ -z "$missing" ]; then
+  # webResource.update (PUT) REPLACES the entire owners list, and the Site
+  # Verification API REFUSES to unverify an owner that still holds a verification
+  # token (e.g. the external james.nguyen@gmail.com, which owns this zone via its
+  # own token; also the dev SA, now a token owner via the record we just wrote).
+  # So the new list MUST be the UNION of the CURRENT owners (keep EVERY one,
+  # including external token owners we do not control) and the wanted deploy SAs.
+  # A bare list of just the SAs would drop the externals and 400. Compute the
+  # union from the fetched resource with a JSON array arg — never drop an owner.
+  merged_json="$(jq -c --argjson want "$wanted_json" '((.owners // []) + $want) | unique' "$workdir/resource.json")"
+
+  # Idempotent steady state: if every wanted SA is already an owner the merged
+  # set equals the current set — skip the PUT entirely (no-op).
+  if jq -e --argjson merged "$merged_json" \
+       '((.owners // []) | sort) == ($merged | sort)' "$workdir/resource.json" >/dev/null; then
     echo "ensure-site-verification: $zone — all deploy SAs already owners; no-op"
     continue
   fi
 
-  echo "ensure-site-verification: $zone — adding owners:$missing"
-  # shellcheck disable=SC2086  # word-splitting $missing into args is intended
-  body="$(jq -c --arg zone "$zone" \
-    '{id: .id, site: {identifier: $zone, type: "INET_DOMAIN"},
-      owners: ((.owners // []) + ($ARGS.positional) | unique)}' \
-    --args $missing <"$workdir/resource.json")"
+  added="$(jq -r --argjson merged "$merged_json" '$merged - (.owners // []) | join(" ")' "$workdir/resource.json")"
+  kept="$(jq -r '.owners // [] | length' "$workdir/resource.json")"
+  echo "ensure-site-verification: $zone — adding owners: $added (keeping all $kept existing owner(s))"
+  # Echo the resource's own id + site back; only the owners list changes.
+  body="$(jq -c --argjson owners "$merged_json" '{id: .id, site: .site, owners: $owners}' "$workdir/resource.json")"
   code="$(sv_call PUT "$SV_BASE/webResource/$id_enc" "$body")"
   if [ "$code" != "200" ]; then
     echo "ensure-site-verification: owners update for $zone -> HTTP $code: $(sv_error_summary)" >&2
     exit 1
   fi
 
-  # Assert convergence from the API's own response.
+  # Assert convergence from the API's own response: every wanted SA is present,
+  # AND no previously-present owner was dropped (the union invariant).
   for owner in $owners_wanted; do
     if ! jq -e --arg o "$owner" '.owners // [] | index($o) != null' "$workdir/resp" >/dev/null; then
       echo "ensure-site-verification: $owner missing from $zone owners after update" >&2
       exit 1
     fi
   done
+  if ! jq -e --slurpfile before "$workdir/resource.json" \
+       '(.owners // []) as $after | (($before[0].owners // []) | all(. as $o | $after | index($o) != null))' \
+       "$workdir/resp" >/dev/null; then
+    echo "ensure-site-verification: a pre-existing owner was dropped from $zone after update" >&2
+    exit 1
+  fi
   echo "ensure-site-verification: $zone owners converged"
 done
 

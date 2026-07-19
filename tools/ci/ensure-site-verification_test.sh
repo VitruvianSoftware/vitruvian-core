@@ -27,6 +27,12 @@
 #      owners update unions the deploy SAs alongside pre-existing owners;
 #   2. idempotence: a second run with converged state performs NO writes;
 #   3. the no-customDomain no-op gate.
+# The owners-update PUT REPLACES the whole list, and the real API refuses to
+# unverify a token-verified owner: the mock enforces this (400 if the PUT omits
+# any current token owner — the external james@example.test, and the dev SA once
+# self-verified), so test 1's "owner kept: james@example.test" assertion is a
+# real guard that the delegation PUT never drops a pre-existing owner (the live
+# failure this fixes).
 # The caller identity is the DEV DEPLOY SA (an app-scoped identity). The mock's
 # getToken/insert/update WRITE endpoints REQUIRE x-goog-user-project to match
 # the dev floating project (SITEVERIFY_QUOTA_PROJECT), modelling the real 403
@@ -178,8 +184,15 @@ class H(BaseHTTPRequestHandler):
             want = "google-site-verification=tok-abc-123"
             if any(r["content"] == want for r in s["cf_records"]):
                 s["verified"] = True
-                if "oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com" not in s["owners"]:
-                    s["owners"].append("oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com")
+                dev = "oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com"
+                if dev not in s["owners"]:
+                    s["owners"].append(dev)
+                # Self-verify makes the dev SA a TOKEN owner (it holds the
+                # google-site-verification DNS record) — like the external
+                # james@example.test — so it too can no longer be unverified
+                # while its token is live.
+                if dev not in s["token_owners"]:
+                    s["token_owners"].append(dev)
                 save(s)
                 return self.reply(200, self.resource(s))
             save(s)
@@ -203,7 +216,20 @@ class H(BaseHTTPRequestHandler):
             if not s["verified"]:
                 save(s)
                 return self.reply(403, {"error": {"message": "not an owner"}})
-            s["owners"] = b.get("owners", [])
+            # webResource.update REPLACES the owners list. The real API refuses
+            # to unverify an owner that still holds a verification token: if this
+            # PUT omits any current token owner, 400 (mirrors the live failure
+            # that dropped james.nguyen@gmail.com).
+            submitted = b.get("owners", [])
+            dropped = [o for o in s["token_owners"] if o not in submitted]
+            if dropped:
+                save(s)
+                return self.reply(400, {"error": {"message":
+                    "You cannot unverify this site owner until all associated "
+                    "verification tokens (meta tag, HTML file, Google Analytics "
+                    "tracking code, Google Tag Manager container code, or DNS "
+                    "record) are removed from your site. dropped=%s" % dropped}})
+            s["owners"] = submitted
             save(s)
             return self.reply(200, self.resource(s))
         return self.reply(404, {"error": {"message": "unknown PUT " + self.path}})
@@ -217,6 +243,7 @@ export MOCK_STATE="$work/state.json"
 cat >"$MOCK_STATE" <<'EOF'
 {"verified": false,
  "owners": ["james@example.test"],
+ "token_owners": ["james@example.test"],
  "cf_records": [{"type": "TXT", "name": "example.test", "content": "v=spf1 -all"}],
  "counts": {"sv_get": 0, "sv_gettoken": 0, "sv_insert": 0, "sv_update": 0, "cf_create": 0}}
 EOF
