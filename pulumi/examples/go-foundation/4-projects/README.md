@@ -254,10 +254,15 @@ The shared leaf exports:
 
 | File                                        | Description                                                                                                   |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `business_unit_1/shared/main.go`            | Thin shared leaf pinning `common`/`c`; deploys the BU's infra-pipeline project via `modules/infra_pipelines`  |
-| `business_unit_1/development/main.go`       | Thin env leaf pinning `development`/`d`; BU folder + per-env projects via `modules/base_env`                  |
-| `business_unit_1/nonproduction/main.go`     | Thin env leaf pinning `nonproduction`/`n`; BU folder + per-env projects via `modules/base_env`                |
-| `business_unit_1/production/main.go`        | Thin env leaf pinning `production`/`p`; BU folder + per-env projects via `modules/base_env`                   |
+| `business_unit_1/shared/`                   | Thin shared leaf pinning `common`/`c`; deploys the BU's infra-pipeline project via `modules/infra_pipelines`  |
+| `business_unit_1/development/`              | Thin env leaf pinning `development`/`d`; BU folder + per-env projects via `modules/base_env`                  |
+| `business_unit_1/nonproduction/`            | Thin env leaf pinning `nonproduction`/`n`; BU folder + per-env projects via `modules/base_env`                |
+| `business_unit_1/production/`               | Thin env leaf pinning `production`/`p`; BU folder + per-env projects via `modules/base_env`                   |
+
+Each leaf splits per upstream's file-per-concern layout: `main.go` (main.tf —
+orchestration), `config.go` (variables.tf), `remote.go` (remote.tf —
+cross-stage StackReferences), `outputs.go` (outputs.tf); the modules mirror
+their upstream file sets too (see each directory's README).
 | `modules/base_env/`                         | Per-env project orchestrator: SVPC/floating/peering project types, CMEK, peering network, Confidential Space |
 | `modules/single_project/`                   | Single-project wrapper over the project factory (labels, budget, APIs, VPC-SC, API-propagation gating)       |
 | `modules/infra_pipelines/`                  | App-infra pipeline project (WIF model); Cloud Build reference port behind the `example` build tag            |

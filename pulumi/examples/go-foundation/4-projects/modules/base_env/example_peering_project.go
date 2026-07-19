@@ -28,6 +28,50 @@ import (
 	"foundation-4-projects/modules/single_project"
 )
 
+// deployPeeringProject creates the peering project — a project with its own
+// VPC peered to the shared VPC host — plus its full network infrastructure
+// (deployPeeringNetwork below), matching upstream's example_peering_project.tf
+// (toggle-gated).
+func deployPeeringProject(ctx *pulumi.Context, args *Args, result *BUProjects) error {
+	if !args.PeeringProjectEnabled {
+		return nil
+	}
+
+	peeringProject, err := single_project.New(ctx, "bu-peering-project", &single_project.Args{
+		DefaultServiceAccount: "disable", // upstream default; see the svpc project
+		ProjectID:             fmt.Sprintf("%s-%s-%s-sample-peering", args.ProjectPrefix, args.EnvCode, args.BusinessCode),
+		FolderID:              args.FolderID,
+		BillingAccount:        args.BillingAccount,
+		RandomProjectID:       args.RandomSuffix,
+		Labels:                args.Labels("sample-peering", "none"),
+		Budget:                args.Budget,
+		ActivateApis: []string{
+			"compute.googleapis.com",
+			"dns.googleapis.com",
+			"billingbudgets.googleapis.com",
+			"logging.googleapis.com",
+		},
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
+	})
+	if err != nil {
+		return err
+	}
+	result.PeeringProjectID = peeringProject.ProjectID
+
+	// Deploy peering network infrastructure (VPC, subnet, DNS, peering, firewall)
+	if args.PeeringEnabled {
+		peeringResult, err := deployPeeringNetwork(ctx, args, peeringProject, args.NetworkProjectID)
+		if err != nil {
+			return err
+		}
+		result.PeeringNetworkSelfLink = peeringResult.NetworkSelfLink
+		result.PeeringSubnetSelfLink = peeringResult.SubnetSelfLink
+		result.IAPFirewallTags = peeringResult.IAPFirewallTags
+	}
+
+	return nil
+}
+
 // PeeringResult holds outputs from the peering network deployment.
 // These are exported by main.go to satisfy downstream dependencies in 5-app-infra.
 type PeeringResult struct {

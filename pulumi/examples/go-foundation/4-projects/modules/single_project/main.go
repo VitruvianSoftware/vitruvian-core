@@ -19,6 +19,10 @@
 // the leaf building block that every BU project type (SVPC-attached, floating,
 // peering, confidential-space) is created from.
 //
+// File layout mirrors the upstream module: main.go (main.tf), variables.go
+// (variables.tf), outputs.go (outputs.tf); versions.tf maps to the shared
+// modules/go.mod (engine adaptation).
+//
 // It is a PLAIN factory function (not a ComponentResource): New calls
 // project.NewProject with the caller-supplied logical name UNCHANGED, so the
 // resulting resource URN is byte-identical to the pre-refactor inline call and
@@ -32,42 +36,6 @@ import (
 	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
-
-// Args are the inputs to a single project creation. ProjectID doubles as the
-// display Name in every upstream call site, so New sets both from this one field
-// (matching the pre-refactor inline `ProjectID`/`Name` pair, which were always
-// the same fmt.Sprintf string).
-type Args struct {
-	ProjectID             string
-	FolderID              pulumi.StringOutput
-	BillingAccount        string
-	RandomProjectID       bool
-	Labels                pulumi.StringMapInput
-	Budget                *project.BudgetConfig
-	ActivateApis          []string
-	DefaultServiceAccount string
-	// ApiPropagationSeconds is forwarded to the project factory: >0 makes the
-	// factory's ApisReady handle a `sleep N` gated on all enabled Services (see
-	// project_factory.ProjectArgs), 0 leaves ApisReady = the project itself.
-	ApiPropagationSeconds int
-}
-
-// Result holds the created project. Project is the raw project-factory handle,
-// surfaced so callers can attach it to a Shared VPC / VPC-SC perimeter, hang CMEK
-// storage off it, or build peering infrastructure on it — exactly as the inline
-// code did with the `*project.Project` return value.
-type Result struct {
-	Project       *project.Project
-	ProjectID     pulumi.StringOutput
-	ProjectNumber pulumi.StringOutput
-	// ApisReadyProjectID is the project id as a DATA dependency on the API
-	// propagation gate: it resolves only after the factory's ApisReady wait has
-	// run. Thread it (instead of ProjectID) into library components whose inner
-	// resources must not race freshly-enabled APIs — a component-level DependsOn
-	// does NOT propagate to a component's children in the Pulumi Go SDK, so a
-	// data dependency is the only way to gate them from outside the library.
-	ApisReadyProjectID pulumi.StringOutput
-}
 
 // New creates a single project via the project-factory library. The logical
 // name is passed straight through to project.NewProject to preserve the resource
