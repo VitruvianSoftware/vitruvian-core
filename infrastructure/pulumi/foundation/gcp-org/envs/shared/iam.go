@@ -316,7 +316,7 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 
 	// ========================================================================
 	// 11. CAI Monitoring Builder SA IAM (G4+G5)
-	// The SA itself is created in main.go BEFORE the CAI monitoring deploy
+	// The SA itself is created in sa.go BEFORE the CAI monitoring deploy
 	// (cold-deploy fix: the Cloud Function references it as its build SA, so
 	// creating it here — after step 6b — guaranteed "service account does not
 	// exist" on a fresh apply). Only its role bindings remain here.
