@@ -30,3 +30,8 @@ config:
   oauth-user-inspector:region: us-west1
   oauth-user-inspector:environment: development
   oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector-rt@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com
+  # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
+  # CNAME (main.go). The zone is given by NAME and resolved to its id at
+  # deploy time via the CLOUDFLARE_API_TOKEN-authenticated API.
+  oauth-user-inspector:customDomain: oauth-inspector.dev.ipv1337.dev
+  oauth-user-inspector:cloudflareZone: ipv1337.dev

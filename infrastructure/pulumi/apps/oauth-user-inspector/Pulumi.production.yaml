@@ -30,3 +30,10 @@ config:
   oauth-user-inspector:region: us-west1
   oauth-user-inspector:environment: production
   oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector-rt@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com
+  # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
+  # CNAME (main.go). The zone is given by NAME and resolved to its id at
+  # deploy time via the CLOUDFLARE_API_TOKEN-authenticated API.
+  # NOTE (runbook): this hostname is ALREADY live via a manually-created
+  # mapping + CNAME — import or remove those before the first prod apply.
+  oauth-user-inspector:customDomain: oauth-inspector.ipv1337.dev
+  oauth-user-inspector:cloudflareZone: ipv1337.dev
