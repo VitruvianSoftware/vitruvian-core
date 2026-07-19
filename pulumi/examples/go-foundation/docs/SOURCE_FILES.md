@@ -11,14 +11,14 @@ READMEs in the TypeScript foundation.
 | `main.go`                 |  ~250 | Orchestrates bootstrap: config loading, folder creation, project/IAM coordination, WIF setup, output exports              |
 | `projects.go`             |  ~200 | Creates Seed project (KMS ring, crypto key, encrypted state bucket) and CI/CD project with labels and deletion protection |
 | `iam.go`                  |  ~400 | 5 granular SAs, least-privilege IAM at org/parent/seed/cicd/billing scopes, SA self-impersonation, editor removal         |
-| `build_github_actions.go` |  ~200 | WIF pool, OIDC provider, per-SA repo bindings for GitHub Actions                                                          |
+| `build_github.go` |  ~200 | WIF pool, OIDC provider, per-SA repo bindings for GitHub Actions                                                          |
 | `groups.go`               |  ~160 | Required and optional Cloud Identity group creation                                                                       |
 
 **Alternative CI/CD files (not compiled by default):**
 
 | File                               | Description                                                 |
 | ---------------------------------- | ----------------------------------------------------------- |
-| `build_cloud_build.go.example`     | Cloud Build provisioning (CSR, Artifact Registry, triggers) |
+| `build_cb.go.example`     | Cloud Build provisioning (CSR, Artifact Registry, triggers) |
 | `build_gitlab.go.example`          | GitLab WIF OIDC provisioning                                |
 | `build_local.go.example`           | Local (no-CI) apply path                                    |
 | `build_terraform_cloud.go.example` | Pulumi Cloud agent equivalent of upstream Terraform Cloud   |

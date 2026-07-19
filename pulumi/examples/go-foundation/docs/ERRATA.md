@@ -22,7 +22,7 @@ Alternative CI/CD tool support is available via opt-in `.example` files:
 
 - **GitLab CI/CD:** `build/gitlab-ci.yml` + `0-bootstrap/build_gitlab.go.example`
   with instructions in `0-bootstrap/README-GitLab.md`
-- **Cloud Build:** `0-bootstrap/build_cloud_build.go.example` with instructions
+- **Cloud Build:** `0-bootstrap/build_cb.go.example` with instructions
   in `0-bootstrap/README-CloudBuild.md`
 - **Terraform Cloud:** `0-bootstrap/build_terraform_cloud.go.example`
 

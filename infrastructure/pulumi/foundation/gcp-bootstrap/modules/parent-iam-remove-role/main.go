@@ -18,6 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// Package parentiamremoverole mirrors the upstream terraform-example-foundation
+// 0-bootstrap/modules/parent-iam-remove-role module: authoritative empty IAM
+// bindings that remove ALL members from the given roles at project, folder or
+// organization scope (e.g. stripping roles/editor from bootstrap projects).
 package parentiamremoverole
 
 import (
@@ -30,16 +34,14 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-type ParentIamRemoveRoleArgs struct {
-	ParentType string
-	ParentId   pulumi.StringInput
-	Roles      []string
-}
-
+// ParentIamRemoveRole is the component resource mirroring upstream
+// 0-bootstrap/modules/parent-iam-remove-role. It has no outputs.
 type ParentIamRemoveRole struct {
 	pulumi.ResourceState
 }
 
+// NewParentIamRemoveRole creates an authoritative empty binding for each role
+// in args.Roles at the configured parent scope, mirroring upstream main.tf.
 func NewParentIamRemoveRole(ctx *pulumi.Context, name string, args *ParentIamRemoveRoleArgs, opts ...pulumi.ResourceOption) (*ParentIamRemoveRole, error) {
 	var resource ParentIamRemoveRole
 	err := ctx.RegisterComponentResource("modules:parent-iam-remove-role:ParentIamRemoveRole", name, &resource, opts...)

@@ -21,10 +21,63 @@
 package main
 
 import (
+	"fmt"
+
 	group "github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// groupsProviderOptions prepares the provider used for group creation.
+//
+// The Cloud Identity API requires a quota/billing project on every call.
+// Upstream handles this by setting user_project_override + billing_project
+// on its google-beta provider (0-bootstrap/provider.tf) and documenting the
+// API enablement as a manual prerequisite. We port that config AND codify
+// the enablement: a dedicated provider scoped to group creation only (so the
+// default provider used for projects/IAM/KMS is unaffected and does not need
+// the billing project to carry every API), plus enabling cloudidentity on it.
+//
+// Returns nil options when group creation is disabled (groups pre-exist).
+func groupsProviderOptions(ctx *pulumi.Context, cfg *Config) ([]pulumi.ResourceOption, error) {
+	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups {
+		return nil, nil
+	}
+	if cfg.GroupsBillingProject == "" {
+		return nil, fmt.Errorf("groups_billing_project is required when create_required_groups or create_optional_groups is true (it is the pre-existing project that provides Cloud Identity API quota)")
+	}
+	ciAPI, err := projects.NewService(ctx, "groups-cloudidentity-api", &projects.ServiceArgs{
+		Project:                  pulumi.String(cfg.GroupsBillingProject),
+		Service:                  pulumi.String("cloudidentity.googleapis.com"),
+		DisableOnDestroy:         pulumi.Bool(false),
+		DisableDependentServices: pulumi.Bool(false),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Pin Project explicitly to the quota/billing project. Left unset, the
+	// provider infers its project from the ambient environment, so the field
+	// flip-flops in previews: CI (which has an ambient GCP project) records one
+	// value while a local run (no ambient project) records none, producing
+	// perpetual benign drift on this stack. Since UserProjectOverride +
+	// BillingProject already route Cloud Identity quota through
+	// GroupsBillingProject, pinning Project to the same value makes previews
+	// deterministic regardless of runner environment.
+	ciProvider, err := gcp.NewProvider(ctx, "cloudidentity", &gcp.ProviderArgs{
+		Project:             pulumi.String(cfg.GroupsBillingProject),
+		UserProjectOverride: pulumi.Bool(true),
+		BillingProject:      pulumi.String(cfg.GroupsBillingProject),
+	}, pulumi.DependsOn([]pulumi.Resource{ciAPI}))
+	if err != nil {
+		return nil, err
+	}
+	return []pulumi.ResourceOption{
+		pulumi.Provider(ciProvider),
+		pulumi.DependsOn([]pulumi.Resource{ciAPI}),
+	}, nil
+}
 
 // deployGroups optionally creates Google Workspace groups via Cloud Identity.
 // This mirrors the Terraform foundation's 0-bootstrap/groups.tf which uses

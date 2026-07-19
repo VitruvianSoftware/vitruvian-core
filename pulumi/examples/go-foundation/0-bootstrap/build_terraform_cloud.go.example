@@ -35,7 +35,7 @@
 //
 // 1. Rename this file: build_terraform_cloud.go.example → build_terraform_cloud.go
 // 2. Rename outputs_terraform_cloud.go.example → outputs_terraform_cloud.go
-// 3. Remove or rename: build_github_actions.go → build_github_actions.go.bak
+// 3. Remove or rename: build_github.go → build_github.go.bak
 //    (and outputs_github.go → outputs_github.go.bak)
 // 4. Update main.go to call deployTFCBuild instead of deployGitHubActionsBuild
 //    and exportTerraformCloudOutputs instead of exportGitHubOutputs

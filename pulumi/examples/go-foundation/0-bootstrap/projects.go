@@ -22,9 +22,31 @@ import (
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2"
 	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage"
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// deployBootstrapFolder creates the top-level bootstrap folder that parents
+// the seed and CI/CD projects.
+// Mirrors: google_folder.bootstrap in the TF foundation's 0-bootstrap/main.tf.
+func deployBootstrapFolder(ctx *pulumi.Context, cfg *Config) (*organizations.Folder, pulumi.StringOutput, error) {
+	bootstrapFolder, err := organizations.NewFolder(ctx, "bootstrap-folder", &organizations.FolderArgs{
+		DisplayName:        pulumi.String(cfg.FolderPrefix + "-bootstrap"),
+		Parent:             pulumi.String(cfg.Parent),
+		DeletionProtection: pulumi.Bool(cfg.FolderDeletionProtection),
+	}, pulumi.Protect(true))
+	if err != nil {
+		return nil, pulumi.StringOutput{}, err
+	}
+
+	// Convert IDOutput to StringOutput for folder ID
+	folderID := bootstrapFolder.ID().ApplyT(func(id pulumi.ID) string {
+		return string(id)
+	}).(pulumi.StringOutput)
+
+	return bootstrapFolder, folderID, nil
+}
 
 // SeedProject holds outputs from the seed project deployment.
 type SeedProject struct {

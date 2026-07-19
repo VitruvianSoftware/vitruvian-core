@@ -37,10 +37,10 @@ default `build_cb.tf` configuration.
 cd 0-bootstrap
 
 # Deactivate the GitHub Actions default
-mv build_github_actions.go build_github_actions.go.bak
+mv build_github.go build_github.go.bak
 
 # Activate Cloud Build
-mv build_cloud_build.go.example build_cloud_build.go
+mv build_cb.go.example build_cloud_build.go
 ```
 
 ### Step 2: Update main.go

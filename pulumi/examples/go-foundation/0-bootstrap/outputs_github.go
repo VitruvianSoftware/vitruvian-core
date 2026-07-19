@@ -22,7 +22,7 @@
 // NOTE on the suffix: upstream ships this file as `.example` because its
 // default builder is Cloud Build; our port defaults to GitHub Actions, so the
 // suffix is inverted here (this file is live, outputs_cb.go.example is the
-// example) — matching the build_cloud_build.go.example/build_github_actions.go
+// example) — matching the build_cb.go.example/build_github.go
 // pattern.
 
 package main

@@ -22,8 +22,8 @@
 //
 // To use Cloud Build instead of GitHub Actions:
 //
-// 1. Rename this file: build_cloud_build.go.example → build_cloud_build.go
-// 2. Remove or rename: build_github_actions.go → build_github_actions.go.bak
+// 1. Rename this file: build_cb.go.example → build_cloud_build.go
+// 2. Remove or rename: build_github.go → build_github.go.bak
 // 3. Update main.go to call deployCloudBuild() instead of deployGitHubActionsBuild()
 // 4. Add the required config values to your Pulumi.<stack>.yaml:
 //

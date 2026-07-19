@@ -23,7 +23,7 @@
 // To use GitLab instead of GitHub Actions:
 //
 // 1. Rename this file: build_gitlab.go.example → build_gitlab.go
-// 2. Remove or rename: build_github_actions.go → build_github_actions.go.bak
+// 2. Remove or rename: build_github.go → build_github.go.bak
 // 3. Update main.go:
 //    a. Replace the build call (see below)
 //    b. Replace the GitHub config fields with GitLab equivalents
