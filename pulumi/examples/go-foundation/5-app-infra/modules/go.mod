@@ -3,7 +3,7 @@ module foundation-5-app-infra/modules
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.2.1-0.20260718212957-b0aa3a454016
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.3.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
