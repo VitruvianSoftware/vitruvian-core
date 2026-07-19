@@ -28,14 +28,15 @@
 # The per-env deploy SAs are headless, so the Search Console click-path is not
 # an option — this script makes ownership a converged, code-managed fact.
 #
-# FLOW (idempotent; runs in the build job BEFORE any env deploy):
+# FLOW (idempotent; the deploy workflow's verify-domain job runs this AS THE
+# DEV DEPLOY SA, an APP-scoped identity, BEFORE any env deploy):
 #   1. Read the app's per-env Pulumi.<env>.yaml files: every env with a
 #      `customDomain` contributes its `cloudflareZone` (the registrable domain
 #      to verify — verifying the zone apex covers all subdomains) and its
 #      deploy SA (oauth-user-inspector-deploy@<project>..., the same email the
 #      deploy-identity stack mints). No customDomain anywhere -> clean no-op.
 #   2. For each zone: GET webResource dns://<zone>. If the calling identity
-#      (the build SA) is already a verified owner, skip to 4.
+#      (the dev deploy SA) is already a verified owner, skip to 4.
 #   3. Bootstrap self-verification (first run only): getToken (DNS_TXT) ->
 #      additively upsert the google-site-verification TXT on the zone apex via
 #      the Cloudflare API -> poll public DNS -> webResource.insert. This adds
@@ -44,8 +45,8 @@
 #      DNS periodically, so the TXT must persist for ownership to persist.
 #   4. webResource.update to union the per-env deploy SAs into the owners
 #      list (delegated owners: valid while >=1 token-verified owner remains —
-#      the build SA re-converges 2-4 on every run, so a lapsed verification
-#      self-heals on the next build).
+#      the dev deploy SA re-converges 2-4 on every run, so a lapsed
+#      verification self-heals on the next run).
 #
 # INPUTS (env):
 #   SITEVERIFY_ACCESS_TOKEN  OAuth2 access token bearing the
@@ -54,12 +55,17 @@
 #                            token_format: access_token + access_token_scopes;
 #                            SA impersonation supports arbitrary scopes).
 #   CLOUDFLARE_API_TOKEN     Cloudflare token, Zone.Read + DNS.Edit on the zone
-#                            (same secret the Pulumi deploy uses).
+#                            (read at runtime from the dev floating project's
+#                            Secret Manager — never a GitHub secret; same
+#                            credential the Pulumi deploys use for the CNAME).
+#   SITEVERIFY_QUOTA_PROJECT Optional; when set, sent as x-goog-user-project on
+#                            every Site Verification call so quota/API-enable
+#                            attribution is pinned to the calling deploy SA's
+#                            OWN floating project (the app's identity stack
+#                            enables siteverification.googleapis.com there and
+#                            the deploy SA already holds serviceUsageConsumer).
+#                            Nothing app-shared or foundation-owned is touched.
 #   APP_DIR                  Optional; the app's Pulumi project dir.
-#
-# The Site Verification API must be enabled on the calling SA's home project
-# (quota attribution) — prj-c-bu1-infra-pipeline, via foundation stage 4
-# infra_pipelines ActivateApis.
 #
 # Tokens: google-site-verification values are public DNS data, not secrets.
 # The OAuth and Cloudflare tokens are only ever sent as headers, never logged.
@@ -128,6 +134,10 @@ sv_call() { # sv_call <method> <url> [json-body]; body -> $workdir/resp, echoes 
   local args=(-sS -o "$workdir/resp" -w '%{http_code}' -X "$method" \
     -H "Authorization: Bearer $SITEVERIFY_ACCESS_TOKEN" \
     -H "Content-Type: application/json")
+  # Pin quota attribution to the caller's own floating project (see header).
+  if [ -n "${SITEVERIFY_QUOTA_PROJECT:-}" ]; then
+    args+=(-H "x-goog-user-project: $SITEVERIFY_QUOTA_PROJECT")
+  fi
   if [ -n "$body" ]; then args+=(-d "$body"); fi
   curl "${args[@]}" "$url"
 }

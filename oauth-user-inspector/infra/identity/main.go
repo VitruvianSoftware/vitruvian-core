@@ -39,7 +39,10 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/secretmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -163,6 +166,64 @@ func main() {
 			},
 		}); err != nil {
 			return err
+		}
+
+		// --- Custom-domain verification anchoring (dev-only, config-gated) ---
+		// The oauth-user-inspector-deploy workflow's verify-domain job runs
+		// tools/ci/ensure-site-verification.sh AS THE DEV DEPLOY SA: it
+		// self-verifies the Cloudflare zone via Site Verification DNS-TXT and
+		// delegates every env's deploy SA as a domain owner (the Cloud Run
+		// DomainMapping precondition). That is an APP concern, so everything it
+		// needs is anchored HERE in the app's own identity stack — never in a
+		// foundation stage (the #938 stage-4 coupling was reverted):
+		//
+		//   1. siteverification.googleapis.com enabled additively on THIS env's
+		//      floating project (an SA's API calls are quota-attributed to a
+		//      project that must have the API enabled; the script pins it
+		//      explicitly via SITEVERIFY_QUOTA_PROJECT/x-goog-user-project,
+		//      which the deploy SA's existing serviceUsageConsumer grant
+		//      authorizes). Additive is safe: the stage-4 project factory
+		//      manages APIs as individual gcp.projects.Service resources
+		//      (never an authoritative Services), so this enable can neither
+		//      conflict with nor be reverted by foundation applies.
+		//   2. secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN secret
+		//      in THIS project for every env's deploy SA (emails derived from
+		//      cloudflareTokenAccessorProjects): the token is stored ONCE, in
+		//      the dev project's Secret Manager (secrets model §pipeline-env —
+		//      no GitHub secret), and each env's deploy job reads it at runtime
+		//      for the verification step and the app stack's Cloudflare
+		//      provider (the per-env grey-cloud CNAME stays in Pulumi). The
+		//      secret RESOURCE itself is deliberately unmanaged here — only its
+		//      IAM is code. It does not match the OAUTH_USER_INSPECTOR_ prefix
+		//      condition above, hence these explicit secret-scoped grants.
+		//
+		// This stack applies as sa-terraform-proj (folder-scoped serviceusage +
+		// secretmanager admin from Phase 1), so no extra admin-tier grant to any
+		// deploy SA is needed to converge either resource.
+		if cfg.GetBool("domainVerificationAnchor") {
+			if _, err := projects.NewService(ctx, "siteverification-api", &projects.ServiceArgs{
+				Project: pulumi.String(projectID),
+				Service: pulumi.String("siteverification.googleapis.com"),
+				// Never disable on teardown: other tenants of the shared
+				// floating project must not lose the API underneath them.
+				DisableOnDestroy: pulumi.Bool(false),
+			}); err != nil {
+				return err
+			}
+			for _, p := range strings.Split(cfg.Get("cloudflareTokenAccessorProjects"), ",") {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				if _, err := secretmanager.NewSecretIamMember(ctx, "cf-token-accessor-"+p, &secretmanager.SecretIamMemberArgs{
+					Project:  pulumi.String(projectID),
+					SecretId: pulumi.String("CLOUDFLARE_API_TOKEN"),
+					Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+					Member:   pulumi.Sprintf("serviceAccount:oauth-user-inspector-deploy@%s.iam.gserviceaccount.com", p),
+				}); err != nil {
+					return err
+				}
+			}
 		}
 
 		ctx.Export("deployServiceAccount", deploySA.Email)

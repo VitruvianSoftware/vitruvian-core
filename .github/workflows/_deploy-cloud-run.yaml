@@ -120,6 +120,20 @@ on:
         required: false
         type: string
         default: ""
+      cloudflare-token-secret-project:
+        description: >-
+          GCP project whose Secret Manager holds the CLOUDFLARE_API_TOKEN
+          secret (an app with a `customDomain` config needs it for its
+          grey-cloud DNS record). When set, the token is fetched at runtime as
+          the env's deploy SA and exported as CLOUDFLARE_API_TOKEN for the
+          Pulumi steps — never a GitHub secret (secrets model §pipeline-env).
+          The project may differ from the env's own (oauth-user-inspector
+          stores ONE token, in its dev floating project; the app's identity
+          stack grants each env's deploy SA secretAccessor on that single
+          secret). Empty (the default) skips the fetch entirely.
+        required: false
+        type: string
+        default: ""
 
 jobs:
   deploy:
@@ -227,6 +241,27 @@ jobs:
           bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
 
+      - name: Fetch the Cloudflare API token (Secret Manager)
+        # Cloud-native secret flow: pulled per-run as the deploy SA from the
+        # app-designated project (see the input's description), masked, and
+        # exported job-wide so BOTH `pulumi up` phases (deploy + promote) see
+        # it — the cloudflare provider reads the env var implicitly, so it
+        # never touches Pulumi config or state.
+        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        run: |
+          set -euo pipefail
+          # Plain assignment (not `export VAR=$(...)`): export would swallow
+          # the gcloud exit status and hand Pulumi an empty token.
+          CF_TOKEN="$(gcloud secrets versions access latest \
+            --secret=CLOUDFLARE_API_TOKEN \
+            --project="${{ inputs.cloudflare-token-secret-project }}")"
+          if [ -z "$CF_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret read returned empty (deploy SA needs secretAccessor on it in ${{ inputs.cloudflare-token-secret-project }})"
+            exit 1
+          fi
+          echo "::add-mask::$CF_TOKEN"
+          echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
@@ -237,11 +272,9 @@ jobs:
         id: deploy
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Cloudflare DNS automation for apps with a `customDomain` config
-          # (oauth-user-inspector): the cloudflare provider reads this env var
-          # implicitly, so the secret never touches Pulumi config or state.
-          # Empty for apps without a custom domain — the program skips DNS.
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # CLOUDFLARE_API_TOKEN (apps with a `customDomain` config) is
+          # job-wide env from the Secret Manager fetch step above — absent
+          # entirely for apps without one, and the program skips DNS.
           # Pulumi shells out to `go build`; the repo-root go.work does not
           # include this module (same as tools/pulumi/pulumi_cmd.sh).
           GOWORK: off
@@ -320,10 +353,9 @@ jobs:
       - name: Shift 100% traffic to the new revision (Pulumi)
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Same as the deploy step: the promote is a second `pulumi up` of the
-          # SAME program, so it needs the same Cloudflare credential or the
-          # program's customDomain guard fails the apply.
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # The promote is a second `pulumi up` of the SAME program, so it
+          # needs the same Cloudflare credential (job-wide env from the Secret
+          # Manager fetch step) or the program's customDomain guard fails.
           GOWORK: off
           STABLE_REVISION: ${{ steps.deploy.outputs.stable_revision }}
         working-directory: ${{ inputs.pulumi-dir }}
