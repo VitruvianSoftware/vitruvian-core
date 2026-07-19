@@ -22,9 +22,11 @@
 # (oauth-user-inspector/infra/identity): the per-env deploy + runtime service
 # accounts on each prj-{env}-bu1-oss-floating project, their foundation-pool WIF
 # bindings, per-app least-privilege IAM, and — for the DEV stack — the
-# custom-domain verification anchor (siteverification.googleapis.com enabled on
-# the dev floating project + secretAccessor grants on the human-seeded
-# CLOUDFLARE_API_TOKEN secret for all three env deploy SAs).
+# custom-domain verification anchor (secretAccessor grants on the human-seeded
+# CLOUDFLARE_API_TOKEN secret for all three env deploy SAs). The
+# siteverification.googleapis.com enable that the dev verify path needs lives in
+# the foundation project factory's ActivateApis for prj-d-bu1-oss-floating, NOT
+# in this stack (it is enabled as the project owner; see the ordering note).
 #
 # PROMOTION CHAIN: applies SEQUENTIALLY development -> nonproduction ->
 # production (each `needs:` the previous, mirroring the app-deploy and
@@ -34,33 +36,30 @@
 #
 # IDENTITY (chicken-and-egg): the deploy SA this stack CREATES cannot be the
 # identity that APPLIES it. Each leg instead runs as its PER-ENV
-# foundation-proj-<env> service account — the stage-4 projects SA that created
-# that env's oss-floating project and enabled its APIs. That per-env choice is
-# load-bearing for the DEV leg: enabling siteverification.googleapis.com needs
-# serviceusage.services.enable ON prj-d-bu1-oss-floating, which the dev projects
-# SA provably holds (it enabled every other API there in stage-4) whereas
-# foundation-proj-shared / sa-terraform-proj holds only secretmanager.admin
-# there — the #948 apply failed on exactly that gap. The same per-env SA created
-# the project's service accounts and set its IAM in stage-4, so it covers the
-# rest of each stack (deploy/runtime SA create, per-app project IAM, secret IAM)
-# with NO additional role grant to any principal. The app deploy SA is
-# deliberately NOT this workflow's identity.
+# foundation-proj-<env> service account — the stage-4 projects SA for that leaf
+# (which created the env's oss-floating project and set its IAM in stage-4, so it
+# covers deploy/runtime SA create, per-app project IAM, and secret IAM with NO
+# additional role grant). The app deploy SA is deliberately NOT this workflow's
+# identity.
 #
 # COLD-DEPLOY ORDERING (the app promotion chain + domain verification depend on
-# this stack):
+# this stack AND on the foundation stage-4 dev projects leaf):
+#   0. Foundation stage-4 gcp-projects-development apply (foundation-proj-deploy
+#      workflow, development leaf) — enables siteverification.googleapis.com on
+#      prj-d-bu1-oss-floating via its ActivateApis, as the project owner. MUST
+#      precede step 3 (the verify-domain getToken WRITE 403s until it is on).
 #   1. repo_config apply — creates the per-env oauth-user-inspector-<env>
 #      GitHub Environments + their WIF vars.
-#   2. THIS workflow (development leg) — mints the dev deploy/runtime SAs,
-#      enables siteverification.googleapis.com on the dev floating project, and
+#   2. THIS workflow (development leg) — mints the dev deploy/runtime SAs and
 #      grants every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
 #      secret. (nonproduction / production legs mint their own SAs; they carry
 #      no verification-anchor resources.)
 #   3. oauth-user-inspector-deploy.yaml `verify-domain` job — federates the dev
 #      deploy SA, reads the token from Secret Manager, and (with the dev project
-#      as the Site Verification quota project) self-verifies the zone +
-#      delegates ownership; then each env's DomainMapping create is authorized.
-# Step 2 (at least its development leg) must have completed once before step 3
-# can ever succeed.
+#      as the Site Verification quota project, enabled in step 0) self-verifies
+#      the zone + delegates ownership; then each env's DomainMapping create is
+#      authorized.
+# Steps 0 and 2 must both have completed once before step 3 can ever succeed.
 
 name: oauth-user-inspector Identity Stack Deploy
 
@@ -89,7 +88,7 @@ permissions:
   id-token: write
 
 jobs:
-  # development — the anchor leg (siteverification enable + secret grants).
+  # development — the anchor leg (Cloudflare-token secretAccessor grants).
   development:
     if: >-
       ${{ github.event_name == 'push'

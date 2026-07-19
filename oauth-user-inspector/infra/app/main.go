@@ -171,11 +171,12 @@ func main() {
 		// API. The deploy workflow's verify-domain job converges this as code
 		// BEFORE any env deploy (tools/ci/ensure-site-verification.sh, run AS
 		// THE DEV DEPLOY SA with the dev floating project as the Site
-		// Verification quota project — nothing foundation-owned: the app's dev
-		// identity stack enables the API there + anchors the Cloudflare-token
-		// secret IAM). It self-verifies the zone via Site Verification DNS-TXT +
-		// a persistent Cloudflare TXT record, then delegates ownership to every
-		// env's deploy SA. No manual Search Console step.
+		// Verification quota project; that project has siteverification enabled
+		// via the foundation project factory's ActivateApis, and the app's dev
+		// identity stack anchors the Cloudflare-token secret IAM). It
+		// self-verifies the zone via Site Verification DNS-TXT + a persistent
+		// Cloudflare TXT record, then delegates ownership to every env's deploy
+		// SA. No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
 			mapping, err := cloudrun.NewDomainMapping(ctx, "oauth-user-inspector-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
