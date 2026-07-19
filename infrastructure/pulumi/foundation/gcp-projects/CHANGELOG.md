@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.2...foundation-gcp-projects-v1.3.3) (2026-07-19)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** shorten Cloudflare TXT comment (&lt;=100) + document siteverification console-only enable ([#953](https://github.com/VitruvianSoftware/vitruvian-core/issues/953)) ([fc27e38](https://github.com/VitruvianSoftware/vitruvian-core/commit/fc27e38b1fe48095515c955cd16882eb4713a45f))
+
 ## [1.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.1...foundation-gcp-projects-v1.3.2) (2026-07-19)
 
 
