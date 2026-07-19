@@ -27,10 +27,12 @@
 #      owners update unions the deploy SAs alongside pre-existing owners;
 #   2. idempotence: a second run with converged state performs NO writes;
 #   3. the no-customDomain no-op gate.
-# The caller identity is the DEV DEPLOY SA (an app-scoped identity): the Site
-# Verification API needs only the SA token + siteverification scope, with no
-# quota project / x-goog-user-project (dropped after the real API confirmed no
-# per-project enablement is required).
+# The caller identity is the DEV DEPLOY SA (an app-scoped identity). The mock's
+# getToken/insert/update WRITE endpoints REQUIRE x-goog-user-project to match
+# the dev floating project (SITEVERIFY_QUOTA_PROJECT), modelling the real 403
+# the WRITE calls return when the quota project has not enabled the API — the
+# regression guard for the #948 mistake (a read-only GET fails on scope first,
+# so it never surfaced that the WRITE path needs the enabled quota project).
 
 set -euo pipefail
 
@@ -124,6 +126,14 @@ class H(BaseHTTPRequestHandler):
                 "site": {"identifier": "example.test", "type": "INET_DOMAIN"},
                 "owners": s["owners"]}
 
+    def sv_quota_pinned(self):
+        # The getToken/insert/update WRITE calls attribute quota to a project
+        # that must have siteverification enabled; the caller pins its own
+        # floating project via x-goog-user-project. Model the real 403 the dev
+        # verify-domain hit when this was missing ("Site Verification API has
+        # not been used in project ... before or it is disabled").
+        return self.headers.get("x-goog-user-project") == "prj-d-test-1234"
+
     def do_GET(self):
         s = load()
         u = urllib.parse.urlparse(self.path)
@@ -150,6 +160,8 @@ class H(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == "/siteVerification/v1/token":
+            if not self.sv_quota_pinned():
+                return self.reply(403, {"error": {"message": "Site Verification API has not been used in project 715357066805 before or it is disabled"}})
             s["counts"]["sv_gettoken"] += 1; save(s)
             b = self.body_json()
             if b.get("site", {}).get("type") != "INET_DOMAIN":
@@ -160,6 +172,8 @@ class H(BaseHTTPRequestHandler):
                 return self.reply(400, {"error": {"message": "bad method"}})
             return self.reply(200, {"method": "DNS_TXT", "token": "tok-abc-123"})
         if u.path == "/siteVerification/v1/webResource":
+            if not self.sv_quota_pinned():
+                return self.reply(403, {"error": {"message": "Site Verification API has not been used in project 715357066805 before or it is disabled"}})
             s["counts"]["sv_insert"] += 1
             want = "google-site-verification=tok-abc-123"
             if any(r["content"] == want for r in s["cf_records"]):
@@ -182,6 +196,8 @@ class H(BaseHTTPRequestHandler):
         s = load()
         u = urllib.parse.urlparse(self.path)
         if u.path.startswith("/siteVerification/v1/webResource/"):
+            if not self.sv_quota_pinned():
+                return self.reply(403, {"error": {"message": "Site Verification API has not been used in project 715357066805 before or it is disabled"}})
             s["counts"]["sv_update"] += 1
             b = self.body_json()
             if not s["verified"]:
@@ -218,6 +234,7 @@ run_script() {
   APP_DIR="$app" \
     SITEVERIFY_ACCESS_TOKEN="fake-oauth-token" \
     CLOUDFLARE_API_TOKEN="fake-cf-token" \
+    SITEVERIFY_QUOTA_PROJECT="prj-d-test-1234" \
     SITEVERIFY_API_BASE="$base/siteVerification/v1" \
     CLOUDFLARE_API_BASE="$base/client/v4" \
     DOH_API_BASE="$base" \
