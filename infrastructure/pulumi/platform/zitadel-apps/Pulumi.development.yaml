@@ -61,3 +61,7 @@ config:
   # 2026-06-26 CI apply replaced+deleted (Errors.App.NotFound). After this stack
   # creates a fresh client, sync its clientId/clientSecret to GCP Secret Manager
   # (ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET). See main.go.
+  # Cred-sync target (stage-5): the dev oss-floating project's Secret Manager
+  # receives this client's id/secret under the OAUTH_USER_INSPECTOR_ prefix, so
+  # the oss-project app deployment reads them at runtime (server SECRET_PREFIX).
+  zitadel-apps:ossProject: "prj-d-bu1-oss-floating-648a"

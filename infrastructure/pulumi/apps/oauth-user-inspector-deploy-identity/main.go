@@ -128,6 +128,29 @@ func main() {
 			}
 		}
 
+		// Deploy SA: Secret Manager ADMIN conditioned to this app's prefix. The
+		// zitadel-apps stack (applied by the same oauth-user-inspector-<env> CI
+		// environment, i.e. as this deploy SA) syncs the minted OIDC client
+		// id/secret into the oss project's Secret Manager under the prefix
+		// (cred-sync-to-GCP-SM, spec §9). NOTE: secretmanager.secrets.CREATE is
+		// authorized against the PROJECT resource, which a secret-prefix
+		// condition cannot match — so the FIRST per-env apply (creating the two
+		// secrets) runs as sa-terraform-proj (folder-scoped secretmanager.admin
+		// from Phase 1); this grant covers everything after creation (version
+		// adds on rotation, metadata reads/updates, drift refresh) without giving
+		// the deploy SA reach into co-tenant apps' secrets.
+		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-admin", &projects.IAMMemberArgs{
+			Project: pulumi.String(projectID),
+			Role:    pulumi.String("roles/secretmanager.admin"),
+			Member:  deployMember,
+			Condition: &projects.IAMMemberConditionArgs{
+				Title:      pulumi.String("oauth-user-inspector-secrets-only"),
+				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
+			},
+		}); err != nil {
+			return err
+		}
+
 		// Runtime SA: Secret Manager access CONDITIONED to this app's prefix, so a
 		// co-tenant app in the same oss project can't read another app's secrets.
 		if _, err := projects.NewIAMMember(ctx, "runtime-role-secret-accessor", &projects.IAMMemberArgs{
