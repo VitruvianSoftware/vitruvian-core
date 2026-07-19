@@ -16,6 +16,10 @@ Pulumi.*.yaml
 # bootstrap) likewise commits its dev stack config (project id, region) so
 # cfg.Require("project") resolves on a clean checkout.
 !apps/oauth-user-inspector-deploy-identity/Pulumi.*.yaml
+# oauth-user-inspector-build (shared Artifact Registry + build identity in the
+# infra-pipeline project) commits its production stack config (region only; the
+# projects are StackReference-driven).
+!apps/oauth-user-inspector-build/Pulumi.*.yaml
 # zitadel-apps commits its dev stack config (non-secret Zitadel org/project/app
 # identifiers + redirect URIs) so the deploy workflow resolves them on a clean
 # checkout. The Zitadel machine-user credential is injected from a pipeline
@@ -80,3 +84,5 @@ Pulumi.*.yaml
 
 # Compiled Go pulumi-program binary — never track.
 apps/oauth-user-inspector-deploy-identity/oauth-user-inspector-deploy-identity
+# Compiled Go pulumi-program binary (bazel/go build output) — never track.
+apps/oauth-user-inspector-build/oauth-user-inspector-build
