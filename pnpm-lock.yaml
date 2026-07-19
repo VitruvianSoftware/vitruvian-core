@@ -187,8 +187,8 @@ importers:
         specifier: ^9.30.0
         version: 9.30.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
       '@pulumi/pulumi':
-        specifier: ^3.252.0
-        version: 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+        specifier: ^3.253.0
+        version: 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
       '@pulumi/random':
         specifier: ^4.16.0
         version: 4.21.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
@@ -2367,8 +2367,8 @@ packages:
       typescript:
         optional: true
 
-  '@pulumi/pulumi@3.252.0':
-    resolution: {integrity: sha512-Lk2TK7vXc13ls/iiJjFhp4lpeltXhEl/u/PM9dEa4sQFHYCJALCv4nMX6cKFmzFpMWBqhnqJqDNIrbQ0msPg0Q==}
+  '@pulumi/pulumi@3.253.0':
+    resolution: {integrity: sha512-riKRPh6hNCA/NRxVSOLx08c0rqgWYnKGOTgPZzCXi5TglVEERiXHW4U2DaTpP978FI1Xo1iqCa41vmd5i/PNHw==}
     engines: {node: '>=22'}
     peerDependencies:
       ts-node: '>= 7.0.1 < 12'
@@ -9857,7 +9857,7 @@ snapshots:
 
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -9865,7 +9865,7 @@ snapshots:
 
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -9874,7 +9874,7 @@ snapshots:
   '@pulumi/gcp@9.30.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
       '@npmcli/package-json': 6.2.0
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
       - supports-color
@@ -9884,7 +9884,7 @@ snapshots:
   '@pulumi/gcp@9.30.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@npmcli/package-json': 6.2.0
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
       - supports-color
@@ -9953,7 +9953,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@pulumi/pulumi@3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
+  '@pulumi/pulumi@3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
       '@grpc/grpc-js': 1.14.4
       '@logdna/tail-file': 2.2.0
@@ -9986,7 +9986,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@pulumi/pulumi@3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
+  '@pulumi/pulumi@3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@grpc/grpc-js': 1.14.4
       '@logdna/tail-file': 2.2.0
@@ -10021,7 +10021,7 @@ snapshots:
 
   '@pulumi/random@4.21.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -10029,7 +10029,7 @@ snapshots:
 
   '@pulumi/random@4.21.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
@@ -10037,7 +10037,7 @@ snapshots:
 
   '@pulumiverse/time@0.1.1(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
     dependencies:
-      '@pulumi/pulumi': 3.252.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.43)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
     transitivePeerDependencies:
       - supports-color
       - ts-node
