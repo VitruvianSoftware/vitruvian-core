@@ -63,6 +63,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Render tabula's latest changelog into the run page before the deploy, so an
+  # approver reads what is shipping (the pulumi digest only renders after the
+  # gate). Ungated + independent of the deploy, so it never delays a rollout.
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Changelog → step summary
+        run: bash tools/ci/changelog-summary.sh tabula/api/CHANGELOG.md "" tabula-api
+
   # Graph gate (#498): on push, deploy iff the diff affects a DEPLOYABLE
   # artifact. The universe is the union of both stamped artifacts -- the API
   # image AND the extension bundle -- because the dev banner clears only when

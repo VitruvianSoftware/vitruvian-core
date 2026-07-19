@@ -78,6 +78,21 @@ permissions:
   id-token: write
 
 jobs:
+  # On a DIRECT manual dispatch (not when foundation-release calls this via
+  # workflow_call -- that run shows the changelog from its own `changelog` job),
+  # render this stage's latest changelog into the run page before the gated
+  # deploy. Ungated + independent of `deploy`, so it never delays the rollout.
+  changelog:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Changelog → step summary
+        env:
+          WORKDIR: ${{ inputs.working_directory }}
+        run: bash tools/ci/changelog-summary.sh "$WORKDIR/CHANGELOG.md" "" "$(basename "$WORKDIR")"
+
   deploy:
     # Serialize per (stack dir + environment): a newer promotion run waits for an
     # older in-flight one rather than racing/deploying out of order onto live org
