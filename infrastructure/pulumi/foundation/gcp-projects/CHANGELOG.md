@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.4...foundation-gcp-projects-v1.3.0) (2026-07-19)
+
+
+### Features
+
+* **oauth-user-inspector:** automate custom-domain ownership verification for DomainMappings ([#938](https://github.com/VitruvianSoftware/vitruvian-core/issues/938)) ([f5a75b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/f5a75b4a5e6c7d4a587a9753d2bc5fe17fdb6517))
+
 ## [1.2.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.3...foundation-gcp-projects-v1.2.4) (2026-07-18)
 
 
