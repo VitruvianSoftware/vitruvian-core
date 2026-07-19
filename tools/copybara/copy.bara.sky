@@ -222,12 +222,7 @@ _GO_EXAMPLE_LIB_VERSIONS = {
     "cai_monitoring": "1.0.2",
     "centralized_logging": "1.0.2",
     "cicd": "0.4.2",
-    # cloud_run 0.3.0 has no mirror tag yet (its release PR is unmerged), so pin
-    # the published pseudo-version at the mirror head commit instead — the mirror
-    # already carries the source via this export, and a pseudo-version resolves
-    # through GOPROXY/direct git without a semver tag (same approach as the live
-    # foundation go.mods). Bump to "0.3.0" once go/pkg/cloud_run/v0.3.0 is cut.
-    "cloud_run": "0.2.1-0.20260718212957-b0aa3a454016",
+    "cloud_run": "0.3.0",
     "cloud_storage": "1.0.2",
     "compute_instance": "0.2.3",
     "google_group": "1.0.2",
