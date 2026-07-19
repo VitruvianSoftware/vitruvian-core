@@ -86,3 +86,4 @@ Pulumi.*.yaml
 apps/oauth-user-inspector-deploy-identity/oauth-user-inspector-deploy-identity
 # Compiled Go pulumi-program binary (bazel/go build output) — never track.
 apps/oauth-user-inspector-build/oauth-user-inspector-build
+apps/oauth-user-inspector/oauth-user-inspector
