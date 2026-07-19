@@ -23,7 +23,6 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/folder"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
-	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -296,20 +295,12 @@ func deployOrgIAM(ctx *pulumi.Context, cfg *OrgConfig, proj *OrgProjects, bootst
 	}
 
 	// ========================================================================
-	// 11. CAI Monitoring Builder SA + IAM (G4+G5)
-	// Create a dedicated SA for the CAI monitoring Cloud Build pipeline
-	// and grant it the roles needed to build and deploy Cloud Functions.
-	// Mirrors: sa.tf + iam.tf cai_monitoring_builder in TF foundation
+	// 11. CAI Monitoring Builder SA IAM (G4+G5)
+	// The SA itself is created in sa.go (upstream sa.tf); here we grant it
+	// the roles needed to build and deploy Cloud Functions.
+	// Mirrors: iam.tf cai_monitoring_builder bindings in TF foundation
 	// ========================================================================
 	if cfg.EnableSCCResources {
-		if _, err := serviceaccount.NewAccount(ctx, "cai-monitoring-builder", &serviceaccount.AccountArgs{
-			Project:     proj.SCCProjectID,
-			AccountId:   pulumi.String("cai-monitoring-builder"),
-			Description: pulumi.String("Service account for Cloud Build to provision CAI monitoring Cloud Functions"),
-		}); err != nil {
-			return err
-		}
-
 		caiSAMember := proj.SCCProjectID.ApplyT(func(id string) string {
 			return fmt.Sprintf("serviceAccount:cai-monitoring-builder@%s.iam.gserviceaccount.com", id)
 		}).(pulumi.StringOutput)

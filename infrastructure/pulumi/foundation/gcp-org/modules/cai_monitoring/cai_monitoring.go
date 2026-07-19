@@ -88,7 +88,7 @@ type Result struct {
 //  4. The function checks for IAM bindings with monitored roles
 //  5. Violations are reported as SCC findings via the SCC Source
 func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
-	// The builder SA (cai-monitoring-builder) is created in main.go BEFORE this
+	// The builder SA (cai-monitoring-builder) is created in envs/shared/sa.go BEFORE this
 	// module runs and passed in as a resource. Deriving the fully-qualified
 	// name from sa.Email (instead of string-building it) gives Pulumi a real
 	// dependency edge — the Cloud Function build cannot start before the SA

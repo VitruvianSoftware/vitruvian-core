@@ -72,7 +72,7 @@ type Result struct {
 //  4. The function checks for IAM bindings with monitored roles
 //  5. Violations are reported as SCC findings via the SCC Source
 func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
-	// The builder SA (cai-monitoring-builder) was created in iam.go section 11.
+	// The builder SA (cai-monitoring-builder) was created in envs/shared/sa.go.
 	// It's used as the build_service_account for Cloud Build.
 	builderSAEmail := args.SCCProjectID.ApplyT(func(id string) string {
 		return fmt.Sprintf("projects/%s/serviceAccounts/cai-monitoring-builder@%s.iam.gserviceaccount.com", id, id)

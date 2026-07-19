@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	policy "github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -31,14 +32,19 @@ import (
 // This mirrors the Terraform foundation's org_policy.tf, applying 14+ boolean
 // constraints and list constraints that form the security baseline.
 //
-// The loggingDeps parameter implements the Gap 3 race condition guard: the
+// The logsExportLast parameter implements the Gap 3 race condition guard: the
 // domain-restricted sharing policy must wait for log sinks to be created and
 // their writer identities granted IAM, otherwise the sinks may fail with 403.
 // The upstream uses a time_sleep of 30s; in Pulumi we use explicit DependsOn.
-func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi.Resource) error {
+func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, logsExportLast pulumi.Resource) error {
 	parentID := "organizations/" + cfg.OrgID
 	if cfg.ParentFolder != "" {
 		parentID = "folders/" + cfg.ParentFolder
+	}
+
+	var loggingDeps []pulumi.Resource
+	if logsExportLast != nil {
+		loggingDeps = append(loggingDeps, logsExportLast)
 	}
 
 	// ========================================================================
@@ -181,13 +187,25 @@ func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, loggingDeps []pulumi
 		}
 	}
 
-	// ========================================================================
-	// Access Context Manager
-	// NOTE: The AccessPolicy resource is created in main.go (step 9.5) because
-	// its output feeds the access_context_manager_policy_id stack export.
-	// It must NOT be duplicated here — two resources with the same Pulumi name
-	// would produce a duplicate-URN error on pulumi up.
-	// ========================================================================
-
 	return nil
+}
+
+// deployAccessContextManagerPolicy creates the org-level Access Context
+// Manager policy when create_access_context_manager_policy is enabled.
+// This mirrors google_access_context_manager_access_policy.access_policy in
+// the upstream org_policy.tf. Its output feeds the
+// access_context_manager_policy_id stack export (outputs.go); when disabled,
+// an empty string is exported instead.
+func deployAccessContextManagerPolicy(ctx *pulumi.Context, cfg *OrgConfig) (pulumi.StringOutput, error) {
+	if !cfg.CreateAccessContextManagerPolicy {
+		return pulumi.String("").ToStringOutput(), nil
+	}
+	accessPolicy, err := accesscontextmanager.NewAccessPolicy(ctx, "access-policy", &accesscontextmanager.AccessPolicyArgs{
+		Parent: pulumi.Sprintf("organizations/%s", cfg.OrgID),
+		Title:  pulumi.String("default policy"),
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, err
+	}
+	return accessPolicy.Name, nil
 }
