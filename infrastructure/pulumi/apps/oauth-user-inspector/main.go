@@ -82,7 +82,15 @@ func main() {
 		// pinned digest would break build-once/promote-digest.
 		imageDigest := envOrConfig("OAUTH_USER_INSPECTOR_IMAGE_DIGEST", cfg, "imageDigest")
 		if imageDigest == "" {
-			return fmt.Errorf("an image digest ref is required: set OAUTH_USER_INSPECTOR_IMAGE_DIGEST (CI) or the imageDigest config to <ar>/app@sha256:...")
+			if !ctx.DryRun() {
+				return fmt.Errorf("an image digest ref is required: set OAUTH_USER_INSPECTOR_IMAGE_DIGEST (CI) or the imageDigest config to <ar>/app@sha256:...")
+			}
+			// Advisory PR previews (pulumi-preview.yaml) evaluate the program
+			// without a build having run, so no digest exists yet. Substitute an
+			// obviously-fake placeholder so the plan still renders (the image
+			// field shows as a diff — expected preview noise). A real
+			// `pulumi up` never takes this branch.
+			imageDigest = "preview-placeholder@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 		}
 		i := strings.LastIndex(imageDigest, digestMarker)
 		if i < 0 || len(imageDigest) < i+len(digestMarker)+8 {
