@@ -22,8 +22,7 @@
 # (oauth-user-inspector/infra/identity): the per-env deploy + runtime service
 # accounts on each prj-{env}-bu1-oss-floating project, their foundation-pool WIF
 # bindings, per-app least-privilege IAM, and — for the DEV stack — the
-# custom-domain verification anchor (siteverification API-enable on the dev
-# floating project + secretAccessor grants on the human-seeded
+# custom-domain verification anchor (secretAccessor grants on the human-seeded
 # CLOUDFLARE_API_TOKEN secret for all three env deploy SAs).
 #
 # IDENTITY (chicken-and-egg): the deploy SA this stack CREATES cannot be the
@@ -34,13 +33,14 @@
 # these stacks manage (mirrors oauth-user-inspector-build-stack.yaml):
 #   * roles/iam.serviceAccountAdmin   → deploy/runtime SA create + SA IAM policy
 #   * roles/resourcemanager.projectIamAdmin → per-app project IAM bindings
-#   * roles/serviceusage.serviceUsageAdmin  → siteverification API enable (dev)
 #   * roles/secretmanager.admin       → CLOUDFLARE_API_TOKEN secret IAM (dev)
 # All of these are folder-scoped from Phase 1 (see the identity stack's own
 # main.go NOTEs), so NO additional role grant to any principal is needed — the
-# reason this rework parks the API-enable + secret IAM in THIS stack rather
-# than the app deploy SA's stack (which lacks that reach). The app deploy SA is
-# deliberately NOT this workflow's identity.
+# reason this rework parks the secret IAM in THIS stack rather than the app
+# deploy SA's stack (which lacks that reach). The app deploy SA is deliberately
+# NOT this workflow's identity. (The Site Verification API itself needs no
+# project enable — only the SA token + siteverification scope — so nothing
+# serviceusage-tier is applied here.)
 #
 # The foundation-proj-shared environment is reviewer-gated (protected branches
 # only) — appropriate, since these applies mint production-tier service
@@ -50,8 +50,7 @@
 # this stack):
 #   1. repo_config apply — creates the per-env oauth-user-inspector-<env>
 #      GitHub Environments + their WIF vars.
-#   2. THIS workflow (development) — mints the dev deploy/runtime SAs, enables
-#      siteverification.googleapis.com on the dev floating project, and grants
+#   2. THIS workflow (development) — mints the dev deploy/runtime SAs and grants
 #      every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
 #      secret. (nonproduction / production legs mint their own SAs; they carry
 #      no verification-anchor resources.)
@@ -114,9 +113,9 @@ jobs:
           echo "stacks=${stacks}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    # Per-env leg: dev carries the new API-enable + accessor grants; nonprod /
-    # prod mint only their own SAs (no anchor resources). Each leg is
-    # independently reviewer-gated by the foundation-proj-shared environment.
+    # Per-env leg: dev carries the secret accessor grants; nonprod / prod mint
+    # only their own SAs (no anchor resources). Each leg is independently
+    # reviewer-gated by the foundation-proj-shared environment.
     needs: [prep]
     strategy:
       fail-fast: false
