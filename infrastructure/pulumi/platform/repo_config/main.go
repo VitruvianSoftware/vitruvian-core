@@ -487,10 +487,19 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 	// Repo-level gate the zitadel-infra job reads to decide whether to apply the
 	// Zitadel application stack. It must be repo-scoped: a job-level `if:` cannot
 	// see an environment-scoped variable.
+	//
+	// Gated OFF during the OSS-project cutover: the per-env oauth-user-inspector
+	// deploy chain landed the app on prj-{d,n,p}-bu1-oss-floating, but only the
+	// `development` GitHub Environment has the Zitadel machine-user key +
+	// Tailscale CI OAuth secrets seeded. With this "true", zitadel-nonprod /
+	// zitadel-prod would fail (empty key, no tailnet join) and BLOCK
+	// deploy-nonprod / deploy-prod. Flip back to "true" once nonproduction and
+	// production have ZITADEL_MACHINE_KEY_JSON + TS_OAUTH_CLIENT_ID/SECRET
+	// seeded and the multi-env zitadel-apps stack (PR #926) has landed.
 	if _, err := github.NewActionsVariable(ctx, "zitadel-apps-auto-apply", &github.ActionsVariableArgs{
 		Repository:   repo.Name,
 		VariableName: pulumi.String("ZITADEL_APPS_AUTO_APPLY"),
-		Value:        pulumi.String("true"),
+		Value:        pulumi.String("false"),
 	}, pulumi.Import(pulumi.ID(nm+":ZITADEL_APPS_AUTO_APPLY"))); err != nil {
 		return err
 	}
