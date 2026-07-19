@@ -7,7 +7,7 @@ require (
 	github.com/pulumi/pulumi-command/sdk v1.2.1
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0
-	github.com/pulumi/pulumi/sdk/v3 v3.252.0
+	github.com/pulumi/pulumi/sdk/v3 v3.253.0
 	github.com/stretchr/testify v1.11.1
 )
 
