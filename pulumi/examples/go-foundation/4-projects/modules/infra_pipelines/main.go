@@ -19,6 +19,10 @@
 // unit, created ONCE per BU from the business_unit_1/shared leaf (upstream's
 // `shared` workspace, environment=common).
 //
+// File layout mirrors the upstream module: main.go (main.tf), variables.go
+// (variables.tf), outputs.go (outputs.tf); versions.tf maps to the shared
+// modules/go.mod (engine adaptation).
+//
 // Engine-difference note (documented Pulumi workaround, per the port policy):
 // upstream's module receives an existing cloudbuild_project_id (created in the
 // shared leaf via modules/single_project) and fills it with Cloud Build
@@ -37,46 +41,6 @@ import (
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
-
-// Args configures the shared app-infra pipeline project. It carries the subset
-// of the upstream module variables that apply to the WIF model
-// (billing_account, bucket/project prefixes, folder placement) plus the labels
-// and budget the shared leaf computes for COMMON-folder projects.
-type Args struct {
-	// ProjectPrefix + BusinessCode form the project id:
-	// {prefix}-c-{business_code}-infra-pipeline (upstream single_project with
-	// environment "common" and project_suffix "infra-pipeline").
-	ProjectPrefix  string
-	BusinessCode   string
-	BillingAccount string
-	// RandomSuffix appends the project-factory random suffix to the project id.
-	RandomSuffix bool
-
-	// CommonFolderID is the 1-org common folder (upstream local.common_folder_name).
-	CommonFolderID pulumi.StringInput
-
-	// Labels are the COMMON-folder labels (environment=common, env_code=c, raw
-	// application_name) computed by the shared leaf.
-	Labels pulumi.StringMap
-	// Budget mirrors the upstream project_budget variable.
-	Budget *project.BudgetConfig
-
-	// ApiPropagationSeconds is passed to the project factory. When >0 the
-	// factory gates its ApisReady handle on a `sleep N` that depends on all
-	// enabled Services, so consumers that DependsOn(ApisReady) (or read a gated
-	// project id) don't race freshly-enabled APIs on a cold deploy. Mirrors
-	// upstream project-factory's time_sleep. 0 disables the wait.
-	ApiPropagationSeconds int
-}
-
-// Result holds the module outputs. Upstream outputs the Cloud Build plumbing
-// (terraform_service_accounts, repos, buckets, trigger ids); under the WIF
-// model the pipeline project id is the only output consumers need (upstream's
-// cloudbuild_project_id analogue, exported by the shared leaf as
-// infra_pipeline_project_id).
-type Result struct {
-	ProjectID pulumi.StringOutput
-}
 
 // Deploy creates the shared infrastructure-pipeline project under the COMMON
 // folder. This project hosts the CI/CD pipeline for deploying application
