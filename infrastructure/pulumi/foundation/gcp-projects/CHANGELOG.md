@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.0...foundation-gcp-projects-v1.3.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** app-scope the custom-domain verification (drop the [#938](https://github.com/VitruvianSoftware/vitruvian-core/issues/938) foundation coupling) ([#946](https://github.com/VitruvianSoftware/vitruvian-core/issues/946)) ([cd5f316](https://github.com/VitruvianSoftware/vitruvian-core/commit/cd5f3161ce62c0eca5ed2ec9ecd34f7199a159bf))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.2.4...foundation-gcp-projects-v1.3.0) (2026-07-19)
 
 
