@@ -34,7 +34,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${HERE}/ensure-site-verification.sh"
 
 work="$(mktemp -d)"
-trap '{ [ -n "${server_pid:-}" ] && kill "$server_pid" && wait "$server_pid"; } 2>/dev/null; rm -rf "$work"' EXIT
+# Cleanup MUST NOT leak an exit status: `wait` on the SIGTERM'd mock server
+# returns 143 (128+15), and an EXIT trap whose last command sets $? makes that
+# the script's exit code — a green test run would report 143 to CI (exactly the
+# false failure this guards against). Reap the server, discard its status, and
+# always return 0 from the trap; the script `exit`s explicitly at the end.
+# shellcheck disable=SC2329  # invoked indirectly via `trap cleanup EXIT`
+cleanup() {
+  if [ -n "${server_pid:-}" ]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
+  rm -rf "$work"
+  return 0
+}
+trap cleanup EXIT
 
 fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
@@ -254,3 +268,9 @@ if [ "$fails" -gt 0 ]; then
   exit 1
 fi
 echo "ALL PASS"
+# Explicit success exit: reap the mock server here too (so the EXIT trap's
+# `wait` can't be what sets the final status) and exit 0 deterministically.
+kill "$server_pid" 2>/dev/null || true
+wait "$server_pid" 2>/dev/null || true
+server_pid=""
+exit 0
