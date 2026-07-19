@@ -111,30 +111,9 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-          # Besides the ambient credentials (docker push / gcloud below), mint
-          # a SEPARATE access token carrying the Site Verification scope for
-          # the domain-ownership step: the deploy SAs can only create Cloud Run
-          # DomainMappings once they are verified owners of the domain, and
-          # user-style consent is impossible for headless SAs —
-          # SA-impersonation tokens can carry arbitrary scopes.
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/siteverification
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      # Domain-ownership verification AS CODE (idempotent, no-op once
-      # converged): self-verify the zone as the build SA via DNS-TXT
-      # (Site Verification API + Cloudflare upsert) and delegate ownership to
-      # every env's deploy SA — the DomainMapping precondition. Runs in this
-      # build job because it is the single job every env deploy depends on,
-      # so ownership exists BEFORE any env's `pulumi up` creates its mapping.
-      # The script no-ops cleanly when no Pulumi.<env>.yaml sets customDomain.
-      - name: Ensure custom-domain ownership (Site Verification)
-        env:
-          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: ./tools/ci/ensure-site-verification.sh
 
       - name: Configure docker for Artifact Registry
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -162,6 +141,63 @@ jobs:
           echo "Built ${IMAGE}@${DIGEST}"
           echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
+  # APP-SCOPED domain-ownership verification (idempotent, no-op once
+  # converged): runs AS THE DEV DEPLOY SA (the ungated
+  # oauth-user-inspector-development environment — an app identity, NOT the
+  # build SA / infra-pipeline project), with the dev floating project as the
+  # Site Verification quota project (the app's identity stack enables the API
+  # there; nothing foundation-owned is involved). It self-verifies the zone
+  # via DNS-TXT and delegates ownership to EVERY env's deploy SA — the
+  # DomainMapping precondition — so it runs once, up front, and every deploy
+  # leg (push chain or single-env dispatch) gates on it. The Cloudflare token
+  # comes from the dev project's Secret Manager at runtime (secrets model
+  # §pipeline-env; no GitHub secret). The script no-ops cleanly when no
+  # Pulumi.<env>.yaml sets customDomain.
+  verify-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    environment: oauth-user-inspector-development
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          # Besides the ambient credentials (the Secret Manager read below),
+          # mint a SEPARATE access token carrying the Site Verification scope:
+          # user-style consent is impossible for headless SAs, and
+          # SA-impersonation tokens can carry arbitrary scopes.
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/siteverification
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Ensure custom-domain ownership (Site Verification)
+        env:
+          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # Plain assignment (not `export VAR=$(...)`): export would swallow
+          # the gcloud exit status and hand the script an empty token.
+          CLOUDFLARE_API_TOKEN="$(gcloud secrets versions access latest \
+            --secret=CLOUDFLARE_API_TOKEN --project="$GCP_PROJECT_ID")"
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret read returned empty (dev deploy SA needs secretAccessor on it — identity stack domainVerificationAnchor)"
+            exit 1
+          fi
+          export CLOUDFLARE_API_TOKEN
+          ./tools/ci/ensure-site-verification.sh
+
   # ---- development (auto on push) ------------------------------------------
   # EXPAND (cf. principle §2.15) before each env's deploy. Gated on the
   # ZITADEL_APPS_AUTO_APPLY repo variable until the Zitadel machine-user key
@@ -176,8 +212,8 @@ jobs:
     secrets: inherit
 
   deploy-dev:
-    needs: [build, zitadel-dev]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-dev.result != 'failure' && (github.event_name == 'push' || inputs.environment == 'development') }}
+    needs: [build, verify-domain, zitadel-dev]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-dev.result != 'failure' && (github.event_name == 'push' || inputs.environment == 'development') }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -187,6 +223,12 @@ jobs:
       service-name: oauth-user-inspector
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
+      # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
+      # reads CLOUDFLARE_API_TOKEN fetched at runtime from the dev floating
+      # project's Secret Manager (single source; the identity stack's
+      # domainVerificationAnchor grants every env's deploy SA secretAccessor
+      # on it). Never a GitHub secret (secrets model §pipeline-env).
+      cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"
         # 1) Reachable (HTTP 2xx).
@@ -220,8 +262,8 @@ jobs:
     secrets: inherit
 
   deploy-nonprod:
-    needs: [build, deploy-dev, zitadel-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    needs: [build, verify-domain, deploy-dev, zitadel-nonprod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -231,6 +273,12 @@ jobs:
       service-name: oauth-user-inspector
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
+      # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
+      # reads CLOUDFLARE_API_TOKEN fetched at runtime from the dev floating
+      # project's Secret Manager (single source; the identity stack's
+      # domainVerificationAnchor grants every env's deploy SA secretAccessor
+      # on it). Never a GitHub secret (secrets model §pipeline-env).
+      cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"
         # 1) Reachable (HTTP 2xx).
@@ -260,8 +308,8 @@ jobs:
     secrets: inherit
 
   deploy-prod:
-    needs: [build, deploy-nonprod, zitadel-prod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    needs: [build, verify-domain, deploy-nonprod, zitadel-prod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -271,6 +319,12 @@ jobs:
       service-name: oauth-user-inspector
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
+      # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
+      # reads CLOUDFLARE_API_TOKEN fetched at runtime from the dev floating
+      # project's Secret Manager (single source; the identity stack's
+      # domainVerificationAnchor grants every env's deploy SA secretAccessor
+      # on it). Never a GitHub secret (secrets model §pipeline-env).
+      cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
       custom-smoke-script: |
         echo "Smoke-checking ${CAND}/"
         # 1) Reachable (HTTP 2xx).

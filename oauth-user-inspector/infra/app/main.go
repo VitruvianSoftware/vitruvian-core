@@ -166,13 +166,16 @@ func main() {
 		// and an orange-cloud proxy would intercept that and break issuance.
 		// Absent/empty config keeps the env mapping-free (opt-in preserved).
 		//
-		// Prereq (AUTOMATED): the deploying SA must be a verified owner of
-		// the domain or the DomainMapping create is rejected by the API. The
-		// deploy workflow's build job converges this as code BEFORE any env
-		// deploy (tools/ci/ensure-site-verification.sh: the build SA
-		// self-verifies the zone via Site Verification DNS-TXT + a persistent
-		// Cloudflare TXT record, then delegates ownership to every env's
-		// deploy SA). No manual Search Console step.
+		// Prereq (AUTOMATED, app-scoped): the deploying SA must be a verified
+		// owner of the domain or the DomainMapping create is rejected by the
+		// API. The deploy workflow's verify-domain job converges this as code
+		// BEFORE any env deploy (tools/ci/ensure-site-verification.sh, run AS
+		// THE DEV DEPLOY SA with the dev floating project as the Site
+		// Verification quota project — nothing foundation-owned: the app's
+		// identity stack anchors the API enable + secret IAM). It self-verifies
+		// the zone via Site Verification DNS-TXT + a persistent Cloudflare TXT
+		// record, then delegates ownership to every env's deploy SA. No manual
+		// Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
 			mapping, err := cloudrun.NewDomainMapping(ctx, "oauth-user-inspector-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
@@ -211,10 +214,13 @@ func main() {
 			ctx.Export("customDomainDnsTarget", dnsTarget)
 
 			// The Cloudflare credential arrives ONLY as the
-			// CLOUDFLARE_API_TOKEN env var (from the deploy workflow's GitHub
-			// secret) — the default cloudflare provider reads it implicitly,
-			// so no secret ever touches Pulumi config or state (secrets model
-			// §pipeline-env). Advisory PR previews run WITHOUT the secret, so
+			// CLOUDFLARE_API_TOKEN env var — fetched at deploy time from the
+			// dev floating project's Secret Manager as the env's deploy SA
+			// (_deploy-cloud-run.yaml cloudflare-token-secret-project; never a
+			// GitHub secret) — the default cloudflare provider reads it
+			// implicitly, so no secret ever touches Pulumi config or state
+			// (secrets model §pipeline-env). Advisory PR previews run WITHOUT
+			// the token, so
 			// a token-less preview skips the DNS resources (they render as
 			// preview noise alongside the image-digest placeholder); a
 			// token-less real apply fails fast instead — silently omitting
@@ -222,7 +228,7 @@ func main() {
 			// program and delete it on the next up.
 			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
 				if !ctx.DryRun() {
-					return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: set the CLOUDFLARE_API_TOKEN secret on the deploy environment (Cloudflare token with Zone.Read + DNS.Edit on the zone)", customDomain)
+					return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: the deploy fetches it from the CLOUDFLARE_API_TOKEN secret in the dev floating project's Secret Manager (Cloudflare token with Zone.Read + DNS.Edit on the zone; see _deploy-cloud-run.yaml cloudflare-token-secret-project)", customDomain)
 				}
 			} else {
 				// The zone, by NAME (resolved to its id via the API — the
