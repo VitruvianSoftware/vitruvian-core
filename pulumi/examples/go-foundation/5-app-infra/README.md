@@ -112,11 +112,21 @@ Each env leaf exports:
 
 ## File Structure
 
-| File                                    | Description                                                                                                    |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `business_unit_1/development/main.go`   | Thin env leaf pinning `development`/`d`; 4-projects Stack References, calls the shared modules, exports results |
-| `business_unit_1/nonproduction/main.go` | Thin env leaf pinning `nonproduction`/`n`; same shape                                                          |
-| `business_unit_1/production/main.go`    | Thin env leaf pinning `production`/`p`; same shape                                                             |
-| `modules/env_base/`                     | Standard Compute Instances with Service Accounts and IAP tag bindings                                          |
-| `modules/confidential_space/`           | Confidential Space VMs and Workload Identity components for attestation                                        |
-| `modules/serverless_space/`             | Cloud Run service + SA + secret wiring (our serverless addition to the upstream module set)                    |
+Each env leaf follows upstream's per-concern file split (see each leaf's own
+README for the full upstream mapping):
+
+| File                                     | Mirrors upstream             | Description                                                          |
+| ---------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| `business_unit_1/<env>/main.go`          | `main.tf`                    | Thin env leaf pinning the environment identity; calls the shared modules |
+| `business_unit_1/<env>/config.go`        | `variables.tf`               | Stack configuration (`AppInfraConfig`)                                |
+| `business_unit_1/<env>/remote.go`        | `remote.tf`                  | Stack References into the BU's 4-projects env + shared leaves         |
+| `business_unit_1/<env>/outputs.go`       | `outputs.tf`                 | Stack exports                                                         |
+| `business_unit_1/<env>/Pulumi.yaml`, `go.mod` | `backend.tf`, `versions.tf` | Engine adaptation: Pulumi project/backend + Go module pins        |
+
+Modules follow the same split (`main.go`/`variables.go`/`outputs.go` + `README.md`):
+
+| Module                        | Description                                                                                 |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `modules/env_base/`           | Standard Compute Instances with Service Accounts and IAP tag bindings                        |
+| `modules/confidential_space/` | Confidential Space VMs and Workload Identity components for attestation                      |
+| `modules/serverless_space/`   | Cloud Run service + SA + secret wiring (our serverless addition — no upstream counterpart)   |

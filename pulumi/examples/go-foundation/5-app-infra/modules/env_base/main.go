@@ -17,6 +17,8 @@
 // Example: env_base compute instance deployment.
 // To enable, remove this build constraint or build with: go build -tags=example
 //
+// main.go mirrors upstream 5-app-infra/modules/env_base/main.tf — the
+// module's resource logic (inputs in variables.go, outputs in outputs.go).
 
 package env_base
 
@@ -29,31 +31,6 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
-
-// EnvBaseArgs configures a standard Compute Instance deployment,
-// matching the upstream Terraform env_base module.
-type EnvBaseArgs struct {
-	Env                string
-	BusinessUnit       string
-	ProjectSuffix      string
-	Hostname           string
-	MachineType        string
-	NumInstances       int
-	SourceImageFamily  string
-	SourceImageProject string
-	ProjectID          pulumi.StringInput
-	Region             pulumi.StringInput
-	SubnetworkSelfLink pulumi.StringInput
-	IAPFirewallTags    pulumi.StringMapInput // nil for non-peering projects
-}
-
-// EnvBaseResult holds outputs from the env_base deployment.
-type EnvBaseResult struct {
-	InstanceSelfLink pulumi.StringOutput
-	InstanceName     pulumi.StringOutput
-	InstanceZone     pulumi.StringOutput
-	InstanceDetails  pulumi.MapOutput
-}
 
 // deployEnvBase creates a service account and Compute Instance in the target
 // project, matching the upstream Terraform foundation's env_base module.

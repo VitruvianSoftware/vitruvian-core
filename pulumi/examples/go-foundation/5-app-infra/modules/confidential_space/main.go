@@ -17,6 +17,8 @@
 // Example: Confidential Space VM deployment with WIF attestation.
 // To enable, remove this build constraint or build with: go build -tags=example
 //
+// main.go mirrors upstream 5-app-infra/modules/confidential_space/main.tf —
+// the module's resource logic (inputs in variables.go, outputs in outputs.go).
 
 package confidential_space
 
@@ -31,32 +33,6 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 )
-
-// ConfidentialSpaceArgs configures a Confidential Space VM deployment,
-// matching the upstream Terraform confidential_space module.
-type ConfidentialSpaceArgs struct {
-	Env                      string
-	BusinessUnit             string
-	ProjectID                pulumi.StringInput
-	ProjectNumber            pulumi.StringInput // from 4-projects stack export
-	Region                   pulumi.StringInput
-	SubnetworkSelfLink       pulumi.StringInput
-	WorkloadSAEmail          pulumi.StringInput
-	ConfidentialImageDigest  string
-	ConfidentialMachineType  string
-	ConfidentialInstanceType string
-	CpuPlatform              string
-	CloudBuildProjectID      pulumi.StringInput
-}
-
-// ConfidentialSpaceResult holds outputs from the Confidential Space deployment.
-type ConfidentialSpaceResult struct {
-	InstanceSelfLink       pulumi.StringOutput
-	InstanceName           pulumi.StringOutput
-	InstanceZone           pulumi.StringOutput
-	WorkloadPoolID         pulumi.StringOutput
-	WorkloadPoolProviderID pulumi.StringOutput
-}
 
 // deployConfidentialSpace creates a Workload Identity Pool, OIDC attestation
 // provider, IAM bindings, and a Confidential VM, matching the upstream
