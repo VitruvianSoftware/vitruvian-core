@@ -25,30 +25,50 @@
 // (and other client settings) are version-controlled rather than hand-edited
 // in the console.
 //
-// Currently manages: the hosted oauth-user-inspector OIDC client. Its
-// redirect_uris MUST exactly match the app's own origin
-// (https://oauth-inspector.ipv1337.dev/, trailing slash included) or Zitadel
-// rejects the authorize request with invalid_request / "redirect_uri is missing
-// in the client configuration".
+// MULTI-ENV (stage-5 OSS application stage): one stack per environment
+// (development / nonproduction / production), each minting its OWN OIDC client
+// for that env's oauth-user-inspector deployment. Its redirect_uris MUST
+// exactly match the app's origin (trailing slash included) or Zitadel rejects
+// the authorize request with invalid_request / "redirect_uri is missing in the
+// client configuration".
+//
+// CRED-SYNC-TO-GCP-SM (spec §9): when `ossProject` is configured, the minted
+// clientId/clientSecret are ALSO written into that env's oss-floating
+// project's Secret Manager under the app's OAUTH_USER_INSPECTOR_ prefix, so
+// the running app (server/server.ts, SECRET_PREFIX) reads them directly —
+// closing the previously-manual sync gap. The GCP write requires GCP
+// credentials at apply time: the first per-env apply (which CREATES the two
+// secrets) runs as sa-terraform-proj (folder-scoped secretmanager.admin,
+// Phase 1); subsequent CI applies run as the env's deploy SA, whose
+// prefix-conditioned secretmanager.admin grant (deploy-identity stack) covers
+// version adds/updates on the existing secrets.
 //
 // The Zitadel provider authenticates with a machine-user JWT profile key (set
-// via `zitadel:*` config — see the project README). The app's client_id/secret
-// are consumed by the running app from GCP Secret Manager
-// (ZITADEL_APP_OAUTH_CLIENT_ID / _SECRET). This program CREATES and owns the
-// client; whenever it mints a new one, re-sync those two GCP secrets. Do NOT try
-// to adopt an existing client via import — it is destructive on this provider and
-// deletes the live app (see the opts block below).
+// via `zitadel:*` config — see the project README). This program CREATES and
+// owns each client; whenever it mints a new one, the GCP secrets above are
+// re-synced by the same apply. Do NOT try to adopt an existing client via
+// import — it is destructive on this provider and deletes the live app (see
+// the opts block below).
 //
-// Applied by CI as the "expand" step of the oauth-user-inspector-deploy workflow
-// (principles §2.14/§2.15), gated on ZITADEL_APPS_AUTO_APPLY. The Bazel run
-// targets (:preview/:up) are local preview / break-glass only.
+// Applied by CI as the "expand" step of the oauth-user-inspector-deploy
+// workflow (principles §2.14/§2.15), gated on ZITADEL_APPS_AUTO_APPLY. The
+// Bazel run targets (:preview/:up) are local preview / break-glass only.
 package main
 
 import (
+	"os"
+	"strings"
+
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/secretmanager"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumiverse/pulumi-zitadel/sdk/go/zitadel"
 )
+
+// secretPrefix namespaces this app's Secret Manager entries in the shared oss
+// project (must match the app stack's SECRET_PREFIX env and the identity
+// stack's IAM conditions).
+const secretPrefix = "OAUTH_USER_INSPECTOR_"
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
@@ -78,11 +98,36 @@ func main() {
 			return err
 		}
 
+		// The env's Cloud Run host is only known AFTER the app stack's first
+		// deploy, so it cannot be committed config. When the app stack exists,
+		// its serviceUrl is appended via StackReference — guarded behind
+		// ZITADEL_APPS_APP_STACK / appStack so the FIRST per-env apply (app stack
+		// not yet created) doesn't fail. The deploy workflow probes for the app
+		// stack and sets the env var when present, so the run.app redirect
+		// self-heals on the next pipeline run after the first app deploy.
+		redirectIn := pulumi.StringArrayInput(pulumi.ToStringArray(redirectURIs))
+		postLogoutIn := pulumi.StringArrayInput(pulumi.ToStringArray(postLogoutURIs))
+		if appStack := envOrConfig("ZITADEL_APPS_APP_STACK", cfg, "appStack"); appStack != "" {
+			ref, err := pulumi.NewStackReference(ctx, "app-stack", &pulumi.StackReferenceArgs{
+				Name: pulumi.String(appStack),
+			})
+			if err != nil {
+				return err
+			}
+			serviceURL := ref.GetStringOutput(pulumi.String("serviceUrl"))
+			redirectIn = serviceURL.ApplyT(func(u string) []string {
+				return appendServiceURI(redirectURIs, u)
+			}).(pulumi.StringArrayOutput)
+			postLogoutIn = serviceURL.ApplyT(func(u string) []string {
+				return appendServiceURI(postLogoutURIs, u)
+			}).(pulumi.StringArrayOutput)
+		}
+
 		args := &zitadel.ApplicationOidcArgs{
 			ProjectId:              pulumi.String(projectID),
 			Name:                   pulumi.String(appName),
-			RedirectUris:           pulumi.ToStringArray(redirectURIs),
-			PostLogoutRedirectUris: pulumi.ToStringArray(postLogoutURIs),
+			RedirectUris:           redirectIn,
+			PostLogoutRedirectUris: postLogoutIn,
 			ResponseTypes:          pulumi.StringArray{pulumi.String("OIDC_RESPONSE_TYPE_CODE")},
 			// Authorization-code flow with refresh tokens (offline_access), matching
 			// the hosted server flow (code exchange + token refresh/revoke).
@@ -97,8 +142,10 @@ func main() {
 			AppType:        pulumi.String("OIDC_APP_TYPE_WEB"),
 			AuthMethodType: pulumi.String("OIDC_AUTH_METHOD_TYPE_POST"),
 			Version:        pulumi.String("OIDC_VERSION_1_0"),
-			// devMode allows the http://localhost dev redirect; the live client has
-			// it enabled and the redirect set keeps localhost.
+			// devMode allows the http://localhost dev redirect; every env keeps the
+			// localhost redirect for local development against the env's client, so
+			// devMode stays on (dropping localhost + devMode in production is a
+			// deliberate hardening follow-up, not a per-env difference today).
 			DevMode:                  pulumi.Bool(true),
 			AccessTokenType:          pulumi.String("OIDC_TOKEN_TYPE_BEARER"),
 			AccessTokenRoleAssertion: pulumi.Bool(false),
@@ -117,9 +164,9 @@ func main() {
 		// replacement + delete original" against the SAME Zitadel app, which DELETES
 		// the live client. (Proven: the 2026-06-26 CI apply replaced+deleted app
 		// 378961731390539356, breaking hosted login with Errors.App.NotFound.) The
-		// recovery is always: create a fresh client here, then sync its
-		// clientId/clientSecret to GCP Secret Manager (ZITADEL_APP_OAUTH_CLIENT_ID /
-		// _SECRET) — there is no non-destructive adopt for this provider.
+		// recovery is always: create a fresh client here; the same apply then syncs
+		// its clientId/clientSecret to GCP Secret Manager (below) — there is no
+		// non-destructive adopt for this provider.
 		//
 		// IgnoreChanges on the force-new fields is belt-and-suspenders: it prevents a
 		// spurious provider diff (or a re-introduced import) from ever replacing — and
@@ -141,6 +188,37 @@ func main() {
 			return err
 		}
 
+		// Cred-sync-to-GCP-SM (spec §9): write the minted client id/secret into
+		// the env's oss project under the app prefix, where the running app reads
+		// them (server.ts getSecret with SECRET_PREFIX). SecretData comes from
+		// provider secret outputs, so the values stay encrypted in state.
+		if ossProject := cfg.Get("ossProject"); ossProject != "" {
+			for _, s := range []struct {
+				id  string
+				val pulumi.StringInput
+			}{
+				{secretPrefix + "ZITADEL_APP_OAUTH_CLIENT_ID", app.ClientId},
+				{secretPrefix + "ZITADEL_APP_OAUTH_CLIENT_SECRET", app.ClientSecret},
+			} {
+				sec, err := secretmanager.NewSecret(ctx, s.id, &secretmanager.SecretArgs{
+					Project:  pulumi.String(ossProject),
+					SecretId: pulumi.String(s.id),
+					Replication: &secretmanager.SecretReplicationArgs{
+						Auto: &secretmanager.SecretReplicationAutoArgs{},
+					},
+				})
+				if err != nil {
+					return err
+				}
+				if _, err := secretmanager.NewSecretVersion(ctx, s.id+"-v", &secretmanager.SecretVersionArgs{
+					Secret:     sec.ID(),
+					SecretData: s.val,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+
 		ctx.Export("clientId", app.ClientId)
 		// Secret output — surfaced so it can be synced to GCP Secret Manager when
 		// a NEW client is created. Pulumi keeps it encrypted in state and masks it
@@ -149,4 +227,29 @@ func main() {
 		ctx.Export("redirectUris", app.RedirectUris)
 		return nil
 	})
+}
+
+// appendServiceURI appends the app's Cloud Run origin (with a trailing slash,
+// which Zitadel requires to exactly match) unless it is empty or already
+// present.
+func appendServiceURI(base []string, serviceURL string) []string {
+	if serviceURL == "" {
+		return base
+	}
+	uri := strings.TrimSuffix(serviceURL, "/") + "/"
+	for _, b := range base {
+		if b == uri {
+			return base
+		}
+	}
+	return append(append([]string{}, base...), uri)
+}
+
+// envOrConfig reads a per-invocation input: the environment variable wins
+// (process-scoped, so concurrent invocations can't clobber each other).
+func envOrConfig(envName string, cfg *config.Config, cfgKey string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return cfg.Get(cfgKey)
 }

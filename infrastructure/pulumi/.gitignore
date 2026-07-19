@@ -59,8 +59,10 @@ Pulumi.*.yaml
 # named after the module's last path element, i.e. "pulumi").
 /pulumi
 # Per-project program binary left behind by a stray `go build .` in the project
-# dir (named after that module's last path element).
-/zitadel-apps/zitadel-apps
+# dir (named after that module's last path element). (The old /zitadel-apps/
+# path predates the platform/ move and matched nothing — which is how the
+# binary got committed.)
+platform/zitadel-apps/zitadel-apps
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders
 /foundation/gcp-org/envs/shared/foundation-org-shared
