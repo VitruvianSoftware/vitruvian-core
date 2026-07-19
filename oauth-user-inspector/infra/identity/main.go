@@ -35,7 +35,7 @@
 // project cannot read each other's secrets.
 //
 // Runs as sa-terraform-proj (folder-scoped serviceAccountAdmin + iam from Phase 1).
-// Deploy: bazel run //infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity:up --stack <env>
+// Deploy: bazel run //oauth-user-inspector/infra/identity:up --stack <env>
 package main
 
 import (

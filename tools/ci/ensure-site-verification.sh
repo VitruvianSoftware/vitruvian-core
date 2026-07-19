@@ -66,7 +66,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-infrastructure/pulumi/apps/oauth-user-inspector}"
+APP_DIR="${APP_DIR:-oauth-user-inspector/infra/app}"
 # Endpoint overrides exist ONLY for the hermetic test harness
 # (ensure-site-verification_test.sh); CI always uses the real defaults.
 SV_BASE="${SITEVERIFY_API_BASE:-https://www.googleapis.com/siteVerification/v1}"

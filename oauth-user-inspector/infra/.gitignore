@@ -1,0 +1,26 @@
+# oauth-user-inspector per-app Pulumi stacks (moved from infrastructure/pulumi/
+# apps/ — repo-wide convention: <app>/infra/ holds the app's own deployment
+# infra; shared/foundation-owned infra stays centralized).
+#
+# Same stack-config policy as infrastructure/pulumi/.gitignore: per-stack config
+# (Pulumi.<stack>.yaml) is ignored by default because it can hold encrypted
+# secrets and local experiments — but these two stacks deliberately COMMIT their
+# development/nonproduction/production configs (config-as-code): they hold only
+# non-secret identifiers (project id, region, custom-domain names, adoption
+# flags), and the deploy workflow only sets oauth-user-inspector:imageTag, so
+# cfg.Require("project") must resolve from the committed files on a clean
+# checkout. Runtime secrets stay in GCP Secret Manager. Any OTHER stack file
+# (e.g. a personal Pulumi.local.yaml) stays ignored.
+Pulumi.*.yaml
+!Pulumi.yaml
+!app/Pulumi.development.yaml
+!app/Pulumi.nonproduction.yaml
+!app/Pulumi.production.yaml
+!identity/Pulumi.development.yaml
+!identity/Pulumi.nonproduction.yaml
+!identity/Pulumi.production.yaml
+
+# Compiled Go pulumi-program binary left behind by a stray `go build .` (named
+# after each module's last path element) — never track.
+/app/oauth-user-inspector
+/identity/oauth-user-inspector-deploy-identity

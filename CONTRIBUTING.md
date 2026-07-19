@@ -343,7 +343,7 @@ flowchart TD
 
 ### Deploy identity (WIF)
 
-Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
+Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
 
 ### Releases
 

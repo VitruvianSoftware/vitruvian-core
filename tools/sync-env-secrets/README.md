@@ -99,6 +99,6 @@ deploy](../../.github/workflows/oauth-user-inspector-deploy.yaml):
 
 Provisioning these (machine key via the in-cluster `iam-admin-pat`; the Tailscale
 OAuth client in the admin console) is described in
-[`oauth-user-inspector` onboarding](../../infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity/);
+[`oauth-user-inspector` onboarding](../../oauth-user-inspector/infra/identity/);
 once you hold the values, drop each into `secrets/oauth-user-inspector-development/`
 and run `apply` + `bw-push`.
