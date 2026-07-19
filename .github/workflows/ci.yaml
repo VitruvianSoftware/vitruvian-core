@@ -322,7 +322,7 @@ jobs:
             module:
               - '${{ matrix.module }}/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: >-
           github.event_name == 'push' ||
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
@@ -369,7 +369,7 @@ jobs:
             module:
               - '${{ matrix.module }}/**'
               - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: >-
           github.event_name == 'push' ||
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
