@@ -88,13 +88,20 @@ func deployFloatingProject(ctx *pulumi.Context, args *Args, result *BUProjects) 
 		// deploy SA calls the Site Verification write API (getToken/insert) with
 		// this project as its quota project, self-verifies the zone, and
 		// delegates all three env deploy SAs as owners — so nonprod/prod never
-		// call the write API and do not need it. It is enabled HERE, in the
-		// project's own foundation-managed API list (applied as the project
-		// owner), because an additive enable later as the app's deploy identity
-		// lacks serviceusage rights on the project (the app stack cannot enable
-		// it; PR #949's attempt failed for exactly that reason). Enabling one
-		// more API the app's OWN project needs is normal project config, not the
-		// shared-infra-pipeline coupling objected to in #938.
+		// call the write API and do not need it (see
+		// tools/ci/ensure-site-verification.sh).
+		//
+		// ⚠️ CONSOLE-ONLY API — MUST BE ENABLED BY HAND ONCE. Unlike every other
+		// API in this list, siteverification.googleapis.com CANNOT be enabled via
+		// serviceusage/IaC: even the project-owner SA that applies this stack
+		// gets HTTP 403 PreconditionFailure ("failed on request preconditions").
+		// It has to be enabled once, by a human, in the console:
+		//   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-d-bu1-oss-floating-648a
+		// This ActivateApis entry therefore does NOT do the enabling — it exists
+		// so that, AFTER the manual enable, the project's API set still matches
+		// this declared config and the entry converges to a no-op (rather than a
+		// perpetual add). Do not be misled into thinking a fresh floating project
+		// gets this API from IaC alone; the manual console enable is required.
 		if args.EnvCode == "d" {
 			ossApis = append(ossApis, "siteverification.googleapis.com")
 		}

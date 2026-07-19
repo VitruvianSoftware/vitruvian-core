@@ -55,6 +55,14 @@ that is exactly:
 https://oauth-inspector.ipv1337.dev/
 ```
 
+> **Custom-domain deploys need a one-time manual step.** The Cloud Run
+> DomainMapping behind `oauth-inspector.ipv1337.dev` requires the Site
+> Verification API, which is **console-only**: it must be enabled by hand, once,
+> on the dev floating project — it CANNOT be enabled via serviceusage/IaC (even
+> the project-owner SA gets HTTP 403 PreconditionFailure). Enable it at
+> `https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-d-bu1-oss-floating-648a`.
+> Details: [`tools/ci/ensure-site-verification.sh`](../tools/ci/ensure-site-verification.sh).
+
 OAuth providers match `redirect_uri` **exactly** (the trailing slash is
 significant), so every hosted provider application must have that precise string
 registered in its allowed redirect URIs. If it doesn't, the provider rejects the
