@@ -5,10 +5,11 @@ config:
   oauth-user-inspector-deploy-identity:region: "us-west1"
   oauth-user-inspector-deploy-identity:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
   oauth-user-inspector-deploy-identity:projects_stack: "ipv1337/foundation-projects-bu1-development/production"
-  # Custom-domain verification anchor (dev is the ONE anchor env): enables the
-  # Site Verification API on this floating project (the dev deploy SA's quota
-  # project for the getToken/insert WRITE calls) and grants every env's deploy
-  # SA secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN secret stored
-  # here (single source; nonprod/prod read cross-project). See identity main.go.
+  # Custom-domain verification anchor (dev is the ONE anchor env): grants every
+  # env's deploy SA secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN
+  # secret stored here (single source; nonprod/prod read cross-project). The
+  # Site Verification API that the dev deploy SA's getToken/insert WRITE calls
+  # need on this quota project is enabled in the foundation project factory's
+  # ActivateApis for prj-d-bu1-oss-floating (not here). See identity main.go.
   oauth-user-inspector-deploy-identity:domainVerificationAnchor: "true"
   oauth-user-inspector-deploy-identity:cloudflareTokenAccessorProjects: "prj-d-bu1-oss-floating-648a,prj-n-bu1-oss-floating-630b,prj-p-bu1-oss-floating-16e0"

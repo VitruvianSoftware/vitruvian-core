@@ -27,15 +27,12 @@ name: _oauth-identity-apply
 # foundation-proj-<env> GitHub Environment.
 #
 # IDENTITY: runs as the PER-ENV foundation-proj-<env> service account (the
-# stage-4 projects SA that CREATED that env's oss-floating project and enabled
-# its APIs) — NOT foundation-proj-shared / sa-terraform-proj. That matters
-# because the dev leg's siteverification.googleapis.com enable needs
-# serviceusage.services.enable ON the floating project, which the per-env
-# projects SA provably holds (it enabled every other API there in stage-4)
-# whereas the shared SA holds only secretmanager.admin there — the #948 apply
-# failed for exactly that reason. The per-env SA also created the project's SAs
-# and set its IAM in stage-4, so it covers the rest of the stack (deploy/runtime
-# SA create, per-app project IAM, Cloudflare-token secret IAM) with no new grant.
+# stage-4 projects SA for that leaf, which created the env's oss-floating project
+# and set its IAM in stage-4). It covers this stack's resources — deploy/runtime
+# SA create, per-app project IAM, Cloudflare-token secret IAM — with no new
+# grant. This stack does NOT enable any API (the siteverification enable the dev
+# verify path needs lives in the foundation project factory's ActivateApis for
+# prj-d-bu1-oss-floating, applied as the project owner).
 
 on:
   workflow_call:
