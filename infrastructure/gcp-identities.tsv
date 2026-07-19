@@ -24,7 +24,7 @@
 # infra_dir                                   account                              gcp_project                 purpose
 infrastructure/pulumi/accounts/personal                         james.nguyen@gmail.com  personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
 infrastructure/pulumi/apps/tabula                               james.nguyen@gmail.com  tabula-dev-0001             Tabula API Cloud Run + Artifact Registry + secrets (pulumi_tabula)
-infrastructure/pulumi/apps/oauth-user-inspector                 james.nguyen@gmail.com  gen-lang-client-0352693779  OAuth User Inspector Cloud Run + Secret Manager (pulumi oauth-user-inspector)
+infrastructure/pulumi/apps/oauth-user-inspector                 james@vitruviansoftware.dev  -  Per-env oauth-user-inspector Cloud Run app on the oss-floating projects (digest deploys; CI runs as the per-env deploy SA)
 infrastructure/pulumi/apps/oauth-user-inspector-deploy-identity james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for oauth-user-inspector on the oss projects (foundation-pool WIF)
 infrastructure/pulumi/apps/oauth-user-inspector-build           james@vitruviansoftware.dev  prj-c-bu1-infra-pipeline-4b48  oauth-user-inspector shared AR + build identity (infra-pipeline project)
 # --- foundation stages (vitruviansoftware.dev org) ---

@@ -18,14 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Committed stack config for the nonproduction environment (config-as-code, mirroring
-# tabula). The deploy workflow only sets oauth-user-inspector:imageTag at run time,
-# so the non-secret project/region identifiers must live here for cfg.Require("project")
-# to resolve. The app's OAuth provider client credentials live in GCP Secret Manager,
-# not in this file.
+# Committed stack config for the nonproduction environment (config-as-code): the
+# env's oss-floating project, region, and runtime SA (minted by the sibling
+# oauth-user-inspector-deploy-identity stack). The image digest is a
+# per-invocation input (OAUTH_USER_INSPECTOR_IMAGE_DIGEST) from the build-once
+# job, never committed. Runtime secrets stay in GCP Secret Manager under the
+# OAUTH_USER_INSPECTOR_ prefix.
 config:
-  gcp:project: gen-lang-client-0352693779
-  oauth-user-inspector:project: gen-lang-client-0352693779
+  gcp:project: prj-n-bu1-oss-floating-630b
+  oauth-user-inspector:project: prj-n-bu1-oss-floating-630b
   oauth-user-inspector:region: us-west1
-  oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector@gen-lang-client-0352693779.iam.gserviceaccount.com
   oauth-user-inspector:environment: nonproduction
+  oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector-rt@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
