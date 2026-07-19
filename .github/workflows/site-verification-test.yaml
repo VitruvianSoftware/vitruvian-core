@@ -1,0 +1,55 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Regression guard for tools/ci/ensure-site-verification.sh — the automated
+# Google domain-ownership verification the oauth-user-inspector build job runs
+# before any env's Cloud Run DomainMapping deploy. The test is hermetic: it
+# drives the real script against a local mock of the Site Verification,
+# Cloudflare, and DoH APIs (no credentials, no network), asserting the
+# bootstrap convergence, strict idempotence (second run performs zero writes),
+# and the no-customDomain no-op gate.
+
+name: Site Verification Test
+
+on:
+  pull_request:
+    paths:
+      - "tools/ci/ensure-site-verification.sh"
+      - "tools/ci/ensure-site-verification_test.sh"
+      - ".github/workflows/site-verification-test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/ci/ensure-site-verification.sh"
+      - "tools/ci/ensure-site-verification_test.sh"
+      - ".github/workflows/site-verification-test.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the site-verification script tests
+        run: bash tools/ci/ensure-site-verification_test.sh
