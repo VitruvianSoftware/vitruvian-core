@@ -35,10 +35,18 @@ config:
   # working breaks. devMode stays true (main.go) for the http://localhost entry.
   zitadel-apps:redirectUris:
     - https://oauth-inspector.ipv1337.dev/
+    # Per-env custom domains (infrastructure/pulumi/apps/oauth-user-inspector
+    # customDomain config) — EXPANDED here, not replacing anything, so OIDC
+    # login works on them too. Takes effect once ZITADEL_APPS_AUTO_APPLY
+    # re-enables the apply job.
+    - https://oauth-inspector.dev.ipv1337.dev/
+    - https://oauth-inspector.staging.ipv1337.dev/
     - http://localhost:8080/
     - https://oauth-user-inspector-rwwbf2knaa-uw.a.run.app/
   zitadel-apps:postLogoutRedirectUris:
     - https://oauth-inspector.ipv1337.dev/
+    - https://oauth-inspector.dev.ipv1337.dev/
+    - https://oauth-inspector.staging.ipv1337.dev/
     - http://localhost:8080/
     - https://oauth-user-inspector-rwwbf2knaa-uw.a.run.app/
   # Match the live app's display name so the adopt is a pure no-op (no rename):

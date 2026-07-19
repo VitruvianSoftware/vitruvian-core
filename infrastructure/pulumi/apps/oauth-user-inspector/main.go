@@ -53,6 +53,8 @@ import (
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
+	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrun"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrunv2"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -153,6 +155,98 @@ func main() {
 			Member:   pulumi.String("allUsers"),
 		}); err != nil {
 			return err
+		}
+
+		// Optional per-env custom domain (config `customDomain`, e.g.
+		// oauth-inspector.ipv1337.dev): a Cloud Run DomainMapping (v1 API —
+		// there is no v2 equivalent; it binds by the run service's short name)
+		// plus a grey-cloud (DNS-only) Cloudflare CNAME pointing the hostname
+		// at Google's front end. Proxied MUST stay false: Google's managed
+		// certificate on the mapping validates the hostname over plain DNS,
+		// and an orange-cloud proxy would intercept that and break issuance.
+		// Absent/empty config keeps the env mapping-free (opt-in preserved).
+		//
+		// Prereq (runbook): the deploying SA must be a VERIFIED OWNER of the
+		// domain (Google Search Console) or the DomainMapping create is
+		// rejected by the API.
+		if customDomain := cfg.Get("customDomain"); customDomain != "" {
+			mapping, err := cloudrun.NewDomainMapping(ctx, "oauth-user-inspector-domain", &cloudrun.DomainMappingArgs{
+				Project:  pulumi.String(project),
+				Location: pulumi.String(region),
+				Name:     pulumi.String(customDomain),
+				Metadata: &cloudrun.DomainMappingMetadataArgs{
+					Namespace: pulumi.String(project),
+				},
+				Spec: &cloudrun.DomainMappingSpecArgs{
+					// Reference the service OUTPUT (not the literal name) so
+					// the mapping is ordered after the service exists on a
+					// first-ever deploy.
+					RouteName: app.Service.Name,
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			// DNS target from the mapping's status: a subdomain mapping
+			// surfaces exactly one CNAME resource record. The fallback
+			// ghs.googlehosted.com is Google's documented target for Cloud
+			// Run subdomain mappings and covers a not-yet-populated status.
+			dnsTarget := mapping.Statuses.ApplyT(func(ss []cloudrun.DomainMappingStatus) string {
+				if len(ss) > 0 {
+					for _, rr := range ss[0].ResourceRecords {
+						if rr.Rrdata != nil && *rr.Rrdata != "" {
+							return *rr.Rrdata
+						}
+					}
+				}
+				return "ghs.googlehosted.com"
+			}).(pulumi.StringOutput)
+
+			ctx.Export("customDomain", pulumi.String(customDomain))
+			ctx.Export("customDomainDnsTarget", dnsTarget)
+
+			// The Cloudflare credential arrives ONLY as the
+			// CLOUDFLARE_API_TOKEN env var (from the deploy workflow's GitHub
+			// secret) — the default cloudflare provider reads it implicitly,
+			// so no secret ever touches Pulumi config or state (secrets model
+			// §pipeline-env). Advisory PR previews run WITHOUT the secret, so
+			// a token-less preview skips the DNS resources (they render as
+			// preview noise alongside the image-digest placeholder); a
+			// token-less real apply fails fast instead — silently omitting
+			// the resources would drop the live DNS record out of the
+			// program and delete it on the next up.
+			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
+				if !ctx.DryRun() {
+					return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: set the CLOUDFLARE_API_TOKEN secret on the deploy environment (Cloudflare token with Zone.Read + DNS.Edit on the zone)", customDomain)
+				}
+			} else {
+				// The zone, by NAME (resolved to its id via the API — the
+				// zone id is deliberately not committed; it lives nowhere in
+				// this repo) or directly by id if a future config sets one.
+				zone := cfg.Get("cloudflareZone")
+				if zone == "" {
+					zone = "ipv1337.dev"
+				}
+				zoneID := zone
+				if strings.Contains(zone, ".") {
+					looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
+					if err != nil {
+						return fmt.Errorf("resolving cloudflare zone %q: %w", zone, err)
+					}
+					zoneID = looked.Id
+				}
+				if _, err := cloudflare.NewRecord(ctx, "oauth-user-inspector-dns", &cloudflare.RecordArgs{
+					ZoneId:  pulumi.String(zoneID),
+					Name:    pulumi.String(customDomain),
+					Type:    pulumi.String("CNAME"),
+					Content: dnsTarget,
+					Ttl:     pulumi.Int(300),
+					Proxied: pulumi.Bool(false),
+				}, pulumi.DependsOn([]pulumi.Resource{mapping})); err != nil {
+					return err
+				}
+			}
 		}
 
 		ctx.Export("serviceUrl", app.Service.Uri)
