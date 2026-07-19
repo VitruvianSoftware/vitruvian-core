@@ -22,7 +22,6 @@ package main
 
 import (
 	"fmt"
-
 	"foundation-networks/modules/shared_vpc"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"

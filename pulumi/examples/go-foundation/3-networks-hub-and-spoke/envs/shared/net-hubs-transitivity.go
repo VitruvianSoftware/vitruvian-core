@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-
 	"foundation-3-networks-hub-and-spoke/modules/shared_vpc"
 	"foundation-3-networks-hub-and-spoke/modules/transitivity"
 

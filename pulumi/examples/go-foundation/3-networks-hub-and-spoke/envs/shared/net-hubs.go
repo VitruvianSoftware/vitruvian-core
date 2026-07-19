@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-
 	"foundation-3-networks-hub-and-spoke/modules/shared_vpc"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
