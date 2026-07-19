@@ -1,0 +1,100 @@
+// Partner Interconnect — Example
+// ============================================================================
+//
+// This file is an EXAMPLE showing how to provision Partner Interconnect
+// attachments for on-prem connectivity via a service provider. This mirrors
+// the Terraform foundation's `partner_interconnect.tf.example`.
+//
+// To activate:
+// 1. Rename: main.go.example → main.go
+// 2. Update the configuration values below for your environment
+// 3. Invoke this module from the relevant env's main.go
+// 4. Run `pulumi up` in each environment stack
+// 5. Contact your service provider to complete the pairing
+//
+// ============================================================================
+// PREREQUISITES:
+// - A supported service provider must be selected
+// - Interconnect locations must be known
+// ============================================================================
+
+package partner_interconnect
+
+import (
+	"fmt"
+
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+type PartnerInterconnectConfig struct {
+	AttachmentProjectID          pulumi.StringInput
+	VpcName                      string
+	Preactivate                  bool
+	Region1                      string
+	Region1Router1Name           pulumi.StringInput
+	Region1Router2Name           pulumi.StringInput
+	Region1Interconnect1Location string
+	Region1Interconnect2Location string
+	Region2                      string
+	Region2Router1Name           pulumi.StringInput
+	Region2Router2Name           pulumi.StringInput
+	Region2Interconnect1Location string
+	Region2Interconnect2Location string
+}
+
+func DeployPartnerInterconnect(ctx *pulumi.Context, name string, config PartnerInterconnectConfig, opts ...pulumi.ResourceOption) error {
+	// Region 1, Router 1
+	_, err := compute.NewInterconnectAttachment(ctx, fmt.Sprintf("%s-r1-attach1", name), &compute.InterconnectAttachmentArgs{
+		Project:                config.AttachmentProjectID,
+		Region:                 pulumi.String(config.Region1),
+		Router:                 config.Region1Router1Name,
+		Name:                   pulumi.String(fmt.Sprintf("%s-r1-a1", config.VpcName)),
+		EdgeAvailabilityDomain: pulumi.String("AVAILABILITY_DOMAIN_1"),
+		Type:                   pulumi.String("PARTNER"),
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Region 1, Router 2
+	_, err = compute.NewInterconnectAttachment(ctx, fmt.Sprintf("%s-r1-attach2", name), &compute.InterconnectAttachmentArgs{
+		Project:                config.AttachmentProjectID,
+		Region:                 pulumi.String(config.Region1),
+		Router:                 config.Region1Router2Name,
+		Name:                   pulumi.String(fmt.Sprintf("%s-r1-a2", config.VpcName)),
+		EdgeAvailabilityDomain: pulumi.String("AVAILABILITY_DOMAIN_2"),
+		Type:                   pulumi.String("PARTNER"),
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Region 2, Router 1
+	_, err = compute.NewInterconnectAttachment(ctx, fmt.Sprintf("%s-r2-attach1", name), &compute.InterconnectAttachmentArgs{
+		Project:                config.AttachmentProjectID,
+		Region:                 pulumi.String(config.Region2),
+		Router:                 config.Region2Router1Name,
+		Name:                   pulumi.String(fmt.Sprintf("%s-r2-a1", config.VpcName)),
+		EdgeAvailabilityDomain: pulumi.String("AVAILABILITY_DOMAIN_1"),
+		Type:                   pulumi.String("PARTNER"),
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Region 2, Router 2
+	_, err = compute.NewInterconnectAttachment(ctx, fmt.Sprintf("%s-r2-attach2", name), &compute.InterconnectAttachmentArgs{
+		Project:                config.AttachmentProjectID,
+		Region:                 pulumi.String(config.Region2),
+		Router:                 config.Region2Router2Name,
+		Name:                   pulumi.String(fmt.Sprintf("%s-r2-a2", config.VpcName)),
+		EdgeAvailabilityDomain: pulumi.String("AVAILABILITY_DOMAIN_2"),
+		Type:                   pulumi.String("PARTNER"),
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -84,39 +84,13 @@ func main() {
 		if err != nil {
 			return err
 		}
-
-		vpcModule := res.Networking
+		if err != nil {
+			return err
+		}
 
 		// Exports — matching TF 3-networks-svpc/envs/{env}/outputs.tf
-		// target_name_server_addresses — pass-through from config (mirrors TF exactly)
-		ctx.Export("target_name_server_addresses", pulumi.ToStringArray(cfg.TargetNameServers))
-		ctx.Export("access_context_manager_policy_id", res.AcmPolicyID)
-		ctx.Export("shared_vpc_host_project_id", pulumi.String(cfg.ProjectID))
-		ctx.Export("network_name", vpcModule.VPC.Name)
-		ctx.Export("network_self_link", vpcModule.VPC.SelfLink)
-		ctx.Export("enforce_vpcsc", pulumi.Bool(cfg.EnforceVpcSc))
-		ctx.Export("service_perimeter_name", res.PerimeterName)
-		ctx.Export("access_level_name", res.AccessLevelName)
-		ctx.Export("access_level_name_dry_run", res.AccessLevelDryRunName)
-
-		// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges)
-		var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-		for _, subnet := range vpcModule.Subnets {
-			subnetNames = append(subnetNames, subnet.Name)
-			subnetIPs = append(subnetIPs, subnet.IpCidrRange)
-			subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
-		}
-		ctx.Export("subnets_names", subnetNames)
-		ctx.Export("subnets_ips", subnetIPs)
-		ctx.Export("subnets_self_links", subnetSelfLinks)
-
-		// subnets_secondary_ranges — dynamically resolved from subnet resources
-		// Mirrors TF: module.base_env.subnets_secondary_ranges
-		secondaryRangesMap := pulumi.Map{}
-		for subnetName, subnet := range vpcModule.Subnets {
-			secondaryRangesMap[subnetName] = subnet.SecondaryIpRanges
-		}
-		ctx.Export("subnets_secondary_ranges", secondaryRangesMap)
+		// (outputs.go).
+		exportOutputs(ctx, cfg, res)
 
 		return nil
 	})
