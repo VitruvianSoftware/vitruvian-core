@@ -31,7 +31,18 @@
 // shared registry, since those services run in the per-env oss projects but pull
 // the image from this shared registry.
 //
-// Deploy: bazel run //infrastructure/pulumi/apps/oauth-user-inspector-build:up
+// The build SA is federated against the SHARED foundation-pool (gcp-bootstrap),
+// scoped to the `oauth-user-inspector-build` GitHub Environment — the same
+// pattern as the per-env deploy SAs in oauth-user-inspector-deploy-identity.
+// The CI build job (oauth-user-inspector-deploy.yaml, `build` job) impersonates
+// it keylessly to docker-push into the registry.
+//
+// Deploy: CI-only — .github/workflows/oauth-user-inspector-build-stack.yaml
+// applies this stack as sa-terraform-proj (the stage-4 projects SA, via the
+// foundation-proj-shared GitHub Environment). The build SA this stack CREATES
+// cannot be the identity that APPLIES it, and sa-terraform-proj already owns
+// prj-c-bu1-infra-pipeline-* (folder-scoped artifactregistry.admin +
+// iam.serviceAccountAdmin from gcp-bootstrap), so no extra grants are needed.
 package main
 
 import (
@@ -48,6 +59,10 @@ func main() {
 		if region == "" {
 			region = "us-west1"
 		}
+		bootstrapStack := cfg.Get("bootstrap_stack")
+		if bootstrapStack == "" {
+			bootstrapStack = "ipv1337/foundation-bootstrap/production"
+		}
 
 		// The shared build project (prj-c-bu1-infra-pipeline-*) is created by
 		// foundation stage 4's business_unit_1/shared leaf and exported there.
@@ -58,6 +73,16 @@ func main() {
 			return err
 		}
 		buildProject := projStack.GetStringOutput(pulumi.String("infra_pipeline_project_id"))
+
+		// Shared foundation WIF pool (prj-b-cicd), from gcp-bootstrap — same
+		// reference the deploy-identity stacks use.
+		bootstrap, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
+			Name: pulumi.String(bootstrapStack),
+		})
+		if err != nil {
+			return err
+		}
+		poolName := bootstrap.GetStringOutput(pulumi.String("wif_pool_name"))
 
 		// 1. Shared Artifact Registry for the app image (build once, promote digest).
 		ar, err := artifactregistry.NewRepository(ctx, "oauth-user-inspector-images", &artifactregistry.RepositoryArgs{
@@ -79,6 +104,24 @@ func main() {
 			DisplayName: pulumi.String("oauth-user-inspector image build/push"),
 		})
 		if err != nil {
+			return err
+		}
+		// Federate the build SA against the SHARED foundation-pool, scoped to
+		// the `oauth-user-inspector-build` GitHub Environment (created by
+		// repo_config). The provider's wif_attribute_condition already pins
+		// assertion.repository to VitruvianSoftware/vitruvian-core, so the
+		// environment principalSet is the isolation layer — the same pattern as
+		// the per-env deploy SAs in oauth-user-inspector-deploy-identity.
+		// Without this binding the CI build job's google-github-actions/auth
+		// impersonation of the build SA is refused.
+		if _, err := serviceaccount.NewIAMMember(ctx, "build-wif-binding", &serviceaccount.IAMMemberArgs{
+			ServiceAccountId: buildSA.Name,
+			Role:             pulumi.String("roles/iam.workloadIdentityUser"),
+			Member: pulumi.Sprintf(
+				"principalSet://iam.googleapis.com/%s/attribute.environment/oauth-user-inspector-build",
+				poolName,
+			),
+		}); err != nil {
 			return err
 		}
 		if _, err := artifactregistry.NewRepositoryIamMember(ctx, "build-sa-ar-writer", &artifactregistry.RepositoryIamMemberArgs{
