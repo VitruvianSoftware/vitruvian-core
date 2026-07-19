@@ -1,0 +1,154 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: _zitadel-apps-apply
+
+# Reusable per-environment apply of the zitadel-apps stack — the EXPAND step
+# of the oauth-user-inspector promotion chain (principle §2.15): register the
+# env's OIDC client (+ redirect URIs) in the self-hosted Zitadel instance and
+# sync the minted client id/secret into the env's oss project's Secret
+# Manager BEFORE the env's app revision serves, so hosted login works on
+# arrival.
+#
+# Caller contract:
+#   * job-level `environment: oauth-user-inspector-<environment>` supplies the
+#     keyless-WIF vars (GCP_WORKLOAD_IDENTITY_PROVIDER,
+#     GCP_DEPLOY_SERVICE_ACCOUNT) used for the stack's GCP Secret Manager
+#     resources — pass `secrets: inherit` (tailnet + Zitadel key + Pulumi
+#     token).
+#   * The Zitadel management API is reached over TAILNET (the Envoy gateway LB
+#     10.44.86.211) — NOT the public Cloudflare edge, whose bot-protection
+#     (HTTP 1010) blocks the provider's Go client. See
+#     infrastructure/pulumi/platform/zitadel-apps/APPLYING-FROM-CI.md.
+#   * The env's Cloud Run run.app redirect URI is only known after the app
+#     stack's first deploy, so this workflow PROBES for the app stack and
+#     passes it via ZITADEL_APPS_APP_STACK when present — the first per-env
+#     run cleanly skips it and the redirect self-heals on the next run.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "development | nonproduction | production"
+        required: true
+        type: string
+
+jobs:
+  zitadel-apps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # checkout (contents: read) + GCP Workload Identity Federation
+    # (id-token: write) for the stack's Secret Manager writes.
+    permissions:
+      contents: read
+      id-token: write
+    environment: oauth-user-inspector-${{ inputs.environment }}
+    env:
+      DEPLOY_ENV: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Join the tailnet (ephemeral, tag:ci)
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          # OAuth client (no expiry) — mints a short-lived ephemeral tag:ci key per
+          # run, so there's no 90-day auth-key rotation chore. The client carries the
+          # `auth_keys` write scope tagged tag:ci; `tags:` is required with OAuth.
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          # v4 already passes `--accept-routes`; don't add it in args.
+
+      - name: Prepare the internal TLS route to the Envoy gateway
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq socat
+          # Zitadel ties the JWT-profile audience to the connection scheme and only
+          # accepts the https issuer, so the provider must see HTTPS. Terminate TLS
+          # locally with a trusted self-signed cert for the host, forwarding the
+          # decrypted HTTP (Host preserved) to the internal Envoy on :80.
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem \
+            -days 1 -subj "/CN=auth.ipv1337.dev" -addext "subjectAltName=DNS:auth.ipv1337.dev"
+          sudo cp /tmp/c.pem /usr/local/share/ca-certificates/auth-internal.crt
+          sudo update-ca-certificates >/dev/null
+          cat /tmp/c.pem /tmp/k.pem | sudo tee /etc/auth-internal-ck.pem >/dev/null
+          echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts >/dev/null
+
+      # The stack writes the minted OIDC client id/secret into the env's oss
+      # project's Secret Manager (cred-sync-to-GCP-SM), so it needs GCP
+      # credentials: keyless WIF as the env's per-app deploy SA (its
+      # prefix-conditioned secretmanager.admin covers this app's secrets; the
+      # FIRST per-env apply — secret creation — is a gated sa-terraform-proj
+      # apply, see the deploy-identity stack).
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      # The env's Cloud Run host exists only after the app stack's first
+      # deploy. Probe for the stack's serviceUrl (from the app project dir —
+      # `pulumi stack output -s` must run inside a matching project) and hand
+      # it to the program via ZITADEL_APPS_APP_STACK; absent, the program
+      # keeps the committed redirect set (first-deploy guard).
+      - name: Detect the env's app stack (run.app redirect)
+        id: appstack
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/apps/oauth-user-inspector
+        run: |
+          set -euo pipefail
+          STACK="ipv1337/pulumi_oauth_user_inspector/${DEPLOY_ENV}"
+          if pulumi stack output serviceUrl --stack "$STACK" >/dev/null 2>&1; then
+            echo "app-stack=${STACK}" >> "$GITHUB_OUTPUT"
+            echo "App stack found: ${STACK} — its run.app redirect will be registered."
+          else
+            echo "app-stack=" >> "$GITHUB_OUTPUT"
+            echo "App stack not found yet (first per-env deploy): keeping the committed redirect set."
+          fi
+
+      - name: Apply the Zitadel application stack (Pulumi)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Machine-user JWT profile key, seeded once as a pipeline secret. The
+          # Zitadel provider authenticates with it.
+          ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
+          ZITADEL_APPS_APP_STACK: ${{ steps.appstack.outputs.app-stack }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/platform/zitadel-apps
+        run: |
+          set -euo pipefail
+          # TLS terminator must live for this step (backgrounded processes don't
+          # survive across steps): :443 -> internal Envoy :80, Host preserved.
+          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+            TCP:10.44.86.211:80 &
+          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
+          # confirm the internal path is up before applying (fail loudly otherwise)
+          for _ in $(seq 1 15); do
+            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
+          pulumi stack select "$DEPLOY_ENV" --create
+          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
+          pulumi up --yes

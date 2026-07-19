@@ -18,20 +18,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# OAuth User Inspector deploy: Dockerfile-built image -> Artifact Registry ->
-# Pulumi rollout (Cloud Run) -> smoke check. Replaces the old Cloud Build
-# (cloudbuild.yaml) + gcloud deploy path.
+# OAuth User Inspector multi-env promotion chain (stage-5 OSS application
+# stage): BUILD ONCE — the image is built and pushed a single time to the
+# shared Artifact Registry in the infra-pipeline project by the ungated
+# oauth-user-inspector-build environment — then the SAME immutable digest is
+# PROMOTED dev (auto) -> nonproduction (reviewer-gated) -> production
+# (reviewer-gated), each env landing in its prj-{env}-bu1-oss-floating
+# project. Nothing is ever rebuilt per env.
 #
-# One workflow, parameterized by GitHub Environment: oauth-user-inspector-
-# development deploys automatically on push to main; other environments are
-# promoted via workflow_dispatch.
+# Before each env's app deploy, the zitadel-apps EXPAND step
+# (_zitadel-apps-apply.yaml) registers that env's OIDC client + redirect URIs
+# in the self-hosted Zitadel instance and syncs the client id/secret into the
+# env's Secret Manager, so hosted login works on arrival.
 #
 # Per-environment identifiers (GCP_PROJECT_ID, GCP_DEPLOY_SERVICE_ACCOUNT,
-# GCP_WORKLOAD_IDENTITY_PROVIDER, optional GCP_REGION) are environment-scoped
-# Actions *variables* — keyless WIF means none of them is a credential. The
-# only GitHub-side secret used is the repo-level PULUMI_ACCESS_TOKEN; the app's
-# OAuth client secrets live in GCP Secret Manager and are read by the app at
-# runtime (the runtime service account is granted accessor by Pulumi).
+# GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_REGION) are environment-scoped Actions
+# *variables* (repo_config oauthVars) — keyless WIF via the foundation-pool
+# means none of them is a credential.
+#
+# workflow_dispatch redeploys a SINGLE chosen environment (it rebuilds at the
+# current sha and deploys just that env); pushes to main run the full chain.
 
 name: oauth-user-inspector-deploy
 
@@ -42,8 +48,8 @@ on:
     # oauth-user-inspector container builds STANDALONE (its own Docker Buildx
     # build + self-contained package.json -- it is CATALOG_EXEMPT in
     # tools/conformance for exactly this reason), so it has no cross-package
-    # Bazel dependencies a directory glob could under-trigger on. These four
-    # globs ARE its complete input set. Revisit if/when the app migrates to
+    # Bazel dependencies a directory glob could under-trigger on. These globs
+    # ARE its complete input set. Revisit if/when the app migrates to
     # Bazel rules_oci (docs/repo-assessment.md §5.1) -- then it gates via
     # tools/ci/deploy-affected.sh like tabula.
     paths:
@@ -51,118 +57,107 @@ on:
       - "infrastructure/pulumi/apps/oauth-user-inspector/**"
       - "infrastructure/pulumi/platform/zitadel-apps/**"
       - ".github/workflows/oauth-user-inspector-deploy.yaml"
+      - ".github/workflows/_deploy-cloud-run.yaml"
+      - ".github/workflows/_zitadel-apps-apply.yaml"
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment
+        description: Target environment (single-env redeploy; pushes run the full chain)
         type: choice
         required: true
         default: development
         options:
           - development
+          - nonproduction
+          - production
 
 permissions:
   contents: read
   id-token: write
 
+# One promotion chain at a time. All three envs now live in ONE run (the old
+# per-env group let two runs race the shared build AR), so serialize the whole
+# workflow; queued pushes coalesce onto the newest sha.
 concurrency:
-  group: oauth-user-inspector-deploy-${{ inputs.environment || 'development' }}
+  group: oauth-user-inspector-deploy
   cancel-in-progress: false
 
 jobs:
-  # EXPAND (cf. principle §2.15): register the hosted app's redirect URIs in the
-  # self-hosted Zitadel instance BEFORE the new app revision serves, so hosted
-  # login works on arrival. This step is additive and independent (the app
-  # deploys fine without it; only runtime login needs it), so the `deploy` job
-  # below tolerates it being skipped — but it is pipeline-triggered, never a
-  # local `bazel run` (§2.14).
-  #
-  # Gated on the ZITADEL_APPS_AUTO_APPLY repo/environment variable until the
-  # Zitadel machine-user key (secrets.ZITADEL_MACHINE_KEY_JSON) and the stack's
-  # org/project IDs (committed Pulumi.<env>.yaml) are seeded once; until then it
-  # cleanly no-ops rather than failing the deploy (cf. copybara-sync-auth-apply's
-  # vars.SYNC_AUTH_AUTO_APPLY).
-  zitadel-infra:
-    if: ${{ vars.ZITADEL_APPS_AUTO_APPLY == 'true' }}
+  # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
+  # (owned by the oauth-user-inspector-build stack) and capture the immutable
+  # digest every env promotes. The build environment is ungated.
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: oauth-user-inspector-${{ inputs.environment || 'development' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    environment: oauth-user-inspector-build
     env:
-      DEPLOY_ENV: ${{ inputs.environment || 'development' }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-west1' }}
+    outputs:
+      image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
       - uses: actions/checkout@v7
 
-      # The Zitadel management API is reached over TAILNET (the Envoy gateway LB
-      # 10.44.86.211, advertised by the `fedora` node) — NOT the public Cloudflare
-      # edge, whose bot-protection (HTTP 1010) blocks the provider's Go client.
-      # See infrastructure/pulumi/platform/zitadel-apps/APPLYING-FROM-CI.md.
-      - name: Join the tailnet (ephemeral, tag:ci)
-        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          # OAuth client (no expiry) — mints a short-lived ephemeral tag:ci key per
-          # run, so there's no 90-day auth-key rotation chore. The client carries the
-          # `auth_keys` write scope tagged tag:ci; `tags:` is required with OAuth.
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-          # v4 already passes `--accept-routes`; don't add it in args.
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      - name: Prepare the internal TLS route to the Envoy gateway
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push the image (capture the digest)
+        id: push
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq socat
-          # Zitadel ties the JWT-profile audience to the connection scheme and only
-          # accepts the https issuer, so the provider must see HTTPS. Terminate TLS
-          # locally with a trusted self-signed cert for the host, forwarding the
-          # decrypted HTTP (Host preserved) to the internal Envoy on :80.
-          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem \
-            -days 1 -subj "/CN=auth.ipv1337.dev" -addext "subjectAltName=DNS:auth.ipv1337.dev"
-          sudo cp /tmp/c.pem /usr/local/share/ca-certificates/auth-internal.crt
-          sudo update-ca-certificates >/dev/null
-          cat /tmp/c.pem /tmp/k.pem | sudo tee /etc/auth-internal-ck.pem >/dev/null
-          echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts >/dev/null
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
+          NODE_VERSION="$(cut -d. -f1 .nvmrc 2>/dev/null || echo 22)"
+          docker buildx build --push \
+            --build-arg NODE_VERSION="${NODE_VERSION}" \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            --tag "${IMAGE}:latest" \
+            oauth-user-inspector/
+          # Resolve the immutable digest from the registry (driver-agnostic,
+          # vs. buildx --metadata-file which varies by builder): this exact
+          # @sha256 ref is what every env deploys.
+          DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
+            --format='value(image_summary.digest)')"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::could not resolve the pushed image digest"
+            exit 1
+          fi
+          echo "Built ${IMAGE}@${DIGEST}"
+          echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+  # ---- development (auto on push) ------------------------------------------
+  # EXPAND (cf. principle §2.15) before each env's deploy. Gated on the
+  # ZITADEL_APPS_AUTO_APPLY repo variable until the Zitadel machine-user key
+  # and stack IDs are seeded; until then it cleanly no-ops rather than failing
+  # the deploy. Each env's deploy tolerates its zitadel job being SKIPPED
+  # (gated off) but not FAILED.
+  zitadel-dev:
+    if: ${{ vars.ZITADEL_APPS_AUTO_APPLY == 'true' && (github.event_name == 'push' || inputs.environment == 'development') }}
+    uses: ./.github/workflows/_zitadel-apps-apply.yaml
+    with:
+      environment: development
+    secrets: inherit
 
-      - name: Apply the Zitadel application stack (Pulumi)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Machine-user JWT profile key, seeded once as a pipeline secret. The
-          # Zitadel provider authenticates with it; nothing GCP here.
-          ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
-          GOWORK: off
-        working-directory: infrastructure/pulumi/platform/zitadel-apps
-        run: |
-          set -euo pipefail
-          # TLS terminator must live for this step (backgrounded processes don't
-          # survive across steps): :443 -> internal Envoy :80, Host preserved.
-          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
-            TCP:10.44.86.211:80 &
-          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
-          # confirm the internal path is up before applying (fail loudly otherwise)
-          for _ in $(seq 1 15); do
-            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
-            sleep 2
-          done
-          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
-          pulumi stack select "$DEPLOY_ENV" --create
-          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
-          pulumi up --yes
-
-  deploy:
-    # Infra-first ordering: wait for the expand step. It runs when zitadel-infra
-    # succeeds OR is skipped (gated off / not yet seeded); it is blocked only if
-    # the expand actually failed.
-    needs: zitadel-infra
-    if: ${{ !cancelled() && needs.zitadel-infra.result != 'failure' }}
+  deploy-dev:
+    needs: [build, zitadel-dev]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-dev.result != 'failure' && (github.event_name == 'push' || inputs.environment == 'development') }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
-      environment: ${{ inputs.environment || 'development' }}
-      dockerfile-dir: oauth-user-inspector/
-      image-repository-path: oauth-user-inspector/app
-      artifact-repository: oauth-user-inspector
+      environment: development
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      default-region: us-west1
       service-name: oauth-user-inspector
       pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
       env-prefix: OAUTH_USER_INSPECTOR
@@ -175,6 +170,86 @@ jobs:
         #    2026-06-27 react/react-dom mismatch reached prod past the old
         #    HTTP-200-only check. Headless-render and assert a marker that only
         #    exists once React has rendered (not in the static #root fallback).
+        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
+        if [ -z "$CHROME" ]; then
+          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
+        fi
+        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
+        if printf '%s' "$DOM" | grep -q "Select a provider"; then
+          echo "Smoke OK: React app mounted."
+        else
+          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
+          printf '%s' "$DOM" | head -c 800
+          exit 1
+        fi
+    secrets: inherit
+
+  # ---- nonproduction (reviewer-gated environment) --------------------------
+  zitadel-nonprod:
+    needs: [deploy-dev]
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    uses: ./.github/workflows/_zitadel-apps-apply.yaml
+    with:
+      environment: nonproduction
+    secrets: inherit
+
+  deploy-nonprod:
+    needs: [build, deploy-dev, zitadel-nonprod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: oauth-user-inspector
+      environment: nonproduction
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      default-region: us-west1
+      service-name: oauth-user-inspector
+      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      env-prefix: OAUTH_USER_INSPECTOR
+      custom-smoke-script: |
+        echo "Smoke-checking ${CAND}/"
+        # 1) Reachable (HTTP 2xx).
+        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
+        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
+        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
+        if [ -z "$CHROME" ]; then
+          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
+        fi
+        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
+        if printf '%s' "$DOM" | grep -q "Select a provider"; then
+          echo "Smoke OK: React app mounted."
+        else
+          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
+          printf '%s' "$DOM" | head -c 800
+          exit 1
+        fi
+    secrets: inherit
+
+  # ---- production (reviewer-gated environment) -----------------------------
+  zitadel-prod:
+    needs: [deploy-nonprod]
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    uses: ./.github/workflows/_zitadel-apps-apply.yaml
+    with:
+      environment: production
+    secrets: inherit
+
+  deploy-prod:
+    needs: [build, deploy-nonprod, zitadel-prod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: oauth-user-inspector
+      environment: production
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      default-region: us-west1
+      service-name: oauth-user-inspector
+      pulumi-dir: infrastructure/pulumi/apps/oauth-user-inspector
+      env-prefix: OAUTH_USER_INSPECTOR
+      custom-smoke-script: |
+        echo "Smoke-checking ${CAND}/"
+        # 1) Reachable (HTTP 2xx).
+        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
+        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
         CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
         if [ -z "$CHROME" ]; then
           echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1

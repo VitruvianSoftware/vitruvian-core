@@ -57,18 +57,35 @@ config:
   # here; they are synced from a gitignored, Bitwarden-backed store by
   # //tools/sync-env-secrets (§2.4, §2.18).
   #
-  # Only `development` is populated (its current, single-env personal-project
-  # deployment, preserved so the imported GitHub vars map cleanly). The
-  # nonproduction / production / build environments are created empty here (env +
-  # protection rules only) — their per-env oss-project deploy SA + foundation-pool
-  # WIF provider are minted by the Phase-3 identity stacks, which set these vars
-  # then. Do not add placeholder values.
+  # Stage-5 multi-env (Phase 3): every environment federates the SHARED
+  # foundation-pool (repo-pinned provider). `build` pushes the shared Artifact
+  # Registry in the infra-pipeline project as the build SA (oauth-user-
+  # inspector-build stack); development/nonproduction/production deploy the
+  # promoted digest into their env's oss-floating project as that env's
+  # per-app deploy SA (oauth-user-inspector-deploy-identity stacks).
+  # `development` now targets the dev oss project — the old personal-project
+  # (gen-lang-client-*) pipeline identity is retired with the Phase-4 cutover.
   vitruvian-core-repo-config:oauthVars:
-    development:
-      GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@gen-lang-client-0352693779.iam.gserviceaccount.com
-      GCP_PROJECT_ID: gen-lang-client-0352693779
+    build:
+      GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-build@prj-c-bu1-infra-pipeline-4b48.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-c-bu1-infra-pipeline-4b48
       GCP_REGION: us-west1
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/724518326928/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    development:
+      GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-d-bu1-oss-floating-648a
+      GCP_REGION: us-west1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    nonproduction:
+      GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-n-bu1-oss-floating-630b
+      GCP_REGION: us-west1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    production:
+      GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-p-bu1-oss-floating-16e0
+      GCP_REGION: us-west1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
   # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline
   # secret; a local run may `pulumi config set --secret buildbuddyApiKey`
