@@ -276,22 +276,30 @@ The organization stage creates the folder structure, shared projects (logging, b
    cp ../pulumi-example-foundation/build/pulumi-up.yml .github/workflows/
    ```
 
-5. Update Go module:
+   The stage follows the upstream layout: the Pulumi project root is the
+   `envs/shared/` leaf, and the reusable logic lives in `modules/`.
+
+5. Update the Go modules (the leaf and the shared modules each have their own):
 
    ```bash
-   go mod edit -dropreplace github.com/VitruvianSoftware/pulumi-library/go
-   go mod tidy
+   for d in modules envs/shared; do
+     (cd "$d" \
+       && go mod edit -dropreplace github.com/VitruvianSoftware/pulumi-library/go \
+       && go mod tidy)
+   done
    ```
 
-6. Initialize the Pulumi stack and configure:
+6. Initialize the Pulumi stack (in the `envs/shared` leaf) and configure:
 
    ```bash
+   cd envs/shared
    pulumi stack init production
 
    pulumi config set org_id "YOUR_ORG_ID"
    pulumi config set billing_account "YOUR_BILLING_ACCOUNT"
    pulumi config set bootstrap_stack_name "<PULUMI-ORG>/<PULUMI-PROJECT>/production"
    pulumi config set domains_to_allow "example.com"
+   cd ../..
    ```
 
 7. Check if a Security Command Center notification named `scc-notify` already exists:
@@ -378,38 +386,42 @@ The environments stage creates per-environment folders, KMS projects, and Secret
    cp ../pulumi-example-foundation/build/pulumi-up.yml .github/workflows/
    ```
 
-5. Update Go module:
+   The stage follows the upstream layout: one thin leaf Pulumi project per
+   environment under `envs/`, with the reusable logic in `modules/`.
+
+5. Update the Go modules (each leaf and the shared modules have their own):
 
    ```bash
-   go mod edit -dropreplace github.com/VitruvianSoftware/pulumi-library/go
-   go mod tidy
+   for d in modules envs/*; do
+     (cd "$d" \
+       && go mod edit -dropreplace github.com/VitruvianSoftware/pulumi-library/go \
+       && go mod tidy)
+   done
    ```
 
-6. Initialize Pulumi stacks for **each environment**:
+6. Initialize the Pulumi stack in **each environment leaf** (upstream layout:
+   each environment is its own thin Pulumi project under `envs/`, with a single
+   `production` stack; the env identity is pinned in the leaf's `main.go`):
 
    ```bash
-   # Each environment gets its own stack.
-   pulumi stack init development
-   pulumi config set org_id "YOUR_ORG_ID"
-   pulumi config set billing_account "YOUR_BILLING_ACCOUNT"
-   pulumi config set org_stack_name "<PULUMI-ORG>/gcp-org/production"
-
-   pulumi stack init nonproduction
-   pulumi config set org_id "YOUR_ORG_ID"
-   pulumi config set billing_account "YOUR_BILLING_ACCOUNT"
-   pulumi config set org_stack_name "<PULUMI-ORG>/gcp-org/production"
-
-   pulumi stack init production
-   pulumi config set org_id "YOUR_ORG_ID"
-   pulumi config set billing_account "YOUR_BILLING_ACCOUNT"
-   pulumi config set org_stack_name "<PULUMI-ORG>/gcp-org/production"
+   # Each environment leaf gets its own project + production stack.
+   for env in development nonproduction production; do
+     (
+       cd "envs/${env}"
+       pulumi stack init production
+       pulumi config set org_id "YOUR_ORG_ID"
+       pulumi config set billing_account "YOUR_BILLING_ACCOUNT"
+       pulumi config set org_stack_name "<PULUMI-ORG>/foundation-org-shared/production"
+     )
+   done
    ```
 
-   > **Note**: The `org_stack_name` references the 1-org production stack because
-   > organization resources (tags, folders) are shared across all environments.
-   > Unlike Terraform's `terraform_remote_state` which blocks during plan/apply,
-   > Pulumi stack references return async Outputs — so core identifiers like
-   > `org_id` and `billing_account` must be set as direct config per stack.
+   > **Note**: The `org_stack_name` references the 1-org `envs/shared` leaf
+   > stack because organization resources (tags, folders) are shared across all
+   > environments. Unlike Terraform's `terraform_remote_state` which blocks
+   > during plan/apply, Pulumi stack references return async Outputs — so core
+   > identifiers like `org_id` and `billing_account` must be set as direct
+   > config per leaf.
 
 7. Commit and push:
 
@@ -487,13 +499,15 @@ The instructions below use Shared VPC. Substitute `3-networks-hub-and-spoke` for
 
 4. Update Go module, initialize stacks, and configure.
 
-5. **Deploy the shared environment first** (manually, before environment branches).
-   The shared environment (DNS Hub, Interconnect) must exist before per-environment
-   networks can be created:
+5. **Deploy the shared leaf first** (manually, before environment branches).
+   The shared leaf (`envs/shared`: DNS Hub, Interconnect) must exist before
+   per-environment networks can be created:
 
    ```bash
-   pulumi stack select shared
+   cd envs/shared
+   pulumi stack init production
    pulumi up
+   cd ../..
    ```
 
 6. Commit, push, and promote through environments via PRs (same as Step 2).
@@ -511,8 +525,9 @@ The instructions below use Shared VPC. Substitute `3-networks-hub-and-spoke` for
 The projects stage creates business unit projects attached to the Shared VPC.
 
 1. Follow the same repository setup pattern as Steps 2-3.
-2. Copy from `4-projects/`.
-3. **Deploy the shared environment first** (manually).
+2. Copy from `4-projects/` (leaf projects live under `business_unit_1/`).
+3. **Deploy the `business_unit_1/shared` leaf first** (manually — it holds the
+   BU infra-pipeline).
 4. Promote through environments via PRs.
 
 > **Tip:** To create additional business units, copy the `business_unit_1` directory

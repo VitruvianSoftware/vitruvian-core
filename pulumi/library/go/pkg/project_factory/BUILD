@@ -15,6 +15,7 @@ go_library(
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/organizations",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/projects",
         "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/resourcemanager",
+        "@com_github_pulumi_pulumi_gcp_sdk_v9//go/gcp/serviceaccount",
         "@com_github_pulumi_pulumi_random_sdk_v4//go/random",
         "@com_github_pulumi_pulumi_sdk_v3//go/pulumi",
     ],

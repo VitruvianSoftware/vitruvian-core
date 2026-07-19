@@ -1,0 +1,10 @@
+# Pulumi Configuration for 2-environments/envs/production (production stack).
+# The environment identity (production/p) is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-environments-production:org_id: "YOUR_ORG_ID"
+  foundation-environments-production:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  foundation-environments-production:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+
+  # Optional
+  # foundation-environments-production:project_prefix: "prj"

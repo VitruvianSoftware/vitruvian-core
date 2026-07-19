@@ -1,0 +1,10 @@
+# Pulumi Configuration for 2-environments/envs/nonproduction (production stack).
+# The environment identity (nonproduction/n) is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-environments-nonproduction:org_id: "YOUR_ORG_ID"
+  foundation-environments-nonproduction:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  foundation-environments-nonproduction:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+
+  # Optional
+  # foundation-environments-nonproduction:project_prefix: "prj"

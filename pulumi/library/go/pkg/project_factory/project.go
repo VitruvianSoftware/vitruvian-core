@@ -25,6 +25,7 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/resourcemanager"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -62,10 +63,15 @@ type ProjectArgs struct {
 	Labels            pulumi.StringMapInput
 	DeletionPolicy    pulumi.StringPtrInput
 
-	// SAExecutors is a list of Service Account short names (e.g., "sa-terraform-bootstrap")
-	// that will be granted roles/serviceusage.serviceUsageAdmin on the project BEFORE
-	// any APIs are enabled. This breaks the circular dependency where the CI/CD executor
-	// needs permissions on the newly created project to enable APIs on it.
+	// SAExecutors is a list of Service Account short names (e.g., "sa-terraform-bootstrap").
+	// Each is CREATED in this project and granted roles/serviceusage.serviceUsageAdmin
+	// on it, so that later applies running AS that SA (the CI/CD executor) can manage
+	// this project's Service resources. Cold-deploy ordering is strictly:
+	//   project -> ActivateApis Services (+ propagation wait) -> SA -> SUA grant.
+	// The first apply's deployer is the project creator (and therefore owner), so it
+	// never needs the grant to enable APIs itself; the grant only has to exist before
+	// the NEXT apply runs as the executor SA. iam.googleapis.com is auto-appended to
+	// ActivateApis because creating an SA in a fresh project requires it.
 	SAExecutors []string
 
 	// RandomProjectID appends a 4-character random hex suffix to ProjectID,
@@ -113,9 +119,14 @@ type Project struct {
 	Services []*projects.Service
 	// ApisReady resolves only after ActivateApis are enabled AND (if
 	// ApiPropagationSeconds > 0) the propagation delay has elapsed. DependsOn it
-	// for resources that use the just-enabled APIs. Never nil: falls back to the
-	// project itself when no APIs/delay are configured.
+	// for resources that use the just-enabled APIs. Never nil, but note: when
+	// ApiPropagationSeconds is 0 it falls back to the project itself and does NOT
+	// gate on the Service resources — belt-and-braces consumers should DependsOn
+	// the Services slice as well (or simply set ApiPropagationSeconds > 0).
 	ApisReady pulumi.Resource
+	// SAExecutorAccounts are the executor service accounts created for
+	// args.SAExecutors, in the same order.
+	SAExecutorAccounts []*serviceaccount.Account
 }
 
 func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pulumi.ResourceOption) (*Project, error) {
@@ -175,52 +186,29 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 	}
 	component.Project = p
 
-	// 2. Pre-API IAM Bindings
-	// Grant Service Usage Admin to the executor SAs BEFORE enabling APIs.
-	// This breaks the circular dependency where the CI/CD pipeline needs permissions
-	// to enable APIs on the newly created project.
-	var apiDeps []pulumi.Resource
-	for _, saName := range args.SAExecutors {
-		// Construct the deterministic email for the SA which lives in this new project
-		member := pulumi.All(p.ProjectId, pulumi.String(saName)).ApplyT(func(vals []interface{}) string {
-			return fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", vals[1], vals[0])
-		}).(pulumi.StringOutput)
-
-		iam, err := projects.NewIAMMember(ctx, fmt.Sprintf("%s-sua-%s", name, saName), &projects.IAMMemberArgs{
-			Project: p.ProjectId,
-			Role:    pulumi.String("roles/serviceusage.serviceUsageAdmin"),
-			Member:  member,
-		}, pulumi.Parent(p))
-		if err != nil {
-			return nil, err
-		}
-		apiDeps = append(apiDeps, iam)
-	}
-
-	// 3. Enable APIs — each Service is a first-class Pulumi resource,
-	// properly tracked in state with correct dependency ordering.
-	var svcOpts []pulumi.ResourceOption
-	svcOpts = append(svcOpts, pulumi.Parent(p))
-	if len(apiDeps) > 0 {
-		svcOpts = append(svcOpts, pulumi.DependsOn(apiDeps))
-	}
+	// 2. Enable APIs — each Service is a first-class Pulumi resource,
+	// properly tracked in state with correct dependency ordering. On a cold
+	// deploy the deployer is the project creator (and therefore owner), so it
+	// can always enable services itself — nothing may be ordered BEFORE the
+	// Services, or a from-empty apply deadlocks on resources (SAs, bindings)
+	// that themselves need a freshly-enabled API.
+	svcOpts := []pulumi.ResourceOption{pulumi.Parent(p)}
 
 	// Auto-enable billingbudgets.googleapis.com whenever a Budget is requested —
 	// the google_billing_budget created below needs that API on. Upstream
 	// project-factory appends it to activate_apis for exactly this reason; doing
 	// it here means a caller who sets Budget can never forget the API.
-	activateApis := args.ActivateApis
+	activateApis := append([]string{}, args.ActivateApis...)
 	if args.Budget != nil {
-		hasBudgetAPI := false
-		for _, a := range activateApis {
-			if a == "billingbudgets.googleapis.com" {
-				hasBudgetAPI = true
-				break
-			}
-		}
-		if !hasBudgetAPI {
-			activateApis = append(append([]string{}, activateApis...), "billingbudgets.googleapis.com")
-		}
+		activateApis = appendIfMissing(activateApis, "billingbudgets.googleapis.com")
+	}
+	// Auto-enable iam.googleapis.com whenever executor SAs are requested
+	// (creating a service account in a fresh project requires the IAM API) or
+	// the default service account is managed (disable/delete/deprivilege calls
+	// the IAM API on this project).
+	if len(args.SAExecutors) > 0 ||
+		(args.DefaultServiceAccount != "" && strings.ToUpper(args.DefaultServiceAccount) != "KEEP") {
+		activateApis = appendIfMissing(activateApis, "iam.googleapis.com")
 	}
 
 	// disable-on-destroy: default false (Pulumi destroy-safety), override via arg.
@@ -265,11 +253,65 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 		component.ApisReady = wait
 	}
 
+	// apisGate collects everything a consumer of the freshly-enabled APIs must
+	// wait on: every Service resource plus the propagation wait (ApisReady falls
+	// back to the project when no wait is configured, so the Services are listed
+	// explicitly — belt and braces).
+	apisGate := make([]pulumi.Resource, 0, len(component.Services)+1)
+	for _, s := range component.Services {
+		apisGate = append(apisGate, s)
+	}
+	apisGate = append(apisGate, component.ApisReady)
+
+	// 2c. Executor Service Accounts + Service Usage Admin grants.
+	// Each executor SA is created IN this project and granted SUA on it so that
+	// FUTURE applies running as that SA (the CI/CD executor) can manage this
+	// project's Service resources. Strict cold-deploy ordering:
+	//   Services (+ propagation) -> SA -> SUA grant
+	// The SA must come after iam.googleapis.com is enabled+propagated (creating
+	// an SA in a fresh project fails otherwise), and the grant must come after
+	// the SA exists (GCP rejects IAM members for nonexistent service accounts).
+	for _, saName := range args.SAExecutors {
+		sa, err := serviceaccount.NewAccount(ctx, fmt.Sprintf("%s-sa-%s", name, saName), &serviceaccount.AccountArgs{
+			Project:   p.ProjectId,
+			AccountId: pulumi.String(saName),
+			// The consuming stack may also manage this SA (e.g. the foundation's
+			// granular-SA module) — tolerate either creation order.
+			CreateIgnoreAlreadyExists: pulumi.Bool(true),
+		}, pulumi.Parent(p),
+			// SA creation needs iam.googleapis.com enabled+propagated on the
+			// fresh project (auto-appended to ActivateApis above).
+			pulumi.DependsOn(apisGate),
+			// Shared ownership: never delete the underlying SA out from under a
+			// consuming stack that also references it.
+			pulumi.RetainOnDelete(true))
+		if err != nil {
+			return nil, err
+		}
+		component.SAExecutorAccounts = append(component.SAExecutorAccounts, sa)
+
+		member := sa.Email.ApplyT(func(email string) string {
+			return fmt.Sprintf("serviceAccount:%s", email)
+		}).(pulumi.StringOutput)
+
+		if _, err := projects.NewIAMMember(ctx, fmt.Sprintf("%s-sua-%s", name, saName), &projects.IAMMemberArgs{
+			Project: p.ProjectId,
+			Role:    pulumi.String("roles/serviceusage.serviceUsageAdmin"),
+			Member:  member,
+		}, pulumi.Parent(p),
+			// The grant references the SA by email — it must never race the SA's
+			// creation (the member email also flows from sa.Email, but keep the
+			// edge explicit).
+			pulumi.DependsOn([]pulumi.Resource{sa})); err != nil {
+			return nil, err
+		}
+	}
+
 	// 3. Budget alert — conditionally created when BudgetConfig is provided.
 	// Mirrors the TF project-factory's budget sub-module:
 	// creates a google_billing_budget with threshold rules per percent.
 	if args.Budget != nil {
-		if err := createBudget(ctx, name, p, args, component); err != nil {
+		if err := createBudget(ctx, name, p, args, component, apisGate); err != nil {
 			return nil, err
 		}
 	}
@@ -277,16 +319,14 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 	// 4. Default Service Account management — mirrors TF's
 	// google_project_default_service_accounts resource.
 	if args.DefaultServiceAccount != "" && strings.ToUpper(args.DefaultServiceAccount) != "KEEP" {
-		// Convert Services slice to []pulumi.Resource for DependsOn
-		var svcDeps []pulumi.Resource
-		for _, s := range component.Services {
-			svcDeps = append(svcDeps, s)
-		}
 		if _, err := projects.NewDefaultServiceAccounts(ctx, fmt.Sprintf("%s-default-sa", name), &projects.DefaultServiceAccountsArgs{
 			Project:       p.ProjectId,
 			Action:        pulumi.String(strings.ToUpper(args.DefaultServiceAccount)),
 			RestorePolicy: pulumi.String("REVERT_AND_IGNORE_FAILURE"),
-		}, pulumi.Parent(component), pulumi.DependsOn(svcDeps)); err != nil {
+			// Disabling/deleting the default SAs calls the IAM API on the fresh
+			// project — wait for API enablement AND propagation, not just the
+			// Service resources.
+		}, pulumi.Parent(component), pulumi.DependsOn(apisGate)); err != nil {
 			return nil, err
 		}
 	}
@@ -312,8 +352,10 @@ func NewProject(ctx *pulumi.Context, name string, args *ProjectArgs, opts ...pul
 	return component, nil
 }
 
-// createBudget creates a google_billing_budget for the project.
-func createBudget(ctx *pulumi.Context, name string, p *organizations.Project, args *ProjectArgs, component *Project) error {
+// createBudget creates a google_billing_budget for the project. apisGate is
+// the API-enablement gate (Services + propagation wait) — the budget must not
+// race the auto-enabled billingbudgets.googleapis.com.
+func createBudget(ctx *pulumi.Context, name string, p *organizations.Project, args *ProjectArgs, component *Project, apisGate []pulumi.Resource) error {
 	budget := args.Budget
 
 	// Apply defaults matching TF project-factory
@@ -362,9 +404,21 @@ func createBudget(ctx *pulumi.Context, name string, p *organizations.Project, ar
 		}
 	}
 
-	if _, err := billing.NewBudget(ctx, fmt.Sprintf("%s-budget", name), budgetArgs, pulumi.Parent(component)); err != nil {
+	// Budget creation needs billingbudgets.googleapis.com enabled+propagated
+	// (auto-appended to ActivateApis when a Budget is requested).
+	if _, err := billing.NewBudget(ctx, fmt.Sprintf("%s-budget", name), budgetArgs, pulumi.Parent(component), pulumi.DependsOn(apisGate)); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// appendIfMissing appends s to the slice if it's not already present.
+func appendIfMissing(slice []string, s string) []string {
+	for _, item := range slice {
+		if item == s {
+			return slice
+		}
+	}
+	return append(slice, s)
 }

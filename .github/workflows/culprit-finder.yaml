@@ -105,10 +105,6 @@ jobs:
           ISSUE: ${{ inputs.issue }}
           RESULT: ${{ steps.bisect.outputs.culprit }}
           SUBJECT: ${{ steps.bisect.outputs.culprit_subject }}
-          # Route the dispatch input through env rather than `${{ }}`-interpolating
-          # it into the script body, so a hostile issue value can't break out of
-          # the argument and inject shell (script-injection hardening, #824).
-          ISSUE: ${{ inputs.issue }}
         run: |
           # Guard: the target must be a plain issue number (gh accepts a number,
           # URL, or branch name — pin it to digits so a malformed input can't be

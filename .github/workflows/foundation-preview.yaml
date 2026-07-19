@@ -42,46 +42,78 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      # Upstream-leaf layout: every multi-env stage is a set of thin per-leaf
+      # Pulumi projects (envs/<env> or business_unit_1/<leaf>), each with a
+      # single `production` stack, all calling the stage's shared modules/
+      # package. `dir` is the leaf Pulumi project; `stage_dir` is the stage
+      # root — the change filter watches stage_dir/** so a modules/-only change
+      # still triggers every affected leaf's preview. `modules_dir` (set on ONE
+      # representative leg per stage, to avoid duplicate runs) additionally
+      # vets/tests the shared modules Go module, which the per-leaf `go vet
+      # ./...` compiles but does not analyze.
       matrix:
         include:
           - app: gcp-bootstrap
             dir: infrastructure/pulumi/foundation/gcp-bootstrap
+            stage_dir: infrastructure/pulumi/foundation/gcp-bootstrap
             stack: production
             environment: foundation-bootstrap-preview
           - app: org-folders
             dir: infrastructure/pulumi/foundation/org-folders
+            stage_dir: infrastructure/pulumi/foundation/org-folders
             stack: production
             environment: foundation-org-folders-preview
+          # 1-org lives at envs/shared (upstream 1-org/envs/shared), a single
+          # leaf; stack ipv1337/foundation-org-shared/production.
           - app: gcp-org
-            dir: infrastructure/pulumi/foundation/gcp-org
+            dir: infrastructure/pulumi/foundation/gcp-org/envs/shared
+            stage_dir: infrastructure/pulumi/foundation/gcp-org
+            modules_dir: infrastructure/pulumi/foundation/gcp-org/modules
             stack: production
             environment: foundation-org-preview
-          # gcp-environments and gcp-networks are multi-environment
-          # (development/nonproduction/production stacks). We preview the
-          # `development` stack as the representative leg per component: it runs
-          # first in the promotion chain and — for networks — is the only stack
-          # that deploys the hub AND a spoke with secondary ranges, so it
-          # exercises the most of main.go (including the subnets_secondary_ranges
-          # export whose nil-pointer panic reached deploy uncaught before #772).
-          # Both read cross-stack StackReferences to the applied
-          # ipv1337/foundation-org/production stack, so `pulumi preview` runs the
-          # program end-to-end and would catch such a program-crashing panic.
+          # gcp-environments: preview the development leaf as the representative
+          # leg per the old stack-based matrix — it runs first in the promotion
+          # chain and reads the cross-stack StackReference to the applied
+          # ipv1337/foundation-org-shared/production stack, so `pulumi preview`
+          # runs the program end-to-end and catches program-crashing panics
+          # (e.g. the pre-#772 subnets_secondary_ranges nil-pointer class).
           - app: gcp-environments
-            dir: infrastructure/pulumi/foundation/gcp-environments
-            stack: development
+            dir: infrastructure/pulumi/foundation/gcp-environments/envs/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-environments
+            modules_dir: infrastructure/pulumi/foundation/gcp-environments/modules
+            stack: production
             environment: foundation-env-preview
-          - app: gcp-networks
-            dir: infrastructure/pulumi/foundation/gcp-networks
-            stack: development
+          # gcp-networks: the old development STACK deployed the hub AND a spoke
+          # with secondary ranges in one program; the leaf split moved the hub
+          # into envs/shared and the spoke into envs/development. Preview BOTH
+          # leaves to keep the same code coverage (hub + spoke + the
+          # subnets_secondary_ranges export).
+          - app: gcp-networks-shared
+            dir: infrastructure/pulumi/foundation/gcp-networks/envs/shared
+            stage_dir: infrastructure/pulumi/foundation/gcp-networks
+            stack: production
             environment: foundation-net-preview
-          # gcp-projects (stage 4) is multi-environment (development/nonproduction/
-          # production stacks, one per business-unit cell). Preview the
-          # `development` stack as the representative leg. It reads only the
-          # 2-environments StackReference (env_folder) for the floating-only
-          # deployment, so `pulumi preview` runs the program end-to-end.
-          - app: gcp-projects
-            dir: infrastructure/pulumi/foundation/gcp-projects
-            stack: development
+          - app: gcp-networks-development
+            dir: infrastructure/pulumi/foundation/gcp-networks/envs/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-networks
+            modules_dir: infrastructure/pulumi/foundation/gcp-networks/modules
+            stack: production
+            environment: foundation-net-preview
+          # gcp-projects (stage 4): the business_unit_1/shared leaf (BU
+          # infra-pipeline, extracted modules/infra_pipelines) plus the
+          # development leaf (floating-only base_env; reads the 2-environments
+          # StackReference) — together the same coverage the old development
+          # stack + prod-only infra_pipeline_enabled gave.
+          - app: gcp-projects-shared
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/shared
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
+          - app: gcp-projects-development
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            modules_dir: infrastructure/pulumi/foundation/gcp-projects/modules
+            stack: production
             environment: foundation-proj-preview
     environment: ${{ matrix.environment }}
     env:
@@ -102,7 +134,7 @@ jobs:
           base: ${{ github.base_ref }}
           filters: |
             stack:
-              - '${{ matrix.dir }}/**'
+              - '${{ matrix.stage_dir }}/**'
               - 'infrastructure/pulumi/pkg/**'
               - '.github/workflows/foundation-preview.yaml'
 
@@ -125,6 +157,17 @@ jobs:
         if: steps.changes.outputs.stack == 'true'
         working-directory: ${{ matrix.dir }}
         run: go test ./...
+
+      # The shared modules/ package is its own Go module: the per-leaf vet/test
+      # above compiles it (via the go.mod replace) but does not analyze or test
+      # it. Run vet+test there too, on the one representative leg per stage that
+      # sets modules_dir.
+      - name: go vet + test (${{ matrix.app }} shared modules)
+        if: steps.changes.outputs.stack == 'true' && matrix.modules_dir
+        working-directory: ${{ matrix.modules_dir }}
+        run: |
+          go vet ./...
+          go test ./...
 
       - name: Authenticate to GCP (WIF, keyless)
         if: steps.changes.outputs.stack == 'true'
@@ -175,6 +218,7 @@ jobs:
           # than running pulumi-summary.sh on a missing log (which would read as a
           # false failure). The sticky comment still posts, showing the leg is clean.
           if [ "${STACK_CHANGED}" != "true" ]; then
+            # shellcheck disable=SC2016 # the backticks are markdown code spans, not expansion
             printf '### %s\n\n_No changes to `%s` in this PR — preview skipped._\n' \
               "${LABEL}" "${LABEL}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
             exit 0

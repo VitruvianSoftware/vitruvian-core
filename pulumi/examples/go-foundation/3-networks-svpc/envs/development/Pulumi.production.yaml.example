@@ -1,0 +1,10 @@
+# Pulumi Configuration for 3-networks-svpc/envs/development (production stack).
+# The environment identity (development/d) is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-3-networks-svpc-development:project_id: "prj-d-svpc"
+
+  # Optional
+  # foundation-3-networks-svpc-development:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+  # foundation-3-networks-svpc-development:region1: "us-central1"
+  # foundation-3-networks-svpc-development:region2: "us-west1"

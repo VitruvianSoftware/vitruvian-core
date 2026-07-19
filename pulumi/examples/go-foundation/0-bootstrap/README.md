@@ -405,8 +405,8 @@ The Pulumi foundation supports pluggable CI/CD providers, mirroring the Terrafor
 
 | Provider           | Status     | README                                       | Code                           |
 | ------------------ | ---------- | -------------------------------------------- | ------------------------------ |
-| **GitHub Actions** | ✅ Default | [README-GitHub.md](README-GitHub.md)         | `build_github_actions.go`      |
-| **Cloud Build**    | 📄 Example | [README-CloudBuild.md](README-CloudBuild.md) | `build_cloud_build.go.example` |
+| **GitHub Actions** | ✅ Default | [README-GitHub.md](README-GitHub.md)         | `build_github.go`      |
+| **Cloud Build**    | 📄 Example | [README-CloudBuild.md](README-CloudBuild.md) | `build_cb.go.example` |
 | **GitLab CI/CD**   | 📄 Example | [README-GitLab.md](README-GitLab.md)         | `build_gitlab.go.example`      |
 
 The default is GitHub Actions with Workload Identity Federation. To switch to an alternative provider, follow the instructions in its README.
@@ -435,8 +435,8 @@ This bootstrap implements several security controls that match the upstream Terr
 | `main.go`                      | Orchestrates the bootstrap: loads config, creates the folder, coordinates projects, IAM, and CI/CD build, exports common_config, groups, and WIF outputs                                                                                               |
 | `projects.go`                  | Creates the Seed project (KMS key ring, crypto key, encrypted state bucket) and CI/CD project with labels and deletion protection                                                                                                                      |
 | `iam.go`                       | Creates 5 granular service accounts, assigns least-privilege IAM at org/parent/seed/cicd/billing scopes, grants org admins group IAM, configures SA self-impersonation, enforces project creator restriction, and removes editor role from default SAs |
-| `build_github_actions.go`      | **Default CI/CD**: provisions WIF pool, OIDC provider, and per-SA repo bindings for GitHub Actions                                                                                                                                                     |
-| `build_cloud_build.go.example` | **Alternative CI/CD**: example Cloud Build provisioning (CSR, AR, triggers). Rename to `.go` and update `main.go` to activate                                                                                                                          |
+| `build_github.go`      | **Default CI/CD**: provisions WIF pool, OIDC provider, and per-SA repo bindings for GitHub Actions                                                                                                                                                     |
+| `build_cb.go.example` | **Alternative CI/CD**: example Cloud Build provisioning (CSR, AR, triggers). Rename to `.go` and update `main.go` to activate                                                                                                                          |
 | `build_gitlab.go.example`      | **Alternative CI/CD**: example GitLab WIF provisioning. Rename to `.go` and update `main.go` to activate                                                                                                                                               |
 | `README-GitHub.md`             | GitHub Actions-specific documentation: WIF architecture, workflow examples, migration guide                                                                                                                                                            |
 | `README-CloudBuild.md`         | Cloud Build-specific documentation: switch instructions, Cloud Build YAML examples                                                                                                                                                                     |

@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.2...go-bootstrap-v2.1.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* **library:** race-free cold apply for the bootstrap chain (project_factory + bootstrap) ([#908](https://github.com/VitruvianSoftware/vitruvian-core/issues/908)) ([ca2c814](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca2c8148864aaf20141029c8a8996340e92358c0))
+
+## [2.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.1...go-bootstrap-v2.1.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **bootstrap:** add /v2 suffix to module path to match its major version ([#905](https://github.com/VitruvianSoftware/vitruvian-core/issues/905)) ([b87a229](https://github.com/VitruvianSoftware/vitruvian-core/commit/b87a2297fdf3827e33425711b7810d904ee3afec))
+
+## [2.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.0...go-bootstrap-v2.1.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **bootstrap:** defer state-bucket SA lookup until the seed project exists ([#894](https://github.com/VitruvianSoftware/vitruvian-core/issues/894)) ([430fef4](https://github.com/VitruvianSoftware/vitruvian-core/commit/430fef493adcd0853d285fd041f129ae4025d1d9))
+
 ## [2.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.0.0...go-bootstrap-v2.1.0) (2026-07-08)
 
 

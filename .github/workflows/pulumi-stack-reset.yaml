@@ -1,0 +1,87 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Administrative tool — remove a Pulumi stack from the Pulumi Cloud state
+# backend. This is STATE-ONLY: `pulumi stack rm` never issues a GCP delete, so
+# it does NOT destroy live infrastructure — any live resources are simply
+# orphaned (left running, untracked). Its purpose is cutovers: when a stack's
+# tracked resources moved to a different project, the stale state must be
+# abandoned so the next CI deploy recreates the stack clean (the deploy jobs use
+# `pulumi stack select --create`).
+#
+# All state changes go through CI here rather than a laptop. workflow_dispatch
+# only; the `confirm` input must equal `stack` or the job is skipped, guarding
+# against fat-finger removals. Runs under the `pulumi-admin` environment so the
+# action is auditable and can be reviewer-gated in repo settings if desired.
+name: pulumi-stack-reset
+
+on:
+  workflow_dispatch:
+    inputs:
+      pulumi_dir:
+        description: Pulumi project dir holding Pulumi.yaml (e.g. infrastructure/pulumi/apps/oauth-user-inspector)
+        required: true
+        type: string
+      stack:
+        description: Stack / env name to remove (e.g. development)
+        required: true
+        type: string
+      confirm:
+        description: Re-type the stack name to confirm removal (must match `stack`)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulumi-stack-reset-${{ inputs.pulumi_dir }}-${{ inputs.stack }}
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    if: ${{ inputs.confirm == inputs.stack }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pulumi-admin
+    env:
+      PULUMI_BACKEND_URL: https://api.pulumi.com
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Remove stack from state (state-only; orphans live resources, no GCP delete)
+        working-directory: ${{ inputs.pulumi_dir }}
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          STACK: ${{ inputs.stack }}
+        run: |
+          # GitHub runs steps with `bash -eo pipefail`; keep -e so a real failure
+          # (other than the tolerated "nothing to cancel") aborts the job.
+          set -euo pipefail
+          echo "::group::pulumi cancel ${STACK} (clear any stuck update lock)"
+          pulumi cancel --yes --stack "${STACK}" || echo "no in-flight update to cancel"
+          echo "::endgroup::"
+          echo "::group::pulumi stack rm ${STACK} --force"
+          pulumi stack rm "${STACK}" --force --yes
+          echo "::endgroup::"
+          echo "Removed stack '${STACK}'. The next deploy recreates it clean via 'pulumi stack select --create'."

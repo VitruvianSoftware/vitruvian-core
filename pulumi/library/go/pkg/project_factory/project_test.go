@@ -71,15 +71,17 @@ func TestNewProject_Basic(t *testing.T) {
 
 	// Budget is set but ActivateApis omits billingbudgets → the module AUTO-ENABLES
 	// billingbudgets.googleapis.com (upstream project-factory does the same, so a
-	// caller can't request a budget without the API it needs). So there are TWO
-	// services: the requested compute one + the auto-added budget API.
-	services := tracker.RequireType(t, gcpService, 2)
-	svcNames := []string{
-		services[0].Inputs["service"].StringValue(),
-		services[1].Inputs["service"].StringValue(),
+	// caller can't request a budget without the API it needs). DefaultServiceAccount
+	// "DISABLE" likewise auto-enables iam.googleapis.com (the disable call needs
+	// it). So there are THREE services: compute + billingbudgets + iam.
+	services := tracker.RequireType(t, gcpService, 3)
+	svcNames := []string{}
+	for _, svc := range services {
+		svcNames = append(svcNames, svc.Inputs["service"].StringValue())
 	}
 	assert.Contains(t, svcNames, "compute.googleapis.com")
 	assert.Contains(t, svcNames, "billingbudgets.googleapis.com", "Budget set → billingbudgets API auto-enabled")
+	assert.Contains(t, svcNames, "iam.googleapis.com", "default SA managed → iam API auto-enabled")
 
 	// disableOnDestroy / disableDependentServices default to false (our Pulumi
 	// destroy-safety posture; DisableServicesOnDestroy overrides it).
@@ -146,6 +148,73 @@ func TestNewProject_ApiPropagationWait(t *testing.T) {
 
 	// Exactly one propagation-wait command (only the delayed project creates one).
 	tracker.RequireType(t, "command:local:Command", 1)
+}
+
+// ---------- SAExecutors ----------
+
+const (
+	gcpSAAccount        = "gcp:serviceaccount/account:Account"
+	gcpProjectIAMMember = "gcp:projects/iAMMember:IAMMember"
+)
+
+func TestNewProject_SAExecutorsCreatesSAThenGrant(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		p, err := NewProject(ctx, "p-exec", &ProjectArgs{
+			ProjectID:      pulumi.String("prj-exec"),
+			Name:           pulumi.String("exec"),
+			FolderID:       pulumi.String("folders/1"),
+			BillingAccount: pulumi.String("AAAAAA-BBBBBB-CCCCCC"),
+			ActivateApis:   []string{"compute.googleapis.com"},
+			SAExecutors:    []string{"sa-terraform-bootstrap"},
+		})
+		require.NoError(t, err)
+		require.Len(t, p.SAExecutorAccounts, 1, "executor SA must be created by the component")
+		return nil
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	// The executor SA is CREATED in this project (cold deploys must not
+	// reference a not-yet-existing SA) and tolerates prior existence.
+	sas := tracker.RequireType(t, gcpSAAccount, 1)
+	assert.Equal(t, "p-exec-sa-sa-terraform-bootstrap", sas[0].Name)
+	assert.Equal(t, "sa-terraform-bootstrap", sas[0].Inputs["accountId"].StringValue())
+	assert.True(t, sas[0].Inputs["createIgnoreAlreadyExists"].BoolValue(),
+		"must adopt an SA the consuming stack also manages")
+
+	// The SUA grant keeps its historical logical name (URN stability).
+	grants := tracker.RequireType(t, gcpProjectIAMMember, 1)
+	assert.Equal(t, "p-exec-sua-sa-terraform-bootstrap", grants[0].Name)
+	assert.Equal(t, "roles/serviceusage.serviceUsageAdmin", grants[0].Inputs["role"].StringValue())
+
+	// iam.googleapis.com is auto-enabled: SA creation in a fresh project needs it.
+	services := tracker.RequireType(t, gcpService, 2)
+	apis := map[string]bool{}
+	for _, svc := range services {
+		apis[svc.Inputs["service"].StringValue()] = true
+	}
+	assert.True(t, apis["iam.googleapis.com"],
+		"SAExecutors set → iam API auto-enabled for SA creation")
+}
+
+func TestNewProject_NoSAExecutorsNoSA(t *testing.T) {
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		_, err := NewProject(ctx, "p-noexec", &ProjectArgs{
+			ProjectID:      pulumi.String("prj-noexec"),
+			Name:           pulumi.String("noexec"),
+			FolderID:       pulumi.String("folders/1"),
+			BillingAccount: pulumi.String("AAAAAA-BBBBBB-CCCCCC"),
+			ActivateApis:   []string{"compute.googleapis.com"},
+		})
+		return err
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, tracker.TypeCount(gcpSAAccount))
+	assert.Equal(t, 0, tracker.TypeCount(gcpProjectIAMMember))
+	// No SAExecutors → iam API NOT auto-added.
+	tracker.RequireType(t, gcpService, 1)
 }
 
 // ---------- AutoCreateNetwork ----------

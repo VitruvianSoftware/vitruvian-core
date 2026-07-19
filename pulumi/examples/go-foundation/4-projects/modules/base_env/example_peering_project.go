@@ -1,0 +1,377 @@
+/*
+ * Copyright 2026 Vitruvian Software
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package base_env
+
+import (
+	"fmt"
+
+	libnet "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/dns"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/tags"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"foundation-4-projects/modules/single_project"
+)
+
+// deployPeeringProject creates the peering project — a project with its own
+// VPC peered to the shared VPC host — plus its full network infrastructure
+// (deployPeeringNetwork below), matching upstream's example_peering_project.tf
+// (toggle-gated).
+func deployPeeringProject(ctx *pulumi.Context, args *Args, result *BUProjects) error {
+	if !args.PeeringProjectEnabled {
+		return nil
+	}
+
+	peeringProject, err := single_project.New(ctx, "bu-peering-project", &single_project.Args{
+		DefaultServiceAccount: "disable", // upstream default; see the svpc project
+		ProjectID:             fmt.Sprintf("%s-%s-%s-sample-peering", args.ProjectPrefix, args.EnvCode, args.BusinessCode),
+		FolderID:              args.FolderID,
+		BillingAccount:        args.BillingAccount,
+		RandomProjectID:       args.RandomSuffix,
+		Labels:                args.Labels("sample-peering", "none"),
+		Budget:                args.Budget,
+		ActivateApis: []string{
+			"compute.googleapis.com",
+			"dns.googleapis.com",
+			"billingbudgets.googleapis.com",
+			"logging.googleapis.com",
+		},
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
+	})
+	if err != nil {
+		return err
+	}
+	result.PeeringProjectID = peeringProject.ProjectID
+
+	// Deploy peering network infrastructure (VPC, subnet, DNS, peering, firewall)
+	if args.PeeringEnabled {
+		peeringResult, err := deployPeeringNetwork(ctx, args, peeringProject, args.NetworkProjectID)
+		if err != nil {
+			return err
+		}
+		result.PeeringNetworkSelfLink = peeringResult.NetworkSelfLink
+		result.PeeringSubnetSelfLink = peeringResult.SubnetSelfLink
+		result.IAPFirewallTags = peeringResult.IAPFirewallTags
+	}
+
+	return nil
+}
+
+// PeeringResult holds outputs from the peering network deployment.
+// These are exported by main.go to satisfy downstream dependencies in 5-app-infra.
+type PeeringResult struct {
+	NetworkSelfLink pulumi.StringOutput
+	SubnetSelfLink  pulumi.StringOutput
+	IAPFirewallTags pulumi.MapOutput // map of tagKey → tagValue for IAP access
+}
+
+// deployPeeringNetwork creates the full peering network infrastructure for the
+// peering project, matching upstream's example_peering_project.tf (305 lines).
+//
+// Creates:
+//   - VPC with a single subnet (flow logs enabled)
+//   - DNS policy with inbound forwarding + logging
+//   - Bi-directional VPC peering to the shared VPC host
+//   - Network firewall policy with mandatory + optional rules
+//   - Secure tags for IAP SSH and RDP access
+func deployPeeringNetwork(
+	ctx *pulumi.Context,
+	args *Args,
+	peeringProject *single_project.Result,
+	networkProjectID pulumi.StringOutput,
+) (*PeeringResult, error) {
+	// Use the API-propagation-GATED project id: the VPC, subnets, DNS policy,
+	// peerings, and firewall policy below are created inside library components
+	// (NewNetworking / NewNetworkFirewallPolicy) whose children a component-level
+	// DependsOn would NOT reach (Pulumi Go SDK limitation) — threading the gated
+	// id as a data dependency is what makes every child wait for the compute/dns
+	// APIs to actually be usable on a cold deploy.
+	projectID := peeringProject.ApisReadyProjectID
+	vpcName := fmt.Sprintf("vpc-%s-peering-base", args.EnvCode)
+
+	// 1. VPC + Subnet
+	peeringVpc, err := libnet.NewNetworking(ctx, "peering-vpc", &libnet.NetworkingArgs{
+		ProjectID: projectID,
+		VPCName:   pulumi.String(vpcName),
+		Subnets: []libnet.SubnetArgs{
+			{
+				Name:     fmt.Sprintf("sb-%s-%s-peered-%s", args.EnvCode, args.BusinessCode, args.SubnetRegion),
+				Region:   args.SubnetRegion,
+				CIDR:     args.SubnetIPRange,
+				FlowLogs: true,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. DNS Policy — inbound forwarding + logging
+	_, err = dns.NewPolicy(ctx, "peering-dns-policy", &dns.PolicyArgs{
+		Project:                 projectID,
+		Name:                    pulumi.String(fmt.Sprintf("dp-%s-peering-base-default-policy", args.EnvCode)),
+		EnableInboundForwarding: pulumi.Bool(true),
+		EnableLogging:           pulumi.Bool(true),
+		Networks: dns.PolicyNetworkArray{
+			&dns.PolicyNetworkArgs{
+				NetworkUrl: peeringVpc.VPC.SelfLink,
+			},
+		},
+	}, pulumi.DependsOn([]pulumi.Resource{peeringVpc.VPC}))
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Bi-directional VPC Peering (peering project <-> shared VPC host)
+	hostVpcRef := pulumi.Sprintf("projects/%s/global/networks/vpc-%s-svpc", networkProjectID, args.EnvCode)
+
+	peeringToHost, err := compute.NewNetworkPeering(ctx, "peering-to-host", &compute.NetworkPeeringArgs{
+		Network:            peeringVpc.VPC.SelfLink,
+		PeerNetwork:        hostVpcRef,
+		Name:               pulumi.String(fmt.Sprintf("%s-%s-peering-base-to-svpc", args.BusinessCode, args.EnvCode)),
+		ExportCustomRoutes: pulumi.Bool(false),
+		ImportCustomRoutes: pulumi.Bool(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = compute.NewNetworkPeering(ctx, "host-to-peering", &compute.NetworkPeeringArgs{
+		Network:            hostVpcRef,
+		PeerNetwork:        peeringVpc.VPC.SelfLink,
+		Name:               pulumi.String(fmt.Sprintf("svpc-to-%s-%s-peering-base", args.BusinessCode, args.EnvCode)),
+		ExportCustomRoutes: pulumi.Bool(true),
+		ImportCustomRoutes: pulumi.Bool(false),
+	}, pulumi.DependsOn([]pulumi.Resource{peeringToHost}))
+	if err != nil {
+		return nil, err
+	}
+
+	var sshTagValueID, rdpTagValueID pulumi.StringInput
+	var sshTagKey, rdpTagKey *tags.TagKey
+	var sshTagValue, rdpTagValue *tags.TagValue
+
+	// 4. Secure Tags for IAP-based SSH and RDP access
+	if args.PeeringIAPFWEnabled {
+		// SSH tag key + value
+		sshTagKey, err = tags.NewTagKey(ctx, "peering-ssh-tag-key", &tags.TagKeyArgs{
+			ShortName: pulumi.String("ssh-iap-access"),
+			Parent:    pulumi.Sprintf("projects/%s", projectID),
+			Purpose:   pulumi.String("GCE_FIREWALL"),
+			PurposeData: pulumi.StringMap{
+				"network": pulumi.Sprintf("%s/%s", projectID, vpcName),
+			},
+		}, pulumi.DependsOn([]pulumi.Resource{peeringVpc.VPC}))
+		if err != nil {
+			return nil, err
+		}
+
+		sshTagValue, err = tags.NewTagValue(ctx, "peering-ssh-tag-value", &tags.TagValueArgs{
+			ShortName: pulumi.String("allow"),
+			Parent:    sshTagKey.ID(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		sshTagValueID = sshTagValue.ID()
+
+		// RDP tag key + value
+		rdpTagKey, err = tags.NewTagKey(ctx, "peering-rdp-tag-key", &tags.TagKeyArgs{
+			ShortName: pulumi.String("rdp-iap-access"),
+			Parent:    pulumi.Sprintf("projects/%s", projectID),
+			Purpose:   pulumi.String("GCE_FIREWALL"),
+			PurposeData: pulumi.StringMap{
+				"network": pulumi.Sprintf("%s/%s", projectID, vpcName),
+			},
+		}, pulumi.DependsOn([]pulumi.Resource{peeringVpc.VPC}))
+		if err != nil {
+			return nil, err
+		}
+
+		rdpTagValue, err = tags.NewTagValue(ctx, "peering-rdp-tag-value", &tags.TagValueArgs{
+			ShortName: pulumi.String("allow"),
+			Parent:    rdpTagKey.ID(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		rdpTagValueID = rdpTagValue.ID()
+	}
+
+	// 5. Firewall Policy — matching upstream's firewall_rules module
+	fwRules := buildPeeringFirewallRules(args, sshTagValueID, rdpTagValueID)
+
+	_, err = libnet.NewNetworkFirewallPolicy(ctx, "peering-fw", &libnet.NetworkFirewallPolicyArgs{
+		ProjectID:   projectID,
+		PolicyName:  fmt.Sprintf("fp-%s-peering-project-firewalls", args.EnvCode),
+		Description: fmt.Sprintf("Firewall rules for Peering Network: %s.", vpcName),
+		TargetVPCs: []pulumi.StringInput{
+			pulumi.Sprintf("projects/%s/global/networks/%s", projectID, peeringVpc.VPC.Name),
+		},
+		Rules: fwRules,
+	}, pulumi.DependsOn([]pulumi.Resource{peeringVpc.VPC}))
+	if err != nil {
+		return nil, err
+	}
+
+	// Build result with all outputs needed by 5-app-infra
+	subnetName := fmt.Sprintf("sb-%s-%s-peered-%s", args.EnvCode, args.BusinessCode, args.SubnetRegion)
+	subnetSelfLink := pulumi.StringOutput{}
+	if sub, ok := peeringVpc.Subnets[subnetName]; ok {
+		subnetSelfLink = sub.SelfLink
+	}
+
+	// Build IAP firewall tags map (matching upstream outputs.tf:87-93)
+	iapTags := pulumi.Map{}.ToMapOutput()
+	if args.PeeringIAPFWEnabled && sshTagKey != nil && sshTagValue != nil && rdpTagKey != nil && rdpTagValue != nil {
+		iapTags = pulumi.All(sshTagKey.ID(), sshTagValue.ID(), rdpTagKey.ID(), rdpTagValue.ID()).ApplyT(func(args []interface{}) map[string]interface{} {
+			return map[string]interface{}{
+				args[0].(string): args[1].(string),
+				args[2].(string): args[3].(string),
+			}
+		}).(pulumi.MapOutput)
+	}
+
+	return &PeeringResult{
+		NetworkSelfLink: peeringVpc.VPC.SelfLink,
+		SubnetSelfLink:  subnetSelfLink,
+		IAPFirewallTags: iapTags,
+	}, nil
+}
+
+// buildPeeringFirewallRules constructs the peering project's firewall rules
+// using the library's FirewallRule struct with FirewallRuleMatch, matching
+// upstream's example_peering_project.tf rule set.
+func buildPeeringFirewallRules(args *Args, sshTagID, rdpTagID pulumi.StringInput) []libnet.FirewallRule {
+	rules := []libnet.FirewallRule{
+		// Priority 65530: Deny all egress TCP/UDP
+		{
+			Priority:      65530,
+			Direction:     "EGRESS",
+			Action:        "deny",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-65530-e-d-all-all-tcp-udp", args.EnvCode),
+			Description:   "Lower priority rule to deny all egress traffic.",
+			EnableLogging: args.FirewallEnableLogging,
+			Match: libnet.FirewallRuleMatch{
+				DestIpRanges: []string{"0.0.0.0/0"},
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp"},
+					{IpProtocol: "udp"},
+				},
+			},
+		},
+		// Priority 10000: Allow Google Private APIs egress (199.36.153.8/30)
+		{
+			Priority:      10000,
+			Direction:     "EGRESS",
+			Action:        "allow",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-10000-e-a-allow-google-apis-all-tcp-443", args.EnvCode),
+			Description:   "Lower priority rule to allow private google apis on TCP port 443.",
+			EnableLogging: args.FirewallEnableLogging,
+			Match: libnet.FirewallRuleMatch{
+				DestIpRanges: []string{"199.36.153.8/30"},
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp", Ports: []string{"443"}},
+				},
+			},
+		},
+	}
+
+	// IAP SSH rule (priority 1000)
+	if args.PeeringIAPFWEnabled && sshTagID != nil && rdpTagID != nil {
+		rules = append(rules, libnet.FirewallRule{
+			Priority:      1000,
+			Direction:     "INGRESS",
+			Action:        "allow",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-1000-i-a-all-allow-iap-ssh-tcp-22", args.EnvCode),
+			Description:   "Allow SSH via IAP for tagged instances.",
+			EnableLogging: true,
+			TargetSecureTags: []pulumi.StringInput{
+				sshTagID,
+			},
+			Match: libnet.FirewallRuleMatch{
+				SrcIpRanges: []string{"35.235.240.0/20"}, // IAP forwarders
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp", Ports: []string{"22"}},
+				},
+			},
+		})
+
+		// IAP RDP rule (priority 1001)
+		rules = append(rules, libnet.FirewallRule{
+			Priority:      1001,
+			Direction:     "INGRESS",
+			Action:        "allow",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-1001-i-a-all-allow-iap-rdp-tcp-3389", args.EnvCode),
+			Description:   "Allow RDP via IAP for tagged instances.",
+			EnableLogging: true,
+			TargetSecureTags: []pulumi.StringInput{
+				rdpTagID,
+			},
+			Match: libnet.FirewallRuleMatch{
+				SrcIpRanges: []string{"35.235.240.0/20"}, // IAP forwarders
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp", Ports: []string{"3389"}},
+				},
+			},
+		})
+	}
+
+	// Optional: Windows KMS activation (priority 0)
+	if args.WindowsActivation {
+		rules = append(rules, libnet.FirewallRule{
+			Priority:      0,
+			Direction:     "EGRESS",
+			Action:        "allow",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-0-e-a-allow-win-activation-all-tcp-1688", args.EnvCode),
+			Description:   "Allow access to kms.windows.googlecloud.com for Windows license activation.",
+			EnableLogging: args.FirewallEnableLogging,
+			Match: libnet.FirewallRuleMatch{
+				DestIpRanges: []string{"35.190.247.13/32"},
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp", Ports: []string{"1688"}},
+				},
+			},
+		})
+	}
+
+	// Optional: Load balancer health checks (priority 1000)
+	if args.OptionalFWRulesEnabled {
+		rules = append(rules, libnet.FirewallRule{
+			Priority:      1002, // Offset from IAP rules which use 1000/1001
+			Direction:     "INGRESS",
+			Action:        "allow",
+			RuleName:      fmt.Sprintf("fw-%s-peering-base-1002-i-a-all-allow-lb-tcp-80-8080-443", args.EnvCode),
+			Description:   "Allow traffic for Internal & Global load balancing health check and load balancing IP ranges.",
+			EnableLogging: args.FirewallEnableLogging,
+			Match: libnet.FirewallRuleMatch{
+				SrcIpRanges: []string{
+					"35.191.0.0/16",
+					"130.211.0.0/22",
+					"209.85.152.0/22",
+					"209.85.204.0/22",
+				},
+				Layer4Configs: []libnet.FirewallLayer4Config{
+					{IpProtocol: "tcp", Ports: []string{"80", "8080", "443"}},
+				},
+			},
+		})
+	}
+
+	return rules
+}

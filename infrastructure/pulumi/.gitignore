@@ -16,6 +16,10 @@ Pulumi.*.yaml
 # bootstrap) likewise commits its dev stack config (project id, region) so
 # cfg.Require("project") resolves on a clean checkout.
 !apps/oauth-user-inspector-deploy-identity/Pulumi.*.yaml
+# oauth-user-inspector-build (shared Artifact Registry + build identity in the
+# infra-pipeline project) commits its production stack config (region only; the
+# projects are StackReference-driven).
+!apps/oauth-user-inspector-build/Pulumi.*.yaml
 # zitadel-apps commits its dev stack config (non-secret Zitadel org/project/app
 # identifiers + redirect URIs) so the deploy workflow resolves them on a clean
 # checkout. The Zitadel machine-user credential is injected from a pipeline
@@ -31,21 +35,29 @@ Pulumi.*.yaml
 !foundation/org-folders/Pulumi.*.yaml
 # foundation/gcp-org commits its production stack config: org id, billing
 # account, bootstrap stack ref, governance groups, domains — all non-secret.
-!foundation/gcp-org/Pulumi.*.yaml
-# foundation/gcp-environments commits per-environment stack configs: env name,
-# org id, billing account, org stack ref, parent folder — all non-secret.
-# Each environment (development, nonproduction, production) is a separate stack.
-!foundation/gcp-environments/Pulumi.*.yaml
-# foundation/gcp-networks commits per-environment stack configs: env name,
-# org id, billing account, network config, firewall rules — all non-secret.
-# Each environment (development, nonproduction, production) is a separate stack.
-!foundation/gcp-networks/Pulumi.*.yaml
-# foundation/gcp-projects commits per-environment stack configs: env name,
+# The Pulumi project root lives at envs/shared (upstream 1-org/envs/shared layout).
+!foundation/gcp-org/envs/shared/Pulumi.*.yaml
+# foundation/gcp-environments commits per-environment stack configs: org id,
+# billing account, org stack ref, parent folder — all non-secret. Each
+# environment is its own leaf Pulumi project under envs/ (upstream
+# 2-environments/envs/<env> layout) with a single `production` stack; the env
+# identity is pinned in each leaf's main.go.
+!foundation/gcp-environments/envs/*/Pulumi.*.yaml
+# foundation/gcp-networks commits per-leaf stack configs: org id, regions,
+# org stack ref, network config, firewall rules — all non-secret. Each leaf
+# (shared hub + the development/nonproduction/production spokes) is its own
+# leaf Pulumi project under envs/ (upstream 3-networks-hub-and-spoke/envs/<env>
+# layout) with a single `production` stack; the env identity and spoke CIDR
+# plan are pinned in each leaf's main.go.
+!foundation/gcp-networks/envs/*/Pulumi.*.yaml
+# foundation/gcp-projects commits per-leaf stack configs:
 # business code, billing account, env stack ref, project-type toggles — all
-# non-secret. Each environment (development, nonproduction, production) is a
-# separate stack. cfg.Require("env") must resolve on a clean checkout, so these
-# MUST be committed (not gitignored).
-!foundation/gcp-projects/Pulumi.*.yaml
+# non-secret. Each business-unit leaf (shared + development/nonproduction/
+# production) is its own leaf Pulumi project under business_unit_1/ (upstream
+# 4-projects/business_unit_1/<leaf> layout) with a single `production` stack;
+# the env identity is pinned in each leaf's main.go. These MUST be committed
+# (not gitignored) so required config resolves on a clean checkout.
+!foundation/gcp-projects/business_unit_1/*/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -55,8 +67,22 @@ Pulumi.*.yaml
 /zitadel-apps/zitadel-apps
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders
-/foundation/gcp-org/foundation-org
-/foundation/gcp-environments/foundation-environments
-/foundation/gcp-networks/foundation-networks
-/foundation/gcp-projects/foundation-projects
+/foundation/gcp-org/envs/shared/foundation-org-shared
+/foundation/gcp-org/envs/shared/foundation-org
+/foundation/gcp-environments/envs/development/foundation-environments-development
+/foundation/gcp-environments/envs/nonproduction/foundation-environments-nonproduction
+/foundation/gcp-environments/envs/production/foundation-environments-production
+/foundation/gcp-networks/envs/shared/foundation-networks-shared
+/foundation/gcp-networks/envs/development/foundation-networks-development
+/foundation/gcp-networks/envs/nonproduction/foundation-networks-nonproduction
+/foundation/gcp-networks/envs/production/foundation-networks-production
+/foundation/gcp-projects/business_unit_1/shared/foundation-projects-bu1-shared
+/foundation/gcp-projects/business_unit_1/development/foundation-projects-bu1-development
+/foundation/gcp-projects/business_unit_1/nonproduction/foundation-projects-bu1-nonproduction
+/foundation/gcp-projects/business_unit_1/production/foundation-projects-bu1-production
 
+
+# Compiled Go pulumi-program binary — never track.
+apps/oauth-user-inspector-deploy-identity/oauth-user-inspector-deploy-identity
+# Compiled Go pulumi-program binary (bazel/go build output) — never track.
+apps/oauth-user-inspector-build/oauth-user-inspector-build

@@ -18,21 +18,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Reusable workflow for deploying a single foundation network.
+# Reusable workflow for deploying a single foundation network leaf.
 #
-# This workflow deploys one Pulumi stack (development, nonproduction, or
-# production) for the gcp-networks foundation stage. It is called by
+# This workflow deploys one leaf (shared, development, nonproduction, or
+# production) of the gcp-networks foundation stage. It is called by
 # the main foundation-release.yaml workflow in a chained sequence:
 #
-#   development (auto) → nonproduction (manual approval) → production (manual approval)
+#   development (auto) → nonproduction (manual approval)
+#     → shared (manual approval; the hub) → production (manual approval)
 #
-# Each environment maps to:
-#   - A Pulumi stack with its own state and config (Pulumi.{environment}.yaml)
+# Upstream-leaf layout: each leaf is its own thin Pulumi project at
+# envs/{environment}/ (upstream 3-networks-hub-and-spoke/envs/<env>), with a
+# single `production` stack (ipv1337/foundation-networks-<leaf>/production) and
+# the stage logic shared via ../../modules. The `shared` leaf holds the hub VPC
+# / DNS hub / hierarchical firewall; the env leaves hold the spokes. Each leaf
+# maps to:
+#   - A leaf Pulumi project dir: {working_directory}/envs/{environment}
+#     (committed non-secret config in that leaf's Pulumi.production.yaml)
 #   - A GitHub Environment with optional protection rules (foundation-net-{environment})
 #
 # This pattern replaces the upstream Terraform foundation's branch promotion
-# strategy (development → nonproduction → production branches) with a
-# monorepo-compatible approach using GitHub Environment gates.
+# strategy (development → nonproduction → production branches, with envs/shared
+# applied alongside production) with a monorepo-compatible approach using
+# GitHub Environment gates.
 
 name: Foundation Network Deploy
 
@@ -42,27 +50,28 @@ on:
       environment:
         required: true
         type: string
-        description: "Target environment: development, nonproduction, or production"
+        description: "Target leaf: shared, development, nonproduction, or production"
       working_directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-networks"
-        description: "Working directory for pulumi commands"
+        description: "Stage root directory; pulumi runs in {working_directory}/envs/{environment}"
   workflow_dispatch:
     inputs:
       environment:
         required: true
         type: choice
         options:
+          - shared
           - development
           - nonproduction
           - production
-        description: "Target environment: development, nonproduction, or production"
+        description: "Target leaf: shared, development, nonproduction, or production"
       working_directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-networks"
-        description: "Working directory for pulumi commands"
+        description: "Stage root directory; pulumi runs in {working_directory}/envs/{environment}"
 
 permissions:
   contents: read
@@ -104,13 +113,15 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           ENVIRONMENT: ${{ inputs.environment }}
-        working-directory: ${{ inputs.working_directory }}
+        # Upstream-leaf layout: the environment selects the leaf Pulumi project
+        # dir; every leaf has exactly one stack, `production`.
+        working-directory: ${{ inputs.working_directory }}/envs/${{ inputs.environment }}
         run: |
           # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
           # pipeline does not abort here and we capture pulumi's real exit code.
           set +e -u -o pipefail
-          echo "::group::pulumi up --diff (${ENVIRONMENT})"
-          { pulumi stack select -c "${ENVIRONMENT}" \
+          echo "::group::pulumi up --diff (${ENVIRONMENT} leaf / production stack)"
+          { pulumi stack select -c "production" \
               && pulumi up --yes --diff --non-interactive; } \
             2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
           ec="${PIPESTATUS[0]}"
@@ -126,10 +137,11 @@ jobs:
         if: always()
         env:
           WORKING_DIRECTORY: ${{ inputs.working_directory }}
+          ENVIRONMENT: ${{ inputs.environment }}
           PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
         run: |
           set -euo pipefail
           "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "$(basename "${WORKING_DIRECTORY}")" \
+            "$(basename "${WORKING_DIRECTORY}")/${ENVIRONMENT}" \
             "${RUNNER_TEMP}/pulumi-out.txt" \
             "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"

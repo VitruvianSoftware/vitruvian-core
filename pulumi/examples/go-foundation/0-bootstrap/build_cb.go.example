@@ -1,0 +1,162 @@
+// Copyright 2026 Vitruvian Software
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// ============================================================================
+// Cloud Build CI/CD Provider — Example
+// ============================================================================
+//
+// This file is an EXAMPLE showing how to replace the default GitHub Actions
+// CI/CD provider with Google Cloud Build. This mirrors the Terraform
+// foundation's default `build_cb.tf` configuration.
+//
+// To use Cloud Build instead of GitHub Actions:
+//
+// 1. Rename this file: build_cb.go.example → build_cloud_build.go
+// 2. Remove or rename: build_github.go → build_github.go.bak
+// 3. Update main.go to call deployCloudBuild() instead of deployGitHubActionsBuild()
+// 4. Add the required config values to your Pulumi.<stack>.yaml:
+//
+//    config:
+//      cloud_build_private_pool_subnet: "10.3.0.0/24"
+//
+// 5. Run `pulumi up` to provision the Cloud Build infrastructure.
+//
+// ============================================================================
+// WHAT THIS CREATES:
+//
+// 1. Artifact Registry — hosts the custom Pulumi Docker image
+// 2. Cloud Build Triggers — per-stage plan/apply triggers connected to GitHub
+// 3. Cloud Build Private Worker Pool — modules/cb-private-pool (peered VPC),
+//    mirroring upstream's module "tf_private_pool" in build_cb.tf
+//
+// PREREQUISITES (GitHub source):
+//
+// 1. Install the Cloud Build GitHub App:
+//    GCP Console → Cloud Build → Triggers → Connect Repository
+// 2. Ensure each GitHub repo (gcp-bootstrap, gcp-org, etc.) is connected
+//
+// NOTE: Google deprecated Cloud Source Repositories (CSR) for new GCP
+// customers in June 2024. This example uses GitHub as the source backend.
+// To use CSR (legacy) or GitLab instead, set SourceType accordingly in
+// the CloudBuildArgs (see pkg/cicd README for details).
+// ============================================================================
+
+package main
+
+import (
+	"fmt"
+
+	cbprivatepool "foundation-0-bootstrap/modules/cb-private-pool"
+
+	libcicd "github.com/VitruvianSoftware/pulumi-library/pkg/cicd"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+// CloudBuildOutputs holds the outputs from Cloud Build provisioning.
+type CloudBuildOutputs struct {
+	CloudBuildProjectID pulumi.StringOutput
+	ArtifactRepoName    pulumi.StringOutput
+	// PrivatePool is the Cloud Build private worker pool component
+	// (modules/cb-private-pool), consumed by outputs_cb.go.
+	PrivatePool *cbprivatepool.CbPrivatePool
+}
+
+// deployCloudBuild provisions the Cloud Build CI/CD infrastructure in the
+// CI/CD project. This mirrors the Terraform foundation's build_cb.tf.
+//
+// To use this function, update main.go:
+//
+//	// Replace:
+//	buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, cicd, sas)
+//	// With:
+//	buildOutputs, err := deployCloudBuild(ctx, cfg, cicd, sas)
+func deployCloudBuild(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, sas map[string]*serviceaccount.Account) (*CloudBuildOutputs, error) {
+	outputs := &CloudBuildOutputs{}
+
+	// Stage → GitHub repo name mapping
+	stageRepos := map[string]string{
+		"bootstrap": "gcp-bootstrap",
+		"org":       "gcp-org",
+		"env":       "gcp-environments",
+		"net":       "gcp-networks",
+		"proj":      "gcp-projects",
+	}
+
+	// Build trigger configs per stage
+	// Replace "your-github-org" with cfg.GitHubOwner or equivalent
+	githubOwner := "" // Replace with: cfg.GitHubOwner
+	triggers := make(map[string]libcicd.CloudBuildTriggerConfig)
+	for key, repoName := range stageRepos {
+		sa := sas[key]
+		triggers[key] = libcicd.CloudBuildTriggerConfig{
+			RepoName:  repoName,
+			RepoOwner: githubOwner,
+			ServiceAccount: sa.Email.ApplyT(func(email string) string {
+				return fmt.Sprintf("projects/%s/serviceAccounts/%s", cfg.ProjectPrefix+"-b-cicd", email)
+			}).(pulumi.StringOutput),
+		}
+	}
+
+	// Build AR reader list from all SAs
+	arReaders := make([]pulumi.StringInput, 0, len(sas))
+	for _, sa := range sas {
+		arReaders = append(arReaders, sa.Email.ApplyT(func(email string) string {
+			return fmt.Sprintf("serviceAccount:%s", email)
+		}).(pulumi.StringOutput))
+	}
+
+	// ========================================================================
+	// Create Cloud Build infrastructure using the library component
+	// ========================================================================
+	cb, err := libcicd.NewCloudBuild(ctx, "foundation-cb", &libcicd.CloudBuildArgs{
+		ProjectID:               cicd.ProjectID,
+		Region:                  pulumi.String(cfg.DefaultRegion),
+		SourceType:              libcicd.CloudBuildSourceGitHub,
+		Triggers:                triggers,
+		ArtifactRegistryReaders: arReaders,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// ========================================================================
+	// Cloud Build Private Worker Pool — mirrors upstream build_cb.tf's
+	// module "tf_private_pool" (./modules/cb-private-pool): a private pool
+	// peered to a module-created VPC.
+	// ========================================================================
+	privatePool, err := cbprivatepool.NewCbPrivatePool(ctx, "tf-private-pool", &cbprivatepool.CbPrivatePoolArgs{
+		ProjectID: cicd.ProjectID,
+		PrivateWorkerPool: cbprivatepool.PrivateWorkerPoolConfig{
+			Region:                cfg.DefaultRegion,
+			EnableNetworkPeering:  true,
+			CreatePeeredNetwork:   true,
+			PeeredNetworkSubnetIP: "10.3.0.0/24",
+			PeeringAddress:        "192.168.0.0",
+			PeeringPrefixLength:   24,
+		},
+		VPNConfiguration: cbprivatepool.VPNConfiguration{
+			EnableVPN: false,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	outputs.CloudBuildProjectID = cicd.ProjectID
+	outputs.ArtifactRepoName = cb.ArtifactRegistry.Name
+	outputs.PrivatePool = privatePool
+
+	return outputs, nil
+}

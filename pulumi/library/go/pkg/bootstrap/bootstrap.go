@@ -33,6 +33,7 @@ import (
 	"fmt"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
+	"github.com/pulumi/pulumi-command/sdk/go/command/local"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/kms"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
@@ -172,6 +173,13 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	// terraform-google-bootstrap's impersonation_apis.
 	activateApis = appendIfMissing(activateApis, "serviceusage.googleapis.com")
 	activateApis = appendIfMissing(activateApis, "iamcredentials.googleapis.com")
+	// The state bucket (and the storage service-agent lookup) is unconditional,
+	// so the seed always needs the Storage API — matches terraform-google-bootstrap's
+	// default activate_apis.
+	activateApis = appendIfMissing(activateApis, "storage-api.googleapis.com")
+	// The seed hosts service accounts (SAExecutors, foundation granular SAs) and
+	// disables its default SA — both need the IAM API on the seed itself.
+	activateApis = appendIfMissing(activateApis, "iam.googleapis.com")
 
 	// ========================================================================
 	// 1. Seed Project
@@ -190,12 +198,28 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 		SAExecutors:           args.SAExecutors,
 		Lien:                  true, // Always lien the seed project
 		DefaultServiceAccount: defaultSA,
+		// A freshly-enabled GCP API is not immediately usable — on a from-empty
+		// deploy, KMS/GCS/IAM calls against the seed fail with "API ... has not
+		// been used ... or it is disabled" unless enablement has propagated.
+		// 120s matches the upper end of the upstream terraform-example-foundation
+		// time_sleep waits and only runs at create time.
+		ApiPropagationSeconds: 120,
 	}, pulumi.Parent(component))
 	if err != nil {
 		return nil, err
 	}
 	component.SeedProject = seed
 	component.SeedProjectID = seed.Project.ProjectId
+
+	// apisReady gates every seed-project consumer below on API enablement AND
+	// propagation. The Service resources are included explicitly (belt and
+	// braces: ApisReady alone falls back to the project when no propagation
+	// wait is configured).
+	apisReady := make([]pulumi.Resource, 0, len(seed.Services)+1)
+	for _, s := range seed.Services {
+		apisReady = append(apisReady, s)
+	}
+	apisReady = append(apisReady, seed.ApisReady)
 
 	// ========================================================================
 	// 2. Org Policy — disable cross-project SA usage constraint
@@ -208,7 +232,9 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 		BooleanPolicy: &projects.OrganizationPolicyBooleanPolicyArgs{
 			Enforced: pulumi.Bool(false),
 		},
-	}, pulumi.Parent(component)); err != nil {
+		// Org-policy writes on the fresh seed go through the Resource Manager /
+		// Org Policy APIs — wait for the seed's API enablement + propagation.
+	}, pulumi.Parent(component), pulumi.DependsOn(apisReady)); err != nil {
 		return nil, err
 	}
 
@@ -224,7 +250,10 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 			Project:  seed.Project.ProjectId,
 			Name:     pulumi.String(fmt.Sprintf("%s-keyring", args.ProjectPrefix)),
 			Location: pulumi.String(kmsRegion),
-		}, pulumi.Parent(component), pulumi.Protect(kmsPreventDestroy))
+			// The keyring needs cloudkms.googleapis.com enabled+propagated on the
+			// seed — a cold deploy otherwise fails with "Cloud KMS API has not
+			// been used in project ... before or it is disabled".
+		}, pulumi.Parent(component), pulumi.Protect(kmsPreventDestroy), pulumi.DependsOn(apisReady))
 		if err != nil {
 			return nil, err
 		}
@@ -269,17 +298,39 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 			ApplyT(func(v []interface{}) string { return v[1].(string) }).(pulumi.StringOutput)
 		sa := storage.GetProjectServiceAccountOutput(ctx, storage.GetProjectServiceAccountOutputArgs{
 			Project: seedProjectForLookup,
-		}, pulumi.Parent(component))
+			// The lookup provisions/returns the seed's GCS service agent, which
+			// needs storage-api.googleapis.com enabled+propagated on the seed —
+			// gate the invoke on the API-enablement gate too.
+		}, pulumi.Parent(component), pulumi.DependsOn(apisReady))
 
 		storageSA := sa.EmailAddress().ApplyT(func(email string) string {
 			return fmt.Sprintf("serviceAccount:%s", email)
 		}).(pulumi.StringOutput)
 
+		// GCS service-agent propagation wait. The getProjectServiceAccount lookup
+		// JIT-provisions the seed's GCS service agent, but a freshly-created service
+		// agent is not immediately referenceable in an IAM policy — a from-empty
+		// first apply races it and fails with "Service account service-…@gs-project-
+		// accounts.iam.gserviceaccount.com does not exist". Upstream terraform's
+		// google_storage_project_service_account data source + provider-side IAM
+		// retry masks this; pulumi-gcp's invoke returns the (deterministic) email
+		// immediately and the binding does not retry long enough. Mirror upstream's
+		// behaviour with a short propagation wait, gated on the resolved agent email
+		// so it only runs once the invoke has completed (and re-runs if the agent
+		// changes). See [[replicate-upstream-behavior-with-documented-workaround]].
+		agentWait, err := local.NewCommand(ctx, fmt.Sprintf("%s-gcs-agent-propagation", name), &local.CommandArgs{
+			Create:   pulumi.String("sleep 60"),
+			Triggers: pulumi.Array{sa.EmailAddress()},
+		}, pulumi.Parent(component), pulumi.DependsOn(apisReady))
+		if err != nil {
+			return nil, err
+		}
+
 		kmsBinding, err = kms.NewCryptoKeyIAMMember(ctx, fmt.Sprintf("%s-kms-sa", name), &kms.CryptoKeyIAMMemberArgs{
 			CryptoKeyId: cryptoKeyID,
 			Role:        pulumi.String("roles/cloudkms.cryptoKeyEncrypterDecrypter"),
 			Member:      storageSA,
-		}, pulumi.Parent(component))
+		}, pulumi.Parent(component), pulumi.DependsOn([]pulumi.Resource{agentWait}))
 		if err != nil {
 			return nil, err
 		}
@@ -307,6 +358,9 @@ func NewBootstrap(ctx *pulumi.Context, name string, args *BootstrapArgs, opts ..
 	}
 	var bucketOpts []pulumi.ResourceOption
 	bucketOpts = append(bucketOpts, pulumi.Parent(component))
+	// Bucket creation needs storage-api.googleapis.com enabled+propagated on
+	// the seed (always appended to activateApis above).
+	bucketOpts = append(bucketOpts, pulumi.DependsOn(apisReady))
 	if encryptBucket {
 		bucketArgs.Encryption = &storage.BucketEncryptionArgs{
 			DefaultKmsKeyName: cryptoKeyID,

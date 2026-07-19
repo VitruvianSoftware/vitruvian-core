@@ -1,0 +1,17 @@
+# Pulumi Configuration for 4-projects business_unit_1/nonproduction (production stack).
+# The environment identity (nonproduction) is pinned in this leaf's main.go.
+config:
+  # Required
+  foundation-projects-bu1-nonproduction:business_code: "bu1"
+  foundation-projects-bu1-nonproduction:billing_account: "XXXXXX-XXXXXX-XXXXXX"
+  foundation-projects-bu1-nonproduction:org_stack_name: "organization/vitruvian/foundation-org-shared/production"
+  foundation-projects-bu1-nonproduction:env_stack_name: "organization/vitruvian/foundation-environments-nonproduction/production"
+
+  # Optional
+  # foundation-projects-bu1-nonproduction:network_stack_name: "organization/vitruvian/foundation-3-networks-svpc-nonproduction/production"
+  # foundation-projects-bu1-nonproduction:project_prefix: "prj"
+  # foundation-projects-bu1-nonproduction:folder_prefix: "fldr"
+  # foundation-projects-bu1-nonproduction:budget_amount: "1000"
+  # foundation-projects-bu1-nonproduction:peering_enabled: "true"
+  # foundation-projects-bu1-nonproduction:cmek_enabled: "true"
+  # foundation-projects-bu1-nonproduction:api_propagation_seconds: "120"

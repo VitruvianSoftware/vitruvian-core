@@ -1,0 +1,12 @@
+# Pulumi Configuration for 5-app-infra business_unit_1/nonproduction (production stack).
+# The environment identity (nonproduction) is pinned in this leaf's main.go.
+config:
+  # Optional — the 4-projects references default to this BU's leaf stacks
+  # (env leaf derived from the pinned environment; shared leaf by substitution).
+  # foundation-app-infra-bu1-nonproduction:business_code: "bu1"
+  # foundation-app-infra-bu1-nonproduction:projects_stack_name: "organization/vitruvian/foundation-projects-bu1-nonproduction/production"
+  # foundation-app-infra-bu1-nonproduction:projects_shared_stack_name: "organization/vitruvian/foundation-projects-bu1-shared/production"
+  # foundation-app-infra-bu1-nonproduction:region: "us-central1"
+  # foundation-app-infra-bu1-nonproduction:confidential_image_digest: ""
+  # Set to a promoted Cloud Run image digest to enable the serverless_space workload:
+  # foundation-app-infra-bu1-nonproduction:serverless_image_digest: ""

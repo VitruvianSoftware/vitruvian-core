@@ -1,0 +1,36 @@
+// Local Build — Example
+// ============================================================================
+//
+// This file is an EXAMPLE showing how to configure a local deployment.
+// This mirrors the Terraform foundation's `build_local.tf.example`.
+//
+// To use Local deployment instead of a CI/CD builder:
+// 1. Rename this file: build_local.go.example → build_local.go
+// 2. Rename outputs_local.go.example -> outputs_local.go
+// 3. Update main.go to not create a CI/CD project, and pass the Seed project 
+//    ID as the CI/CD project ID to the other modules if needed.
+//
+// ============================================================================
+
+package main
+
+import (
+	libstorage "github.com/VitruvianSoftware/pulumi-library/go/pkg/storage"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/storage"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+// deployLocalBuild configures the local build state bucket for projects.
+func deployLocalBuild(ctx *pulumi.Context, cfg *Config, seedProjectID, seedKMSKey pulumi.StringOutput) error {
+	// Projects State Bucket
+	_, err := libstorage.NewSimpleBucket(ctx, "gcp-projects-state-bucket", &libstorage.SimpleBucketArgs{
+		ProjectID:    seedProjectID,
+		Name:         pulumi.Sprintf("%s-%s-gcp-projects-tfstate", cfg.BucketPrefix, seedProjectID),
+		Location:     pulumi.String(cfg.DefaultRegion),
+		ForceDestroy: pulumi.Bool(cfg.BucketForceDestroy),
+		Encryption: &storage.BucketEncryptionArgs{
+			DefaultKmsKeyName: seedKMSKey,
+		},
+	})
+	return err
+}

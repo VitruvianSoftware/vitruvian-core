@@ -1,0 +1,7 @@
+# Per-env deploy/runtime identity for oauth-user-inspector on the production oss project.
+# Federates the shared foundation-pool (gcp-bootstrap); no per-app WIF pool.
+config:
+  oauth-user-inspector-deploy-identity:project: "prj-p-bu1-oss-floating-16e0"
+  oauth-user-inspector-deploy-identity:region: "us-west1"
+  oauth-user-inspector-deploy-identity:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
+  oauth-user-inspector-deploy-identity:projects_stack: "ipv1337/foundation-projects-bu1-production/production"

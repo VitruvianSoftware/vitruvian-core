@@ -1,0 +1,195 @@
+/*
+ * Copyright 2026 Vitruvian Software
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package main
+
+import (
+	"fmt"
+
+	policy "github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
+)
+
+// deployOrgPolicies enforces organization-level security policies.
+// This mirrors the Terraform foundation's org_policy.tf, applying 14+ boolean
+// constraints and list constraints that form the security baseline.
+//
+// The logsExportLast parameter implements the Gap 3 race condition guard: the
+// domain-restricted sharing policy must wait for log sinks to be created and
+// their writer identities granted IAM, otherwise the sinks may fail with 403.
+// The upstream uses a time_sleep of 30s depending on module.logs_export; we
+// mirror this exactly with a pulumi-time Sleep resource created below.
+func deployOrgPolicies(ctx *pulumi.Context, cfg *OrgConfig, logsExportLast pulumi.Resource) error {
+	parentID := "organizations/" + cfg.OrgID
+	if cfg.ParentFolder != "" {
+		parentID = "folders/" + cfg.ParentFolder
+	}
+
+	// Race guard: the domain-restricted sharing policy must wait for log
+	// sinks to be created and their writer identities granted IAM,
+	// otherwise the sinks may fail with 403.
+	// Upstream uses time_sleep "wait_logs_export" with create_duration=30s;
+	// we mirror this exactly with a pulumi-time Sleep resource.
+	var loggingDeps []pulumi.Resource
+	if logsExportLast != nil {
+		waitLogsExport, err := time.NewSleep(ctx, "wait-logs-export", &time.SleepArgs{
+			CreateDuration: pulumi.String("30s"),
+		}, pulumi.DependsOn([]pulumi.Resource{logsExportLast}))
+		if err != nil {
+			return err
+		}
+		loggingDeps = append(loggingDeps, waitLogsExport)
+	}
+
+	// ========================================================================
+	// Boolean Organization Policies
+	// These are enforced across the entire org/folder hierarchy, preventing
+	// common security misconfigurations at the infrastructure level.
+	// ========================================================================
+	booleanPolicies := []string{
+		// Compute Engine hardening
+		"compute.disableNestedVirtualization",
+		"compute.disableSerialPortAccess",
+		"compute.skipDefaultNetworkCreation",
+		"compute.restrictXpnProjectLienRemoval",
+		"compute.disableVpcExternalIpv6",
+		"compute.setNewProjectDefaultToZonalDNSOnly",
+		"compute.requireOsLogin",
+		// Cloud SQL hardening
+		"sql.restrictPublicIp",
+		"sql.restrictAuthorizedNetworks",
+		// IAM hardening — prevent SA key sprawl
+		"iam.disableServiceAccountKeyCreation",
+		"iam.automaticIamGrantsForDefaultServiceAccounts",
+		"iam.disableServiceAccountKeyUpload",
+		// Storage hardening
+		"storage.uniformBucketLevelAccess",
+		"storage.publicAccessPrevention",
+	}
+
+	for _, constraint := range booleanPolicies {
+		if _, err := policy.NewOrgPolicy(ctx, fmt.Sprintf("policy-%s", constraint), &policy.OrgPolicyArgs{
+			ParentID:   pulumi.String(parentID),
+			Constraint: pulumi.String(fmt.Sprintf("constraints/%s", constraint)),
+			Boolean:    pulumi.Bool(true),
+		}); err != nil {
+			return err
+		}
+	}
+
+	// ========================================================================
+	// List Organization Policies
+	// ========================================================================
+
+	// Deny all VM external IP access — enforce private networking
+	if _, err := policy.NewOrgPolicy(ctx, "policy-vm-external-ip", &policy.OrgPolicyArgs{
+		ParentID:   pulumi.String(parentID),
+		Constraint: pulumi.String("constraints/compute.vmExternalIpAccess"),
+		DenyAll:    pulumi.Bool(true),
+	}); err != nil {
+		return err
+	}
+
+	// Restrict protocol forwarding to internal only
+	if _, err := policy.NewOrgPolicy(ctx, "policy-restrict-protocol-forwarding", &policy.OrgPolicyArgs{
+		ParentID:    pulumi.String(parentID),
+		Constraint:  pulumi.String("constraints/compute.restrictProtocolForwardingCreationForTypes"),
+		AllowValues: pulumi.StringArray{pulumi.String("INTERNAL")},
+	}); err != nil {
+		return err
+	}
+
+	// Domain-restricted sharing — only allow specified domains
+	// Gap 3 fix: this policy must wait for log sinks to finish deploying.
+	// The upstream uses time_sleep "wait_logs_export" with create_duration = 30s
+	// and depends_on = [module.logs_export]. We mirror this with the pulumi-time
+	// Sleep resource created above.
+	if len(cfg.DomainsToAllow) > 0 {
+		domainValues := make(pulumi.StringArray, len(cfg.DomainsToAllow))
+		for i, d := range cfg.DomainsToAllow {
+			domainValues[i] = pulumi.String(d)
+		}
+		var policyOpts []pulumi.ResourceOption
+		if len(loggingDeps) > 0 {
+			policyOpts = append(policyOpts, pulumi.DependsOn(loggingDeps))
+		}
+		if _, err := policy.NewOrgPolicy(ctx, "policy-domain-restricted-sharing", &policy.OrgPolicyArgs{
+			ParentID:    pulumi.String(parentID),
+			Constraint:  pulumi.String("constraints/iam.allowedPolicyMemberDomains"),
+			AllowValues: domainValues,
+		}, policyOpts...); err != nil {
+			return err
+		}
+	}
+
+	// Essential Contacts domain restriction
+	if len(cfg.EssentialContactsDomains) > 0 {
+		contactDomains := make(pulumi.StringArray, len(cfg.EssentialContactsDomains))
+		for i, d := range cfg.EssentialContactsDomains {
+			// Ensure domain starts with "@"
+			if d[0] != '@' {
+				d = "@" + d
+			}
+			contactDomains[i] = pulumi.String(d)
+		}
+		if _, err := policy.NewOrgPolicy(ctx, "policy-essential-contacts-domains", &policy.OrgPolicyArgs{
+			ParentID:    pulumi.String(parentID),
+			Constraint:  pulumi.String("constraints/essentialcontacts.allowedContactDomains"),
+			AllowValues: contactDomains,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// ========================================================================
+	// Allowed Worker Pools (G1)
+	// Restricts Cloud Build to only use the specified private worker pool.
+	// Mirrors: module "allowed_worker_pools" in org_policy.tf
+	// ========================================================================
+	if cfg.EnforceAllowedWorkerPools && cfg.AllowedWorkerPoolID != "" {
+		if _, err := policy.NewOrgPolicy(ctx, "policy-allowed-worker-pools", &policy.OrgPolicyArgs{
+			ParentID:    pulumi.String(parentID),
+			Constraint:  pulumi.String("constraints/cloudbuild.allowedWorkerPools"),
+			AllowValues: pulumi.StringArray{pulumi.String(cfg.AllowedWorkerPoolID)},
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// deployAccessContextManagerPolicy creates the org-level Access Context
+// Manager policy when create_access_context_manager_policy is enabled.
+// This mirrors google_access_context_manager_access_policy.access_policy in
+// the upstream org_policy.tf. Its output feeds the
+// access_context_manager_policy_id stack export (outputs.go); when disabled,
+// an empty string is exported instead.
+func deployAccessContextManagerPolicy(ctx *pulumi.Context, cfg *OrgConfig) (pulumi.StringOutput, error) {
+	if !cfg.CreateAccessContextManagerPolicy {
+		return pulumi.String("").ToStringOutput(), nil
+	}
+	accessPolicy, err := accesscontextmanager.NewAccessPolicy(ctx, "access-policy", &accesscontextmanager.AccessPolicyArgs{
+		Parent: pulumi.Sprintf("organizations/%s", cfg.OrgID),
+		Title:  pulumi.String("default policy"),
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, err
+	}
+	return accessPolicy.Name, nil
+}

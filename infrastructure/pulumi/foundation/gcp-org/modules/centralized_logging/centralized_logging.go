@@ -65,6 +65,11 @@ type Args struct {
 	AuditProjectID         pulumi.StringOutput
 	BillingExportProjectID pulumi.StringOutput
 	BillingExportApisReady pulumi.Resource // gates the billing dataset on the billing-export project APIs
+
+	// Dependencies gate every child of the logging component (bucket, topic,
+	// log bucket, sinks) on external resources — pass the audit-logs project's
+	// ApisReady so a cold deploy doesn't race freshly-enabled APIs.
+	Dependencies []pulumi.Resource
 }
 
 // Result holds the outputs of the centralized logging deployment for
@@ -114,6 +119,7 @@ logName: /logs/dns.googleapis.com%2Fdns_queries`
 		LoggingDestinationProjectID: args.AuditProjectID,
 		BillingAccount:              args.BillingAccount,
 		EnableBillingAccountSink:    args.EnableBillingAccountSink,
+		Dependencies:                args.Dependencies,
 
 		StorageOptions: &logging.StorageOptions{
 			LoggingSinkName:           "sk-c-logging-bkt",

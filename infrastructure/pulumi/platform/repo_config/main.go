@@ -656,7 +656,8 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 
 	// ── Phase 2: Environments promotion environments ──────────────────────
 	// The environments stage uses a chained promotion workflow where each
-	// environment is a separate Pulumi stack deployed via the reusable
+	// environment is its own leaf Pulumi project (single production stack)
+	// deployed via the reusable
 	// foundation-env-deploy.yaml workflow:
 	//
 	//   foundation-env-development  → auto-deploy (no reviewers)
@@ -726,21 +727,28 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 
 	// ── Phase 3: Networks promotion environments ──────────────────────────
 	// The networks stage uses a chained promotion workflow where each
-	// environment is a separate Pulumi stack deployed via the reusable
+	// environment is its own leaf Pulumi project (single production stack)
+	// deployed via the reusable
 	// foundation-net-deploy.yaml workflow:
 	//
 	//   foundation-net-development  → auto-deploy (no reviewers)
 	//   foundation-net-nonproduction → manual approval (requires reviewers)
+	//   foundation-net-shared        → manual approval (requires reviewers)
 	//   foundation-net-production    → manual approval (requires reviewers)
 	//
-	// All three share the same WIF credentials as the foundation-net stage
-	// (the networks SA has equivalent org-level permissions).
+	// The upstream-leaf layout added the envs/shared leaf (hub VPC / DNS hub /
+	// hierarchical firewall). It is production-tier — upstream applies
+	// envs/shared from the production branch — so it gets the same reviewer
+	// gate as production. All four share the same WIF credentials as the
+	// foundation-net stage (the networks SA has equivalent org-level
+	// permissions).
 	netPhaseEnvironments := []struct {
 		name            string
 		requireReviewer bool
 	}{
 		{"foundation-net-development", false},
 		{"foundation-net-nonproduction", true},
+		{"foundation-net-shared", true},
 		{"foundation-net-production", true},
 	}
 
@@ -796,21 +804,31 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 
 	// ── Phase 4: Projects promotion environments ──────────────────────────
 	// The projects stage (gcp-projects, stage 4) uses a chained promotion
-	// workflow where each environment is a separate Pulumi stack deployed via
+	// workflow where each leaf is its own leaf Pulumi project (single
+	// production stack) deployed via
 	// the reusable foundation-proj-deploy.yaml workflow:
 	//
 	//   foundation-proj-development  → auto-deploy (no reviewers)
 	//   foundation-proj-nonproduction → manual approval (requires reviewers)
+	//   foundation-proj-shared        → manual approval (requires reviewers)
 	//   foundation-proj-production    → manual approval (requires reviewers)
 	//
-	// Uses the projects SA (sa-terraform-proj), whose per-env WIF principalSet
-	// bindings (foundation-proj-<stage>) are provisioned by gcp-bootstrap.
+	// The upstream-leaf layout added the business_unit_1/shared leaf (the BU
+	// infra-pipeline, modules/infra_pipelines). It is production-tier —
+	// upstream applies business_unit_1/shared from the production branch — so
+	// it gets the same reviewer gate as production.
+	//
+	// Uses the projects SA (sa-terraform-proj), whose per-leaf WIF principalSet
+	// bindings (foundation-proj-<leaf>, incl. shared) are provisioned by
+	// gcp-bootstrap — the shared binding must be applied there before the
+	// first foundation-proj-shared deploy can authenticate.
 	projPhaseEnvironments := []struct {
 		name            string
 		requireReviewer bool
 	}{
 		{"foundation-proj-development", false},
 		{"foundation-proj-nonproduction", true},
+		{"foundation-proj-shared", true},
 		{"foundation-proj-production", true},
 	}
 

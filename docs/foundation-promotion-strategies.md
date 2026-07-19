@@ -7,6 +7,19 @@ Chained Deploys), which is currently implemented in
 [foundation-release.yaml](../../.github/workflows/foundation-release.yaml) and
 [foundation-env-deploy.yaml](../../.github/workflows/foundation-env-deploy.yaml).
 
+> **Upstream-leaf layout update (2026-07):** the strategies below were written
+> when each stage was one Pulumi project with per-environment stacks. The
+> foundation now mirrors upstream's directory layout — each environment is its
+> own thin leaf Pulumi project (`envs/<env>/` or `business_unit_1/<leaf>/`)
+> with a single `production` stack, all calling the stage's shared `modules/`.
+> The promotion mechanics are unchanged: the reusable deploy workflows map the
+> environment name onto the leaf directory instead of onto `pulumi stack
+> select <env>`, and the networks/projects chains gained a `shared` leg (hub /
+> BU infra-pipeline) that deploys **first** — `shared → development →
+> nonproduction → production` — since dev/nonprod/prod depend on shared's outputs
+> (per upstream's 3-networks README).
+> Read "stack" as "leaf project's production stack" throughout.
+
 ## Context
 
 The upstream [terraform-example-foundation](https://github.com/terraform-google-modules/terraform-example-foundation)
@@ -91,10 +104,10 @@ graph LR
     DEV --> NONPROD["deploy-env-nonproduction<br/>(manual approval)"]
     NONPROD --> PROD["deploy-env-production<br/>(manual approval)"]
 
-    subgraph "Pulumi Stacks (isolated state)"
-        DEV -.-> S1["foundation-environments/<br/>development"]
-        NONPROD -.-> S2["foundation-environments/<br/>nonproduction"]
-        PROD -.-> S3["foundation-environments/<br/>production"]
+    subgraph "Leaf Pulumi projects (isolated state)"
+        DEV -.-> S1["envs/development<br/>foundation-environments-development/production"]
+        NONPROD -.-> S2["envs/nonproduction<br/>foundation-environments-nonproduction/production"]
+        PROD -.-> S3["envs/production<br/>foundation-environments-production/production"]
     end
 ```
 

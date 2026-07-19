@@ -47,6 +47,9 @@ type Args struct {
 	ProjectDeletionPolicy string
 	DefaultServiceAccount string
 	Budget                *project.BudgetConfig
+	// ApiPropagationSeconds is the cold-deploy wait after API enablement
+	// before the project's ApisReady gate resolves (see project_factory).
+	ApiPropagationSeconds int
 }
 
 // Result holds the outputs of a single Shared-VPC host project.
@@ -90,6 +93,7 @@ func New(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		DeletionPolicy:        pulumi.String(args.ProjectDeletionPolicy),
 		Budget:                args.Budget,
 		DefaultServiceAccount: args.DefaultServiceAccount,
+		ApiPropagationSeconds: args.ApiPropagationSeconds,
 	})
 	if err != nil {
 		return nil, err
