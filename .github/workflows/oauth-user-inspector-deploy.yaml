@@ -87,6 +87,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Render oauth-user-inspector's latest changelog into the run page before the
+  # (gated) env deploys, so an approver reads what is shipping. Ungated +
+  # independent, so it never delays a rollout.
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Changelog → step summary
+        run: bash tools/ci/changelog-summary.sh oauth-user-inspector/CHANGELOG.md "" oauth-user-inspector
+
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable
   # digest every env promotes. The build environment is ungated.

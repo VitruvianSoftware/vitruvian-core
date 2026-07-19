@@ -131,6 +131,50 @@ jobs:
           manifest-file: infrastructure/pulumi/foundation/gcp-bootstrap/.release-please-manifest.json
           target-branch: main
 
+  # Surface each just-released component's changelog on the run page BEFORE the
+  # gated deploy jobs, so an approver can read WHAT is shipping before approving
+  # (the deploy digest -- pulumi-summary.sh -- only renders AFTER approval). This
+  # job is ungated and runs as soon as the release jobs settle; the deploy jobs
+  # do not depend on it, so it never delays a rollout. `always() && (any
+  # released)` shows notes for whatever released even if a sibling release job
+  # failed, and skips entirely on a non-release push.
+  changelog:
+    needs:
+      - release-gcp-org
+      - release-org-folders
+      - release-gcp-bootstrap
+      - release-gcp-environments
+      - release-gcp-networks
+      - release-gcp-projects
+    if: >-
+      always() && (
+      needs.release-gcp-org.outputs.release_created == 'true' ||
+      needs.release-org-folders.outputs.release_created == 'true' ||
+      needs.release-gcp-bootstrap.outputs.release_created == 'true' ||
+      needs.release-gcp-environments.outputs.release_created == 'true' ||
+      needs.release-gcp-networks.outputs.release_created == 'true' ||
+      needs.release-gcp-projects.outputs.release_created == 'true' )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Released changelogs → step summary
+        env:
+          R_ORG: ${{ needs.release-gcp-org.outputs.release_created }}
+          R_FOLDERS: ${{ needs.release-org-folders.outputs.release_created }}
+          R_BOOTSTRAP: ${{ needs.release-gcp-bootstrap.outputs.release_created }}
+          R_ENVS: ${{ needs.release-gcp-environments.outputs.release_created }}
+          R_NETS: ${{ needs.release-gcp-networks.outputs.release_created }}
+          R_PROJS: ${{ needs.release-gcp-projects.outputs.release_created }}
+        run: |
+          cl() { bash tools/ci/changelog-summary.sh "infrastructure/pulumi/foundation/$1/CHANGELOG.md" "" "$1"; }
+          if [ "$R_ORG" = "true" ]; then cl gcp-org; fi
+          if [ "$R_FOLDERS" = "true" ]; then cl org-folders; fi
+          if [ "$R_BOOTSTRAP" = "true" ]; then cl gcp-bootstrap; fi
+          if [ "$R_ENVS" = "true" ]; then cl gcp-environments; fi
+          if [ "$R_NETS" = "true" ]; then cl gcp-networks; fi
+          if [ "$R_PROJS" = "true" ]; then cl gcp-projects; fi
+
   # ── Deploy jobs ────────────────────────────────────────────────────────────
 
   deploy-gcp-org:
