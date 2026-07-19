@@ -44,7 +44,7 @@ instead of the default GitHub Actions. This mirrors the Terraform foundation's
 cd 0-bootstrap
 
 # Deactivate the GitHub Actions default
-mv build_github_actions.go build_github_actions.go.bak
+mv build_github.go build_github.go.bak
 
 # Activate GitLab
 mv build_gitlab.go.example build_gitlab.go

@@ -65,7 +65,7 @@ PR merged → release-please → dev (auto) → nonprod (approval) → prod (app
 ### WIF & Auth
 | File | Purpose |
 |---|---|
-| [build_github_actions.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-bootstrap/build_github_actions.go) | Per-env WIF bindings |
+| [build_github.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-bootstrap/build_github.go) | Per-env WIF bindings |
 | [repo_config/main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/platform/repo_config/main.go) | GitHub Environments + env SA vars |
 | [Pulumi.dev.yaml](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml) | foundation-env SA config |
 

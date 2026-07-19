@@ -22,11 +22,11 @@
 // NOTE on the suffix: upstream ships this file WITHOUT `.example` because its
 // default builder is Cloud Build; our port defaults to GitHub Actions, so the
 // suffix is inverted here (outputs_github.go is live, this file is the
-// example) — matching the build_cloud_build.go.example/build_github_actions.go
+// example) — matching the build_cb.go.example/build_github.go
 // pattern.
 //
 // To use: rename this file outputs_cb.go.example → outputs_cb.go alongside
-// build_cloud_build.go (see build_cloud_build.go.example) and call
+// build_cloud_build.go (see build_cb.go.example) and call
 // exportCloudBuildOutputs(ctx, cfg, cb) from main.go.
 
 package main
@@ -49,7 +49,7 @@ func exportCloudBuildOutputs(ctx *pulumi.Context, cfg *Config, cb *CloudBuildOut
 
 	// Mirrors: cloud_build_private_worker_pool_id, cloud_build_worker_range_id,
 	// cloud_build_worker_peered_ip_range and cloud_build_peered_network_id —
-	// from the modules/cb-private-pool component (see build_cloud_build.go.example).
+	// from the modules/cb-private-pool component (see build_cb.go.example).
 	if cb.PrivatePool != nil {
 		ctx.Export("cloud_build_private_worker_pool_id", cb.PrivatePool.PrivateWorkerPoolID)
 		ctx.Export("cloud_build_worker_range_id", cb.PrivatePool.WorkerRangeID)
