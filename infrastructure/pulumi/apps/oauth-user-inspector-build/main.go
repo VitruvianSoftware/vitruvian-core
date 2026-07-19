@@ -134,10 +134,15 @@ func main() {
 			return err
 		}
 
-		// 3. Per-env Cloud Run service agent AR reader. Each env's oss project has a
-		//    Cloud Run service agent (service-<projnum>@serverless-robot-prod...) that
-		//    must pull the image from this shared registry. Project numbers come from
-		//    the per-env foundation-projects business_unit_1 leaf stacks.
+		// 3. Per-env AR readers on this shared registry. Two identities per env
+		//    need read access:
+		//      a) the Cloud Run service agent (service-<projnum>@serverless-robot-prod)
+		//         PULLS the image at runtime; and
+		//      b) the per-env deploy SA (oauth-user-inspector-deploy@<oss project>)
+		//         which runs `pulumi up` — Cloud Run validates image access as the
+		//         DEPLOYING principal on service create, so without this the create
+		//         fails with `artifactregistry.repositories.downloadArtifacts denied`.
+		//    Project number + id come from the per-env foundation-projects leaf.
 		for _, env := range []string{"development", "nonproduction", "production"} {
 			s, err := pulumi.NewStackReference(ctx, "projects-"+env, &pulumi.StackReferenceArgs{
 				Name: pulumi.String("ipv1337/foundation-projects-bu1-" + env + "/production"),
@@ -152,6 +157,16 @@ func main() {
 				Repository: ar.RepositoryId,
 				Role:       pulumi.String("roles/artifactregistry.reader"),
 				Member:     pulumi.Sprintf("serviceAccount:service-%s@serverless-robot-prod.iam.gserviceaccount.com", num),
+			}); err != nil {
+				return err
+			}
+			ossProject := s.GetStringOutput(pulumi.String("oss_floating_project"))
+			if _, err := artifactregistry.NewRepositoryIamMember(ctx, "ar-reader-deploy-"+env, &artifactregistry.RepositoryIamMemberArgs{
+				Project:    buildProject,
+				Location:   pulumi.String(region),
+				Repository: ar.RepositoryId,
+				Role:       pulumi.String("roles/artifactregistry.reader"),
+				Member:     pulumi.Sprintf("serviceAccount:oauth-user-inspector-deploy@%s.iam.gserviceaccount.com", ossProject),
 			}); err != nil {
 				return err
 			}
