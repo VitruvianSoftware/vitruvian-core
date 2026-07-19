@@ -24,6 +24,10 @@
 // The public invoker binding depends on the environment project carrying a
 // Domain Restricted Sharing override (constraints/iam.allowedPolicyMemberDomains
 // AllowAll) so that allUsers may be granted run.invoker — see the gcp-org stage.
+//
+// serverless_space has no upstream terraform-example-foundation counterpart;
+// its file layout (main.go/variables.go/outputs.go) follows the same
+// per-concern convention as env_base and confidential_space for consistency.
 package serverless_space
 
 import (
@@ -34,44 +38,6 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
-
-// ServerlessSpaceArgs configures a Cloud Run workload deployment.
-type ServerlessSpaceArgs struct {
-	Env          string
-	BusinessUnit string
-	ProjectID    pulumi.StringInput
-	Region       string
-	ServiceName  string
-	ImageDigest  pulumi.StringInput
-	// RuntimeServiceAccountEmail, when set, is used as the Cloud Run runtime
-	// identity; otherwise a per-service runtime SA (sa-<ServiceName>) is created.
-	RuntimeServiceAccountEmail pulumi.StringInput
-	// SecretPrefix partitions this app's secret env var names in a shared project
-	// (e.g. "OAUTH_USER_INSPECTOR_"); surfaced to the container as SECRET_PREFIX.
-	SecretPrefix  string
-	EnvVars       map[string]string
-	SecretEnv     []cloud_run.SecretEnv
-	PublicInvoker bool
-	MinInstances  int
-	MaxInstances  int
-
-	// Blue-green promotion. When RevisionSuffix is set, the new revision is named
-	// <ServiceName>-<Env>-<RevisionSuffix> and traffic is split:
-	//   - Promote==true or StableRevision=="" (first deploy): 100% to the new revision.
-	//   - otherwise: 100% stays on StableRevision, 0% to the new revision tagged
-	//     "candidate" (a smoke test hits the candidate URL before promotion).
-	// When RevisionSuffix is empty, the default 100%-to-latest behaviour is used.
-	RevisionSuffix string
-	StableRevision string
-	Promote        bool
-}
-
-// ServerlessSpaceResult holds outputs from the serverless_space deployment.
-type ServerlessSpaceResult struct {
-	ServiceName    pulumi.StringOutput
-	ServiceUri     pulumi.StringOutput
-	RuntimeSAEmail pulumi.StringOutput
-}
 
 // DeployServerlessSpace deploys a Cloud Run workload (runtime SA + service +
 // optional public invoker) into the target project.
