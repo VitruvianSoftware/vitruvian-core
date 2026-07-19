@@ -19,7 +19,8 @@
 // 3-networks-hub-and-spoke/envs/production. This leaf pins the environment
 // identity (production/p) and its spoke CIDR plan, then calls the shared
 // base_env module. All resource creation lives in ../../modules; the hub
-// network lives in the sibling envs/shared leaf.
+// network lives in the sibling envs/shared leaf; the 1-org StackReference
+// read lives in remote.go; the stack exports live in outputs.go.
 //
 // Cross-stack peering serialization: the hub VPC (and its PSA
 // servicenetworking connection) is created by the envs/shared stack, which is
@@ -58,14 +59,12 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadNetConfig(ctx)
 
-		// Spoke stacks read the hub host project from the 1-org stack reference.
-		netHubOrgStack, err := pulumi.NewStackReference(ctx, "org", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.OrgStackName),
-		})
+		// Spoke stacks read the hub host project from the 1-org stack
+		// reference (remote.go).
+		hubProjectID, err := lookupHubProjectID(ctx, cfg)
 		if err != nil {
 			return err
 		}
-		hubProjectID := netHubOrgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
 
 		// ====================================================================
 		// SPOKE ENVIRONMENT (this environment)
@@ -118,41 +117,9 @@ func main() {
 			return err
 		}
 
-		spokeVpc := spokeOutputs.Networking
-
-		// Exports — matching TF 3-networks-hub-and-spoke/envs/{env}/outputs.tf.
-		// The VPC-SC exports (access_context_manager_policy_id, enforce_vpcsc,
-		// service_perimeter_name, access_level_name, access_level_name_dry_run)
-		// are emitted by the shared_vpc spoke service-control path.
-		ctx.Export("shared_vpc_host_project_id", pulumi.String(cfg.SpokeProjectID))
-		ctx.Export("network_name", spokeVpc.VPC.Name)
-		ctx.Export("network_self_link", spokeVpc.VPC.SelfLink)
-
-		// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges)
-		var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-		for _, subnet := range spokeVpc.Subnets {
-			subnetNames = append(subnetNames, subnet.Name)
-			subnetIPs = append(subnetIPs, subnet.IpCidrRange)
-			subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
-		}
-		ctx.Export("subnets_names", subnetNames)
-		ctx.Export("subnets_ips", subnetIPs)
-		ctx.Export("subnets_self_links", subnetSelfLinks)
-		// Secondary ranges: build a list from each subnet's secondary_ip_ranges.
-		// TF outputs this as a list of objects with range_name and ip_cidr_range.
-		var secondaryRangesList pulumi.ArrayOutput
-		for _, subnet := range spokeVpc.Subnets {
-			secondaryRangesList = pulumi.All(secondaryRangesList, subnet.SecondaryIpRanges).ApplyT(func(args []interface{}) []interface{} {
-				existing, _ := args[0].([]interface{})
-				ranges, _ := args[1].([]interface{})
-				return append(existing, ranges...)
-			}).(pulumi.ArrayOutput)
-		}
-		if secondaryRangesList == (pulumi.ArrayOutput{}) {
-			ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))
-		} else {
-			ctx.Export("subnets_secondary_ranges", secondaryRangesList)
-		}
+		// Exports — matching TF 3-networks-hub-and-spoke/envs/{env}/outputs.tf
+		// (outputs.go).
+		exportSpokeOutputs(ctx, cfg, spokeOutputs.Networking)
 
 		return nil
 	})

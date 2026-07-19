@@ -6,7 +6,7 @@
 // the Terraform foundation's `partner_interconnect.tf.example`.
 //
 // To activate:
-// 1. Rename: partner_interconnect.go.example → partner_interconnect.go
+// 1. Rename: main.go.example → main.go
 // 2. Update the configuration values below for your environment
 // 3. Invoke this module from the relevant env's main.go
 // 4. Run `pulumi up` in each environment stack
@@ -18,7 +18,7 @@
 // - Interconnect locations must be known
 // ============================================================================
 
-package modules
+package partner_interconnect
 
 import (
 	"fmt"

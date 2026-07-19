@@ -6,7 +6,7 @@
 // foundation's `interconnect.tf.example`.
 //
 // To activate:
-// 1. Rename: interconnect.go.example → interconnect.go
+// 1. Rename: main.go.example → main.go
 // 2. Update the configuration values below for your environment
 // 3. Invoke this module from the relevant env's main.go
 // 4. Run `pulumi up` in each environment stack
@@ -18,7 +18,7 @@
 // - VLAN tag and candidate subnet values must be planned per environment
 // ============================================================================
 
-package modules
+package dedicated_interconnect
 
 import (
 	"fmt"

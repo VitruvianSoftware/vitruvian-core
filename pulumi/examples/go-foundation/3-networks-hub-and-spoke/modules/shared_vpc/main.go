@@ -30,74 +30,11 @@ package shared_vpc
 import (
 	"fmt"
 
-	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/accesscontextmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/compute"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 )
-
-// Args are the inputs to the shared_vpc module. Fields common to both hub and
-// spoke are always populated; the caller sets Mode/Code to select the naming
-// scheme and the mode-specific resources (peering + bridge on spoke, BGP routers
-// + forwarding zone on hub).
-type Args struct {
-	Mode string // "hub" or "spoke"
-	Code string // env_code ("c" for hub, "d"/"n"/"p" for spoke)
-
-	// Projects & cross-stage references.
-	ProjectID    pulumi.StringInput  // host project (hub or spoke)
-	HubProjectID pulumi.StringOutput // hub host project — used by spoke peering ref
-	OrgStackName string              // 1-org stack name (VPC-SC stack references)
-
-	// VPC + subnets (built by the caller).
-	VPCName             string
-	Subnets             []networking.SubnetArgs
-	FirewallSubnetCidrs []string // primary subnet CIDRs, for the foundation firewall rules
-
-	// Regions (router loops).
-	Region1 string
-	Region2 string
-
-	// Private Service Connect.
-	PscIP string
-
-	// Logging toggles.
-	FirewallPoliciesEnableLogging bool
-	DnsEnableLogging              bool
-
-	// DNS.
-	Domain            string
-	TargetNameServers []string // hub forwarding zone only
-
-	// Routes.
-	WindowsActivationEnabled bool
-
-	// NAT (caller passes HubNatEnabled for hub, NatEnabled for spoke).
-	NatEnabled      bool
-	NatBgpAsn       int
-	NatNumAddresses int
-
-	// BGP (hub only).
-	BgpAsn int
-
-	// VPC Service Controls.
-	PolicyID                   string
-	VpcScMembers               []string
-	VpcScProjects              []string
-	VpcScRestrictedServices    []string
-	EnforceVpcSc               bool
-	VpcScIngressPolicies       accesscontextmanager.ServicePerimeterStatusIngressPolicyArray
-	VpcScEgressPolicies        accesscontextmanager.ServicePerimeterStatusEgressPolicyArray
-	VpcScIngressPoliciesDryRun accesscontextmanager.ServicePerimeterSpecIngressPolicyArray
-	VpcScEgressPoliciesDryRun  accesscontextmanager.ServicePerimeterSpecEgressPolicyArray
-}
-
-// Result holds the outputs of a single shared VPC deployment.
-type Result struct {
-	Networking *networking.Networking
-	Firewall   *networking.NetworkFirewallPolicy
-}
 
 // New creates the Shared VPC host network and all attached resources. opts is
 // threaded through the spoke-only resources (peering + DNS peering zone) so a
