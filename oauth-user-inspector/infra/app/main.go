@@ -170,10 +170,11 @@ func main() {
 		// owner of the domain or the DomainMapping create is rejected by the
 		// API. The deploy workflow's verify-domain job converges this as code
 		// BEFORE any env deploy (tools/ci/ensure-site-verification.sh, run AS
-		// THE DEV DEPLOY SA with the dev floating project as the Site
-		// Verification quota project — nothing foundation-owned: the app's
-		// identity stack anchors the API enable + secret IAM). It self-verifies
-		// the zone via Site Verification DNS-TXT + a persistent Cloudflare TXT
+		// THE DEV DEPLOY SA on just the SA token + the siteverification scope —
+		// the Site Verification API needs no project enable or quota project,
+		// and nothing foundation-owned is involved; the app's identity stack
+		// only anchors the Cloudflare-token secret IAM). It self-verifies the
+		// zone via Site Verification DNS-TXT + a persistent Cloudflare TXT
 		// record, then delegates ownership to every env's deploy SA. No manual
 		// Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {

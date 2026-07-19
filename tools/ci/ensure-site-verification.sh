@@ -58,14 +58,13 @@
 #                            (read at runtime from the dev floating project's
 #                            Secret Manager — never a GitHub secret; same
 #                            credential the Pulumi deploys use for the CNAME).
-#   SITEVERIFY_QUOTA_PROJECT Optional; when set, sent as x-goog-user-project on
-#                            every Site Verification call so quota/API-enable
-#                            attribution is pinned to the calling deploy SA's
-#                            OWN floating project (the app's identity stack
-#                            enables siteverification.googleapis.com there and
-#                            the deploy SA already holds serviceUsageConsumer).
-#                            Nothing app-shared or foundation-owned is touched.
 #   APP_DIR                  Optional; the app's Pulumi project dir.
+#
+# The Site Verification API needs ONLY an OAuth2 credential with the
+# siteverification scope: it has NO Service Usage enablement or quota-project
+# requirement (data-plane calls are authorized by the caller's scope + Site
+# Verification ownership, not a per-project API-enable), so there is
+# deliberately no x-goog-user-project / quota-project handling here.
 #
 # Tokens: google-site-verification values are public DNS data, not secrets.
 # The OAuth and Cloudflare tokens are only ever sent as headers, never logged.
@@ -134,10 +133,6 @@ sv_call() { # sv_call <method> <url> [json-body]; body -> $workdir/resp, echoes 
   local args=(-sS -o "$workdir/resp" -w '%{http_code}' -X "$method" \
     -H "Authorization: Bearer $SITEVERIFY_ACCESS_TOKEN" \
     -H "Content-Type: application/json")
-  # Pin quota attribution to the caller's own floating project (see header).
-  if [ -n "${SITEVERIFY_QUOTA_PROJECT:-}" ]; then
-    args+=(-H "x-goog-user-project: $SITEVERIFY_QUOTA_PROJECT")
-  fi
   if [ -n "$body" ]; then args+=(-d "$body"); fi
   curl "${args[@]}" "$url"
 }

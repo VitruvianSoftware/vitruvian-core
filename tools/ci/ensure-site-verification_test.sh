@@ -27,10 +27,10 @@
 #      owners update unions the deploy SAs alongside pre-existing owners;
 #   2. idempotence: a second run with converged state performs NO writes;
 #   3. the no-customDomain no-op gate.
-# The mock's Site Verification endpoints additionally REQUIRE the
-# x-goog-user-project header to match SITEVERIFY_QUOTA_PROJECT — the app-scoped
-# quota pin (the calling deploy SA's own floating project) must reach every
-# call, or quota would silently attribute somewhere foundation-owned.
+# The caller identity is the DEV DEPLOY SA (an app-scoped identity): the Site
+# Verification API needs only the SA token + siteverification scope, with no
+# quota project / x-goog-user-project (dropped after the real API confirmed no
+# per-project enablement is required).
 
 set -euo pipefail
 
@@ -124,19 +124,12 @@ class H(BaseHTTPRequestHandler):
                 "site": {"identifier": "example.test", "type": "INET_DOMAIN"},
                 "owners": s["owners"]}
 
-    def sv_quota_pinned(self):
-        # Every Site Verification call must pin quota to the calling deploy
-        # SA's own floating project (app-scoped; never foundation-owned).
-        return self.headers.get("x-goog-user-project") == "prj-d-test-1234"
-
     def do_GET(self):
         s = load()
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == "/siteVerification/v1/webResource/dns%3A%2F%2Fexample.test" or \
            urllib.parse.unquote(u.path) == "/siteVerification/v1/webResource/dns://example.test":
-            if not self.sv_quota_pinned():
-                return self.reply(400, {"error": {"message": "missing x-goog-user-project quota pin"}})
             s["counts"]["sv_get"] += 1; save(s)
             if s["verified"]:
                 return self.reply(200, self.resource(s))
@@ -157,8 +150,6 @@ class H(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == "/siteVerification/v1/token":
-            if not self.sv_quota_pinned():
-                return self.reply(400, {"error": {"message": "missing x-goog-user-project quota pin"}})
             s["counts"]["sv_gettoken"] += 1; save(s)
             b = self.body_json()
             if b.get("site", {}).get("type") != "INET_DOMAIN":
@@ -169,8 +160,6 @@ class H(BaseHTTPRequestHandler):
                 return self.reply(400, {"error": {"message": "bad method"}})
             return self.reply(200, {"method": "DNS_TXT", "token": "tok-abc-123"})
         if u.path == "/siteVerification/v1/webResource":
-            if not self.sv_quota_pinned():
-                return self.reply(400, {"error": {"message": "missing x-goog-user-project quota pin"}})
             s["counts"]["sv_insert"] += 1
             want = "google-site-verification=tok-abc-123"
             if any(r["content"] == want for r in s["cf_records"]):
@@ -193,8 +182,6 @@ class H(BaseHTTPRequestHandler):
         s = load()
         u = urllib.parse.urlparse(self.path)
         if u.path.startswith("/siteVerification/v1/webResource/"):
-            if not self.sv_quota_pinned():
-                return self.reply(400, {"error": {"message": "missing x-goog-user-project quota pin"}})
             s["counts"]["sv_update"] += 1
             b = self.body_json()
             if not s["verified"]:
@@ -231,7 +218,6 @@ run_script() {
   APP_DIR="$app" \
     SITEVERIFY_ACCESS_TOKEN="fake-oauth-token" \
     CLOUDFLARE_API_TOKEN="fake-cf-token" \
-    SITEVERIFY_QUOTA_PROJECT="prj-d-test-1234" \
     SITEVERIFY_API_BASE="$base/siteVerification/v1" \
     CLOUDFLARE_API_BASE="$base/client/v4" \
     DOH_API_BASE="$base" \

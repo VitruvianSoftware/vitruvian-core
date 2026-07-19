@@ -175,41 +175,36 @@ func main() {
 		// delegates every env's deploy SA as a domain owner (the Cloud Run
 		// DomainMapping precondition). That is an APP concern, so everything it
 		// needs is anchored HERE in the app's own identity stack — never in a
-		// foundation stage (the #938 stage-4 coupling was reverted):
+		// foundation stage (the #938 stage-4 coupling was reverted).
 		//
-		//   1. siteverification.googleapis.com enabled additively on THIS env's
-		//      floating project (an SA's API calls are quota-attributed to a
-		//      project that must have the API enabled; the script pins it
-		//      explicitly via SITEVERIFY_QUOTA_PROJECT/x-goog-user-project,
-		//      which the deploy SA's existing serviceUsageConsumer grant
-		//      authorizes). Additive is safe: the stage-4 project factory
-		//      manages APIs as individual gcp.projects.Service resources
-		//      (never an authoritative Services), so this enable can neither
-		//      conflict with nor be reverted by foundation applies.
-		//   2. secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN secret
-		//      in THIS project for every env's deploy SA (emails derived from
-		//      cloudflareTokenAccessorProjects): the token is stored ONCE, in
-		//      the dev project's Secret Manager (secrets model §pipeline-env —
-		//      no GitHub secret), and each env's deploy job reads it at runtime
-		//      for the verification step and the app stack's Cloudflare
-		//      provider (the per-env grey-cloud CNAME stays in Pulumi). The
-		//      secret RESOURCE itself is deliberately unmanaged here — only its
-		//      IAM is code. It does not match the OAUTH_USER_INSPECTOR_ prefix
-		//      condition above, hence these explicit secret-scoped grants.
+		// The ONE resource this needs is a secretAccessor grant on the
+		// human-seeded CLOUDFLARE_API_TOKEN secret in THIS project for every
+		// env's deploy SA (emails derived from cloudflareTokenAccessorProjects):
+		// the token is stored ONCE, in the dev project's Secret Manager (secrets
+		// model §pipeline-env — no GitHub secret), and each env's deploy job
+		// reads it at runtime for the verification step and the app stack's
+		// Cloudflare provider (the per-env grey-cloud CNAME stays in Pulumi).
+		// The secret RESOURCE itself is deliberately unmanaged here — only its
+		// IAM is code. It does not match the OAUTH_USER_INSPECTOR_ prefix
+		// condition above, hence these explicit secret-scoped grants.
 		//
-		// This stack applies as sa-terraform-proj (folder-scoped serviceusage +
-		// secretmanager admin from Phase 1), so no extra admin-tier grant to any
-		// deploy SA is needed to converge either resource.
+		// NO siteverification.googleapis.com API-enable is created (an earlier
+		// revision tried to). The Site Verification API needs only an OAuth2
+		// credential with the siteverification scope — it has NO Service Usage
+		// enablement or quota-project requirement (Google's own getting-started
+		// doc lists only "a Google Account" + "OAuth 2.0"; the live API front
+		// end gates data-plane calls on scope + Site Verification ownership, not
+		// on a per-project enable). It is moreover in the earthengine /
+		// cloudidentity family of APIs that a service account CANNOT enable via
+		// Service Usage at all (activation precondition -> AUTH_PERMISSION_DENIED
+		// even with serviceUsageAdmin), so an enable resource here can never
+		// converge. The verify-domain job therefore runs on just the SA token +
+		// the siteverification scope, no quota project.
+		//
+		// This stack applies as sa-terraform-proj (folder-scoped secretmanager
+		// admin from Phase 1), so no extra admin-tier grant to any deploy SA is
+		// needed to converge the secret IAM.
 		if cfg.GetBool("domainVerificationAnchor") {
-			if _, err := projects.NewService(ctx, "siteverification-api", &projects.ServiceArgs{
-				Project: pulumi.String(projectID),
-				Service: pulumi.String("siteverification.googleapis.com"),
-				// Never disable on teardown: other tenants of the shared
-				// floating project must not lose the API underneath them.
-				DisableOnDestroy: pulumi.Bool(false),
-			}); err != nil {
-				return err
-			}
 			for _, p := range strings.Split(cfg.Get("cloudflareTokenAccessorProjects"), ",") {
 				p = strings.TrimSpace(p)
 				if p == "" {

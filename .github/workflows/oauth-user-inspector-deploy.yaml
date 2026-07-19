@@ -144,13 +144,13 @@ jobs:
   # APP-SCOPED domain-ownership verification (idempotent, no-op once
   # converged): runs AS THE DEV DEPLOY SA (the ungated
   # oauth-user-inspector-development environment — an app identity, NOT the
-  # build SA / infra-pipeline project), with the dev floating project as the
-  # Site Verification quota project (the app's identity stack enables the API
-  # there; nothing foundation-owned is involved). It self-verifies the zone
-  # via DNS-TXT and delegates ownership to EVERY env's deploy SA — the
-  # DomainMapping precondition — so it runs once, up front, and every deploy
-  # leg (push chain or single-env dispatch) gates on it. The Cloudflare token
-  # comes from the dev project's Secret Manager at runtime (secrets model
+  # build SA / infra-pipeline project). It self-verifies the zone via DNS-TXT
+  # and delegates ownership to EVERY env's deploy SA — the DomainMapping
+  # precondition — so it runs once, up front, and every deploy leg (push chain
+  # or single-env dispatch) gates on it. The Site Verification API needs only
+  # the SA token + the siteverification scope (no project API-enable, no quota
+  # project — nothing foundation-owned is involved). The Cloudflare token comes
+  # from the dev project's Secret Manager at runtime (secrets model
   # §pipeline-env; no GitHub secret). The script no-ops cleanly when no
   # Pulumi.<env>.yaml sets customDomain.
   verify-domain:
@@ -184,7 +184,6 @@ jobs:
       - name: Ensure custom-domain ownership (Site Verification)
         env:
           SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-          SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
         run: |
           set -euo pipefail
           # Plain assignment (not `export VAR=$(...)`): export would swallow
