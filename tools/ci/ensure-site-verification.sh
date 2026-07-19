@@ -22,6 +22,18 @@
 # ensure-site-verification.sh — automated Google domain-ownership verification
 # for Cloud Run DomainMappings (oauth-user-inspector custom domains).
 #
+# PREREQUISITE — siteverification.googleapis.com is a CONSOLE-ONLY API. It must
+# be enabled BY HAND, ONCE, on the deploy SA's quota project (the dev oss
+# floating project, prj-d-bu1-oss-floating-648a). It CANNOT be enabled via
+# serviceusage/IaC: even the project-owner SA gets HTTP 403 PreconditionFailure.
+# Until it is enabled there, this script's getToken WRITE call fails with
+# "Site Verification API has not been used in project <N> before or it is
+# disabled". Enable it once at:
+#   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-d-bu1-oss-floating-648a
+# (The foundation project factory declares it in ActivateApis so the entry
+# converges to a no-op AFTER this manual enable — see gcp-projects
+# modules/base_env/example_floating_project.go.)
+#
 # WHY: creating a Cloud Run DomainMapping requires the DEPLOYING principal to
 # be a verified owner of the domain in Google's Site Verification service
 # ("Caller is not authorized to administer the domain ... verify ownership").
@@ -217,9 +229,12 @@ ensure_cloudflare_txt() {
     echo "ensure-site-verification: TXT already present on $zone"
     return 0
   fi
+  # Cloudflare caps record comments at 100 characters (API error 9313), so keep
+  # this terse; the full rationale lives in this script's header. The "do not
+  # delete" is the load-bearing part — Google re-checks DNS to retain ownership.
   code="$(cf_call POST "$CF_BASE/zones/$zone_id/dns_records" \
     "$(jq -n --arg name "$zone" --arg content "$txt" \
-      '{type:"TXT", name:$name, content:$content, ttl:300, comment:"google-site-verification for Cloud Run DomainMappings (tools/ci/ensure-site-verification.sh) — do not delete: Google re-checks DNS to retain domain ownership"}')")"
+      '{type:"TXT", name:$name, content:$content, ttl:300, comment:"google-site-verification (Cloud Run) - do not delete; see ensure-site-verification.sh"}')")"
   if [ "$code" != "200" ]; then
     echo "ensure-site-verification: Cloudflare TXT create on $zone -> HTTP $code: $(head -c 400 "$workdir/cfresp")" >&2
     return 1
