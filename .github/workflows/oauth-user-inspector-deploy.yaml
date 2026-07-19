@@ -147,12 +147,14 @@ jobs:
   # build SA / infra-pipeline project). It self-verifies the zone via DNS-TXT
   # and delegates ownership to EVERY env's deploy SA — the DomainMapping
   # precondition — so it runs once, up front, and every deploy leg (push chain
-  # or single-env dispatch) gates on it. The Site Verification API needs only
-  # the SA token + the siteverification scope (no project API-enable, no quota
-  # project — nothing foundation-owned is involved). The Cloudflare token comes
-  # from the dev project's Secret Manager at runtime (secrets model
-  # §pipeline-env; no GitHub secret). The script no-ops cleanly when no
-  # Pulumi.<env>.yaml sets customDomain.
+  # or single-env dispatch) gates on it. The dev floating project is the Site
+  # Verification quota project (SITEVERIFY_QUOTA_PROJECT/x-goog-user-project):
+  # the getToken/insert WRITE calls attribute there, where the app's dev
+  # identity stack enables siteverification.googleapis.com — nothing
+  # foundation-owned is involved. The Cloudflare token comes from the dev
+  # project's Secret Manager at runtime (secrets model §pipeline-env; no GitHub
+  # secret). The script no-ops cleanly when no Pulumi.<env>.yaml sets
+  # customDomain.
   verify-domain:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -184,6 +186,9 @@ jobs:
       - name: Ensure custom-domain ownership (Site Verification)
         env:
           SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          # Quota project for the getToken/insert WRITE calls = this dev
+          # floating project (where the identity stack enables the API).
+          SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
         run: |
           set -euo pipefail
           # Plain assignment (not `export VAR=$(...)`): export would swallow

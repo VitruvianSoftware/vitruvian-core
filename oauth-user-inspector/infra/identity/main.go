@@ -173,38 +173,53 @@ func main() {
 		// tools/ci/ensure-site-verification.sh AS THE DEV DEPLOY SA: it
 		// self-verifies the Cloudflare zone via Site Verification DNS-TXT and
 		// delegates every env's deploy SA as a domain owner (the Cloud Run
-		// DomainMapping precondition). That is an APP concern, so everything it
-		// needs is anchored HERE in the app's own identity stack — never in a
-		// foundation stage (the #938 stage-4 coupling was reverted).
+		// DomainMapping precondition). Verification is SHARED — only dev ever
+		// calls getToken/insert; nonprod/prod are delegated owners — so both
+		// resources this needs are anchored HERE, on the DEV stack, in the
+		// app's own identity stack (never in a foundation stage; the #938
+		// stage-4 coupling was reverted):
 		//
-		// The ONE resource this needs is a secretAccessor grant on the
-		// human-seeded CLOUDFLARE_API_TOKEN secret in THIS project for every
-		// env's deploy SA (emails derived from cloudflareTokenAccessorProjects):
-		// the token is stored ONCE, in the dev project's Secret Manager (secrets
-		// model §pipeline-env — no GitHub secret), and each env's deploy job
-		// reads it at runtime for the verification step and the app stack's
-		// Cloudflare provider (the per-env grey-cloud CNAME stays in Pulumi).
-		// The secret RESOURCE itself is deliberately unmanaged here — only its
-		// IAM is code. It does not match the OAUTH_USER_INSPECTOR_ prefix
-		// condition above, hence these explicit secret-scoped grants.
+		//   1. siteverification.googleapis.com enabled additively on THIS (dev)
+		//      floating project. This is REQUIRED: the getToken/insert WRITE
+		//      calls are quota-attributed to the caller's project and 403 with
+		//      "Site Verification API has not been used in project <N> before or
+		//      it is disabled" until the API is enabled there (an earlier
+		//      revision, #948, wrongly dropped this after probing only the
+		//      read-only GET path, which fails on scope first and so never
+		//      surfaced the enable requirement). The script pins the quota
+		//      project explicitly via SITEVERIFY_QUOTA_PROJECT/x-goog-user-project
+		//      = this dev project. Additive is safe: the stage-4 project factory
+		//      manages APIs as individual gcp.projects.Service resources (never
+		//      an authoritative Services set), so this enable can neither
+		//      conflict with nor be reverted by a foundation apply.
+		//   2. secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN secret in
+		//      THIS project for every env's deploy SA (emails derived from
+		//      cloudflareTokenAccessorProjects): the token is stored ONCE, in
+		//      the dev project's Secret Manager (secrets model §pipeline-env —
+		//      no GitHub secret), and each env's deploy job reads it at runtime
+		//      for the verification step and the app stack's Cloudflare provider
+		//      (the per-env grey-cloud CNAME stays in Pulumi). The secret
+		//      RESOURCE itself is deliberately unmanaged here — only its IAM is
+		//      code. It does not match the OAUTH_USER_INSPECTOR_ prefix
+		//      condition above, hence these explicit secret-scoped grants.
 		//
-		// NO siteverification.googleapis.com API-enable is created (an earlier
-		// revision tried to). The Site Verification API needs only an OAuth2
-		// credential with the siteverification scope — it has NO Service Usage
-		// enablement or quota-project requirement (Google's own getting-started
-		// doc lists only "a Google Account" + "OAuth 2.0"; the live API front
-		// end gates data-plane calls on scope + Site Verification ownership, not
-		// on a per-project enable). It is moreover in the earthengine /
-		// cloudidentity family of APIs that a service account CANNOT enable via
-		// Service Usage at all (activation precondition -> AUTH_PERMISSION_DENIED
-		// even with serviceUsageAdmin), so an enable resource here can never
-		// converge. The verify-domain job therefore runs on just the SA token +
-		// the siteverification scope, no quota project.
-		//
-		// This stack applies as sa-terraform-proj (folder-scoped secretmanager
-		// admin from Phase 1), so no extra admin-tier grant to any deploy SA is
-		// needed to converge the secret IAM.
+		// IDENTITY: the DEV leg of oauth-user-inspector-identity-stack.yaml
+		// applies as the per-env foundation-proj-development SA — the stage-4
+		// projects SA that CREATED this floating project and enabled all its
+		// other APIs, so it provably holds serviceusage.services.enable here
+		// (foundation-proj-shared / sa-terraform-proj holds secretmanager.admin
+		// but NOT serviceusage.enable on the floating project — the #948 apply
+		// failed for exactly that reason). No new grant to any principal.
 		if cfg.GetBool("domainVerificationAnchor") {
+			if _, err := projects.NewService(ctx, "siteverification-api", &projects.ServiceArgs{
+				Project: pulumi.String(projectID),
+				Service: pulumi.String("siteverification.googleapis.com"),
+				// Never disable on teardown: other tenants of the shared
+				// floating project must not lose the API underneath them.
+				DisableOnDestroy: pulumi.Bool(false),
+			}); err != nil {
+				return err
+			}
 			for _, p := range strings.Split(cfg.Get("cloudflareTokenAccessorProjects"), ",") {
 				p = strings.TrimSpace(p)
 				if p == "" {

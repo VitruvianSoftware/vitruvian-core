@@ -22,42 +22,43 @@
 # (oauth-user-inspector/infra/identity): the per-env deploy + runtime service
 # accounts on each prj-{env}-bu1-oss-floating project, their foundation-pool WIF
 # bindings, per-app least-privilege IAM, and — for the DEV stack — the
-# custom-domain verification anchor (secretAccessor grants on the human-seeded
+# custom-domain verification anchor (siteverification.googleapis.com enabled on
+# the dev floating project + secretAccessor grants on the human-seeded
 # CLOUDFLARE_API_TOKEN secret for all three env deploy SAs).
 #
-# IDENTITY (chicken-and-egg): the deploy SA this stack CREATES cannot be the
-# identity that APPLIES it. The apply instead runs as sa-terraform-proj — the
-# stage-4 projects SA behind the foundation-proj-shared GitHub Environment,
-# whose leaves created and own the oss-floating projects. Its existing
-# gcp-bootstrap grants at the foundation parent folder already cover everything
-# these stacks manage (mirrors oauth-user-inspector-build-stack.yaml):
-#   * roles/iam.serviceAccountAdmin   → deploy/runtime SA create + SA IAM policy
-#   * roles/resourcemanager.projectIamAdmin → per-app project IAM bindings
-#   * roles/secretmanager.admin       → CLOUDFLARE_API_TOKEN secret IAM (dev)
-# All of these are folder-scoped from Phase 1 (see the identity stack's own
-# main.go NOTEs), so NO additional role grant to any principal is needed — the
-# reason this rework parks the secret IAM in THIS stack rather than the app
-# deploy SA's stack (which lacks that reach). The app deploy SA is deliberately
-# NOT this workflow's identity. (The Site Verification API itself needs no
-# project enable — only the SA token + siteverification scope — so nothing
-# serviceusage-tier is applied here.)
+# PROMOTION CHAIN: applies SEQUENTIALLY development -> nonproduction ->
+# production (each `needs:` the previous, mirroring the app-deploy and
+# foundation-release chains) — never the old all-envs-at-once matrix. Each leg
+# runs via the reusable _oauth-identity-apply.yaml and is independently
+# reviewer-gated by its own foundation-proj-<env> GitHub Environment.
 #
-# The foundation-proj-shared environment is reviewer-gated (protected branches
-# only) — appropriate, since these applies mint production-tier service
-# accounts and set project IAM on the shared oss-floating projects.
+# IDENTITY (chicken-and-egg): the deploy SA this stack CREATES cannot be the
+# identity that APPLIES it. Each leg instead runs as its PER-ENV
+# foundation-proj-<env> service account — the stage-4 projects SA that created
+# that env's oss-floating project and enabled its APIs. That per-env choice is
+# load-bearing for the DEV leg: enabling siteverification.googleapis.com needs
+# serviceusage.services.enable ON prj-d-bu1-oss-floating, which the dev projects
+# SA provably holds (it enabled every other API there in stage-4) whereas
+# foundation-proj-shared / sa-terraform-proj holds only secretmanager.admin
+# there — the #948 apply failed on exactly that gap. The same per-env SA created
+# the project's service accounts and set its IAM in stage-4, so it covers the
+# rest of each stack (deploy/runtime SA create, per-app project IAM, secret IAM)
+# with NO additional role grant to any principal. The app deploy SA is
+# deliberately NOT this workflow's identity.
 #
 # COLD-DEPLOY ORDERING (the app promotion chain + domain verification depend on
 # this stack):
 #   1. repo_config apply — creates the per-env oauth-user-inspector-<env>
 #      GitHub Environments + their WIF vars.
-#   2. THIS workflow (development) — mints the dev deploy/runtime SAs and grants
-#      every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
+#   2. THIS workflow (development leg) — mints the dev deploy/runtime SAs,
+#      enables siteverification.googleapis.com on the dev floating project, and
+#      grants every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
 #      secret. (nonproduction / production legs mint their own SAs; they carry
 #      no verification-anchor resources.)
 #   3. oauth-user-inspector-deploy.yaml `verify-domain` job — federates the dev
-#      deploy SA, reads the token from Secret Manager, and self-verifies the
-#      zone + delegates ownership; then each env's DomainMapping create is
-#      authorized.
+#      deploy SA, reads the token from Secret Manager, and (with the dev project
+#      as the Site Verification quota project) self-verifies the zone +
+#      delegates ownership; then each env's DomainMapping create is authorized.
 # Step 2 (at least its development leg) must have completed once before step 3
 # can ever succeed.
 
@@ -69,10 +70,11 @@ on:
     paths:
       - "oauth-user-inspector/infra/identity/**"
       - ".github/workflows/oauth-user-inspector-identity-stack.yaml"
+      - ".github/workflows/_oauth-identity-apply.yaml"
   workflow_dispatch:
     inputs:
       environment:
-        description: Which env stack(s) to apply (dev carries the verification anchor this rework needs)
+        description: Which env stack(s) to apply (a push, or "all", runs the full dev->nonprod->prod chain)
         type: choice
         required: true
         default: all
@@ -87,96 +89,42 @@ permissions:
   id-token: write
 
 jobs:
-  # Compute the matrix from the trigger: a push (or dispatch "all") applies all
-  # three env stacks; a targeted dispatch narrows to one. Doing this in an
-  # UNGATED prep job (rather than a job-level `if`, where the matrix context is
-  # unavailable) means a targeted dispatch never spins up spurious gated jobs
-  # for the envs it isn't applying.
-  prep:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      stacks: ${{ steps.pick.outputs.stacks }}
-    steps:
-      - id: pick
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          CHOICE: ${{ inputs.environment }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$CHOICE" != "all" ]; then
-            stacks="[\"${CHOICE}\"]"
-          else
-            stacks='["development","nonproduction","production"]'
-          fi
-          echo "Applying identity stacks: ${stacks}"
-          echo "stacks=${stacks}" >> "$GITHUB_OUTPUT"
+  # development — the anchor leg (siteverification enable + secret grants).
+  development:
+    if: >-
+      ${{ github.event_name == 'push'
+          || inputs.environment == 'all'
+          || inputs.environment == 'development' }}
+    uses: ./.github/workflows/_oauth-identity-apply.yaml
+    with:
+      stack: development
+      gh-environment: foundation-proj-development
+    secrets: inherit
 
-  deploy:
-    # Per-env leg: dev carries the secret accessor grants; nonprod / prod mint
-    # only their own SAs (no anchor resources). Each leg is independently
-    # reviewer-gated by the foundation-proj-shared environment.
-    needs: [prep]
-    strategy:
-      fail-fast: false
-      matrix:
-        stack: ${{ fromJSON(needs.prep.outputs.stacks) }}
-    # Serialize applies of the SAME stack; never cancel an in-flight pulumi up.
-    # Keyed by matrix.stack so the three legs do not cancel each other.
-    concurrency:
-      group: oauth-user-inspector-identity-stack-deploy-${{ matrix.stack }}
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    environment: foundation-proj-shared
-    env:
-      GOWORK: off
-      # Authenticate Pulumi's github:// plugin downloads so the job does not hit
-      # the 60/hr/IP unauthenticated GitHub API rate limit CI runners routinely
-      # exhaust (intermittent 403s); GITHUB_TOKEN raises this to 5000/hr. Same
-      # class of fix as #756 / the build-stack workflow.
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
+  # nonproduction — after development succeeds on a push / "all" run; directly
+  # targetable via a single-env dispatch (development is then skipped).
+  nonproduction:
+    needs: [development]
+    if: >-
+      ${{ !cancelled()
+          && ( ((github.event_name == 'push' || inputs.environment == 'all') && needs.development.result == 'success')
+               || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction') ) }}
+    uses: ./.github/workflows/_oauth-identity-apply.yaml
+    with:
+      stack: nonproduction
+      gh-environment: foundation-proj-nonproduction
+    secrets: inherit
 
-      - name: Authenticate to GCP (WIF, keyless)
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
-
-      - name: Pulumi up (oauth-user-inspector identity / ${{ matrix.stack }})
-        id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: oauth-user-inspector/infra/identity
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (${{ matrix.stack }})"
-          { pulumi stack select -c "${{ matrix.stack }}" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
-
-      # Render the pulumi output digest onto the run's step-summary page. Runs
-      # even when the deploy fails so the failure — and what it touched — is
-      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
-      # destructive replace/delete, and tucks the raw log into a <details>.
-      - name: Pulumi digest → step summary
-        if: always()
-        env:
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "oauth-user-inspector-identity-${{ matrix.stack }}" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+  # production — after nonproduction succeeds on a push / "all" run; directly
+  # targetable via a single-env dispatch (the earlier legs are then skipped).
+  production:
+    needs: [nonproduction]
+    if: >-
+      ${{ !cancelled()
+          && ( ((github.event_name == 'push' || inputs.environment == 'all') && needs.nonproduction.result == 'success')
+               || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production') ) }}
+    uses: ./.github/workflows/_oauth-identity-apply.yaml
+    with:
+      stack: production
+      gh-environment: foundation-proj-production
+    secrets: inherit
