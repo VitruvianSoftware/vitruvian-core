@@ -24,12 +24,12 @@
 // 1. Rename: vpn.go.example → vpn.go
 // 2. Create a VPN pre-shared key secret (see 0-bootstrap/onprem.md)
 // 3. Update the configuration values below for your environment
-// 4. Call deployHaVpn() from main.go
+// 4. Wire deployHaVpn() into base_env.New
 // 5. Run `pulumi up` in each environment stack
 //
 // ============================================================================
 
-package main
+package base_env
 
 import (
 	"fmt"

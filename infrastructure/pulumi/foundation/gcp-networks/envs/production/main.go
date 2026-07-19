@@ -38,7 +38,6 @@
 package main
 
 import (
-	"fmt"
 	"foundation-networks/modules/base_env"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -65,18 +64,11 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadNetConfig(ctx)
 
-		// Stack Reference to 1-org for project IDs and ACM policy.
-		orgStack, err := pulumi.NewStackReference(ctx, "organization", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.OrgStackName),
-		})
+		// Stack Reference to 1-org for project IDs and ACM policy (remote.go).
+		org, err := lookupOrgRemote(ctx, cfg)
 		if err != nil {
 			return err
 		}
-
-		// Resolve the spoke project ID from the 1-org exports.
-		// Each environment stack deploys to its own Shared VPC host project.
-		spokeProjectID := orgStack.GetStringOutput(pulumi.String(fmt.Sprintf("%s_network_project_id", pinnedEnv)))
-		hubProjectID := orgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
 
 		// =================================================================
 		// SPOKE NETWORK (this environment)
@@ -85,9 +77,9 @@ func main() {
 			Env:     pinnedEnv,
 			EnvCode: pinnedEnvCode,
 
-			ProjectID:    spokeProjectID,
-			HubProjectID: hubProjectID,
-			OrgStack:     orgStack,
+			ProjectID:    org.spokeProjectID,
+			HubProjectID: org.hubProjectID,
+			OrgStack:     org.stack,
 
 			Region1: cfg.Region1,
 			Region2: cfg.Region2,
@@ -123,47 +115,15 @@ func main() {
 		if err != nil {
 			return err
 		}
+		if err != nil {
+			return err
+		}
 
 		// =================================================================
-		// Exports — matches upstream TF 3-networks-hub-and-spoke/envs/{env}/outputs.tf
+		// Exports — matches upstream TF
+		// 3-networks-hub-and-spoke/envs/{env}/outputs.tf (outputs.go)
 		// =================================================================
-		ctx.Export("shared_vpc_host_project_id", spokeProjectID)
-		ctx.Export("network_name", spokeOutputs.Networking.VPC.Name)
-		ctx.Export("network_self_link", spokeOutputs.Networking.VPC.SelfLink)
-
-		// Subnet exports as arrays (matching TF subnets_names/ips/self_links)
-		var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-		for _, subnet := range spokeOutputs.Networking.Subnets {
-			subnetNames = append(subnetNames, subnet.Name)
-			subnetIPs = append(subnetIPs, subnet.IpCidrRange)
-			subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
-		}
-		ctx.Export("subnets_names", subnetNames)
-		ctx.Export("subnets_ips", subnetIPs)
-		ctx.Export("subnets_self_links", subnetSelfLinks)
-
-		// Secondary ranges export — flatten every subnet's secondary ranges into one
-		// list. NB: seeding the accumulator with a zero-value pulumi.ArrayOutput{}
-		// (nil OutputState) and passing it to pulumi.All on the first iteration
-		// panics with a nil-pointer deref, so gather the per-subnet inputs and
-		// combine them in a single pulumi.All instead of an N-deep ApplyT chain.
-		secondaryRangeInputs := make([]interface{}, 0, len(spokeOutputs.Networking.Subnets))
-		for _, subnet := range spokeOutputs.Networking.Subnets {
-			secondaryRangeInputs = append(secondaryRangeInputs, subnet.SecondaryIpRanges)
-		}
-		if len(secondaryRangeInputs) == 0 {
-			ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))
-		} else {
-			ctx.Export("subnets_secondary_ranges", pulumi.All(secondaryRangeInputs...).ApplyT(func(args []interface{}) []interface{} {
-				flattened := []interface{}{}
-				for _, r := range args {
-					if ranges, ok := r.([]interface{}); ok {
-						flattened = append(flattened, ranges...)
-					}
-				}
-				return flattened
-			}).(pulumi.ArrayOutput))
-		}
+		exportSpokeOutputs(ctx, org.spokeProjectID, spokeOutputs.Networking)
 
 		return nil
 	})

@@ -32,18 +32,6 @@ import (
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 )
 
-// Args are the inputs to the transitivity module.
-type Args struct {
-	ProjectID      pulumi.StringInput
-	Region1        string
-	Region2        string
-	Network        pulumi.StringInput // hub VPC self link
-	NetworkName    string
-	Subnetworks    map[string]pulumi.StringInput
-	FirewallPolicy pulumi.StringInput // hub firewall policy name
-	VPC            pulumi.Resource    // hub VPC, for DependsOn serialisation
-}
-
 // New deploys the transitivity appliance and its health-check firewall. The
 // appliance itself is the library component (already gated off); the
 // health-check firewall opens SSH from the Google health-check ranges to the

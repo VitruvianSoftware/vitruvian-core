@@ -34,62 +34,6 @@ import (
 	"foundation-networks/modules/shared_vpc"
 )
 
-// Args are the inputs to the base_env (spoke) module — the per-environment
-// identity, the spoke CIDR plan, and the shared network toggles.
-type Args struct {
-	Env     string
-	EnvCode string
-
-	// Projects & cross-stage references.
-	ProjectID    pulumi.StringInput  // spoke Shared VPC host project
-	HubProjectID pulumi.StringOutput // hub host project (peering ref + bridge)
-	OrgStack     *pulumi.StackReference
-
-	// Regions.
-	Region1 string
-	Region2 string
-
-	// Spoke CIDRs (secondary ranges only on R1, matching upstream).
-	Subnet1Cidr string
-	Subnet2Cidr string
-	Proxy1Cidr  string
-	Proxy2Cidr  string
-	GkePod1Cidr string
-	GkeSvc1Cidr string
-
-	// VPC flow logs.
-	FlowLogsInterval string
-	FlowLogsSampling float64
-	FlowLogsMetadata string
-
-	// Private Service Connect.
-	PscIP string
-
-	// Logging toggles.
-	FirewallPoliciesEnableLogging bool
-	DnsEnableLogging              bool
-
-	// DNS.
-	Domain string
-
-	// Feature toggles.
-	WindowsActivationEnabled bool
-	NatEnabled               bool
-	NatBgpAsn                int
-	NatNumAddresses          int
-
-	// VPC Service Controls.
-	PolicyID                string
-	VpcScMembers            []string
-	VpcScRestrictedServices []string
-	EnforceVpcSc            bool
-}
-
-// Result holds the spoke network outputs consumed by the stage root exports.
-type Result struct {
-	Networking *networking.Networking
-}
-
 // New builds the spoke subnet args and deploys the spoke Shared VPC via the
 // shared_vpc module (Mode: "spoke"). opts serialises the spoke behind the hub
 // VPC when both are created in the same run (the development stack).

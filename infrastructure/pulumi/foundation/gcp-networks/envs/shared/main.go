@@ -40,14 +40,7 @@
 package main
 
 import (
-	"fmt"
-	"foundation-networks/modules/hierarchical_firewall_policy"
-	"foundation-networks/modules/shared_vpc"
-	"foundation-networks/modules/transitivity"
-
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-
-	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 )
 
 // Shared/hub identity pinned by this leaf project — upstream
@@ -63,128 +56,32 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadNetSharedConfig(ctx)
 
-		// Stack Reference to 1-org for project IDs and ACM policy.
-		orgStack, err := pulumi.NewStackReference(ctx, "organization", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(cfg.OrgStackName),
-		})
+		// Stack Reference to 1-org for project IDs and ACM policy (remote.go).
+		orgStack, hubProjectID, err := lookupOrgRemote(ctx, cfg)
 		if err != nil {
 			return err
 		}
 
-		// Hub host project (created by 1-org when enable_hub_and_spoke=true).
-		hubProjectID := orgStack.GetStringOutput(pulumi.String("net_hub_project_id"))
-
-		// Hub VPC & Subnets — hub has NO secondary ranges (matching upstream).
-		hubVpcName := fmt.Sprintf("vpc-%s-svpc-hub", pinnedEnvCode)
-		hubSubnets := []networking.SubnetArgs{
-			{
-				Name:             fmt.Sprintf("sb-%s-svpc-hub-%s", pinnedEnvCode, cfg.Region1),
-				Region:           cfg.Region1,
-				CIDR:             cfg.HubSubnet1Cidr,
-				FlowLogs:         true,
-				FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
-				FlowLogsSampling: cfg.VpcFlowLogs.FlowSampling,
-				FlowLogsMetadata: cfg.VpcFlowLogs.Metadata,
-				// No secondary ranges on hub (matching upstream: secondary_ranges = {})
-			},
-			{
-				Name:             fmt.Sprintf("sb-%s-svpc-hub-%s", pinnedEnvCode, cfg.Region2),
-				Region:           cfg.Region2,
-				CIDR:             cfg.HubSubnet2Cidr,
-				FlowLogs:         true,
-				FlowLogsInterval: cfg.VpcFlowLogs.AggregationInterval,
-				FlowLogsSampling: cfg.VpcFlowLogs.FlowSampling,
-				FlowLogsMetadata: cfg.VpcFlowLogs.Metadata,
-			},
-			// Hub proxy-only subnets — matching upstream REGIONAL_MANAGED_PROXY
-			{
-				Name:    fmt.Sprintf("sb-%s-svpc-hub-%s-proxy", pinnedEnvCode, cfg.Region1),
-				Region:  cfg.Region1,
-				CIDR:    cfg.HubProxy1Cidr,
-				Role:    "ACTIVE",
-				Purpose: "REGIONAL_MANAGED_PROXY",
-			},
-			{
-				Name:    fmt.Sprintf("sb-%s-svpc-hub-%s-proxy", pinnedEnvCode, cfg.Region2),
-				Region:  cfg.Region2,
-				CIDR:    cfg.HubProxy2Cidr,
-				Role:    "ACTIVE",
-				Purpose: "REGIONAL_MANAGED_PROXY",
-			},
-		}
-
-		hubRes, err := shared_vpc.New(ctx, &shared_vpc.Args{
-			Mode: "hub",
-			Code: pinnedEnvCode,
-
-			ProjectID: hubProjectID,
-			OrgStack:  orgStack,
-
-			VPCName:             hubVpcName,
-			Subnets:             hubSubnets,
-			FirewallSubnetCidrs: []string{cfg.HubSubnet1Cidr, cfg.HubSubnet2Cidr},
-
-			Region1: cfg.Region1,
-			Region2: cfg.Region2,
-
-			PscIP: cfg.PscIP,
-
-			FirewallPoliciesEnableLogging: cfg.FirewallPoliciesEnableLogging,
-			DnsEnableLogging:              cfg.DnsEnableLogging,
-
-			Domain:            cfg.Domain,
-			TargetNameServers: cfg.TargetNameServers,
-
-			WindowsActivationEnabled: cfg.WindowsActivationEnabled,
-
-			NatEnabled:      cfg.HubNatEnabled,
-			NatBgpAsn:       cfg.NatBgpAsn,
-			NatNumAddresses: cfg.NatNumAddresses,
-
-			BgpAsn: cfg.BgpAsn,
-
-			PolicyID:                cfg.PolicyID,
-			VpcScMembers:            cfg.VpcScMembers,
-			VpcScRestrictedServices: cfg.VpcScRestrictedServices,
-			EnforceVpcSc:            cfg.EnforceVpcSc,
-		})
+		// Hub Shared VPC (net-hubs.go).
+		hubRes, hubVpcName, err := deployNetHubs(ctx, cfg, orgStack, hubProjectID)
 		if err != nil {
 			return err
 		}
 
-		// Hierarchical Firewall Policy (org/folder level) — hub only.
-		// Matching upstream: associate with 6 folders (common, network, bootstrap,
-		// dev, prod, nonprod).
-		if err := hierarchical_firewall_policy.New(ctx, &hierarchical_firewall_policy.Args{
-			ParentID:      cfg.ParentID,
-			Associations:  cfg.HierarchicalFwAssociations,
-			EnableLogging: cfg.FirewallPoliciesEnableLogging,
-		}); err != nil {
+		// Hierarchical Firewall Policy (org/folder level) — hub only
+		// (hierarchical_firewall.go).
+		if err := deployHierarchicalFirewall(ctx, cfg); err != nil {
 			return err
 		}
 
-		// Transitivity Appliance — conditional (default false, matching upstream).
-		if cfg.EnableHubAndSpokeTransitivity {
-			if err := transitivity.New(ctx, &transitivity.Args{
-				ProjectID:   hubProjectID,
-				Region1:     cfg.Region1,
-				Region2:     cfg.Region2,
-				Network:     hubRes.Networking.VPC.SelfLink,
-				NetworkName: hubVpcName,
-				Subnetworks: map[string]pulumi.StringInput{
-					cfg.Region1: hubRes.Networking.Subnets[fmt.Sprintf("sb-%s-svpc-hub-%s", pinnedEnvCode, cfg.Region1)].SelfLink,
-					cfg.Region2: hubRes.Networking.Subnets[fmt.Sprintf("sb-%s-svpc-hub-%s", pinnedEnvCode, cfg.Region2)].SelfLink,
-				},
-				FirewallPolicy: hubRes.Firewall.Policy.Name,
-				VPC:            hubRes.Networking.VPC,
-			}); err != nil {
-				return err
-			}
+		// Transitivity Appliance — conditional, default false
+		// (net-hubs-transitivity.go).
+		if err := deployNetHubsTransitivity(ctx, cfg, hubProjectID, hubRes, hubVpcName); err != nil {
+			return err
 		}
 
-		// Exports — the hub outputs (hub_network_name, hub_network_self_link,
-		// dns_policy) are emitted by the shared_vpc module in hub mode, matching
-		// upstream TF 3-networks-hub-and-spoke/envs/shared/outputs.tf.
+		// Exports — see outputs.go (emitted by the shared_vpc module in hub
+		// mode, matching upstream envs/shared/outputs.tf).
 		return nil
 	})
 }

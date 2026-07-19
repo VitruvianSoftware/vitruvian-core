@@ -30,13 +30,6 @@ import (
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
 )
 
-// Args are the inputs to the hierarchical firewall policy module.
-type Args struct {
-	ParentID      string
-	Associations  []string // foundation folders; defaults to [ParentID] when empty
-	EnableLogging bool
-}
-
 // New creates the hierarchical firewall policy. Mirrors upstream, associating
 // the policy with the foundation folders (common, network, bootstrap, dev,
 // prod, nonprod).
