@@ -12,7 +12,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.3.0 // indirect
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.2.1-0.20260718212957-b0aa3a454016 // indirect
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d // indirect
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d // indirect
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
