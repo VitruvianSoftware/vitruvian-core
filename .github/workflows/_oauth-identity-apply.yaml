@@ -30,9 +30,11 @@ name: _oauth-identity-apply
 # stage-4 projects SA for that leaf, which created the env's oss-floating project
 # and set its IAM in stage-4). It covers this stack's resources — deploy/runtime
 # SA create, per-app project IAM, Cloudflare-token secret IAM — with no new
-# grant. This stack does NOT enable any API (the siteverification enable the dev
-# verify path needs lives in the foundation project factory's ActivateApis for
-# prj-d-bu1-oss-floating, applied as the project owner).
+# grant. This stack does NOT enable any API (the siteverification enable each
+# env's self-verify path needs lives in the foundation project factory's
+# ActivateApis for every prj-{env}-bu1-oss-floating project, declared as the
+# project owner — plus a one-time manual console enable per project, the API
+# being console-only).
 
 on:
   workflow_call:

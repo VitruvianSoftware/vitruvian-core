@@ -169,12 +169,15 @@ func main() {
 		}
 
 		// --- Custom-domain verification anchoring (dev-only, config-gated) ---
-		// The oauth-user-inspector-deploy workflow's verify-domain job runs
-		// tools/ci/ensure-site-verification.sh AS THE DEV DEPLOY SA: it
-		// self-verifies the Cloudflare zone via Site Verification DNS-TXT and
-		// delegates every env's deploy SA as a domain owner (the Cloud Run
-		// DomainMapping precondition). Verification is SHARED — only dev ever
-		// calls getToken/insert; nonprod/prod are delegated owners.
+		// Each env's deploy job runs tools/ci/ensure-site-verification.sh AS
+		// ITS OWN DEPLOY SA (the _deploy-cloud-run.yaml "Ensure custom-domain
+		// ownership" step): the SA SELF-verifies the Cloudflare zone via Site
+		// Verification DNS-TXT (the Cloud Run DomainMapping precondition).
+		// Ownership in that service is PER-CALLER and owner delegation is a
+		// dead end (the API refuses owners-list writes while an external
+		// token-verified owner is present), so all three env SAs verify
+		// independently — three google-site-verification TXT records on the
+		// zone apex is the expected steady state.
 		//
 		// The ONE resource anchored here is a secretAccessor grant on the
 		// human-seeded CLOUDFLARE_API_TOKEN secret in THIS (dev) project for
@@ -188,13 +191,15 @@ func main() {
 		// above, hence these explicit secret-scoped grants.
 		//
 		// siteverification.googleapis.com is NOT enabled here. The getToken/insert
-		// WRITE calls DO require it enabled on the dev deploy SA's quota project
-		// (this dev floating project; the script pins it via
-		// SITEVERIFY_QUOTA_PROJECT/x-goog-user-project) — but that enable lives in
-		// the FOUNDATION project factory's ActivateApis for prj-d-bu1-oss-floating
-		// (gcp-projects modules/base_env/example_floating_project.go), applied as
-		// the project OWNER exactly like every other API on this project. An
-		// additive gcp.projects.Service here, applied as the app's deploy /
+		// WRITE calls DO require it enabled on the CALLING SA's quota project
+		// (each env's own floating project; the script pins it via
+		// SITEVERIFY_QUOTA_PROJECT/x-goog-user-project) — but that enable lives
+		// in the FOUNDATION project factory's ActivateApis for every
+		// prj-{env}-bu1-oss-floating project (gcp-projects
+		// modules/base_env/example_floating_project.go), declared as the
+		// project OWNER exactly like every other API on these projects, PLUS a
+		// one-time manual console enable per project (the API is console-only).
+		// An additive gcp.projects.Service here, applied as the app's deploy /
 		// foundation-proj SA, lacks serviceusage.services.enable on the project
 		// (only creator-time enable at stage-4), which is why PR #949's attempt
 		// 403'd. Enabling one more API the app's OWN project needs, in that

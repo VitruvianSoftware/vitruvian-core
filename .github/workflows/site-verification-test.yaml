@@ -19,12 +19,14 @@
 # SOFTWARE.
 
 # Regression guard for tools/ci/ensure-site-verification.sh — the automated
-# Google domain-ownership verification the oauth-user-inspector build job runs
-# before any env's Cloud Run DomainMapping deploy. The test is hermetic: it
-# drives the real script against a local mock of the Site Verification,
-# Cloudflare, and DoH APIs (no credentials, no network), asserting the
-# bootstrap convergence, strict idempotence (second run performs zero writes),
-# and the no-customDomain no-op gate.
+# per-env Google domain-ownership SELF-verification each oauth-user-inspector
+# env deploy runs (inside _deploy-cloud-run.yaml, as that env's own deploy SA)
+# before its Cloud Run DomainMapping deploy. The test is hermetic: it drives
+# the real script against a local mock of the Site Verification, Cloudflare,
+# and DoH APIs (no credentials, no network), asserting the self-verify
+# bootstrap, that NO owners-list PUT (delegation) is ever issued, strict
+# idempotence (a converged run performs zero writes), the DEPLOY_ENV scoping,
+# and the no-customDomain no-op gates.
 
 name: Site Verification Test
 

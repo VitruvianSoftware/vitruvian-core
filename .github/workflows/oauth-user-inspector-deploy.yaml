@@ -152,66 +152,14 @@ jobs:
           echo "Built ${IMAGE}@${DIGEST}"
           echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
-  # APP-SCOPED domain-ownership verification (idempotent, no-op once
-  # converged): runs AS THE DEV DEPLOY SA (the ungated
-  # oauth-user-inspector-development environment — an app identity, NOT the
-  # build SA / infra-pipeline project). It self-verifies the zone via DNS-TXT
-  # and delegates ownership to EVERY env's deploy SA — the DomainMapping
-  # precondition — so it runs once, up front, and every deploy leg (push chain
-  # or single-env dispatch) gates on it. The dev floating project is the Site
-  # Verification quota project (SITEVERIFY_QUOTA_PROJECT/x-goog-user-project):
-  # the getToken/insert WRITE calls attribute there, where the app's dev
-  # identity stack enables siteverification.googleapis.com — nothing
-  # foundation-owned is involved. The Cloudflare token comes from the dev
-  # project's Secret Manager at runtime (secrets model §pipeline-env; no GitHub
-  # secret). The script no-ops cleanly when no Pulumi.<env>.yaml sets
-  # customDomain.
-  verify-domain:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-    environment: oauth-user-inspector-development
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
-          # Besides the ambient credentials (the Secret Manager read below),
-          # mint a SEPARATE access token carrying the Site Verification scope:
-          # user-style consent is impossible for headless SAs, and
-          # SA-impersonation tokens can carry arbitrary scopes.
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/siteverification
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      - name: Ensure custom-domain ownership (Site Verification)
-        env:
-          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-          # Quota project for the getToken/insert WRITE calls = this dev
-          # floating project (where the identity stack enables the API).
-          SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          # Plain assignment (not `export VAR=$(...)`): export would swallow
-          # the gcloud exit status and hand the script an empty token.
-          CLOUDFLARE_API_TOKEN="$(gcloud secrets versions access latest \
-            --secret=CLOUDFLARE_API_TOKEN --project="$GCP_PROJECT_ID")"
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN secret read returned empty (dev deploy SA needs secretAccessor on it — identity stack domainVerificationAnchor)"
-            exit 1
-          fi
-          export CLOUDFLARE_API_TOKEN
-          ./tools/ci/ensure-site-verification.sh
+  # NOTE: domain-ownership verification is PER-ENV and lives INSIDE
+  # _deploy-cloud-run.yaml (the "Ensure custom-domain ownership" step): each
+  # env's deploy SA SELF-verifies the zone via Site Verification DNS-TXT as
+  # itself, right before its own `pulumi up` — ownership in that service is
+  # per-caller, so a shared job auth'd as one env's SA cannot verify for the
+  # others (and the API refuses owner-list delegation outright when an
+  # external token-verified owner is present). There is deliberately NO
+  # standalone verify-domain job here anymore.
 
   # ---- development (auto on push) ------------------------------------------
   # EXPAND (cf. principle §2.15) before each env's deploy. Gated on the
@@ -227,8 +175,8 @@ jobs:
     secrets: inherit
 
   deploy-dev:
-    needs: [build, verify-domain, zitadel-dev]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-dev.result != 'failure' && (github.event_name == 'push' || inputs.environment == 'development') }}
+    needs: [build, zitadel-dev]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-dev.result != 'failure' && (github.event_name == 'push' || inputs.environment == 'development') }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -277,8 +225,8 @@ jobs:
     secrets: inherit
 
   deploy-nonprod:
-    needs: [build, verify-domain, deploy-dev, zitadel-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    needs: [build, deploy-dev, zitadel-nonprod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -323,8 +271,8 @@ jobs:
     secrets: inherit
 
   deploy-prod:
-    needs: [build, verify-domain, deploy-nonprod, zitadel-prod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.verify-domain.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    needs: [build, deploy-nonprod, zitadel-prod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
