@@ -86,6 +86,15 @@ jobs:
             dir: oauth-user-inspector/infra/app
             stack: development
             environment: oauth-user-inspector-development
+            # Non-secret placeholder so the app stack's DEFAULT cloudflare
+            # provider can CONFIGURE during this advisory, token-less preview
+            # (a dry run makes zero Cloudflare API calls; the zone lookup is
+            # skipped under DryRun). The real Cloudflare token is NEVER exposed
+            # to previews — it is fetched from Secret Manager only at deploy time
+            # (_deploy-cloud-run.yaml). Without a value here the provider config
+            # fails ("must provide apiToken") the moment the stack has a DNS
+            # record in state to reconcile. See oauth-user-inspector/infra/app/main.go.
+            cfPreviewToken: preview-only-not-a-real-cloudflare-token
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
@@ -123,6 +132,9 @@ jobs:
         id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          # Empty for apps without a cloudflare provider (e.g. tabula); a
+          # non-secret placeholder for oauth-user-inspector (see matrix note).
+          CLOUDFLARE_API_TOKEN: ${{ matrix.cfPreviewToken }}
         working-directory: ${{ matrix.dir }}
         run: |
           # Disable -e so a failing preview does not abort before we capture its
