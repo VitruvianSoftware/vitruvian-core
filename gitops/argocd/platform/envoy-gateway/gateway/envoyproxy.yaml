@@ -59,6 +59,19 @@ spec:
         # cloudflared's tunnel ingress targets). Inert to MetalLB pre-cutover.
         annotations:
           lbipam.cilium.io/ips: "10.44.86.211"
+        # Pin the NodePort so it can't drift on a Service recreation. The
+        # zitadel-apps CI apply reaches this gateway at a node tailscale IP on
+        # THIS nodePort (_zitadel-apps-apply.yaml hardcodes :30265), so a drift
+        # would silently break that path. Strategic-merge by the port name
+        # (Envoy Gateway names the :80 listener port `http-80`); the merge key is
+        # `name`, so this sets nodePort on the existing port, not a new one.
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - name: http-80
+                  nodePort: 30265
       envoyDeployment:
         replicas: 2
         pod:
