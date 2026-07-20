@@ -645,6 +645,42 @@ spec:
                 enabled: true
                 size: 2Gi
                 storageClass: local-path
+              # Alertmanager delivery. Until now the chart default was used — an
+              # EMPTY "default-receiver" that silently DROPPED every alert, so the
+              # (comprehensive, working) rules fired into a void: a CNPG member
+              # crashlooped 15 days and backups failed silently, unseen (2026-07-20).
+              # Route actionable alerts (severity page|warning) to ntfy for phone
+              # push; drop known-noise/heartbeat. The ntfy URL is NOT committed (this
+              # repo has a public mirror) — it is read at runtime from a mounted
+              # Secret via url_file. PREREQUISITE: the SealedSecret
+              # `alertmanager-ntfy-endpoint` (key `ntfy-url` = the full ntfy topic
+              # URL, e.g. https://ntfy.host/mytopic) must exist BEFORE this applies,
+              # or the alertmanager pod can't mount it. See the PR for the kubeseal cmd.
+              config:
+                global:
+                  resolve_timeout: 5m
+                route:
+                  receiver: "null"
+                  group_by: ["alertname", "namespace"]
+                  group_wait: 30s
+                  group_interval: 5m
+                  repeat_interval: 4h
+                  routes:
+                    - matchers: ['severity=~"none|noise"']
+                      receiver: "null"
+                    - matchers: ['severity=~"page|warning"']
+                      receiver: ntfy
+                receivers:
+                  - name: "null"
+                  - name: ntfy
+                    webhook_configs:
+                      - url_file: /etc/alertmanager/secrets/ntfy/ntfy-url
+                        send_resolved: true
+              extraSecretMounts:
+                - name: ntfy-endpoint
+                  secretName: alertmanager-ntfy-endpoint
+                  mountPath: /etc/alertmanager/secrets/ntfy
+                  readOnly: true
             # ── node-exporter: run as root so the RAPL collector can read ────
             # CPU package energy. node-exporter exports node_rapl_*_joules_total
             # from /host/sys/class/powercap/intel-rapl:*/energy_uj, but since
