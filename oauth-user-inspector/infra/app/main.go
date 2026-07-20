@@ -227,49 +227,56 @@ func main() {
 			ctx.Export("customDomain", pulumi.String(customDomain))
 			ctx.Export("customDomainDnsTarget", dnsTarget)
 
-			// The Cloudflare credential arrives ONLY as the
-			// CLOUDFLARE_API_TOKEN env var — fetched at deploy time from the
-			// dev floating project's Secret Manager as the env's deploy SA
+			// The Cloudflare credential arrives via the CLOUDFLARE_API_TOKEN env
+			// var — at deploy time the real token, fetched from the dev floating
+			// project's Secret Manager as the env's deploy SA
 			// (_deploy-cloud-run.yaml cloudflare-token-secret-project; never a
-			// GitHub secret) — the default cloudflare provider reads it
-			// implicitly, so no secret ever touches Pulumi config or state
-			// (secrets model §pipeline-env). Advisory PR previews run WITHOUT
-			// the token, so
-			// a token-less preview skips the DNS resources (they render as
-			// preview noise alongside the image-digest placeholder); a
-			// token-less real apply fails fast instead — silently omitting
-			// the resources would drop the live DNS record out of the
-			// program and delete it on the next up.
-			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
-				if !ctx.DryRun() {
-					return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: the deploy fetches it from the CLOUDFLARE_API_TOKEN secret in the dev floating project's Secret Manager (Cloudflare token with Zone.Read + DNS.Edit on the zone; see _deploy-cloud-run.yaml cloudflare-token-secret-project)", customDomain)
+			// GitHub secret, never in Pulumi config or state — secrets model
+			// §pipeline-env). Advisory PR previews get a NON-SECRET placeholder
+			// (pulumi-preview.yaml matrix.cfPreviewToken) so the default
+			// cloudflare provider can still CONFIGURE; a dry run makes zero
+			// Cloudflare API calls, and the zone lookup below is skipped under
+			// DryRun so the placeholder is never sent to the API.
+			//
+			// The DNS record is declared UNCONDITIONALLY whenever customDomain is
+			// set. It must never drop out of the program: once a deploy has
+			// created it, a program that omits it plans a DELETE of the live
+			// record — and planning that delete forces the (default) cloudflare
+			// provider to configure, which fails on a token-less preview
+			// ("must provide apiToken"). A genuine token-less *apply* still fails
+			// fast here.
+			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" && !ctx.DryRun() {
+				return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: the deploy fetches it from the CLOUDFLARE_API_TOKEN secret in the dev floating project's Secret Manager (Cloudflare token with Zone.Read + DNS.Edit on the zone; see _deploy-cloud-run.yaml cloudflare-token-secret-project)", customDomain)
+			}
+			// Resolve the zone by NAME to its id via the API (the zone id is
+			// deliberately not committed; it lives nowhere in this repo). The
+			// lookup is a live API call, so it runs ONLY on a real update — a
+			// dry run uses a placeholder id that keeps the record in the plan
+			// without calling Cloudflare (advisory preview only; the apply pass
+			// re-resolves and writes the real id).
+			zone := cfg.Get("cloudflareZone")
+			if zone == "" {
+				zone = "ipv1337.dev"
+			}
+			zoneID := zone
+			if ctx.DryRun() {
+				zoneID = "preview-unresolved-zone-id"
+			} else if strings.Contains(zone, ".") {
+				looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
+				if err != nil {
+					return fmt.Errorf("resolving cloudflare zone %q: %w", zone, err)
 				}
-			} else {
-				// The zone, by NAME (resolved to its id via the API — the
-				// zone id is deliberately not committed; it lives nowhere in
-				// this repo) or directly by id if a future config sets one.
-				zone := cfg.Get("cloudflareZone")
-				if zone == "" {
-					zone = "ipv1337.dev"
-				}
-				zoneID := zone
-				if strings.Contains(zone, ".") {
-					looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
-					if err != nil {
-						return fmt.Errorf("resolving cloudflare zone %q: %w", zone, err)
-					}
-					zoneID = looked.Id
-				}
-				if _, err := cloudflare.NewRecord(ctx, "oauth-user-inspector-dns", &cloudflare.RecordArgs{
-					ZoneId:  pulumi.String(zoneID),
-					Name:    pulumi.String(customDomain),
-					Type:    pulumi.String("CNAME"),
-					Content: dnsTarget,
-					Ttl:     pulumi.Int(300),
-					Proxied: pulumi.Bool(false),
-				}, pulumi.DependsOn([]pulumi.Resource{mapping})); err != nil {
-					return err
-				}
+				zoneID = looked.Id
+			}
+			if _, err := cloudflare.NewRecord(ctx, "oauth-user-inspector-dns", &cloudflare.RecordArgs{
+				ZoneId:  pulumi.String(zoneID),
+				Name:    pulumi.String(customDomain),
+				Type:    pulumi.String("CNAME"),
+				Content: dnsTarget,
+				Ttl:     pulumi.Int(300),
+				Proxied: pulumi.Bool(false),
+			}, pulumi.DependsOn([]pulumi.Resource{mapping})); err != nil {
+				return err
 			}
 		}
 
