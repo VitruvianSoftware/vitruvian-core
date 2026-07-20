@@ -1,0 +1,58 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# k3s CoreDNS custom config. k3s watches the `coredns-custom` ConfigMap in
+# kube-system and mounts each key into /etc/coredns/custom/; the base Corefile
+# `import /etc/coredns/custom/*.server` picks up `*.server` keys as top-level
+# server blocks (CoreDNS `reload` applies them without a restart).
+#
+# WHY: the nodes run tailscale with MagicDNS, so their /etc/resolv.conf carries
+# the tailnet search domains `lan` and `coati-koi.ts.net`. k3s appends the node
+# search domains to every pod's resolv.conf, so with ndots:5 EVERY external
+# lookup also fires bogus `<name>.lan` / `<name>.coati-koi.ts.net` queries. The
+# base Corefile forwards those to the LAN resolver (192.168.86.1), which does
+# not serve them and TIMES OUT (it answers real names fine). Those piled-up
+# upstream timeouts stall CoreDNS and cause intermittent EAI_AGAIN on legitimate
+# in-cluster lookups too — which was breaking zitadel-login (Login V2) reaching
+# the `zitadel` core intermittently (2026-07-20).
+#
+# FIX: answer these two suffixes locally with an immediate NXDOMAIN instead of
+# forwarding upstream. Cluster pods do not resolve real *.coati-koi.ts.net
+# tailnet hostnames (the CI runner that needs MagicDNS has its own tailscale
+# resolver, not cluster CoreDNS); reverse by deleting this ConfigMap key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: platform-config
+data:
+  tailscale-suffixes.server: |
+    lan:53 {
+        template ANY ANY {
+            rcode NXDOMAIN
+        }
+    }
+    coati-koi.ts.net:53 {
+        template ANY ANY {
+            rcode NXDOMAIN
+        }
+    }
