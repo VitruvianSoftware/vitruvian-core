@@ -265,23 +265,32 @@ func main() {
 			if !tokenIsReal && !ctx.DryRun() {
 				return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: the deploy fetches it from the CLOUDFLARE_API_TOKEN secret in the dev floating project's Secret Manager (Cloudflare token with Zone.Read + DNS.Edit on the zone; see _deploy-cloud-run.yaml cloudflare-token-secret-project)", customDomain)
 			}
-			// Resolve the zone by NAME to its id via the API (the zone id is
-			// deliberately not committed; it lives nowhere in this repo). Only a
-			// real token can call the API; the advisory preview uses a placeholder
-			// id that keeps the record in the plan without calling Cloudflare.
+			// Zone id resolution, in order:
+			//  1. the pinned cloudflareZoneId config — used directly in BOTH the
+			//     preview and the deploy, so neither shows a phantom replace. A
+			//     Cloudflare zone id is not a secret (it appears in the dashboard
+			//     URL and in every preview diff), so it is committed; this is the
+			//     path the live stacks take.
+			//  2. otherwise a live LookupZone by name — only a real token can call
+			//     the API, so the advisory preview (placeholder token) can't use it.
+			//  3. otherwise a placeholder id that keeps the record in the plan
+			//     without an API call (advisory preview of an un-pinned zone only).
 			zone := cfg.Get("cloudflareZone")
 			if zone == "" {
 				zone = "ipv1337.dev"
 			}
-			zoneID := zone
-			if !tokenIsReal {
-				zoneID = "preview-unresolved-zone-id"
-			} else if strings.Contains(zone, ".") {
-				looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
-				if err != nil {
-					return fmt.Errorf("resolving cloudflare zone %q: %w", zone, err)
+			zoneID := cfg.Get("cloudflareZoneId")
+			if zoneID == "" {
+				zoneID = zone
+				if !tokenIsReal {
+					zoneID = "preview-unresolved-zone-id"
+				} else if strings.Contains(zone, ".") {
+					looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
+					if err != nil {
+						return fmt.Errorf("resolving cloudflare zone %q: %w", zone, err)
+					}
+					zoneID = looked.Id
 				}
-				zoneID = looked.Id
 			}
 			if _, err := cloudflare.NewRecord(ctx, "oauth-user-inspector-dns", &cloudflare.RecordArgs{
 				ZoneId:  pulumi.String(zoneID),

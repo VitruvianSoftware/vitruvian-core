@@ -31,9 +31,12 @@ config:
   oauth-user-inspector:environment: production
   oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector-rt@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com
   # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
-  # CNAME (main.go). The zone is given by NAME and resolved to its id at
-  # deploy time via the CLOUDFLARE_API_TOKEN-authenticated API.
-  # NOTE (runbook): this hostname is ALREADY live via a manually-created
-  # mapping + CNAME — import or remove those before the first prod apply.
+  # CNAME (main.go). cloudflareZoneId is pinned so preview and deploy resolve
+  # the same id (no phantom replace); a zone id is not a secret (it appears in
+  # the dashboard URL and every preview diff). cloudflareZone is kept for the
+  # name→id LookupZone fallback if the id is ever unset. The DomainMapping uses
+  # ForceOverride (main.go) so it took this hostname over from the retired
+  # gen-lang demo mapping on the first prod apply.
   oauth-user-inspector:customDomain: oauth-inspector.ipv1337.dev
   oauth-user-inspector:cloudflareZone: ipv1337.dev
+  oauth-user-inspector:cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104
