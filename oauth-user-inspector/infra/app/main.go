@@ -168,15 +168,19 @@ func main() {
 		//
 		// Prereq (AUTOMATED, app-scoped): the deploying SA must be a verified
 		// owner of the domain or the DomainMapping create is rejected by the
-		// API. The deploy workflow's verify-domain job converges this as code
-		// BEFORE any env deploy (tools/ci/ensure-site-verification.sh, run AS
-		// THE DEV DEPLOY SA with the dev floating project as the Site
-		// Verification quota project; that project has siteverification enabled
-		// via the foundation project factory's ActivateApis, and the app's dev
-		// identity stack anchors the Cloudflare-token secret IAM). It
-		// self-verifies the zone via Site Verification DNS-TXT + a persistent
-		// Cloudflare TXT record, then delegates ownership to every env's deploy
-		// SA. No manual Search Console step.
+		// API. Ownership in Google's Site Verification service is PER-CALLER,
+		// so THIS env's deploy job SELF-verifies the zone as its own deploy SA
+		// right before this `pulumi up` (the _deploy-cloud-run.yaml "Ensure
+		// custom-domain ownership" step running
+		// tools/ci/ensure-site-verification.sh with the env's OWN floating
+		// project as the Site Verification quota project; every floating
+		// project declares siteverification in the foundation project
+		// factory's ActivateApis + a one-time manual console enable, and the
+		// app's dev identity stack anchors the Cloudflare-token secret IAM).
+		// Self-verify = Site Verification DNS-TXT + a persistent Cloudflare
+		// TXT record per env SA; there is NO owner delegation (the API refuses
+		// owners-list writes when an external token-verified owner is
+		// present). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
 			mapping, err := cloudrun.NewDomainMapping(ctx, "oauth-user-inspector-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),

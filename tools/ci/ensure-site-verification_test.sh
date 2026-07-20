@@ -23,22 +23,25 @@
 # ensure-site-verification.sh. Drives the REAL script end-to-end against a
 # local mock of the three external APIs (Site Verification, Cloudflare,
 # Google DoH), asserting:
-#   1. bootstrap: getToken -> Cloudflare TXT create -> DNS poll -> insert ->
-#      owners update unions the deploy SAs alongside pre-existing owners;
-#   2. idempotence: a second run with converged state performs NO writes;
-#   3. the no-customDomain no-op gate.
-# The owners-update PUT REPLACES the whole list, and the real API refuses to
-# unverify a token-verified owner: the mock enforces this (400 if the PUT omits
-# any current token owner — the external james@example.test, and the dev SA once
-# self-verified), so test 1's "owner kept: james@example.test" assertion is a
-# real guard that the delegation PUT never drops a pre-existing owner (the live
-# failure this fixes).
-# The caller identity is the DEV DEPLOY SA (an app-scoped identity). The mock's
-# getToken/insert/update WRITE endpoints REQUIRE x-goog-user-project to match
-# the dev floating project (SITEVERIFY_QUOTA_PROJECT), modelling the real 403
-# the WRITE calls return when the quota project has not enabled the API — the
-# regression guard for the #948 mistake (a read-only GET fails on scope first,
-# so it never surfaced that the WRITE path needs the enabled quota project).
+#   1. per-env self-verify bootstrap (DEPLOY_ENV set): getToken -> Cloudflare
+#      TXT create -> DNS poll -> webResource.insert, scoped to ONLY the
+#      calling env's Pulumi.<env>.yaml;
+#   2. NO webResource.update PUT is EVER issued — delegation/owner-list
+#      writes were removed because the Site Verification API refuses to let a
+#      service account modify an owners list containing an external
+#      token-verified owner (even a correct union PUT 400s "You cannot
+#      unverify this site owner..."). The mock fails any PUT with that same
+#      400, so a regression that reintroduces delegation fails the run AND
+#      the put-count assertion;
+#   3. idempotence: a run against converged state (already a verified owner)
+#      performs NO writes;
+#   4. the no-customDomain no-op gates (per-env and global).
+# The mock's getToken/insert WRITE endpoints REQUIRE x-goog-user-project to
+# match the calling env's floating project (SITEVERIFY_QUOTA_PROJECT),
+# modelling the real 403 the WRITE calls return when the quota project has not
+# enabled the API — the regression guard for the #948 mistake (a read-only GET
+# fails on scope first, so it never surfaced that the WRITE path needs the
+# enabled quota project).
 
 set -euo pipefail
 
@@ -96,7 +99,9 @@ EOF
 # State lives in $MOCK_STATE (JSON) so assertions can inspect exactly which
 # writes happened. The mock enforces the REAL contract ordering: insert fails
 # until the verification TXT exists in the (mock) Cloudflare zone, and the DoH
-# endpoint only "propagates" records that Cloudflare holds.
+# endpoint only "propagates" records that Cloudflare holds. Ownership is
+# CALLER-scoped like the real service: the webResource GET is 200 only once
+# THIS caller has self-verified.
 cat >"$work/mock_server.py" <<'PYEOF'
 import json, os, re, sys, urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -133,11 +138,11 @@ class H(BaseHTTPRequestHandler):
                 "owners": s["owners"]}
 
     def sv_quota_pinned(self):
-        # The getToken/insert/update WRITE calls attribute quota to a project
-        # that must have siteverification enabled; the caller pins its own
-        # floating project via x-goog-user-project. Model the real 403 the dev
-        # verify-domain hit when this was missing ("Site Verification API has
-        # not been used in project ... before or it is disabled").
+        # The getToken/insert WRITE calls attribute quota to a project that
+        # must have siteverification enabled; the caller pins its OWN floating
+        # project via x-goog-user-project. Model the real 403 the WRITE path
+        # hits when this is missing ("Site Verification API has not been used
+        # in project ... before or it is disabled").
         return self.headers.get("x-goog-user-project") == "prj-d-test-1234"
 
     def do_GET(self):
@@ -147,7 +152,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/siteVerification/v1/webResource/dns%3A%2F%2Fexample.test" or \
            urllib.parse.unquote(u.path) == "/siteVerification/v1/webResource/dns://example.test":
             s["counts"]["sv_get"] += 1; save(s)
-            if s["verified"]:
+            # Caller-scoped: 200 only once the CALLING identity has verified.
+            if s["caller_verified"]:
                 return self.reply(200, self.resource(s))
             return self.reply(404, {"error": {"code": 404, "message": "not found"}})
         if u.path == "/client/v4/zones":
@@ -183,16 +189,13 @@ class H(BaseHTTPRequestHandler):
             s["counts"]["sv_insert"] += 1
             want = "google-site-verification=tok-abc-123"
             if any(r["content"] == want for r in s["cf_records"]):
-                s["verified"] = True
-                dev = "oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com"
-                if dev not in s["owners"]:
-                    s["owners"].append(dev)
-                # Self-verify makes the dev SA a TOKEN owner (it holds the
-                # google-site-verification DNS record) — like the external
-                # james@example.test — so it too can no longer be unverified
-                # while its token is live.
-                if dev not in s["token_owners"]:
-                    s["token_owners"].append(dev)
+                # Self-verify: the CALLING identity becomes a TOKEN-verified
+                # owner (it holds the google-site-verification DNS record).
+                # Other owners (the external zone owner) are untouched.
+                s["caller_verified"] = True
+                caller = "oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com"
+                if caller not in s["owners"]:
+                    s["owners"].append(caller)
                 save(s)
                 return self.reply(200, self.resource(s))
             save(s)
@@ -209,29 +212,18 @@ class H(BaseHTTPRequestHandler):
         s = load()
         u = urllib.parse.urlparse(self.path)
         if u.path.startswith("/siteVerification/v1/webResource/"):
-            if not self.sv_quota_pinned():
-                return self.reply(403, {"error": {"message": "Site Verification API has not been used in project 715357066805 before or it is disabled"}})
+            # The script must NEVER issue a webResource.update PUT: the real
+            # API refuses ANY owners-list modification by a service account
+            # while an external token-verified owner is present — even a
+            # correct union that keeps every owner 400s. Count it (the test
+            # asserts 0) and fail the call like the live API did.
             s["counts"]["sv_update"] += 1
-            b = self.body_json()
-            if not s["verified"]:
-                save(s)
-                return self.reply(403, {"error": {"message": "not an owner"}})
-            # webResource.update REPLACES the owners list. The real API refuses
-            # to unverify an owner that still holds a verification token: if this
-            # PUT omits any current token owner, 400 (mirrors the live failure
-            # that dropped james.nguyen@gmail.com).
-            submitted = b.get("owners", [])
-            dropped = [o for o in s["token_owners"] if o not in submitted]
-            if dropped:
-                save(s)
-                return self.reply(400, {"error": {"message":
-                    "You cannot unverify this site owner until all associated "
-                    "verification tokens (meta tag, HTML file, Google Analytics "
-                    "tracking code, Google Tag Manager container code, or DNS "
-                    "record) are removed from your site. dropped=%s" % dropped}})
-            s["owners"] = submitted
             save(s)
-            return self.reply(200, self.resource(s))
+            return self.reply(400, {"error": {"message":
+                "You cannot unverify this site owner until all associated "
+                "verification tokens (meta tag, HTML file, Google Analytics "
+                "tracking code, Google Tag Manager container code, or DNS "
+                "record) are removed from your site."}})
         return self.reply(404, {"error": {"message": "unknown PUT " + self.path}})
 
 srv = HTTPServer(("127.0.0.1", 0), H)
@@ -241,9 +233,8 @@ PYEOF
 
 export MOCK_STATE="$work/state.json"
 cat >"$MOCK_STATE" <<'EOF'
-{"verified": false,
+{"caller_verified": false,
  "owners": ["james@example.test"],
- "token_owners": ["james@example.test"],
  "cf_records": [{"type": "TXT", "name": "example.test", "content": "v=spf1 -all"}],
  "counts": {"sv_get": 0, "sv_gettoken": 0, "sv_insert": 0, "sv_update": 0, "cf_create": 0}}
 EOF
@@ -257,8 +248,9 @@ done
 port="$(cat "$work/port")"
 base="http://127.0.0.1:$port"
 
-run_script() {
+run_script() { # run_script [deploy-env]
   APP_DIR="$app" \
+    DEPLOY_ENV="${1:-}" \
     SITEVERIFY_ACCESS_TOKEN="fake-oauth-token" \
     CLOUDFLARE_API_TOKEN="fake-cf-token" \
     SITEVERIFY_QUOTA_PROJECT="prj-d-test-1234" \
@@ -268,37 +260,57 @@ run_script() {
     bash "$SCRIPT"
 }
 
-echo "test 1: bootstrap converges verification + owners"
-if out="$(run_script 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
 state() { jq -r "$1" "$MOCK_STATE"; }
+
+echo "test 1: per-env bootstrap self-verifies the calling identity (no owner PUT)"
+if out="$(run_script development 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
 assert_eq "TXT created once" "$(state '.counts.cf_create')" "1"
 assert_eq "TXT record content" \
   "$(state '[.cf_records[].content] | any(. == "google-site-verification=tok-abc-123")')" "true"
 assert_eq "pre-existing TXT untouched" \
   "$(state '[.cf_records[].content] | any(. == "v=spf1 -all")')" "true"
-assert_eq "verified" "$(state '.verified')" "true"
-assert_eq "owners updated once" "$(state '.counts.sv_update')" "1"
-for o in \
-  "oauth-user-inspector-deploy@prj-d-test-1234.iam.gserviceaccount.com" \
-  "oauth-user-inspector-deploy@prj-p-test-5678.iam.gserviceaccount.com" \
-  "james@example.test"; do
-  assert_eq "owner kept/added: $o" "$(jq -r --arg o "$o" '.owners | index($o) != null' "$MOCK_STATE")" "true"
-done
-assert_eq "no-domain env contributed no owner" \
-  "$(jq -r '.owners | index("oauth-user-inspector-deploy@prj-n-test-9999.iam.gserviceaccount.com") != null' "$MOCK_STATE")" "false"
+assert_eq "caller verified" "$(state '.caller_verified')" "true"
+assert_eq "NO webResource.update PUT issued" "$(state '.counts.sv_update')" "0"
+assert_eq "external owner untouched" \
+  "$(jq -r '.owners | index("james@example.test") != null' "$MOCK_STATE")" "true"
+case "$out" in
+  *"Pulumi.development.yaml"*) pass "calling env's config read" ;;
+  *) fail "calling env's config read — output: $out" ;;
+esac
+case "$out" in
+  *"Pulumi.production.yaml"*) fail "DEPLOY_ENV scoping — another env's config was read: $out" ;;
+  *) pass "DEPLOY_ENV scoping (other envs' configs not read)" ;;
+esac
 
-echo "test 2: second run is a pure no-op (no writes)"
-if out="$(run_script 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+echo "test 2: converged run is a pure no-op (already a verified owner; no writes)"
+if out="$(run_script development 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
 assert_eq "no new TXT" "$(state '.counts.cf_create')" "1"
 assert_eq "no new getToken" "$(state '.counts.sv_gettoken')" "1"
 assert_eq "no new insert" "$(state '.counts.sv_insert')" "1"
-assert_eq "no new owners update" "$(state '.counts.sv_update')" "1"
+assert_eq "still no webResource.update PUT" "$(state '.counts.sv_update')" "0"
 case "$out" in
-  *"all deploy SAs already owners; no-op"*) pass "no-op message" ;;
+  *"already a verified owner"*) pass "no-op message" ;;
   *) fail "no-op message — output: $out" ;;
 esac
 
-echo "test 3: no customDomain anywhere -> clean exit, no credentials needed"
+echo "test 3: unscoped run (no DEPLOY_ENV) scans every env, still no writes"
+if out="$(run_script 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+case "$out" in
+  *"Pulumi.development.yaml"*"Pulumi.production.yaml"*) pass "all env configs read" ;;
+  *) fail "all env configs read — output: $out" ;;
+esac
+assert_eq "no new TXT" "$(state '.counts.cf_create')" "1"
+assert_eq "no new insert" "$(state '.counts.sv_insert')" "1"
+assert_eq "still no webResource.update PUT" "$(state '.counts.sv_update')" "0"
+
+echo "test 4: calling env has no customDomain -> clean no-op, no credentials needed"
+if out="$(APP_DIR="$app" DEPLOY_ENV=nonproduction bash "$SCRIPT" 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+case "$out" in
+  *"nothing to do"*) pass "per-env gate message" ;;
+  *) fail "per-env gate message — output: $out" ;;
+esac
+
+echo "test 5: no customDomain anywhere -> clean exit, no credentials needed"
 empty="$work/empty-app"; mkdir -p "$empty"
 cat >"$empty/Pulumi.development.yaml" <<'EOF'
 config:

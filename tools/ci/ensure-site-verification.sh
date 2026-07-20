@@ -19,20 +19,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# ensure-site-verification.sh — automated Google domain-ownership verification
-# for Cloud Run DomainMappings (oauth-user-inspector custom domains).
+# ensure-site-verification.sh — automated Google domain-ownership
+# SELF-verification for Cloud Run DomainMappings (oauth-user-inspector custom
+# domains).
+#
+# ARCHITECTURE — PER-ENV SELF-VERIFICATION ONLY. This script runs inside each
+# env's deploy job (_deploy-cloud-run.yaml), AS THAT ENV'S OWN DEPLOY SA, right
+# before the env's `pulumi up`. The CALLING identity verifies the zone for
+# ITSELF via DNS-TXT (getToken -> Cloudflare TXT -> webResource.insert) and
+# NEVER touches any owners list: webResource.update / owner delegation is
+# deliberately absent. Delegation is a dead end here — the zone is owned by an
+# external personal account whose token-verified ownership the Site
+# Verification API refuses to let a service account modify AT ALL (even a
+# correct union PUT that keeps every existing owner 400s "You cannot unverify
+# this site owner..."). Ownership in the Site Verification service is
+# per-caller, so each env's SA must verify independently; three
+# google-site-verification TXT records on the zone apex (one per env SA) is
+# the expected steady state.
 #
 # PREREQUISITE — siteverification.googleapis.com is a CONSOLE-ONLY API. It must
-# be enabled BY HAND, ONCE, on the deploy SA's quota project (the dev oss
-# floating project, prj-d-bu1-oss-floating-648a). It CANNOT be enabled via
-# serviceusage/IaC: even the project-owner SA gets HTTP 403 PreconditionFailure.
-# Until it is enabled there, this script's getToken WRITE call fails with
-# "Site Verification API has not been used in project <N> before or it is
-# disabled". Enable it once at:
-#   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-d-bu1-oss-floating-648a
-# (The foundation project factory declares it in ActivateApis so the entry
-# converges to a no-op AFTER this manual enable — see gcp-projects
-# modules/base_env/example_floating_project.go.)
+# be enabled BY HAND, ONCE, on EACH env's oss floating project (the calling
+# SA's quota project). It CANNOT be enabled via serviceusage/IaC: even the
+# project-owner SA gets HTTP 403 PreconditionFailure. Until it is enabled
+# there, this script's getToken WRITE call fails with "Site Verification API
+# has not been used in project <N> before or it is disabled". Enable it at:
+#   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=<PROJECT_ID>
+# (The foundation project factory declares it in ActivateApis for all three
+# oss floating projects so the entry converges to a no-op AFTER the manual
+# enable — see gcp-projects modules/base_env/example_floating_project.go.)
 #
 # WHY: creating a Cloud Run DomainMapping requires the DEPLOYING principal to
 # be a verified owner of the domain in Google's Site Verification service
@@ -40,27 +54,26 @@
 # The per-env deploy SAs are headless, so the Search Console click-path is not
 # an option — this script makes ownership a converged, code-managed fact.
 #
-# FLOW (idempotent; the deploy workflow's verify-domain job runs this AS THE
-# DEV DEPLOY SA, an APP-scoped identity, BEFORE any env deploy):
-#   1. Read the app's per-env Pulumi.<env>.yaml files: every env with a
-#      `customDomain` contributes its `cloudflareZone` (the registrable domain
-#      to verify — verifying the zone apex covers all subdomains) and its
-#      deploy SA (oauth-user-inspector-deploy@<project>..., the same email the
-#      deploy-identity stack mints). No customDomain anywhere -> clean no-op.
-#   2. For each zone: GET webResource dns://<zone>. If the calling identity
-#      (the dev deploy SA) is already a verified owner, skip to 4.
-#   3. Bootstrap self-verification (first run only): getToken (DNS_TXT) ->
-#      additively upsert the google-site-verification TXT on the zone apex via
-#      the Cloudflare API -> poll public DNS -> webResource.insert. This adds
-#      a NEW token record; existing google-site-verification records (other
-#      owners) are never touched, and ours is never deleted — Google re-checks
-#      DNS periodically, so the TXT must persist for ownership to persist.
-#   4. webResource.update to union the per-env deploy SAs into the owners
-#      list (delegated owners: valid while >=1 token-verified owner remains —
-#      the dev deploy SA re-converges 2-4 on every run, so a lapsed
-#      verification self-heals on the next run).
+# FLOW (idempotent):
+#   1. Read the app's per-env Pulumi.<env>.yaml files — ONLY the calling env's
+#      file when DEPLOY_ENV is set (the per-env deploy path), else all of them.
+#      Every selected env with a `customDomain` contributes its
+#      `cloudflareZone` (the registrable domain to verify — verifying the zone
+#      apex covers all subdomains). No customDomain -> clean no-op.
+#   2. For each zone: GET webResource dns://<zone>. If the calling identity is
+#      already a verified owner, no-op.
+#   3. Otherwise self-verify: getToken (DNS_TXT) -> additively upsert the
+#      google-site-verification TXT on the zone apex via the Cloudflare API ->
+#      poll public DNS -> webResource.insert. This adds a NEW token record;
+#      existing google-site-verification records (other envs' SAs, the
+#      external zone owner) are never touched, and ours is never deleted —
+#      Google re-checks DNS periodically, so the TXT must persist for
+#      ownership to persist.
 #
 # INPUTS (env):
+#   DEPLOY_ENV               Optional; when set (e.g. "development"), only
+#                            Pulumi.$DEPLOY_ENV.yaml is considered — the
+#                            per-env deploy path. Unset scans every env file.
 #   SITEVERIFY_ACCESS_TOKEN  OAuth2 access token bearing the
 #                            https://www.googleapis.com/auth/siteverification
 #                            scope (google-github-actions/auth
@@ -73,17 +86,15 @@
 #   SITEVERIFY_QUOTA_PROJECT Optional; when set, sent as x-goog-user-project on
 #                            every Site Verification call so the getToken/insert
 #                            WRITE calls attribute to the caller's OWN floating
-#                            project (the dev deploy SA's project), where the
-#                            app's dev identity stack enables
-#                            siteverification.googleapis.com. REQUIRED in
-#                            practice: without the API enabled on the attributed
-#                            project the WRITE calls 403 ("Site Verification API
-#                            has not been used in project <N> before or it is
-#                            disabled"). A read-only GET fails on scope first, so
-#                            it never surfaces this — hence the earlier #948
-#                            revision wrongly concluded no quota project was
-#                            needed. Nothing app-shared or foundation-owned is
-#                            touched.
+#                            project, where the foundation project factory
+#                            enables siteverification.googleapis.com. REQUIRED
+#                            in practice: without the API enabled on the
+#                            attributed project the WRITE calls 403 ("Site
+#                            Verification API has not been used in project <N>
+#                            before or it is disabled"). A read-only GET fails
+#                            on scope first, so it never surfaces this — hence
+#                            the earlier #948 revision wrongly concluded no
+#                            quota project was needed.
 #   APP_DIR                  Optional; the app's Pulumi project dir.
 #
 # Tokens: google-site-verification values are public DNS data, not secrets.
@@ -105,16 +116,25 @@ for tool in curl jq; do
   fi
 done
 
-# --- 1. Collect zones + wanted owners from the per-env Pulumi config ---------
+# --- 1. Collect the calling env's zone(s) from the per-env Pulumi config -----
 
 cfg_get() { # cfg_get <file> <key>  (flat `ns:key: value` YAML lines)
   sed -n "s/^[[:space:]]*oauth-user-inspector:$2:[[:space:]]*//p" "$1" |
     head -n1 | tr -d '"' | tr -d "'"
 }
 
+if [ -n "${DEPLOY_ENV:-}" ]; then
+  env_files=("$APP_DIR/Pulumi.$DEPLOY_ENV.yaml")
+  if [ ! -e "${env_files[0]}" ]; then
+    echo "ensure-site-verification: ${env_files[0]} not found (DEPLOY_ENV=$DEPLOY_ENV)" >&2
+    exit 1
+  fi
+else
+  env_files=("$APP_DIR"/Pulumi.*.yaml)
+fi
+
 zones=""
-owners_wanted=""
-for f in "$APP_DIR"/Pulumi.*.yaml; do
+for f in "${env_files[@]}"; do
   [ -e "$f" ] || continue
   dom="$(cfg_get "$f" customDomain)"
   [ -n "$dom" ] || continue
@@ -124,19 +144,12 @@ for f in "$APP_DIR"/Pulumi.*.yaml; do
     # ipv1337.dev when unset).
     zone="ipv1337.dev"
   fi
-  proj="$(cfg_get "$f" project)"
-  if [ -z "$proj" ]; then
-    echo "ensure-site-verification: $f sets customDomain but no project" >&2
-    exit 1
-  fi
-  owner="oauth-user-inspector-deploy@${proj}.iam.gserviceaccount.com"
   case " $zones " in *" $zone "*) ;; *) zones="$zones $zone" ;; esac
-  case " $owners_wanted " in *" $owner "*) ;; *) owners_wanted="$owners_wanted $owner" ;; esac
-  echo "ensure-site-verification: $(basename "$f"): $dom -> zone $zone, owner $owner"
+  echo "ensure-site-verification: $(basename "$f"): $dom -> zone $zone"
 done
 
 if [ -z "$zones" ]; then
-  echo "ensure-site-verification: no customDomain configured in $APP_DIR — nothing to do"
+  echo "ensure-site-verification: no customDomain configured${DEPLOY_ENV:+ for $DEPLOY_ENV} in $APP_DIR — nothing to do"
   exit 0
 fi
 
@@ -283,74 +296,31 @@ verify_zone() {
   return 1
 }
 
-# --- 2-4. Converge every zone ------------------------------------------------
+# --- 2-3. Converge every zone for the CALLING identity ------------------------
 
 for zone in $zones; do
   id_enc="$(jq -rn --arg v "dns://$zone" '$v|@uri')"
 
+  # The webResource GET is caller-scoped: 200 iff the CALLING identity is a
+  # verified owner of the zone. Already an owner -> converged, nothing to do.
   code="$(sv_call GET "$SV_BASE/webResource/$id_enc")"
-  if [ "$code" != "200" ]; then
-    echo "ensure-site-verification: not yet a verified owner of $zone (GET -> HTTP $code) — bootstrapping"
-    verify_zone "$zone"
-    code="$(sv_call GET "$SV_BASE/webResource/$id_enc")"
-    if [ "$code" != "200" ]; then
-      echo "ensure-site-verification: webResource GET for $zone still failing (HTTP $code): $(sv_error_summary)" >&2
-      exit 1
-    fi
-  fi
-  cp "$workdir/resp" "$workdir/resource.json"
-  current_owners="$(jq -r '.owners // [] | join(" ")' "$workdir/resource.json")"
-  echo "ensure-site-verification: $zone current owners: ${current_owners:-<none>}"
-
-  # The wanted deploy SAs as a JSON array. Built with jq (NOT positional
-  # word-splitting) so a stray space or empty field can never corrupt an owner.
-  # shellcheck disable=SC2086  # intentional split of the space-joined SA list
-  wanted_json="$(printf '%s\n' $owners_wanted | jq -Rc 'select(length > 0)' | jq -sc .)"
-
-  # webResource.update (PUT) REPLACES the entire owners list, and the Site
-  # Verification API REFUSES to unverify an owner that still holds a verification
-  # token (e.g. the external james.nguyen@gmail.com, which owns this zone via its
-  # own token; also the dev SA, now a token owner via the record we just wrote).
-  # So the new list MUST be the UNION of the CURRENT owners (keep EVERY one,
-  # including external token owners we do not control) and the wanted deploy SAs.
-  # A bare list of just the SAs would drop the externals and 400. Compute the
-  # union from the fetched resource with a JSON array arg — never drop an owner.
-  merged_json="$(jq -c --argjson want "$wanted_json" '((.owners // []) + $want) | unique' "$workdir/resource.json")"
-
-  # Idempotent steady state: if every wanted SA is already an owner the merged
-  # set equals the current set — skip the PUT entirely (no-op).
-  if jq -e --argjson merged "$merged_json" \
-       '((.owners // []) | sort) == ($merged | sort)' "$workdir/resource.json" >/dev/null; then
-    echo "ensure-site-verification: $zone — all deploy SAs already owners; no-op"
+  if [ "$code" = "200" ]; then
+    echo "ensure-site-verification: already a verified owner of $zone; no-op"
     continue
   fi
 
-  added="$(jq -r --argjson merged "$merged_json" '$merged - (.owners // []) | join(" ")' "$workdir/resource.json")"
-  kept="$(jq -r '.owners // [] | length' "$workdir/resource.json")"
-  echo "ensure-site-verification: $zone — adding owners: $added (keeping all $kept existing owner(s))"
-  # Echo the resource's own id + site back; only the owners list changes.
-  body="$(jq -c --argjson owners "$merged_json" '{id: .id, site: .site, owners: $owners}' "$workdir/resource.json")"
-  code="$(sv_call PUT "$SV_BASE/webResource/$id_enc" "$body")"
-  if [ "$code" != "200" ]; then
-    echo "ensure-site-verification: owners update for $zone -> HTTP $code: $(sv_error_summary)" >&2
-    exit 1
-  fi
+  echo "ensure-site-verification: not yet a verified owner of $zone (GET -> HTTP $code) — self-verifying"
+  verify_zone "$zone"
 
-  # Assert convergence from the API's own response: every wanted SA is present,
-  # AND no previously-present owner was dropped (the union invariant).
-  for owner in $owners_wanted; do
-    if ! jq -e --arg o "$owner" '.owners // [] | index($o) != null' "$workdir/resp" >/dev/null; then
-      echo "ensure-site-verification: $owner missing from $zone owners after update" >&2
-      exit 1
-    fi
-  done
-  if ! jq -e --slurpfile before "$workdir/resource.json" \
-       '(.owners // []) as $after | (($before[0].owners // []) | all(. as $o | $after | index($o) != null))' \
-       "$workdir/resp" >/dev/null; then
-    echo "ensure-site-verification: a pre-existing owner was dropped from $zone after update" >&2
+  # Assert convergence from the API's own view: the caller must now be an
+  # owner. NO owners-list write ever happens (see header — delegation is
+  # deliberately absent); insert alone makes the caller a token-verified owner.
+  code="$(sv_call GET "$SV_BASE/webResource/$id_enc")"
+  if [ "$code" != "200" ]; then
+    echo "ensure-site-verification: webResource GET for $zone still failing after insert (HTTP $code): $(sv_error_summary)" >&2
     exit 1
   fi
-  echo "ensure-site-verification: $zone owners converged"
+  echo "ensure-site-verification: $zone converged (caller is a verified owner)"
 done
 
 echo "ensure-site-verification: done"

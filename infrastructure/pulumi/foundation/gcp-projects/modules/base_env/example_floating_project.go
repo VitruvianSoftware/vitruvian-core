@@ -82,28 +82,34 @@ func deployFloatingProject(ctx *pulumi.Context, args *Args, result *BUProjects) 
 			"secretmanager.googleapis.com",
 			"iam.googleapis.com",
 			"iamcredentials.googleapis.com",
-		}
-		// Site Verification API — DEV oss floating project ONLY. The
-		// oauth-user-inspector custom-domain verification is SHARED: the DEV
-		// deploy SA calls the Site Verification write API (getToken/insert) with
-		// this project as its quota project, self-verifies the zone, and
-		// delegates all three env deploy SAs as owners — so nonprod/prod never
-		// call the write API and do not need it (see
-		// tools/ci/ensure-site-verification.sh).
-		//
-		// ⚠️ CONSOLE-ONLY API — MUST BE ENABLED BY HAND ONCE. Unlike every other
-		// API in this list, siteverification.googleapis.com CANNOT be enabled via
-		// serviceusage/IaC: even the project-owner SA that applies this stack
-		// gets HTTP 403 PreconditionFailure ("failed on request preconditions").
-		// It has to be enabled once, by a human, in the console:
-		//   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-d-bu1-oss-floating-648a
-		// This ActivateApis entry therefore does NOT do the enabling — it exists
-		// so that, AFTER the manual enable, the project's API set still matches
-		// this declared config and the entry converges to a no-op (rather than a
-		// perpetual add). Do not be misled into thinking a fresh floating project
-		// gets this API from IaC alone; the manual console enable is required.
-		if args.EnvCode == "d" {
-			ossApis = append(ossApis, "siteverification.googleapis.com")
+			// Site Verification API — required on ALL THREE oss floating
+			// projects. oauth-user-inspector custom-domain verification is
+			// PER-ENV SELF-VERIFICATION: each env's deploy SA calls the Site
+			// Verification write API (getToken/insert) with ITS OWN floating
+			// project as the quota project and self-verifies the Cloudflare
+			// zone via DNS-TXT before its Cloud Run DomainMapping deploy.
+			// Ownership in that service is per-caller — no SA can verify (or
+			// delegate) on another identity's behalf — so every env needs the
+			// API on its own project (see tools/ci/ensure-site-verification.sh).
+			//
+			// ⚠️ CONSOLE-ONLY API — MUST BE ENABLED BY HAND ONCE PER PROJECT.
+			// Unlike every other API in this list,
+			// siteverification.googleapis.com CANNOT be enabled via
+			// serviceusage/IaC: even the project-owner SA that applies this
+			// stack gets HTTP 403 PreconditionFailure ("failed on request
+			// preconditions"). It has to be enabled once, by a human, in the
+			// console, per floating project:
+			//   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=<PROJECT_ID>
+			// Status: prj-d-bu1-oss-floating-648a is DONE; still to click:
+			//   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-n-bu1-oss-floating-630b
+			//   https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-p-bu1-oss-floating-16e0
+			// This ActivateApis entry therefore does NOT do the enabling — it
+			// exists so that, AFTER the manual enable, the project's API set
+			// still matches this declared config and the entry converges to a
+			// no-op (rather than a perpetual add). Do not be misled into
+			// thinking a fresh floating project gets this API from IaC alone;
+			// the manual console enable is required.
+			"siteverification.googleapis.com",
 		}
 		ossFloatingProject, err := single_project.New(ctx, "bu-oss-floating-project", &single_project.Args{
 			DefaultServiceAccount: "disable", // upstream default; see the svpc project

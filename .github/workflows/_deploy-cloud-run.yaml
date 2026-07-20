@@ -130,7 +130,10 @@ on:
           The project may differ from the env's own (oauth-user-inspector
           stores ONE token, in its dev floating project; the app's identity
           stack grants each env's deploy SA secretAccessor on that single
-          secret). Empty (the default) skips the fetch entirely.
+          secret). Setting this ALSO enables the per-env domain-ownership
+          self-verification step (tools/ci/ensure-site-verification.sh) that
+          must precede a customDomain DomainMapping deploy — see that step.
+          Empty (the default) skips both entirely.
         required: false
         type: string
         default: ""
@@ -164,10 +167,20 @@ jobs:
         uses: ./.github/actions/setup-bazel
 
       - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          # customDomain apps only (same gate as the Cloudflare-token fetch):
+          # besides the ambient credentials every step uses, mint a SEPARATE
+          # access token carrying the Site Verification scope for the
+          # domain-ownership self-verify step below. User-style consent is
+          # impossible for headless SAs, and SA-impersonation tokens can carry
+          # arbitrary scopes. Empty token_format (the action default) mints
+          # nothing for apps without a custom domain.
+          token_format: ${{ inputs.cloudflare-token-secret-project != '' && 'access_token' || '' }}
+          access_token_scopes: https://www.googleapis.com/auth/siteverification
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -261,6 +274,29 @@ jobs:
           fi
           echo "::add-mask::$CF_TOKEN"
           echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Ensure custom-domain ownership (Site Verification, self-verify)
+        # PER-ENV SELF-VERIFICATION: creating a Cloud Run DomainMapping
+        # requires the DEPLOYING principal to be a verified owner of the
+        # domain in Google's Site Verification service, and ownership there is
+        # PER-CALLER — no SA can verify (or delegate) on another identity's
+        # behalf, so THIS env's deploy SA self-verifies its zone via DNS-TXT
+        # right before its own `pulumi up`. Idempotent: once this SA is a
+        # verified owner the script no-ops, and it no-ops entirely when the
+        # env's Pulumi.<env>.yaml sets no customDomain (DEPLOY_ENV scopes the
+        # script to this env's config). The quota project for the
+        # getToken/insert WRITE calls is this env's OWN floating project
+        # (SITEVERIFY_QUOTA_PROJECT/x-goog-user-project), where the foundation
+        # project factory declares siteverification.googleapis.com — NOTE the
+        # API itself is console-only and needs a one-time manual enable per
+        # project (see tools/ci/ensure-site-verification.sh). CLOUDFLARE_API_TOKEN
+        # is job-wide env from the fetch step above.
+        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        env:
+          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          APP_DIR: ${{ inputs.pulumi-dir }}
+        run: ./tools/ci/ensure-site-verification.sh
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

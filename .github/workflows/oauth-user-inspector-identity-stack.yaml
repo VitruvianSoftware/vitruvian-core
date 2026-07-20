@@ -24,9 +24,10 @@
 # bindings, per-app least-privilege IAM, and — for the DEV stack — the
 # custom-domain verification anchor (secretAccessor grants on the human-seeded
 # CLOUDFLARE_API_TOKEN secret for all three env deploy SAs). The
-# siteverification.googleapis.com enable that the dev verify path needs lives in
-# the foundation project factory's ActivateApis for prj-d-bu1-oss-floating, NOT
-# in this stack (it is enabled as the project owner; see the ordering note).
+# siteverification.googleapis.com enable that each env's self-verify path needs
+# lives in the foundation project factory's ActivateApis for every
+# prj-{env}-bu1-oss-floating project, NOT in this stack (declared as the
+# project owner; the API itself is console-only — see the ordering note).
 #
 # PROMOTION CHAIN: applies SEQUENTIALLY development -> nonproduction ->
 # production (each `needs:` the previous, mirroring the app-deploy and
@@ -43,22 +44,25 @@
 # identity.
 #
 # COLD-DEPLOY ORDERING (the app promotion chain + domain verification depend on
-# this stack AND on the foundation stage-4 dev projects leaf):
-#   0. Foundation stage-4 gcp-projects-development apply (foundation-proj-deploy
-#      workflow, development leaf) — enables siteverification.googleapis.com on
-#      prj-d-bu1-oss-floating via its ActivateApis, as the project owner. MUST
-#      precede step 3 (the verify-domain getToken WRITE 403s until it is on).
+# this stack AND on the foundation stage-4 projects leaves):
+#   0. Foundation stage-4 gcp-projects-<env> apply (foundation-proj-deploy
+#      workflow) — declares siteverification.googleapis.com on each env's
+#      prj-{env}-bu1-oss-floating via its ActivateApis — PLUS the one-time
+#      MANUAL console enable of that API per project (it is console-only; see
+#      tools/ci/ensure-site-verification.sh). Both MUST precede step 3 for
+#      that env (the self-verify getToken WRITE 403s until the API is on).
 #   1. repo_config apply — creates the per-env oauth-user-inspector-<env>
 #      GitHub Environments + their WIF vars.
 #   2. THIS workflow (development leg) — mints the dev deploy/runtime SAs and
 #      grants every env deploy SA secretAccessor on the dev CLOUDFLARE_API_TOKEN
 #      secret. (nonproduction / production legs mint their own SAs; they carry
 #      no verification-anchor resources.)
-#   3. oauth-user-inspector-deploy.yaml `verify-domain` job — federates the dev
-#      deploy SA, reads the token from Secret Manager, and (with the dev project
-#      as the Site Verification quota project, enabled in step 0) self-verifies
-#      the zone + delegates ownership; then each env's DomainMapping create is
-#      authorized.
+#   3. Each env's deploy leg (_deploy-cloud-run.yaml "Ensure custom-domain
+#      ownership" step) — federates THAT env's deploy SA, reads the Cloudflare
+#      token from the dev project's Secret Manager, and (with the env's OWN
+#      project as the Site Verification quota project, enabled in step 0)
+#      SELF-verifies the zone as itself; then that env's DomainMapping create
+#      is authorized. Ownership is per-caller — there is no delegation.
 # Steps 0 and 2 must both have completed once before step 3 can ever succeed.
 
 name: oauth-user-inspector Identity Stack Deploy
