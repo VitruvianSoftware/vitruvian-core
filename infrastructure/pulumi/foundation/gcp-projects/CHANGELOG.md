@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.3...foundation-gcp-projects-v1.3.4) (2026-07-20)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** per-env Site Verification SELF-verify; remove owner delegation entirely ([#956](https://github.com/VitruvianSoftware/vitruvian-core/issues/956)) ([66cbdfd](https://github.com/VitruvianSoftware/vitruvian-core/commit/66cbdfdf34b57109fc4653dc7873e67172abd6f4))
+
 ## [1.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.2...foundation-gcp-projects-v1.3.3) (2026-07-19)
 
 
