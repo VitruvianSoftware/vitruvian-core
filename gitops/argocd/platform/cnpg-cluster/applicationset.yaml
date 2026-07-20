@@ -112,6 +112,17 @@ spec:
                 annotations:
                   prometheus.io/scrape: "true"
                   prometheus.io/port: "9187"
+              # Retain more WAL on the primary so a returning OLD PRIMARY (after a
+              # switchover) can pg_rewind directly from it instead of the backup
+              # archive. The chart default (512MB) left cnpg-cluster-19 stranded in
+              # CrashLoopBackOff for 15 days when the WAL it needed had aged out of
+              # BOTH the primary and the (gap-prone) S3 archive (2026-07-20; see the
+              # cnpg-old-primary rewind runbook). 4GB ≈ 256 WAL segments — ample for
+              # these low-write DBs, negligible on the 465G local-path disks.
+              # wal_keep_size is reloadable (SIGHUP) — no restart / PVC churn.
+              postgresql:
+                parameters:
+                  wal_keep_size: "4GB"
               enableSuperuserAccess: true
               superuserSecret: ""
               monitoring:

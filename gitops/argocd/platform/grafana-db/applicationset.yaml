@@ -125,6 +125,14 @@ spec:
               storage:
                 size: 8Gi
                 storageClass: local-path
+              # Retain more WAL on the primary so a returning old-primary can
+              # pg_rewind directly from it after a switchover (default 512MB left a
+              # cnpg-cluster member stranded 15 days when the WAL had aged out of
+              # both the primary and S3 — see the cnpg-old-primary rewind runbook).
+              # Reloadable (SIGHUP) — no restart / PVC churn.
+              postgresql:
+                parameters:
+                  wal_keep_size: "4GB"
               # Async streaming replication (CNPG default — intentionally NO
               # `synchronous` block): laptop nodes sleep, so sync replication
               # would stall the primary on a sleeping standby.
