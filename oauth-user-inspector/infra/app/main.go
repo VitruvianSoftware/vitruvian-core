@@ -194,6 +194,15 @@ func main() {
 					// the mapping is ordered after the service exists on a
 					// first-ever deploy.
 					RouteName: app.Service.Name,
+					// Take over the domain if it is still mapped elsewhere
+					// (e.g. prod's oauth-inspector.ipv1337.dev was mapped to a
+					// retired gen-lang demo project). Without this the create
+					// is rejected: "Domain is already mapped to another
+					// project or region ... specify forceOverride". Set
+					// unconditionally for all envs: it is a no-op for a domain
+					// this project already owns (dev/nonprod), and robust
+					// against any future re-map.
+					ForceOverride: pulumi.Bool(true),
 				},
 			})
 			if err != nil {
