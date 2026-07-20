@@ -67,6 +67,13 @@ const secretPrefix = "OAUTH_USER_INSPECTOR_"
 
 const digestMarker = "@sha256:"
 
+// cfPreviewToken is the non-secret placeholder value pulumi-preview.yaml injects
+// as CLOUDFLARE_API_TOKEN for the advisory oauth preview (matrix.cfPreviewToken).
+// It lets the default cloudflare provider CONFIGURE without a real credential;
+// the code treats it as "not a real token" so it never calls the Cloudflare API
+// with it. Keep this in sync with pulumi-preview.yaml.
+const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "oauth-user-inspector")
@@ -228,15 +235,14 @@ func main() {
 			ctx.Export("customDomainDnsTarget", dnsTarget)
 
 			// The Cloudflare credential arrives via the CLOUDFLARE_API_TOKEN env
-			// var — at deploy time the real token, fetched from the dev floating
+			// var — at deploy time the REAL token, fetched from the dev floating
 			// project's Secret Manager as the env's deploy SA
 			// (_deploy-cloud-run.yaml cloudflare-token-secret-project; never a
 			// GitHub secret, never in Pulumi config or state — secrets model
 			// §pipeline-env). Advisory PR previews get a NON-SECRET placeholder
-			// (pulumi-preview.yaml matrix.cfPreviewToken) so the default
-			// cloudflare provider can still CONFIGURE; a dry run makes zero
-			// Cloudflare API calls, and the zone lookup below is skipped under
-			// DryRun so the placeholder is never sent to the API.
+			// (pulumi-preview.yaml matrix.cfPreviewToken, == cfPreviewToken here)
+			// so the default cloudflare provider can still CONFIGURE without a
+			// real credential; a dry run makes zero Cloudflare API calls.
 			//
 			// The DNS record is declared UNCONDITIONALLY whenever customDomain is
 			// set. It must never drop out of the program: once a deploy has
@@ -245,21 +251,30 @@ func main() {
 			// provider to configure, which fails on a token-less preview
 			// ("must provide apiToken"). A genuine token-less *apply* still fails
 			// fast here.
-			if os.Getenv("CLOUDFLARE_API_TOKEN") == "" && !ctx.DryRun() {
+			token := os.Getenv("CLOUDFLARE_API_TOKEN")
+			// A "real" token is anything other than empty or the advisory-preview
+			// placeholder. The zone LOOKUP (a live API call) must key off THIS,
+			// not ctx.DryRun(): a real `pulumi up` also evaluates a DryRun preview
+			// pass, and gating the lookup on DryRun made that pass fall back to a
+			// placeholder zone id — showing a spurious `~zoneId` REPLACE of the
+			// live record on every deploy (the apply pass then re-resolved and
+			// no-op'd it). Keying off the real token keeps both passes of a deploy
+			// consistent (no phantom replace) while the advisory preview, which
+			// has only the placeholder, still skips the API call.
+			tokenIsReal := token != "" && token != cfPreviewToken
+			if !tokenIsReal && !ctx.DryRun() {
 				return fmt.Errorf("customDomain %q is set but CLOUDFLARE_API_TOKEN is empty: the deploy fetches it from the CLOUDFLARE_API_TOKEN secret in the dev floating project's Secret Manager (Cloudflare token with Zone.Read + DNS.Edit on the zone; see _deploy-cloud-run.yaml cloudflare-token-secret-project)", customDomain)
 			}
 			// Resolve the zone by NAME to its id via the API (the zone id is
-			// deliberately not committed; it lives nowhere in this repo). The
-			// lookup is a live API call, so it runs ONLY on a real update — a
-			// dry run uses a placeholder id that keeps the record in the plan
-			// without calling Cloudflare (advisory preview only; the apply pass
-			// re-resolves and writes the real id).
+			// deliberately not committed; it lives nowhere in this repo). Only a
+			// real token can call the API; the advisory preview uses a placeholder
+			// id that keeps the record in the plan without calling Cloudflare.
 			zone := cfg.Get("cloudflareZone")
 			if zone == "" {
 				zone = "ipv1337.dev"
 			}
 			zoneID := zone
-			if ctx.DryRun() {
+			if !tokenIsReal {
 				zoneID = "preview-unresolved-zone-id"
 			} else if strings.Contains(zone, ".") {
 				looked, err := cloudflare.LookupZone(ctx, &cloudflare.LookupZoneArgs{Name: &zone})
