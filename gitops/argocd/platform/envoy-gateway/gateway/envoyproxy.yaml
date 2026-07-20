@@ -45,6 +45,16 @@ spec:
     kubernetes:
       envoyService:
         type: LoadBalancer
+        # Cluster (not Local) external traffic policy so EVERY node answers the
+        # generated NodePort, not only nodes running an Envoy pod. CI reaches
+        # Zitadel's management API over the tailnet via a node's tailscale IP on
+        # this NodePort (_zitadel-apps-apply.yaml): the LB VIP 10.44.86.211 is a
+        # Cilium eBPF LB address that is NOT load-balanced for subnet-router-
+        # forwarded external packets, so the VIP is unreachable from off-cluster
+        # tailnet clients — the NodePort is. Cluster policy keeps that path robust
+        # to Envoy pods rescheduling (any node forwards to the endpoints). The
+        # public edge is unaffected: cloudflared reaches the VIP cluster-internally.
+        externalTrafficPolicy: Cluster
         # Pin the edge VIP so Cilium LB-IPAM assigns exactly 10.44.86.211 (the address
         # cloudflared's tunnel ingress targets). Inert to MetalLB pre-cutover.
         annotations:

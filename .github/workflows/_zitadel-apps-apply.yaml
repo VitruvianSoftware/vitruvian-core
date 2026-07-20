@@ -139,9 +139,19 @@ jobs:
         run: |
           set -euo pipefail
           # TLS terminator must live for this step (backgrounded processes don't
-          # survive across steps): :443 -> internal Envoy :80, Host preserved.
+          # survive across steps): localhost:443 -> the Envoy gateway, Host preserved.
+          # Target the gateway's NodePort on a cluster node's TAILSCALE device
+          # (nuc9i9, a stable control-plane node), NOT the LB VIP 10.44.86.211:
+          # that VIP is a Cilium eBPF LB address and is unreachable from an
+          # off-cluster tailnet client (a subnet-router-forwarded packet to it is
+          # dropped by Cilium's datapath before LB — conntrack never sees it). A
+          # node's tailscale IP is a first-class tailnet device, and Cilium DOES
+          # load-balance NodePort for such traffic; with the gateway service now
+          # externalTrafficPolicy: Cluster (see envoyproxy.yaml), any node forwards
+          # to the Envoy endpoints. This also removes the dependency on the
+          # 10.44.86.0/24 subnet route entirely.
           sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
-            TCP:10.44.86.211:80 &
+            TCP:nuc9i9.coati-koi.ts.net:30265 &
           trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
           # confirm the internal path is up before applying (fail loudly otherwise)
           for _ in $(seq 1 15); do
