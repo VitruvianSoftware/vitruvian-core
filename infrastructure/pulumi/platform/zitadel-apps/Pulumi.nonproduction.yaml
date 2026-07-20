@@ -29,11 +29,16 @@
 # first deploy exports serviceUrl; until then the committed set below applies.
 config:
   zitadel:domain: auth.ipv1337.dev
+  # This env serves at its OWN custom domain, so the OIDC redirect_uri it sends is
+  # the staging origin — it must be allow-listed here or the code->token exchange
+  # fails with a redirect mismatch. (The prod domain was a #926 placeholder from
+  # before the per-env custom domains went live; nonprod has no business
+  # redirecting to prod.) localhost kept for devMode parity with the other envs.
   zitadel-apps:redirectUris:
-    - https://oauth-inspector.ipv1337.dev/
+    - https://oauth-inspector.staging.ipv1337.dev/
     - http://localhost:8080/
   zitadel-apps:postLogoutRedirectUris:
-    - https://oauth-inspector.ipv1337.dev/
+    - https://oauth-inspector.staging.ipv1337.dev/
     - http://localhost:8080/
   # Per-env client name (the dev/live client keeps oauth-user-inspector-web):
   zitadel-apps:appName: "oauth-user-inspector-web-nonproduction"

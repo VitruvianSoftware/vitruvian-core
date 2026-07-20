@@ -488,18 +488,16 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 	// Zitadel application stack. It must be repo-scoped: a job-level `if:` cannot
 	// see an environment-scoped variable.
 	//
-	// Gated OFF during the OSS-project cutover: the per-env oauth-user-inspector
-	// deploy chain landed the app on prj-{d,n,p}-bu1-oss-floating, but only the
-	// `development` GitHub Environment has the Zitadel machine-user key +
-	// Tailscale CI OAuth secrets seeded. With this "true", zitadel-nonprod /
-	// zitadel-prod would fail (empty key, no tailnet join) and BLOCK
-	// deploy-nonprod / deploy-prod. Flip back to "true" once nonproduction and
-	// production have ZITADEL_MACHINE_KEY_JSON + TS_OAUTH_CLIENT_ID/SECRET
-	// seeded and the multi-env zitadel-apps stack (PR #926) has landed.
+	// ENABLED 2026-07-20: the two prerequisites the cutover was waiting on are now
+	// met — nonproduction and production have ZITADEL_MACHINE_KEY_JSON +
+	// TS_OAUTH_CLIENT_ID/SECRET seeded (via tools/sync-env-secrets), and the
+	// multi-env zitadel-apps stack (#926) has landed. With "true", the
+	// zitadel-{dev,nonprod,prod} jobs register each env's OIDC client and sync its
+	// id/secret into that env's oss-floating Secret Manager before the app deploy.
 	if _, err := github.NewActionsVariable(ctx, "zitadel-apps-auto-apply", &github.ActionsVariableArgs{
 		Repository:   repo.Name,
 		VariableName: pulumi.String("ZITADEL_APPS_AUTO_APPLY"),
-		Value:        pulumi.String("false"),
+		Value:        pulumi.String("true"),
 	}, pulumi.Import(pulumi.ID(nm+":ZITADEL_APPS_AUTO_APPLY"))); err != nil {
 		return err
 	}
