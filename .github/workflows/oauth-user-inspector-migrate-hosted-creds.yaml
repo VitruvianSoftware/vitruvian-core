@@ -1,0 +1,117 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# One-time migration of the app's HOSTED OAuth-provider credentials from the
+# retired personal gen-lang project's Secret Manager into each oss-floating
+# project's Secret Manager, under the app's OAUTH_USER_INSPECTOR_ prefix.
+#
+# Context: the oauth-user-inspector "use our app" (hosted) sign-in reads each
+# provider's client_id/secret from GCP Secret Manager (server getSecret +
+# SECRET_PREFIX). The gen-lang deploy had these seeded manually; the migration to
+# the oss projects carried over only Zitadel (minted + synced by the zitadel-apps
+# stack). This job copies the remaining five providers so hosted sign-in works.
+#
+# ZITADEL_* is deliberately EXCLUDED — the zitadel-apps stack owns those in the
+# oss projects; re-copying gen-lang's would clobber the per-env clients.
+#
+# Value handling: each secret is piped `access | versions add` — the bytes flow
+# gen-lang -> oss and are never captured in a variable or printed. Idempotent:
+# creates the destination secret if absent, else adds a new version.
+#
+# PREREQUISITE (one-time, done by the gen-lang owner james.nguyen@gmail.com):
+# grant each env's deploy SA read on gen-lang's secrets, e.g. project-scoped:
+#   for SA in \
+#     oauth-user-inspector-deploy@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com \
+#     oauth-user-inspector-deploy@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com \
+#     oauth-user-inspector-deploy@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com; do
+#     gcloud projects add-iam-policy-binding gen-lang-client-0352693779 \
+#       --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor"
+#   done
+# (Revocable after the migration — the values then live in the oss projects.)
+
+name: oauth-user-inspector-migrate-hosted-creds
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target oss environment to seed
+        type: choice
+        required: true
+        default: production
+        options:
+          - development
+          - nonproduction
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: oauth-user-inspector-migrate-hosted-creds-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: oauth-user-inspector-${{ inputs.environment }}
+    env:
+      SOURCE_PROJECT: gen-lang-client-0352693779
+      DEST_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      PREFIX: OAUTH_USER_INSPECTOR_
+    steps:
+      - name: Authenticate to Google Cloud (WIF, keyless — the env's deploy SA)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Copy hosted-provider secrets gen-lang -> ${{ vars.GCP_PROJECT_ID }} (prefixed)
+        run: |
+          set -euo pipefail
+          # The five hosted providers' creds (Zitadel excluded — owned by the
+          # zitadel-apps stack). Names match the app's getSecret() ids; the app
+          # reads them as ${PREFIX}<name> in the oss projects.
+          SECRETS="
+            GITHUB_APP_OAUTH_CLIENT_ID GITHUB_APP_OAUTH_CLIENT_SECRET
+            GOOGLE_APP_OAUTH_CLIENT_ID GOOGLE_APP_OAUTH_CLIENT_SECRET
+            GITLAB_APP_OAUTH_CLIENT_ID GITLAB_APP_OAUTH_CLIENT_SECRET
+            AUTH0_APP_OAUTH_CLIENT_ID AUTH0_APP_OAUTH_CLIENT_SECRET AUTH0_APP_OAUTH_DOMAIN
+            LINKEDIN_APP_OAUTH_CLIENT_ID LINKEDIN_APP_OAUTH_CLIENT_SECRET
+          "
+          for s in $SECRETS; do
+            dest="${PREFIX}${s}"
+            if ! gcloud secrets describe "$dest" --project="$DEST_PROJECT" >/dev/null 2>&1; then
+              gcloud secrets create "$dest" --project="$DEST_PROJECT" \
+                --replication-policy=automatic \
+                --labels=app=oauth-user-inspector,source=gen-lang-migration
+              echo "  created secret $dest"
+            fi
+            # Pipe the value directly: gen-lang -> oss, byte-exact, never printed.
+            gcloud secrets versions access latest --secret="$s" --project="$SOURCE_PROJECT" \
+              | gcloud secrets versions add "$dest" --project="$DEST_PROJECT" --data-file=-
+            echo "  seeded $dest"
+          done
+          echo "Done: 11 hosted-provider secrets present in $DEST_PROJECT."
