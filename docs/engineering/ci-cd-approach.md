@@ -51,4 +51,4 @@ Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they 
 
 ## 4. CI/CD Terminology
 
-For a quick reference of terms like *Presubmit*, *RBE*, *Blue-green deploy*, and *Quarantine lanes*, see our [CI Definitions](../.github/CI_DEFINITIONS.md) document.
+For a quick reference of terms like *Presubmit*, *RBE*, *Blue-green deploy*, and *Quarantine lanes*, see our [CI Definitions](../../.github/CI_DEFINITIONS.md) document.
