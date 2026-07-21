@@ -10,9 +10,7 @@
       "package-name": "oauth-user-inspector",
       "component": "oauth-user-inspector",
       "changelog-path": "CHANGELOG.md",
-      "exclude-paths": [
-        "oauth-user-inspector/infra"
-      ]
+      "exclude-paths": ["oauth-user-inspector/infra"]
     }
   }
 }
