@@ -36,3 +36,8 @@ config:
   # the dashboard URL and every preview diff). cloudflareZone is kept for the
   # name→id LookupZone fallback if the id is ever unset.
   tabula-app:cloudflareZone: ipv1337.dev
+  # Custom domain: Cloud Run DomainMapping (ForceOverride) + a grey-cloud
+  # Cloudflare CNAME. The zone id is PINNED so a token-less preview resolves it
+  # without a LookupZone (which otherwise shows a phantom ~zoneId replace).
+  tabula-app:customDomain: tabula-api.staging.ipv1337.dev
+  tabula-app:cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104

@@ -181,6 +181,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
@@ -198,6 +199,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
@@ -215,6 +217,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
