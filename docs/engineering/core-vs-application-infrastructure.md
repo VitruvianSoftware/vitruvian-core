@@ -93,6 +93,11 @@ org, under the foundation's gated environments.
 its *own* secrets. It does **not** grant itself a role on the shared VPC, another team's dataset, or the
 project itself — those bindings are authored in the foundation.
 
+Note what the rule does *not* say: it does not cap how many identities an app may have. An app is free to
+create as many service accounts as it likes — the constraint is on what those identities can be *granted*,
+not on their existence. See [§4.1](#41-platform-issued-identities-and-app-created-ones) for how that plays
+out for deploy identities.
+
 ---
 
 ## 4. The archetype catalog
@@ -127,6 +132,28 @@ The catalog converts recurring per-app friction into a one-time platform decisio
 upstream's module layout, and the reason archetypes stay stage-local: they are the platform's opinion
 about how applications are built here, versioned with the foundation that supports them.
 
+### 4.1 Platform-issued identities and app-created ones
+
+The platform **issues a deploy service account** as part of instantiating an archetype: the foundation
+creates it and authors its grants, so the privileges that reach outside the app — deploying to the
+project, pulling from the shared registry, being impersonated by a WIF-federated CI job — are reviewed by
+the people accountable for the org. An app consumes it by stack reference; it does not author it.
+
+**Applications may create additional service accounts of their own, and should not need permission to.**
+The platform-issued deploy SA is a floor, not a cage. What keeps that safe is §3's rule rather than a
+restriction on creation: an app-created identity can only ever hold grants the app itself is allowed to
+make — bindings on resources the app owns. It cannot become a second, unreviewed path to project-level
+power, because the app has no ability to grant project-level power to *any* identity, including one it
+just created.
+
+So the split is:
+
+| | Created by | Carries |
+|---|---|---|
+| **Deploy SA** (platform-issued) | Foundation, per app per env | Grants that reach outside the app — deploy, registry pull, WIF impersonation |
+| **Runtime SA** | The app | Access to the app's own secrets and resources |
+| **Additional SAs** | The app, freely | Only what the app can grant on what the app owns |
+
 ### Adding to the catalog
 
 A new archetype is a maintainer-approved change. It must state the application type it serves, the core
@@ -152,6 +179,7 @@ env-gated CI workflows.
 | Log sinks, centralized logging, CAI monitoring, VPC-SC perimeters | `gcp-org` |
 | The infra-pipeline project and the shared Artifact Registry (build-once home) | `gcp-projects` (`infra_pipelines`) |
 | The WIF pool and provider (`foundation-pool`) — the CI trust anchor | `gcp-bootstrap` |
+| The **deploy service account** per app per env, and its grants ([§4.1](#41-platform-issued-identities-and-app-created-ones)) | `gcp-app-infra` *(target)* |
 | Billing budgets | `gcp-projects` |
 
 Note the pattern: **enabling a service is core; using it is not.** `bigquery.googleapis.com` on the
@@ -181,12 +209,17 @@ through the pipeline's secret injection.
 
 ## 7. Open calls and current-state deltas
 
-Four boundary cases are **not yet ruled on**. Two of them describe code that exists today and would move
-under the rule in §3. Nothing here should be treated as settled.
+**Ruled:** the **deploy service account** is platform-issued — the foundation creates it and authors its
+grants — and applications may additionally create their own service accounts without asking. See
+[§4.1](#41-platform-issued-identities-and-app-created-ones). This is a change from current practice:
+`oauth-user-inspector/infra/identity` today creates `oauth-user-inspector-deploy` *and* its project-level
+grants, which is the app granting itself power over a project it does not own. Moving that to the
+foundation is tracked as a follow-up; the app will consume the SA email by stack reference.
+
+Three boundary cases remain **not yet ruled on**. Nothing below should be treated as settled.
 
 | # | Case | Current state | Proposal |
 |---|---|---|---|
-| 1 | **Deploy service account** | `oauth-user-inspector/infra/identity` creates `oauth-user-inspector-deploy` *and* its project-level grants — the app granting itself power over a project it does not own. | Move creation + grants to the foundation; the app consumes the SA email by stack reference. Fails test 4 as written. |
 | 2 | **Per-app Artifact Registry repo** | Lives in the shared infra-pipeline project (core), created outside the foundation. | Foundation declares the repo (naming, retention, immutable tags); the app only pushes to it. |
 | 3 | **Secret containers** | Inconsistent — `tabula` creates its own secrets, while `oauth-user-inspector/infra/identity` notes that `secretmanager.secrets.CREATE` runs as the folder-scoped `sa-terraform-proj`. | App owns containers in its own project; values stay out of IaC. Pick one and make both apps match. |
 | 4 | **Databases** | Not yet exercised on this split. | Instance/cluster is core; database and schema are the app's. |
