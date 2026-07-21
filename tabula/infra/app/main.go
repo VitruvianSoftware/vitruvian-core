@@ -122,7 +122,12 @@ func main() {
 		// derive the suffix from the digest's short hash (a digest is not a legal
 		// revision name itself).
 		shortDigest := imageDigest[i+len(digestMarker) : i+len(digestMarker)+8]
-		revisionName := fmt.Sprintf("tabula-%s-%s", env, shortDigest)
+		// Cloud Run REQUIRES a revision name to be prefixed with its service
+		// name; `tabula-<env>-<sha>` against service `tabula-api-<env>` is
+		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
+		// from one serviceName so they cannot drift apart again.
+		serviceName := fmt.Sprintf("tabula-api-%s", env)
+		revisionName := fmt.Sprintf("%s-%s", serviceName, shortDigest)
 
 		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
 		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")
@@ -148,7 +153,7 @@ func main() {
 		app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
 			Region:              region,
-			Name:                fmt.Sprintf("tabula-api-%s", env),
+			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
 			// NODE_ENV/GOOGLE_CLOUD_PROJECT/SECRET_PREFIX are all the app needs
