@@ -32,32 +32,32 @@ import (
 // VPC), matching upstream's example_floating_project.tf (toggle-gated), plus
 // the monorepo-specific OSS floating project (separately toggle-gated below).
 func deployFloatingProject(ctx *pulumi.Context, args *Args, result *BUProjects) error {
-	if !args.FloatingProjectEnabled {
-		return nil
+	// Upstream's toggle-gated sample floating project. Guarded on its OWN
+	// flag only: a BU may want the OSS project below without this one.
+	if args.FloatingProjectEnabled {
+		floatingProject, err := single_project.New(ctx, "bu-floating-project", &single_project.Args{
+			DefaultServiceAccount: "disable", // upstream default; see the svpc project
+			ProjectID:             fmt.Sprintf("%s-%s-%s-sample-floating", args.ProjectPrefix, args.EnvCode, args.BusinessCode),
+			FolderID:              args.FolderID,
+			BillingAccount:        args.BillingAccount,
+			RandomProjectID:       args.RandomSuffix,
+			Labels:                args.Labels("sample-application", "none"),
+			Budget:                args.Budget,
+			ActivateApis: []string{
+				"compute.googleapis.com",
+				"container.googleapis.com",
+				"run.googleapis.com",
+				"artifactregistry.googleapis.com",
+				"billingbudgets.googleapis.com",
+				"logging.googleapis.com",
+			},
+			ApiPropagationSeconds: args.ApiPropagationSeconds,
+		})
+		if err != nil {
+			return err
+		}
+		result.FloatingProjectID = floatingProject.ProjectID
 	}
-
-	floatingProject, err := single_project.New(ctx, "bu-floating-project", &single_project.Args{
-		DefaultServiceAccount: "disable", // upstream default; see the svpc project
-		ProjectID:             fmt.Sprintf("%s-%s-%s-sample-floating", args.ProjectPrefix, args.EnvCode, args.BusinessCode),
-		FolderID:              args.FolderID,
-		BillingAccount:        args.BillingAccount,
-		RandomProjectID:       args.RandomSuffix,
-		Labels:                args.Labels("sample-application", "none"),
-		Budget:                args.Budget,
-		ActivateApis: []string{
-			"compute.googleapis.com",
-			"container.googleapis.com",
-			"run.googleapis.com",
-			"artifactregistry.googleapis.com",
-			"billingbudgets.googleapis.com",
-			"logging.googleapis.com",
-		},
-		ApiPropagationSeconds: args.ApiPropagationSeconds,
-	})
-	if err != nil {
-		return err
-	}
-	result.FloatingProjectID = floatingProject.ProjectID
 
 	// OSS Floating Project (not attached to any VPC, toggle-gated)
 	// A second floating project in the same BU folder, dedicated to hosting the
