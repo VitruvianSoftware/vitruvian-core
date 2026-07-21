@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.6.1...foundation-gcp-bootstrap-v0.7.0) (2026-07-21)
+
+
+### Features
+
+* **gcp-app-infra:** add the live foundation stage 5 and adopt the app deploy identity ([#995](https://github.com/VitruvianSoftware/vitruvian-core/issues/995)) ([e631130](https://github.com/VitruvianSoftware/vitruvian-core/commit/e63113009aa39d409b9e1e3db7d20b11dc6d4b92))
+
 ## [0.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.6.0...foundation-gcp-bootstrap-v0.6.1) (2026-07-18)
 
 
