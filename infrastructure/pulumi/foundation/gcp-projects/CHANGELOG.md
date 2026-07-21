@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.0...foundation-gcp-projects-v1.4.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **gcp-projects:** correct the deploy SA description after the stage relocation ([#1000](https://github.com/VitruvianSoftware/vitruvian-core/issues/1000)) ([ab0ea1a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ab0ea1a4ebcc98757d22306e6d76f47a3b223413))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.4...foundation-gcp-projects-v1.4.0) (2026-07-21)
 
 
