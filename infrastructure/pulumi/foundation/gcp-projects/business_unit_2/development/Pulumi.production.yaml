@@ -1,0 +1,41 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 4 — bu2 development leaf.
+#
+# Deploys business unit "bu2" under fldr-development-bu2 (parented off the live
+# gcp-environments development env folder, i.e. under fldr-foundation-1). The
+# environment identity (development/d) is pinned in this leaf's main.go, not
+# configured here (upstream business_unit_2/development layout).
+#
+# Hybrid go-live posture: the full 4-projects machinery is ported, but only the
+# FLOATING project type is instantiated for now (svpc/peering/confidential-space/
+# CMEK toggled off). Floating-only keeps this stack collision-free for
+# co-tenancy — no Shared-VPC attach, no VPC-SC perimeter mutation, no peering.
+# The BU's shared infra-pipeline project lives in the sibling
+# business_unit_2/shared leaf.
+#
+# Promotion order: development → nonproduction → production
+# This is the first environment deployed (auto-approve).
+config:
+  # --- Business unit identity ---
+  foundation-projects-bu2-development:business_code: "bu2"
+
+  # --- Core identifiers ---
+  foundation-projects-bu2-development:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu2-development:project_prefix: "prj"
+  foundation-projects-bu2-development:folder_prefix: "fldr"
+
+  # --- Cross-stage reference (per-env env leaf stack; org/network refs unused
+  #     while only the floating type is enabled, so they are omitted) ---
+  foundation-projects-bu2-development:env_stack_name: "ipv1337/foundation-environments-development/production"
+
+  # --- Project-type enablement: FLOATING ONLY ---
+  foundation-projects-bu2-development:floating_project_enabled: "false"
+  # OSS apps home (bu2 = tabula): second floating project prj-{env}-bu2-oss-floating
+  foundation-projects-bu2-development:oss_floating_project_enabled: "true"
+  foundation-projects-bu2-development:svpc_project_enabled: "false"
+  foundation-projects-bu2-development:peering_project_enabled: "false"
+  foundation-projects-bu2-development:confidential_space_enabled: "false"
+
+  # --- Features off for the floating-only first cut ---
+  foundation-projects-bu2-development:cmek_enabled: "false"
+  foundation-projects-bu2-development:peering_enabled: "false"
+  foundation-projects-bu2-development:enforce_vpcsc: "false"
