@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "oauth-user-inspector",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "OAuth User Inspector with a secure backend for token exchange.",
   "main": "dist-server/server.js",
   "scripts": {
