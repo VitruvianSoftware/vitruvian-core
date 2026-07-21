@@ -50,6 +50,16 @@ import (
 
 const secretPrefix = "TABULA_"
 
+// The app's runtime secrets, unprefixed. Each gets a secret-level accessor
+// binding for both the deploy and runtime service accounts.
+var appSecrets = []string{
+	"DATABASE_URL",
+	"JWT_SECRET",
+	"WORKOS_API_KEY",
+	"WORKOS_CLIENT_ID",
+	"UPSTASH_REDIS_URL",
+}
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-deploy-identity")
@@ -170,6 +180,41 @@ func main() {
 			},
 		}); err != nil {
 			return err
+		}
+
+		// SECRET-LEVEL grants for the app's own secrets.
+		//
+		// The project-level CONDITIONAL bindings above do NOT satisfy
+		// secretmanager.versions.access: for a version read the resource is
+		// projects/<num>/secrets/<NAME>/versions/<v>, and a conditional
+		// project-level grant is not honoured for it. Three cold deploys failed
+		// with PERMISSION_DENIED on exactly that permission while the condition
+		// itself was verified correct in the live policy.
+		//
+		// Unlike oauth-user-inspector, tabula's DEPLOY SA must read a secret from
+		// CI (`prisma migrate deploy --phase expand` against TABULA_DATABASE_URL)
+		// and its runtime SA reads the rest at boot — so both get an explicit,
+		// unconditioned binding scoped to each individual secret. Same construct
+		// the CLOUDFLARE_API_TOKEN grant below already uses.
+		for _, secretID := range appSecrets {
+			for _, m := range []struct {
+				name   string
+				member pulumi.StringOutput
+			}{
+				{"deploy", deployMember},
+				{"runtime", pulumi.Sprintf("serviceAccount:%s", runtimeSA.Email)},
+			} {
+				if _, err := secretmanager.NewSecretIamMember(ctx,
+					"secret-accessor-"+m.name+"-"+secretID,
+					&secretmanager.SecretIamMemberArgs{
+						Project:  pulumi.String(projectID),
+						SecretId: pulumi.String(secretPrefix + secretID),
+						Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+						Member:   m.member,
+					}); err != nil {
+					return err
+				}
+			}
 		}
 
 		// Runtime SA: Secret Manager access CONDITIONED to this app's prefix, so a
