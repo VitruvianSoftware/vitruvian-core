@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.4...foundation-gcp-projects-v1.4.0) (2026-07-21)
+
+
+### Features
+
+* **gcp-projects:** add business_unit_2 for tabula's dedicated per-env projects ([#973](https://github.com/VitruvianSoftware/vitruvian-core/issues/973)) ([1215ec6](https://github.com/VitruvianSoftware/vitruvian-core/commit/1215ec6f9d078a02a7bd8e27815e7c81198edd60))
+
 ## [1.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.3...foundation-gcp-projects-v1.3.4) (2026-07-20)
 
 
