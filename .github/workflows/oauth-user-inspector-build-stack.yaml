@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # CI apply for the oauth-user-inspector SHARED BUILD stack
-# (infrastructure/pulumi/apps/oauth-user-inspector-build): the cross-env
+# (oauth-user-inspector/infra/build): the cross-env
 # Artifact Registry + build SA (+ its foundation-pool WIF binding + per-env
 # Cloud Run service-agent AR readers) in the foundation's shared infra-pipeline
 # project (prj-c-bu1-infra-pipeline-*).
@@ -55,7 +55,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "infrastructure/pulumi/apps/oauth-user-inspector-build/**"
+      - "oauth-user-inspector/infra/build/**"
       - ".github/workflows/oauth-user-inspector-build-stack.yaml"
   workflow_dispatch:
 
@@ -95,7 +95,7 @@ jobs:
         id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/apps/oauth-user-inspector-build
+        working-directory: oauth-user-inspector/infra/build
         run: |
           # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
           # pipeline does not abort here and we capture pulumi's real exit code.

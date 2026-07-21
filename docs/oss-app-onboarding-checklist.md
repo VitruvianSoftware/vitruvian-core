@@ -9,7 +9,7 @@ personal single-project deploy onto the live foundation. Every step here was a
 lesson; the "⚠️ Why" notes are the ones that bit us.
 
 - **Worked example / source of truth:** `oauth-user-inspector/infra/`,
-  `infrastructure/pulumi/apps/oauth-user-inspector-build/`, and
+  `oauth-user-inspector/infra/build/`, and
   [`oauth-user-inspector/docs/OPERATIONS.md`](../oauth-user-inspector/docs/OPERATIONS.md).
 - **Design:** `docs/superpowers/specs/2026-07-10-oss-application-stage-design.md`.
 - **Reusable module:** `pulumi/examples/go-foundation/5-app-infra/modules/serverless_space` +

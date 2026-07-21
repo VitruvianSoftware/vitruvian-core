@@ -11,11 +11,8 @@ Pulumi.*.yaml
 # oauth-user-inspector's PER-APP stacks (app + deploy identity) live co-located
 # under oauth-user-inspector/infra/ (repo-wide convention: <app>/infra/ holds
 # per-app deployment infra); their stack-config policy is replicated by
-# oauth-user-inspector/infra/.gitignore. Only the SHARED -build stack stays here.
-# oauth-user-inspector-build (shared Artifact Registry + build identity in the
-# infra-pipeline project) commits its production stack config (region only; the
-# projects are StackReference-driven).
-!apps/oauth-user-inspector-build/Pulumi.*.yaml
+# oauth-user-inspector/infra/.gitignore — which now also covers the shared
+# -build stack, relocated there so all three of the app's stacks sit together.
 # zitadel-apps commits its dev stack config (non-secret Zitadel org/project/app
 # identifiers + redirect URIs) so the deploy workflow resolves them on a clean
 # checkout. The Zitadel machine-user credential is injected from a pipeline
@@ -81,4 +78,3 @@ platform/zitadel-apps/zitadel-apps
 
 
 # Compiled Go pulumi-program binary (bazel/go build output) — never track.
-apps/oauth-user-inspector-build/oauth-user-inspector-build

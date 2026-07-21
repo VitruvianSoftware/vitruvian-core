@@ -142,7 +142,7 @@ the tailnet.
 
 > The shared **build** stack (Artifact Registry + build service account) lives
 > outside this directory at
-> [`infrastructure/pulumi/apps/oauth-user-inspector-build/`](../infrastructure/pulumi/apps/oauth-user-inspector-build/)
+> [`oauth-user-inspector/infra/build/`](infra/build/)
 > because it is a single cross-environment resource, not per-env. See
 > [docs/OPERATIONS.md](docs/OPERATIONS.md#the-moving-parts).
 
