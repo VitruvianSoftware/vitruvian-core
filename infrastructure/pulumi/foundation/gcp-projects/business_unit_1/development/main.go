@@ -165,6 +165,26 @@ func main() {
 				deploySAs[app.Name] = res.DeployServiceAccountEmail
 			}
 		}
+		// The BU's app-infra pipeline identity: applies the stage-5 leaf for
+		// this BU+env. Separate from the per-app SAs above because a stage-5
+		// leaf is ONE stack that may host several apps, so it cannot be applied
+		// by any single app's identity. Its own grants live here, in a stage it
+		// does not apply — which is what makes ungating stage 5 safe.
+		if cfg.OSSFloatingProjectEnabled && len(cfg.Apps) > 0 {
+			pipeline, err := app_deploy_identity.DeployBUPipeline(ctx, cfg.BusinessCode, &app_deploy_identity.PipelineArgs{
+				BusinessCode:         cfg.BusinessCode,
+				Env:                  cfg.Env,
+				ProjectID:            projects.OSSFloatingProjectID,
+				Roles:                defaultAppInfraPipelineRoles,
+				WorkloadIdentityPool: refs.WIFPoolName,
+				GitHubEnvironment:    "foundation-app-" + cfg.Env,
+			})
+			if err != nil {
+				return err
+			}
+			ctx.Export("app_infra_pipeline_service_account", pipeline.ServiceAccountEmail)
+		}
+
 		for app, email := range deploySAs {
 			ctx.Export(app+"_deploy_service_account", email)
 		}
