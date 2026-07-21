@@ -6,7 +6,7 @@ This is a full-stack web application designed to inspect OAuth user information 
 
 The frontend is a React application built with Vite and styled with Tailwind CSS. It allows users to authenticate using OAuth or a Personal Access Token (PAT). The backend is an Express server written in TypeScript that handles the server-side part of the OAuth flow, and now lives entirely under `server/`.
 
-The project is configured for deployment to Google Cloud Run using Docker and Google Cloud Build.
+The deployed instances run on Google Cloud Run, one per environment, shipped through CI/CD (build once, promote the same image digest through development → nonproduction → production). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the pipeline, identity, secrets, and runbooks. This file is a quick orientation for coding agents.
 
 ## Building and Running
 
@@ -44,15 +44,19 @@ Start the compiled server:
 npm start
 ```
 
-### Deployment
+### Testing
 
-Deploy to Cloud Run with:
+Run the tests before proposing changes:
 
 ```bash
-npm run deploy
+pnpm test        # jest + ts-jest (server/__tests__ and frontend/__tests__)
 ```
 
-The `Dockerfile` copies `server/` rather than individual backend files. Cloud Build uses this Dockerfile to build and deploy.
+Outbound HTTP is mocked with a pure-CommonJS fetch mock (`server/__tests__/fetch-mock.ts`); an unregistered network call throws "No handler registered". In CI the same suite runs as `bazel test //oauth-user-inspector:unit_tests`.
+
+### Deployment
+
+The deployed instances run on **Cloud Run**, one per environment, shipped through CI/CD — build once, promote the same image digest through development → nonproduction → production. Do **not** deploy from a workstation. Full pipeline and runbooks: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The `Dockerfile` copies `server/` rather than individual backend files.
 
 ## Notes for Agents/Copilots
 
@@ -69,5 +73,5 @@ The `Dockerfile` copies `server/` rather than individual backend files. Cloud Bu
 ## Development Conventions
 
 - **Code Style:** The project uses Prettier for code formatting.
-- **Testing:** There are no testing frameworks configured in the project.
+- **Testing:** Jest + ts-jest (backend in `server/__tests__/`, frontend helpers in `frontend/__tests__/`). Add a test with every behavioral change.
 - **Commits:** There are no specific commit message conventions enforced.
