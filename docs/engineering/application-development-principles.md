@@ -23,8 +23,8 @@ This is one of three companion documents. Read them together:
 | Doc | Role |
 |---|---|
 | **Application Development Guiding Principles** (this doc) | The *principles* and the *per-category playbook* — what good looks like. |
-| **Conventions & Standard Operating Procedures** (`docs/engineering/conventions.md`) | The *mechanical how* — exact commands, file layouts, the build/deploy/secrets recipes, and the contributor SOP (commit format, merge queue, Copybara). Where this doc says "build via the Bazel graph," the SOP says which target. |
-| **Alignment Gaps** (`docs/engineering/alignment-gaps.md`) | The *current delta* — the inventory of where specific apps diverge from these principles, severity-ranked, with remediation recommendations. When this doc marks a rule **(target)**, the gaps doc tracks who isn't there yet. |
+| [Contributing — Standard Operating Procedure](../../CONTRIBUTING.md) | The *mechanical how* — exact commands, file layouts, the build/deploy/secrets recipes, and the contributor SOP (commit format, merge queue, Copybara). Where this doc says "build via the Bazel graph," the SOP says which target. |
+| [Alignment Gaps](application-alignment-gaps.md) | The *current delta* — the inventory of where specific apps diverge from these principles, severity-ranked, with remediation recommendations. When this doc marks a rule **(target)**, the gaps doc tracks who isn't there yet. |
 | [Core vs. Application Infrastructure](core-vs-application-infrastructure.md) | *Where* a resource's IaC lives — the core/archetype/application split, and the rule that decides the boundary cases. |
 
 When a principle here and a recipe in the SOP appear to conflict, **this doc defines intent and the SOP defines the current mechanism**; fix the SOP, not the principle.
@@ -367,8 +367,4 @@ Answer these in order. The first match is your category.
 | Self-hosted platform service | **dev-local k3s** | git → ArgoCD (GitOps) |
 | IaC / platform definition | the resources it creates | `bazel run //tools/pulumi:*` / ArgoCD |
 
-**Whatever the category, every new app inherits all of [§2](#2-cross-cutting-principles-every-app):** everything-as-code, a codified WIF deploy identity if it deploys, secrets out of git, a committed `.env.example`, MIT + the governance quartet, the Copybara mirror (or a documented exemption), a CI build+test gate, and `/health` + structured logs if it's long-running. A new app should be born *aligned* — see the SOP for the scaffold, and the Alignment Gaps doc for what existing apps still owe.
-
----
-
-The doc is at `docs/engineering/application-development-principles.md` (the `docs/engineering/` directory does not yet exist and will be created on write). All cited paths/workflows/identifiers were verified against the repo: `infrastructure/gcp-identities.tsv`, `oauth-user-inspector/infra/identity/`, the `envOrConfigSecret` helper at `infrastructure/pulumi/pkg/copybara_sync/sync.go:120`, the `//:tidy` target in `BUILD`, and the workflow filenames under `.github/workflows/`. Cross-references to the two companion docs use the names `docs/engineering/conventions.md` (CONTRIBUTING/SOP) and `docs/engineering/alignment-gaps.md` (the gaps doc) — confirm these match the filenames your other two subagents are using.
+**Whatever the category, every new app inherits all of [§2](#2-cross-cutting-principles-every-app):** everything-as-code, a codified WIF deploy identity if it deploys, secrets out of git, a committed `.env.example`, MIT + the governance quartet, the Copybara mirror (or a documented exemption), a CI build+test gate, and `/health` + structured logs if it's long-running. A new app should be born *aligned* — see the [SOP](../../CONTRIBUTING.md) for the scaffold, and the [Alignment Gaps](application-alignment-gaps.md) doc for what existing apps still owe.
