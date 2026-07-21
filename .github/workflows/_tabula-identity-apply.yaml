@@ -1,0 +1,116 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: _tabula-identity-apply
+
+# Reusable single-env apply of the tabula identity stack
+# (tabula/infra/identity). The caller
+# (tabula-identity-stack.yaml) invokes it once per env in a
+# sequential dev -> nonproduction -> production chain, each leg gated by its own
+# foundation-proj-<env> GitHub Environment.
+#
+# IDENTITY: runs as the PER-ENV foundation-proj-<env> service account (the
+# stage-4 projects SA for that leaf, which created the env's oss-floating project
+# and set its IAM in stage-4). It covers this stack's resources — deploy/runtime
+# SA create, per-app project IAM, Cloudflare-token secret IAM — with no new
+# grant. This stack does NOT enable any API (the siteverification enable each
+# env's self-verify path needs lives in the foundation project factory's
+# ActivateApis for every prj-{env}-bu1-oss-floating project, declared as the
+# project owner — plus a one-time manual console enable per project, the API
+# being console-only).
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: Pulumi stack / env (development | nonproduction | production)
+        required: true
+        type: string
+      gh-environment:
+        description: GitHub Environment supplying the per-env WIF vars (foundation-proj-<env>)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    # Serialize applies of the SAME stack; never cancel an in-flight pulumi up.
+    concurrency:
+      group: tabula-identity-stack-deploy-${{ inputs.stack }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Per-env foundation identity + reviewer gate (protected branches only).
+    environment: ${{ inputs.gh-environment }}
+    env:
+      GOWORK: off
+      # Authenticate Pulumi's github:// plugin downloads so the job does not hit
+      # the 60/hr/IP unauthenticated GitHub API rate limit CI runners routinely
+      # exhaust (intermittent 403s); GITHUB_TOKEN raises this to 5000/hr. Same
+      # class of fix as #756 / the build-stack workflow.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi up (tabula identity / ${{ inputs.stack }})
+        id: pulumi
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          STACK: ${{ inputs.stack }}
+        working-directory: tabula/infra/identity
+        run: |
+          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+          # pipeline does not abort here and we capture pulumi's real exit code.
+          set +e -u -o pipefail
+          echo "::group::pulumi up --diff (${STACK})"
+          { pulumi stack select -c "${STACK}" \
+              && pulumi up --yes --diff --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      # Render the pulumi output digest onto the run's step-summary page. Runs
+      # even when the deploy fails so the failure — and what it touched — is
+      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
+      # destructive replace/delete, and tucks the raw log into a <details>.
+      - name: Pulumi digest → step summary
+        if: always()
+        env:
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "tabula-identity-${{ inputs.stack }}" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
