@@ -25,6 +25,7 @@ This is one of three companion documents. Read them together:
 | **Application Development Guiding Principles** (this doc) | The *principles* and the *per-category playbook* — what good looks like. |
 | **Conventions & Standard Operating Procedures** (`docs/engineering/conventions.md`) | The *mechanical how* — exact commands, file layouts, the build/deploy/secrets recipes, and the contributor SOP (commit format, merge queue, Copybara). Where this doc says "build via the Bazel graph," the SOP says which target. |
 | **Alignment Gaps** (`docs/engineering/alignment-gaps.md`) | The *current delta* — the inventory of where specific apps diverge from these principles, severity-ranked, with remediation recommendations. When this doc marks a rule **(target)**, the gaps doc tracks who isn't there yet. |
+| [Core vs. Application Infrastructure](core-vs-application-infrastructure.md) | *Where* a resource's IaC lives — the core/archetype/application split, and the rule that decides the boundary cases. |
 
 When a principle here and a recipe in the SOP appear to conflict, **this doc defines intent and the SOP defines the current mechanism**; fix the SOP, not the principle.
 
