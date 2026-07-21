@@ -385,6 +385,70 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: go test -race -cover ./...
 
+  go-test-infra:
+    # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
+    #
+    # These had NO test lane at all. They are outside go.work, the `go-test`
+    # matrix above covers only devx/homelab, and `pulumi_project` emits just
+    # `bazel run` wrappers -- no go_test target -- so `bazel test //...` never
+    # saw them either. Tests written for these programs were therefore DEAD:
+    # they compiled on a developer's laptop and never executed in CI.
+    #
+    # That was not hypothetical. The floating-project toggle regression guard
+    # (modules/base_env, added with the bu2 rollout) had never once run.
+    #
+    # Modules are discovered rather than listed so a new app's infra is covered
+    # the day it lands, and only modules that actually contain a _test.go are
+    # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
+    # is off because these modules are deliberately not workspace members.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect IaC-relevant changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            iac:
+              - 'infrastructure/pulumi/**'
+              - '*/infra/**'
+              - '.github/workflows/ci.yaml'
+      - uses: actions/setup-go@v7
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
+        with:
+          go-version-file: go.mod
+      - name: go test (IaC modules with tests)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
+        run: |
+          set -euo pipefail
+          ran=0
+          while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            # Only modules that actually carry tests: `go test ./...` in a
+            # module with none is a slow no-op that still resolves the graph.
+            if ! find "$dir" -name '*_test.go' -print -quit | grep -q .; then
+              continue
+            fi
+            ran=$((ran + 1))
+            echo "::group::go test $dir"
+            (cd "$dir" && go test ./...)
+            echo "::endgroup::"
+          done < <(find infrastructure/pulumi */infra -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort)
+          echo "ran go test in $ran IaC module(s)"
+
   validate-butane:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There
     # is no Bazel target for this -- it is a devx-specific check ported verbatim
