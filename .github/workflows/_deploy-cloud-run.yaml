@@ -101,6 +101,14 @@ on:
         description: "Pulumi project dir, e.g. infrastructure/pulumi/apps/tabula"
         required: true
         type: string
+      secret-prefix:
+        description: >-
+          Secret Manager id prefix for this app's secrets (e.g. TABULA_). Set it
+          when the app co-tenants a project with others, so `DATABASE_URL`
+          resolves to `<prefix>DATABASE_URL`. Empty keeps the bare name.
+        required: false
+        type: string
+        default: ""
       env-prefix:
         description: "Env-var prefix the Pulumi program reads, e.g. TABULA"
         required: true
@@ -227,6 +235,8 @@ jobs:
 
       - name: Run database migrations
         if: ${{ inputs.run-migrations }}
+        env:
+          SECRET_PREFIX: ${{ inputs.secret-prefix }}
         # Before the new revision takes traffic; vendored schema-engine keeps
         # this hermetic apart from the database connection itself. (The
         # vendored-Prisma pattern -- tabula's; see the caller-contract note.)
@@ -243,11 +253,21 @@ jobs:
             //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
           export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
           export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
+          # The secret id carries the app's SECRET_PREFIX when one is set, so
+          # co-tenant apps sharing a project don't collide on a bare
+          # `DATABASE_URL`. Falls back to the bare name for callers that have no
+          # prefix, keeping pre-existing single-tenant deploys working.
+          #
+          # NB: a secret that does not exist returns PERMISSION_DENIED, not
+          # NOT_FOUND — so reading the WRONG id is indistinguishable from an IAM
+          # gap. Reading the wrong id here cost three rounds of IAM debugging on
+          # the tabula bu2 migration; the message below now names the id.
+          SECRET_ID="${SECRET_PREFIX}DATABASE_URL"
           # Plain assignment (not `export VAR=$(...)`): export would swallow
           # the gcloud exit status and hand Prisma an empty DATABASE_URL.
-          DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project="$GCP_PROJECT_ID")"
+          DATABASE_URL="$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$GCP_PROJECT_ID")"
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL secret read returned empty (deployer SA needs secretAccessor on it)"
+            echo "::error::secret ${SECRET_ID} read returned empty in ${GCP_PROJECT_ID} — check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET (a missing secret reports PERMISSION_DENIED)"
             exit 1
           fi
           export DATABASE_URL
