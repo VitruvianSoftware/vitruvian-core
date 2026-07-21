@@ -86,8 +86,7 @@ export async function getSecret(secretName: string): Promise<string> {
     return cached.value;
   }
 
-  const projectId =
-    process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT;
   if (!projectId) {
     throw new Error(
       `Cannot resolve secret ${secretName}: neither the environment nor ` +
