@@ -373,6 +373,7 @@ ROWS_SWEEP=""
 ROWS_IAC=""
 ROWS_META=""
 ROWS_COPYBARA=""
+ROWS_RELEASE=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -390,6 +391,7 @@ emit() {
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
+    release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
   esac
 }
 
@@ -1107,6 +1109,51 @@ check_pulumi_project_names() {
   done
 }
 
+# Release-unit boundary guard for CO-LOCATED app infrastructure.
+#
+# A release-please package claims every commit touching files under its path.
+# Since app infra moved next to the app it serves (`<app>/infra/`), a purely
+# INFRASTRUCTURE change now lands inside an APPLICATION's release unit -- so a
+# `feat:` commit touching `<app>/infra/**` bumps the app's semver and writes a
+# changelog entry for a feature the app does not have. The resulting release
+# commit rewrites <app>/package.json + CHANGELOG.md, which matches the app's
+# deploy path filter, so it also DEPLOYS an unchanged artifact.
+#
+# That is not hypothetical: it shipped oauth-user-inspector 1.1.0 (#995 ->
+# #997), whose sole changelog line credits a foundation change, and triggered a
+# full dev->nonprod->prod promotion of byte-identical code.
+#
+# The fix is release-please's per-package `exclude-paths` (repo-root-relative;
+# a commit is dropped when ALL of its files under that package path match --
+# verified against release-please src/util/commit-exclude.ts). This check makes
+# that mandatory, so the NEXT app to co-locate its infra cannot silently
+# reintroduce the bug. It is the release-side sibling of the Copybara
+# infra-leak guard above: same `<app>/infra/` convention, different automation
+# that has to be taught the artifact boundary.
+check_release_infra_exclude() {
+  ok=1
+  for cfg in */release-please-config.json; do
+    [ -f "$cfg" ] || continue
+    app="${cfg%%/*}"
+    [ -d "$app/infra" ] || continue   # only co-located apps are at risk
+    rel="$cfg"
+    excluded="$(python3 - "$cfg" "$app" <<'PY'
+import json, sys
+cfg, app = sys.argv[1], sys.argv[2]
+pkg = json.load(open(cfg)).get("packages", {}).get(app, {})
+print("yes" if f"{app}/infra" in (pkg.get("exclude-paths") or []) else "no")
+PY
+)"
+    if [ "$excluded" = "yes" ]; then
+      emit "release" "$GLYPH_OK" "$C_GREEN" "$rel" "$app/infra excluded" "excluded"         "co-located infra is outside the app's release unit" ""
+    else
+      emit "release" "$GLYPH_FAIL" "$C_RED" "$rel" "$app/infra NOT excluded" "excluded"         "$app co-locates infra at $app/infra, so an infrastructure-only commit bumps the APP's version and triggers a deploy of unchanged code"         "add \"exclude-paths\": [\"$app/infra\"] to packages[\"$app\"] in $rel (paths are repo-root-relative)"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+  done
+  return $((1 - ok))
+}
+
 check_copybara_infra_exclude() {
   cb="$COPYBARA_CONFIG_FILE"
   [ -f "$cb" ] || return 0
@@ -1294,6 +1341,7 @@ check_zitadel_import
 check_pulumi_project_names
 check_copybara_infra_exclude
 
+check_release_infra_exclude
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1309,6 +1357,7 @@ print_group "Merge-queue required checks (repo_config → workflow merge_group j
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
+print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

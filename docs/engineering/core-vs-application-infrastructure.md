@@ -218,6 +218,41 @@ through the pipeline's secret injection.
 
 ---
 
+### 6.1 Co-location has an automation cost — pay it explicitly
+
+Putting an app's infrastructure at `<app>/infra/` is right (§2, layer 3), but it changes what the
+directory *means*. `<app>/` used to be "the application". It is now "the application **and** its
+infrastructure" — while every path-based automation still reads the old meaning.
+
+**The rule: a version bump and a deploy must be triggered by "did the artifact change?", never by
+"did a file under this directory change?"** Each automation that keys off `<app>/**` has to be told
+where the artifact boundary now sits.
+
+| Automation | Keys off | Must be told |
+|---|---|---|
+| **release-please** | files under the package path | `exclude-paths: ["<app>/infra"]` — infra is not part of the published artifact |
+| **Deploy workflow** | `paths:` globs, or the Bazel graph | infra stacks that aren't container inputs (e.g. the identity stack) are not deploy triggers |
+| **Copybara** | `origin_files` / `destination_files` | `<app>/infra/**` is monorepo-only and must never reach a public mirror |
+
+Two of these are enforced in `tools/conformance/check.sh` (the release-unit guard and the
+infra-leak guard) precisely because they are invisible when wrong: nothing fails, you just get a
+version, a changelog entry, or a mirror push that quietly says something untrue.
+
+**Worked example of getting it wrong.** [#995](https://github.com/VitruvianSoftware/vitruvian-core/pull/995)
+was a foundation change that touched one file under `oauth-user-inspector/infra/identity/`, in a
+commit typed `feat:`. release-please attributed it to the **app**, cut
+`oauth-user-inspector 1.1.0`, and wrote a changelog line crediting the app with a foundation
+feature. That release commit rewrote `package.json` and `CHANGELOG.md` at the app root, which
+matched the deploy path filter — so it promoted byte-identical code through dev → nonprod → prod
+and consumed a human approval on the way. Nothing broke; the version, the changelog, and the deploy
+history simply record something that did not happen.
+
+Two habits prevent it: keep the commit **type** about consumer-visible impact (an ownership handoff
+is `chore`, not `feat`), and never let one commit span an app path and a foundation path when the
+types differ.
+
+---
+
 ## 7. Open calls and current-state deltas
 
 **Ruled:** the **deploy service account** is platform-issued — the foundation creates it and authors its
