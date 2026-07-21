@@ -87,16 +87,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Render oauth-user-inspector's latest changelog into the run page before the
-  # (gated) env deploys, so an approver reads what is shipping. Ungated +
-  # independent, so it never delays a rollout.
+  # Render WHAT IS SHIPPING into the run page before the (gated) env deploys, so
+  # an approver reads the actual scope. Ungated + independent, so it never delays
+  # a rollout.
+  #
+  # The commit range is the authoritative half: `github.event.before..sha` is the
+  # push being deployed, derived from git so it cannot drift. The changelog block
+  # below it is the curated narrative (release-please-generated). Before #971 this
+  # job rendered ONLY the changelog, which had sat unchanged for 69 commits — every
+  # run told the approver the app had just been vendored.
   changelog:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Changelog → step summary
-        run: bash tools/ci/changelog-summary.sh oauth-user-inspector/CHANGELOG.md "" oauth-user-inspector
+        with:
+          # `git log <before>..<sha>` needs the history; the default depth-1
+          # checkout would degrade every run to "scope could not be determined".
+          fetch-depth: 0
+      - name: What's shipping → step summary
+        run: |
+          bash tools/ci/changelog-summary.sh \
+            oauth-user-inspector/CHANGELOG.md "" oauth-user-inspector \
+            --range "${BEFORE}..${SHA}" --path oauth-user-inspector
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
 
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable

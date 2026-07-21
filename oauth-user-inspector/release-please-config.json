@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "c8e48d3f315cef0b8d18a64ffa222be4da3b9f28",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "oauth-user-inspector": {
+      "release-type": "node",
+      "package-name": "oauth-user-inspector",
+      "component": "oauth-user-inspector",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

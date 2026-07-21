@@ -40,6 +40,7 @@ on:
       - "homelab/**"
       - "mcp-slack/**"
       - "nexus-agent/**"
+      - "oauth-user-inspector/**"
 
 permissions:
   contents: write
@@ -57,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [devx, homelab, mcp-slack, nexus-agent]
+        app: [devx, homelab, mcp-slack, nexus-agent, oauth-user-inspector]
     steps:
       # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
       # PR triggers the merge queue's required checks -- same as tabula-release.

@@ -97,5 +97,38 @@ exit0  "missing-file exit0"    "$rc"
 out="$(bash "$SCRIPT" "$CL")"
 want   "default title"         "## 📓 $(basename "$TMP")"  "$out"
 
+
+# --- deploy scope: WHAT IS SHIPPING (--range/--path) -------------------------
+# A changelog alone goes stale (oauth-user-inspector's sat unchanged for 69
+# commits), so the panel must also render the commits actually being deployed.
+REPO="$TMP/repo"
+mkdir -p "$REPO/app" "$REPO/other"
+git -C "$REPO" init -q
+git -C "$REPO" config user.email t@example.com
+git -C "$REPO" config user.name  Test
+echo a >"$REPO/app/x.txt";   git -C "$REPO" add -A; git -C "$REPO" commit -qm "feat(app): first thing"
+base="$(git -C "$REPO" rev-parse HEAD)"
+echo b >"$REPO/other/y.txt"; git -C "$REPO" add -A; git -C "$REPO" commit -qm "chore(other): unrelated thing"
+echo c >"$REPO/app/z.txt";   git -C "$REPO" add -A; git -C "$REPO" commit -qm "fix(app): second thing"
+head="$(git -C "$REPO" rev-parse HEAD)"
+
+# 5) range renders the shipping commits, path-filtered
+out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "$base..$head" --path app)"
+want   "range: shipping heading" "shipping in this deploy" "$out"
+want   "range: in-path commit"   "second thing"            "$out"
+absent "range: out-of-path"      "unrelated thing"         "$out"
+absent "range: excludes base"    "first thing"             "$out"
+want   "range: keeps changelog"  "add the new thing"       "$out"
+
+# 6) an empty range degrades gracefully, still exit 0
+out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "$head..$head" --path app)"; rc=$?
+want   "empty-range note"  "No commits"  "$out"
+exit0  "empty-range exit0" "$rc"
+
+# 7) a bogus range must NEVER fail the caller (informational panel only)
+out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "deadbeef..$head" --path app)"; rc=$?
+exit0  "bogus-range exit0" "$rc"
+want   "bogus-range note"  "could not be determined" "$out"
+
 if [ "$fail" -ne 0 ]; then echo "changelog-summary_test: FAILURES"; exit 1; fi
 echo "changelog-summary_test: all passed"
