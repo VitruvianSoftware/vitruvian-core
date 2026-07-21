@@ -1,0 +1,38 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Committed stack config for the nonproduction environment (config-as-code): the
+# env's oss-floating project, region, and runtime SA (minted by the sibling
+# tabula-deploy-identity stack). The image digest is a
+# per-invocation input (TABULA_IMAGE_DIGEST) from the build-once
+# job, never committed. Runtime secrets stay in GCP Secret Manager under the
+# TABULA_ prefix.
+config:
+  gcp:project: prj-n-bu2-oss-floating-a943
+  tabula:project: prj-n-bu2-oss-floating-a943
+  tabula:region: us-central1
+  tabula:environment: nonproduction
+  tabula:runtimeServiceAccount: tabula-rt@prj-n-bu2-oss-floating-a943.iam.gserviceaccount.com
+  # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
+  # CNAME (main.go). cloudflareZoneId is pinned so preview and deploy resolve
+  # the same id (no phantom replace); a zone id is not a secret (it appears in
+  # the dashboard URL and every preview diff). cloudflareZone is kept for the
+  # name→id LookupZone fallback if the id is ever unset.
+  tabula:cloudflareZone: ipv1337.dev
