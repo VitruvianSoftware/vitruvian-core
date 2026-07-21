@@ -30,10 +30,15 @@
 //
 // WHAT THIS LEAF OWNS, AND WHY
 // (docs/engineering/core-vs-application-infrastructure.md):
-//   - The platform-ISSUED deploy identity per app per env, and the grants that
-//     reach outside the application. An app may create its own service
-//     accounts, but only the foundation may grant an identity power over a
-//     project the app does not own.
+//   - Application WORKLOADS built from the stage's archetype catalog.
+//
+// It deliberately does NOT own the platform-issued deploy identity. That is
+// minted one stage up, in gcp-projects/modules/app_deploy_identity, mirroring
+// upstream's seeding of app-infra pipeline SAs in 4-projects. The separation
+// is what lets this stage be deployed BY that identity without a reviewer gate
+// on every routine app deploy: the identity cannot edit its own grants,
+// because its grants live in a stage it does not deploy. This leaf CONSUMES
+// the identity by StackReference and re-exports it.
 //
 // NOT YET INSTANTIATED: modules/serverless_space (the Cloud Run archetype) is
 // ported and compiled but no app is wired through it here yet.
@@ -43,11 +48,7 @@
 // reverted on its own.
 package main
 
-import (
-	"foundation-app-infra/modules/app_deploy_identity"
-
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-)
+import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 // Environment pinned by this leaf project — upstream
 // 5-app-infra/business_unit_1/production hardcodes env in its main.tf; the
@@ -68,23 +69,8 @@ func main() {
 			return err
 		}
 
-		// 2. Platform-issued deploy identity per application.
-		deploySAs := map[string]pulumi.StringOutput{}
-		for _, app := range cfg.Apps {
-			res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
-				App:                  app.Name,
-				Env:                  cfg.Env,
-				ProjectID:            refs.OSSFloatingProjectID,
-				DeployAccountID:      app.DeployAccountID,
-				DeployRoles:          app.DeployRoles,
-				WorkloadIdentityPool: refs.WorkloadIdentityPool,
-				GitHubEnvironment:    app.GitHubEnvironment(cfg.Env),
-			})
-			if err != nil {
-				return err
-			}
-			deploySAs[app.Name] = res.DeployServiceAccountEmail
-		}
+		// Deploy identities are consumed, not created (see the package note).
+		deploySAs := refs.DeployServiceAccounts
 
 		exportOutputs(ctx, cfg, refs, deploySAs)
 		return nil

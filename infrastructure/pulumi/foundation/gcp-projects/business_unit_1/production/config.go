@@ -70,7 +70,17 @@ type ProjectsConfig struct {
 	SVPCProjectEnabled        bool
 	FloatingProjectEnabled    bool
 	OSSFloatingProjectEnabled bool
-	PeeringProjectEnabled     bool
+
+	// Apps whose PLATFORM-ISSUED deploy identity this leaf mints on the env's
+	// oss-floating project. Upstream seeds its app-infra pipeline SAs here too
+	// (modules/single_project sa_roles) — one stage ABOVE the 5-app-infra
+	// workloads they deploy, so the identity cannot edit its own grants.
+	Apps []AppIdentityConfig
+
+	// BootstrapStackName is the gcp-bootstrap stack providing the shared WIF
+	// pool. Required only when Apps is non-empty.
+	BootstrapStackName    string
+	PeeringProjectEnabled bool
 
 	// ApiPropagationSeconds is passed to every project_factory project. When >0
 	// the factory gates its ApisReady handle on a `sleep N` that depends on all
@@ -199,6 +209,22 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	// (a home for open-source apps like oauth-user-inspector), not part of the
 	// upstream reference set, so the example stays unchanged unless opted in.
 	c.OSSFloatingProjectEnabled = conf.Get("oss_floating_project_enabled") == "true"
+
+	c.BootstrapStackName = conf.Get("bootstrap_stack_name")
+
+	// Per-app deploy identities. Declared as a comma-separated list so adding
+	// an app is a one-line config change.
+	for _, name := range splitAppList(conf.Get("apps")) {
+		app := AppIdentityConfig{
+			Name:            name,
+			DeployAccountID: conf.Get(name + "_deploy_account_id"),
+			DeployRoles:     splitAppList(conf.Get(name + "_deploy_roles")),
+		}
+		if len(app.DeployRoles) == 0 {
+			app.DeployRoles = defaultAppDeployRoles
+		}
+		c.Apps = append(c.Apps, app)
+	}
 	if val, err := conf.TryBool("peering_project_enabled"); err == nil {
 		c.PeeringProjectEnabled = val
 	} else {
@@ -331,4 +357,40 @@ func projectLabels(cfg *ProjectsConfig, suffix, vpc string) pulumi.StringMap {
 		"env_code":          pulumi.String(cfg.EnvCode),
 		"vpc":               pulumi.String(vpc),
 	}
+}
+
+// AppIdentityConfig is one application's platform-issued deploy identity.
+type AppIdentityConfig struct {
+	Name            string
+	DeployAccountID string
+	DeployRoles     []string
+}
+
+// GitHubEnvironment is the per-env GitHub Environment permitted to impersonate
+// this app's deploy SA, e.g. "oauth-user-inspector-development". The WIF
+// provider already pins the repository, so the environment is the isolation
+// layer.
+func (a AppIdentityConfig) GitHubEnvironment(env string) string {
+	return a.Name + "-" + env
+}
+
+// defaultAppDeployRoles is replicated EXACTLY from the app-side stack this
+// identity was adopted from (oauth-user-inspector/infra/identity) — adoption
+// must be permission-neutral.
+var defaultAppDeployRoles = []string{
+	"roles/run.admin",
+	"roles/iam.serviceAccountUser",
+	"roles/serviceusage.serviceUsageConsumer",
+	"roles/logging.viewer",
+}
+
+// splitAppList parses a comma-separated config list, trimming blanks.
+func splitAppList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

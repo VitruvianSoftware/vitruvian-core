@@ -13,16 +13,12 @@ config:
   foundation-app-infra-bu1-development:business_code: "bu1"
   foundation-app-infra-bu1-developmentegion: "us-west1"
 
-  # --- Cross-stage references ---
+  # --- Cross-stage reference ---
   foundation-app-infra-bu1-development:projects_stack_name: "ipv1337/foundation-projects-bu1-development/production"
-  foundation-app-infra-bu1-development:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
 
   # --- Applications hosted in this environment ---
   # Adding an app is a one-line change here plus its per-app overrides below.
   foundation-app-infra-bu1-/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude-worktrees/app-infra/developmentpps: "oauth-user-inspector"
 
-  # oauth-user-inspector: the deploy SA id and role set are replicated EXACTLY
-  # from oauth-user-inspector/infra/identity, which owned them before this stage
-  # adopted them. Adoption must be permission-neutral.
-  foundation-app-infra-bu1-development:oauth-user-inspector_deploy_account_id: "oauth-user-inspector-deploy"
-  foundation-app-infra-bu1-development:oauth-user-inspector_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  # Deploy identities are minted in gcp-projects (one stage up) and consumed
+  # here by StackReference — see that leaf's `apps` config.

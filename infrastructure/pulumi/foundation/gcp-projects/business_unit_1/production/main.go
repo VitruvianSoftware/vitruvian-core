@@ -33,6 +33,7 @@ package main
 
 import (
 	"fmt"
+	"foundation-projects/modules/app_deploy_identity"
 	"foundation-projects/modules/base_env"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
@@ -141,6 +142,33 @@ func main() {
 		}
 
 		// 5. Exports (outputs.go)
+		// Platform-issued deploy identities for the apps hosted on this env's
+		// oss-floating project. Minted HERE, one stage above the 5-app-infra
+		// workloads they deploy, so an app's pipeline can never edit the stack
+		// that defines its own permissions
+		// (docs/engineering/core-vs-application-infrastructure.md §4.1).
+		deploySAs := map[string]pulumi.StringOutput{}
+		if cfg.OSSFloatingProjectEnabled {
+			for _, app := range cfg.Apps {
+				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
+					App:                  app.Name,
+					Env:                  cfg.Env,
+					ProjectID:            projects.OSSFloatingProjectID,
+					DeployAccountID:      app.DeployAccountID,
+					DeployRoles:          app.DeployRoles,
+					WorkloadIdentityPool: refs.WIFPoolName,
+					GitHubEnvironment:    app.GitHubEnvironment(cfg.Env),
+				})
+				if err != nil {
+					return err
+				}
+				deploySAs[app.Name] = res.DeployServiceAccountEmail
+			}
+		}
+		for app, email := range deploySAs {
+			ctx.Export(app+"_deploy_service_account", email)
+		}
+
 		exportStackOutputs(ctx, cfg, projects)
 
 		return nil

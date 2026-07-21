@@ -1,9 +1,9 @@
 # Core vs. Application Infrastructure
 
-> **Status:** Authoritative standard for where infrastructure-as-code lives in this monorepo. The
-> **archetype catalog** (§4) and the live `gcp-app-infra` stage it describes are **(target)** — the catalog
-> exists today only in the ported example (`pulumi/examples/go-foundation/5-app-infra/modules/`); the live
-> stage is not yet built. §7 tracks the open calls and the current-state deltas.
+> **Status:** Authoritative standard for where infrastructure-as-code lives in this monorepo. The live
+> `gcp-app-infra` stage exists as of #995. Its **archetype catalog** (§4) is ported but not yet
+> instantiated — no app runs through `serverless_space` yet; `oauth-user-inspector`'s Cloud Run service
+> still deploys from its own stack. §7 tracks the open calls and the current-state deltas.
 >
 > **Audience:** Anyone adding infrastructure for an application, extending the foundation, or reviewing
 > such a change.
@@ -46,7 +46,7 @@ The short version:
  └─────────────────────────────────────────────────────────────────────┘
                                    ▼  stack references / outputs
  ┌─────────────────────────────────────────────────────────────────────┐
- │ 2. ARCHETYPE CATALOG — foundation/gcp-app-infra/modules/  (target)  │
+ │ 2. ARCHETYPE CATALOG — foundation/gcp-app-infra/modules/            │
  │    env_base │ confidential_space │ serverless_space │ …             │
  │    The platform's blueprints: a sanctioned application type, wired  │
  │    to the core layer, instantiated per business unit per env.       │
@@ -106,7 +106,7 @@ The catalog is how the platform keeps "core owns the permissions" from becoming 
 
 An archetype is a local module in the app-infra stage that encodes one **sanctioned application type**:
 the resources that type always needs, wired to the core layer, with the naming, IAM, and hardening
-already decided. Today's catalog — in the ported example, pending the live stage:
+already decided. Today's catalog:
 
 | Archetype | Application type | Deploys |
 |---|---|---|
@@ -134,10 +134,21 @@ about how applications are built here, versioned with the foundation that suppor
 
 ### 4.1 Platform-issued identities and app-created ones
 
-The platform **issues a deploy service account** as part of instantiating an archetype: the foundation
-creates it and authors its grants, so the privileges that reach outside the app — deploying to the
-project, pulling from the shared registry, being impersonated by a WIF-federated CI job — are reviewed by
-the people accountable for the org. An app consumes it by stack reference; it does not author it.
+The platform **issues a deploy service account**: the foundation creates it and authors its grants, so
+the privileges that reach outside the app — deploying to the project, pulling from the shared registry,
+being impersonated by a WIF-federated CI job — are reviewed by the people accountable for the org. An
+app consumes it by stack reference; it does not author it.
+
+**It is minted in `gcp-projects` (stage 4), one stage ABOVE the `gcp-app-infra` workloads it deploys.**
+That placement is load-bearing, and it mirrors upstream, which seeds its app-infra pipeline service
+accounts in 4-projects (`modules/single_project`'s `sa_roles`) rather than in 5-app-infra. The
+separation is what lets stage 5 be deployed *by* that identity **without a reviewer gate on every
+routine app deploy**: the identity cannot edit its own grants, because its grants live in a stage it
+does not deploy.
+
+Putting the identity in stage 5 alongside the workload creates a circularity with no good exit — either
+every app deploy needs a human approval, or the app's own pipeline can edit the stack that defines its
+permissions. Moving it up one stage dissolves the choice rather than trading one harm for the other.
 
 **Applications may create additional service accounts of their own, and should not need permission to.**
 The platform-issued deploy SA is a floor, not a cage. What keeps that safe is §3's rule rather than a
@@ -150,7 +161,7 @@ So the split is:
 
 | | Created by | Carries |
 |---|---|---|
-| **Deploy SA** (platform-issued) | Foundation, per app per env | Grants that reach outside the app — deploy, registry pull, WIF impersonation |
+| **Deploy SA** (platform-issued) | Foundation `gcp-projects`, per app per env | Grants that reach outside the app — deploy, registry pull, WIF impersonation |
 | **Runtime SA** | The app | Access to the app's own secrets and resources |
 | **Additional SAs** | The app, freely | Only what the app can grant on what the app owns |
 
@@ -179,7 +190,7 @@ env-gated CI workflows.
 | Log sinks, centralized logging, CAI monitoring, VPC-SC perimeters | `gcp-org` |
 | The infra-pipeline project and the shared Artifact Registry (build-once home) | `gcp-projects` (`infra_pipelines`) |
 | The WIF pool and provider (`foundation-pool`) — the CI trust anchor | `gcp-bootstrap` |
-| The **deploy service account** per app per env, and its grants ([§4.1](#41-platform-issued-identities-and-app-created-ones)) | `gcp-app-infra` *(target)* |
+| The **deploy service account** per app per env, and its grants ([§4.1](#41-platform-issued-identities-and-app-created-ones)) | `gcp-projects` |
 | Billing budgets | `gcp-projects` |
 
 Note the pattern: **enabling a service is core; using it is not.** `bigquery.googleapis.com` on the

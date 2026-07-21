@@ -43,6 +43,10 @@ type stackRefs struct {
 	// From the 3-networks leaf stack (only when a perimeter-attaching project
 	// type is enabled; an empty-string output otherwise).
 	PerimeterName pulumi.StringOutput
+	// From gcp-bootstrap: the shared Workload Identity pool the platform-issued
+	// app deploy identities federate against. Empty when no app identities are
+	// declared, so the reference is only created when it is actually consumed.
+	WIFPoolName pulumi.StringOutput
 }
 
 // loadStackReferences resolves the cross-stage StackReferences. Only the
@@ -54,6 +58,19 @@ func loadStackReferences(ctx *pulumi.Context, cfg *ProjectsConfig) (*stackRefs, 
 		NetworkProjectID: emptyStr,
 		ACMPolicyID:      emptyStr,
 		PerimeterName:    emptyStr,
+		WIFPoolName:      emptyStr,
+	}
+
+	// 0. Bootstrap StackReference (Stage 0) — only when this leaf mints app
+	// deploy identities, which need the shared WIF pool to bind against.
+	if len(cfg.Apps) > 0 {
+		bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
+			Name: pulumi.String(cfg.BootstrapStackName),
+		})
+		if err != nil {
+			return nil, err
+		}
+		refs.WIFPoolName = bootstrapStack.GetStringOutput(pulumi.String("wif_pool_name"))
 	}
 
 	// 1. Environment StackReference (Stage 2) — always required: it provides
