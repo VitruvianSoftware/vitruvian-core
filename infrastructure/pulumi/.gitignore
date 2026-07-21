@@ -51,6 +51,7 @@ Pulumi.*.yaml
 # the env identity is pinned in each leaf's main.go. These MUST be committed
 # (not gitignored) so required config resolves on a clean checkout.
 !foundation/gcp-projects/business_unit_1/*/Pulumi.*.yaml
+!foundation/gcp-projects/business_unit_2/*/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -75,6 +76,10 @@ platform/zitadel-apps/zitadel-apps
 /foundation/gcp-projects/business_unit_1/development/foundation-projects-bu1-development
 /foundation/gcp-projects/business_unit_1/nonproduction/foundation-projects-bu1-nonproduction
 /foundation/gcp-projects/business_unit_1/production/foundation-projects-bu1-production
+/foundation/gcp-projects/business_unit_2/shared/foundation-projects-bu2-shared
+/foundation/gcp-projects/business_unit_2/development/foundation-projects-bu2-development
+/foundation/gcp-projects/business_unit_2/nonproduction/foundation-projects-bu2-nonproduction
+/foundation/gcp-projects/business_unit_2/production/foundation-projects-bu2-production
 
 
 # Compiled Go pulumi-program binary (bazel/go build output) — never track.

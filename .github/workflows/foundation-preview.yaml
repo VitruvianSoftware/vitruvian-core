@@ -115,6 +115,14 @@ jobs:
             modules_dir: infrastructure/pulumi/foundation/gcp-projects/modules
             stack: production
             environment: foundation-proj-preview
+          # business_unit_2 (tabula): one representative leaf. No modules_dir —
+          # bu1's development leg already carries the single modules vet/test run
+          # for this stage, and a second one would just duplicate it.
+          - app: gcp-projects-bu2-development
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_2/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off

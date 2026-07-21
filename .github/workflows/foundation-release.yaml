@@ -516,6 +516,7 @@ jobs:
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: shared
+      business_unit: business_unit_1
     secrets: inherit
 
   deploy-proj-development:
@@ -523,6 +524,7 @@ jobs:
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: development
+      business_unit: business_unit_1
     secrets: inherit
 
   deploy-proj-nonproduction:
@@ -530,6 +532,7 @@ jobs:
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: nonproduction
+      business_unit: business_unit_1
     secrets: inherit
 
   deploy-proj-production:
@@ -537,5 +540,43 @@ jobs:
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: production
+      business_unit: business_unit_1
+    secrets: inherit
+
+  # business_unit_2 (tabula). Chained AFTER the whole bu1 ladder rather than in
+  # parallel: both BUs reuse the same foundation-proj-<env> GitHub Environments,
+  # so two concurrent chains would queue two approval requests against the same
+  # environment in one run and make it ambiguous which BU an approver is
+  # releasing. bu2 is floating-only (no -sample-floating, no shared VPC).
+  deploy-proj-bu2-shared:
+    needs: deploy-proj-production
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: shared
+      business_unit: business_unit_2
+    secrets: inherit
+
+  deploy-proj-bu2-development:
+    needs: deploy-proj-bu2-shared
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: development
+      business_unit: business_unit_2
+    secrets: inherit
+
+  deploy-proj-bu2-nonproduction:
+    needs: deploy-proj-bu2-development
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: nonproduction
+      business_unit: business_unit_2
+    secrets: inherit
+
+  deploy-proj-bu2-production:
+    needs: deploy-proj-bu2-nonproduction
+    uses: ./.github/workflows/foundation-proj-deploy.yaml
+    with:
+      environment: production
+      business_unit: business_unit_2
     secrets: inherit
 
