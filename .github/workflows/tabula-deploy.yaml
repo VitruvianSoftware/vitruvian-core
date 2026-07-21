@@ -181,6 +181,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
@@ -197,6 +198,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
@@ -213,6 +215,7 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
       pulumi-dir: tabula/infra/app
+      secret-prefix: TABULA_
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
