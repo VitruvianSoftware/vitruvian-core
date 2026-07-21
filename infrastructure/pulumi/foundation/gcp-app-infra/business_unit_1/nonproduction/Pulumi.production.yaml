@@ -1,0 +1,28 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 5 (app-infra) -
+# bu1 nonproduction leaf. The environment identity is pinned in this leaf's main.go,
+# not configured here (upstream business_unit_1/<env> layout).
+#
+# Scope today: the PLATFORM-ISSUED deploy identity per app per env
+# (docs/engineering/core-vs-application-infrastructure.md 4.1). The Cloud Run
+# workload itself is still deployed by oauth-user-inspector/infra/app; moving it
+# onto modules/serverless_space adopts a live traffic-serving service and is a
+# separate change.
+#
+# Promotion order: development -> nonproduction -> production
+config:
+  foundation-app-infra-bu1-nonproduction:business_code: "bu1"
+  foundation-app-infra-bu1-nonproductionegion: "us-west1"
+
+  # --- Cross-stage references ---
+  foundation-app-infra-bu1-nonproduction:projects_stack_name: "ipv1337/foundation-projects-bu1-nonproduction/production"
+  foundation-app-infra-bu1-nonproduction:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
+
+  # --- Applications hosted in this environment ---
+  # Adding an app is a one-line change here plus its per-app overrides below.
+  foundation-app-infra-bu1-/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude-worktrees/app-infra/nonproductionpps: "oauth-user-inspector"
+
+  # oauth-user-inspector: the deploy SA id and role set are replicated EXACTLY
+  # from oauth-user-inspector/infra/identity, which owned them before this stage
+  # adopted them. Adoption must be permission-neutral.
+  foundation-app-infra-bu1-nonproduction:oauth-user-inspector_deploy_account_id: "oauth-user-inspector-deploy"
+  foundation-app-infra-bu1-nonproduction:oauth-user-inspector_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"

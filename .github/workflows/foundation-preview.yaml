@@ -123,6 +123,15 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+          # gcp-app-infra (stage 5): one representative leaf. modules_dir carries
+          # the stage's single modules vet/test run. Stage 5 has no `shared`
+          # leaf — upstream 5-app-infra has none.
+          - app: gcp-app-infra-development
+            dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
+            modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
+            stack: production
+            environment: foundation-app-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off

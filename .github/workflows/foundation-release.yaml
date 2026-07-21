@@ -580,3 +580,31 @@ jobs:
       business_unit: business_unit_2
     secrets: inherit
 
+  # ── Stage 5: app-infra ──────────────────────────────────────────────────
+  # Chained AFTER the whole projects ladder: stage 5 consumes the stage-4 BU
+  # leaf (the env's app-hosting project) and gcp-bootstrap (the shared WIF
+  # pool), so a leaf cannot apply before its stage-4 counterpart exists.
+  # No `shared` leg — upstream 5-app-infra has no shared leaf.
+  deploy-app-development:
+    needs: deploy-proj-bu2-production
+    uses: ./.github/workflows/foundation-app-deploy.yaml
+    with:
+      environment: development
+      business_unit: business_unit_1
+    secrets: inherit
+
+  deploy-app-nonproduction:
+    needs: deploy-app-development
+    uses: ./.github/workflows/foundation-app-deploy.yaml
+    with:
+      environment: nonproduction
+      business_unit: business_unit_1
+    secrets: inherit
+
+  deploy-app-production:
+    needs: deploy-app-nonproduction
+    uses: ./.github/workflows/foundation-app-deploy.yaml
+    with:
+      environment: production
+      business_unit: business_unit_1
+    secrets: inherit
