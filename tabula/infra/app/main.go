@@ -89,7 +89,7 @@ func envMap(project, apiURL string) map[string]string {
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
-		cfg := config.New(ctx, "tabula")
+		cfg := config.New(ctx, "tabula-app")
 		project := cfg.Require("project") // the env's oss-floating project id
 		region := cfg.Get("region")
 		if region == "" {
