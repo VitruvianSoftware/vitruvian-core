@@ -82,6 +82,12 @@ jobs:
             dir: tabula/infra/app
             stack: development
             environment: tabula-development
+            # Same non-secret placeholder as the oauth leg below: tabula's app
+            # stack now declares a Cloudflare CNAME, so its DEFAULT provider must
+            # CONFIGURE for this advisory, token-less preview. A dry run makes no
+            # Cloudflare API calls (the zone id is pinned, so no LookupZone). The
+            # real token is fetched from Secret Manager at deploy time only.
+            cfPreviewToken: preview-only-not-a-real-cloudflare-token
           - app: oauth-user-inspector
             dir: oauth-user-inspector/infra/app
             stack: development
