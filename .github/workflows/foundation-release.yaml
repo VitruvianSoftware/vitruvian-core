@@ -585,6 +585,17 @@ jobs:
   # leaf (the env's app-hosting project) and gcp-bootstrap (the shared WIF
   # pool), so a leaf cannot apply before its stage-4 counterpart exists.
   # No `shared` leg — upstream 5-app-infra has no shared leaf.
+  #
+  # FIRST-RUN PREREQUISITES (both provision the auth these jobs need, so they
+  # must have APPLIED from main before the first stage-5 deploy can start):
+  #   1. repo_config  — creates the foundation-app-<env> GitHub Environments
+  #                     and their GCP_* variables.
+  #   2. gcp-bootstrap — creates the foundation-app-<env> WIF principalSet
+  #                     bindings on the proj SA. GitHub Environment names are
+  #                     the isolation layer, so a foundation-app-<env> job
+  #                     cannot authenticate via a foundation-proj-<env> binding.
+  # Without these the deploy fails at google-github-actions/auth with
+  # "must specify exactly one of workload_identity_provider".
   deploy-app-development:
     needs: deploy-proj-bu2-production
     uses: ./.github/workflows/foundation-app-deploy.yaml

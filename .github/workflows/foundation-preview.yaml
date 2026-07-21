@@ -123,15 +123,20 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
-          # gcp-app-infra (stage 5): one representative leaf. modules_dir carries
-          # the stage's single modules vet/test run. Stage 5 has no `shared`
-          # leaf — upstream 5-app-infra has none.
-          - app: gcp-app-infra-development
-            dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
-            stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
-            modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
-            stack: production
-            environment: foundation-app-preview
+          # gcp-app-infra (stage 5) is NOT previewed yet — deliberately.
+          # The preview leg authenticates through the `foundation-app-preview`
+          # GitHub Environment, which repo_config provisions and which therefore
+          # does not exist until repo_config has APPLIED from main. Adding the
+          # matrix entry in the same PR that creates the environment fails the
+          # leg with "must specify exactly one of workload_identity_provider" —
+          # the env has no GCP_* vars yet. Add this entry in a follow-up once
+          # repo_config and gcp-bootstrap have applied:
+          #   - app: gcp-app-infra-development
+          #     dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
+          #     stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
+          #     modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
+          #     stack: production
+          #     environment: foundation-app-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
