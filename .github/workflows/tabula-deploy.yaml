@@ -52,7 +52,10 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment
+        # NB: this does NOT select a target env -- the ladder always starts at
+        # development (see the note above). It only forces the run past the
+        # affected-targets gate.
+        description: Forces the run past the affected-targets gate (the ladder always starts at development)
         type: choice
         required: true
         default: development
@@ -65,8 +68,15 @@ permissions:
   contents: read
   id-token: write
 
+# One promotion chain at a time. Every run -- push OR dispatch -- walks the
+# whole development -> nonproduction -> production ladder (see the `environment`
+# input note above), so a group keyed on that input put two runs that touch the
+# SAME three env stacks and the SAME shared build AR into different groups: a
+# dispatch picking `production` raced a concurrent push run. Serialize the whole
+# workflow instead (matching oauth-user-inspector-deploy.yaml); queued pushes
+# coalesce onto the newest sha.
 concurrency:
-  group: tabula-deploy-${{ inputs.environment || 'development' }}
+  group: tabula-deploy
   cancel-in-progress: false
 
 jobs:
