@@ -1021,7 +1021,8 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 				"%s: gcp-projects bu1-%s has not exported app_infra_pipeline_service_account yet; "+
 					"leaving GCP_SERVICE_ACCOUNT UNSET so stage-5 deploys fail closed rather than "+
 					"authenticating as a privileged SA. Re-run after that leaf applies.",
-				envDef.name, envDef.env), nil)
+				envDef.name, envDef.env,
+			), nil)
 		}
 
 		varKeys := make([]string, 0, len(envVars))
