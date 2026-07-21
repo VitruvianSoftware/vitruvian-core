@@ -31,12 +31,23 @@
 // apart. Applications remain free to create additional service accounts of
 // their own — those can only ever hold grants the app itself may make.
 //
-// Upstream divergence (documented, per the port policy): upstream
-// terraform-example-foundation seeds pipeline service accounts from
-// 4-projects/modules/single_project for its VM + Cloud Build deploy model. Our
-// stage-5 apps are serverless workloads on FLOATING projects deployed from
-// GitHub Actions via WIF, so the deploy identity is issued HERE, per app per
-// env, against the shared foundation-pool from gcp-bootstrap.
+// WHY STAGE 4 AND NOT STAGE 5 — this is load-bearing, not filing.
+// Upstream seeds the app-infra pipeline's service accounts in 4-projects
+// (modules/single_project's sa_roles), one stage ABOVE the 5-app-infra
+// workloads they deploy. That separation is what makes it safe for stage 5 to
+// be deployed by that identity WITHOUT a reviewer gate: the identity cannot
+// edit its own grants, because its grants live in a stage it does not deploy.
+//
+// Putting this module in stage 5 (as it briefly was, in #995) created a
+// circularity: stage 5 would hold both the workload and the privileged
+// identity, so either every routine app deploy needs a reviewer approval, or
+// the app's own pipeline can edit the stack that defines its permissions.
+// Neither is acceptable; moving it up one stage dissolves the choice.
+//
+// Upstream divergence (documented, per the port policy): upstream's pipeline
+// SAs serve a VM + Cloud Build deploy model. Our stage-5 apps are serverless
+// workloads on FLOATING projects deployed from GitHub Actions via WIF, so the
+// identity federates the shared foundation-pool from gcp-bootstrap instead.
 //
 // ADOPTION NOTE: DeployServiceAccount is created with
 // CreateIgnoreAlreadyExists so this module can take ownership of an account

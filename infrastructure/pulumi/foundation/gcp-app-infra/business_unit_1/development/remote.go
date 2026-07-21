@@ -30,9 +30,9 @@ type stackRefs struct {
 	// From the gcp-projects BU leaf: the environment's OSS app-hosting project.
 	OSSFloatingProjectID     pulumi.StringOutput
 	OSSFloatingProjectNumber pulumi.StringOutput
-	// From gcp-bootstrap: the shared Workload Identity pool apps federate
-	// against. Apps never mint their own pool.
-	WorkloadIdentityPool pulumi.StringOutput
+	// From the gcp-projects BU leaf: the platform-issued deploy SA per app.
+	// Minted one stage up so it cannot edit its own grants.
+	DeployServiceAccounts map[string]pulumi.StringOutput
 }
 
 // loadStackReferences resolves the stage-4 and stage-0 references. Both are
@@ -45,15 +45,13 @@ func loadStackReferences(ctx *pulumi.Context, cfg *AppInfraConfig) (*stackRefs, 
 	if err != nil {
 		return nil, err
 	}
-	bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
-		Name: pulumi.String(cfg.BootstrapStackName),
-	})
-	if err != nil {
-		return nil, err
+	deploySAs := map[string]pulumi.StringOutput{}
+	for _, app := range cfg.Apps {
+		deploySAs[app.Name] = projectsStack.GetStringOutput(pulumi.String(app.Name + "_deploy_service_account"))
 	}
 	return &stackRefs{
 		OSSFloatingProjectID:     projectsStack.GetStringOutput(pulumi.String("oss_floating_project")),
 		OSSFloatingProjectNumber: projectsStack.GetStringOutput(pulumi.String("oss_floating_project_number")),
-		WorkloadIdentityPool:     bootstrapStack.GetStringOutput(pulumi.String("wif_pool_name")),
+		DeployServiceAccounts:    deploySAs,
 	}, nil
 }
