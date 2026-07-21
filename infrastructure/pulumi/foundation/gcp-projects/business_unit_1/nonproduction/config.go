@@ -377,6 +377,18 @@ func (a AppIdentityConfig) GitHubEnvironment(env string) string {
 // defaultAppDeployRoles is replicated EXACTLY from the app-side stack this
 // identity was adopted from (oauth-user-inspector/infra/identity) — adoption
 // must be permission-neutral.
+// defaultAppInfraPipelineRoles are what the BU's app-infra pipeline SA needs to
+// apply stage-5 workloads: manage Cloud Run services, act as the runtime SA it
+// sets on them, and read its own project's service usage. Deliberately the same
+// shape as a per-app deploy SA — the pipeline applies the same class of
+// resource, just for the whole BU leaf rather than one app.
+var defaultAppInfraPipelineRoles = []string{
+	"roles/run.admin",
+	"roles/iam.serviceAccountUser",
+	"roles/serviceusage.serviceUsageConsumer",
+	"roles/logging.viewer",
+}
+
 var defaultAppDeployRoles = []string{
 	"roles/run.admin",
 	"roles/iam.serviceAccountUser",

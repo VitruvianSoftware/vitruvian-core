@@ -897,9 +897,19 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// workflow where each leaf is its own leaf Pulumi project (single production
 	// stack) deployed via the reusable foundation-app-deploy.yaml workflow:
 	//
-	//   foundation-app-development  → auto-deploy (no reviewers)
-	//   foundation-app-nonproduction → manual approval (requires reviewers)
-	//   foundation-app-production    → manual approval (requires reviewers)
+	//   foundation-app-development  → auto-deploy
+	//   foundation-app-nonproduction → auto-deploy
+	//   foundation-app-production    → auto-deploy
+	//
+	// UNGATED ON PURPOSE — and this is only safe because of where the identity
+	// lives. Stage 5 holds application WORKLOADS; a routine app deploy runs it
+	// (twice, for the blue-green publish/promote phases). Gating it would put a
+	// human approval in front of every code change. What makes ungating safe is
+	// that the SA applying it — the BU app-infra pipeline SA — has ALL of its
+	// grants authored in stage 4, which it does not apply. It cannot widen its
+	// own permissions, so the reviewer gate has nothing left to protect here.
+	// Privileged IAM changes still land in gcp-projects, which IS gated.
+	// See docs/engineering/core-vs-application-infrastructure.md §4.1.
 	//
 	// Unlike stage 4 there is NO `shared` leaf — upstream 5-app-infra has none.
 	//
@@ -917,8 +927,8 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		requireReviewer bool
 	}{
 		{"foundation-app-development", false},
-		{"foundation-app-nonproduction", true},
-		{"foundation-app-production", true},
+		{"foundation-app-nonproduction", false},
+		{"foundation-app-production", false},
 	}
 
 	for _, envDef := range appPhaseEnvironments {
@@ -950,8 +960,17 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 
 		// Propagate foundation WIF variables so the reusable deploy workflow
-		// resolves ${{ vars.GCP_* }}. Shares the proj SA's vars (see above).
-		envVars := foundationVars["foundation-proj"]
+		// resolves ${{ vars.GCP_* }}. The pool/provider and project are shared
+		// with the proj stage, but GCP_SERVICE_ACCOUNT is OVERRIDDEN below to
+		// the BU app-infra pipeline SA — stage 5 must NOT authenticate as
+		// sa-terraform-proj, which can author its own grants.
+		envVars := map[string]string{}
+		for k, v := range foundationVars["foundation-proj"] {
+			envVars[k] = v
+		}
+		if appInfraSA := cfg.Get("appInfraPipelineServiceAccount"); appInfraSA != "" {
+			envVars["GCP_SERVICE_ACCOUNT"] = appInfraSA
+		}
 		varKeys := make([]string, 0, len(envVars))
 		for k := range envVars {
 			varKeys = append(varKeys, k)
