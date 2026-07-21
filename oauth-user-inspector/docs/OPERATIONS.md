@@ -41,7 +41,7 @@ Three Pulumi stacks plus one platform stack own this app's infrastructure:
 | --- | --- | --- | --- |
 | **app** | `oauth-user-inspector/infra/app` | per-env | env's `oauth-user-inspector-deploy` SA |
 | **identity** | `oauth-user-inspector/infra/identity` | per-env | `sa-terraform-proj` |
-| **build** | `infrastructure/pulumi/apps/oauth-user-inspector-build` | shared (prod-only) | `sa-terraform-proj` |
+| **build** | `oauth-user-inspector/infra/build` | shared (prod-only) | `sa-terraform-proj` |
 | **zitadel-apps** | `infrastructure/pulumi/platform/zitadel-apps` | per-env | env's deploy SA (over the tailnet) |
 
 - **app** (`pulumi_oauth_user_inspector`, config namespace `oauth-user-inspector`)
@@ -330,7 +330,7 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 | --- | --- |
 | App stack (Cloud Run + custom domain) | `oauth-user-inspector/infra/app/main.go` |
 | Identity stack (SAs + WIF) | `oauth-user-inspector/infra/identity/main.go` |
-| Build stack (shared AR) | `infrastructure/pulumi/apps/oauth-user-inspector-build/main.go` |
+| Build stack (shared AR) | `oauth-user-inspector/infra/build/main.go` |
 | Zitadel OIDC client + SM sync | `infrastructure/pulumi/platform/zitadel-apps/main.go` |
 | GitHub Environments + WIF vars | `infrastructure/pulumi/platform/repo_config/main.go` (`oauthEnvironment`) |
 | Deploy pipeline | `.github/workflows/oauth-user-inspector-deploy.yaml` |
