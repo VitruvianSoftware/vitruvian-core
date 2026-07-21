@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.1.0...oauth-user-inspector-v1.1.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **release:** keep co-located &lt;app&gt;/infra out of the app's release unit ([#1006](https://github.com/VitruvianSoftware/vitruvian-core/issues/1006)) ([eadfa39](https://github.com/VitruvianSoftware/vitruvian-core/commit/eadfa39280589eedb62b6b267a31859d9506884c))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.0.1...oauth-user-inspector-v1.1.0) (2026-07-21)
 
 
