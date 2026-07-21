@@ -1,0 +1,7 @@
+# Per-env deploy/runtime identity for tabula on the production oss project.
+# Federates the shared foundation-pool (gcp-bootstrap); no per-app WIF pool.
+config:
+  tabula-deploy-identity:project: "prj-p-bu2-oss-floating-8663"
+  tabula-deploy-identity:region: "us-central1"
+  tabula-deploy-identity:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
+  tabula-deploy-identity:projects_stack: "ipv1337/foundation-projects-bu2-production/production"

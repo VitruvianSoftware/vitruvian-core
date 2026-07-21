@@ -27,6 +27,8 @@ infrastructure/pulumi/apps/tabula                               james.nguyen@gma
 oauth-user-inspector/infra/app                                  james@vitruviansoftware.dev  -  Per-env oauth-user-inspector Cloud Run app on the oss-floating projects (digest deploys; CI runs as the per-env deploy SA)
 oauth-user-inspector/infra/identity                             james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for oauth-user-inspector on the oss projects (foundation-pool WIF)
 oauth-user-inspector/infra/build                                james@vitruviansoftware.dev  prj-c-bu1-infra-pipeline-4b48  oauth-user-inspector shared AR + build identity (infra-pipeline project)
+tabula/infra/build                                              james@vitruviansoftware.dev  prj-c-bu2-infra-pipeline-3d09  tabula shared AR + build identity (bu2 infra-pipeline project)
+tabula/infra/identity                                           james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for tabula on the bu2 oss projects (foundation-pool WIF)
 # --- foundation stages (vitruviansoftware.dev org) ---
 infrastructure/pulumi/foundation/org-folders        james@vitruviansoftware.dev    -                           Creates the fldr-foundation-1 umbrella folder at org root (feeds gcp-bootstrap parent_folder)
 infrastructure/pulumi/foundation/gcp-bootstrap      james@vitruviansoftware.dev    -                           GCP foundation bootstrap for vitruviansoftware.dev org (co-tenant under fldr-foundation-1); org/folder-scoped, no default project

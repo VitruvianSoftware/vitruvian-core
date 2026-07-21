@@ -1,0 +1,18 @@
+# Per-env deploy/runtime identity for tabula on the development oss project.
+# Federates the shared foundation-pool (gcp-bootstrap); no per-app WIF pool.
+config:
+  tabula-deploy-identity:project: "prj-d-bu2-oss-floating-c3d1"
+  tabula-deploy-identity:region: "us-central1"
+  tabula-deploy-identity:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
+  tabula-deploy-identity:projects_stack: "ipv1337/foundation-projects-bu2-development/production"
+  # Custom-domain verification anchor (dev is the ONE anchor env): grants every
+  # env's deploy SA secretAccessor on the human-seeded CLOUDFLARE_API_TOKEN
+  # secret stored here (single source; nonprod/prod read cross-project). The
+  # Site Verification API that the dev deploy SA's getToken/insert WRITE calls
+  # need on this quota project is enabled in the foundation project factory's
+  # ActivateApis for prj-d-bu2-oss-floating (not here). See identity main.go.
+  # Flipped on in the custom-domains phase, together with seeding
+  # CLOUDFLARE_API_TOKEN into this project. Until that secret exists the IAM
+  # grants below have no resource to bind to and the apply fails.
+  tabula-deploy-identity:domainVerificationAnchor: "false"
+  tabula-deploy-identity:cloudflareTokenAccessorProjects: "prj-d-bu2-oss-floating-c3d1,prj-n-bu2-oss-floating-a943,prj-p-bu2-oss-floating-8663"
