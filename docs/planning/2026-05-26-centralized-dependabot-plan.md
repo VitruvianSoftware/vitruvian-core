@@ -8,7 +8,7 @@
 
 **Tech Stack:** GitHub Actions + Dependabot v2, Bazel (bzlmod + gazelle `go_deps`), Pulumi (Go, pulumi-github v6), Copybara bidi-sync.
 
-**Spec:** [`docs/planning/2026-05-26-centralized-dependabot-design.md`](2026-05-26-centralized-dependabot-design.md). **Sync runbook:** [`docs/copybara-bidi-sync.md`](../copybara-bidi-sync.md).
+**Spec:** [`docs/planning/2026-05-26-centralized-dependabot-design.md`](2026-05-26-centralized-dependabot-design.md). **Sync runbook:** [`docs/copybara-sync.md`](../copybara-sync.md).
 
 **Conventions for this plan:** all paths are under `vitruvian-core/` unless noted. Run `gh`/`git` from the repo root. Pulumi commands run from `infrastructure/pulumi/` with `GOWORK=off` and `github:owner=VitruvianSoftware` already set (sync runbook §6). Never echo the App private key — use `pulumi config get … | pulumi config set --secret …` (stdin).
 
@@ -25,7 +25,7 @@
 | `devx/.github/dependabot.yml` (modify) | Remove the `gomod` block (now central); keep `github-actions /` + `npm /docs`. |
 | `homelab/.github/dependabot.yml` (create) | `github-actions /` (gap-fill). |
 | `nexus-agent/.github/dependabot.yml` (create) | `npm /` + `github-actions /` (gap-fill). |
-| `docs/copybara-bidi-sync.md` (modify) | New "Dependency updates (Dependabot)" section. |
+| `docs/copybara-sync.md` (modify) | New "Dependency updates (Dependabot)" section. |
 
 **Ordering rationale:** secrets (Task 1) → automation workflows that consume them (Tasks 2–3) → standalone config changes incl. removing devx's duplicate `gomod` (Task 4) → *activate* the monorepo root config (Task 5) → docs (Task 6) → end-to-end validation + fallback decision (Task 7). Activating the root config last means the first Go PRs land into ready automation, and devx's standalone `gomod` is gone before the monorepo takes Go over (no duplicate PRs).
 
@@ -251,7 +251,7 @@ name: Dependabot auto-merge
 # so the merge is App-attributed and triggers the per-component copybara export
 # (a GITHUB_TOKEN merge would NOT — that's the import-side recursion-prevention).
 # MAJOR bumps are left for manual review. The 30-min drift-check backstops any
-# merge that fails to fan out (see docs/copybara-bidi-sync.md).
+# merge that fails to fan out (see docs/copybara-sync.md).
 on:
     pull_request:
         branches: [main]
@@ -488,7 +488,7 @@ Then in the GitHub UI: **Insights → Dependency graph → Dependabot** shows th
 ### Task 6: Runbook section
 
 **Files:**
-- Modify: `docs/copybara-bidi-sync.md`
+- Modify: `docs/copybara-sync.md`
 
 - [ ] **Step 1: Add a "Dependency updates (Dependabot)" section** after §8 (Routine maintenance) or as a new §11. Include:
   - The split model: monorepo owns `gomod` (devx, homelab) + root `github-actions`; npm + each component's own workflows run per-standalone; standalone configs are authored in the monorepo subtree and fan out via export.
@@ -513,7 +513,7 @@ flowchart TD
 - [ ] **Step 2: Commit + push**
 
 ```bash
-git add docs/copybara-bidi-sync.md
+git add docs/copybara-sync.md
 git commit -m "docs(dependabot): document the centralized Dependabot + fan-out model"
 git push origin main
 ```

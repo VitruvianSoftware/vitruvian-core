@@ -142,7 +142,7 @@ bazel run //infrastructure/pulumi:up
 
 It needs `GITHUB_TOKEN` and the App credentials as Pulumi config secrets. The
 credentials it places are consumed by the
-[Copybara sync workflows](../copybara-bidi-sync.md); rotating them follows the
+[Copybara sync workflows](../copybara-sync.md); rotating them follows the
 [key-rotation SOP](../key-rotation.md).
 
 ## Troubleshooting
