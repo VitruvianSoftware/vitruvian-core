@@ -90,7 +90,7 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 	sa, err := serviceaccount.NewAccount(ctx, name+"-deploy-sa", &serviceaccount.AccountArgs{
 		AccountId:                 pulumi.String(accountID),
 		DisplayName:               pulumi.Sprintf("%s deploy identity (%s)", args.App, args.Env),
-		Description:               pulumi.String("Platform-issued. Impersonated by GitHub Actions via WIF; grants authored in foundation/gcp-app-infra."),
+		Description:               pulumi.String("Platform-issued. Impersonated by GitHub Actions via WIF; grants authored in foundation/gcp-projects."),
 		Project:                   args.ProjectID,
 		CreateIgnoreAlreadyExists: pulumi.Bool(true),
 	})
