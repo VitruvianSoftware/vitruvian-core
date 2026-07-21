@@ -26,10 +26,17 @@
 # names, env prefix) and its trigger policy.
 #
 # One workflow, parameterized by GitHub Environment (managed as code in
-# //infrastructure/pulumi/platform/repo_config): tabula-development deploys
-# automatically on push to main; tabula-nonproduction / tabula-production are
-# promoted via workflow_dispatch, with tabula-production additionally gated by
-# its environment protection rules (required reviewer, protected branches).
+# //infrastructure/pulumi/platform/repo_config): the image is built ONCE into
+# bu2's shared Artifact Registry and the SAME immutable digest is promoted
+# development -> nonproduction -> production in one run. development applies
+# automatically; nonproduction and production each pause on their GitHub
+# Environment protection rules (required reviewer, protected branches), so the
+# operator approves the promotion rather than dispatching a separate run.
+#
+# workflow_dispatch still takes an `environment` input, but it now only forces
+# the run past the affected-targets gate -- the ladder itself always starts at
+# development, because promoting a digest that was never applied to dev would
+# defeat the point of promoting by digest at all.
 
 name: tabula-deploy
 
@@ -105,28 +112,109 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "infrastructure/pulumi/apps/tabula/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+          EXTRA_PATH_REGEX: "tabula/infra/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
-  deploy:
-    # Push lane: when the gate says the artifacts are affected -- OR when the
-    # gate JOB itself failed (infra flake, timeout, runner death): the script
-    # is fail-open, and the job wrapping it must be too, or an infra hiccup
-    # silently skips a deploy that should have happened.
-    # Dispatch lane: always (the gate job itself is skipped on dispatch, so
-    # gate against `!cancelled()` rather than default needs-success).
+  # BUILD ONCE into the shared bu2 Artifact Registry and capture the immutable
+  # digest every environment promotes. Ungated: pushing an image touches no live
+  # service. Replaces the previous rebuild-per-environment flow, where each env
+  # built its own :$GITHUB_SHA tag — so what reached production was never the
+  # artifact that was smoke-tested in development.
+  build:
     needs: [gate]
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    environment: tabula-build
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+    outputs:
+      image-digest: ${{ steps.push.outputs.image-digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-bazel
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push the image (capture the digest)
+        id: push
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:image_push -- \
+            --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
+          DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
+            --format='value(image_summary.digest)')"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::could not resolve the pushed image digest"
+            exit 1
+          fi
+          echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  # Promote THAT digest, unchanged, through the ladder. development is
+  # automatic; nonproduction and production gate on their GitHub Environment.
+  deploy-dev:
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
-      environment: ${{ inputs.environment || 'development' }}
-      bazel-image-target: //tabula/api:image_push
-      image-repository-path: tabula/api
-      artifact-repository: tabula
+      environment: development
+      image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
-      pulumi-dir: infrastructure/pulumi/apps/tabula
+      pulumi-dir: tabula/infra/app
       env-prefix: TABULA
+      default-region: us-central1
+      run-migrations: true
+      smoke-url-path: /health
+    secrets: inherit
+
+  deploy-nonprod:
+    needs: [build, deploy-dev]
+    if: ${{ !cancelled() && needs.deploy-dev.result == 'success' }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: nonproduction
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      service-name: tabula-api
+      pulumi-dir: tabula/infra/app
+      env-prefix: TABULA
+      default-region: us-central1
+      run-migrations: true
+      smoke-url-path: /health
+    secrets: inherit
+
+  deploy-prod:
+    needs: [build, deploy-nonprod]
+    if: ${{ !cancelled() && needs.deploy-nonprod.result == 'success' }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: production
+      image-digest: ${{ needs.build.outputs.image-digest }}
+      service-name: tabula-api
+      pulumi-dir: tabula/infra/app
+      env-prefix: TABULA
+      default-region: us-central1
       run-migrations: true
       smoke-url-path: /health
     secrets: inherit
