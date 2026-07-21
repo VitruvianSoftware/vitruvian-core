@@ -924,11 +924,12 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// its own SA rather than widening this one.
 	appPhaseEnvironments := []struct {
 		name            string
+		env             string
 		requireReviewer bool
 	}{
-		{"foundation-app-development", false},
-		{"foundation-app-nonproduction", false},
-		{"foundation-app-production", false},
+		{"foundation-app-development", "development", false},
+		{"foundation-app-nonproduction", "nonproduction", false},
+		{"foundation-app-production", "production", false},
 	}
 
 	for _, envDef := range appPhaseEnvironments {
@@ -961,16 +962,44 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 
 		// Propagate foundation WIF variables so the reusable deploy workflow
 		// resolves ${{ vars.GCP_* }}. The pool/provider and project are shared
-		// with the proj stage, but GCP_SERVICE_ACCOUNT is OVERRIDDEN below to
-		// the BU app-infra pipeline SA — stage 5 must NOT authenticate as
-		// sa-terraform-proj, which can author its own grants.
+		// with the proj stage, but GCP_SERVICE_ACCOUNT MUST be the BU app-infra
+		// pipeline SA: stage 5 is UNGATED, and sa-terraform-proj can author its
+		// own grants, so an ungated environment must never reach it.
+		//
+		// The value is read from the gcp-projects leaf that MINTS the SA rather
+		// than from stack config. An earlier revision used
+		// cfg.Get("appInfraPipelineServiceAccount") with a fall-through to the
+		// proj SA when unset — and because that config lives in the gitignored
+		// Pulumi.dev.yaml it was never set, so the ungated stage-5 environments
+		// silently pointed at the PRIVILEGED SA. A silent fall-back to a
+		// more-privileged identity is the wrong default; sourcing it from the
+		// stack output makes the value self-maintaining and removes the
+		// fall-back entirely. If the projects leaf has not applied yet the
+		// output is empty, the variable is empty, and the deploy fails loudly
+		// at google-github-actions/auth — fail-closed, which is the point.
 		envVars := map[string]string{}
 		for k, v := range foundationVars["foundation-proj"] {
 			envVars[k] = v
 		}
-		if appInfraSA := cfg.Get("appInfraPipelineServiceAccount"); appInfraSA != "" {
-			envVars["GCP_SERVICE_ACCOUNT"] = appInfraSA
+		delete(envVars, "GCP_SERVICE_ACCOUNT") // set from the stack output below
+
+		projLeaf, err := pulumi.NewStackReference(ctx,
+			fmt.Sprintf("projects-%s", envDef.env), &pulumi.StackReferenceArgs{
+				Name: pulumi.String(fmt.Sprintf("ipv1337/foundation-projects-bu1-%s/production", envDef.env)),
+			})
+		if err != nil {
+			return err
 		}
+		if _, err := github.NewActionsEnvironmentVariable(ctx,
+			fmt.Sprintf("%s-GCP_SERVICE_ACCOUNT", envDef.name), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String("GCP_SERVICE_ACCOUNT"),
+				Value:        projLeaf.GetStringOutput(pulumi.String("app_infra_pipeline_service_account")),
+			}); err != nil {
+			return err
+		}
+
 		varKeys := make([]string, 0, len(envVars))
 		for k := range envVars {
 			varKeys = append(varKeys, k)
