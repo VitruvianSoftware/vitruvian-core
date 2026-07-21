@@ -47,6 +47,7 @@ package main
 
 import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/artifactregistry"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/secretmanager"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -168,6 +169,67 @@ func main() {
 				Role:       pulumi.String("roles/artifactregistry.reader"),
 				Member:     pulumi.Sprintf("serviceAccount:tabula-deploy@%s.iam.gserviceaccount.com", ossProject),
 			}); err != nil {
+				return err
+			}
+		}
+
+		// 4. Management credentials for tabula's external SaaS dependencies.
+		//
+		// tabula's stateful tier is NOT in GCP: Postgres is Neon (org
+		// org-little-shape-81083488, one project per env) and the cache is
+		// Upstash Redis. Each env's RUNTIME connection string already lives in
+		// that env's own project as TABULA_DATABASE_URL / TABULA_UPSTASH_REDIS_URL.
+		// These are the different, higher-privilege thing: the ACCOUNT-level API
+		// credentials that create and manage those resources.
+		//
+		// They belong here, in the shared infra-pipeline project, not in a
+		// per-env project — they are cross-env management creds, and scoping them
+		// to one env would either under-serve the others or over-grant that env.
+		//
+		// Only the CONTAINERS are declared. No SecretVersion is created, because
+		// the value would then have to exist in this program's inputs — and the
+		// repo's secrets model is that a secret value is never committed, not even
+		// Pulumi-encrypted. Seed each value out of band, piped, never echoed:
+		//
+		//   printf %s "$KEY" | gcloud secrets versions add NEON_API_KEY \
+		//     --project=<infra-pipeline project> --data-file=-
+		//
+		// An unseeded container is inert and harmless: a reader gets NOT_FOUND on
+		// `versions/latest` until a value is added.
+		//
+		// (These were lost with the tabula-dev-0001 decommission, which deleted
+		// its Secret Manager alongside the project. Only the runtime connection
+		// strings had been carried across, so there is currently no credential
+		// able to automate either service — e.g. to create the per-env Upstash
+		// databases once the account leaves the 1-database free tier.)
+		//
+		// UPSTASH_EMAIL is a secret rather than stack config for two reasons: the
+		// Upstash API authenticates with email+key as a PAIR, so splitting them
+		// across git and Secret Manager helps nobody; and it is a personal
+		// address, which should not be committed to a repo that mirrors publicly.
+		saasSecrets := []string{"NEON_API_KEY", "UPSTASH_API_KEY", "UPSTASH_EMAIL"}
+		for _, secretID := range saasSecrets {
+			sec, err := secretmanager.NewSecret(ctx, secretID, &secretmanager.SecretArgs{
+				Project:  buildProject,
+				SecretId: pulumi.String(secretID),
+				Replication: &secretmanager.SecretReplicationArgs{
+					Auto: &secretmanager.SecretReplicationAutoArgs{},
+				},
+			})
+			if err != nil {
+				return err
+			}
+			// Narrow on both axes: ONE role, scoped to THIS secret, for the single
+			// identity that CI runs as in this project. Anything automating Neon or
+			// Upstash belongs in the infra-pipeline project and authenticates as
+			// this SA, so a per-secret grant here avoids a project-wide accessor.
+			if _, err := secretmanager.NewSecretIamMember(ctx, "build-sa-accessor-"+secretID,
+				&secretmanager.SecretIamMemberArgs{
+					Project:  buildProject,
+					SecretId: sec.SecretId,
+					Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+					Member:   pulumi.Sprintf("serviceAccount:%s", buildSA.Email),
+				}); err != nil {
 				return err
 			}
 		}
