@@ -22,14 +22,29 @@
 
 import { WorkOS } from "@workos-inc/node";
 
-if (!process.env.WORKOS_API_KEY) {
-  throw new Error("WORKOS_API_KEY is not defined");
+import { getSecret } from "./secrets";
+
+// Resolved lazily, NOT at module load. The previous top-level `throw` combined
+// with Cloud Run `secretKeyRef` meant a revision could not even be created
+// before the WorkOS creds existed, which blocks the first deploy into a fresh
+// project. Importing this module is now inert; the credentials are fetched on
+// first use and cached by lib/secrets.
+let workosClient: WorkOS | undefined;
+
+/** The WorkOS client. Throws only when actually used without credentials. */
+export async function getWorkOS(): Promise<WorkOS> {
+  if (!workosClient) {
+    workosClient = new WorkOS(await getSecret("WORKOS_API_KEY"));
+  }
+  return workosClient;
 }
 
-if (!process.env.WORKOS_CLIENT_ID) {
-  throw new Error("WORKOS_CLIENT_ID is not defined");
+/** The WorkOS client id. Throws only when actually used without credentials. */
+export async function getWorkOSClientId(): Promise<string> {
+  return getSecret("WORKOS_CLIENT_ID");
 }
 
-export const workos = new WorkOS(process.env.WORKOS_API_KEY);
-
-export const { WORKOS_CLIENT_ID } = process.env;
+/** Test seam: drop the memoized client so a case can re-resolve credentials. */
+export function __resetWorkOSForTests(): void {
+  workosClient = undefined;
+}

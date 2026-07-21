@@ -24,19 +24,24 @@
  * Unit tests for WorkOS AuthService
  */
 import { AuthService } from "../../src/services/auth.service";
-import { workos, WORKOS_CLIENT_ID } from "../../src/lib/workos";
 import { prisma } from "../../src/lib/prisma";
 
 // Mock workos
-jest.mock("../../src/lib/workos", () => ({
-  workos: {
-    userManagement: {
-      getAuthorizationUrl: jest.fn(),
-      authenticateWithCode: jest.fn(),
-    },
+// The WorkOS client is now resolved lazily (see lib/secrets): importing the
+// module must stay inert so a Cloud Run revision can be created before the
+// credentials exist.
+const mockWorkOS = {
+  userManagement: {
+    getAuthorizationUrl: jest.fn(),
+    authenticateWithCode: jest.fn(),
   },
-  WORKOS_CLIENT_ID: "test-client-id",
+};
+jest.mock("../../src/lib/workos", () => ({
+  getWorkOS: jest.fn(async () => mockWorkOS),
+  getWorkOSClientId: jest.fn(async () => "test-client-id"),
 }));
+const workos = mockWorkOS;
+const WORKOS_CLIENT_ID = "test-client-id";
 
 // Mock prisma
 jest.mock("../../src/lib/prisma", () => ({
@@ -53,13 +58,13 @@ describe("AuthService - WorkOS", () => {
   });
 
   describe("getAuthorizationUrl", () => {
-    it("should return WorkOS authorization URL", () => {
+    it("should return WorkOS authorization URL", async () => {
       const mockUrl = "https://api.workos.com/user_management/authorize?...";
       (workos.userManagement.getAuthorizationUrl as jest.Mock).mockReturnValue(
         mockUrl,
       );
 
-      const result = AuthService.getAuthorizationUrl();
+      const result = await AuthService.getAuthorizationUrl();
 
       expect(result).toBe(mockUrl);
       expect(workos.userManagement.getAuthorizationUrl).toHaveBeenCalledWith({

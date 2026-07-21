@@ -38,6 +38,7 @@ import { backupRoutes } from "./routes/backup.routes";
 import { syncRoutes } from "./routes/sync.routes";
 import { sharingRoutes } from "./routes/sharing.routes";
 import { relayRoutes } from "./routes/relay.routes";
+import { bootstrapSecrets } from "./lib/secrets";
 
 // Load environment variables
 dotenv.config();
@@ -147,6 +148,18 @@ const start = async () => {
     // migration-less rollout). Crash-looping here keeps Cloud Run on the
     // previous healthy revision instead of surfacing schema errors to users.
     await assertDatabaseSchemaCurrent(app.log);
+
+    // Resolve secrets from Secret Manager BEFORE anything reads them off the
+    // environment. Cloud Run `secretKeyRef` used to inject these, which made the
+    // revision itself un-creatable when a secret was absent — so the service
+    // could never roll out ahead of its credentials into a fresh project.
+    const missingSecrets = await bootstrapSecrets();
+    if (missingSecrets.length > 0) {
+      app.log.warn(
+        { secrets: missingSecrets },
+        "optional secrets unresolved; features depending on them are disabled",
+      );
+    }
 
     const port = parseInt(process.env.PORT || "8080", 10);
     const host = process.env.HOST || "0.0.0.0";

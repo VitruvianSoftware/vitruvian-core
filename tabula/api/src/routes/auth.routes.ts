@@ -70,7 +70,7 @@ export async function authRoutes(fastify: FastifyInstance) {
    * Redirect to WorkOS AuthKit
    */
   fastify.get("/login", async (_request, reply) => {
-    const url = AuthService.getAuthorizationUrl();
+    const url = await AuthService.getAuthorizationUrl();
     return reply.redirect(url);
   });
 
