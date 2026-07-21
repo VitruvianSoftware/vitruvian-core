@@ -147,7 +147,7 @@ shared frameworks via named catalogs.
 ## Escape hatch: standalone repos
 
 This repo syncs components out to standalone repositories with Copybara (see
-[copybara-bidi-sync.md](copybara-bidi-sync.md)). That sync is also your ultimate version-
+[copybara-bidi-sync.md](../copybara-bidi-sync.md)). That sync is also your ultimate version-
 isolation boundary: each synced component builds independently in its own repo with its **own**
 dependency closure (its own lockfile), separate from the monorepo's shared hubs.
 

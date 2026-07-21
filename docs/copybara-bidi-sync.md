@@ -240,7 +240,7 @@ edits each overwrite the other; the repos end up inconsistent, silently, with gr
   hand.
 
 **Divergence is now detected LOUD (implemented):**
-[`.github/workflows/copybara-drift-check.yaml`](../.github/workflows/copybara-drift-check.yaml)
+`.github/workflows/copybara-drift-check.yaml`
 diffs `vitruvian-core/mcp-slack/` against the standalone root (applying the same context-file
 excludes) and goes **RED** with a CI error annotation if they diverge. It runs **after every sync**
 (`workflow_run`), **every 30 min** (`schedule`), and **on demand**

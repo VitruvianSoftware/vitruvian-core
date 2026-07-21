@@ -291,13 +291,13 @@ if [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
   if [ -n "${_gcp_account:-}" ]; then
     if ! command -v gcloud >/dev/null 2>&1; then
       echo "ERROR: $PROJECT_DIR is pinned to GCP identity '$_gcp_account'" >&2
-      echo "(infrastructure/gcp-identities.tsv) but the gcloud CLI is not installed:" >&2
+      echo "(../../../infrastructure/gcp-identities.tsv) but the gcloud CLI is not installed:" >&2
       echo "    https://cloud.google.com/sdk/docs/install" >&2
       exit 1
     fi
     if ! _gcp_token="$(gcloud auth print-access-token --account="$_gcp_account" 2>/dev/null)"; then
       echo "ERROR: $PROJECT_DIR is pinned to GCP identity '$_gcp_account'" >&2
-      echo "(infrastructure/gcp-identities.tsv) but no valid credentials were found." >&2
+      echo "(../../../infrastructure/gcp-identities.tsv) but no valid credentials were found." >&2
       echo "Log in with:  gcloud auth login $_gcp_account" >&2
       exit 1
     fi
@@ -355,7 +355,7 @@ This repo manages cloud infrastructure under multiple Google accounts (personal,
 abrial, Vitruvian). **Never assume the ambient `gcloud` account is correct.**
 
 The mapping of infrastructure → GCP account is in
-[`infrastructure/gcp-identities.tsv`](infrastructure/gcp-identities.tsv).
+[`infrastructure/gcp-identities.tsv`](../../../infrastructure/gcp-identities.tsv).
 
 - **Pulumi:** the Bazel wrappers
   (`bazel run //infrastructure/pulumi/<project>:{preview,up,refresh,destroy,config}`)
@@ -448,7 +448,7 @@ wrapper does the rest. For ad-hoc GCP work, see `AGENTS.md`.
 - [ ] **Step 2: Update the index line in `MEMORY.md`**
 
 Change the existing `lab-gmail GCP identity` bullet to:
-`- [GCP infra identity map](lab-gmail-gcp-identity.md) — GCP identity is pinned per-project in infrastructure/gcp-identities.tsv; Pulumi wrappers auto-inject (never rely on ambient gcloud)`
+`- GCP infra identity map — GCP identity is pinned per-project in infrastructure/gcp-identities.tsv; Pulumi wrappers auto-inject (never rely on ambient gcloud)`
 
 (No git commit — this is Claude's local memory, outside the repo.)
 
