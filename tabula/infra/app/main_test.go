@@ -22,7 +22,11 @@ SOFTWARE.
 
 package main
 
-import "testing"
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
 
 // The bu2 rewrite of this stack dropped two env vars the retired
 // infrastructure/pulumi/apps/tabula stack set, and both are load-bearing for
@@ -75,6 +79,74 @@ func TestEnvMap(t *testing.T) {
 		}
 		if env["GOOGLE_CLOUD_PROJECT"] != project {
 			t.Errorf("required keys must still be set; got %v", env)
+		}
+	})
+}
+
+// A Cloud Run revision is immutable: its name identifies image AND config
+// together. The name was derived from the image digest alone, so promoting the
+// same image with changed env produced the SAME name for DIFFERENT content, and
+// the API rejected it:
+//
+//	Error 409: Revision named 'tabula-api-development-1c144786' with different
+//	configuration already exists.
+//
+// That is exactly what happened when API_URL and AUTH_POSTMESSAGE_ORIGIN were
+// added: one image, promoted by digest through three envs, suddenly carrying
+// different env vars. The digest is still necessary in the name (build-once /
+// promote-by-digest means the image identifies the artifact) but it is not
+// SUFFICIENT.
+func TestRevisionNameFor(t *testing.T) {
+	const (
+		svc    = "tabula-api-development"
+		digest = "1c144786"
+	)
+	base := map[string]string{"NODE_ENV": "production", "API_URL": "https://a.example"}
+
+	t.Run("is stable for the same image and config", func(t *testing.T) {
+		// Idempotence is load-bearing: the deploy runs `pulumi up` twice (deploy
+		// then promote) and reruns after a transient failure must address the
+		// SAME revision, not mint a second one.
+		a := revisionNameFor(svc, digest, base)
+		b := revisionNameFor(svc, digest, map[string]string{"API_URL": "https://a.example", "NODE_ENV": "production"})
+		if a != b {
+			t.Errorf("unstable across equal configs (map order must not matter): %q vs %q", a, b)
+		}
+	})
+
+	t.Run("changes when config changes, same image", func(t *testing.T) {
+		changed := map[string]string{"NODE_ENV": "production", "API_URL": "https://b.example"}
+		if got, other := revisionNameFor(svc, digest, base), revisionNameFor(svc, digest, changed); got == other {
+			t.Errorf("same revision name %q for different config — this is the 409", got)
+		}
+	})
+
+	t.Run("changes when a key is added", func(t *testing.T) {
+		added := map[string]string{"NODE_ENV": "production", "API_URL": "https://a.example", "AUTH_POSTMESSAGE_ORIGIN": "chrome-extension://x"}
+		if got, other := revisionNameFor(svc, digest, base), revisionNameFor(svc, digest, added); got == other {
+			t.Errorf("adding a key did not change the name (%q) — the exact regression that broke this deploy", got)
+		}
+	})
+
+	t.Run("changes when the image changes, same config", func(t *testing.T) {
+		if got, other := revisionNameFor(svc, digest, base), revisionNameFor(svc, "deadbeef", base); got == other {
+			t.Errorf("same revision name %q for different images", got)
+		}
+	})
+
+	t.Run("stays a legal Cloud Run revision name", func(t *testing.T) {
+		got := revisionNameFor(svc, digest, base)
+		// Cloud Run REQUIRES the revision name to be prefixed with the service
+		// name, and it must be RFC1035: <=63 chars, lowercase alnum and '-',
+		// starting with a letter.
+		if !strings.HasPrefix(got, svc+"-") {
+			t.Errorf("%q is not prefixed with the service name", got)
+		}
+		if len(got) > 63 {
+			t.Errorf("%q is %d chars, over the 63 limit", got, len(got))
+		}
+		if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(got) {
+			t.Errorf("%q is not a legal RFC1035 name", got)
 		}
 	})
 }
