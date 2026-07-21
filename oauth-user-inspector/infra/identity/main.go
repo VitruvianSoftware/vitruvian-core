@@ -79,11 +79,33 @@ func main() {
 		projectNumber := projStack.GetStringOutput(pulumi.String("oss_floating_project_number"))
 
 		// Deploy SA — impersonated by CI to run `pulumi up` for the app stack.
+		//
+		// OWNERSHIP MOVED TO THE FOUNDATION (2026-07):
+		// infrastructure/pulumi/foundation/gcp-app-infra now issues this account
+		// and authors its grants, per the platform-issued deploy identity rule
+		// in docs/engineering/core-vs-application-infrastructure.md §4.1 — an
+		// app must not be able to widen its own deploy permissions by editing
+		// its own repo.
+		//
+		// RetainOnDelete is the HANDOFF, and it is load-bearing: this account is
+		// live and deploying right now. Removing the resource from this stack
+		// must DROP it from state, never destroy it in GCP — a destroy would
+		// take the WIF binding with it and break the pipeline for this
+		// environment. The foundation side creates it with
+		// CreateIgnoreAlreadyExists so it adopts the existing account rather
+		// than racing to make a second one.
+		//
+		// Removal sequence (after the foundation stack has applied and this
+		// env's deploy is verified green):
+		//   pulumi stack --show-name         # confirm the env
+		//   pulumi state delete <urn-of-deploy-sa>
+		// then delete this block. Until then it stays declared so a `pulumi up`
+		// here cannot orphan it.
 		deploySA, err := serviceaccount.NewAccount(ctx, "deploy-sa", &serviceaccount.AccountArgs{
 			Project:     pulumi.String(projectID),
 			AccountId:   pulumi.String("oauth-user-inspector-deploy"),
 			DisplayName: pulumi.String("oauth-user-inspector deploy (CI)"),
-		})
+		}, pulumi.RetainOnDelete(true))
 		if err != nil {
 			return err
 		}

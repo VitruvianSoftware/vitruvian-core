@@ -52,6 +52,10 @@ Pulumi.*.yaml
 # (not gitignored) so required config resolves on a clean checkout.
 !foundation/gcp-projects/business_unit_1/*/Pulumi.*.yaml
 !foundation/gcp-projects/business_unit_2/*/Pulumi.*.yaml
+# foundation/gcp-app-infra commits per-leaf stack configs: the cross-stage stack
+# names, business code, region, and the app list. No secrets — the deploy
+# identity's grants are code, and image digests are per-invocation inputs.
+!foundation/gcp-app-infra/business_unit_1/*/Pulumi.*.yaml
 
 # Compiled Pulumi program binary left behind by `go build .` (the binary is
 # named after the module's last path element, i.e. "pulumi").
@@ -76,6 +80,9 @@ platform/zitadel-apps/zitadel-apps
 /foundation/gcp-projects/business_unit_1/development/foundation-projects-bu1-development
 /foundation/gcp-projects/business_unit_1/nonproduction/foundation-projects-bu1-nonproduction
 /foundation/gcp-projects/business_unit_1/production/foundation-projects-bu1-production
+/foundation/gcp-app-infra/business_unit_1/development/foundation-app-infra-bu1-development
+/foundation/gcp-app-infra/business_unit_1/nonproduction/foundation-app-infra-bu1-nonproduction
+/foundation/gcp-app-infra/business_unit_1/production/foundation-app-infra-bu1-production
 /foundation/gcp-projects/business_unit_2/shared/foundation-projects-bu2-shared
 /foundation/gcp-projects/business_unit_2/development/foundation-projects-bu2-development
 /foundation/gcp-projects/business_unit_2/nonproduction/foundation-projects-bu2-nonproduction

@@ -892,6 +892,84 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 	}
 
+	// ── Phase 5: App-infra promotion environments ─────────────────────────
+	// The app-infra stage (gcp-app-infra, stage 5) uses a chained promotion
+	// workflow where each leaf is its own leaf Pulumi project (single production
+	// stack) deployed via the reusable foundation-app-deploy.yaml workflow:
+	//
+	//   foundation-app-development  → auto-deploy (no reviewers)
+	//   foundation-app-nonproduction → manual approval (requires reviewers)
+	//   foundation-app-production    → manual approval (requires reviewers)
+	//
+	// Unlike stage 4 there is NO `shared` leaf — upstream 5-app-infra has none.
+	//
+	// Stage 5 consumes the stage-4 BU leaf (the env's app-hosting project) and
+	// gcp-bootstrap (the shared WIF pool), so its promotion runs AFTER the
+	// corresponding stage-4 leaf.
+	//
+	// Reuses the projects SA (sa-terraform-proj): stage 5 writes IAM on the same
+	// per-env app-hosting projects stage 4 creates, so the proj SA already holds
+	// exactly the scope this stage needs and no new org-level identity is
+	// introduced. If stage 5 ever grows resources outside those projects, give it
+	// its own SA rather than widening this one.
+	appPhaseEnvironments := []struct {
+		name            string
+		requireReviewer bool
+	}{
+		{"foundation-app-development", false},
+		{"foundation-app-nonproduction", true},
+		{"foundation-app-production", true},
+	}
+
+	for _, envDef := range appPhaseEnvironments {
+		args := &github.RepositoryEnvironmentArgs{
+			Repository:  repo.Name,
+			Environment: pulumi.String(envDef.name),
+		}
+
+		args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
+			ProtectedBranches:    pulumi.Bool(true),
+			CustomBranchPolicies: pulumi.Bool(false),
+		}
+
+		if envDef.requireReviewer {
+			reviewerIds, err := productionReviewerIds(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			args.Reviewers = github.RepositoryEnvironmentReviewerArray{
+				&github.RepositoryEnvironmentReviewerArgs{
+					Users: pulumi.ToIntArray(reviewerIds),
+				},
+			}
+		}
+
+		envRes, err := github.NewRepositoryEnvironment(ctx, envDef.name, args)
+		if err != nil {
+			return err
+		}
+
+		// Propagate foundation WIF variables so the reusable deploy workflow
+		// resolves ${{ vars.GCP_* }}. Shares the proj SA's vars (see above).
+		envVars := foundationVars["foundation-proj"]
+		varKeys := make([]string, 0, len(envVars))
+		for k := range envVars {
+			varKeys = append(varKeys, k)
+		}
+		sort.Strings(varKeys)
+		for _, k := range varKeys {
+			_, err := github.NewActionsEnvironmentVariable(ctx, fmt.Sprintf("%s-%s", envDef.name, k), &github.ActionsEnvironmentVariableArgs{
+				Repository:   repo.Name,
+				Environment:  envRes.Environment,
+				VariableName: pulumi.String(k),
+				Value:        pulumi.String(envVars[k]),
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	// ── Preview environments for the env, net & proj promotion stages ─────
 	// The environments, networks, and projects stages are previewed on PRs by
 	// .github/workflows/foundation-preview.yaml (the `development` stack of
@@ -907,8 +985,16 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// attribute.environment/foundation-<stage>-preview for every stage SA, so no
 	// gcp-bootstrap change is needed for the preview leg. PULUMI_ACCESS_TOKEN is
 	// repo-level (see tabulaEnvironments), so only the GCP_* variables are set here.
-	for _, stage := range []string{"foundation-env", "foundation-net", "foundation-proj"} {
-		previewEnv := stage + "-preview"
+	// foundation-app previews with the PROJ stage's vars/SA (stage 5 reuses the
+	// proj SA — see Phase 5), so the preview env name and the vars key differ.
+	for _, previewDef := range []struct{ envPrefix, varsKey string }{
+		{"foundation-env", "foundation-env"},
+		{"foundation-net", "foundation-net"},
+		{"foundation-proj", "foundation-proj"},
+		{"foundation-app", "foundation-proj"},
+	} {
+		stage := previewDef.varsKey
+		previewEnv := previewDef.envPrefix + "-preview"
 		previewEnvRes, err := github.NewRepositoryEnvironment(ctx, previewEnv, &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
 			Environment: pulumi.String(previewEnv),

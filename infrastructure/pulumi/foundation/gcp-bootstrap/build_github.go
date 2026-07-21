@@ -157,6 +157,29 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// The app-infra stage (gcp-app-infra, stage 5) reuses the PROJ SA: it writes
+	// IAM on the same per-env app-hosting projects stage 4 creates, so the proj
+	// SA already holds exactly the scope it needs and no new org-level identity
+	// is introduced. It still needs its OWN per-environment WIF bindings —
+	// GitHub Environment names are the isolation layer, and a
+	// foundation-app-<env> job cannot authenticate against a
+	// foundation-proj-<env> binding:
+	//   foundation-app-development  → auto-deploy
+	//   foundation-app-nonproduction → manual approval
+	//   foundation-app-production    → manual approval
+	//   foundation-app-preview       → PR preview (ungated environment)
+	// Stage 5 has no `shared` leaf (upstream 5-app-infra has none).
+	//
+	// THIS MUST APPLY BEFORE the first foundation-app-* deploy can authenticate.
+	if projSA, ok := sas["proj"]; ok {
+		for _, envName := range []string{"development", "nonproduction", "production", "preview"} {
+			saMappings[fmt.Sprintf("app-%s", envName)] = libcicd.SAMappingEntry{
+				SAName:    projSA.Name,
+				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-app-%s", envName)),
+			}
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via
