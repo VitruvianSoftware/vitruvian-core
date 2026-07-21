@@ -26,10 +26,10 @@
 # TABULA_ prefix.
 config:
   gcp:project: prj-p-bu2-oss-floating-8663
-  tabula:project: prj-p-bu2-oss-floating-8663
-  tabula:region: us-central1
-  tabula:environment: production
-  tabula:runtimeServiceAccount: tabula-rt@prj-p-bu2-oss-floating-8663.iam.gserviceaccount.com
+  tabula-app:project: prj-p-bu2-oss-floating-8663
+  tabula-app:region: us-central1
+  tabula-app:environment: production
+  tabula-app:runtimeServiceAccount: tabula-rt@prj-p-bu2-oss-floating-8663.iam.gserviceaccount.com
   # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
   # CNAME (main.go). cloudflareZoneId is pinned so preview and deploy resolve
   # the same id (no phantom replace); a zone id is not a secret (it appears in
@@ -37,4 +37,4 @@ config:
   # name→id LookupZone fallback if the id is ever unset. The DomainMapping uses
   # ForceOverride (main.go) so it took this hostname over from the retired
   # gen-lang demo mapping on the first prod apply.
-  tabula:cloudflareZone: ipv1337.dev
+  tabula-app:cloudflareZone: ipv1337.dev

@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula
+name: pulumi_tabula_app
 runtime: go
 description: OAuth User Inspector on Cloud Run + Artifact Registry.
