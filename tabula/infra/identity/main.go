@@ -154,6 +154,24 @@ func main() {
 			return err
 		}
 
+		// Deploy SA: an EXPLICIT prefix-conditioned accessor alongside the admin
+		// grant above. The pipeline reads TABULA_DATABASE_URL as the deploy SA to
+		// run `prisma migrate deploy --phase expand` BEFORE any traffic shift, and
+		// the first cold deploy failed with PERMISSION_DENIED on
+		// secretmanager.versions.access despite the admin role — so the accessor
+		// is stated outright rather than relied upon transitively.
+		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-accessor", &projects.IAMMemberArgs{
+			Project: pulumi.String(projectID),
+			Role:    pulumi.String("roles/secretmanager.secretAccessor"),
+			Member:  deployMember,
+			Condition: &projects.IAMMemberConditionArgs{
+				Title:      pulumi.String("tabula-secrets-only"),
+				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
+			},
+		}); err != nil {
+			return err
+		}
+
 		// Runtime SA: Secret Manager access CONDITIONED to this app's prefix, so a
 		// co-tenant app in the same oss project can't read another app's secrets.
 		if _, err := projects.NewIAMMember(ctx, "runtime-role-secret-accessor", &projects.IAMMemberArgs{
