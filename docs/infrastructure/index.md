@@ -90,7 +90,7 @@ A handful of conventions are shared by every project; the
 This section covers the Pulumi estate and how it is operated. Adjacent platform
 topics have their own docs — they are referenced here rather than duplicated:
 
-- [Copybara bidirectional sync](../copybara-bidi-sync.md) — the sync mechanism
+- [Copybara sync](../copybara-sync.md) — the sync mechanism
   that **sync-auth** provisions credentials for.
 - [Remote Build Execution](../remote-build.md) — BuildBuddy RBE used by CI.
 - [Secret & API-key rotation](../key-rotation.md) — SOP for the secrets these

@@ -1,7 +1,7 @@
 # Centralized Dependabot for vitruvian-core + Copybara bidi-sync — Design
 
 **Status:** approved design (2026-05-26), pending implementation plan.
-**Related:** [`docs/copybara-bidi-sync.md`](../copybara-bidi-sync.md) (sync runbook),
+**Related:** [`docs/copybara-sync.md`](../copybara-sync.md) (sync runbook),
 [`docs/planning/2026-05-25-copybara-bidi-sync-plan.md`](2026-05-25-copybara-bidi-sync-plan.md).
 
 ## Goal
@@ -151,7 +151,7 @@ Net: no component has two Dependabot sources for the same manifest.
 
 ## Docs
 
-Add a **"Dependency updates (Dependabot)"** section to `docs/copybara-bidi-sync.md`: the split model
+Add a **"Dependency updates (Dependabot)"** section to `docs/copybara-sync.md`: the split model
 (Go/actions central, npm per-standalone), the reconcile→auto-merge→fan-out pipeline, the major-bump
 manual path, the drift backstop, and "manage standalone Dependabot configs from the monorepo subtree".
 

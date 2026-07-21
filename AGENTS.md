@@ -117,10 +117,14 @@ If it breaks (the hooks normally prevent these):
 Rotate by regenerating the pair and updating `CLAUDE_SSH_KEY` + each `authorized_keys`.
 
 ## Copybara (component sync)
-Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) sync bidirectionally to standalone
-repos. Never delete standalone-only files or import monorepo-only ones — respect `standalone_only`
-(e.g. `package-lock.json`, `.github/workflows/sync-to-monorepo.yaml`) and the gazelle-generated
-`BUILD` files (monorepo-only). See `docs/copybara-bidi-sync.md`.
+The monorepo is the **single source of truth**; each standalone repo is a read-only mirror.
+Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`, `oauth-user-inspector`) export one-way on
+push; the `pulumi-*` trees are export-only. Nothing syncs bidirectionally. External contributions
+come back only as a mirror PR labelled `import-to-monorepo`, imported hourly as a monorepo PR for
+review. Never edit a mirror directly, never delete standalone-only files or import monorepo-only
+ones — respect `standalone_only` (e.g. `package-lock.json`,
+`.github/workflows/sync-to-monorepo.yaml`) and the gazelle-generated `BUILD` files (monorepo-only).
+See `docs/copybara-sync.md`.
 
 ## How this repo is maintained
 - vitruvian-core was generated from the **kitchen-sink** starter and **does not auto-receive

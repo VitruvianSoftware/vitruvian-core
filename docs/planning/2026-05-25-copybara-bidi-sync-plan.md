@@ -235,7 +235,7 @@ The genuinely uncertain pieces — the exact rev-id-label customization syntax (
 
 ## Outcome (pilot executed end-to-end in CI, 2026-05-26)
 
-The pilot ran live against `main` on both repos. **Result: bidirectional no-bounce sync works; fail-loud conflict handling does not.** Operator runbook: [`docs/copybara-bidi-sync.md`](../copybara-bidi-sync.md).
+The pilot ran live against `main` on both repos. **Result: bidirectional no-bounce sync works; fail-loud conflict handling does not.** Operator runbook: [`docs/copybara-sync.md`](../copybara-sync.md).
 
 **Success criteria:**
 - **1 — export round-trip, no bounce: ✅** A monorepo `mcp-slack/` edit reaches the standalone; the dispatch-triggered import skip-guards it (no bounce).

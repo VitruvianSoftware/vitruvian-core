@@ -1,6 +1,6 @@
 # Copybara Bidirectional Sync (Spec 3) — mcp-slack pilot
 
-**Status:** Draft for review · 2026-05-25 — **partially superseded by the pilot.** History mode is `ITERATIVE`, not `SQUASH` (SQUASH's range-wide skip-guard got the export stuck), and conflicts do **not** fail loud — concurrent same-line edits silently diverge. See the `## Outcome` in [the plan](2026-05-25-copybara-bidi-sync-plan.md) and the operator runbook [`docs/copybara-bidi-sync.md`](../copybara-bidi-sync.md).
+**Status:** Draft for review · 2026-05-25 — **partially superseded by the pilot.** History mode is `ITERATIVE`, not `SQUASH` (SQUASH's range-wide skip-guard got the export stuck), and conflicts do **not** fail loud — concurrent same-line edits silently diverge. See the `## Outcome` in [the plan](2026-05-25-copybara-bidi-sync-plan.md) and the operator runbook [`docs/copybara-sync.md`](../copybara-sync.md).
 
 **Initiative:** Final piece of the VitruvianSoftware monorepo consolidation. Spec 1 built `vitruvian-core` and grafted devx/homelab/mcp-slack; Spec 2A/2B added Swift support and grafted nexus-agent. **Spec 3 (this):** keep each monorepo subfolder and its standalone GitHub repo in sync **bidirectionally** with Copybara — piloting on `mcp-slack` before templating to the rest.
 

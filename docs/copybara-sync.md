@@ -1,73 +1,88 @@
-# Copybara Bidirectional Sync — Admin Runbook
+# Copybara Sync — Admin Runbook
 
-**Scope:** how the bidirectional sync between each `vitruvian-core/<component>/` subtree and its
-standalone `github.com/VitruvianSoftware/<component>` repo works, how to operate and maintain it, and
-what to watch out for. **Live for all four components:** `mcp-slack`, `devx`, `homelab`,
-`nexus-agent`. The mechanism is identical per component; the Copybara config is one parameterized
-loop and the CI workflows are two reusable workflows with thin per-component callers.
+**Scope:** how each `vitruvian-core/<component>/` subtree is mirrored to its standalone
+`github.com/VitruvianSoftware/<component>` repo, how to operate and maintain it, and what to watch
+out for. **The monorepo is the single source of truth for every component.** No component syncs
+bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirectional).
 
-> [!WARNING]
-> **Conflict handling is NOT fail-loud.** If the *same line* is edited on **both** repos before a
-> sync cycle completes, the two repos **silently diverge** — both syncs run green and end up holding
-> opposite values, with no error. See [§7 Conflicts](#7-conflicts--the-one-thing-to-watch). Normal
-> (non-concurrent) edits sync correctly with no bounce.
+> [!NOTE]
+> **This runbook described bidirectional sync until 2026-07.** Every component has since converged
+> on one-way (the monorepo writes; the mirror is read-only), which removed the silent-divergence
+> failure mode this doc used to open with a warning about. `copy.bara.sky` keeps `is_one_way=False`
+> as a knob for a future component that genuinely needs writable-both-ways sync, but **no component
+> uses it**. The pilot history is in `docs/planning/2026-05-25-copybara-bidi-sync-{design,plan}.md`.
+
+---
+
+## 0. Sync shapes (what replaced bidirectional)
+
+`copy.bara.sky` selects a shape per component:
+
+| Shape | Flag | Components | Generates |
+|---|---|---|---|
+| **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `devx`, `homelab`, `nexus-agent`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
+| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation` | `export_<comp>` only — no import path of any kind |
+| **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
+
+There is deliberately **no push-to-`main` `import_<comp>`** for any component. External
+contributions arrive as PRs on the mirror and are imported as monorepo PRs for human review — the
+Google-style round trip. That convergence removed the #1 drift risk.
 
 ---
 
 ## 1. TL;DR
 
-- **Bidirectional, on-push, near-real-time.** A push under `vitruvian-core/<component>/**` is
-  exported to that standalone repo; a push to a standalone repo is imported back under
-  `<component>/`.
-- **Centralized hub.** All sync logic (the Copybara config + the reusable sync workflows) lives in
-  **vitruvian-core**. Each standalone repo carries exactly one tiny workflow that fires a
-  `repository_dispatch`.
-- **One config, N components.** `copy.bara.sky` generates `export_<comp>`/`import_<comp>` for every
-  component from a `COMPONENTS` list; CI uses two reusable workflows + per-component callers.
+- **Export is on-push, near-real-time.** A push under `vitruvian-core/<component>/**` is exported to
+  that mirror. The mirror is never written by hand.
+- **Import is gated and periodic.** `copybara-import-pr.yaml` polls every mirror **hourly** for open
+  PRs carrying the `import-to-monorepo` label and imports each as a monorepo PR under `<component>/`.
+  Applying the label in the mirror UI *is* the maintainer approval gate.
+- **Centralized hub.** All sync logic (the Copybara config + the reusable export workflow) lives in
+  **vitruvian-core**.
+- **One config, N components.** `copy.bara.sky` generates the workflows for every component from a
+  `COMPONENTS` list.
 - **No bounce.** Per-direction rev-id labels + a per-commit skip-guard stop an exported change from
-  bouncing back as an import (and vice-versa).
+  returning as an import (and vice-versa).
 - **Auth is IaC.** A write SSH deploy key + a GitHub App, provisioned by Pulumi.
 
 ---
 
 ## 2. Architecture at a glance
 
-Per component (`<comp>` ∈ {mcp-slack, devx, homelab, nexus-agent}):
-
 ```mermaid
 flowchart LR
-    subgraph VC["VitruvianSoftware/vitruvian-core (monorepo = the hub)"]
+    subgraph VC["VitruvianSoftware/vitruvian-core (monorepo = source of truth)"]
         comp["&lt;comp&gt;/ &lpar;component subtree&rpar;"]
         cfg["tools/copybara/copy.bara.sky<br/>COMPONENTS loop · ITERATIVE · rev-id loop-prevention"]
         exp["copybara-export-&lt;comp&gt;.yaml → _copybara-export.yaml<br/>on push to &lt;comp&gt;/**"]
-        imp["copybara-import-&lt;comp&gt;.yaml → _copybara-import.yaml<br/>on repository_dispatch &lt;comp&gt;-import"]
+        imp["copybara-import-pr.yaml<br/>hourly poll, all mirrors"]
+        pr["monorepo PR under &lt;comp&gt;/"]
     end
-    subgraph MS["VitruvianSoftware/&lt;comp&gt; (standalone)"]
+    subgraph MS["VitruvianSoftware/&lt;comp&gt; (read-only mirror)"]
         root["repo root &lpar;= the component&rpar;"]
-        disp[".github/workflows/sync-to-monorepo.yaml<br/>on push to main"]
+        mpr["mirror PR labelled<br/>import-to-monorepo"]
     end
     exp == "export: push commits (SSH deploy key)" ==> root
-    root -- "any push triggers" --> disp
-    disp == "repository_dispatch (GitHub App token)" ==> imp
-    imp == "import: push commits (GITHUB_TOKEN)" ==> comp
+    mpr -- "polled hourly" --> imp
+    imp == "CHANGE_REQUEST import" ==> pr
+    pr -- "reviewed + merged here" --> comp
 ```
 
-> §3–§4 below walk the flow using **mcp-slack** as the worked example; every component behaves
+> §3–§4 walk the flow using **mcp-slack** as the worked example; every one-way component behaves
 > identically (substitute `<comp>` and its `<COMP>_*` secrets / `<COMP>_REV_ID` label).
 
 ### Moving parts
 
 | File | Repo | Purpose |
 |---|---|---|
-| `tools/copybara/copy.bara.sky` | vitruvian-core | The Copybara config. A `COMPONENTS` list drives a function (run via a top-level comprehension — Starlark forbids top-level `for`) that generates `export_<comp>`/`import_<comp>` for every component: `ITERATIVE` mode, rev-id labels, skip-guards, path `core.move`, `**/BUILD` + context-file excludes. |
-| `.github/workflows/_copybara-export.yaml` | vitruvian-core | **Reusable** (`workflow_call`). All export logic + the pinned Copybara image, parameterized by `component` / `standalone_only` / `sync_ssh_key`. |
-| `.github/workflows/_copybara-import.yaml` | vitruvian-core | **Reusable.** All import logic (incl. the push-race retry). |
-| `.github/workflows/copybara-export-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `push` path trigger (`<comp>/**`) + per-component concurrency group; calls the export reusable. |
-| `.github/workflows/copybara-import-<comp>.yaml` | vitruvian-core | Thin caller (×4). Owns the `repository_dispatch` trigger (type `<comp>-import`) + per-component concurrency; calls the import reusable. |
-| `.github/workflows/copybara-drift-check.yaml` | vitruvian-core | Loops all 4 components, diffs each subtree against its standalone (gated on whether the component is seeded). |
-| `tools/copybara/conflict_precheck/` (Go) | vitruvian-core | Component-aware pre-push conflict guard; Bazel-built, run via `bazel run //tools/copybara/conflict_precheck` (invoked by the export reusable). |
-| `.github/workflows/sync-to-monorepo.yaml` | **each standalone** | On push, mints a GitHub App token and fires the `repository_dispatch` into vitruvian-core. The only sync machinery a standalone carries. |
-| `infrastructure/pulumi/pkg/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + three Actions secrets. |
+| `tools/copybara/copy.bara.sky` | vitruvian-core | The Copybara config. A `COMPONENTS` list drives a function (run via a top-level comprehension — Starlark forbids top-level `for`) that generates the per-component workflows: `ITERATIVE` mode, rev-id labels, skip-guards, path `core.move`, `**/BUILD` + context-file excludes. |
+| `.github/workflows/_copybara-export.yaml` | vitruvian-core | **Reusable** (`workflow_call`). All export logic + the pinned Copybara image, parameterized by `component` / `standalone_only` / `sync_ssh_key`. Runs the conflict pre-check before Copybara. |
+| `.github/workflows/copybara-export-<comp>.yaml` | vitruvian-core | Thin caller (one per component). Owns the `push` path trigger (`<comp>/**`) + per-component concurrency group; calls the export reusable. |
+| `.github/workflows/copybara-import-pr.yaml` | vitruvian-core | The **only** import path. Hourly poll across all mirrors for PRs labelled `import-to-monorepo`; imports each as a monorepo PR (`CHANGE_REQUEST`). |
+| `.github/workflows/copybara-import-pr-close.yaml` | vitruvian-core | On merge of an import PR, closes the originating mirror PR by API (read from the `Mirror-Of:` footer). Cross-repo closure can't be done by a commit trailer. |
+| `.github/workflows/copybara-config-smoketest.yaml` | vitruvian-core | Validates `copy.bara.sky` parses and generates the expected workflows. |
+| `tools/copybara/conflict_precheck/` (Go) | vitruvian-core | Component-aware pre-push guard; Bazel-built, invoked by the export reusable. Refuses to export when the mirror holds an un-synced genuine change. |
+| `infrastructure/pulumi/pkg/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + Actions secrets. |
 
 ### Versions / identifiers (pinned)
 
@@ -75,10 +90,10 @@ flowchart LR
 |---|---|
 | Copybara image | `olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679` (2023-01 build, reports "Unknown version") |
 | Dispatch token action | `actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1` (v3.2.0) |
-| GitHub App | `vitruvian-copybara-sync`, **App ID 3863936**, installed on `vitruvian-core` only (Contents: Read & write). **Reused by all four components** (one App, its id/key placed as per-component secrets). |
-| Export-push secret | `<COMP>_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on the standalone. e.g. `DEVX_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY`. |
-| Dispatch secrets | `<COMP>_DISPATCH_APP_ID`, `<COMP>_DISPATCH_APP_PRIVATE_KEY` (in each standalone) — all hold the same reused App's credentials. |
-| Rev-id labels | export stamps `MONOREPO_REV_ID` (shared — each lands on a *separate* standalone); import stamps a per-component `<COMP>_REV_ID` (unique — they all land in the *shared* monorepo). |
+| GitHub App | `vitruvian-copybara-sync`, **App ID 3863936**, installed on `vitruvian-core` (Contents: Read & write; Pull requests: write for the import PRs + Dependabot auto-merge). **Reused by all components.** |
+| Export-push secret | `<COMP>_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on the mirror. e.g. `DEVX_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY`. |
+| Import gate label | `import-to-monorepo`, applied on the **mirror** PR by a maintainer. |
+| Rev-id labels | export stamps `MONOREPO_REV_ID` (shared — each lands on a *separate* mirror); `import_pr` stamps a per-component `<COMP>_REV_ID` (unique — they all land in the *shared* monorepo). |
 
 ---
 
@@ -93,8 +108,9 @@ flowchart LR
 4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `mcp-slack/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
-5. That push to mcp-slack `main` triggers `sync-to-monorepo.yaml` → a `repository_dispatch` → the
-   import. The import sees the `MONOREPO_REV_ID` label and **skip-guards** it (no bounce).
+5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
+   monorepo is a labelled mirror PR (§4), and that path skip-guards any commit carrying
+   `MONOREPO_REV_ID` (no bounce).
 
 ```mermaid
 sequenceDiagram
@@ -115,42 +131,47 @@ sequenceDiagram
 
 ---
 
-## 4. How the IMPORT flow works (standalone → monorepo)
+## 4. How the IMPORT flow works (mirror PR → monorepo PR)
 
-**Trigger:** a push to `mcp-slack` `main`.
+**Trigger:** `copybara-import-pr.yaml` on its **hourly schedule** (or `workflow_dispatch`). There is
+no push trigger and no `repository_dispatch` — a push to a mirror does **not** reach the monorepo.
 
-1. `sync-to-monorepo.yaml` (in mcp-slack) fires `on: push`.
-2. It mints a short-lived token from the **GitHub App** (`create-github-app-token`, using the
-   `MCP_SLACK_DISPATCH_APP_*` secrets) and `POST`s a `repository_dispatch` (`event_type:
-   mcp-slack-import`) to vitruvian-core. *(The App is needed because the standalone's own
-   `GITHUB_TOKEN` can't reach vitruvian-core.)*
-3. `copybara-import.yaml` fires on that dispatch, sets up the same auth, and runs
-   `COPYBARA_WORKFLOW=import_mcp_slack`.
-4. Copybara **reads** mcp-slack over **SSH** (deploy key), adds the `mcp-slack/` prefix, and
-   **pushes** to vitruvian-core `main` over **HTTPS** (`GITHUB_TOKEN`, needs `contents: write`),
-   stamping each commit with `MCP_SLACK_REV_ID`.
-5. That push is made by `GITHUB_TOKEN`, which **does not trigger workflows** — so the export is not
-   re-triggered. (The skip-guard would also catch it; this is belt-and-suspenders.)
+1. A contributor opens a PR on `VitruvianSoftware/mcp-slack`.
+2. A maintainer applies the **`import-to-monorepo`** label on that mirror PR. **Applying the label
+   is the approval gate** — nothing is imported without it.
+3. On the next hourly cycle the workflow queries each mirror for open PRs carrying the label.
+4. For each one it runs `COPYBARA_WORKFLOW=import_pr_mcp_slack` in **`CHANGE_REQUEST`** mode:
+   Copybara reads the mirror PR, adds the `mcp-slack/` prefix, and opens a **monorepo PR** on branch
+   `mcp-slack-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
+   `Mirror-Of: VitruvianSoftware/mcp-slack#<N>` footer.
+5. That monorepo PR goes through normal review and the merge queue like any other change.
+6. On merge, `copybara-import-pr-close.yaml` reads the `Mirror-Of:` footer and closes the
+   originating mirror PR by API (a commit trailer can't close a PR cross-repo).
+7. The merge to `main` touches `mcp-slack/**`, so the **export** fires and reflects the change back
+   out to the mirror — where the export's own skip-guard sees `MCP_SLACK_REV_ID` and does not
+   re-import it.
 
 ```mermaid
 sequenceDiagram
-    actor Dev as Developer
-    participant MS as mcp-slack main
-    participant DISP as sync-to-monorepo.yaml
-    participant APP as GitHub App 3863936
-    participant IMP as copybara-import.yaml
+    actor Ext as External contributor
+    participant MS as mcp-slack (mirror)
+    actor Maint as Maintainer
+    participant IMP as copybara-import-pr.yaml (hourly)
     participant CB as Copybara image
-    participant VC as vitruvian-core main
-    Dev->>MS: push change
-    MS->>DISP: on: push
-    DISP->>APP: create-github-app-token
-    APP-->>DISP: short-lived installation token
-    DISP->>IMP: repository_dispatch (mcp-slack-import)
-    IMP->>CB: docker run (import_mcp_slack, ITERATIVE)
-    CB->>MS: read origin (SSH deploy key)
-    CB->>VC: push migrated commit (HTTPS + GITHUB_TOKEN), stamp MCP_SLACK_REV_ID
-    Note over VC: GITHUB_TOKEN push does NOT trigger export → no bounce
+    participant VC as vitruvian-core
+    Ext->>MS: open PR
+    Maint->>MS: apply label import-to-monorepo
+    IMP->>MS: poll for labelled PRs
+    IMP->>CB: docker run (import_pr_mcp_slack, CHANGE_REQUEST)
+    CB->>VC: open monorepo PR, stamp MCP_SLACK_REV_ID + Mirror-Of footer
+    VC->>VC: review + merge queue
+    VC->>MS: on merge, auto-close the mirror PR (API)
+    Note over VC,MS: merge triggers export - change reflected back out
 ```
+
+> **Best-effort and idempotent.** A PR unlabelled between poll and import is dropped by Copybara's
+> `required_labels` skip-guard (exit 4, logged). A PR labelled *after* a poll window is picked up on
+> the next cycle. Re-running the workflow does not duplicate an already-imported PR.
 
 ---
 
@@ -212,65 +233,38 @@ flowchart TD
 
 ---
 
-## 7. Conflicts — THE one thing to watch
+## 7. Divergence and the conflict pre-check
 
-```mermaid
-sequenceDiagram
-    participant VC as vitruvian-core main
-    participant MS as mcp-slack main
-    Note over VC,MS: in sync; line L = "old"
-    par concurrent conflicting edits
-        VC->>VC: edit L="A", push (→ export)
-    and
-        MS->>MS: edit L="B", push (→ import)
-    end
-    VC-->>MS: export overwrites L → "A" (green)
-    MS-->>VC: import overwrites L → "B" (green)
-    Note over VC,MS: DIVERGED — VC="B", MS="A", NO error
-```
+Under bidirectional sync this was the section that mattered most: two concurrent edits to the same
+line silently overwrote each other, both runs green. **One-way removes that failure mode by
+construction** — the mirror is never authoritative, so there is no second writer to race with.
 
-**What happens:** Copybara's `git.destination` makes the destination *match the origin* (a state
-sync, not a 3-way merge). The rev-id labels do **loop-prevention, not conflict-detection** — nothing
-checks "did the destination move out from under me since the baseline?" So two concurrent conflicting
-edits each overwrite the other; the repos end up inconsistent, silently, with green CI.
+What remains is the narrower case of someone pushing directly to a mirror (bypassing the PR gate).
+That change is not in the monorepo, and the next export would overwrite it.
 
-**What to do today:**
-- Treat the sync as **last-writer-wins**, and avoid editing the *same* file on both repos at once.
-- After any suspected concurrent edit, **diff the component on both repos** (see §9) and reconcile by
-  hand.
-
-**Divergence is now detected LOUD (implemented):**
-`.github/workflows/copybara-drift-check.yaml`
-diffs `vitruvian-core/mcp-slack/` against the standalone root (applying the same context-file
-excludes) and goes **RED** with a CI error annotation if they diverge. It runs **after every sync**
-(`workflow_run`), **every 30 min** (`schedule`), and **on demand**
-(`gh workflow run copybara-drift-check.yaml -R VitruvianSoftware/vitruvian-core`). So a conflict no
-longer corrupts silently — you get a failing run pointing you at the diverged files; reconcile by
-hand (see the diff in the run log).
-
-**Conflicts are now also PREVENTED (implemented):** each sync workflow runs
-the Go pre-check [`tools/copybara/conflict_precheck`](../tools/copybara/conflict_precheck) (`bazel run //tools/copybara/conflict_precheck`) **before** Copybara.
-It refuses to sync (exit 1, red, with an error annotation) when the **peer** repo has an un-synced
-*genuine* change — a commit that does **not** carry the other direction's rev-id label, i.e. a real
-edit not yet reflected back. Syncing then would overwrite it. Because **both** directions run the
-check, a true conflict fails **both** runs and **neither overwrites** — the two edits stay intact on
-their own sides, and you reconcile by hand and re-run. (A `--force` dispatch skips the pre-check, for
-deliberate re-seeds.)
+**The export refuses rather than overwriting.** Each export runs the Go pre-check
+[`tools/copybara/conflict_precheck`](../tools/copybara/conflict_precheck)
+(`bazel run //tools/copybara/conflict_precheck`) **before** Copybara. It exits 1 — red, with an
+error annotation — when the mirror holds a *genuine* un-synced change: a commit that does **not**
+carry `MONOREPO_REV_ID`, i.e. a real edit that did not come from the monorepo. A `--force` dispatch
+skips the pre-check, for deliberate re-seeds.
 
 ```mermaid
 flowchart TD
-    S["sync about to run (export or import)"] --> Q{"does the PEER repo have a genuine<br/>change not yet synced back?"}
+    S["export about to run"] --> Q{"does the mirror have a genuine<br/>change not present in the monorepo?"}
     Q -- "no" --> OK["proceed → Copybara runs"]
-    Q -- "yes (concurrent edit)" --> F["EXIT 1 — refuse, red CI, annotate<br/>(no overwrite; reconcile by hand)"]
+    Q -- "yes (direct push to the mirror)" --> F["EXIT 1 — refuse, red CI, annotate<br/>(no overwrite; reconcile by hand)"]
 ```
 
-> **Why not just serialize the two workflows?** It doesn't help here: in ITERATIVE mode each side's
-> commit is replayed onto the other *regardless of order*, so serializing the runs still diverges.
-> Refusing when the peer is ahead with a genuine change is what actually prevents the overwrite.
+Recovery: bring the change into the monorepo properly — open a mirror PR and label it
+`import-to-monorepo` (§4), or apply the equivalent edit in the monorepo subtree — then re-run the
+export.
 
-So a conflict now **fails both syncs loud** (pre-check, before any write); the **drift check** above
-remains as a backstop for anything that slips through. Recovery = reconcile the two edits by hand,
-then re-run the sync.
+> [!NOTE]
+> **There is no drift-check workflow.** `copybara-drift-check.yaml` existed under the bidirectional
+> model as a 30-minute backstop against silent divergence and was removed at the one-way cutover.
+> The pre-check above is the guard now; it fails *before* any write rather than detecting damage
+> afterwards. Older docs and workflow comments referring to a drift check are stale.
 
 ---
 
@@ -283,35 +277,34 @@ Every caller workflow exposes `workflow_dispatch` with a `copybara_options` inpu
 ```bash
 # Export (normal), e.g. devx:
 gh workflow run copybara-export-devx.yaml -R VitruvianSoftware/vitruvian-core --ref main
-# Import (normal), e.g. devx:
-gh workflow run copybara-import-devx.yaml -R VitruvianSoftware/vitruvian-core --ref main
+# Import: ONE workflow for every component; it polls all mirrors for labelled PRs.
+# Run it to pick up a just-labelled PR without waiting for the hourly cycle.
+gh workflow run copybara-import-pr.yaml -R VitruvianSoftware/vitruvian-core --ref main
 ```
 
-### 8b. Seed a fresh component baseline (first-ever sync) — the tested recipe
+### 8b. Seed a fresh component baseline (first-ever export)
 A brand-new destination has **no rev-id baseline**, so a normal run errors with
 `Previous revision label <LABEL> could not be found … --last-rev or --init-history were not passed`.
-**`--force` alone is NOT enough** — Copybara needs `--init-history`, and the baseline is anchored by a
-**real migration** (a commit that touches managed paths). If the two repos are already byte-identical
-the seed no-ops and stamps nothing, so seeding needs a transient diff. The tested recipe (verified
-for devx/homelab/nexus-agent on 2026-05-26), using a throwaway marker that nets to zero:
+**`--force` alone is NOT enough** — Copybara needs `--init-history`, and the baseline is anchored by
+a **real migration** (a commit that touches managed paths). If the two repos are already
+byte-identical the seed no-ops and stamps nothing, so seeding needs a transient diff:
 
 ```bash
 COMP=devx   # the component
 # 1. Add a transient marker in the monorepo (skip CI so the export doesn't auto-fire un-seeded):
 #    echo seed > $COMP/.copybara-seed ; git commit -m "seed [skip ci]" ; git push
-# 2. Export seed — forces a SQUASH "Project import" commit on the standalone (anchors MONOREPO_REV_ID):
+# 2. Seed the export — a SQUASH "Project import" commit on the mirror anchors MONOREPO_REV_ID:
 gh workflow run copybara-export-$COMP.yaml --ref main \
   -f copybara_options="--force --squash --init-history --ignore-noop"
-# 3. Remove the marker ON THE STANDALONE (git rm + push). Note the export-seed "Project import" SHA.
-# 4. Import seed — ITERATIVE with --last-rev = that "Project import" SHA, so the range is JUST the
-#    genuine removal (do NOT use --squash here: the squash range would include the MONOREPO_REV_ID
-#    "Project import" commit and the skip-guard would drop the whole squash → no baseline):
-gh workflow run copybara-import-$COMP.yaml --ref main \
-  -f copybara_options="--force --last-rev <export-seed-Project-import-SHA> --ignore-noop"
+# 3. Remove the marker in the MONOREPO and let the normal export fan the removal out.
 ```
-After both seeds, the marker is gone from both repos and a **normal** `--ignore-noop` run finds the
-baseline and no-ops. Confirm with `copybara-drift-check.yaml` (it should report the component "in
-sync"). A `--force` run always skips the conflict pre-check.
+After the seed, a **normal** `--ignore-noop` export finds the baseline and no-ops. A `--force` run
+always skips the conflict pre-check.
+
+> Only the **export** baseline is seeded. `import_pr_<comp>` runs in `CHANGE_REQUEST` mode against a
+> specific PR and needs no rev-id baseline of its own. (The old two-sided seed recipe — export seed,
+> then an ITERATIVE import seed pinned with `--last-rev` — applied to the retired push-to-`main`
+> import and is no longer needed.)
 
 ### 8c. Watch / debug a run
 ```bash
@@ -339,25 +332,26 @@ pulumi up --stack dev   # updates MCP_SLACK_DISPATCH_APP_PRIVATE_KEY in mcp-slac
 ### 8f. Onboard another component
 mcp-slack, devx, homelab, nexus-agent are already onboarded. For a **new** one (standalone repo must
 already exist — this setup never creates repos):
-1. **Config:** add a dict to `COMPONENTS` in `copy.bara.sky` — `name`, a unique
-   `standalone_rev_id` (`<COMP>_REV_ID`), and `standalone_only` (always the dispatch workflow; add
+1. **Config:** add a dict to `COMPONENTS` in `copy.bara.sky` — `name`, `is_one_way: True` (or
+   `export_only: True` for a pure read-only mirror), a unique `standalone_rev_id`
+   (`<COMP>_REV_ID`), and `standalone_only` (always the dispatch workflow; add
    `package-lock.json` for npm components). The `**/BUILD` exclude is automatic. (No `core.move` or
    workflow hand-edits — the loop generates `export_<comp>`/`import_<comp>`.)
-2. **CI:** add two thin callers — `copybara-export-<comp>.yaml` (push `paths: <comp>/**`) and
-   `copybara-import-<comp>.yaml` (`repository_dispatch` type `<comp>-import`); copy an existing pair
-   and swap the component name + `<COMP>_SYNC_SSH_KEY` secret. Add the component to the
-   `drift-check` `workflow_run` list + `components` loop.
+2. **CI:** add ONE thin caller — `copybara-export-<comp>.yaml` (push `paths: <comp>/**`); copy an
+   existing one and swap the component name + `<COMP>_SYNC_SSH_KEY` secret. No import caller is
+   needed: `copybara-import-pr.yaml` picks the component up from the `COMPONENTS` list
+   automatically. Create the `import-to-monorepo` label on the mirror — the poll fails fast if the
+   gate label is missing.
 3. **Auth:** append the component to `syncedProjects` in `pkg/copybara_sync/sync.go`; set its
    `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` config to the reused App's creds
    (`pulumi config get … | pulumi config set --secret …` so the key never prints); `pulumi up`.
-4. **Dispatch workflow:** push `.github/workflows/sync-to-monorepo.yaml` to the standalone (copy an
-   existing one; swap the `<COMP>_DISPATCH_APP_*` secret names + `event_type=<comp>-import`). **It
-   must pass the standalone's OWN CI.** Every standalone now enforces the MIT header (§12), so header
+4. **Mirror CI:** anything the mirror carries that the monorepo never sees (historically
+   `sync-to-monorepo.yaml`, listed in `standalone_only`) **must pass the mirror's OWN CI.** Every standalone now enforces the MIT header (§12), so header
    this file before pushing:
    `addlicense -c "VitruvianSoftware" -l mit .github/workflows/sync-to-monorepo.yaml`.
-   This standalone-only file is invisible to the monorepo CI and the drift check (see §9), so a
-   missing header only shows up as a red run on the *standalone's* `main`.
-5. **Seed** both baselines per §8b, then confirm with the drift check.
+   This mirror-only file is invisible to the monorepo CI, so a missing header only shows up as a
+   red run on the *mirror's* `main`.
+5. **Seed** the export baseline per §8b, then confirm the mirror matches the subtree.
 
 ---
 
@@ -368,10 +362,10 @@ already exist — this setup never creates repos):
 | `Cannot find last imported revision … <LABEL> could not be found` | Destination has no rev-id baseline yet | Seed once with `--last-rev`/`--force` (§8b) |
 | `Load key "/root/.ssh/id_rsa": invalid format` → `Permission denied (publickey)` | SSH key lost its trailing newline | We run the image directly and write the key with a guaranteed `\n` — do **not** switch to `olivr/copybara-action` (it trims the newline via `core.getInput`) |
 | A genuine change silently doesn't sync; export "succeeds" as NO_OP | Skip-guard over-fired (only possible in `SQUASH`) | Ensure `mode = "ITERATIVE"` in `copy.bara.sky` (§5) |
-| Repos hold different values for the same line, both runs green | Concurrent conflicting edit (see §7) | Reconcile by hand; consider the fail-loud options in §7 |
 | Export pushes but the standalone loses `package-lock.json` / the dispatch workflow; or import deletes a gazelle `BUILD` | Missing context-file exclude | Confirm the `glob(..., exclude=[…])` lists in `copy.bara.sky` (see below) |
-| Import "succeeds" as NO_OP during seeding, no baseline stamped | `--squash` seed range included the export-origin `Project import` commit (skip-guard dropped the whole squash) | Seed the import with `--last-rev <export-seed-SHA>` in ITERATIVE, not `--squash` (§8b) |
-| A **standalone's own** `main` CI is red (lint / license header) on a fanned-out commit, while the monorepo + drift check are green | A file the sync added or changed doesn't meet *that standalone's* conventions. The standalone runs its own CI on every fanned-out commit; the monorepo CI and the drift check don't cover it (drift compares **content parity**, not the standalone's CI). | Make the file satisfy the standalone's check. **Standalone-only** files (e.g. `sync-to-monorepo.yaml`) → fix on the standalone directly (they aren't synced). **Synced** files → fix in the monorepo subtree; the export fans the fix out. (Real case: the dispatch workflow lacked devx's MIT header — fixed via `addlicense`.) |
+| Export refuses with a red pre-check annotation | Someone pushed directly to the mirror, bypassing the PR gate | Bring the change in via a labelled mirror PR (§4), then re-run the export (§7) |
+| A labelled mirror PR never appears as a monorepo PR | Label applied after the poll window, or the `import-to-monorepo` label is missing on the mirror | Wait one cycle or dispatch `copybara-import-pr.yaml` manually (§8a); create the label if absent |
+| A **mirror's own** `main` CI is red (lint / license header) on a fanned-out commit, while the monorepo is green | A file the sync added or changed doesn't meet *that mirror's* conventions. The mirror runs its own CI on every fanned-out commit; the monorepo CI doesn't cover it. | Make the file satisfy the standalone's check. **Standalone-only** files (e.g. `sync-to-monorepo.yaml`) → fix on the standalone directly (they aren't synced). **Synced** files → fix in the monorepo subtree; the export fans the fix out. (Real case: the dispatch workflow lacked devx's MIT header — fixed via `addlicense`.) |
 
 **Diff the component across both repos:**
 ```bash
@@ -395,13 +389,13 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
   work).
 - **`ITERATIVE` mode** — mandatory (see §5).
 - **GitHub App for the dispatch (not a PAT)** — org-managed, rotatable, least-privilege.
-- **Per-component import concurrency groups + a retry (NOT a shared group).** Every import pushes to
-  the same monorepo `main`, so concurrent imports can race ("behind destination"). A *shared*
-  concurrency group looks tempting but GitHub **cancels intermediate pending runs** in a group — that
-  would silently DROP a component's import. So each import keeps its own group (no cancellation) and
-  `_copybara-import.yaml` instead **retries** Copybara a few times: a losing push just means another
-  import landed first, and re-running re-fetches `main` and replays cleanly. (Both learned the hard
-  way during the 2026-05-26 templating: a shared group cancelled a third simultaneous import.)
+- **One shared import workflow, not per-component callers.** Imports are `CHANGE_REQUEST` PRs, not
+  pushes to `main`, so the push-race that forced per-component import concurrency groups + retries
+  under the bidirectional model no longer exists. (That retry logic lived in the deleted
+  `_copybara-import.yaml`; a *shared* concurrency group had to be avoided back then because GitHub
+  cancels intermediate pending runs in a group, which silently dropped a component's import.)
+- **A label as the approval gate.** Import requires a maintainer to apply `import-to-monorepo` on
+  the mirror PR — a human decision in the mirror's own UI, with no extra tooling to run.
 
 ### Pending hardening — mirror the Copybara image to GHCR
 The sync pulls `olivr/copybara@sha256:…` from Docker Hub on every run. To remove that external
@@ -456,8 +450,9 @@ to the standalones via the export. You manage every component's Dependabot confi
    the VitruvianSoftware org disables repo-level auto-merge.)*
 5. The merge push triggers **`copybara-export-<comp>`**, which **fans the change out** to the
    standalone (same export flow as §3).
-6. The 30-min **`copybara-drift-check`** (§7) is the **backstop** — if a merge ever fails to fan out,
-   it goes RED within 30 min.
+6. If a merge ever fails to fan out, the failure surfaces as a **red `copybara-export-<comp>` run**
+   on `main`. (The 30-minute `copybara-drift-check` that used to backstop this was removed with the
+   bidirectional model — see §7.)
 
 > **Major bumps are NOT auto-merged.** Review, **reconcile by hand if CI is red**, then merge
 > manually. A normal **user** merge is **user-attributed**, so it **still triggers the export** and
@@ -472,7 +467,7 @@ flowchart TD
     AM -- "major" --> H
     AM -- "yes" --> M["auto-merge via App token"]
     M --> EX["copybara-export-&lt;comp&gt; → fan out"]
-    EX -. "if it ever doesn't" .-> DR["drift-check RED ≤30 min"]
+    EX -. "if it ever fails" .-> DR["red copybara-export-&lt;comp&gt; run on main"]
 ```
 
 ### App permissions (prerequisite for auto-merge)
@@ -536,5 +531,8 @@ touched **before** committing. Headers fan out like any other content change.
 
 ---
 
-*Pilot design + decision history: [`docs/planning/2026-05-25-copybara-bidi-sync-design.md`](planning/2026-05-25-copybara-bidi-sync-design.md)
-and [`…-plan.md`](planning/2026-05-25-copybara-bidi-sync-plan.md) (see its `## Outcome`).*
+*Bidirectional pilot design + decision history (superseded — retained as the record of why one-way
+won): [`docs/planning/2026-05-25-copybara-bidi-sync-design.md`](planning/2026-05-25-copybara-bidi-sync-design.md)
+and [`…-plan.md`](planning/2026-05-25-copybara-bidi-sync-plan.md) (see its `## Outcome`).
+One-way cutovers: [`copybara-devx-oneway-cutover.md`](copybara-devx-oneway-cutover.md) ·
+[`copybara-pulumi-oneway-cutover.md`](copybara-pulumi-oneway-cutover.md).*
