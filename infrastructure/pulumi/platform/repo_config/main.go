@@ -990,14 +990,38 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		if err != nil {
 			return err
 		}
-		if _, err := github.NewActionsEnvironmentVariable(ctx,
-			fmt.Sprintf("%s-GCP_SERVICE_ACCOUNT", envDef.name), &github.ActionsEnvironmentVariableArgs{
-				Repository:   repo.Name,
-				Environment:  envRes.Environment,
-				VariableName: pulumi.String("GCP_SERVICE_ACCOUNT"),
-				Value:        projLeaf.GetStringOutput(pulumi.String("app_infra_pipeline_service_account")),
-			}); err != nil {
+		// GetStringOutput would ERROR the whole apply when the output is not
+		// there yet ("stack reference output ... does not exist"), which took
+		// repo_config down with it — and repo_config owns the merge-queue
+		// ruleset and repo security settings, so an unrelated foundation
+		// rollout must never be able to block it. GetOutputDetails returns nil
+		// fields instead, so we can skip the variable and keep applying.
+		//
+		// Skipping is the SAFE outcome, not a degraded one: with no
+		// GCP_SERVICE_ACCOUNT the stage-5 deploy fails loudly at
+		// google-github-actions/auth. What must never happen is the variable
+		// carrying a MORE-privileged identity (see the git history of this
+		// block) — absent beats wrong.
+		saDetails, err := projLeaf.GetOutputDetails("app_infra_pipeline_service_account")
+		if err != nil {
 			return err
+		}
+		if sa, ok := saDetails.Value.(string); ok && sa != "" {
+			if _, err := github.NewActionsEnvironmentVariable(ctx,
+				fmt.Sprintf("%s-GCP_SERVICE_ACCOUNT", envDef.name), &github.ActionsEnvironmentVariableArgs{
+					Repository:   repo.Name,
+					Environment:  envRes.Environment,
+					VariableName: pulumi.String("GCP_SERVICE_ACCOUNT"),
+					Value:        pulumi.String(sa),
+				}); err != nil {
+				return err
+			}
+		} else {
+			ctx.Log.Warn(fmt.Sprintf(
+				"%s: gcp-projects bu1-%s has not exported app_infra_pipeline_service_account yet; "+
+					"leaving GCP_SERVICE_ACCOUNT UNSET so stage-5 deploys fail closed rather than "+
+					"authenticating as a privileged SA. Re-run after that leaf applies.",
+				envDef.name, envDef.env), nil)
 		}
 
 		varKeys := make([]string, 0, len(envVars))
