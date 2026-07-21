@@ -284,13 +284,14 @@ never receives traffic in the first place.
 
 1. Register (or reuse) an OAuth application at the provider, allowing every env's
    exact redirect URI.
-2. Seed the creds into each env's Secret Manager. The one-time
-   [`oauth-user-inspector-migrate-hosted-creds.yaml`](../../.github/workflows/oauth-user-inspector-migrate-hosted-creds.yaml)
-   workflow copies the 11 non-Zitadel provider secrets (`GITHUB_/GOOGLE_/GITLAB_/
-   AUTH0_/LINKEDIN_APP_OAUTH_*`) from a source project into the chosen env's oss
-   project, prefixed and keyless (piped `access | versions add`, never printed).
-   For a brand-new provider, add its secrets by hand with `gcloud secrets
+2. Seed the creds into each env's Secret Manager by hand with `gcloud secrets
    versions add` under the `OAUTH_USER_INSPECTOR_` prefix.
+
+   > The original 11 non-Zitadel provider secrets were copied out of the personal
+   > `gen-lang` project by a one-time `workflow_dispatch` job (PR #963), keyless as
+   > the env deploy SA with the value piped `access | versions add` so it was never
+   > printed. That workflow was removed once `gen-lang` was decommissioned
+   > (2026-07-20); see the git history if you need the pattern for another app.
 3. `GET /api/oauth-hosted/availability` should now report the provider `true`.
 
 ### Add / change a redirect URI
@@ -335,7 +336,6 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 | Deploy pipeline | `.github/workflows/oauth-user-inspector-deploy.yaml` |
 | Reusable blue-green deploy | `.github/workflows/_deploy-cloud-run.yaml` |
 | Reusable Zitadel apply | `.github/workflows/_zitadel-apps-apply.yaml` |
-| Hosted-cred migration (one-time) | `.github/workflows/oauth-user-inspector-migrate-hosted-creds.yaml` |
 | CI secret sync tool | `tools/sync-env-secrets/` |
 | Site-verification helper | `tools/ci/ensure-site-verification.sh` |
 | Design spec (stage 5) | `docs/superpowers/specs/2026-07-10-oss-application-stage-design.md` |

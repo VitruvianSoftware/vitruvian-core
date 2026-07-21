@@ -131,7 +131,7 @@ For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcon
 The two Cloud Run apps each have a per-app GCP **dev** project for runtime secrets/integration:
 
 - `tabula` → `tabula-dev-0001` (GitHub Environment `tabula-development`)
-- `oauth-user-inspector` → `gen-lang-client-…` (GitHub Environment `oauth-user-inspector-development`)
+- `oauth-user-inspector` → `prj-d-bu1-oss-floating-648a` (GitHub Environment `oauth-user-inspector-development`)
 
 There is **no documented local-vs-dev-project split** yet — that's a known local-dev gap. Runtime secrets live in that project's GCP Secret Manager and are read at runtime (never checked out locally); see Section 7.
 

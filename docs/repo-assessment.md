@@ -88,8 +88,8 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | Root (`vitruvian-core`) | Copybara sync auth (deploy keys, GitHub secrets) | — |
 | `lab-gmail/` | Personal GCP infra — Cloud Run (lab-gmail), Cloud Build, Secret Manager, IAM, Storage | `personal-llc` |
 | `tabula/` | Tabula API — Cloud Run v2 (blue-green), Artifact Registry, 5 secrets | `tabula-dev-0001` |
-| `oauth-user-inspector/` | OAuth Inspector — Cloud Run v2, Artifact Registry | `gen-lang-client-0352693779` |
-| `oauth-user-inspector-deploy-identity/` | WIF pool + OIDC provider, deploy/runtime SAs | `gen-lang-client-0352693779` |
+| `oauth-user-inspector/infra/app/` | OAuth Inspector — Cloud Run v2, DomainMapping, Cloudflare CNAME | `prj-{d,n,p}-bu1-oss-floating-*` |
+| `oauth-user-inspector/infra/identity/` | Per-env deploy/runtime SAs + shared `foundation-pool` WIF binding | `prj-{d,n,p}-bu1-oss-floating-*` |
 | `dev-local/` | Homelab k8s platform components (Helm charts) | — |
 | `zitadel-apps/` | Zitadel OIDC application registrations | — |
 | `repo_config/` | GitHub repo settings (environments, branch protection, merge queue) | — |
