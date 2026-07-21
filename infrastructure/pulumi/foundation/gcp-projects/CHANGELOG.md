@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.1...foundation-gcp-projects-v1.5.0) (2026-07-21)
+
+
+### Features
+
+* **foundation:** issue a BU app-infra pipeline identity and ungate stage 5 ([#1008](https://github.com/VitruvianSoftware/vitruvian-core/issues/1008)) ([7892f92](https://github.com/VitruvianSoftware/vitruvian-core/commit/7892f92687e812190de59bf322a4b9aec02541b6))
+
 ## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.0...foundation-gcp-projects-v1.4.1) (2026-07-21)
 
 
