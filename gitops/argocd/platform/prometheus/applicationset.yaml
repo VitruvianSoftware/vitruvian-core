@@ -654,8 +654,9 @@ spec:
               # repo has a public mirror) — it is read at runtime from a mounted
               # Secret via url_file. PREREQUISITE: the SealedSecret
               # `alertmanager-ntfy-endpoint` (key `ntfy-url` = the full ntfy topic
-              # URL, e.g. https://ntfy.host/mytopic) must exist BEFORE this applies,
-              # or the alertmanager pod can't mount it. See the PR for the kubeseal cmd.
+              # URL) must exist BEFORE this applies, or the alertmanager pod can't
+              # mount it. Create it in one step:
+              #   bazel run //tools/gitops:seal-alert-ntfy -- 'https://ntfy.host/mytopic'
               config:
                 global:
                   resolve_timeout: 5m

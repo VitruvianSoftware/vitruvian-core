@@ -66,6 +66,16 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# One-step operational task: seal the ntfy alert-delivery endpoint that
+# Alertmanager reads (SealedSecret alertmanager-ntfy-endpoint/ntfy-url in
+# `monitoring`). Wraps the create-secret | kubeseal chain behind one arg.
+#   bazel run //tools/gitops:seal-alert-ntfy -- 'https://ntfy.host/mytopic'
+sh_binary(
+    name = "seal-alert-ntfy",
+    srcs = ["seal_alert_ntfy.sh"],
+    visibility = ["//visibility:public"],
+)
+
 # Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
 # Unlock is automatic (prompts for the master password if locked); `bw login` once first.
 sh_binary(
