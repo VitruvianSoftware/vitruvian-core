@@ -93,7 +93,7 @@ The following are outputs from frequently run commands. Reference them instead o
   "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json",
   "build:frontend": "npm run typecheck:frontend && cd frontend && vite build",
   "build:server": "tsc -p server/tsconfig.server.json",
-  "start": "GOOGLE_CLOUD_PROJECT=gen-lang-client-0352693779 node dist-server/server.js",
+  "start": "node dist-server/server.js",
   "test": "jest",
   "setup-dev": "sh scripts/setup-dev.sh",
   "deploy": "./scripts/deploy.sh"

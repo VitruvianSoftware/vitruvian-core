@@ -141,8 +141,10 @@ Keep the three homes straight; never commit a secret, not even Pulumi-encrypted.
       each env's oss project. To migrate from an existing project, use a one-time
       `workflow_dispatch` job that copies secrets keyless as the env deploy SA,
       piping `gcloud secrets versions access | versions add` (value never
-      printed) — see
-      `.github/workflows/oauth-user-inspector-migrate-hosted-creds.yaml`.
+      printed). Worked example: `oauth-user-inspector-migrate-hosted-creds.yaml`
+      in PR #963 — deleted after `gen-lang` was decommissioned, so read it from
+      the git history. **Delete the job once the source project is retired**: a
+      dispatchable workflow pointing at a dead project only fails confusingly.
 - [ ] **GitHub Environment secrets (CI-only):** any secret CI itself consumes
       that is *not* in Secret Manager (e.g. a Zitadel machine key, Tailscale
       on-ramp) → manage via `tools/sync-env-secrets`
