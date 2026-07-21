@@ -79,8 +79,8 @@ type ProjectsConfig struct {
 
 	// BootstrapStackName is the gcp-bootstrap stack providing the shared WIF
 	// pool. Required only when Apps is non-empty.
-	BootstrapStackName string
-	PeeringProjectEnabled     bool
+	BootstrapStackName    string
+	PeeringProjectEnabled bool
 
 	// ApiPropagationSeconds is passed to every project_factory project. When >0
 	// the factory gates its ApisReady handle on a `sleep N` that depends on all

@@ -54,10 +54,10 @@ func loadConfig(ctx *pulumi.Context) *AppInfraConfig {
 	cfg := config.New(ctx, "")
 
 	c := &AppInfraConfig{
-		Env:                pinnedEnv,
-		EnvCode:            pinnedEnvCode,
-		BusinessCode:       orDefault(cfg.Get("business_code"), "bu1"),
-		Region:             orDefault(cfg.Get("region"), "us-west1"),
+		Env:               pinnedEnv,
+		EnvCode:           pinnedEnvCode,
+		BusinessCode:      orDefault(cfg.Get("business_code"), "bu1"),
+		Region:            orDefault(cfg.Get("region"), "us-west1"),
 		ProjectsStackName: cfg.Require("projects_stack_name"),
 	}
 
