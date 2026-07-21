@@ -109,6 +109,24 @@ on:
         required: false
         type: string
         default: ""
+      pulumi-refresh:
+        description: >-
+          Refresh Pulumi state against the live cloud before `up`. Off by
+          default: refresh can surface pre-existing drift and turn a working
+          deploy red, so it is opt-in per app rather than a fleet-wide change.
+
+          Turn it ON for apps whose stack owns a resource that can exist but be
+          BROKEN — the case `up` alone cannot heal, because inputs still match
+          desired state so it diffs clean and no-ops forever. A Cloud Run
+          DomainMapping is exactly that: it checks domain ownership once at
+          creation and, if the deploying principal was not yet a verified owner,
+          it sticks at Ready=False permanently (conditions stop transitioning).
+          Establishing ownership afterwards does not retrigger it, and without a
+          refresh Pulumi cannot even notice the resource was deleted to force a
+          rebuild.
+        required: false
+        type: boolean
+        default: false
       env-prefix:
         description: "Env-var prefix the Pulumi program reads, e.g. TABULA"
         required: true
@@ -328,6 +346,7 @@ jobs:
         id: deploy
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          REFRESH_FLAG: ${{ inputs.pulumi-refresh && '--refresh' || '' }}
           # CLOUDFLARE_API_TOKEN (apps with a `customDomain` config) is
           # job-wide env from the Secret Manager fetch step above — absent
           # entirely for apps without one, and the program skips DNS.
@@ -365,7 +384,12 @@ jobs:
           fi
           export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
           export "${{ inputs.env-prefix }}_PROMOTE=false"
-          pulumi up --yes
+          # --refresh (opt-in via the pulumi-refresh input) reconciles state
+          # against the live cloud FIRST, so a resource deleted to force a
+          # rebuild is actually seen as gone and recreated. Unquoted on
+          # purpose: empty must expand to no argument at all.
+          # shellcheck disable=SC2086
+          pulumi up --yes ${REFRESH_FLAG}
 
       - name: Smoke-check the candidate revision (before any traffic shift)
         env:

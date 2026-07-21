@@ -193,6 +193,12 @@ jobs:
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
+      # tabula's stack owns Cloud Run DomainMappings, which validate domain
+      # ownership once at creation and then stick at Ready=False forever if the
+      # deploying SA was not yet a verified owner. `up` alone can never heal
+      # that (inputs still match, so it diffs clean); refresh lets a deleted
+      # mapping be seen as gone and rebuilt.
+      pulumi-refresh: true
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
@@ -211,6 +217,12 @@ jobs:
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
+      # tabula's stack owns Cloud Run DomainMappings, which validate domain
+      # ownership once at creation and then stick at Ready=False forever if the
+      # deploying SA was not yet a verified owner. `up` alone can never heal
+      # that (inputs still match, so it diffs clean); refresh lets a deleted
+      # mapping be seen as gone and rebuilt.
+      pulumi-refresh: true
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
@@ -229,6 +241,12 @@ jobs:
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
+      # tabula's stack owns Cloud Run DomainMappings, which validate domain
+      # ownership once at creation and then stick at Ready=False forever if the
+      # deploying SA was not yet a verified owner. `up` alone can never heal
+      # that (inputs still match, so it diffs clean); refresh lets a deleted
+      # mapping be seen as gone and rebuilt.
+      pulumi-refresh: true
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
