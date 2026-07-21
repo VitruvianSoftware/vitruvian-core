@@ -391,7 +391,10 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 	var tabulaVars map[string]map[string]string
 	_ = cfg.GetObject("tabulaVars", &tabulaVars)
 
-	for _, env := range []string{"development", "nonproduction", "production"} {
+	// build pushes the shared Artifact Registry once; preview backs the advisory
+	// token-less PR pulumi-preview leg. Both are ungated — they never touch a
+	// live service — mirroring the oauth-user-inspector environment set.
+	for _, env := range []string{"build", "preview", "development", "nonproduction", "production"} {
 		name := "tabula-" + env
 
 		args := &github.RepositoryEnvironmentArgs{
@@ -399,9 +402,9 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			Environment: pulumi.String(name),
 		}
 
-		if env == "production" {
-			// Production deploys only from protected branches (main) and
-			// require an approval from the repo owner (or the configured
+		if env == "nonproduction" || env == "production" {
+			// nonproduction and production deploy only from protected branches
+			// (main) and require an approval from the repo owner (or the configured
 			// reviewer ids). GitHub allows self-approval of deployments, so
 			// this works for a single-maintainer repo as a deliberate
 			// "break glass" pause rather than a four-eyes gate.
