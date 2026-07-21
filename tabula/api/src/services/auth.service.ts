@@ -21,7 +21,7 @@
  */
 
 import { User } from "../generated/prisma/client";
-import { workos, WORKOS_CLIENT_ID } from "../lib/workos";
+import { getWorkOS, getWorkOSClientId } from "../lib/workos";
 import { prisma } from "../lib/prisma";
 import {
   generateRefreshToken,
@@ -40,9 +40,13 @@ export class AuthService {
   /**
    * Generate the WorkOS authorization URL
    */
-  static getAuthorizationUrl() {
+  static async getAuthorizationUrl() {
+    const [workos, clientId] = await Promise.all([
+      getWorkOS(),
+      getWorkOSClientId(),
+    ]);
     return workos.userManagement.getAuthorizationUrl({
-      clientId: WORKOS_CLIENT_ID!, // Verified as present by lib/workos.ts
+      clientId,
       provider: "authkit",
       redirectUri: `${process.env.API_URL || "http://localhost:8080/api/v1"}/auth/callback`,
     });
@@ -55,9 +59,13 @@ export class AuthService {
   static async authenticateAndSyncUser(
     code: string,
   ): Promise<User & { picture?: string }> {
+    const [workos, clientId] = await Promise.all([
+      getWorkOS(),
+      getWorkOSClientId(),
+    ]);
     const { user: workosUser } =
       await workos.userManagement.authenticateWithCode({
-        clientId: WORKOS_CLIENT_ID!,
+        clientId,
         code,
       });
 
