@@ -451,7 +451,7 @@ itest_service(
     ],
 )
 
-# --- Container image + push (deployed by //infrastructure/pulumi/apps/tabula) ----
+# --- Container image + push (deployed by //tabula/infra/app) ----
 
 node_image(
     name = "image",
