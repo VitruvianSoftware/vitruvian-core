@@ -191,7 +191,7 @@ func main() {
 		}
 
 		// Optional per-env custom domain (config `customDomain`, e.g.
-		// tabula-api.ipv1337.dev): a Cloud Run DomainMapping (v1 API —
+		// tabula-api.vitruviansoftware.dev): a Cloud Run DomainMapping (v1 API —
 		// there is no v2 equivalent; it binds by the run service's short name)
 		// plus a grey-cloud (DNS-only) Cloudflare CNAME pointing the hostname
 		// at Google's front end. Proxied MUST stay false: Google's managed
@@ -301,9 +301,13 @@ func main() {
 			//     the API, so the advisory preview (placeholder token) can't use it.
 			//  3. otherwise a placeholder id that keeps the record in the plan
 			//     without an API call (advisory preview of an un-pinned zone only).
+			// tabula is a COMMERCIAL app and lives on vitruviansoftware.dev;
+			// ipv1337.dev is reserved for the open-source apps. The default
+			// matters: a config miss must not silently publish a paid-tier
+			// hostname into the OSS zone.
 			zone := cfg.Get("cloudflareZone")
 			if zone == "" {
-				zone = "ipv1337.dev"
+				zone = "vitruviansoftware.dev"
 			}
 			zoneID := cfg.Get("cloudflareZoneId")
 			if zoneID == "" {
