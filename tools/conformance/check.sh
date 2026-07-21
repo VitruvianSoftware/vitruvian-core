@@ -374,6 +374,7 @@ ROWS_IAC=""
 ROWS_META=""
 ROWS_COPYBARA=""
 ROWS_RELEASE=""
+ROWS_PULUMI=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -392,6 +393,16 @@ emit() {
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
     release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
+    pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
+    # An unrouted group silently DISCARDS its rows: the check still increments
+    # FAIL_COUNT, so the run fails with a number and no explanation of what
+    # broke. That is what `pulumi` did -- check_pulumi_project_names (the
+    # duplicate-stack-name guard) could only ever report an unattributed "1
+    # fail". Fail loudly instead of losing the row.
+    *)
+      printf 'conformance: internal error - emit() has no bucket for group %s\n' "$1" >&2
+      OVERALL_FAIL=1
+      ;;
   esac
 }
 
@@ -1109,6 +1120,54 @@ check_pulumi_project_names() {
   done
 }
 
+# A customDomain must live UNDER the cloudflareZone declared beside it.
+#
+# Both the Cloud Run DomainMapping's grey-cloud CNAME and the domain-ownership
+# verification TXT (tools/ci/ensure-site-verification.sh) are written into the
+# zone named by `cloudflareZone`. If that zone is not the registrable parent of
+# `customDomain`, both land on the WRONG domain: the CNAME is created somewhere
+# it can never serve the hostname, and the verification token is planted on a
+# zone Google will not consult for it -- leaving the DomainMapping stuck at
+# "Caller is not authorized to administer the domain" with DNS that looks
+# superficially fine.
+#
+# This is a live hazard now that apps span two zones by convention (OSS apps on
+# ipv1337.dev, paid/commercial on vitruviansoftware.dev): a config copied from
+# an app on the other zone carries the source app's cloudflareZone, and nothing
+# downstream cross-checks the two keys against each other.
+check_custom_domain_zone() {
+  ok=1
+  for f in */infra/*/Pulumi.*.yaml; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in Pulumi.yaml) continue ;; esac
+    # Namespace-agnostic: the Pulumi config namespace is per-app and is not
+    # derivable from the project name (tabula's is `tabula-app`, its project
+    # `pulumi_tabula_app`).
+    dom="$(sed -n "s/^[[:space:]]*[A-Za-z0-9_.-]\{1,\}:customDomain:[[:space:]]*//p" "$f" | head -n1 | tr -d "\"'")"
+    [ -n "$dom" ] || continue
+    zone="$(sed -n "s/^[[:space:]]*[A-Za-z0-9_.-]\{1,\}:cloudflareZone:[[:space:]]*//p" "$f" | head -n1 | tr -d "\"'")"
+    rel="${f#./}"
+    if [ -z "$zone" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "no cloudflareZone" "zone declared" \
+        "$rel sets customDomain=$dom but declares no cloudflareZone - the CNAME and the ownership-verification TXT would have no zone to be written into" \
+        "add the registrable parent zone, e.g. '<ns>:cloudflareZone: ${dom#*.}'"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+      continue
+    fi
+    case "$dom" in
+      "$zone" | *".$zone") ;;
+      *)
+        emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "$dom not under $zone" "domain under zone" \
+          "$rel maps customDomain=$dom into cloudflareZone=$zone, but $dom is not $zone or a subdomain of it - the grey-cloud CNAME and the google-site-verification TXT would both be written to the WRONG zone" \
+          "set cloudflareZone (and its pinned cloudflareZoneId) to the zone that actually contains $dom"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+        ;;
+    esac
+  done
+  [ "$ok" = 1 ] && emit "pulumi" "$GLYPH_OK" "$C_GREEN" "customDomain" "under its zone" "under its zone" \
+    "every customDomain is a subdomain of the cloudflareZone declared beside it" ""
+}
+
 # Release-unit boundary guard for CO-LOCATED app infrastructure.
 #
 # A release-please package claims every commit touching files under its path.
@@ -1339,6 +1398,7 @@ check_merge_queue
 check_sweep_backstop
 check_zitadel_import
 check_pulumi_project_names
+check_custom_domain_zone
 check_copybara_infra_exclude
 
 check_release_infra_exclude
@@ -1356,6 +1416,7 @@ print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$RO
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
+print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
 print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
