@@ -248,8 +248,8 @@ done
 port="$(cat "$work/port")"
 base="http://127.0.0.1:$port"
 
-run_script() { # run_script [deploy-env]
-  APP_DIR="$app" \
+run_script() { # run_script [deploy-env]; APP_DIR may be overridden by the caller
+  APP_DIR="${APP_DIR:-$app}" \
     DEPLOY_ENV="${1:-}" \
     SITEVERIFY_ACCESS_TOKEN="fake-oauth-token" \
     CLOUDFLARE_API_TOKEN="fake-cf-token" \
@@ -320,6 +320,80 @@ if out="$(APP_DIR="$empty" bash "$SCRIPT" 2>&1)"; then pass "exit 0"; else fail 
 case "$out" in
   *"nothing to do"*) pass "gate message" ;;
   *) fail "gate message — output: $out" ;;
+esac
+
+echo "test 6: a NON-oauth config namespace is parsed (the tabula regression)"
+# The config namespace is per-app (tabula's app stack uses `tabula-app:`), and
+# it is NOT derivable from the Pulumi project name (`pulumi_tabula_app`). A
+# namespace-specific parser silently reads NOTHING for every other app, takes
+# the "no customDomain" exit-0 path, and reports success while verifying
+# nothing — which is exactly how tabula's three custom domains sat at
+# Ready=False/"Caller is not authorized to administer the domain" while every
+# deploy's ownership step went green.
+other="$work/other-app"
+mkdir -p "$other"
+cat >"$other/Pulumi.development.yaml" <<'EOF'
+config:
+  gcp:project: prj-d-test-1234
+  tabula-app:project: prj-d-test-1234
+  tabula-app:customDomain: tabula-api.dev.example.test
+  tabula-app:cloudflareZone: example.test
+EOF
+# Fresh mock state so this exercises the bootstrap path, not test 1's residue.
+cat >"$MOCK_STATE" <<'EOF'
+{"caller_verified": false,
+ "owners": ["james@example.test"],
+ "cf_records": [{"type": "TXT", "name": "example.test", "content": "v=spf1 -all"}],
+ "counts": {"sv_get": 0, "sv_gettoken": 0, "sv_insert": 0, "sv_update": 0, "cf_create": 0}}
+EOF
+if out="$(APP_DIR="$other" run_script development 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+case "$out" in
+  *"nothing to do"*) fail "namespace-agnostic parse — took the no-op path: $out" ;;
+  *) pass "namespace-agnostic parse (did not silently no-op)" ;;
+esac
+assert_eq "zone resolved from the tabula-app namespace" \
+  "$(state '.counts.cf_create')" "1"
+assert_eq "caller verified for the non-oauth app" "$(state '.caller_verified')" "true"
+
+echo "test 7: a customDomain the parser cannot read FAILS LOUDLY (no silent success)"
+# The failure mode above was silent because "parsed nothing" and "there is
+# nothing to parse" produced the same exit-0 message. Keep them distinguishable:
+# if an env file mentions customDomain but no zone was extracted, that is a
+# parse bug, and it must not report success.
+weird="$work/weird-app"
+mkdir -p "$weird"
+cat >"$weird/Pulumi.development.yaml" <<'EOF'
+config:
+  some.app/v2:customDomain:
+    value: tabula-api.dev.example.test
+EOF
+if out="$(APP_DIR="$weird" DEPLOY_ENV=development bash "$SCRIPT" 2>&1)"; then
+  fail "unparseable customDomain must be an error — got exit 0: $out"
+else
+  pass "unparseable customDomain exits non-zero"
+fi
+case "$out" in
+  # Must be the parse-failure message, not the generic "nothing to do" no-op
+  # (which also contains the word customDomain).
+  *"could not be parsed"*) pass "error is the parse failure, not the no-op" ;;
+  *) fail "error is the parse failure, not the no-op — output: $out" ;;
+esac
+
+echo "test 8: customDomain without cloudflareZone FAILS rather than guessing a zone"
+nozone="$work/nozone-app"
+mkdir -p "$nozone"
+cat >"$nozone/Pulumi.development.yaml" <<'EOF'
+config:
+  tabula-app:customDomain: tabula-api.dev.example.test
+EOF
+if out="$(APP_DIR="$nozone" DEPLOY_ENV=development bash "$SCRIPT" 2>&1)"; then
+  fail "missing cloudflareZone must be an error — got exit 0: $out"
+else
+  pass "missing cloudflareZone exits non-zero"
+fi
+case "$out" in
+  *"refusing to guess"*) pass "refuses to guess the zone" ;;
+  *) fail "refuses to guess the zone — output: $out" ;;
 esac
 
 if [ "$fails" -gt 0 ]; then
