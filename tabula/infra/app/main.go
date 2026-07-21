@@ -75,7 +75,13 @@ const digestMarker = "@sha256:"
 const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
 
 // envMap builds the plain (non-secret) environment for the service.
-func envMap(project, apiURL string) map[string]string {
+//
+// apiURL and postMessageOrigin are both PUBLIC values (a URL and a
+// chrome-extension:// origin), and both are load-bearing for the extension
+// login flow — see the per-key comments at the call site. Empty means ABSENT
+// rather than empty-string, so an unconfigured env is visible as a missing key
+// instead of an empty one.
+func envMap(project, apiURL, postMessageOrigin string) map[string]string {
 	env := map[string]string{
 		"NODE_ENV":             "production",
 		"GOOGLE_CLOUD_PROJECT": project,
@@ -83,6 +89,9 @@ func envMap(project, apiURL string) map[string]string {
 	}
 	if apiURL != "" {
 		env["API_URL"] = apiURL
+	}
+	if postMessageOrigin != "" {
+		env["AUTH_POSTMESSAGE_ORIGIN"] = postMessageOrigin
 	}
 	return env
 }
@@ -163,12 +172,22 @@ func main() {
 			// created before its secrets exist.
 			//
 			// API_URL is the public base the app builds its WorkOS redirect URI
-			// from, so it must match the URI registered in the WorkOS dashboard
-			// for this env. Left unset until the per-env URL is final (the
-			// run.app URL now, the custom domain after the domains phase) —
-			// the app falls back to localhost, which fails loudly rather than
+			// from (auth.service.ts: `${API_URL}/auth/callback`), so it must
+			// match a URI registered in the WorkOS dashboard for this env —
+			// WorkOS rejects an unregistered redirect_uri outright. Unset, the
+			// app falls back to localhost, which fails loudly rather than
 			// silently authenticating against the wrong environment.
-			Env:          envMap(project, cfg.Get("apiUrl")),
+			//
+			// AUTH_POSTMESSAGE_ORIGIN is the EXACT origin the auth callback
+			// page postMessages the token to (auth.routes.ts
+			// resolvePostMessageOrigin) — the extension's chrome-extension://
+			// origin, never '*', so the token is never delivered to an
+			// arbitrary opener. Unset, it falls back to http://localhost:3000
+			// and the extension's opener never receives the token at all.
+			//
+			// Both were set by the retired infrastructure/pulumi/apps/tabula
+			// stack and were dropped in the bu2 rewrite; neither is a secret.
+			Env:          envMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin")),
 			MaxInstances: 10,
 			Port:         8080,
 			RevisionName: revisionName,
