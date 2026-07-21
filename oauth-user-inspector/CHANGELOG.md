@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.0.1...oauth-user-inspector-v1.1.0) (2026-07-21)
+
+
+### Features
+
+* **gcp-app-infra:** add the live foundation stage 5 and adopt the app deploy identity ([#995](https://github.com/VitruvianSoftware/vitruvian-core/issues/995)) ([e631130](https://github.com/VitruvianSoftware/vitruvian-core/commit/e63113009aa39d409b9e1e3db7d20b11dc6d4b92))
+
 ## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.0.0...oauth-user-inspector-v1.0.1) (2026-07-21)
 
 
