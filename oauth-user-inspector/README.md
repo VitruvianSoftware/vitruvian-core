@@ -8,6 +8,23 @@ This is a full-stack web application designed to inspect OAuth user information 
 
 The frontend is a React application built with Vite and styled with Tailwind CSS. It allows users to authenticate using OAuth or a Personal Access Token (PAT). The backend is an Express server written in TypeScript that handles the server-side part of the OAuth flow.
 
+## Documentation
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how it's designed and what
+  it's built from: the client/server split, the two login modes, the secret
+  model, SSRF containment, and the full tech stack.
+- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — how it's built, deployed, and
+  maintained: the multi-env pipeline, keyless identity, secrets, custom domains,
+  Zitadel hosted-login, and step-by-step runbooks.
+
+## Tech stack at a glance
+
+React 19 + Vite 8 + Tailwind 4 (frontend) · Express 5 on Node ≥ 22, TypeScript 6
+(backend) · pnpm 10 + Bazel · Jest 30 · Docker → **Cloud Run** (built once,
+promoted by digest across dev → nonproduction → production) · Pulumi (Go) + GitHub
+Actions with Workload Identity Federation · GCP Secret Manager for runtime creds.
+No database — the server is stateless. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Features
 
 ### OAuth Token Lifecycle Management
@@ -88,9 +105,12 @@ The Zitadel **instance** is GitOps-managed
 application** and its redirect URIs are managed as code (Pulumi) under
 [`infrastructure/pulumi/platform/zitadel-apps/`](../infrastructure/pulumi/platform/zitadel-apps/) —
 add or change a redirect URI there and re-apply rather than editing the Zitadel
-console by hand. See that project's README for the required service-user
-credential and how to apply (including importing the existing application so its
-Client ID/Secret in Secret Manager stay valid).
+console by hand. The stack **creates and owns** the OIDC client (it is never
+imported — this provider's import plans a destructive replace that would delete
+the live client) and syncs its Client ID/Secret into each environment's GCP
+Secret Manager. See [docs/OPERATIONS.md](docs/OPERATIONS.md#zitadel-hosted-login)
+for the per-env clients, redirect URIs, and how the CI apply reaches Zitadel over
+the tailnet.
 
 ## Repository Structure
 
@@ -99,44 +119,56 @@ Client ID/Secret in Secret Manager stay valid).
 ├─ frontend/                                       # Frontend source (React + Vite)
 │  ├─ App.tsx, index.tsx, index.html, index.css   # Frontend entry and assets
 │  ├─ components/                                  # React UI components
-│  ├─ utils/                                       # Frontend utilities
+│  ├─ utils/                                       # Frontend utilities (oauthSession, apiEndpoints, …)
 │  ├─ types.ts                                     # Frontend type definitions
 │  └─ vite.config.ts, tsconfig.json               # Frontend tooling configs
 ├─ server/                                         # All backend (Express) source
 │  ├─ server.ts                                    # Express app
+│  ├─ apiEndpoints.server.ts                       # Server-owned explore allowlist (SSRF)
+│  ├─ safeFetch.ts                                 # Pinned, SSRF-safe outbound fetch
+│  ├─ securityHeaders.ts, rateLimit.ts             # Security middleware
 │  ├─ logger.ts                                    # Logging setup
-│  ├─ tsconfig.server.json                         # Server TypeScript config
-│  ├─ types/express.d.ts                           # Express request typings
-│  └─ __tests__/server.test.ts                     # Server tests (Jest + ts-jest)
+│  └─ __tests__/                                   # Server tests (Jest + ts-jest)
+├─ infra/                                          # Per-app Pulumi (Go) infrastructure
+│  ├─ app/                                         # Cloud Run service + custom domain (per env)
+│  └─ identity/                                    # Deploy/runtime service accounts + WIF (per env)
+├─ deploy/chart/                                   # Helm chart (alternate Kubernetes delivery)
+├─ docs/                                           # ARCHITECTURE.md, OPERATIONS.md
 ├─ dist/                                           # Built frontend (vite build)
 ├─ dist-server/                                    # Compiled backend (tsc)
 ├─ Dockerfile                                      # Container build
-└─ scripts/                                        # Helper scripts (deploy, setup)
+└─ scripts/                                        # Helper scripts (setup, legacy deploy)
 ```
+
+> The shared **build** stack (Artifact Registry + build service account) lives
+> outside this directory at
+> [`infrastructure/pulumi/apps/oauth-user-inspector-build/`](../infrastructure/pulumi/apps/oauth-user-inspector-build/)
+> because it is a single cross-environment resource, not per-env. See
+> [docs/OPERATIONS.md](docs/OPERATIONS.md#the-moving-parts).
 
 ## Building and Running
 
 ### Prerequisites
 
-- Node.js
-- npm
+- Node.js ≥ 22
+- pnpm 10 (`corepack enable` will provide it) — the repo also builds under Bazel
 
 ### Development
 
 To run the application in development mode, use the following command:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-This will start the Vite development server for the frontend and the Express server for the backend (using nodemon for automatic restarts).
+This will start the Vite development server for the frontend and the Express server for the backend (using nodemon for automatic restarts). The BYO-credential and GitHub-PAT login paths work with no GCP access; to exercise the hosted-login paths, set `GOOGLE_CLOUD_PROJECT` and use Application Default Credentials against Secret Manager (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-secret-model)).
 
 ### Production
 
 To build the application for production, use the following command:
 
 ```bash
-npm run build
+pnpm build
 ```
 
 This will create a `dist` directory with the optimized frontend assets and a `dist-server` directory with the compiled backend code.
@@ -144,7 +176,7 @@ This will create a `dist` directory with the optimized frontend assets and a `di
 To start the application in production mode, use the following command:
 
 ```bash
-npm start
+pnpm start
 ```
 
 ### Testing
@@ -169,16 +201,25 @@ During tests a dummy `GOOGLE_CLOUD_PROJECT` is set automatically. Real Google Cl
 
 ### Deployment
 
-The application can be deployed to Google Cloud Run using the provided script:
+The live deployment is **Cloud Run**, one service per environment, delivered
+entirely through CI/CD — there is no sanctioned local deploy. On a merge to
+`main`, the [`oauth-user-inspector-deploy.yaml`](../.github/workflows/oauth-user-inspector-deploy.yaml)
+workflow builds the image **once**, pushes it to the shared Artifact Registry,
+and promotes the **same digest** through **development → nonproduction →
+production** (nonproduction and production are reviewer-gated), each with a
+blue-green candidate-then-promote traffic shift and a smoke check. Authentication
+is keyless (Workload Identity Federation); runtime secrets come from GCP Secret
+Manager.
 
-```bash
-npm run deploy
-```
+See **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for the full pipeline, identity
+and secret model, custom domains, and runbooks (deploy, promote, roll back,
+rotate a secret, add a provider).
 
-This script uses Google Cloud Build to build the Docker image and deploy it to Cloud Run.
+> The legacy `scripts/deploy.sh` (`pnpm run deploy`) is the old single-project
+> Cloud Build path and is **not** how the deployed instances are shipped.
 
 ## Development Conventions
 
 - **Code Style:** The project uses Prettier for code formatting.
-- **Testing:** Backend tests are implemented using Jest and ts-jest.
-- **Commits:** There are no specific commit message conventions enforced.
+- **Testing:** Backend and frontend helpers are tested with Jest + ts-jest (`pnpm test`, or `bazel test //oauth-user-inspector:unit_tests`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#testing).
+- **Commits:** Conventional-commit prefixes are used across the monorepo (e.g. `feat(oauth-user-inspector): …`), enforced by the merge queue.
