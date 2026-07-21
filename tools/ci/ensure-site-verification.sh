@@ -20,8 +20,9 @@
 # SOFTWARE.
 
 # ensure-site-verification.sh — automated Google domain-ownership
-# SELF-verification for Cloud Run DomainMappings (oauth-user-inspector custom
-# domains).
+# SELF-verification for Cloud Run DomainMappings. App-agnostic: every caller
+# passes its own APP_DIR, and the per-env Pulumi config is parsed WITHOUT
+# assuming a particular config namespace (see cfg_get).
 #
 # ARCHITECTURE — PER-ENV SELF-VERIFICATION ONLY. This script runs inside each
 # env's deploy job (_deploy-cloud-run.yaml), AS THAT ENV'S OWN DEPLOY SA, right
@@ -118,8 +119,18 @@ done
 
 # --- 1. Collect the calling env's zone(s) from the per-env Pulumi config -----
 
-cfg_get() { # cfg_get <file> <key>  (flat `ns:key: value` YAML lines)
-  sed -n "s/^[[:space:]]*oauth-user-inspector:$2:[[:space:]]*//p" "$1" |
+# cfg_get <file> <key> — read a flat `<namespace>:<key>: value` YAML line.
+#
+# The namespace is deliberately a WILDCARD. It is per-app (oauth-user-inspector
+# uses `oauth-user-inspector:`, tabula's app stack uses `tabula-app:`) and it is
+# NOT derivable from the Pulumi project name — tabula's is `pulumi_tabula_app`.
+# This parser was previously pinned to `oauth-user-inspector:`, so for every
+# other app it read nothing, fell through to the "no customDomain" gate below,
+# and exited 0 reporting success while verifying nothing. Only keys that are
+# app-namespaced (customDomain, cloudflareZone) are read here, so a wildcard
+# cannot collide with a provider namespace such as `gcp:`.
+cfg_get() {
+  sed -n "s/^[[:space:]]*[A-Za-z0-9_.-]\{1,\}:$2:[[:space:]]*//p" "$1" |
     head -n1 | tr -d '"' | tr -d "'"
 }
 
@@ -137,12 +148,24 @@ zones=""
 for f in "${env_files[@]}"; do
   [ -e "$f" ] || continue
   dom="$(cfg_get "$f" customDomain)"
-  [ -n "$dom" ] || continue
+  if [ -z "$dom" ]; then
+    # Distinguish "this env has no custom domain" (a legitimate no-op) from
+    # "this env HAS one but the parser could not read it" (a bug). Both used to
+    # exit 0 with the same success message, which is what let the namespace bug
+    # above go unnoticed across every deploy.
+    if grep -qE '^[[:space:]]*[^#[:space:]]+:customDomain:' "$f"; then
+      echo "ensure-site-verification: $(basename "$f") declares a customDomain but it could not be parsed — refusing to report success" >&2
+      exit 1
+    fi
+    continue
+  fi
   zone="$(cfg_get "$f" cloudflareZone)"
   if [ -z "$zone" ]; then
-    # Mirror the program's default (main.go: cloudflareZone defaults to
-    # ipv1337.dev when unset).
-    zone="ipv1337.dev"
+    # Never guess. This previously defaulted to ipv1337.dev, which for an app
+    # on any other zone would place the verification TXT on the WRONG domain
+    # (and still fail to verify the intended one).
+    echo "ensure-site-verification: $(basename "$f") sets customDomain=$dom but no cloudflareZone — refusing to guess the zone" >&2
+    exit 1
   fi
   case " $zones " in *" $zone "*) ;; *) zones="$zones $zone" ;; esac
   echo "ensure-site-verification: $(basename "$f"): $dom -> zone $zone"
