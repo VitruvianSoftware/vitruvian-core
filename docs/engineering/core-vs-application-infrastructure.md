@@ -208,7 +208,7 @@ Lives in `<app>/infra/`, ships in the app's own PR, deployed by the app's deploy
 | IAM on resources the app owns — e.g. `allUsers` invoker on *its own* service | `oauth-user-inspector/infra/app` |
 | Custom domain mapping and the DNS record that points at it | `oauth-user-inspector/infra/app` |
 | The app's **runtime** service account | `oauth-user-inspector/infra/identity` (`oauth-user-inspector-rt`) |
-| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `infrastructure/pulumi/apps/tabula` |
+| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `tabula/infra/app` |
 | BigQuery **datasets/tables/views**, Pub/Sub topics and subscriptions, app-owned buckets | — |
 | App-level alerts, SLOs, dashboards | — |
 | Identity-provider application registrations (e.g. a Zitadel OIDC app) | `infrastructure/pulumi/platform/zitadel-apps` |

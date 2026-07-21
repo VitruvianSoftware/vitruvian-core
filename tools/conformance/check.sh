@@ -1075,6 +1075,38 @@ EOF
 # ---------------------------------------------------------------------------
 COPYBARA_CONFIG_FILE="$ROOT/tools/copybara/copy.bara.sky"
 
+# Every Pulumi.yaml `name:` must be UNIQUE across the repo. Pulumi keys STACK
+# STATE on that name, so two programs sharing one produces a stack collision:
+# the second program adopts the first's resources and reconciles them against
+# the wrong project. It applies cleanly and is silently wrong.
+#
+# This is not hypothetical. During the tabula bu2 migration it happened FOUR
+# times, because the name lives inside Pulumi.yaml, is conventionally written
+# with underscores, and therefore survives both a directory rename and a
+# hyphenated find-and-replace. The worst instance had tabula's new app stack
+# named `pulumi_tabula` -- the same as the existing personal-project program --
+# so the bu2 deploy inherited 21 resources pointing at the old project.
+check_pulumi_project_names() {
+  # Scope: the LIVE deployed tree only. pulumi/examples/** are scaffold
+  # templates (ts- and go-foundation carry the same names by design, and the
+  # example mirrors the live stage names) -- they are never deployed into the
+  # same Pulumi organization, so they cannot collide.
+  pulumi_names() {
+    grep -rh --include='Pulumi.yaml' -E '^name:[[:space:]]*\S+' \
+      infrastructure/pulumi */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
+  }
+  dupes="$(pulumi_names | sort | uniq -d)"
+  [ -z "$dupes" ] && { emit "pulumi" "$GLYPH_OK" "$C_GREEN" "Pulumi.yaml" "unique" "unique" \
+      "every Pulumi project name is unique" ""; return 0; }
+  for d in $dupes; do
+    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
+    emit "pulumi" "$GLYPH_FAIL" "$C_RED" "Pulumi.yaml" "duplicate: $d" "unique" \
+      "Pulumi project name '$d' is declared by more than one program ($where) - they SHARE stack state, so one will adopt the other's resources and reconcile them against the wrong target" \
+      "give each program a distinct name: in its Pulumi.yaml (renaming the directory is NOT enough - the name is independent of the path)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  done
+}
+
 check_copybara_infra_exclude() {
   cb="$COPYBARA_CONFIG_FILE"
   [ -f "$cb" ] || return 0
@@ -1259,6 +1291,7 @@ check_app_metadata
 check_merge_queue
 check_sweep_backstop
 check_zitadel_import
+check_pulumi_project_names
 check_copybara_infra_exclude
 
 echo

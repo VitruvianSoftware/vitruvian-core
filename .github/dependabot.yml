@@ -164,7 +164,7 @@ updates:
       - "/infrastructure/pulumi/foundation/gcp-org"
       - "/infrastructure/pulumi/foundation/org-folders"
       - "/infrastructure/pulumi/platform/repo_config"
-      - "/infrastructure/pulumi/apps/tabula"
+      - "/tabula/infra/app"
       - "/infrastructure/pulumi/platform/zitadel-apps"
     schedule:
       interval: "weekly"

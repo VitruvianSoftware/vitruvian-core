@@ -35,9 +35,14 @@ uppercased secret prefix.
       *different* public URL, so each needs its own entry.
 - [ ] **Decide the public exposure**: is this a public (`allUsers` invoker) app
       or internal? Public apps need the org DRS override (Phase 2).
-- [ ] **Decide the custom-domain hostnames** per env (e.g.
-      `myapp.dev.ipv1337.dev`, `myapp.staging.ipv1337.dev`, `myapp.ipv1337.dev`),
-      or skip domains and serve on the `run.app` URL.
+- [ ] **Decide the custom-domain hostnames** per env. **Zone convention:**
+      open-source apps live on `ipv1337.dev`; commercial / paid-tier apps live on
+      `vitruviansoftware.dev` (e.g. `myapp.dev.<zone>`, `myapp.staging.<zone>`,
+      `myapp.<zone>`). Or skip domains and serve on the `run.app` URL.
+      > ⚠️ If the app ships a browser extension or any client with a **compiled-in**
+      > API URL, stand the custom domain up and repoint the client BEFORE cutover.
+      > Decommissioning tabula's old service while its extension still had the
+      > `run.app` URL baked into `host_permissions` took that extension offline.
 - [ ] **Pick the secret prefix** `MYAPP_` — it must be unique among co-tenants
       in the shared oss projects.
 
@@ -172,11 +177,15 @@ Keep the three homes straight; never commit a secret, not even Pulumi-encrypted.
       > ⚠️ **Why:** a deploy's own preview pass is also `DryRun`, so gating on
       > `DryRun()` caused a phantom `~zoneId` replace. Pin the id + use a
       > placeholder token for token-less previews.
-- [ ] **Enable the Site Verification API by hand, once, per oss project** in the
-      console (`.../siteverification.googleapis.com?project=<PROJECT_ID>`).
-      > ⚠️ **Why:** it cannot be enabled via `serviceusage`/IaC — even a
-      > project-owner SA gets HTTP 403 `PRECONDITION_FAILURE`. Per-env ownership
-      > is self-verified in CI (`tools/ci/ensure-site-verification.sh`).
+- [ ] **CHECK whether the Site Verification API is already enabled** —
+      `gcloud services list --enabled --project=<PROJECT_ID> --filter=siteverification`.
+      The foundation project factory declares `siteverification` in the oss project's
+      `ActivateApis`, and on the bu2 projects it came up enabled with no manual step.
+      > ⚠️ Only if it is genuinely absent does the console enable apply
+      > (`.../siteverification.googleapis.com?project=<PROJECT_ID>`) — it cannot always be
+      > enabled via `serviceusage`/IaC. **Do not assume it is blocked; run the check.**
+      > Reporting this as a manual blocker without checking cost a whole cycle on tabula.
+      > Per-env ownership is self-verified in CI (`tools/ci/ensure-site-verification.sh`).
 
 ---
 
@@ -217,12 +226,18 @@ Later steps depend on earlier outputs:
 
 ```
 repo_config (envs + WIF vars)
+  → identity stack (deploy/runtime SAs)     # MUST precede build — see below
   → build stack (AR + build SA + WIF binding)
-  → identity stack (deploy/runtime SAs)
-  → enable Site Verification API in the console (manual, per project)
+  → CHECK Site Verification API (usually already enabled by the project factory)
   → seed CI secrets (sync-env-secrets:apply)   # before the first IdP job
   → deploy workflow: build → deploy-dev → deploy-nonprod → deploy-prod
 ```
+
+> ⚠️ **Identity BEFORE build.** The build stack grants Artifact Registry *reader* to each
+> env's `<app>-deploy@…` service account — which the **identity** stack creates. On a
+> genuinely cold deploy, running build first fails with
+> `Service account <app>-deploy@… does not exist`. oauth-user-inspector never hit this
+> because its identity stacks predated its build stack; tabula did, in Phase 3.
 
 ## Verify & decommission
 
