@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.0.0...oauth-user-inspector-v1.0.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** make the deploy panel show what is actually shipping ([#971](https://github.com/VitruvianSoftware/vitruvian-core/issues/971)) ([93283b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/93283b451827284edbb818ba975b28cdcf90ea18))
+
 ## 1.0.0 (2026-06-25)
 
 ### Added
