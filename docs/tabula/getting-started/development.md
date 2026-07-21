@@ -462,7 +462,7 @@ kill -9 <PID>
 
 - Read [Testing Guide](../guides/testing.md) for testing guidelines
 - Review [Architecture Overview](../architecture/overview.md) for system design
-- Check [CONTRIBUTING.md](../../CONTRIBUTING.md) for contribution guidelines
+- Check [CONTRIBUTING.md](../../../tabula/CONTRIBUTING.md) for contribution guidelines
 
 ---
 

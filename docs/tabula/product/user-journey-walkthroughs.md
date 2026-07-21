@@ -117,11 +117,11 @@ task._
 
 ### Screenshots:
 
-![Empty Notes Tab](images/empty_notes_tab_1766780969796.png) _Initial empty state of the Notes tab._
+_Initial empty state of the Notes tab._
 
-![Note Editor](images/note_creation_form_1766780977788.png) _Entering note title and content._
+_Entering note title and content._
 
-![Saved Note](images/saved_note_display_1766781004124.png) _The saved note displayed in the list._
+_The saved note displayed in the list._
 
 ---
 
@@ -139,9 +139,9 @@ task._
 
 ### Screenshots:
 
-![Space A Content](images/space_a_dashboard_1766781034590.png) _Viewing content for Space A._
+_Viewing content for Space A._
 
-![User Journey Space Content](images/user_journey_space_dashboard_1766781043042.png) _Viewing
+_Viewing
 content for User Journey Space._
 
 ---
@@ -280,12 +280,12 @@ _Note: Screenshots will be added showing:_
 
 ### Screenshots:
 
-![Resource Options](images/google_resource_options_1766781085568.png) _Hovering over a resource to
+_Hovering over a resource to
 reveal management icons._
 
-![Edit Form](images/resource_edit_form_1766781096350.png) _Updating resource details._
+_Updating resource details._
 
-![Deleted Resource](images/space_after_deletion_1766781129134.png) _The space after deleting the
+_The space after deleting the
 resource._
 
 ---
@@ -304,12 +304,12 @@ resource._
 
 ### Screenshots:
 
-![Rename Option](images/space_context_menu_rename_1766781160211.png) _Selecting the Rename option
+_Selecting the Rename option
 from the space menu._
 
-![Rename Modal](images/rename_modal_input_1766781168687.png) _Entering the new workspace name._
+_Entering the new workspace name._
 
-![Renamed Space](images/sidebar_renamed_space_1766781289973.png) _The sidebar showing the renamed
+_The sidebar showing the renamed
 'Final Workspace'._
 
 ---
@@ -331,7 +331,7 @@ from the space menu._
 
 ### Screenshots:
 
-![Share Button](images/final_workspace_share_button_1766781443560.png) _Location of the 'Share'
+_Location of the 'Share'
 button in the workspace._
 
 ---
@@ -349,10 +349,10 @@ button in the workspace._
 
 ### Screenshots:
 
-![User Menu](images/user_menu_open_1766781489069.png) _The user menu showing name, email, and
+_The user menu showing name, email, and
 navigation options._
 
-![Settings Modal](images/settings_modal_view_1766781499014.png) _The settings modal with Account and
+_The settings modal with Account and
 Preferences tabs._
 
 ---

@@ -4,8 +4,8 @@ This document describes three strategies for promoting foundation infrastructure
 changes through environments (development → nonproduction → production) in a
 monorepo. The **recommended approach** is Option C (Reusable Workflow with
 Chained Deploys), which is currently implemented in
-[foundation-release.yaml](../../.github/workflows/foundation-release.yaml) and
-[foundation-env-deploy.yaml](../../.github/workflows/foundation-env-deploy.yaml).
+[foundation-release.yaml](../.github/workflows/foundation-release.yaml) and
+[foundation-env-deploy.yaml](../.github/workflows/foundation-env-deploy.yaml).
 
 > **Upstream-leaf layout update (2026-07):** the strategies below were written
 > when each stage was one Pulumi project with per-environment stacks. The

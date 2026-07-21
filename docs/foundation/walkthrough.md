@@ -1,6 +1,6 @@
 # Foundation Audit Remediation — Walkthrough
 
-All 16 fixes from the [foundation audit](file:///Users/james/.gemini/antigravity/brain/80ab0dd0-2616-4111-90da-9490275c0eb3/foundation_audit.md) have been implemented and verified.
+All 16 fixes from the [foundation audit](foundation_audit.md) have been implemented and verified.
 
 ## Files Changed (16 files, +627 / -328 lines)
 
@@ -8,14 +8,14 @@ All 16 fixes from the [foundation audit](file:///Users/james/.gemini/antigravity
 
 | File | Changes |
 |------|---------|
-| [config.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-networks/config.go) | Added 8 new fields (feature toggles, VPC-SC, hub proxy CIDRs), fixed hub CIDRs to `10.8.0.0/18` + `10.9.0.0/18`, removed R2 secondary ranges |
-| [main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-networks/main.go) | Major rewrite: VPC-SC integration, bridge perimeter, conditional NAT/transitivity, hub proxy subnets, export additions, spoke peering fix |
-| [config_test.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-networks/config_test.go) | Updated assertions for new hub CIDRs, proxy CIDRs, feature toggle defaults |
-| [go.mod](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-networks/go.mod) | Added `pulumiverse/pulumi-time` dependency |
-| [iam.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-org/iam.go) | Removed spoke project grants — SA roles now hub-only |
-| [projects.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-org/projects.go) | Fixed labels: `primary_contact: "james_nguyen"`, `secondary_contact: "christine_kim"` |
-| [projects.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-bootstrap/projects.go) | Fixed labels in bootstrap projects |
-| [env_baseline.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/foundation/gcp-environments/env_baseline.go) | Fixed labels in KMS/Secrets projects |
+| `config.go` | Added 8 new fields (feature toggles, VPC-SC, hub proxy CIDRs), fixed hub CIDRs to `10.8.0.0/18` + `10.9.0.0/18`, removed R2 secondary ranges |
+| `main.go` | Major rewrite: VPC-SC integration, bridge perimeter, conditional NAT/transitivity, hub proxy subnets, export additions, spoke peering fix |
+| `config_test.go` | Updated assertions for new hub CIDRs, proxy CIDRs, feature toggle defaults |
+| `go.mod` | Added `pulumiverse/pulumi-time` dependency |
+| `iam.go` | Removed spoke project grants — SA roles now hub-only |
+| `projects.go` | Fixed labels: `primary_contact: "james_nguyen"`, `secondary_contact: "christine_kim"` |
+| `projects.go` | Fixed labels in bootstrap projects |
+| `env_baseline.go` | Fixed labels in KMS/Secrets projects |
 | interconnect.go.example | **[NEW]** Interconnect example (copied from example) |
 | vpn.go.example | **[NEW]** VPN example (copied from example) |
 
@@ -23,9 +23,9 @@ All 16 fixes from the [foundation audit](file:///Users/james/.gemini/antigravity
 
 | File | Changes |
 |------|---------|
-| [H&S main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/pulumi/examples/go-foundation/3-networks-hub-and-spoke/main.go) | Conditional transitivity/NAT, hub CIDRs, R1-only secondary ranges, bridge perimeter, Windows KMS, destroy_duration |
-| [SVPC main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/pulumi/examples/go-foundation/3-networks-svpc/main.go) | Conditional NAT, R1-only secondary ranges, Windows KMS, destroy_duration |
-| [2-envs main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/pulumi/examples/go-foundation/2-environments/main.go) | Converted from all-in-one loop to 1-stack-per-env model |
+| `H&S main.go` | Conditional transitivity/NAT, hub CIDRs, R1-only secondary ranges, bridge perimeter, Windows KMS, destroy_duration |
+| `SVPC main.go` | Conditional NAT, R1-only secondary ranges, Windows KMS, destroy_duration |
+| `2-envs main.go` | Converted from all-in-one loop to 1-stack-per-env model |
 
 ---
 
