@@ -34,3 +34,8 @@ config:
   tabula-data:developmentProject: prj-d-bu2-oss-floating-c3d1
   tabula-data:nonproductionProject: prj-n-bu2-oss-floating-a943
   tabula-data:productionProject: prj-p-bu2-oss-floating-8663
+  # Point-in-time-restore window. Defaults to 21600s (6h) in main.go — the Neon
+  # FREE-tier ceiling. Neon's own default is 24h, which the free tier REJECTS
+  # ("requested history retention seconds exceeds allowed maximum"). Raise this
+  # (up to 7d) once the account is on a paid plan.
+  # tabula-data:neonHistoryRetentionSeconds: "21600"
