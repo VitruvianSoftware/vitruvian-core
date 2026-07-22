@@ -47,8 +47,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -73,6 +76,45 @@ const digestMarker = "@sha256:"
 // the code treats it as "not a real token" so it never calls the Cloudflare API
 // with it. Keep this in sync with pulumi-preview.yaml.
 const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
+
+// revisionNameFor derives the Cloud Run revision name from the image digest AND
+// the rendered environment.
+//
+// A revision is immutable and its name identifies image + config TOGETHER. The
+// digest alone is not enough: build-once/promote-by-digest means one image is
+// deployed to three envs, and any config change to that image produces
+// different revision CONTENT under an identical name, which the API rejects:
+//
+//	Error 409: Revision named 'tabula-api-development-1c144786' with different
+//	configuration already exists.
+//
+// Hashing the env in keeps the name deterministic — the deploy runs `pulumi up`
+// twice (deploy, then promote) and must address the SAME revision both times,
+// as must a rerun after a transient failure — while still changing whenever the
+// content does. Keys are sorted so Go's randomized map iteration cannot make the
+// name unstable, and the separators are bytes that cannot occur in an env name,
+// so {AB=C} and {A=BC} cannot collide.
+func revisionNameFor(serviceName, shortDigest string, env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(env[k]))
+		h.Write([]byte{0})
+	}
+	// 6 hex chars: this only has to distinguish the handful of configs a single
+	// image is ever deployed with, and the name has a 63-char budget it shares
+	// with the service-name prefix.
+	configHash := hex.EncodeToString(h.Sum(nil))[:6]
+
+	return fmt.Sprintf("%s-%s-%s", serviceName, shortDigest, configHash)
+}
 
 // envMap builds the plain (non-secret) environment for the service.
 //
@@ -136,7 +178,11 @@ func main() {
 		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
 		// from one serviceName so they cannot drift apart again.
 		serviceName := fmt.Sprintf("tabula-api-%s", env)
-		revisionName := fmt.Sprintf("%s-%s", serviceName, shortDigest)
+		// The env is part of the revision's identity, not just the image — see
+		// revisionNameFor. Rendered once here so the name and the deployed
+		// container are hashed from the SAME map and cannot drift.
+		serviceEnv := envMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"))
+		revisionName := revisionNameFor(serviceName, shortDigest, serviceEnv)
 
 		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
 		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")
@@ -187,7 +233,7 @@ func main() {
 			//
 			// Both were set by the retired infrastructure/pulumi/apps/tabula
 			// stack and were dropped in the bu2 rewrite; neither is a secret.
-			Env:          envMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin")),
+			Env:          serviceEnv,
 			MaxInstances: 10,
 			Port:         8080,
 			RevisionName: revisionName,
