@@ -10,8 +10,8 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tabula/shared": "workspace:*",
     "framer-motion": "^12.42.2",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
