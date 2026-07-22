@@ -1231,8 +1231,9 @@ check_custom_domain_zone() {
 # however, re-run a deploy that was already failing for unrelated reasons and
 # painted an unrelated PR's merge red.
 check_ci_gate_lists_match() {
-  a="$(grep -o "\^tools/([^']*)" tools/ci/deploy-affected.sh 2>/dev/null | head -1)"
-  b="$(grep -o "\^tools/([^']*)" tools/ci/affected-targets.sh 2>/dev/null | head -1)"
+  da="$ROOT/tools/ci/deploy-affected.sh"; ta="$ROOT/tools/ci/affected-targets.sh"
+  a="$(grep -o "\^tools/([^']*)" "$da" 2>/dev/null | head -1)"
+  b="$(grep -o "\^tools/([^']*)" "$ta" 2>/dev/null | head -1)"
   if [ -z "$a" ] || [ -z "$b" ]; then
     emit "gate" "$GLYPH_FAIL" "$C_RED" "tools/ci/*-affected*.sh" "pattern not found" "one per file" \
       "could not locate the global-impact allowlist in one of the gate scripts - the guard cannot verify them" \
@@ -1258,7 +1259,13 @@ check_no_local_paths() {
   # checkout. Container/remote paths like /home/vscode/go, /home/k3s/storage and
   # /home/kubernetes/bin are legitimate values, not leaks, so a blanket
   # /home/... pattern would be pure noise and get ignored.
-  hits="$(git grep -nI -E '\.claude-worktrees/|/(Users|home)/[^/ \"]+/[^ \"]*vitruvian-core' -- \
+  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    emit "localpath" "$GLYPH_FAIL" "$C_RED" "tree" "not a git repo" "scannable" \
+      "the leaked-local-path guard cannot scan - it would report green without looking" \
+      "check \$ROOT ($ROOT) is the git worktree"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+  fi
+  hits="$(git -C "$ROOT" grep -nI -E '\.claude-worktrees/|/(Users|home)/[^/ \"]+/[^ \"]*vitruvian-core' -- \
       '*.yaml' '*.yml' '*.json' '*.go' '*.ts' '*.tsx' '*.sh' '*.sky' '*.bzl' 2>/dev/null \
     | grep -v '^tools/conformance/check.sh:' \
     | grep -v -E '^(docs|devx/docs)/' || true)"
@@ -1279,11 +1286,13 @@ check_no_local_paths() {
 
 check_release_infra_exclude() {
   ok=1
-  for cfg in */release-please-config.json; do
+  seen=0
+  for cfg in "$ROOT"/*/release-please-config.json; do
     [ -f "$cfg" ] || continue
-    app="${cfg%%/*}"
-    [ -d "$app/infra" ] || continue   # only co-located apps are at risk
-    rel="$cfg"
+    seen=$((seen + 1))
+    rel="${cfg#"$ROOT"/}"
+    app="${rel%%/*}"
+    [ -d "$ROOT/$app/infra" ] || continue   # only co-located apps are at risk
     excluded="$(python3 - "$cfg" "$app" <<'PY'
 import json, sys
 cfg, app = sys.argv[1], sys.argv[2]
@@ -1298,6 +1307,15 @@ PY
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
     fi
   done
+  # A guard that silently inspects NOTHING is worse than no guard: it reports
+  # green forever. This one previously used a CWD-relative glob and matched
+  # zero files under `bazel run`, so it passed without checking anything.
+  if [ "$seen" -eq 0 ]; then
+    emit "release" "$GLYPH_FAIL" "$C_RED" "*/release-please-config.json" "none found" "at least 1" \
+      "the release-unit guard found no release-please configs to inspect - it is running blind, not passing" \
+      "check the glob resolves from \$ROOT ($ROOT)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
   return $((1 - ok))
 }
 
