@@ -50,10 +50,9 @@
 package main
 
 import (
+	"foundation-app-infra/modules/serverless_space"
 	"os"
 	"strings"
-
-	"foundation-app-infra/modules/serverless_space"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
