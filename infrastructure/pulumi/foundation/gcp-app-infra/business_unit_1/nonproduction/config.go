@@ -71,6 +71,12 @@ type AppConfig struct {
 	MaxInstances int
 	// PublicInvoker grants allUsers run.invoker (DRS-permitted on oss projects).
 	PublicInvoker bool
+	// EnvVars are the app's plain (non-secret) container env vars, as
+	// "K=V,K2=V2". These must REPRODUCE what the live service already has: the
+	// §7 step-2 post-import preview is only empty when they match, and an apply
+	// with a var missing STRIPS it off a running service. The archetype adds
+	// SECRET_PREFIX itself, so it is not listed here.
+	EnvVars map[string]string
 }
 
 // loadConfig resolves the leaf configuration from the stack config.
@@ -95,6 +101,7 @@ func loadConfig(ctx *pulumi.Context) *AppInfraConfig {
 			SecretPrefix:          cfg.Get(name + "_secret_prefix"),
 			ServiceName:           orDefault(cfg.Get(name+"_service_name"), name),
 			PublicInvoker:         cfg.Get(name+"_public_invoker") == "true",
+			EnvVars:               splitKV(cfg.Get(name + "_env_vars")),
 		}
 		if v := cfg.Get(name + "_max_instances"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -125,4 +132,19 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// splitKV parses "K=V,K2=V2" into a map; empty input yields nil.
+func splitKV(s string) map[string]string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	m := map[string]string{}
+	for _, part := range strings.Split(s, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) == 2 && kv[0] != "" {
+			m[kv[0]] = kv[1]
+		}
+	}
+	return m
 }
