@@ -1,3 +1,3 @@
 {
-  "pulumi/library/go/pkg/upstash": "0.0.0"
+  "pulumi/library/go/pkg/upstash": "1.0.0"
 }
