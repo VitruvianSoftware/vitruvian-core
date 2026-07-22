@@ -1284,6 +1284,48 @@ check_no_local_paths() {
   return 1
 }
 
+# Every pulumi-library package must carry BOTH release-please files, and its
+# `component` must match its directory.
+#
+# release-please needs a per-package `.release-please-manifest.json` beside the
+# config; without it the release job dies with "Missing required manifest
+# versions" and the package NEVER PUBLISHES — which in turn blocks anything that
+# consumes it by version, since library consumers pin published versions rather
+# than local paths.
+#
+# The `component` is the release TAG PREFIX. A package whose config was copied
+# from a sibling keeps the SOURCE package's component, so it would publish under
+# another package's tag namespace. Both mistakes shipped together when pkg/neon
+# and pkg/upstash were added by copying pkg/pubsub's config: the manifest was
+# missing and both components still read "go-pubsub".
+check_release_please_packages() {
+  ok=1
+  for cfg in pulumi/library/go/pkg/*/release-please-config.json; do
+    [ -e "$cfg" ] || continue
+    dir="$(dirname "$cfg")"
+    pkg="$(basename "$dir")"
+    rel="${cfg#./}"
+    if [ ! -e "$dir/.release-please-manifest.json" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "no manifest" "manifest present" \
+        "$dir has release-please-config.json but no .release-please-manifest.json - the release job fails with \"Missing required manifest versions\" and this package never publishes" \
+        "add $dir/.release-please-manifest.json containing {\"$dir\": \"0.0.0\"}"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+    # Convention: "go-" + the directory with underscores as hyphens
+    # (pkg/cai_monitoring -> go-cai-monitoring).
+    want="go-$(printf '%s' "$pkg" | tr '_' '-')"
+    got="$(sed -n 's/.*"component"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -n1)"
+    if [ -n "$got" ] && [ "$got" != "$want" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "component: $got" "$want" \
+        "$rel declares component '$got' but lives in $dir - the component is the release TAG PREFIX, so this package would publish under another package's tag namespace (the signature of a config copied from a sibling)" \
+        "set \"component\": \"$want\""
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+  done
+  [ "$ok" = 1 ] && emit "pulumi" "$GLYPH_OK" "$C_GREEN" "release-please" "config+manifest" "config+manifest" \
+    "every pulumi-library package has both release-please files and a matching component" ""
+}
+
 check_release_infra_exclude() {
   ok=1
   seen=0
@@ -1505,6 +1547,7 @@ check_sweep_backstop
 check_zitadel_import
 check_pulumi_project_names
 check_custom_domain_zone
+check_release_please_packages
 check_copybara_infra_exclude
 
 check_release_infra_exclude
