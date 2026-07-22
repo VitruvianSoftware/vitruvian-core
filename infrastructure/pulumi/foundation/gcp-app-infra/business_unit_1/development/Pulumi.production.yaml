@@ -32,7 +32,7 @@ config:
   # §7: import here -> flip to true -> state-delete from the app stack.
   # The values below are replicated from that stack so the imported resource
   # matches and the diff after import is empty.
-  foundation-app-infra-bu1-development:oauth-user-inspector_workload_enabled: "true"
+  foundation-app-infra-bu1-development:oauth-user-inspector_workload_enabled: "false"
   foundation-app-infra-bu1-development:oauth-user-inspector_service_name: "oauth-user-inspector"
   foundation-app-infra-bu1-development:oauth-user-inspector_secret_prefix: "OAUTH_USER_INSPECTOR_"
   foundation-app-infra-bu1-development:oauth-user-inspector_env_vars: "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=prj-d-bu1-oss-floating-648a"
