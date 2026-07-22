@@ -121,7 +121,7 @@ func main() {
 				// Config-driven so it can reproduce the LIVE service exactly.
 				// A var missing here is not cosmetic: the post-import apply
 				// would STRIP it off a running service (§7 step 2).
-				EnvVars: app.EnvVars,
+				EnvVars:        app.EnvVars,
 				PublicInvoker:  app.PublicInvoker,
 				MaxInstances:   app.MaxInstances,
 				RevisionSuffix: revisionSuffix(app.Name),
