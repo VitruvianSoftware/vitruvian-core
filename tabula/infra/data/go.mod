@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/neon v1.0.0
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash v1.0.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash v1.0.1
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.253.0
 )
