@@ -2,7 +2,7 @@
   "packages": {
     "pulumi/library/go/pkg/upstash": {
       "release-type": "go",
-      "component": "go-pubsub"
+      "component": "go-upstash"
     }
   }
 }
