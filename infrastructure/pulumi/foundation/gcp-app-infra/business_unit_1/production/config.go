@@ -63,7 +63,9 @@ type AppConfig struct {
 	RuntimeServiceAccount string
 	// SecretPrefix partitions the app's Secret Manager reads in a shared project.
 	SecretPrefix string
-	// ServiceName is the Cloud Run service name, WITHOUT the env suffix.
+	// ServiceName is the app's BASE service name. serverless_space appends the
+	// environment, so the deployed service is <ServiceName>-<env> — matching
+	// what the app stack runs today. Do NOT put the env in this value.
 	ServiceName string
 	// MaxInstances caps autoscaling; 0 leaves the archetype default.
 	MaxInstances int
