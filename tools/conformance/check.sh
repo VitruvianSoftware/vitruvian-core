@@ -375,6 +375,7 @@ ROWS_META=""
 ROWS_COPYBARA=""
 ROWS_RELEASE=""
 ROWS_LOCALPATH=""
+ROWS_GATE=""
 ROWS_PULUMI=""
 
 emit() {
@@ -395,6 +396,7 @@ emit() {
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
     release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
     localpath)    ROWS_LOCALPATH="${ROWS_LOCALPATH}${_row}" ;;
+    gate)         ROWS_GATE="${ROWS_GATE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
@@ -1210,6 +1212,44 @@ check_custom_domain_zone() {
 #
 # Lesson encoded here: generate config with a real templating language, and let
 # CI — not a deploy — catch it when that slips.
+# CI gate global-impact list drift guard.
+#
+# deploy-affected.sh and affected-targets.sh each carry a "global-impact"
+# allowlist: a change under tools/ OUTSIDE the allowlist forces affected=true
+# (fail open). The two lists MUST be identical -- affected-targets.sh picks
+# which tests run, deploy-affected.sh picks whether a live deploy runs, and a
+# divergence means CI and deploy disagree about what a change can affect.
+#
+# They were kept in sync only by a comment saying "same set as
+# affected-targets.sh". This enforces it.
+#
+# Why it matters concretely: tools/conformance/ was NOT allowlisted, so editing
+# the conformance script alone marked tabula's deploy targets affected and ran
+# a live Cloud Run deploy. `bazel query somepath(<deploy targets>,
+# //tools/conformance/... )` returns EMPTY -- no deployable artifact depends on
+# it -- so that deploy could never have shipped anything different. It did,
+# however, re-run a deploy that was already failing for unrelated reasons and
+# painted an unrelated PR's merge red.
+check_ci_gate_lists_match() {
+  a="$(grep -o "\^tools/([^']*)" tools/ci/deploy-affected.sh 2>/dev/null | head -1)"
+  b="$(grep -o "\^tools/([^']*)" tools/ci/affected-targets.sh 2>/dev/null | head -1)"
+  if [ -z "$a" ] || [ -z "$b" ]; then
+    emit "gate" "$GLYPH_FAIL" "$C_RED" "tools/ci/*-affected*.sh" "pattern not found" "one per file" \
+      "could not locate the global-impact allowlist in one of the gate scripts - the guard cannot verify them" \
+      "check the '^tools/(...)' pattern still exists in both deploy-affected.sh and affected-targets.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+  fi
+  if [ "$a" = "$b" ]; then
+    emit "gate" "$GLYPH_OK" "$C_GREEN" "tools/ci/*-affected*.sh" "identical" "identical" \
+      "the deploy gate and the test gate agree on global-impact paths" ""
+    return 0
+  fi
+  emit "gate" "$GLYPH_FAIL" "$C_RED" "tools/ci/*-affected*.sh" "diverged" "identical" \
+    "deploy-affected.sh and affected-targets.sh disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect" \
+    "make the '^tools/(...)' patterns identical in both files"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+}
+
 check_no_local_paths() {
   # Scope: committed text likely to be machine-generated. Docs legitimately
   # quote example paths, and this file names the pattern it greps for.
@@ -1451,6 +1491,7 @@ check_copybara_infra_exclude
 
 check_release_infra_exclude
 check_no_local_paths
+check_ci_gate_lists_match
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1469,6 +1510,7 @@ print_group "Pulumi program identity (unique project names · customDomain under
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
 print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
+print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
