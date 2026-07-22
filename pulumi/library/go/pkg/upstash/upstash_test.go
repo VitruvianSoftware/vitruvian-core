@@ -71,7 +71,7 @@ func run(t *testing.T, args *RedisArgs) (map[string]resource.PropertyMap, *Redis
 }
 
 func TestNewRedis(t *testing.T) {
-	t.Run("passes name and region through", func(t *testing.T) {
+	t.Run("passes the database name through", func(t *testing.T) {
 		inputs, _ := run(t, &RedisArgs{Name: "tabula-shared", Region: "us-east-1"})
 		in, ok := inputs["cache"]
 		if !ok {
@@ -80,9 +80,8 @@ func TestNewRedis(t *testing.T) {
 		if got := in["databaseName"].StringValue(); got != "tabula-shared" {
 			t.Errorf("databaseName = %q, want tabula-shared", got)
 		}
-		if got := in["region"].StringValue(); got != "us-east-1" {
-			t.Errorf("region = %q, want us-east-1", got)
-		}
+		// Region deliberately does NOT pass through as `region` — see the
+		// global-tier case below.
 	})
 
 	// TLS is on by default at Upstash and cannot be turned off for new databases,
@@ -110,6 +109,27 @@ func TestNewRedis(t *testing.T) {
 		inputs, _ := run(t, &RedisArgs{Name: "c", Region: "us-east-1", Eviction: &no})
 		if inputs["cache"]["eviction"].BoolValue() {
 			t.Error("eviction should be disabled when explicitly set false")
+		}
+	})
+
+	// Upstash now REJECTS regional databases outright:
+	//   400 "regional db creation is deprecated"
+	// so the module defaults to the global tier, which requires a PrimaryRegion.
+	t.Run("defaults to the global tier with the given region as primary", func(t *testing.T) {
+		inputs, _ := run(t, &RedisArgs{Name: "c", Region: "us-east-1"})
+		if got := inputs["cache"]["region"].StringValue(); got != "global" {
+			t.Errorf("region = %q, want global (regional creation is deprecated)", got)
+		}
+		if got := inputs["cache"]["primaryRegion"].StringValue(); got != "us-east-1" {
+			t.Errorf("primaryRegion = %q, want us-east-1", got)
+		}
+	})
+
+	t.Run("read regions are passed through", func(t *testing.T) {
+		inputs, _ := run(t, &RedisArgs{Name: "c", Region: "us-east-1", ReadRegions: []string{"eu-west-1"}})
+		rr := inputs["cache"]["readRegions"].ArrayValue()
+		if len(rr) != 1 || rr[0].StringValue() != "eu-west-1" {
+			t.Errorf("readRegions = %v", rr)
 		}
 	})
 

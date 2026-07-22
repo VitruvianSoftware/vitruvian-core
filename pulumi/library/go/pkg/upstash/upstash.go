@@ -55,10 +55,18 @@ import (
 type RedisArgs struct {
 	// Name is the database name as it appears in the Upstash console. Required.
 	Name string
-	// Region is the Upstash region, e.g. "us-east-1". Required — there is no
-	// sensible default, and the wrong one silently adds cross-region latency to
-	// every cache read.
+	// Region is where the data primarily lives, e.g. "us-east-1". Required —
+	// there is no sensible default, and the wrong one silently adds cross-region
+	// latency to every cache read.
+	//
+	// This becomes the database's PRIMARY region on Upstash's global tier. It is
+	// not passed as the `region` field: Upstash has DEPRECATED regional databases
+	// and rejects them outright ("regional db creation is deprecated"), so the
+	// module always creates on the global tier with this as the primary.
 	Region string
+	// ReadRegions adds read replicas. Only meaningful on the global tier (which
+	// is now the only tier), and must exclude Region.
+	ReadRegions []string
 	// Eviction controls whether keys are evicted when the database is full.
 	// Defaults to TRUE (cache semantics). Set false only for datastore use: a
 	// full non-evicting database REJECTS writes, which takes the caller down,
@@ -108,9 +116,13 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 
 	dbArgs := &upstash.RedisDatabaseArgs{
 		DatabaseName: pulumi.String(args.Name),
-		Region:       pulumi.String(args.Region),
-		Eviction:     pulumi.Bool(eviction),
-		AutoScale:    pulumi.Bool(autoScale),
+		// Upstash rejects regional creation ("regional db creation is
+		// deprecated"), so the tier is always global and the caller's Region
+		// becomes the primary.
+		Region:        pulumi.String("global"),
+		PrimaryRegion: pulumi.String(args.Region),
+		Eviction:      pulumi.Bool(eviction),
+		AutoScale:     pulumi.Bool(autoScale),
 		// Explicit rather than inherited: TLS is Upstash's current default and
 		// cannot be disabled on new databases, but pinning it here means a
 		// provider-side default change can never quietly downgrade a caller.
@@ -118,6 +130,9 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 	}
 	if len(args.IPAllowlist) > 0 {
 		dbArgs.IpAllowlists = pulumi.ToStringArray(args.IPAllowlist)
+	}
+	if len(args.ReadRegions) > 0 {
+		dbArgs.ReadRegions = pulumi.ToStringArray(args.ReadRegions)
 	}
 
 	db, err := upstash.NewRedisDatabase(ctx, name, dbArgs, opts...)
