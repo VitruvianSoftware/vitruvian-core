@@ -160,6 +160,28 @@ func main() {
 			}); err != nil {
 				return err
 			}
+			// The stage-5 (gcp-app-infra) pipeline SA now performs the Cloud
+			// Run deploy for adopted workloads, so IT needs to pull the image
+			// too. A cross-project AR pull needs BOTH the Cloud Run service
+			// agent AND the deploying identity to have reader — the service
+			// agent is granted just above, and without this the apply fails
+			// 403 artifactregistry.repositories.downloadArtifacts.
+			//
+			// Authored here only because this stack still owns the repo IAM.
+			// It belongs in the foundation with the rest of the repo's grants;
+			// an app stack granting a FOUNDATION identity access to a
+			// foundation-project resource is exactly the inversion
+			// core-vs-application-infrastructure.md §3 test 4 rules out.
+			appInfraSA := s.GetStringOutput(pulumi.String("app_infra_pipeline_service_account"))
+			if _, err := artifactregistry.NewRepositoryIamMember(ctx, "ar-reader-app-infra-"+env, &artifactregistry.RepositoryIamMemberArgs{
+				Project:    buildProject,
+				Location:   pulumi.String(region),
+				Repository: ar.RepositoryId,
+				Role:       pulumi.String("roles/artifactregistry.reader"),
+				Member:     pulumi.Sprintf("serviceAccount:%s", appInfraSA),
+			}); err != nil {
+				return err
+			}
 			ossProject := s.GetStringOutput(pulumi.String("oss_floating_project"))
 			if _, err := artifactregistry.NewRepositoryIamMember(ctx, "ar-reader-deploy-"+env, &artifactregistry.RepositoryIamMemberArgs{
 				Project:    buildProject,
