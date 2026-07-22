@@ -40,15 +40,46 @@
 // because its grants live in a stage it does not deploy. This leaf CONSUMES
 // the identity by StackReference and re-exports it.
 //
-// NOT YET INSTANTIATED: modules/serverless_space (the Cloud Run archetype) is
-// ported and compiled but no app is wired through it here yet.
-// oauth-user-inspector's Cloud Run service is still deployed by
-// oauth-user-inspector/infra/app; moving it onto the archetype adopts a live,
-// traffic-serving service and is deliberately a separate change so it can be
-// reverted on its own.
+// SERVERLESS WORKLOADS are wired through modules/serverless_space, but each app
+// is gated on <app>_workload_enabled and every app currently ships FALSE. A
+// Pulumi stack cannot take ownership of a live resource by declaring it, so the
+// cutover per env is: `pulumi import` the running service into this stack, flip
+// this flag, then state-delete it from the app stack. Until then the app's own
+// stack keeps serving. Runbook:
+// docs/engineering/core-vs-application-infrastructure.md §7.
 package main
 
-import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+import (
+	"os"
+	"strings"
+
+	"foundation-app-infra/modules/serverless_space"
+
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
+
+// Per-invocation deploy inputs come from the environment, never committed
+// config: the image digest is produced by the build-once job and the
+// promote/stable-revision pair drives blue-green. Mirrors how the app stack
+// reads them today (<APP_PREFIX>_IMAGE_DIGEST etc.), so the deploy workflow
+// keeps the same contract across the cutover.
+func appEnv(app, suffix string) string {
+	return os.Getenv(strings.ToUpper(strings.ReplaceAll(app, "-", "_")) + "_" + suffix)
+}
+
+func imageDigest(app string) string    { return appEnv(app, "IMAGE_DIGEST") }
+func stableRevision(app string) string { return appEnv(app, "STABLE_REVISION") }
+func promote(app string) bool          { return appEnv(app, "PROMOTE") == "true" }
+
+// revisionSuffix derives a stable, referenceable revision name fragment from
+// the digest — a digest is not itself a legal revision name.
+func revisionSuffix(app string) string {
+	d := imageDigest(app)
+	if i := strings.LastIndex(d, "@sha256:"); i >= 0 && len(d) >= i+16 {
+		return d[i+8 : i+16]
+	}
+	return ""
+}
 
 // Environment pinned by this leaf project — upstream
 // 5-app-infra/business_unit_1/nonproduction hardcodes env in its main.tf; the
@@ -71,6 +102,46 @@ func main() {
 
 		// Deploy identities are consumed, not created (see the package note).
 		deploySAs := refs.DeployServiceAccounts
+
+		// Serverless workloads, per app, gated on the cutover switch.
+		serviceURLs := map[string]pulumi.StringOutput{}
+		serviceNames := map[string]pulumi.StringOutput{}
+		for _, app := range cfg.Apps {
+			if !app.WorkloadEnabled {
+				continue
+			}
+			res, err := serverless_space.DeployServerlessSpace(ctx, app.Name, &serverless_space.ServerlessSpaceArgs{
+				Env:                        cfg.Env,
+				BusinessUnit:               cfg.BusinessCode,
+				ProjectID:                  refs.OSSFloatingProjectID,
+				Region:                     cfg.Region,
+				ServiceName:                app.ServiceName,
+				ImageDigest:                pulumi.String(imageDigest(app.Name)),
+				RuntimeServiceAccountEmail: pulumi.String(app.RuntimeServiceAccount),
+				SecretPrefix:               app.SecretPrefix,
+				EnvVars: map[string]string{
+					"NODE_ENV": "production",
+				},
+				PublicInvoker:  app.PublicInvoker,
+				MaxInstances:   app.MaxInstances,
+				RevisionSuffix: revisionSuffix(app.Name),
+				StableRevision: stableRevision(app.Name),
+				Promote:        promote(app.Name),
+			})
+			if err != nil {
+				return err
+			}
+			serviceURLs[app.Name] = res.ServiceUri
+			serviceNames[app.Name] = res.ServiceName
+		}
+		for app, u := range serviceURLs {
+			ctx.Export(app+"_service_uri", u)
+		}
+		for app, n := range serviceNames {
+			// The app stack's DomainMapping binds by the run service's SHORT
+			// NAME, so it must read this once the workload lives here.
+			ctx.Export(app+"_service_name", n)
+		}
 
 		exportOutputs(ctx, cfg, refs, deploySAs)
 		return nil

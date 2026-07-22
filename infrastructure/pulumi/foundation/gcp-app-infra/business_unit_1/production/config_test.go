@@ -40,3 +40,16 @@ func TestSplitListTrimsAndDropsEmpties(t *testing.T) {
 		t.Fatal("splitList(blank) should be nil")
 	}
 }
+
+// The workload switch must stay FALSE until the live Cloud Run service has been
+// imported into this stack. Flipping it without the import makes Pulumi try to
+// CREATE a service that already exists: the apply fails, and on a stack that
+// already owned traffic it would be a user-visible outage rather than a clean
+// error. This test is the reminder that the config flip is step TWO of the
+// cutover, never step one — see §7 of the core-vs-application doc.
+func TestWorkloadCutoverSwitchDefaultsOff(t *testing.T) {
+	a := AppConfig{Name: "oauth-user-inspector"}
+	if a.WorkloadEnabled {
+		t.Fatal("WorkloadEnabled must default to false; the cutover requires a pulumi import first")
+	}
+}
