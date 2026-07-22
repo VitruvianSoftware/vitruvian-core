@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.0...foundation-gcp-projects-v1.5.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **gcp-projects:** enable Secret Manager on the shared infra-pipeline project ([#1022](https://github.com/VitruvianSoftware/vitruvian-core/issues/1022)) ([692f76c](https://github.com/VitruvianSoftware/vitruvian-core/commit/692f76c69d20b4b7754d2b4eaa6ea9ecd3a6454f))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.1...foundation-gcp-projects-v1.5.0) (2026-07-21)
 
 
