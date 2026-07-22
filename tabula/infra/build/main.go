@@ -175,9 +175,13 @@ func main() {
 
 		// 4. Management credentials for tabula's external SaaS dependencies.
 		//
-		// tabula's stateful tier is NOT in GCP: Postgres is Neon (org
-		// org-little-shape-81083488, one project per env) and the cache is
-		// Upstash Redis. Each env's RUNTIME connection string already lives in
+		// tabula's stateful tier is NOT in GCP: Postgres is Neon (one project per
+		// env) and the cache is Upstash Redis. Both are provisioned as code by
+		// tabula/infra/data, which resolves the Neon ORG from this API key at
+		// apply time rather than pinning one — the org belongs to whichever
+		// account the key is for, so a pinned id goes stale the moment the key
+		// is rotated to a different account (which is exactly what happened to
+		// the id that used to be named here). Each env's RUNTIME connection string already lives in
 		// that env's own project as TABULA_DATABASE_URL / TABULA_UPSTASH_REDIS_URL.
 		// These are the different, higher-privilege thing: the ACCOUNT-level API
 		// credentials that create and manage those resources.
