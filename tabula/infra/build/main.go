@@ -232,6 +232,29 @@ func main() {
 				}); err != nil {
 				return err
 			}
+
+			// The HUMAN operator, so `bazel run //tools/saas-cli:*` can actually
+			// read these. Without it the wrapper fails PERMISSION_DENIED for a
+			// person while working fine for CI — which is exactly what happened
+			// the first time it was run, because the grant above is SA-only.
+			//
+			// Config rather than hardcoded, and EMPTY BY DEFAULT: no principal is
+			// granted unless one is named, so this cannot quietly widen access in
+			// another business unit that copies this stack. Prefer a GROUP over a
+			// person — `group:...` outlives any individual and is revoked in one
+			// place. Format is a full IAM member string
+			// ("user:a@b" / "group:a@b").
+			if operator := cfg.Get("operatorPrincipal"); operator != "" {
+				if _, err := secretmanager.NewSecretIamMember(ctx, "operator-accessor-"+secretID,
+					&secretmanager.SecretIamMemberArgs{
+						Project:  buildProject,
+						SecretId: sec.SecretId,
+						Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+						Member:   pulumi.String(operator),
+					}); err != nil {
+					return err
+				}
+			}
 		}
 
 		ctx.Export("artifact_registry", pulumi.Sprintf("%s-docker.pkg.dev/%s/tabula", region, buildProject))
