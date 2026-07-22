@@ -134,6 +134,17 @@ jobs:
             modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
             stack: production
             environment: foundation-app-preview
+          # gcp-app-infra bu2 (tabula): one representative leaf. No modules_dir —
+          # the bu1 leg above already runs the single modules vet/test for this
+          # stage. This leg exists so the bu2 leaves' go vet/test run in CI and a
+          # `pulumi preview` catches a mangled config key BEFORE deploy (the exact
+          # failure mode that reached main for the bu1 leaf, and that a zsh history
+          # modifier can silently introduce while editing the stack config).
+          - app: gcp-app-infra-bu2-development
+            dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
+            stack: production
+            environment: foundation-app-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
