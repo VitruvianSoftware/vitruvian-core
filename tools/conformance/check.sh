@@ -374,6 +374,7 @@ ROWS_IAC=""
 ROWS_META=""
 ROWS_COPYBARA=""
 ROWS_RELEASE=""
+ROWS_LOCALPATH=""
 ROWS_PULUMI=""
 
 emit() {
@@ -393,6 +394,7 @@ emit() {
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
     release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
+    localpath)    ROWS_LOCALPATH="${ROWS_LOCALPATH}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
@@ -1189,6 +1191,52 @@ check_custom_domain_zone() {
 # reintroduce the bug. It is the release-side sibling of the Copybara
 # infra-leak guard above: same `<app>/infra/` convention, different automation
 # that has to be taught the artifact boundary.
+# Leaked local-filesystem path guard.
+#
+# A developer/agent machine path must never reach a committed file. It is
+# meaningless to everyone else, it leaks the author's directory layout, and
+# when it lands in a config KEY it silently breaks the consumer.
+#
+# This is not hypothetical. Generating the stage-5 stack configs from an
+# UNQUOTED zsh heredoc turned `$env:apps` into zsh's `:a` (absolute path)
+# history modifier and `$env:region` into `:r` (remove extension), producing:
+#
+#   foundation-app-infra-bu1-<abs path to the author worktree>/developmentpps:
+#   foundation-app-infra-bu1-developmentegion:
+#
+# Both parse as valid YAML, so nothing complained until the stage-5 deploy
+# failed with "config name ... exceeds max length of 128". Committed, merged,
+# and only caught by a live deploy.
+#
+# Lesson encoded here: generate config with a real templating language, and let
+# CI — not a deploy — catch it when that slips.
+check_no_local_paths() {
+  # Scope: committed text likely to be machine-generated. Docs legitimately
+  # quote example paths, and this file names the pattern it greps for.
+  # Deliberately NARROW: match only paths that can only come from someone's own
+  # working copy — an agent worktree, or a home-rooted path into this repo's
+  # checkout. Container/remote paths like /home/vscode/go, /home/k3s/storage and
+  # /home/kubernetes/bin are legitimate values, not leaks, so a blanket
+  # /home/... pattern would be pure noise and get ignored.
+  hits="$(git grep -nI -E '\.claude-worktrees/|/(Users|home)/[^/ \"]+/[^ \"]*vitruvian-core' -- \
+      '*.yaml' '*.yml' '*.json' '*.go' '*.ts' '*.tsx' '*.sh' '*.sky' '*.bzl' 2>/dev/null \
+    | grep -v '^tools/conformance/check.sh:' \
+    | grep -v -E '^(docs|devx/docs)/' || true)"
+  if [ -z "$hits" ]; then
+    emit "localpath" "$GLYPH_OK" "$C_GREEN" "tree" "no local paths" "none" \
+      "no committed file embeds a developer machine path" ""
+    return 0
+  fi
+  printf '%s\n' "$hits" | while IFS= read -r h; do
+    [ -z "$h" ] && continue
+    emit "localpath" "$GLYPH_FAIL" "$C_RED" "${h%%:*}" "local path" "none" \
+      "embeds a developer machine path: ${h#*:}" \
+      "remove it - if this file is generated, generate it with a real template, not a shell heredoc (zsh applies :a/:r history modifiers inside \$var:word)"
+  done
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  return 1
+}
+
 check_release_infra_exclude() {
   ok=1
   for cfg in */release-please-config.json; do
@@ -1402,6 +1450,7 @@ check_custom_domain_zone
 check_copybara_infra_exclude
 
 check_release_infra_exclude
+check_no_local_paths
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1419,6 +1468,7 @@ print_group "IaC destructive-import guard (zitadel-apps must create, never impor
 print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
 print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
+print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

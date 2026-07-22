@@ -11,14 +11,14 @@
 # Promotion order: development -> nonproduction -> production
 config:
   foundation-app-infra-bu1-nonproduction:business_code: "bu1"
-  foundation-app-infra-bu1-nonproductionegion: "us-west1"
+  foundation-app-infra-bu1-nonproduction:region: "us-west1"
 
   # --- Cross-stage reference ---
   foundation-app-infra-bu1-nonproduction:projects_stack_name: "ipv1337/foundation-projects-bu1-nonproduction/production"
 
   # --- Applications hosted in this environment ---
   # Adding an app is a one-line change here plus its per-app overrides below.
-  foundation-app-infra-bu1-/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude-worktrees/app-infra/nonproductionpps: "oauth-user-inspector"
+  foundation-app-infra-bu1-nonproduction:apps: "oauth-user-inspector"
 
   # Deploy identities are minted in gcp-projects (one stage up) and consumed
   # here by StackReference — see that leaf's `apps` config.
