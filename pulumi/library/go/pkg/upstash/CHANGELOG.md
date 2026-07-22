@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-upstash-v1.0.0...go-upstash-v1.0.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **pulumi-library:** Upstash rejects regional databases — create on the global tier ([#1042](https://github.com/VitruvianSoftware/vitruvian-core/issues/1042)) ([27167b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/27167b4a521a315c5f89df9bd9525ac876fd4c10))
+
 ## 1.0.0 (2026-07-22)
 
 
