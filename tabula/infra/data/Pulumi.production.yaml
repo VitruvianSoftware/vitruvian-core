@@ -1,0 +1,33 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# ONE stack for the whole data tier (see main.go): Neon and Upstash live in a
+# single external account each, not per GCP project, so "production" here is the
+# stack name of the singleton — not the tabula environment. All three tabula
+# environments are provisioned by this one stack, mirroring tabula/infra/build.
+config:
+  # The Neon ORGANIZATION the projects are created in. A project created outside
+  # an org is owned by an individual — the dependency this foundation removes.
+  tabula-data:neonOrgId: org-little-shape-81083488
+  # Where each environment's connection strings are written, as TABULA_-prefixed
+  # secrets in that env's own project.
+  tabula-data:developmentProject: prj-d-bu2-oss-floating-c3d1
+  tabula-data:nonproductionProject: prj-n-bu2-oss-floating-a943
+  tabula-data:productionProject: prj-p-bu2-oss-floating-8663
