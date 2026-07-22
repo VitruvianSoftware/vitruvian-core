@@ -39,6 +39,9 @@ uppercased secret prefix.
       open-source apps live on `ipv1337.dev`; commercial / paid-tier apps live on
       `vitruviansoftware.dev` (e.g. `myapp.dev.<zone>`, `myapp.staging.<zone>`,
       `myapp.<zone>`). Or skip domains and serve on the `run.app` URL.
+      > Full rules — which zone, why, the per-env hostname pattern, ownership
+      > verification and the guardrails — in
+      > [`docs/engineering/domain-zone-conventions.md`](engineering/domain-zone-conventions.md).
       > ⚠️ If the app ships a browser extension or any client with a **compiled-in**
       > API URL, stand the custom domain up and repoint the client BEFORE cutover.
       > Decommissioning tabula's old service while its extension still had the
