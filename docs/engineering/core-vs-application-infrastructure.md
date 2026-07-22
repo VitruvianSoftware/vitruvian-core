@@ -1,9 +1,10 @@
 # Core vs. Application Infrastructure
 
 > **Status:** Authoritative standard for where infrastructure-as-code lives in this monorepo. The live
-> `gcp-app-infra` stage exists as of #995. Its **archetype catalog** (§4) is ported but not yet
-> instantiated — no app runs through `serverless_space` yet; `oauth-user-inspector`'s Cloud Run service
-> still deploys from its own stack. §7 tracks the open calls and the current-state deltas.
+> `gcp-app-infra` stage exists and has applied in all three environments. Its **archetype catalog** (§4)
+> is instantiated but gated: no app runs through `serverless_space` yet, and `oauth-user-inspector`'s
+> Cloud Run service still deploys from its own stack until the §7 cutover runs. §8 tracks the remaining
+> open calls and current-state deltas.
 >
 > **Audience:** Anyone adding infrastructure for an application, extending the foundation, or reviewing
 > such a change.
@@ -334,14 +335,16 @@ of dev-first is that a mistake is cheap once.
 
 ## 8. Open calls and current-state deltas
 
-**Ruled:** the **deploy service account** is platform-issued — the foundation creates it and authors its
-grants — and applications may additionally create their own service accounts without asking. See
-[§4.1](#41-platform-issued-identities-and-app-created-ones). This is a change from current practice:
-`oauth-user-inspector/infra/identity` today creates `oauth-user-inspector-deploy` *and* its project-level
-grants, which is the app granting itself power over a project it does not own. Moving that to the
-foundation is tracked as a follow-up; the app will consume the SA email by stack reference.
+**Ruled and DONE:** the **deploy service account** is platform-issued. It is minted in `gcp-projects`
+(§4.1), one stage above the workloads it deploys, and applications may additionally create their own
+service accounts without asking. `oauth-user-inspector-deploy` was adopted there rather than recreated,
+and the app stack keeps it declared with `retainOnDelete` until its state entry is removed.
 
-Three boundary cases remain **not yet ruled on**. Nothing below should be treated as settled.
+**Ruled and DONE:** the **BU app-infra pipeline identity** (`sa-app-infra-bu1`) applies the stage-5 leaf,
+which is therefore **ungated** — a routine app deploy needs no human approval, and that is safe only
+because the pipeline SA's own grants live in a stage it does not apply.
+
+Two boundary cases remain **not yet ruled on**. Nothing below should be treated as settled.
 
 | # | Case | Current state | Proposal |
 |---|---|---|---|
@@ -351,12 +354,19 @@ Three boundary cases remain **not yet ruled on**. Nothing below should be treate
 
 Structural deltas, tracked separately:
 
-- **The live `gcp-app-infra` stage does not exist.** `infrastructure/pulumi/foundation/` stops at
-  `gcp-projects`. The catalog in §4 is therefore example-only today.
-- **`serverless_space` has no live consumer.** `oauth-user-inspector/infra/app` re-implements the
-  archetype's shape by hand against `pkg/cloud_run` — runtime SA, `SECRET_PREFIX`, blue-green traffic
-  split, and the optional public invoker all exist in both places and are free to drift. The app has
-  since grown custom-domain support the archetype does not have.
+- **The live `gcp-app-infra` stage exists and has applied** in all three environments
+  (`development`, `nonproduction`, `production`), authenticating as `sa-app-infra-bu1`. The stacks
+  currently own no resources by design — the identities are consumed from `gcp-projects` and the
+  workload switch is off — so the applies prove the wiring, not the workload.
+- **`serverless_space` is wired but not yet serving.** The stage-5 leaves instantiate it behind
+  `<app>_workload_enabled`, which ships `false` for every app, and it is covered by `pulumi.WithMocks`
+  tests. Until the §7 cutover runs, `oauth-user-inspector/infra/app` still owns the live Cloud Run
+  service, so the archetype and the app stack describe the same service in two places and can drift.
+  The app also has custom-domain support (DomainMapping + Cloudflare) that stays app-side by design.
+- **The workload cutover is the outstanding piece of this whole design.** Every step in §7 is now
+  unblocked: the stage applies, the identities resolve, imports are a sanctioned local operation, and
+  the empty-diff property step 2 depends on is enforced by `TestServiceNameMatchesTheLiveService`.
+  What remains is running it, per environment, with someone watching the traffic.
 - The earlier design decision that there would be "no separate stage-5 tree"
   (`docs/superpowers/specs/2026-07-10-oss-application-stage-design.md` §4.1) predates this doc. Where the
   two conflict, this doc states the intended target and that spec records why the current state differs.
