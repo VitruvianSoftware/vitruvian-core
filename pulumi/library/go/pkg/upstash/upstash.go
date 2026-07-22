@@ -130,7 +130,8 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 	url := pulumi.All(db.Endpoint, db.Password, db.Port).ApplyT(
 		func(v []interface{}) string {
 			return fmt.Sprintf("rediss://default:%s@%s:%v", v[1], v[0], v[2])
-		}).(pulumi.StringOutput)
+		},
+	).(pulumi.StringOutput)
 
 	return &Redis{
 		Database:      db,

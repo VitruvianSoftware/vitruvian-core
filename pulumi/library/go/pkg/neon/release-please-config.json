@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "pulumi/library/go/pkg/neon": {
+      "release-type": "go",
+      "component": "go-pubsub"
+    }
+  }
+}
