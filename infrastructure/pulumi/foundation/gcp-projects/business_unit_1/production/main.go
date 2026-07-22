@@ -36,6 +36,8 @@ import (
 	"foundation-projects/modules/app_deploy_identity"
 	"foundation-projects/modules/base_env"
 
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/artifactregistry"
+
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -183,6 +185,31 @@ func main() {
 				return err
 			}
 			ctx.Export("app_infra_pipeline_service_account", pipeline.ServiceAccountEmail)
+
+			// The BU pipeline SA must be able to PULL the images it deploys.
+			// A cross-project Artifact Registry pull needs reader for BOTH the
+			// Cloud Run service agent AND the deploying identity; the service
+			// agent is granted by the app's build stack, and this is the
+			// deploying half. Without it a stage-5 apply fails 403
+			// artifactregistry.repositories.downloadArtifacts — which is
+			// exactly how the dev cutover failed.
+			//
+			// Granted HERE rather than in the shared leaf on purpose: the
+			// identity is per-environment and shared applies FIRST, so shared
+			// cannot see it. app_build_space documents the same split.
+			for _, g := range cfg.AppBuildReaderGrants {
+				if _, err := artifactregistry.NewRepositoryIamMember(ctx,
+					"ar-reader-app-infra-"+g.App,
+					&artifactregistry.RepositoryIamMemberArgs{
+						Project:    pulumi.String(g.RepositoryProject),
+						Location:   pulumi.String(g.Region),
+						Repository: pulumi.String(g.RepositoryID),
+						Role:       pulumi.String("roles/artifactregistry.reader"),
+						Member:     pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
+					}); err != nil {
+					return err
+				}
+			}
 		}
 
 		for app, email := range deploySAs {
