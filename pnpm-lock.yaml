@@ -184,8 +184,8 @@ importers:
         specifier: ^1.0.0
         version: 1.2.1(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
       '@pulumi/gcp':
-        specifier: ^9.30.0
-        version: 9.30.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
+        specifier: ^9.31.0
+        version: 9.31.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
       '@pulumi/pulumi':
         specifier: ^3.253.0
         version: 3.253.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
@@ -2345,9 +2345,6 @@ packages:
 
   '@pulumi/command@1.2.1':
     resolution: {integrity: sha512-mutNDIUYP67yCBYOVIidQyxuTwZDY9v/sx9EGbgIv4PXfyfolOKGgGLeoHEbI1lxRwaw2wbTZ3VNIynDnA5VKA==}
-
-  '@pulumi/gcp@9.30.0':
-    resolution: {integrity: sha512-FIPD7QKHEMv7qnrMe6mkL3pAWynKvIGqb77RbvOTL30S0yFY7Q+/O+qOl/eauMzOGxwc9H/Q8pX+XzxsW6coqg==}
 
   '@pulumi/gcp@9.31.0':
     resolution: {integrity: sha512-EpbykGOA/xcgprRKc3ygBdbr64kxNZ8gu0oG+zYtFoWI8ktLpI/+iZiSkE23kF6x9+QQP2U4Nus2QDh5xSXhXQ==}
@@ -10007,16 +10004,6 @@ snapshots:
   '@pulumi/command@1.2.1(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@6.0.3))(typescript@6.0.3)
-    transitivePeerDependencies:
-      - supports-color
-      - ts-node
-      - typescript
-
-  '@pulumi/gcp@9.30.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)':
-    dependencies:
-      '@npmcli/package-json': 6.2.0
-      '@pulumi/pulumi': 3.253.0(ts-node@10.9.2(@swc/core@1.15.46)(@types/node@26.1.1)(typescript@5.9.3))(typescript@5.9.3)
-      '@types/express': 4.17.25
     transitivePeerDependencies:
       - supports-color
       - ts-node
