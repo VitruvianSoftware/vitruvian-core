@@ -1,0 +1,162 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Adopt an EXISTING cloud resource into a gcp-app-infra (stage-5) leaf.
+#
+# This is step 1 of the workload cutover in
+# docs/engineering/core-vs-application-infrastructure.md §7. A Pulumi stack
+# cannot take ownership of a running resource by declaring it — an apply would
+# try to CREATE what already exists and fail. `pulumi import` records the
+# resource in state without changing it, so the subsequent apply is a no-op.
+#
+# WHY THIS IS A WORKFLOW AND NOT A README STEP. The repo's rule is that the
+# authoritative trigger for any apply is the pipeline, never a laptop
+# (docs/engineering/application-development-principles.md). An import WRITES
+# STACK STATE, so it is an apply-class operation and belongs here — with the
+# same WIF identity, the same environment, and a run log — rather than in
+# someone's shell history.
+#
+# SAFETY. `--generate-code=false` is not optional: the resource is already
+# declared in the leaf, and letting Pulumi emit a second definition would give
+# the stack two resources fighting over one cloud object. The job stops at the
+# import and prints a preview; it deliberately does NOT apply, because the
+# whole point of step 2 is a human confirming the diff is EMPTY before anything
+# is written.
+name: Foundation App-Infra Import
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target leaf: development, nonproduction, or production"
+        required: true
+        type: choice
+        options:
+          - development
+          - nonproduction
+          - production
+      business_unit:
+        description: "Business-unit leaf directory under the stage root"
+        required: false
+        type: string
+        default: business_unit_1
+      resource_type:
+        description: 'Pulumi type token, e.g. gcp:cloudrunv2/service:Service'
+        required: true
+        type: string
+      resource_name:
+        description: "Pulumi resource NAME as declared in the leaf (not the cloud name)"
+        required: true
+        type: string
+      resource_id:
+        description: 'Cloud id, e.g. projects/<p>/locations/<r>/services/<svc>'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+# Never race an import against a deploy of the same leaf: both write stack
+# state, and a concurrent writer makes the Pulumi backend lock ERROR rather than
+# queue. Shares the deploy workflow's group shape for that reason.
+concurrency:
+  group: foundation-app-deploy-infrastructure/pulumi/foundation/gcp-app-infra-${{ inputs.business_unit }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: foundation-app-${{ inputs.environment }}
+    env:
+      GOWORK: off
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Import the existing resource into stack state
+        id: import
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          RESOURCE_TYPE: ${{ inputs.resource_type }}
+          RESOURCE_NAME: ${{ inputs.resource_name }}
+          RESOURCE_ID: ${{ inputs.resource_id }}
+        working-directory: infrastructure/pulumi/foundation/gcp-app-infra/${{ inputs.business_unit }}/${{ inputs.environment }}
+        run: |
+          set +e -u -o pipefail
+          echo "::group::pulumi import ${RESOURCE_TYPE} ${RESOURCE_NAME}"
+          # --generate-code=false: the resource is ALREADY declared in the leaf.
+          # Generating a second definition would leave two Pulumi resources
+          # pointing at one cloud object.
+          { pulumi stack select -c "production" \
+              && pulumi import --yes --non-interactive --generate-code=false \
+                   "${RESOURCE_TYPE}" "${RESOURCE_NAME}" "${RESOURCE_ID}"; } \
+            2>&1 | tee "${RUNNER_TEMP}/import-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          exit "${ec}"
+
+      - name: Preview after import (must be EMPTY)
+        if: success()
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        working-directory: infrastructure/pulumi/foundation/gcp-app-infra/${{ inputs.business_unit }}/${{ inputs.environment }}
+        run: |
+          set +e -u -o pipefail
+          echo "::group::pulumi preview --diff (expect no changes)"
+          pulumi preview --diff --non-interactive 2>&1 | tee "${RUNNER_TEMP}/preview-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          # A non-empty diff means the leaf's config does NOT match what is live.
+          # Fix the config — never let the apply reconcile it, because for a
+          # Cloud Run service a changed name is a delete and a create.
+          if grep -qE '^\s+[~+-] ' "${RUNNER_TEMP}/preview-out.txt"; then
+            echo "::error::preview is NOT empty after import - the leaf config does not match the live resource. Fix the config; do NOT apply."
+            exit 1
+          fi
+          echo "Preview is empty: the leaf's declaration matches the live resource."
+          exit "${ec}"
+
+      - name: Import digest → step summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Foundation app-infra import — ${{ inputs.environment }}"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| type | \`${{ inputs.resource_type }}\` |"
+            echo "| name | \`${{ inputs.resource_name }}\` |"
+            echo "| id | \`${{ inputs.resource_id }}\` |"
+            echo
+            echo "Next: §7 step 3 — flip \`<app>_workload_enabled\` to \`true\` and deploy."
+            echo "Only proceed if the preview above reported EMPTY."
+          } >> "${GITHUB_STEP_SUMMARY}"

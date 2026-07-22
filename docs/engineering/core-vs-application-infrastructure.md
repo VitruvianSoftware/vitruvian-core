@@ -290,12 +290,17 @@ is an outage, not a clean error. The move is therefore an operation, not a merge
 
 Per environment, lowest first:
 
-1. **Import** the running service into the app-infra stack. Pulumi now knows the
-   resource without changing it.
-2. **Preview and confirm the diff is empty.** A non-empty diff means the leaf's
-   config does not match what is live — fix the config, never let the apply
-   reconcile it. This is why the leaf's stack config replicates the app stack's
-   values verbatim.
+1. **Import** the running service into the app-infra stack, via the
+   **Foundation App-Infra Import** workflow (`foundation-app-import.yaml`) —
+   not a laptop. An import writes stack state, so it is an apply-class
+   operation and takes the same WIF identity, environment and run log as a
+   deploy. Pulumi now knows the resource without changing it.
+2. **Preview and confirm the diff is empty.** The import workflow does this for
+   you and **fails** if the preview is non-empty. A non-empty diff means the
+   leaf's config does not match what is live — fix the config, never let the
+   apply reconcile it. This is why the leaf's stack config replicates the app
+   stack's values verbatim, and why
+   `TestServiceNameMatchesTheLiveService` exists.
 3. **Flip `<app>_workload_enabled` to `true`** and apply. Expect no change.
 4. **Remove it from the app stack** with `retainOnDelete` + `pulumi state delete`
    — never a destroy.
