@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.1...foundation-gcp-projects-v1.6.0) (2026-07-22)
+
+
+### Features
+
+* **gcp-projects:** foundation-owned app build space (AR repo + build identity) ([#1055](https://github.com/VitruvianSoftware/vitruvian-core/issues/1055)) ([8e6aa7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/8e6aa7b20886137ba5c7599de9b9cb7828c0c62e))
+
 ## [1.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.0...foundation-gcp-projects-v1.5.1) (2026-07-22)
 
 
