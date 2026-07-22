@@ -34,6 +34,10 @@ type stackRefs struct {
 	// CommonFolderID is the 1-org COMMON folder the infra-pipeline project is
 	// parented under.
 	CommonFolderID pulumi.StringOutput
+	// WIFPoolName is the shared Workload Identity pool from gcp-bootstrap. It
+	// is only resolved when a build space needs it — an unconditional
+	// StackReference would make every shared apply depend on bootstrap.
+	WIFPoolName pulumi.StringOutput
 }
 
 // loadStackReferences resolves the cross-stage StackReferences.
