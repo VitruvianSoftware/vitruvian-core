@@ -253,7 +253,61 @@ types differ.
 
 ---
 
-## 7. Open calls and current-state deltas
+### 6.2 What CI must and must not infer from a path
+
+Two gates decide what a change can affect, and both were wrong in ways that
+only showed up in production behaviour:
+
+- **Release attribution** (§6.1) — a path decided which artifact's *version* moved.
+- **Deploy attribution** — `deploy-affected.sh` treats any change under `tools/`
+  outside an allowlist as *global-impact*, forcing a live deploy. `tools/conformance/`
+  was not allowlisted, so editing a CI lint script deployed Cloud Run.
+
+The rule both violate is the same one: **infer from the build graph, and when you
+must approximate with paths, make the approximation provable.** `bazel query
+somepath(<deploy targets>, //tools/conformance/...)` returns empty — that check
+takes seconds and is the difference between a defensible allowlist and a guess.
+
+Fail-open is right for genuine build config (`toolchains/`, `platforms/`, `oci/`,
+`pulumi/`): a graph diff really can misattribute those. It is wrong for CI-only
+quality gates, which no deployable artifact depends on.
+
+**A guard must be able to fail.** Two of the guards written for this doc were
+briefly worthless: one inspected zero files under `bazel run` because its glob
+was CWD-relative, and reported green for days. Every guard here now resolves
+paths from `$ROOT` and **fails loudly when it cannot find its inputs**, and each
+was verified by breaking the thing it guards and watching it go red. A guard
+verified only in the passing direction is decoration.
+
+---
+
+## 7. Moving a live workload onto an archetype (cutover runbook)
+
+Declaring a resource in a new stack does **not** transfer ownership. A running
+Cloud Run service exists in the cloud but not in the new stack's state, so an
+apply tries to CREATE it and fails — and on a stack already serving traffic that
+is an outage, not a clean error. The move is therefore an operation, not a merge.
+
+Per environment, lowest first:
+
+1. **Import** the running service into the app-infra stack. Pulumi now knows the
+   resource without changing it.
+2. **Preview and confirm the diff is empty.** A non-empty diff means the leaf's
+   config does not match what is live — fix the config, never let the apply
+   reconcile it. This is why the leaf's stack config replicates the app stack's
+   values verbatim.
+3. **Flip `<app>_workload_enabled` to `true`** and apply. Expect no change.
+4. **Remove it from the app stack** with `retainOnDelete` + `pulumi state delete`
+   — never a destroy.
+5. **Verify traffic** on the real URL before starting the next environment.
+
+Rollback at any point before step 4 is flipping the switch back; after step 4 it
+is re-importing into the app stack. Do not batch environments — the whole point
+of dev-first is that a mistake is cheap once.
+
+---
+
+## 8. Open calls and current-state deltas
 
 **Ruled:** the **deploy service account** is platform-issued — the foundation creates it and authors its
 grants — and applications may additionally create their own service accounts without asking. See

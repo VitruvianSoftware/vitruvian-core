@@ -23,6 +23,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -47,6 +48,27 @@ type AppInfraConfig struct {
 // is minted in gcp-projects and consumed here by StackReference.
 type AppConfig struct {
 	Name string
+	// WorkloadEnabled turns on the serverless_space archetype for this app.
+	//
+	// DEFAULT FALSE, and that is the cutover switch. The app's Cloud Run
+	// service is LIVE and serving; a Pulumi stack cannot take ownership of an
+	// existing resource just by declaring it. The move requires `pulumi
+	// import` into this stack plus a state delete from the app stack — both
+	// credentialed operations that cannot happen in a PR. So this code ships
+	// inert, and the cutover is a per-env runbook step
+	// (docs/engineering/core-vs-application-infrastructure.md §7).
+	WorkloadEnabled bool
+	// RuntimeServiceAccount is the app's runtime identity (the app still owns
+	// it — only the workload moves).
+	RuntimeServiceAccount string
+	// SecretPrefix partitions the app's Secret Manager reads in a shared project.
+	SecretPrefix string
+	// ServiceName is the Cloud Run service name, WITHOUT the env suffix.
+	ServiceName string
+	// MaxInstances caps autoscaling; 0 leaves the archetype default.
+	MaxInstances int
+	// PublicInvoker grants allUsers run.invoker (DRS-permitted on oss projects).
+	PublicInvoker bool
 }
 
 // loadConfig resolves the leaf configuration from the stack config.
@@ -64,7 +86,20 @@ func loadConfig(ctx *pulumi.Context) *AppInfraConfig {
 	// Apps are declared as a comma-separated list so a new app is a one-line
 	// config change; per-app knobs stay keyed off the app name.
 	for _, name := range splitList(cfg.Get("apps")) {
-		c.Apps = append(c.Apps, AppConfig{Name: name})
+		app := AppConfig{
+			Name:                  name,
+			WorkloadEnabled:       cfg.Get(name+"_workload_enabled") == "true",
+			RuntimeServiceAccount: cfg.Get(name + "_runtime_service_account"),
+			SecretPrefix:          cfg.Get(name + "_secret_prefix"),
+			ServiceName:           orDefault(cfg.Get(name+"_service_name"), name),
+			PublicInvoker:         cfg.Get(name+"_public_invoker") == "true",
+		}
+		if v := cfg.Get(name + "_max_instances"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				app.MaxInstances = n
+			}
+		}
+		c.Apps = append(c.Apps, app)
 	}
 	return c
 }
