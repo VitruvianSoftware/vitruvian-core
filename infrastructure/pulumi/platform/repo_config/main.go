@@ -231,6 +231,17 @@ func main() {
 					// self-test on every event (and carries no pull_request paths filter),
 					// so it always reports — safe to require.
 					"migration-safety",
+					// go-test-infra (#1015) runs the Go tests for the IaC programs
+					// (infrastructure/pulumi/** and <app>/infra/**), which are outside
+					// go.work and emit no go_test target -- so before that job existed
+					// they never executed in CI at all. It landed advisory and, like
+					// go-lint/go-test/validate-butane before it, ran on every PR without
+					// gating: an IaC test regression could still merge. Its job is
+					// unconditional (only the STEPS are gated, on a dorny/paths-filter
+					// that returns 'false' for non-IaC diffs), so it always reports --
+					// safe to require, and a no-op in seconds for the PRs that don't
+					// touch IaC.
+					"go-test-infra",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
