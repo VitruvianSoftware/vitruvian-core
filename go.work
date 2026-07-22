@@ -34,5 +34,6 @@ use (
 	./pulumi/library/go/pkg/private_service_connect
 	./pulumi/library/go/pkg/project_factory
 	./pulumi/library/go/pkg/pubsub
+	./pulumi/library/go/pkg/upstash
 	./pulumi/library/go/pkg/vpc_service_controls
 )
