@@ -77,6 +77,10 @@ type ProjectsConfig struct {
 	// workloads they deploy, so the identity cannot edit its own grants.
 	Apps []AppIdentityConfig
 
+	// AppBuildReaderGrants lets the BU app-infra pipeline SA pull each app\'s
+	// images from the shared infra-pipeline project. Empty = no grants.
+	AppBuildReaderGrants []AppBuildReaderGrant
+
 	// BootstrapStackName is the gcp-bootstrap stack providing the shared WIF
 	// pool. Required only when Apps is non-empty.
 	BootstrapStackName    string
@@ -331,6 +335,8 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		c.FolderDeletionProtection = true
 	}
 
+	c.AppBuildReaderGrants = appBuildReaderGrants(conf.Get("app_build_reader_grants"))
+
 	return c
 }
 
@@ -403,6 +409,40 @@ func splitAppList(v string) []string {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
+	}
+	return out
+}
+
+// AppBuildReaderGrant lets the BU's app-infra pipeline SA PULL an app's images.
+// The repository lives in the BU's shared infra-pipeline project, so the values
+// are config rather than a StackReference: the shared leaf applies BEFORE this
+// one and does not know this environment's pipeline identity.
+type AppBuildReaderGrant struct {
+	App               string
+	RepositoryProject string
+	RepositoryID      string
+	Region            string
+}
+
+// appBuildReaderGrants parses "<app>=<project>/<region>/<repo>" entries.
+func appBuildReaderGrants(raw string) []AppBuildReaderGrant {
+	var out []AppBuildReaderGrant
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		app, rest, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		bits := strings.Split(rest, "/")
+		if len(bits) != 3 {
+			continue
+		}
+		out = append(out, AppBuildReaderGrant{
+			App: app, RepositoryProject: bits[0], Region: bits[1], RepositoryID: bits[2],
+		})
 	}
 	return out
 }
