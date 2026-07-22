@@ -92,10 +92,28 @@ jobs:
         if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
 
+      # Share the BuildBuddy remote cache (#201 listed this lane as a candidate
+      # and it was the one that never got wired; the copybara `//:tidy` and
+      # dependabot-reconcile lanes are still cold too -- see #200).
+      #
+      # CACHE-ONLY (--config=remotecache), never full RBE: `//:tidy` RUNS gazelle
+      # and the formatters against the checkout and we then `git status` the
+      # result, so build outputs must stay materialized on the runner --
+      # --config=remote's --remote_download_outputs=minimal would break exactly
+      # that. Same reasoning as tabula-e2e / the deploy lanes.
+      #
+      # Guarded on the key being present so a fork PR (no secrets) still runs
+      # this REQUIRED check fully locally instead of failing on a missing secret.
       - name: Run //:tidy and verify the tree is clean
         if: steps.gate.outputs.relevant != 'false'
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
-          bazel run //:tidy
+          cache=()
+          if [ -n "$BUILDBUDDY_API_KEY" ]; then
+            cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
+          fi
+          bazel run "${cache[@]}" //:tidy
           changed="$(git status --porcelain -- ':!MODULE.bazel.lock')"
           if [ -n "$changed" ]; then
             echo "::error::BUILD files are stale or unformatted. Run 'bazel run //:tidy' and commit the result."
@@ -115,8 +133,14 @@ jobs:
       # the committed lock does not match the manifests.
       - name: pnpm lockfile is in sync with the manifests
         if: steps.gate.outputs.relevant != 'false'
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
-          bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
+          cache=()
+          if [ -n "$BUILDBUDDY_API_KEY" ]; then
+            cache=(--config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
+          fi
+          bazel run "${cache[@]}" -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only
           if ! git diff --exit-code -- pnpm-lock.yaml; then
             echo "::error::pnpm-lock.yaml is out of sync with the package.json manifests (a dependency PR merged with a stale lock diff). Run 'bazel run -- @pnpm//:pnpm install --dir . --lockfile-only' and commit the result -- and check whether the newly-resolved versions actually build (this skew has hidden real breakage before)."
             exit 1
