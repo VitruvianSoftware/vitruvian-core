@@ -99,6 +99,17 @@ func main() {
 		if upstashRegion == "" {
 			upstashRegion = "us-east-1"
 		}
+		// Point-in-time-restore window. Left unset, Neon applies its own 24h
+		// default, which the FREE tier rejects outright:
+		//   400 requested history retention seconds exceeds allowed maximum;
+		//       requested:"86400", max:"21600"
+		// So it is set explicitly rather than inherited — 6h is the free-tier
+		// ceiling. Raise it here (up to 7d) once the account is on a paid plan;
+		// this is a real reduction in recovery window, acceptable pre-launch.
+		historyRetention := 21600.0
+		if v := cfg.GetFloat64("neonHistoryRetentionSeconds"); v > 0 {
+			historyRetention = v
+		}
 
 		envs := []env{
 			{name: "development", gcpProject: cfg.Require("developmentProject")},
@@ -113,9 +124,10 @@ func main() {
 		// limits, so a dev load test would contend with production.
 		for _, e := range envs {
 			p, err := neon.NewProject(ctx, "neon-"+e.name, &neon.ProjectArgs{
-				Name:     "tabula-" + e.name,
-				RegionID: neonRegion,
-				OrgID:    neonOrgID,
+				Name:                    "tabula-" + e.name,
+				RegionID:                neonRegion,
+				OrgID:                   neonOrgID,
+				HistoryRetentionSeconds: &historyRetention,
 				// Defaults from the module: database "main", role "app", pinned
 				// Postgres major, and the POOLED connection string — Cloud Run
 				// scales to many short-lived instances and Postgres has a hard
