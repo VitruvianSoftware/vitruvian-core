@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.6.0...foundation-gcp-projects-v1.7.0) (2026-07-22)
+
+
+### Features
+
+* **gcp-projects:** env leaves grant the BU pipeline SA artifact-registry reader ([#1057](https://github.com/VitruvianSoftware/vitruvian-core/issues/1057)) ([928ae6b](https://github.com/VitruvianSoftware/vitruvian-core/commit/928ae6b4eee4bd509382d2f3a43156e85c5a3cb0))
+
 ## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.1...foundation-gcp-projects-v1.6.0) (2026-07-22)
 
 
