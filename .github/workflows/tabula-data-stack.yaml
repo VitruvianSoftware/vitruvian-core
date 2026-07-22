@@ -30,12 +30,18 @@
 # which is why it is apply-only, gated, and never cancelled mid-flight.
 name: tabula Data Stack Deploy
 
+# DISPATCH ONLY — deliberately no `push:` trigger, unlike the sibling stacks.
+#
+# This stack owns DATABASES. An apply here creates real Neon projects and writes
+# new connection strings into every environment's Secret Manager, so merging a
+# change to it would REPOINT all three live environments at whatever it just
+# built. That is not something a merge should do on its own schedule: it needs a
+# human choosing the moment and verifying afterwards, per the expand/deploy/
+# verify sequence in docs/superpowers/plans/2026-07-22-saas-stateful-tier-as-code.md.
+#
+# (Learned the hard way: the first version of this workflow had a push trigger,
+# so merging the stack auto-applied it the moment it landed.)
 on:
-  push:
-    branches: [main]
-    paths:
-      - "tabula/infra/data/**"
-      - ".github/workflows/tabula-data-stack.yaml"
   workflow_dispatch:
 
 permissions:
@@ -95,6 +101,35 @@ jobs:
             echo "::add-mask::${value}"
             echo "${var}=${value}" >> "${GITHUB_ENV}"
           done
+
+      # The Neon ORG the projects are created in. NOT hardcoded: the org id
+      # belongs to whichever Neon account the API key is for, and pinning the
+      # wrong one fails deep in the apply with a misleading
+      # "not an organization member" 404 rather than a config error. Resolve it
+      # from the key itself, and refuse to guess if the account has more than
+      # one org.
+      - name: Resolve the Neon organization
+        run: |
+          set -euo pipefail
+          body="$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            https://console.neon.tech/api/v2/users/me/organizations)" || {
+              echo "::error::could not list Neon organizations for this API key"; exit 1; }
+          count="$(printf '%s' "$body" | jq '[.organizations[]?] | length')"
+          if [ "$count" = "0" ]; then
+            echo "::error::the Neon API key's account belongs to no organization." \
+                 "Create one in the Neon console — a project outside an org is owned by an individual."
+            exit 1
+          fi
+          if [ "$count" != "1" ]; then
+            echo "::error::the Neon account has ${count} organizations; refusing to guess." \
+                 "Set tabula-data:neonOrgId explicitly in Pulumi.production.yaml. Found:" \
+                 "$(printf '%s' "$body" | jq -r '[.organizations[].id] | join(", ")')"
+            exit 1
+          fi
+          org="$(printf '%s' "$body" | jq -r '.organizations[0].id')"
+          echo "Neon organization: ${org}"
+          echo "TABULA_NEON_ORG_ID=${org}" >> "${GITHUB_ENV}"
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

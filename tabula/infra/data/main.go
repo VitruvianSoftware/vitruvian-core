@@ -40,6 +40,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/neon"
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash"
@@ -77,7 +78,16 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-data")
 
-		neonOrgID := cfg.Require("neonOrgId")
+		// Resolved from the API key by the deploy workflow (TABULA_NEON_ORG_ID) so
+		// the org always matches the account the key belongs to; the config key is
+		// the explicit override for an account with more than one org.
+		neonOrgID := os.Getenv("TABULA_NEON_ORG_ID")
+		if neonOrgID == "" {
+			neonOrgID = cfg.Get("neonOrgId")
+		}
+		if neonOrgID == "" {
+			return fmt.Errorf("a Neon organization is required: the deploy workflow normally resolves TABULA_NEON_ORG_ID from the API key; set tabula-data:neonOrgId to override")
+		}
 		// Neon and Upstash name regions differently ("aws-us-east-1" vs
 		// "us-east-1"); both default to us-east-1 to sit near the us-central1
 		// Cloud Run services without paying for multi-region.

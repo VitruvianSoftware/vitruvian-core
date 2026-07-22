@@ -23,9 +23,12 @@
 # stack name of the singleton — not the tabula environment. All three tabula
 # environments are provisioned by this one stack, mirroring tabula/infra/build.
 config:
-  # The Neon ORGANIZATION the projects are created in. A project created outside
-  # an org is owned by an individual — the dependency this foundation removes.
-  tabula-data:neonOrgId: org-little-shape-81083488
+  # neonOrgId is deliberately NOT set: the deploy workflow resolves it from the
+  # API key (TABULA_NEON_ORG_ID), so it always matches the account the key
+  # belongs to. Hardcoding it broke the first apply — the value here was the OLD
+  # account's org, and the new key is not a member of it, which surfaces as a
+  # confusing "not an organization member" 404 mid-apply. Set this key only to
+  # override, e.g. if the account ever has more than one org.
   # Where each environment's connection strings are written, as TABULA_-prefixed
   # secrets in that env's own project.
   tabula-data:developmentProject: prj-d-bu2-oss-floating-c3d1
