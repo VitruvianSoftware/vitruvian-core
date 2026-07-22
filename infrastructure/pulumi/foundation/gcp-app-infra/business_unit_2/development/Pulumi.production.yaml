@@ -1,0 +1,41 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 5 (app-infra) -
+# bu2 development leaf. The environment identity is pinned in this leaf's main.go,
+# not configured here (upstream business_unit_1/<env> layout).
+#
+# bu2 hosts tabula. The Cloud Run workload itself is still deployed by
+# tabula/infra/app; moving it onto modules/serverless_space adopts a live
+# traffic-serving service and is a separate, deliberate cutover
+# (docs/engineering/core-vs-application-infrastructure.md 7) - NOT this leaf.
+#
+# Promotion order: development -> nonproduction -> production
+config:
+  foundation-app-infra-bu2-development:business_code: "bu2"
+  # tabula's live Cloud Run services run in us-central1 (see tabula/infra/app),
+  # NOT bu1's us-west1 - the region must match so a future import diff is empty.
+  foundation-app-infra-bu2-development:region: "us-central1"
+
+  # --- Cross-stage reference ---
+  foundation-app-infra-bu2-development:projects_stack_name: "ipv1337/foundation-projects-bu2-development/production"
+
+  # --- Applications hosted in this environment ---
+  foundation-app-infra-bu2-development:apps: "tabula"
+
+  # Deploy identity is consumed by StackReference from gcp-projects bu2. NOTE:
+  # bu2 stage-4 does not yet MINT it (tabula/infra/identity still owns
+  # tabula-deploy); moving that mint up a stage is the prerequisite for the
+  # cutover and is tracked as a deliberate follow-up, not done here.
+
+  # --- tabula serverless workload (NOT YET CUT OVER) ---
+  # workload_enabled is the cutover switch and is deliberately FALSE: the
+  # Cloud Run service is live and serving from tabula/infra/app. Flipping it
+  # alone would try to CREATE a service that already exists and fail. Cutover:
+  # docs/engineering/core-vs-application-infrastructure.md 7 (import here ->
+  # flip true -> state-delete from the app stack). Values below replicate the
+  # live service so the imported resource matches and the diff is empty.
+  foundation-app-infra-bu2-development:tabula_workload_enabled: "false"
+  foundation-app-infra-bu2-development:tabula_service_name: "tabula-api"
+  foundation-app-infra-bu2-development:tabula_secret_prefix: "TABULA_"
+  foundation-app-infra-bu2-development:tabula_env_vars: "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=prj-d-bu2-oss-floating-c3d1,API_URL=https://tabula-api.dev.vitruviansoftware.dev/api/v1,AUTH_POSTMESSAGE_ORIGIN=chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof"
+  foundation-app-infra-bu2-development:tabula_runtime_service_account: "tabula-rt@prj-d-bu2-oss-floating-c3d1.iam.gserviceaccount.com"
+  foundation-app-infra-bu2-development:tabula_max_instances: "10"
+  foundation-app-infra-bu2-development:tabula_public_invoker: "true"
