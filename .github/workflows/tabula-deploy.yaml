@@ -122,7 +122,7 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "tabula/infra/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+          EXTRA_PATH_REGEX: "tabula/infra/app/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   # BUILD ONCE into the shared bu2 Artifact Registry and capture the immutable
