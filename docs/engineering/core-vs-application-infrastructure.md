@@ -292,13 +292,38 @@ Per environment, lowest first:
 
 1. **Import** the running service into the app-infra stack. Pulumi now knows the
    resource without changing it.
-2. **Preview and confirm the diff is empty.** A non-empty diff means the leaf's
-   config does not match what is live — fix the config, never let the apply
-   reconcile it. This is why the leaf's stack config replicates the app stack's
-   values verbatim.
-3. **Flip `<app>_workload_enabled` to `true`** and apply. Expect no change.
+
+   ```bash
+   cd infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/<env>
+   pulumi stack select production
+   pulumi import --generate-code=false \
+     gcp:cloudrunv2/service:Service oauth-user-inspector \
+     projects/<project>/locations/<region>/services/oauth-user-inspector-<env>
+   ```
+
+   **`pulumi import` is the ONE sanctioned local exception** to "every apply runs
+   in the pipeline, never a laptop". It is a state-only adoption of a resource
+   that already exists and changes nothing in the cloud — which is what separates
+   it in kind from an apply. Do **not** build a CI workflow for it: that is
+   ceremony for a one-off step and makes the repo worse, not safer. `up` and
+   `destroy` remain pipeline-only, without exception.
+
+   `--generate-code=false` is not optional. The resource is already declared in
+   the leaf; generating a second definition leaves two Pulumi resources fighting
+   over one cloud object.
+
+2. **Preview and confirm the diff is empty** (`pulumi preview --diff`). A
+   non-empty diff means the leaf's config does not match what is live — fix the
+   config, never let the apply reconcile it. For a Cloud Run service a changed
+   name is a **delete and a create**, so "let it sort itself out" is an outage.
+   This is why the leaf's stack config replicates the app stack's values
+   verbatim, and why `TestServiceNameMatchesTheLiveService` exists — it caught
+   exactly this mismatch before it could reach an import.
+3. **Flip `<app>_workload_enabled` to `true`** and let the pipeline apply.
+   Expect no change. This step is a normal deploy: pipeline only.
 4. **Remove it from the app stack** with `retainOnDelete` + `pulumi state delete`
-   — never a destroy.
+   — never a destroy. State-only, so it follows the same local exception as the
+   import.
 5. **Verify traffic** on the real URL before starting the next environment.
 
 Rollback at any point before step 4 is flipping the switch back; after step 4 it
