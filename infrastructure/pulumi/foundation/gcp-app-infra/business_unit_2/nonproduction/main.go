@@ -169,7 +169,7 @@ func main() {
 				Env:                        cfg.Env,
 				BusinessUnit:               cfg.BusinessCode,
 				ProjectID:                  refs.OSSFloatingProjectID,
-				Region:                     cfg.Region,
+				Region:                     refs.Region,
 				ServiceName:                app.ServiceName,
 				ImageDigest:                pulumi.String(imageDigest(app.Name)),
 				RuntimeServiceAccountEmail: pulumi.String(app.RuntimeServiceAccount),

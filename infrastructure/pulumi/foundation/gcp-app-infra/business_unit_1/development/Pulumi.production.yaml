@@ -11,7 +11,6 @@
 # Promotion order: development -> nonproduction -> production
 config:
   foundation-app-infra-bu1-development:business_code: "bu1"
-  foundation-app-infra-bu1-development:region: "us-west1"
 
   # --- Cross-stage reference ---
   foundation-app-infra-bu1-development:projects_stack_name: "ipv1337/foundation-projects-bu1-development/production"

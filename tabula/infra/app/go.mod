@@ -3,9 +3,9 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.3.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0
 	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.253.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -151,7 +151,7 @@ func main() {
 		if !workloadMigrated {
 			app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
 				ProjectID:           pulumi.String(project),
-				Region:              region,
+				Region:              pulumi.String(region),
 				Name:                serviceName,
 				Image:               pulumi.String(imageDigest),
 				ServiceAccountEmail: pulumi.String(runtimeSA),
