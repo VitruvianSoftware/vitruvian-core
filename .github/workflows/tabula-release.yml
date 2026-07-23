@@ -20,11 +20,15 @@
 
 # release-please for the tabula component family. All artifacts are
 # tabula-namespaced: tags tabula-v*, tabula-api-v*, tabula-extension-v*,
-# tabula-cli-v*, tabula-web-v* and the release PR 'chore(tabula): release …'.
-# The config/manifest live under tabula/ (paths inside them are repo-root
-# relative). Other components in this repo release via different mechanisms
-# (GoReleaser, standalone mirrors) and are untouched: release-please assigns
-# commits to packages purely by touched paths.
+# tabula-cli-v*, tabula-web-v*. Each package versions and releases
+# INDEPENDENTLY (separate-pull-requests): a change to one package opens only
+# its own release PR ('chore(main): release tabula-<pkg> <version>'), so a
+# CLI- or web-only change never re-tags tabula-api and never fires the Cloud
+# Run deploy ladder (which triggers on tabula-api-v*). The config/manifest
+# live under tabula/ (paths inside them are repo-root relative). Other
+# components in this repo release via different mechanisms (GoReleaser,
+# standalone mirrors) and are untouched: release-please assigns commits to
+# packages purely by touched paths.
 
 name: tabula-release
 

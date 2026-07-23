@@ -6,7 +6,7 @@
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "tag-separator": "-",
-  "group-pull-request-title-pattern": "chore(tabula): release ${branch}",
+  "separate-pull-requests": true,
   "bootstrap-sha": "90e8de3b8acbcaf06b0a04dac96bcedca1dee135",
   "packages": {
     "tabula": {
@@ -40,17 +40,6 @@
     {
       "type": "node-workspace",
       "merge": false
-    },
-    {
-      "type": "linked-versions",
-      "groupName": "tabula",
-      "components": [
-        "tabula",
-        "tabula-api",
-        "tabula-extension",
-        "tabula-cli",
-        "tabula-web"
-      ]
     }
   ]
 }
