@@ -93,10 +93,14 @@ func main() {
 			if pipeline == nil {
 				return fmt.Errorf("app_build_space %q: infra_pipeline_enabled must be true (the repository lives in that project)", bs.App)
 			}
+			region := bs.Region
+			if region == "" {
+				region = cfg.Region
+			}
 			res, err := app_build_space.Deploy(ctx, &app_build_space.Args{
 				App:                  bs.App,
 				BuildProjectID:       pipeline.ProjectID,
-				Region:               cfg.Region,
+				Region:               region,
 				RepositoryID:         bs.RepositoryID,
 				BuildAccountID:       bs.BuildAccountID,
 				WorkloadIdentityPool: refs.WIFPoolName,
