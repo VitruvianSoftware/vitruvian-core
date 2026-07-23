@@ -210,7 +210,8 @@ func main() {
 					"app-infra": pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
 					"agent": pulumi.Sprintf(
 						"serviceAccount:service-%s@serverless-robot-prod.iam.gserviceaccount.com",
-						projects.OSSFloatingProjectNumber),
+						projects.OSSFloatingProjectNumber,
+					),
 				}
 				if sa, ok := deploySAs[g.App]; ok {
 					readers["deploy"] = pulumi.Sprintf("serviceAccount:%s", sa)
