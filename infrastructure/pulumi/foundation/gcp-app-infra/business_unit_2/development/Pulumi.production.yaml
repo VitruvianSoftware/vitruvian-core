@@ -32,7 +32,7 @@ config:
   # docs/engineering/core-vs-application-infrastructure.md 7 (import here ->
   # flip true -> state-delete from the app stack). Values below replicate the
   # live service so the imported resource matches and the diff is empty.
-  foundation-app-infra-bu2-development:tabula_workload_enabled: "false"
+  foundation-app-infra-bu2-development:tabula_workload_enabled: "true"
   foundation-app-infra-bu2-development:tabula_service_name: "tabula-api"
   foundation-app-infra-bu2-development:tabula_secret_prefix: "TABULA_"
   foundation-app-infra-bu2-development:tabula_env_vars: "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=prj-d-bu2-oss-floating-c3d1,API_URL=https://tabula-api.dev.vitruviansoftware.dev/api/v1,AUTH_POSTMESSAGE_ORIGIN=chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof"
