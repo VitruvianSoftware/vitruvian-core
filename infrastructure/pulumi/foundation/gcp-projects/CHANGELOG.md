@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.8.0...foundation-gcp-projects-v1.9.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth-user-inspector build space (adopt) ([#1086](https://github.com/VitruvianSoftware/vitruvian-core/issues/1086)) ([e2525c7](https://github.com/VitruvianSoftware/vitruvian-core/commit/e2525c742fbf9fe803bb308d6e0ab00bfb3523b0))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.7.0...foundation-gcp-projects-v1.8.0) (2026-07-23)
 
 
