@@ -949,14 +949,23 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// exactly the scope this stage needs and no new org-level identity is
 	// introduced. If stage 5 ever grows resources outside those projects, give it
 	// its own SA rather than widening this one.
+	// One entry per business-unit per env. bu1 keeps the legacy unsuffixed name
+	// (foundation-app-<env>) that the live workflow + WIF bindings already use —
+	// renaming it would break the completed oauth cutover. bu2 (tabula) is
+	// BU-suffixed (foundation-app-bu2-<env>) and reads sa-app-infra-bu2 from the
+	// bu2 projects leaf. projBU selects which gcp-projects leaf mints the SA.
 	appPhaseEnvironments := []struct {
 		name            string
 		env             string
+		projBU          string
 		requireReviewer bool
 	}{
-		{"foundation-app-development", "development", false},
-		{"foundation-app-nonproduction", "nonproduction", false},
-		{"foundation-app-production", "production", false},
+		{"foundation-app-development", "development", "bu1", false},
+		{"foundation-app-nonproduction", "nonproduction", "bu1", false},
+		{"foundation-app-production", "production", "bu1", false},
+		{"foundation-app-bu2-development", "development", "bu2", false},
+		{"foundation-app-bu2-nonproduction", "nonproduction", "bu2", false},
+		{"foundation-app-bu2-production", "production", "bu2", false},
 	}
 
 	for _, envDef := range appPhaseEnvironments {
@@ -1011,8 +1020,8 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		delete(envVars, "GCP_SERVICE_ACCOUNT") // set from the stack output below
 
 		projLeaf, err := pulumi.NewStackReference(ctx,
-			fmt.Sprintf("projects-%s", envDef.env), &pulumi.StackReferenceArgs{
-				Name: pulumi.String(fmt.Sprintf("ipv1337/foundation-projects-bu1-%s/production", envDef.env)),
+			fmt.Sprintf("projects-%s-%s", envDef.projBU, envDef.env), &pulumi.StackReferenceArgs{
+				Name: pulumi.String(fmt.Sprintf("ipv1337/foundation-projects-%s-%s/production", envDef.projBU, envDef.env)),
 			})
 		if err != nil {
 			return err
@@ -1045,10 +1054,10 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 			}
 		} else {
 			ctx.Log.Warn(fmt.Sprintf(
-				"%s: gcp-projects bu1-%s has not exported app_infra_pipeline_service_account yet; "+
+				"%s: gcp-projects %s-%s has not exported app_infra_pipeline_service_account yet; "+
 					"leaving GCP_SERVICE_ACCOUNT UNSET so stage-5 deploys fail closed rather than "+
 					"authenticating as a privileged SA. Re-run after that leaf applies.",
-				envDef.name, envDef.env,
+				envDef.name, envDef.projBU, envDef.env,
 			), nil)
 		}
 
