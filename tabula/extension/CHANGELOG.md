@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.21...tabula-extension-v0.1.22) (2026-07-23)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+* **tabula:** custom domains on vitruviansoftware.dev + repoint the extension ([#994](https://github.com/VitruvianSoftware/vitruvian-core/issues/994)) ([75ced7f](https://github.com/VitruvianSoftware/vitruvian-core/commit/75ced7ffa43dc73c20d7823af82d5929aafe5308))
+
+
+### Bug Fixes
+
+* **tabula:** jest 30 symlink-preserving resolver so mocks + coverage agree under Bazel ([#794](https://github.com/VitruvianSoftware/vitruvian-core/issues/794)) ([fb6dcaf](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb6dcaf3dc20b30a173f1fd23c8b279c7311c426))
+
 ## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.20...tabula-extension-v0.1.21) (2026-06-14)
 
 
