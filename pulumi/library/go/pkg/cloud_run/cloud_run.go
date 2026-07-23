@@ -42,7 +42,7 @@ type SecretEnv struct {
 // CloudRunArgs configures a Cloud Run v2 service.
 type CloudRunArgs struct {
 	ProjectID           pulumi.StringInput
-	Region              string
+	Region              pulumi.StringInput
 	Name                string
 	Image               pulumi.StringInput // digest ref: <region>-docker.pkg.dev/<proj>/<repo>/<img>@sha256:...
 	ServiceAccountEmail pulumi.StringInput
@@ -84,9 +84,6 @@ type CloudRun struct {
 func NewCloudRun(ctx *pulumi.Context, name string, args *CloudRunArgs, opts ...pulumi.ResourceOption) (*CloudRun, error) {
 	if args == nil {
 		return nil, fmt.Errorf("args is required")
-	}
-	if args.Region == "" {
-		return nil, fmt.Errorf("Region is required")
 	}
 	if args.Name == "" {
 		return nil, fmt.Errorf("Name is required")
@@ -176,7 +173,7 @@ func NewCloudRun(ctx *pulumi.Context, name string, args *CloudRunArgs, opts ...p
 
 	svcArgs := &cloudrunv2.ServiceArgs{
 		Project:  args.ProjectID,
-		Location: pulumi.String(args.Region),
+		Location: args.Region,
 		Name:     pulumi.String(args.Name),
 		Ingress:  pulumi.String(ingress),
 		Template: tmpl,
