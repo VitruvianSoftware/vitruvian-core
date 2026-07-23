@@ -50,8 +50,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"foundation-app-infra/modules/serverless_space"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -70,14 +73,67 @@ func imageDigest(app string) string    { return appEnv(app, "IMAGE_DIGEST") }
 func stableRevision(app string) string { return appEnv(app, "STABLE_REVISION") }
 func promote(app string) bool          { return appEnv(app, "PROMOTE") == "true" }
 
-// revisionSuffix derives a stable, referenceable revision name fragment from
-// the digest — a digest is not itself a legal revision name.
-func revisionSuffix(app string) string {
+// revisionSuffix is the suffix the archetype appends after the service name, so
+// the deployed revision is <service>-<shortDigest>-<configHash>.
+//
+// Encoding BOTH the image and the config is the Cloud Run naming rule: a revision
+// name must be UNIQUE PER CONFIGURATION — Cloud Run rejects a name reused with
+// different config (`409 Revision ... with different configuration already
+// exists`), so <service>-<digest> alone collides the moment one promoted image is
+// deployed with different env. This is the same rule tabula's app stack follows
+// (tabula/infra/app revisionNameFor), computed over the SAME env, so the archetype
+// produces the SAME revision name the service runs today. serverless_space is
+// agnostic to what the suffix contains, so tabula's revision-identity strategy
+// lives here in the leaf rather than in the shared archetype.
+func revisionSuffix(app AppConfig) string {
+	sd := shortImageDigest(app.Name)
+	if sd == "" {
+		return ""
+	}
+	return sd + "-" + configHash(deployedEnv(app))
+}
+
+// shortImageDigest is the 8-hex fragment of the image digest — a digest is not
+// itself a legal revision name.
+func shortImageDigest(app string) string {
 	d := imageDigest(app)
 	if i := strings.LastIndex(d, "@sha256:"); i >= 0 && len(d) >= i+16 {
 		return d[i+8 : i+16]
 	}
 	return ""
+}
+
+// deployedEnv reproduces the env the archetype actually sets on the service: the
+// app's plain env PLUS the SECRET_PREFIX serverless_space injects. The hash must
+// be over the DEPLOYED env, or the name would not reflect the config it runs.
+func deployedEnv(app AppConfig) map[string]string {
+	env := make(map[string]string, len(app.EnvVars)+1)
+	for k, v := range app.EnvVars {
+		env[k] = v
+	}
+	if app.SecretPrefix != "" {
+		env["SECRET_PREFIX"] = app.SecretPrefix
+	}
+	return env
+}
+
+// configHash is 6 hex of sha256 over the env, sorted keys with NUL separators so
+// map iteration order cannot destabilize it and {AB=C} cannot collide with
+// {A=BC}. Byte-identical to tabula/infra/app revisionNameFor's hash.
+func configHash(env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	h := sha256.New()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(env[k]))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))[:6]
 }
 
 // Environment pinned by this leaf project — upstream
@@ -124,7 +180,7 @@ func main() {
 				EnvVars:        app.EnvVars,
 				PublicInvoker:  app.PublicInvoker,
 				MaxInstances:   app.MaxInstances,
-				RevisionSuffix: revisionSuffix(app.Name),
+				RevisionSuffix: revisionSuffix(app),
 				StableRevision: stableRevision(app.Name),
 				Promote:        promote(app.Name),
 			})
