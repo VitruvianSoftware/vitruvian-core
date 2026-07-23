@@ -254,6 +254,9 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-west1
       service-name: oauth-user-inspector
+      # Nonprod is migrated: foundation owns the Cloud Run service; this stack's
+      # apply is domain-only (see dev, #1069).
+      workload-migrated: true
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)

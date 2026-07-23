@@ -35,6 +35,10 @@ config:
   # the same id (no phantom replace); a zone id is not a secret (it appears in
   # the dashboard URL and every preview diff). cloudflareZone is kept for the
   # name→id LookupZone fallback if the id is ever unset.
+  # workloadMigrated: the Cloud Run service + invoker are owned by the
+  # foundation gcp-app-infra leaf (adopted per §7). This stack keeps only
+  # the custom domain. Its state was cleaned to match; this preview is empty.
+  oauth-user-inspector:workloadMigrated: "true"
   oauth-user-inspector:customDomain: oauth-inspector.staging.ipv1337.dev
   oauth-user-inspector:cloudflareZone: ipv1337.dev
   oauth-user-inspector:cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104
