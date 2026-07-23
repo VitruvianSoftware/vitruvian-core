@@ -47,13 +47,12 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
@@ -63,80 +62,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// secretPrefix namespaces this app's Secret Manager reads so co-tenant OSS
-// apps in the shared oss project cannot collide (server/server.ts getSecret
-// prepends it; the runtime SA's accessor grant is conditioned to it).
-const secretPrefix = "TABULA_"
-
-const digestMarker = "@sha256:"
-
 // cfPreviewToken is the non-secret placeholder value pulumi-preview.yaml injects
 // as CLOUDFLARE_API_TOKEN for the advisory preview (matrix.cfPreviewToken).
 // It lets the default cloudflare provider CONFIGURE without a real credential;
 // the code treats it as "not a real token" so it never calls the Cloudflare API
 // with it. Keep this in sync with pulumi-preview.yaml.
 const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
-
-// revisionNameFor derives the Cloud Run revision name from the image digest AND
-// the rendered environment.
-//
-// A revision is immutable and its name identifies image + config TOGETHER. The
-// digest alone is not enough: build-once/promote-by-digest means one image is
-// deployed to three envs, and any config change to that image produces
-// different revision CONTENT under an identical name, which the API rejects:
-//
-//	Error 409: Revision named 'tabula-api-development-1c144786' with different
-//	configuration already exists.
-//
-// Hashing the env in keeps the name deterministic — the deploy runs `pulumi up`
-// twice (deploy, then promote) and must address the SAME revision both times,
-// as must a rerun after a transient failure — while still changing whenever the
-// content does. Keys are sorted so Go's randomized map iteration cannot make the
-// name unstable, and the separators are bytes that cannot occur in an env name,
-// so {AB=C} and {A=BC} cannot collide.
-func revisionNameFor(serviceName, shortDigest string, env map[string]string) string {
-	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	h := sha256.New()
-	for _, k := range keys {
-		h.Write([]byte(k))
-		h.Write([]byte{0})
-		h.Write([]byte(env[k]))
-		h.Write([]byte{0})
-	}
-	// 6 hex chars: this only has to distinguish the handful of configs a single
-	// image is ever deployed with, and the name has a 63-char budget it shares
-	// with the service-name prefix.
-	configHash := hex.EncodeToString(h.Sum(nil))[:6]
-
-	return fmt.Sprintf("%s-%s-%s", serviceName, shortDigest, configHash)
-}
-
-// envMap builds the plain (non-secret) environment for the service.
-//
-// apiURL and postMessageOrigin are both PUBLIC values (a URL and a
-// chrome-extension:// origin), and both are load-bearing for the extension
-// login flow — see the per-key comments at the call site. Empty means ABSENT
-// rather than empty-string, so an unconfigured env is visible as a missing key
-// instead of an empty one.
-func envMap(project, apiURL, postMessageOrigin string) map[string]string {
-	env := map[string]string{
-		"NODE_ENV":             "production",
-		"GOOGLE_CLOUD_PROJECT": project,
-		"SECRET_PREFIX":        secretPrefix,
-	}
-	if apiURL != "" {
-		env["API_URL"] = apiURL
-	}
-	if postMessageOrigin != "" {
-		env["AUTH_POSTMESSAGE_ORIGIN"] = postMessageOrigin
-	}
-	return env
-}
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
@@ -165,14 +96,13 @@ func main() {
 			// `pulumi up` never takes this branch.
 			imageDigest = "preview-placeholder@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 		}
-		i := strings.LastIndex(imageDigest, digestMarker)
-		if i < 0 || len(imageDigest) < i+len(digestMarker)+8 {
-			return fmt.Errorf("imageDigest %q is not a digest ref (want <image>@sha256:<hex>)", imageDigest)
-		}
 		// Revision names must be stable + referenceable for blue-green promote;
 		// derive the suffix from the digest's short hash (a digest is not a legal
-		// revision name itself).
-		shortDigest := imageDigest[i+len(digestMarker) : i+len(digestMarker)+8]
+		// revision name itself). Shared with the deploy preflight via revision.
+		shortDigest, err := revision.ShortDigest(imageDigest)
+		if err != nil {
+			return err
+		}
 		// Cloud Run REQUIRES a revision name to be prefixed with its service
 		// name; `tabula-<env>-<sha>` against service `tabula-api-<env>` is
 		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
@@ -181,8 +111,8 @@ func main() {
 		// The env is part of the revision's identity, not just the image — see
 		// revisionNameFor. Rendered once here so the name and the deployed
 		// container are hashed from the SAME map and cannot drift.
-		serviceEnv := envMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"))
-		revisionName := revisionNameFor(serviceName, shortDigest, serviceEnv)
+		serviceEnv := revision.EnvMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"))
+		revisionName := revision.Name(serviceName, shortDigest, serviceEnv)
 
 		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
 		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")

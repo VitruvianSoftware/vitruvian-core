@@ -202,6 +202,9 @@ jobs:
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
+      # Skip the whole migrate + blue-green when the live service already
+      # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
+      skip-if-unchanged: true
       smoke-url-path: /health
     secrets: inherit
 
@@ -226,6 +229,9 @@ jobs:
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
+      # Skip the whole migrate + blue-green when the live service already
+      # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
+      skip-if-unchanged: true
       smoke-url-path: /health
     secrets: inherit
 
@@ -250,5 +256,8 @@ jobs:
       env-prefix: TABULA
       default-region: us-central1
       run-migrations: true
+      # Skip the whole migrate + blue-green when the live service already
+      # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
+      skip-if-unchanged: true
       smoke-url-path: /health
     secrets: inherit

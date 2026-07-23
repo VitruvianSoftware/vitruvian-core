@@ -147,6 +147,15 @@ on:
         required: false
         type: boolean
         default: false
+      skip-if-unchanged:
+        description: >-
+          Opt-in: skip the migrate + blue-green + smoke when the live service
+          already serves the desired revision. Requires the app's revision name
+          to encode image digest + config hash and a `<pulumi-dir>/cmd/revname`
+          that recomputes it (tabula only). Fail-open — any doubt deploys.
+        required: false
+        type: boolean
+        default: false
       smoke-url-path:
         description: "Path to append to the service URL for the default curl smoke test, e.g. /health"
         required: false
@@ -222,6 +231,24 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
+      # OPT-IN skip gate. Compares the revision name a deploy WOULD produce (the
+      # built digest + this env's config, via the app stack's own revision
+      # package) against the live serving revision. Equal -> the running service
+      # already IS the desired state, so migrate + blue-green + smoke are
+      # redundant and every step below is skipped. FAIL-OPEN: the script emits
+      # unchanged=false on any doubt (see tools/ci/tabula-deploy-preflight.sh),
+      # so a bug can only ever REDEPLOY needlessly, never skip a real change.
+      - name: Preflight — skip if live already serves the desired revision
+        id: preflight
+        if: ${{ inputs.skip-if-unchanged }}
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+          PULUMI_DIR: ${{ inputs.pulumi-dir }}
+          CONFIG_FILE: Pulumi.${{ inputs.environment }}.yaml
+          GOWORK: off
+        run: ./tools/ci/tabula-deploy-preflight.sh
+
       - name: Configure docker for Artifact Registry
         if: ${{ inputs.image-digest == '' }}
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -263,7 +290,7 @@ jobs:
             ${{ inputs.dockerfile-dir }}
 
       - name: Run database migrations
-        if: ${{ inputs.run-migrations }}
+        if: ${{ inputs.run-migrations && steps.preflight.outputs.unchanged != 'true' }}
         env:
           SECRET_PREFIX: ${{ inputs.secret-prefix }}
         # Before the new revision takes traffic; vendored schema-engine keeps
@@ -309,7 +336,7 @@ jobs:
         # exported job-wide so BOTH `pulumi up` phases (deploy + promote) see
         # it — the cloudflare provider reads the env var implicitly, so it
         # never touches Pulumi config or state.
-        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         run: |
           set -euo pipefail
           # Plain assignment (not `export VAR=$(...)`): export would swallow
@@ -340,7 +367,7 @@ jobs:
         # API itself is console-only and needs a one-time manual enable per
         # project (see tools/ci/ensure-site-verification.sh). CLOUDFLARE_API_TOKEN
         # is job-wide env from the fetch step above.
-        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         env:
           SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
@@ -355,6 +382,7 @@ jobs:
       # success.
       - name: Deploy the new revision without traffic (Pulumi)
         id: deploy
+        if: ${{ steps.preflight.outputs.unchanged != 'true' }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           REFRESH_FLAG: ${{ inputs.pulumi-refresh && '--refresh' || '' }}
@@ -403,7 +431,7 @@ jobs:
           pulumi up --yes ${REFRESH_FLAG}
 
       - name: Smoke-check the candidate revision (before any traffic shift)
-        if: ${{ !inputs.workload-migrated }}
+        if: ${{ !inputs.workload-migrated && steps.preflight.outputs.unchanged != 'true' }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
@@ -443,7 +471,7 @@ jobs:
           fi
 
       - name: Shift 100% traffic to the new revision (Pulumi)
-        if: ${{ !inputs.workload-migrated }}
+        if: ${{ !inputs.workload-migrated && steps.preflight.outputs.unchanged != 'true' }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           # The promote is a second `pulumi up` of the SAME program, so it
