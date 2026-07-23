@@ -200,6 +200,10 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-west1
       service-name: oauth-user-inspector
+      # DEV is migrated: the foundation gcp-app-infra leaf owns the Cloud Run
+      # service; this stack's `pulumi up` reconciles only the custom domain, so
+      # there is no candidate revision to smoke or promote here.
+      workload-migrated: true
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
