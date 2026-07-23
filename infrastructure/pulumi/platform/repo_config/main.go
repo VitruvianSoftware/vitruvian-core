@@ -519,19 +519,28 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 
-	// Environment set. `development` is adopted (imported); the rest are new.
-	// nonproduction + production are reviewer-gated deploy pauses; build (the
-	// build-once image stage) and preview (PR previews) are ungated.
+	// Environment set + gating, per the repo-wide deployment strategy
+	// (docs/engineering/deployment-strategy.md):
+	//   - development: auto on push, ungated.
+	//   - nonproduction: promoted only when the app's release-please PR merges
+	//     (release-gated in the deploy workflow). The release merge IS the human
+	//     gate, so this env keeps the protected-branch policy but carries NO
+	//     reviewer — that removes the every-run approval without weakening the
+	//     "deploy only from main" guarantee.
+	//   - production: release-gated AND a required reviewer — the one deliberate
+	//     human checkpoint before prod.
+	//   - build / preview: ungated.
 	envs := []struct {
-		env      string
-		gated    bool
-		imported bool
+		env          string
+		branchPolicy bool // restrict deploys to protected branches (main)
+		reviewer     bool // require a human approval
+		imported     bool
 	}{
-		{"development", false, true},
-		{"nonproduction", true, false},
-		{"production", true, false},
-		{"build", false, false},
-		{"preview", false, false},
+		{"development", false, false, true},
+		{"nonproduction", true, false, false},
+		{"production", true, true, false},
+		{"build", false, false, false},
+		{"preview", false, false, false},
 	}
 
 	for _, e := range envs {
@@ -541,14 +550,17 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 			Repository:  repo.Name,
 			Environment: pulumi.String(name),
 		}
-		if e.gated {
-			// Deploy only from protected branches (main), with an approval from
-			// the configured reviewer(s). GitHub permits self-approval, so on a
-			// single-maintainer repo this is a deliberate "break glass" pause.
+		if e.branchPolicy {
+			// Deploy only from protected branches (main).
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(true),
 				CustomBranchPolicies: pulumi.Bool(false),
 			}
+		}
+		if e.reviewer {
+			// Require an approval from the configured reviewer(s). GitHub permits
+			// self-approval, so on a single-maintainer repo this is a deliberate
+			// "break glass" pause.
 			reviewerIds, err := productionReviewerIds(ctx, cfg)
 			if err != nil {
 				return err
