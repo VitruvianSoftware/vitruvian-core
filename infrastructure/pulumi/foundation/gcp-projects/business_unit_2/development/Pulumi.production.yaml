@@ -39,3 +39,10 @@ config:
   foundation-projects-bu2-development:cmek_enabled: "false"
   foundation-projects-bu2-development:peering_enabled: "false"
   foundation-projects-bu2-development:enforce_vpcsc: "false"
+
+  # App-infra pipeline identity (sa-app-infra-bu2): applies the stage-5
+  # gcp-app-infra/business_unit_2/development leaf. tabula's per-app deploy SA
+  # stays in tabula/infra/identity; this only mints the pipeline SA.
+  foundation-projects-bu2-development:apps: "tabula"
+  foundation-projects-bu2-development:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
+  foundation-projects-bu2-development:app_build_reader_grants: "tabula=prj-c-bu2-infra-pipeline-3d09/us-central1/tabula"

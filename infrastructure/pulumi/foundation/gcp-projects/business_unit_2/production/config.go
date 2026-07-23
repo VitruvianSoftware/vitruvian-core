@@ -70,7 +70,17 @@ type ProjectsConfig struct {
 	SVPCProjectEnabled        bool
 	FloatingProjectEnabled    bool
 	OSSFloatingProjectEnabled bool
-	PeeringProjectEnabled     bool
+
+	// Apps hosted in this env's oss-floating project. Drives whether the
+	// app-infra pipeline identity is minted (len>0). Just names here — the
+	// per-app deploy SA is not minted by this leaf (see main.go).
+	Apps []string
+	// AppBuildReaderGrants lets the pipeline SA pull each app's images.
+	AppBuildReaderGrants []AppBuildReaderGrant
+	// BootstrapStackName is gcp-bootstrap (shared WIF pool). Required only
+	// when Apps is non-empty.
+	BootstrapStackName    string
+	PeeringProjectEnabled bool
 
 	// ApiPropagationSeconds is passed to every project_factory project. When >0
 	// the factory gates its ApisReady handle on a `sleep N` that depends on all
@@ -199,6 +209,9 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	// (a home for open-source apps; in bu2 this is tabula), not part of the
 	// upstream reference set, so the example stays unchanged unless opted in.
 	c.OSSFloatingProjectEnabled = conf.Get("oss_floating_project_enabled") == "true"
+	c.Apps = splitAppList(conf.Get("apps"))
+	c.BootstrapStackName = conf.Get("bootstrap_stack_name")
+	c.AppBuildReaderGrants = appBuildReaderGrants(conf.Get("app_build_reader_grants"))
 	if val, err := conf.TryBool("peering_project_enabled"); err == nil {
 		c.PeeringProjectEnabled = val
 	} else {
@@ -331,4 +344,58 @@ func projectLabels(cfg *ProjectsConfig, suffix, vpc string) pulumi.StringMap {
 		"env_code":          pulumi.String(cfg.EnvCode),
 		"vpc":               pulumi.String(vpc),
 	}
+}
+
+// defaultAppInfraPipelineRoles are what the BU's app-infra pipeline SA needs to
+// apply stage-5 workloads: manage Cloud Run services, act as the runtime SA it
+// sets on them, and read its own project's service usage.
+var defaultAppInfraPipelineRoles = []string{
+	"roles/run.admin",
+	"roles/iam.serviceAccountUser",
+	"roles/serviceusage.serviceUsageConsumer",
+	"roles/logging.viewer",
+}
+
+// splitAppList parses a comma-separated config list, trimming blanks.
+func splitAppList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// AppBuildReaderGrant lets the BU's app-infra pipeline SA PULL an app's images
+// from the BU's shared infra-pipeline project. Config, not a StackReference:
+// the shared leaf applies BEFORE this one and does not know this env's identity.
+type AppBuildReaderGrant struct {
+	App               string
+	RepositoryProject string
+	RepositoryID      string
+	Region            string
+}
+
+// appBuildReaderGrants parses "<app>=<project>/<region>/<repo>" entries.
+func appBuildReaderGrants(raw string) []AppBuildReaderGrant {
+	var out []AppBuildReaderGrant
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		app, rest, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		bits := strings.Split(rest, "/")
+		if len(bits) != 3 {
+			continue
+		}
+		out = append(out, AppBuildReaderGrant{
+			App: app, RepositoryProject: bits[0], Region: bits[1], RepositoryID: bits[2],
+		})
+	}
+	return out
 }
