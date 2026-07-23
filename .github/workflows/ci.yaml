@@ -449,6 +449,57 @@ jobs:
           done < <(find infrastructure/pulumi */infra -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort)
           echo "ran go test in $ran IaC module(s)"
 
+  example-build:
+    # The go-foundation EXAMPLE (pulumi/examples/go-foundation) is a reference
+    # users copy. Its Go is otherwise compiled ONLY in its downstream copybara
+    # mirror, so a change here that breaks it (e.g. #1097 broke the app-infra
+    # example leaf while this repo's CI stayed green) was invisible until the
+    # mirror re-ran. This compiles every example module IN THE SOURCE REPO.
+    #
+    # Own job (not folded into go-test-infra) + generous timeout because it is
+    # ~27 standalone modules each pulling the Pulumi SDK; path-gated so it only
+    # runs when the example — or a library it consumes — actually changes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect example/library changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            ex:
+              - 'pulumi/examples/go-foundation/**'
+              - 'pulumi/library/**'
+              - '.github/workflows/ci.yaml'
+      - uses: actions/setup-go@v7
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
+        with:
+          go-version-file: go.mod
+      - name: go build (every example module)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
+        run: |
+          set -euo pipefail
+          n=0
+          while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            n=$((n + 1))
+            echo "::group::go build $dir"
+            (cd "$dir" && go build ./...)
+            echo "::endgroup::"
+          done < <(find pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          echo "compiled $n example module(s)"
+
   validate-butane:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There
     # is no Bazel target for this -- it is a devx-specific check ported verbatim
