@@ -21,6 +21,27 @@ config:
 
   # --- Cross-stage reference (1-org root at envs/shared) ---
   foundation-projects-bu1-shared:org_stack_name: "ipv1337/foundation-org-shared/production"
+  # Bootstrap stack — provides wif_pool_name for app build-SA WIF bindings.
+  # Only referenced when app_build_spaces is non-empty (see remote.go).
+  foundation-projects-bu1-shared:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
 
   # --- App-infra pipeline (the leaf's reason to exist; explicit for clarity) ---
   foundation-projects-bu1-shared:infra_pipeline_enabled: "true"
+
+  # --- App build spaces (foundation owns each app's shared image registry) ----
+  # The AR repository + build SA + writer grant that let an app push images.
+  # Foundation-authored because they live in the shared infra-pipeline project
+  # (which the foundation owns) and hand out permissions — see
+  # docs/engineering/core-vs-application-infrastructure.md §3. Reader grants live
+  # in the env leaves (the consuming SAs are per-env).
+  #
+  # oauth-user-inspector: adopts the live repo/SA the app's build stack created
+  # (createIgnoreAlreadyExists + retainOnDelete in app_build_space make this
+  # non-destructive). Region is us-west1 — the app's region, NOT the leaf default
+  # us-central1 — so the declared repo matches the live one and adoption is a
+  # no-op rather than a second repo in the wrong location.
+  foundation-projects-bu1-shared:app_build_spaces: "oauth-user-inspector"
+  foundation-projects-bu1-shared:oauth-user-inspector_ar_repository_id: "oauth-user-inspector"
+  foundation-projects-bu1-shared:oauth-user-inspector_ar_region: "us-west1"
+  foundation-projects-bu1-shared:oauth-user-inspector_build_account_id: "oauth-user-inspector-build"
+  foundation-projects-bu1-shared:oauth-user-inspector_build_github_environment: "oauth-user-inspector-build"

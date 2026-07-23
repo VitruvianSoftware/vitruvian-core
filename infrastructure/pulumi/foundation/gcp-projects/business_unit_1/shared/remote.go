@@ -42,6 +42,10 @@ type stackRefs struct {
 
 // loadStackReferences resolves the cross-stage StackReferences.
 func loadStackReferences(ctx *pulumi.Context, cfg *SharedConfig) (*stackRefs, error) {
+	refs := &stackRefs{
+		WIFPoolName: pulumi.String("").ToStringOutput(),
+	}
+
 	// Organization StackReference (Stage 1) — provides the COMMON folder the
 	// infra-pipeline project is parented under.
 	orgStack, err := pulumi.NewStackReference(ctx, "organization", &pulumi.StackReferenceArgs{
@@ -50,7 +54,23 @@ func loadStackReferences(ctx *pulumi.Context, cfg *SharedConfig) (*stackRefs, er
 	if err != nil {
 		return nil, err
 	}
-	return &stackRefs{
-		CommonFolderID: orgStack.GetStringOutput(pulumi.String("common_folder_id")),
-	}, nil
+	refs.CommonFolderID = orgStack.GetStringOutput(pulumi.String("common_folder_id"))
+
+	// Bootstrap StackReference (Stage 0) — ONLY when this leaf owns app build
+	// spaces, whose build SA WIF bindings need the shared pool. Gated so a shared
+	// apply with no build spaces does not depend on bootstrap (remote.go note),
+	// and — the bug this fixes — so refs.WIFPoolName is never the nil zero-value
+	// that panicked app_build_space.Deploy's Sprintf the first time a build space
+	// was configured (the field was declared but never assigned).
+	if len(cfg.AppBuildSpaces) > 0 {
+		bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
+			Name: pulumi.String(cfg.BootstrapStackName),
+		})
+		if err != nil {
+			return nil, err
+		}
+		refs.WIFPoolName = bootstrapStack.GetStringOutput(pulumi.String("wif_pool_name"))
+	}
+
+	return refs, nil
 }

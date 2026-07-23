@@ -46,6 +46,12 @@ type AppBuildSpaceConfig struct {
 	BuildAccountID    string
 	GitHubEnvironment string
 	KeepCount         int
+	// Region overrides the shared leaf's default region for THIS app's
+	// Artifact Registry repository. Apps do not all deploy to one region
+	// (oauth-user-inspector is us-west1, tabula us-central1), and the repo must
+	// be created in the same region as the live one it adopts or the adoption
+	// creates a second repo in the wrong location. Empty = the shared default.
+	Region string
 }
 
 type SharedConfig struct {
@@ -171,6 +177,7 @@ func loadSharedConfig(ctx *pulumi.Context) *SharedConfig {
 			RepositoryID:      conf.Get(name + "_ar_repository_id"),
 			BuildAccountID:    conf.Get(name + "_build_account_id"),
 			GitHubEnvironment: conf.Get(name + "_build_github_environment"),
+			Region:            conf.Get(name + "_ar_region"),
 		}
 		if v := conf.Get(name + "_ar_keep_count"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
