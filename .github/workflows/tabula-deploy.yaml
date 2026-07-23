@@ -196,6 +196,14 @@ jobs:
       environment: development
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
+      # DEV is migrated (core-vs-application-infrastructure.md §7): the foundation
+      # gcp-app-infra business_unit_2 leaf now owns and deploys the Cloud Run
+      # service, so this stack's `pulumi up` reconciles ONLY app-side resources
+      # (the custom domain). There is no candidate revision in this stack to
+      # smoke or promote, so the blue-green candidate-smoke + traffic-shift steps
+      # are skipped. Mirrors oauth-user-inspector-deploy.yaml's dev block and
+      # matches Pulumi.development.yaml's tabula-app:workloadMigrated: "true".
+      workload-migrated: true
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
