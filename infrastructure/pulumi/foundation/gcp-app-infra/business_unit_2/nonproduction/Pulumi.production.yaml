@@ -12,7 +12,6 @@ config:
   foundation-app-infra-bu2-nonproduction:business_code: "bu2"
   # tabula's live Cloud Run services run in us-central1 (see tabula/infra/app),
   # NOT bu1's us-west1 - the region must match so a future import diff is empty.
-  foundation-app-infra-bu2-nonproduction:region: "us-central1"
 
   # --- Cross-stage reference ---
   foundation-app-infra-bu2-nonproduction:projects_stack_name: "ipv1337/foundation-projects-bu2-nonproduction/production"

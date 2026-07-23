@@ -60,7 +60,7 @@ func liveArgs() *ServerlessSpaceArgs {
 		Env:                        "development",
 		BusinessUnit:               "bu1",
 		ProjectID:                  pulumi.String("prj-d-bu1-oss-floating-648a"),
-		Region:                     "us-west1",
+		Region:                     pulumi.String("us-west1"),
 		ServiceName:                "oauth-user-inspector",
 		ImageDigest:                pulumi.String("us-west1-docker.pkg.dev/p/oauth-user-inspector/app@sha256:abc12345def"),
 		RuntimeServiceAccountEmail: pulumi.String("oauth-user-inspector-rt@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com"),

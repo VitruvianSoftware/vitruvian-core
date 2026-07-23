@@ -30,7 +30,7 @@ import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 func exportOutputs(ctx *pulumi.Context, cfg *AppInfraConfig, refs *stackRefs, deploySAs map[string]pulumi.StringOutput) {
 	ctx.Export("environment", pulumi.String(cfg.Env))
 	ctx.Export("business_code", pulumi.String(cfg.BusinessCode))
-	ctx.Export("region", pulumi.String(cfg.Region))
+	ctx.Export("region", refs.Region)
 	ctx.Export("oss_floating_project", refs.OSSFloatingProjectID)
 	ctx.Export("oss_floating_project_number", refs.OSSFloatingProjectNumber)
 	for app, email := range deploySAs {

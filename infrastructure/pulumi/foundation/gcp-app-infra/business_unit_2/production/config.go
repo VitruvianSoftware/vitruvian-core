@@ -87,7 +87,7 @@ func loadConfig(ctx *pulumi.Context) *AppInfraConfig {
 		Env:               pinnedEnv,
 		EnvCode:           pinnedEnvCode,
 		BusinessCode:      orDefault(cfg.Get("business_code"), "bu2"),
-		Region:            orDefault(cfg.Get("region"), "us-west1"),
+		Region:            cfg.Get("region"), // empty => inherit projects default_region (remote.go)
 		ProjectsStackName: cfg.Require("projects_stack_name"),
 	}
 
