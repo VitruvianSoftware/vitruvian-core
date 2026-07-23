@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.1.1...oauth-user-inspector-v1.2.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth build space in us-central1; strip the app build stack ([#1107](https://github.com/VitruvianSoftware/vitruvian-core/issues/1107)) ([c8e6d08](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8e6d086e76f8a89573bafd250d94b452569a7a1))
+
 ## [1.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.1.0...oauth-user-inspector-v1.1.1) (2026-07-21)
 
 
