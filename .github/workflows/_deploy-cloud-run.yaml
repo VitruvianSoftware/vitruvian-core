@@ -97,6 +97,17 @@ on:
         description: "Cloud Run service name pattern; '-<environment>' is appended, e.g. tabula-api"
         required: true
         type: string
+      workload-migrated:
+        description: >-
+          When true, the app stack no longer owns the Cloud Run service (it has
+          been adopted by the foundation gcp-app-infra leaf) and this stack's
+          `pulumi up` reconciles only app-side resources (e.g. the custom
+          domain). The blue-green candidate-smoke and traffic-shift steps are
+          skipped because there is no service revision in this stack to smoke or
+          promote — the service is deployed and smoked by the foundation leaf.
+        required: false
+        type: boolean
+        default: false
       pulumi-dir:
         description: "Pulumi project dir, e.g. tabula/infra/app"
         required: true
@@ -392,6 +403,7 @@ jobs:
           pulumi up --yes ${REFRESH_FLAG}
 
       - name: Smoke-check the candidate revision (before any traffic shift)
+        if: ${{ !inputs.workload-migrated }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           GOWORK: off
@@ -431,6 +443,7 @@ jobs:
           fi
 
       - name: Shift 100% traffic to the new revision (Pulumi)
+        if: ${{ !inputs.workload-migrated }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           # The promote is a second `pulumi up` of the SAME program, so it
