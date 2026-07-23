@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.7.0...foundation-gcp-projects-v1.8.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** mint the bu2 app-infra pipeline identity (sa-app-infra-bu2) ([#1078](https://github.com/VitruvianSoftware/vitruvian-core/issues/1078)) ([42c62c9](https://github.com/VitruvianSoftware/vitruvian-core/commit/42c62c9464b6cc09fdb79815021dece76b0aa363))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.6.0...foundation-gcp-projects-v1.7.0) (2026-07-22)
 
 
