@@ -41,7 +41,7 @@ Three Pulumi stacks plus one platform stack own this app's infrastructure:
 | --- | --- | --- | --- |
 | **app** | `oauth-user-inspector/infra/app` | per-env | env's `oauth-user-inspector-deploy` SA |
 | **identity** | `oauth-user-inspector/infra/identity` | per-env | `sa-terraform-proj` |
-| **build** | `oauth-user-inspector/infra/build` | shared (prod-only) | `sa-terraform-proj` |
+| **build space** | foundation `gcp-projects` shared (`app_build_space`) | shared | `sa-app-infra-bu1` / foundation |
 | **zitadel-apps** | `infrastructure/pulumi/platform/zitadel-apps` | per-env | env's deploy SA (over the tailnet) |
 
 - **app** (`pulumi_oauth_user_inspector`, config namespace `oauth-user-inspector`)
@@ -111,7 +111,7 @@ touching it (gated on `PULUMI_PREVIEW_ENABLED`). It passes the placeholder
 never needs a real Cloudflare credential.
 
 The shared **build** stack is applied by its own workflow
-[`oauth-user-inspector-build-stack.yaml`](../../.github/workflows/oauth-user-inspector-build-stack.yaml)
+the foundation `gcp-projects` deploy (the shared image registry is created by the `app_build_space` module, no separate build-stack workflow)
 (reviewer-gated `foundation-proj-shared` env, runs as `sa-terraform-proj`).
 
 ## Identity & keyless auth
@@ -330,7 +330,7 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 | --- | --- |
 | App stack (Cloud Run + custom domain) | `oauth-user-inspector/infra/app/main.go` |
 | Identity stack (SAs + WIF) | `oauth-user-inspector/infra/identity/main.go` |
-| Build stack (shared AR) | `oauth-user-inspector/infra/build/main.go` |
+| Build space (shared AR) | foundation `gcp-projects/modules/app_build_space` |
 | Zitadel OIDC client + SM sync | `infrastructure/pulumi/platform/zitadel-apps/main.go` |
 | GitHub Environments + WIF vars | `infrastructure/pulumi/platform/repo_config/main.go` (`oauthEnvironment`) |
 | Deploy pipeline | `.github/workflows/oauth-user-inspector-deploy.yaml` |

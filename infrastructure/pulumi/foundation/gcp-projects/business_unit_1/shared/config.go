@@ -79,10 +79,10 @@ type SharedConfig struct {
 	InfraPipelineEnabled bool
 
 	// AppBuildSpaces lists the apps whose Artifact Registry repository and
-	// build identity this leaf owns. EMPTY BY DEFAULT: these resources are
-	// LIVE and currently declared by oauth-user-inspector/infra/build, so
-	// listing an app here is a cutover step needing an import, not a fresh
-	// create (core-vs-application-infrastructure.md §7).
+	// build identity THIS leaf owns (core-vs-application-infrastructure.md §3:
+	// the registry lives in the foundation-owned infra-pipeline project and the
+	// build SA hands out permissions, so neither belongs to the app). Apps have
+	// no separate build stack — this leaf is the sole owner.
 	AppBuildSpaces []AppBuildSpaceConfig
 
 	// BootstrapStackName supplies the Workload Identity pool for build SAs.

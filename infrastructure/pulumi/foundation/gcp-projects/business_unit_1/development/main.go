@@ -198,16 +198,35 @@ func main() {
 			// identity is per-environment and shared applies FIRST, so shared
 			// cannot see it. app_build_space documents the same split.
 			for _, g := range cfg.AppBuildReaderGrants {
-				if _, err := artifactregistry.NewRepositoryIamMember(ctx,
-					"ar-reader-app-infra-"+g.App,
-					&artifactregistry.RepositoryIamMemberArgs{
-						Project:    pulumi.String(g.RepositoryProject),
-						Location:   pulumi.String(g.Region),
-						Repository: pulumi.String(g.RepositoryID),
-						Role:       pulumi.String("roles/artifactregistry.reader"),
-						Member:     pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
-					}); err != nil {
-					return err
+				// Everyone who must PULL the app's images needs reader on the
+				// (foundation-owned) repository. All three identities are
+				// per-environment, so they are granted HERE, not in the shared
+				// leaf (which applies first and cannot see them):
+				//   1. the BU app-infra pipeline SA (applies the stage-5 leaf),
+				//   2. the app's deploy SA,
+				//   3. the Cloud Run service agent (serverless-robot), which is
+				//      what actually pulls the image at deploy time.
+				readers := map[string]pulumi.StringInput{
+					"app-infra": pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
+					"agent": pulumi.Sprintf(
+						"serviceAccount:service-%s@serverless-robot-prod.iam.gserviceaccount.com",
+						projects.OSSFloatingProjectNumber),
+				}
+				if sa, ok := deploySAs[g.App]; ok {
+					readers["deploy"] = pulumi.Sprintf("serviceAccount:%s", sa)
+				}
+				for who, member := range readers {
+					if _, err := artifactregistry.NewRepositoryIamMember(ctx,
+						"ar-reader-"+who+"-"+g.App,
+						&artifactregistry.RepositoryIamMemberArgs{
+							Project:    pulumi.String(g.RepositoryProject),
+							Location:   pulumi.String(g.Region),
+							Repository: pulumi.String(g.RepositoryID),
+							Role:       pulumi.String("roles/artifactregistry.reader"),
+							Member:     member,
+						}); err != nil {
+						return err
+					}
 				}
 			}
 		}
