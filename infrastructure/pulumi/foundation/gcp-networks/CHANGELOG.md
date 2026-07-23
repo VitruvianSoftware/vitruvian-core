@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.11...foundation-gcp-networks-v0.3.12) (2026-07-23)
+
+
+### Bug Fixes
+
+* **examples:** region-consume in the app-infra example + compile it in CI ([#1100](https://github.com/VitruvianSoftware/vitruvian-core/issues/1100)) ([3e98243](https://github.com/VitruvianSoftware/vitruvian-core/commit/3e9824361ee566c82477747c4db7763d7e316ee8))
+
 ## [0.3.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.10...foundation-gcp-networks-v0.3.11) (2026-07-18)
 
 
