@@ -45,10 +45,14 @@ func loadStackReferences(ctx *pulumi.Context, cfg *AppInfraConfig) (*stackRefs, 
 	if err != nil {
 		return nil, err
 	}
+	// bu2 (tabula) does NOT mint its per-app deploy SA in stage-4 — unlike bu1
+	// (#999), tabula's deploy identity lives in tabula/infra/identity. So this
+	// leaf must NOT read <app>_deploy_service_account from the projects stack:
+	// StackReference.GetStringOutput ERRORS on a missing output ("does not exist
+	// on stack"), which failed the whole apply. Nothing consumes the re-export,
+	// so leave it empty. (Moving tabula-deploy up to stage-4 is a separate later
+	// cleanup that would restore the read.)
 	deploySAs := map[string]pulumi.StringOutput{}
-	for _, app := range cfg.Apps {
-		deploySAs[app.Name] = projectsStack.GetStringOutput(pulumi.String(app.Name + "_deploy_service_account"))
-	}
 	return &stackRefs{
 		OSSFloatingProjectID:     projectsStack.GetStringOutput(pulumi.String("oss_floating_project")),
 		OSSFloatingProjectNumber: projectsStack.GetStringOutput(pulumi.String("oss_floating_project_number")),
