@@ -43,6 +43,13 @@ config:
   # without a LookupZone (which otherwise shows a phantom ~zoneId replace).
   tabula-app:customDomain: tabula-api.vitruviansoftware.dev
   tabula-app:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+  # The foundation gcp-app-infra business_unit_2 production leaf has adopted the
+  # Cloud Run service (core-vs-application-infrastructure.md §7). With this true,
+  # the app stack reconciles ONLY the custom-domain resources; the service /
+  # revision / traffic / invoker block is skipped (the leaf owns and deploys the
+  # workload). Pairs with tabula-deploy.yaml deploy-prod workload-migrated: true.
+  # Mirrors development (#1088) and nonproduction (#1093).
+  tabula-app:workloadMigrated: "true"
   # Public base the app builds its WorkOS redirect URI from
   # (`${API_URL}/auth/callback`), and the exact origin the auth callback page
   # postMessages the token to. Both are public, both were set by the retired

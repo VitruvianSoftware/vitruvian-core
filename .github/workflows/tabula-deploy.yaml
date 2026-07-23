@@ -265,6 +265,12 @@ jobs:
       environment: production
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
+      # PROD is migrated (core-vs-application-infrastructure.md §7): the
+      # foundation gcp-app-infra business_unit_2 leaf owns and deploys the Cloud
+      # Run service, so this stack's `pulumi up` reconciles ONLY the custom
+      # domain — no candidate revision here to smoke or promote. Mirrors dev +
+      # nonprod and matches Pulumi.production.yaml's workloadMigrated: "true".
+      workload-migrated: true
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
