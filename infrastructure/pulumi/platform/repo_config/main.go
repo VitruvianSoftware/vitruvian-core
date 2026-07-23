@@ -413,16 +413,20 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			Environment: pulumi.String(name),
 		}
 
+		// Deployment strategy (docs/engineering/deployment-strategy.md): both
+		// nonproduction and production deploy only from protected branches (main),
+		// but promotion is release-gated in tabula-deploy.yaml (a tabula-api
+		// release merge), so nonproduction carries NO reviewer — the release merge
+		// is the human gate. production keeps a required reviewer as the final
+		// checkpoint. GitHub allows self-approval, so on a single-maintainer repo
+		// that reviewer is a deliberate "break glass" pause, not a four-eyes gate.
 		if env == "nonproduction" || env == "production" {
-			// nonproduction and production deploy only from protected branches
-			// (main) and require an approval from the repo owner (or the configured
-			// reviewer ids). GitHub allows self-approval of deployments, so
-			// this works for a single-maintainer repo as a deliberate
-			// "break glass" pause rather than a four-eyes gate.
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(true),
 				CustomBranchPolicies: pulumi.Bool(false),
 			}
+		}
+		if env == "production" {
 			reviewerIds, err := productionReviewerIds(ctx, cfg)
 			if err != nil {
 				return err
