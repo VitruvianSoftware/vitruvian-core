@@ -57,7 +57,24 @@ empty preview → flip `tabula_workload_enabled` to `true` → state-delete from
 
 ---
 
-## 3. ⚠️ Blocker: revision-name format mismatch (tabula-only)
+## 2a. Update — naming resolved, import tooling added, real blocker is custom domains
+
+- **Revision naming (§3): RESOLVED (#1064).** The bu2 leaves now compute the config-hash suffix
+  themselves (option 1 of §3, applied in the leaf not the shared archetype), byte-identical to
+  tabula's app stack. No `serverless_space` change, no oauth impact.
+- **Import tooling: ADDED (#1065).** `pulumi import` is now a bazel subcommand
+  (`bazel run <project>:import -- …`), so the §7 adoptions run behind a target per principles §2.2.
+- **⚠️ NEW hard blocker for BOTH apps: `serverless_space` has no custom-domain support.** The oauth
+  bu1 dev cutover was **rolled back** for exactly this (#1060), and the archetype creates no
+  DomainMapping / Cloudflare record. tabula serves on `tabula-api.*.vitruviansoftware.dev`
+  (created today by `tabula/infra/app`), so cutting the workload onto the archetype as-is would
+  **drop tabula's custom domains** — the same wall oauth hit. This is shared-archetype work another
+  effort is actively on; adding domain support to `serverless_space` in parallel would collide, so
+  tabula's cutover **waits on that capability landing**, then proceeds with the naming + import
+  pieces already in place. This is the one genuine "coordinate with the other effort" dependency —
+  the identity move and the naming were both resolvable in tabula's own lane.
+
+## 3. ⚠️ Blocker: revision-name format mismatch (tabula-only) — RESOLVED in #1064, kept for context
 
 `serverless_space` names revisions `<serviceName>-<revisionSuffix>`, i.e.
 `tabula-api-development-<8 hex of digest>`. Its test `TestRevisionNameMatchesTheAppStackFormat`
