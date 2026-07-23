@@ -1,15 +1,37 @@
 # Tabula → gcp-app-infra alignment status
 
-> **Status:** In progress. The bu2 app-infra scaffolding is landed and inert; two deliberate
-> operations and one design decision remain before tabula's workload runs through the archetype.
-> **Audience:** Anyone continuing tabula's move onto the `serverless_space` archetype, in parallel
-> with the oauth-user-inspector (bu1) cutover.
+> **Status: ✅ COMPLETE (2026-07-23).** tabula's Cloud Run workload runs through the
+> `serverless_space` archetype in **all three** environments. The foundation
+> `gcp-app-infra/business_unit_2` leaf owns and deploys each service; the app stack
+> (`tabula/infra/app`) reconciles only the custom domain. Zero downtime — every service and
+> custom domain served throughout (all on the shared `de662165` promoted digest).
+> **Audience:** Anyone extending this pattern or auditing the cutover.
 
-This tracks tabula's progress toward the pattern in
+This tracked tabula's move onto the pattern in
 [core-vs-application-infrastructure.md](core-vs-application-infrastructure.md) — the same move
-oauth-user-inspector is making in `business_unit_1`, applied to tabula in `business_unit_2`. It
-exists so the parallel effort does not lose the tabula-specific findings, especially the
-revision-name blocker in §3 that oauth does not have.
+oauth-user-inspector made in `business_unit_1`, applied to tabula in `business_unit_2`.
+
+## 0. Cutover outcome (all three envs)
+
+| env | leaf owns service | app stack | custom domain | serving |
+|---|---|---|---|---|
+| development   | ✅ `tabula-api-development`   | DomainMapping + Record only | tabula-api.dev.vitruviansoftware.dev     | ✅ |
+| nonproduction | ✅ `tabula-api-nonproduction` | DomainMapping + Record only | tabula-api.staging.vitruviansoftware.dev | ✅ |
+| production    | ✅ `tabula-api-production`    | DomainMapping + Record only | tabula-api.vitruviansoftware.dev         | ✅ |
+
+The per-env §7 runbook that was actually executed — including the two non-obvious dependencies
+(re-run `repo_config` after stage-4 so the app-deploy env gets `GCP_SERVICE_ACCOUNT`; the
+`component: true` + `logicalName` import file to nest the service under the `pkg:index:CloudRun`
+component; the token-free app-stack state-edit that keeps the domain resources clean) — is captured
+in the session runbook. Landed via: stage-4 (#1078), repo_config (#1080), app-deploy per-BU
+identity (#1081), leaf-no-stage4-deploy-SA fix (#1085), dev (#1083/#1088), nonprod (#1091/#1093),
+prod (#1094/#1095), plus the migration-aware deploy and config-hash preflight (#1074).
+
+The three blockers that were open when this doc was first written are all resolved: the revision
+config-hash suffix (§3) landed in the leaf (#1064, byte-identical to the app stack); custom-domain
+support stayed in the app stack (the leaf never needed it — the app stack keeps the DomainMapping +
+Record post-cutover); the deploy-identity stayed app-owned (the leaf reads no stage-4 deploy SA,
+#1085). The historical detail below is retained for context.
 
 ---
 
