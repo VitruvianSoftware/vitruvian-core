@@ -100,15 +100,14 @@ func main() {
 		//    env_base/confidential_space. Only deployed when an image digest is
 		//    configured, so the reference stack stays applyable without a build.
 		if cfg.ServerlessImageDigest != "" {
-			ssRegion := cfg.Region
-			if ssRegion == "" {
-				ssRegion = "us-central1"
-			}
 			ss, err := serverless_space.DeployServerlessSpace(ctx, "serverless-space", &serverless_space.ServerlessSpaceArgs{
-				Env:           cfg.Env,
-				BusinessUnit:  cfg.BusinessCode,
-				ProjectID:     remote.AppProjectID,
-				Region:        ssRegion,
+				Env:          cfg.Env,
+				BusinessUnit: cfg.BusinessCode,
+				ProjectID:    remote.AppProjectID,
+				// Region is the deployment region CONSUMED from gcp-projects
+				// (remote.Region), not re-hardcoded here — so the serverless
+				// service lands in the same region as everything else in the leaf.
+				Region:        remote.Region,
 				ServiceName:   cfg.EnvCode + "-serverless-space",
 				ImageDigest:   pulumi.String(cfg.ServerlessImageDigest),
 				SecretPrefix:  "EXAMPLE_APP_",
