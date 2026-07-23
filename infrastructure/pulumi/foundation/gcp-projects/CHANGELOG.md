@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.9.0...foundation-gcp-projects-v1.10.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth build space in us-central1; strip the app build stack ([#1107](https://github.com/VitruvianSoftware/vitruvian-core/issues/1107)) ([c8e6d08](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8e6d086e76f8a89573bafd250d94b452569a7a1))
+
 ## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.8.0...foundation-gcp-projects-v1.9.0) (2026-07-23)
 
 
