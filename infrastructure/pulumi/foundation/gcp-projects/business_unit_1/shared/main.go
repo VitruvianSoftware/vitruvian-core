@@ -85,9 +85,8 @@ func main() {
 		// because the repository sits in the BU's infra-pipeline project — an
 		// app granting IAM there is the §3 test-4 inversion.
 		//
-		// Empty by default: these resources are LIVE under
-		// oauth-user-inspector/infra/build, so listing an app is a cutover
-		// step needing an import, not a fresh create.
+		// This leaf is the SOLE owner of each app's build space; apps no longer
+		// carry their own build stack.
 		buildSpaces := map[string]*app_build_space.Result{}
 		for _, bs := range cfg.AppBuildSpaces {
 			if pipeline == nil {

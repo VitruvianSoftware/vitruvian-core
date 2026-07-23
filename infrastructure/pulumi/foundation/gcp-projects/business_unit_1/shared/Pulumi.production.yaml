@@ -42,6 +42,5 @@ config:
   # no-op rather than a second repo in the wrong location.
   foundation-projects-bu1-shared:app_build_spaces: "oauth-user-inspector"
   foundation-projects-bu1-shared:oauth-user-inspector_ar_repository_id: "oauth-user-inspector"
-  foundation-projects-bu1-shared:oauth-user-inspector_ar_region: "us-west1"
   foundation-projects-bu1-shared:oauth-user-inspector_build_account_id: "oauth-user-inspector-build"
   foundation-projects-bu1-shared:oauth-user-inspector_build_github_environment: "oauth-user-inspector-build"

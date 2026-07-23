@@ -25,7 +25,6 @@
 infrastructure/pulumi/accounts/personal                         james.nguyen@gmail.com  personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
 oauth-user-inspector/infra/app                                  james@vitruviansoftware.dev  -  Per-env oauth-user-inspector Cloud Run app on the oss-floating projects (digest deploys; CI runs as the per-env deploy SA)
 oauth-user-inspector/infra/identity                             james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for oauth-user-inspector on the oss projects (foundation-pool WIF)
-oauth-user-inspector/infra/build                                james@vitruviansoftware.dev  prj-c-bu1-infra-pipeline-4b48  oauth-user-inspector shared AR + build identity (infra-pipeline project)
 tabula/infra/build                                              james@vitruviansoftware.dev  prj-c-bu2-infra-pipeline-3d09  tabula shared AR + build identity (bu2 infra-pipeline project)
 tabula/infra/data                                               james@vitruviansoftware.dev  prj-c-bu2-infra-pipeline-3d09  tabula stateful tier — per-env Neon Postgres + shared Upstash Redis (creds live in the infra-pipeline project)
 tabula/infra/identity                                           james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for tabula on the bu2 oss projects (foundation-pool WIF)

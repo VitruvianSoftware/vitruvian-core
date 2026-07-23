@@ -142,7 +142,8 @@ the tailnet.
 
 > The shared **build** stack (Artifact Registry + build service account) lives
 > outside this directory at
-> [`oauth-user-inspector/infra/build/`](infra/build/)
+> the foundation `gcp-projects` shared leaf (`app_build_space` module) — the
+> shared image registry + build identity are foundation-owned (§3), not app-owned
 > because it is a single cross-environment resource, not per-env. See
 > [docs/OPERATIONS.md](docs/OPERATIONS.md#the-moving-parts).
 
