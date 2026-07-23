@@ -36,6 +36,28 @@ jobs on `release_created`); this document is that pattern made repo-wide.
 
 Either way the signal is "a release was cut", never "a commit landed".
 
+### Why the `on: release` trigger fires (and when it wouldn't)
+
+release-please publishes the GitHub Release using a **GitHub App installation
+token** (`apps-release.yml` / `tabula-release.yml` mint one via
+`create-github-app-token`), not the workflow's `GITHUB_TOKEN`. GitHub suppresses
+downstream workflow runs only for events raised by `GITHUB_TOKEN`; events raised
+by an App/PAT token **do** trigger workflows. So the published release fires the
+deploy workflow's `on: release` promotion. If a component's releases were ever
+switched to `GITHUB_TOKEN`, or `skip-github-release` were set in its
+release-please config, promotion would silently stop — that is the one wire to
+check first if a release lands but nonprod/prod do not move.
+
+**Fallback / break-glass.** The failure mode is benign: no auto-promotion, never
+a broken deploy. Promote any single environment directly with the deploy
+workflow's `workflow_dispatch` (`environment:` input) whenever the release path
+is unavailable or you need an out-of-band deploy.
+
+> First-run note: `oauth-user-inspector-v*` releases are already published in
+> this repo, so oauth's `on: release` path is exercised. tabula has not merged a
+> `tabula-api` release under this flow yet — confirm the **first** tabula-api
+> release auto-promotes (or dispatch it) rather than assuming it.
+
 ## Ladder and gates
 
 Even though one release event triggers both, **nonproduction deploys first and
