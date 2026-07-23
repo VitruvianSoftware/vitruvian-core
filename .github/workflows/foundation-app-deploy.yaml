@@ -132,7 +132,10 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: foundation-app-${{ inputs.environment }}
+    # BU-aware identity selection: bu1 keeps the legacy unsuffixed environment
+    # (foundation-app-<env>); other BUs are suffixed (foundation-app-bu2-<env>),
+    # each carrying its own sa-app-infra-<bu> — see repo_config appPhaseEnvironments.
+    environment: foundation-app-${{ inputs.business_unit == 'business_unit_2' && 'bu2-' || '' }}${{ inputs.environment }}
     env:
       GOWORK: off
       # Authenticate Pulumi's github:// plugin downloads so the job does not hit
