@@ -25,18 +25,18 @@
 # the reusable workflow; this file owns only tabula's identity (targets,
 # names, env prefix) and its trigger policy.
 #
-# One workflow, parameterized by GitHub Environment (managed as code in
-# //infrastructure/pulumi/platform/repo_config): the image is built ONCE into
-# bu2's shared Artifact Registry and the SAME immutable digest is promoted
-# development -> nonproduction -> production in one run. development applies
-# automatically; nonproduction and production each pause on their GitHub
-# Environment protection rules (required reviewer, protected branches), so the
-# operator approves the promotion rather than dispatching a separate run.
+# DEPLOYMENT STRATEGY (repo-wide — docs/engineering/deployment-strategy.md):
+#   - Push to main -> deploy DEVELOPMENT only, IFF the `gate` job finds the API
+#     image (or extension bundle) affected. main is continuous-integration.
+#   - `tabula-api` release-please PR merged (release published, tag
+#     `tabula-api-v*`) -> promote NONPRODUCTION then PRODUCTION. Cutting the API
+#     release is the deliberate promotion gate; a bare merge never leaves dev.
+#   - workflow_dispatch redeploys a SINGLE chosen environment (break-glass).
 #
-# workflow_dispatch still takes an `environment` input, but it now only forces
-# the run past the affected-targets gate -- the ladder itself always starts at
-# development, because promoting a digest that was never applied to dev would
-# defeat the point of promoting by digest at all.
+# The image is built ONCE into bu2's shared Artifact Registry and the SAME
+# immutable digest is promoted across the envs it deploys. A `tabula-api`
+# release PR is version-bump-only, so the release commit is code-identical to
+# what soaked on dev.
 
 name: tabula-deploy
 
@@ -49,13 +49,15 @@ on:
     # dependency) and OVER-trigger (docs/cli-only changes under tabula/**
     # rebuilt + redeployed the image needlessly).
     branches: [main]
+  # Promotion trigger: release-please (tabula-release.yml) publishes a GitHub
+  # Release when the `tabula-api` release PR merges; that fires here and drives
+  # the nonprod -> prod ladder. Filtered to the `tabula-api-v*` tag per job.
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       environment:
-        # NB: this does NOT select a target env -- the ladder always starts at
-        # development (see the note above). It only forces the run past the
-        # affected-targets gate.
-        description: Forces the run past the affected-targets gate (the ladder always starts at development)
+        description: Target environment (single-env break-glass redeploy)
         type: choice
         required: true
         default: development
@@ -132,7 +134,9 @@ jobs:
   # artifact that was smoke-tested in development.
   build:
     needs: [gate]
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    # Builds on: a release (promote path), a dispatch (break-glass), or a push
+    # the gate found affected (or a gate that errored — fail-open).
+    if: ${{ !cancelled() && (github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -183,7 +187,9 @@ jobs:
   # automatic; nonproduction and production gate on their GitHub Environment.
   deploy-dev:
     needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    # Development deploys on push (when the gate found it affected) or a
+    # single-env dispatch. Not on a release — that promotes nonprod/prod.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
@@ -208,9 +214,13 @@ jobs:
       smoke-url-path: /health
     secrets: inherit
 
+  # ---- nonproduction (release-gated: promoted only on a tabula-api release) --
+  # No longer cascades from a push. Triggers when the tabula-api release-please
+  # PR merges (release published, tag `tabula-api-v*`) or via a single-env
+  # dispatch. The release merge is the gate, so this env carries no reviewer.
   deploy-nonprod:
-    needs: [build, deploy-dev]
-    if: ${{ !cancelled() && needs.deploy-dev.result == 'success' }}
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
@@ -235,9 +245,12 @@ jobs:
       smoke-url-path: /health
     secrets: inherit
 
+  # ---- production (release-gated + reviewer-gated final checkpoint) ---------
+  # Same release trigger as nonprod, LADDERED behind deploy-nonprod success, and
+  # the production environment keeps its required reviewer.
   deploy-prod:
     needs: [build, deploy-nonprod]
-    if: ${{ !cancelled() && needs.deploy-nonprod.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
