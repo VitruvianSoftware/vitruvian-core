@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-run-v0.3.0...go-cloud-run-v1.0.0) (2026-07-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cloud_run:** Region is a pulumi.StringInput ([#1090](https://github.com/VitruvianSoftware/vitruvian-core/issues/1090))
+
+### Features
+
+* **cloud_run:** Region is a pulumi.StringInput ([#1090](https://github.com/VitruvianSoftware/vitruvian-core/issues/1090)) ([3703539](https://github.com/VitruvianSoftware/vitruvian-core/commit/3703539755e20b2af3527d0b41f38d6706fd17ac))
+
 ## [0.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-run-v0.2.0...go-cloud-run-v0.3.0) (2026-07-18)
 
 
