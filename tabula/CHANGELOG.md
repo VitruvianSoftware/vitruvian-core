@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.21...tabula-v0.1.22) (2026-07-23)
+
+
+### Features
+
+* **foundation:** add monorepo-native gcp-org (Phase 1 Organization) ([#631](https://github.com/VitruvianSoftware/vitruvian-core/issues/631)) ([faaa2bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/faaa2bd615beb496a98d2b8bf3e41f9b883b78e0))
+* **tabula:** custom domains on vitruviansoftware.dev + repoint the extension ([#994](https://github.com/VitruvianSoftware/vitruvian-core/issues/994)) ([75ced7f](https://github.com/VitruvianSoftware/vitruvian-core/commit/75ced7ffa43dc73c20d7823af82d5929aafe5308))
+* **tabula:** release the 5 packages independently, not as a linked group ([#1099](https://github.com/VitruvianSoftware/vitruvian-core/issues/1099)) ([f5d40fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/f5d40fbe781b6d58ef695769bb246f329b081da5))
+
+
+### Bug Fixes
+
+* **release:** keep co-located &lt;app&gt;/infra out of the app's release unit ([#1006](https://github.com/VitruvianSoftware/vitruvian-core/issues/1006)) ([eadfa39](https://github.com/VitruvianSoftware/vitruvian-core/commit/eadfa39280589eedb62b6b267a31859d9506884c))
+* **tabula:** jest 30 symlink-preserving resolver so mocks + coverage agree under Bazel ([#794](https://github.com/VitruvianSoftware/vitruvian-core/issues/794)) ([fb6dcaf](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb6dcaf3dc20b30a173f1fd23c8b279c7311c426))
+
 ## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.20...tabula-v0.1.21) (2026-06-14)
 
 
