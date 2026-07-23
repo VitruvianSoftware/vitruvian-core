@@ -36,8 +36,19 @@
 # *variables* (repo_config oauthVars) — keyless WIF via the foundation-pool
 # means none of them is a credential.
 #
-# workflow_dispatch redeploys a SINGLE chosen environment (it rebuilds at the
-# current sha and deploys just that env); pushes to main run the full chain.
+# DEPLOYMENT STRATEGY (repo-wide — docs/engineering/deployment-strategy.md):
+#   - Push to main  -> deploy DEVELOPMENT only. main is the continuous-integration
+#     surface; every merge lands on dev.
+#   - Release-please release published (tag `oauth-user-inspector-v*`) -> promote
+#     to NONPRODUCTION then PRODUCTION. Cutting a release (merging the app's
+#     release-please PR) is the deliberate, reviewable promotion gate; a bare
+#     merge never touches nonprod/prod.
+#   - workflow_dispatch redeploys a SINGLE chosen environment (break-glass; it
+#     rebuilds at the current sha and deploys just that env).
+#
+# A release-please PR is version-bump + changelog only, so the release commit is
+# code-identical to what already soaked on dev; build-once-per-run then promotes
+# ONE digest across nonprod+prod (build-once / promote-by-digest).
 
 name: oauth-user-inspector-deploy
 
@@ -63,10 +74,15 @@ on:
       - ".github/workflows/oauth-user-inspector-deploy.yaml"
       - ".github/workflows/_deploy-cloud-run.yaml"
       - ".github/workflows/_zitadel-apps-apply.yaml"
+  # Promotion trigger. release-please (apps-release.yml) publishes a GitHub
+  # Release when this app's release PR merges; that fires here and drives the
+  # nonprod -> prod ladder. Filtered to this app's tag in each promotion job.
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment (single-env redeploy; pushes run the full chain)
+        description: Target environment (single-env break-glass redeploy)
         type: choice
         required: true
         default: development
@@ -97,6 +113,10 @@ jobs:
   # job rendered ONLY the changelog, which had sat unchanged for 69 commits — every
   # run told the approver the app had just been vendored.
   changelog:
+    # Push-only: this renders the `github.event.before..sha` push range, which
+    # does not exist on a release event (the release already carries its own
+    # curated changelog).
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -235,18 +255,21 @@ jobs:
         fi
     secrets: inherit
 
-  # ---- nonproduction (reviewer-gated environment) --------------------------
+  # ---- nonproduction (release-gated: promoted only on an app release) -------
+  # No longer cascades from a push. Triggers when THIS app's release-please PR
+  # merges (release published with an `oauth-user-inspector-v*` tag), or via a
+  # single-env workflow_dispatch. The release merge is the promotion gate, so
+  # this environment carries no separate reviewer (production does).
   zitadel-nonprod:
-    needs: [deploy-dev]
-    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_zitadel-apps-apply.yaml
     with:
       environment: nonproduction
     secrets: inherit
 
   deploy-nonprod:
-    needs: [build, deploy-dev, zitadel-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    needs: [build, zitadel-nonprod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
@@ -284,10 +307,13 @@ jobs:
         fi
     secrets: inherit
 
-  # ---- production (reviewer-gated environment) -----------------------------
+  # ---- production (release-gated + reviewer-gated final checkpoint) ---------
+  # Same release trigger as nonprod, but LADDERED behind deploy-nonprod success
+  # (nonprod smoke-gates prod within the release) AND the production environment
+  # keeps a required reviewer — the one deliberate human checkpoint before prod.
   zitadel-prod:
     needs: [deploy-nonprod]
-    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_zitadel-apps-apply.yaml
     with:
       environment: production
@@ -295,7 +321,7 @@ jobs:
 
   deploy-prod:
     needs: [build, deploy-nonprod, zitadel-prod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
