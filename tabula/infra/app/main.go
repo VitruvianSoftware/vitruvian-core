@@ -48,10 +48,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
