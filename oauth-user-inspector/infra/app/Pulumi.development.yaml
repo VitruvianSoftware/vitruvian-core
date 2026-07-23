@@ -25,6 +25,7 @@
 # job, never committed. Runtime secrets stay in GCP Secret Manager under the
 # OAUTH_USER_INSPECTOR_ prefix.
 config:
+  oauth-user-inspector:workloadMigrated: "true"
   gcp:project: prj-d-bu1-oss-floating-648a
   oauth-user-inspector:project: prj-d-bu1-oss-floating-648a
   oauth-user-inspector:region: us-west1
