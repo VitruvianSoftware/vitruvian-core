@@ -27,7 +27,7 @@
 config:
   gcp:project: prj-n-bu1-oss-floating-630b
   oauth-user-inspector:project: prj-n-bu1-oss-floating-630b
-  oauth-user-inspector:region: us-west1
+  oauth-user-inspector:region: us-central1
   oauth-user-inspector:environment: nonproduction
   oauth-user-inspector:runtimeServiceAccount: oauth-user-inspector-rt@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
   # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
