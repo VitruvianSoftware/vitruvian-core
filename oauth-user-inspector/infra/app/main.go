@@ -132,56 +132,50 @@ func main() {
 			}
 		}
 
-		// WORKLOAD MIGRATION (core-vs-application split). Default FALSE: the app
-		// stack owns its Cloud Run service, as it always has. When TRUE the
-		// service + public invoker are owned by the foundation gcp-app-infra
-		// leaf (the serverless_space archetype), and this stack stops declaring
-		// them — but the CUSTOM DOMAIN stays here by design
-		// (docs/engineering/core-vs-application-infrastructure.md: the domain
-		// mapping and its DNS record are app-specific).
+		// Core-vs-application split: this app stack OWNS its Cloud Run service
+		// (the image-coupled workload), and the foundation gcp-app-infra leaf is
+		// scaffolding-only — it re-exports the stage-4 facts (project, region,
+		// deploy SA) this stack consumes but declares no workload
+		// (docs/engineering/core-vs-application-infrastructure.md).
 		serviceName := fmt.Sprintf("oauth-user-inspector-%s", env)
-		workloadMigrated := cfg.GetBool("workloadMigrated")
-
-		// The DomainMapping targets the local service resource pre-migration and
-		// the literal service name post-migration. Both resolve to the same
-		// string, so flipping the flag is a no-op for the mapping.
+		// routeName feeds the DomainMapping; it resolves to the service's name
+		// either way, so the mapping is unaffected by how the service is built.
 		var routeName pulumi.StringInput = pulumi.String(serviceName)
 
-		if !workloadMigrated {
-			app, err := cloud_run.NewCloudRun(ctx, "oauth-user-inspector", &cloud_run.CloudRunArgs{
-				ProjectID:           pulumi.String(project),
-				Region:              pulumi.String(region),
-				Name:                serviceName,
-				Image:               pulumi.String(imageDigest),
-				ServiceAccountEmail: pulumi.String(runtimeSA),
-				Env: map[string]string{
-					"NODE_ENV":             "production",
-					"GOOGLE_CLOUD_PROJECT": project,
-					"SECRET_PREFIX":        secretPrefix,
-				},
-				MaxInstances: 10,
-				Port:         8080,
-				RevisionName: revisionName,
-				Traffics:     traffics,
-			})
-			if err != nil {
-				return err
-			}
-			routeName = app.Service.Name
-			ctx.Export("serviceUrl", app.Service.Uri)
+		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
+		app, err := cloud_run.NewCloudRun(ctx, "oauth-user-inspector", &cloud_run.CloudRunArgs{
+			ProjectID:           pulumi.String(project),
+			Region:              pulumi.String(region),
+			Name:                serviceName,
+			Image:               pulumi.String(imageDigest),
+			ServiceAccountEmail: pulumi.String(runtimeSA),
+			Env: map[string]string{
+				"NODE_ENV":             "production",
+				"GOOGLE_CLOUD_PROJECT": project,
+				"SECRET_PREFIX":        secretPrefix,
+			},
+			MaxInstances: 10,
+			Port:         8080,
+			RevisionName: revisionName,
+			Traffics:     traffics,
+		})
+		if err != nil {
+			return err
+		}
+		routeName = app.Service.Name
+		ctx.Export("serviceUrl", app.Service.Uri)
 
-			// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves
-			// IAM to the caller). Permitted on the oss projects by the gcp-org
-			// DRS override. Post-migration the foundation leaf owns this.
-			if _, err := cloudrunv2.NewServiceIamMember(ctx, "oauth-user-inspector-public", &cloudrunv2.ServiceIamMemberArgs{
-				Project:  pulumi.String(project),
-				Location: pulumi.String(region),
-				Name:     app.Service.Name,
-				Role:     pulumi.String("roles/run.invoker"),
-				Member:   pulumi.String("allUsers"),
-			}); err != nil {
-				return err
-			}
+		// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves
+		// IAM to the caller). Permitted on the oss projects by the gcp-org
+		// DRS override.
+		if _, err := cloudrunv2.NewServiceIamMember(ctx, "oauth-user-inspector-public", &cloudrunv2.ServiceIamMemberArgs{
+			Project:  pulumi.String(project),
+			Location: pulumi.String(region),
+			Name:     app.Service.Name,
+			Role:     pulumi.String("roles/run.invoker"),
+			Member:   pulumi.String("allUsers"),
+		}); err != nil {
+			return err
 		}
 
 		// Optional per-env custom domain (config `customDomain`, e.g.

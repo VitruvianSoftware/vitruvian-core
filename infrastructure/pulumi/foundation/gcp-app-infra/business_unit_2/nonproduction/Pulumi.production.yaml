@@ -24,17 +24,8 @@ config:
   # tabula-deploy); moving that mint up a stage is the prerequisite for the
   # cutover and is tracked as a deliberate follow-up, not done here.
 
-  # --- tabula serverless workload (NOT YET CUT OVER) ---
-  # workload_enabled is the cutover switch and is deliberately FALSE: the
   # Cloud Run service is live and serving from tabula/infra/app. Flipping it
   # alone would try to CREATE a service that already exists and fail. Cutover:
   # docs/engineering/core-vs-application-infrastructure.md 7 (import here ->
   # flip true -> state-delete from the app stack). Values below replicate the
   # live service so the imported resource matches and the diff is empty.
-  foundation-app-infra-bu2-nonproduction:tabula_workload_enabled: "true"
-  foundation-app-infra-bu2-nonproduction:tabula_service_name: "tabula-api"
-  foundation-app-infra-bu2-nonproduction:tabula_secret_prefix: "TABULA_"
-  foundation-app-infra-bu2-nonproduction:tabula_env_vars: "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=prj-n-bu2-oss-floating-a943,API_URL=https://tabula-api.staging.vitruviansoftware.dev/api/v1,AUTH_POSTMESSAGE_ORIGIN=chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof"
-  foundation-app-infra-bu2-nonproduction:tabula_runtime_service_account: "tabula-rt@prj-n-bu2-oss-floating-a943.iam.gserviceaccount.com"
-  foundation-app-infra-bu2-nonproduction:tabula_max_instances: "10"
-  foundation-app-infra-bu2-nonproduction:tabula_public_invoker: "true"

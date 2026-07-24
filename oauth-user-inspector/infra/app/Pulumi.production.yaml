@@ -37,10 +37,6 @@ config:
   # name→id LookupZone fallback if the id is ever unset. The DomainMapping uses
   # ForceOverride (main.go) so it took this hostname over from the retired
   # gen-lang demo mapping on the first prod apply.
-  # workloadMigrated: service + invoker owned by the foundation gcp-app-infra
-  # leaf (adopted per §7). This stack keeps only the custom domain; its state
-  # was cleaned to match, so this flip is a no-op (empty preview).
-  oauth-user-inspector:workloadMigrated: "true"
   oauth-user-inspector:customDomain: oauth-inspector.ipv1337.dev
   oauth-user-inspector:cloudflareZone: ipv1337.dev
   oauth-user-inspector:cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104

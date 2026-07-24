@@ -196,14 +196,11 @@ jobs:
       environment: development
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
-      # DEV is migrated (core-vs-application-infrastructure.md §7): the foundation
-      # gcp-app-infra business_unit_2 leaf now owns and deploys the Cloud Run
-      # service, so this stack's `pulumi up` reconciles ONLY app-side resources
-      # (the custom domain). There is no candidate revision in this stack to
-      # smoke or promote, so the blue-green candidate-smoke + traffic-shift steps
-      # are skipped. Mirrors oauth-user-inspector-deploy.yaml's dev block and
-      # matches Pulumi.development.yaml's tabula-app:workloadMigrated: "true".
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
@@ -235,12 +232,11 @@ jobs:
       environment: nonproduction
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
-      # NONPROD is migrated (core-vs-application-infrastructure.md §7): the
-      # foundation gcp-app-infra business_unit_2 leaf owns and deploys the Cloud
-      # Run service, so this stack's `pulumi up` reconciles ONLY the custom
-      # domain — no candidate revision here to smoke or promote. Mirrors dev and
-      # matches Pulumi.nonproduction.yaml's workloadMigrated: "true".
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_
@@ -271,12 +267,11 @@ jobs:
       environment: production
       image-digest: ${{ needs.build.outputs.image-digest }}
       service-name: tabula-api
-      # PROD is migrated (core-vs-application-infrastructure.md §7): the
-      # foundation gcp-app-infra business_unit_2 leaf owns and deploys the Cloud
-      # Run service, so this stack's `pulumi up` reconciles ONLY the custom
-      # domain — no candidate revision here to smoke or promote. Mirrors dev +
-      # nonprod and matches Pulumi.production.yaml's workloadMigrated: "true".
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: tabula/infra/app
       cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
       secret-prefix: TABULA_

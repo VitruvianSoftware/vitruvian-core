@@ -135,74 +135,69 @@ func main() {
 			}
 		}
 
-		// workloadMigrated flips true once the foundation gcp-app-infra leaf has
-		// adopted the Cloud Run service (core-vs-application-infrastructure.md
-		// §7). While false, this stack owns and deploys the service; once true it
-		// reconciles ONLY app-side resources (the custom domain) and the service /
-		// revision / traffic / invoker block below is skipped — the foundation
-		// leaf owns and deploys the workload from then on.
-		workloadMigrated := cfg.GetBool("workloadMigrated")
-
-		// The DomainMapping targets the service resource this stack creates
-		// pre-migration and the literal service name post-migration; both resolve
-		// to the same string, so flipping the flag does not disturb the mapping.
+		// Core-vs-application split: this app stack OWNS its Cloud Run service
+		// (the image-coupled workload); the foundation gcp-app-infra leaf is
+		// scaffolding-only and re-exports the stage-4 facts (project, region,
+		// deploy SA) this stack consumes but declares no workload
+		// (docs/engineering/core-vs-application-infrastructure.md).
+		// routeName feeds the DomainMapping and resolves to the service's name
+		// either way, so the mapping is unaffected by how the service is built.
 		var routeName pulumi.StringInput = pulumi.String(serviceName)
 
-		if !workloadMigrated {
-			app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
-				ProjectID:           pulumi.String(project),
-				Region:              pulumi.String(region),
-				Name:                serviceName,
-				Image:               pulumi.String(imageDigest),
-				ServiceAccountEmail: pulumi.String(runtimeSA),
-				// NODE_ENV/GOOGLE_CLOUD_PROJECT/SECRET_PREFIX are all the app needs
-				// as plain config: every credential is resolved lazily from Secret
-				// Manager under SECRET_PREFIX (tabula/api/src/lib/secrets.ts), NOT
-				// injected via secretKeyRef — which is what lets a revision be
-				// created before its secrets exist.
-				//
-				// API_URL is the public base the app builds its WorkOS redirect URI
-				// from (auth.service.ts: `${API_URL}/auth/callback`), so it must
-				// match a URI registered in the WorkOS dashboard for this env —
-				// WorkOS rejects an unregistered redirect_uri outright. Unset, the
-				// app falls back to localhost, which fails loudly rather than
-				// silently authenticating against the wrong environment.
-				//
-				// AUTH_POSTMESSAGE_ORIGIN is the EXACT origin the auth callback
-				// page postMessages the token to (auth.routes.ts
-				// resolvePostMessageOrigin) — the extension's chrome-extension://
-				// origin, never '*', so the token is never delivered to an
-				// arbitrary opener. Unset, it falls back to http://localhost:3000
-				// and the extension's opener never receives the token at all.
-				//
-				// Both were set by the retired infrastructure/pulumi/apps/tabula
-				// stack and were dropped in the bu2 rewrite; neither is a secret.
-				Env:          serviceEnv,
-				MaxInstances: 10,
-				Port:         8080,
-				RevisionName: revisionName,
-				Traffics:     traffics,
-			})
-			if err != nil {
-				return err
-			}
-
-			// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves IAM to
-			// the caller). Permitted on the oss projects by the gcp-org DRS override.
-			if _, err := cloudrunv2.NewServiceIamMember(ctx, "tabula-public", &cloudrunv2.ServiceIamMemberArgs{
-				Project:  pulumi.String(project),
-				Location: pulumi.String(region),
-				Name:     app.Service.Name,
-				Role:     pulumi.String("roles/run.invoker"),
-				Member:   pulumi.String("allUsers"),
-			}); err != nil {
-				return err
-			}
-
-			// Pre-migration the mapping targets the service resource; capture it.
-			routeName = app.Service.Name
-			ctx.Export("serviceUrl", app.Service.Uri)
+		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
+		app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
+			ProjectID:           pulumi.String(project),
+			Region:              pulumi.String(region),
+			Name:                serviceName,
+			Image:               pulumi.String(imageDigest),
+			ServiceAccountEmail: pulumi.String(runtimeSA),
+			// NODE_ENV/GOOGLE_CLOUD_PROJECT/SECRET_PREFIX are all the app needs
+			// as plain config: every credential is resolved lazily from Secret
+			// Manager under SECRET_PREFIX (tabula/api/src/lib/secrets.ts), NOT
+			// injected via secretKeyRef — which is what lets a revision be
+			// created before its secrets exist.
+			//
+			// API_URL is the public base the app builds its WorkOS redirect URI
+			// from (auth.service.ts: `${API_URL}/auth/callback`), so it must
+			// match a URI registered in the WorkOS dashboard for this env —
+			// WorkOS rejects an unregistered redirect_uri outright. Unset, the
+			// app falls back to localhost, which fails loudly rather than
+			// silently authenticating against the wrong environment.
+			//
+			// AUTH_POSTMESSAGE_ORIGIN is the EXACT origin the auth callback
+			// page postMessages the token to (auth.routes.ts
+			// resolvePostMessageOrigin) — the extension's chrome-extension://
+			// origin, never '*', so the token is never delivered to an
+			// arbitrary opener. Unset, it falls back to http://localhost:3000
+			// and the extension's opener never receives the token at all.
+			//
+			// Both were set by the retired infrastructure/pulumi/apps/tabula
+			// stack and were dropped in the bu2 rewrite; neither is a secret.
+			Env:          serviceEnv,
+			MaxInstances: 10,
+			Port:         8080,
+			RevisionName: revisionName,
+			Traffics:     traffics,
+		})
+		if err != nil {
+			return err
 		}
+
+		// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves IAM to
+		// the caller). Permitted on the oss projects by the gcp-org DRS override.
+		if _, err := cloudrunv2.NewServiceIamMember(ctx, "tabula-public", &cloudrunv2.ServiceIamMemberArgs{
+			Project:  pulumi.String(project),
+			Location: pulumi.String(region),
+			Name:     app.Service.Name,
+			Role:     pulumi.String("roles/run.invoker"),
+			Member:   pulumi.String("allUsers"),
+		}); err != nil {
+			return err
+		}
+
+		// Pre-migration the mapping targets the service resource; capture it.
+		routeName = app.Service.Name
+		ctx.Export("serviceUrl", app.Service.Uri)
 
 		// Optional per-env custom domain (config `customDomain`, e.g.
 		// tabula-api.vitruviansoftware.dev): a Cloud Run DomainMapping (v1 API —

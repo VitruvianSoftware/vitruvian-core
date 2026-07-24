@@ -220,10 +220,11 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-central1
       service-name: oauth-user-inspector
-      # DEV is migrated: the foundation gcp-app-infra leaf owns the Cloud Run
-      # service; this stack's `pulumi up` reconciles only the custom domain, so
-      # there is no candidate revision to smoke or promote here.
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
@@ -259,9 +260,11 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-central1
       service-name: oauth-user-inspector
-      # Nonprod is migrated: foundation owns the Cloud Run service; this stack's
-      # apply is domain-only (see dev, #1069).
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
@@ -297,8 +300,11 @@ jobs:
       image-digest: ${{ needs.build.outputs.image-digest }}
       default-region: us-central1
       service-name: oauth-user-inspector
-      # Prod is migrated: foundation owns the service; app apply is domain-only (#1069).
-      workload-migrated: true
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
