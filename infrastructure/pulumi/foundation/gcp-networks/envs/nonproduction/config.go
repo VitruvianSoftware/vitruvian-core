@@ -135,11 +135,20 @@ func loadNetConfig(ctx *pulumi.Context) *NetConfig {
 	}
 
 	// Apply defaults
+	// Region defaults — MUST match the foundation's canonical regions that
+	// gcp-bootstrap exports as common_config.default_region (us-central1) and
+	// default_region_2 (us-west1). Upstream 3-networks reads these straight from
+	// bootstrap's remote state (remote.tf); the Pulumi port cannot: a
+	// StackReference output is async, but the region is baked into LOGICAL
+	// resource names (e.g. the cloud routers "hub-cr-<region>-..."), which must be
+	// static strings — an engine difference (see the port policy). So the value is
+	// pinned here and GUARDED in config_test.go: a drift from bootstrap (exactly
+	// how the secondary silently became us-south1) now fails CI.
 	if c.Region1 == "" {
 		c.Region1 = "us-central1"
 	}
 	if c.Region2 == "" {
-		c.Region2 = "us-south1"
+		c.Region2 = "us-west1"
 	}
 	if c.Domain == "" {
 		c.Domain = "example.com."

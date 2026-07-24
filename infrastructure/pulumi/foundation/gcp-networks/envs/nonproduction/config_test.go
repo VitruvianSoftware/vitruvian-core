@@ -65,8 +65,12 @@ func TestLoadNetConfig(t *testing.T) {
 		cfg := loadNetConfig(ctx)
 
 		// Verify defaults
+		// Region defaults are pinned to the canonical bootstrap regions
+		// (common_config.default_region / default_region_2). If a config drift
+		// makes this fail, fix the config back to bootstrap — do NOT relax the
+		// assertion (that is how the secondary silently became us-south1).
 		assert.Equal(t, "us-central1", cfg.Region1)
-		assert.Equal(t, "us-south1", cfg.Region2)
+		assert.Equal(t, "us-west1", cfg.Region2)
 		assert.Equal(t, "ipv1337/foundation-org-shared/production", cfg.OrgStackName)
 		assert.Equal(t, 2, cfg.NatNumAddresses)
 		assert.True(t, cfg.FirewallPoliciesEnableLogging)

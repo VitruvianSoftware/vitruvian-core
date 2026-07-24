@@ -13,7 +13,7 @@ config:
   # --- Core identifiers (mirrors 1-org config) ---
   foundation-networks-nonproduction:org_id: "90456063361"
   foundation-networks-nonproduction:default_region: "us-central1"
-  foundation-networks-nonproduction:secondary_region: "us-south1"
+  foundation-networks-nonproduction:secondary_region: "us-west1"
 
   # --- Cross-stage references ---
   foundation-networks-nonproduction:org_stack_name: "ipv1337/foundation-org-shared/production"
