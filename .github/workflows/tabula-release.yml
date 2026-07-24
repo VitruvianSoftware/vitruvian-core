@@ -18,48 +18,120 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# release-please for the tabula component family. All artifacts are
-# tabula-namespaced: tags tabula-v*, tabula-api-v*, tabula-extension-v*,
-# tabula-cli-v*, tabula-web-v*. Each package versions and releases
-# INDEPENDENTLY (separate-pull-requests): a change to one package opens only
-# its own release PR ('chore(main): release tabula-<pkg> <version>'), so a
-# CLI- or web-only change never re-tags tabula-api and never fires the Cloud
-# Run deploy ladder (which triggers on tabula-api-v*). The config/manifest
-# live under tabula/ (paths inside them are repo-root relative). Other
-# components in this repo release via different mechanisms (GoReleaser,
-# standalone mirrors) and are untouched: release-please assigns commits to
-# packages purely by touched paths.
+# release-please for the tabula component family — one INDEPENDENT release-please
+# run per package, mirroring pulumi-library-release.yml. Each package
+# (tabula root, tabula/api, tabula/cli, tabula/extension, tabula/web) owns its
+# OWN release-please-config.json + .release-please-manifest.json, so a release PR
+# only ever writes that package's manifest. Sibling release PRs can never
+# conflict on a shared file — the failure mode of the previous single shared
+# tabula/.release-please-manifest.json, which every per-package PR had to edit.
+#
+# Tags stay tabula-namespaced and unchanged (tabula-v*, tabula-api-v*,
+# tabula-extension-v*, tabula-cli-v*, tabula-web-v*), so the Cloud Run deploy
+# ladder (tabula-deploy.yaml, which fires on the tabula-api-v* release) is
+# untouched. A CLI- or web-only change never re-tags tabula-api.
+#
+# Other components in this repo (GoReleaser, standalone mirrors) release via
+# different mechanisms and are untouched.
 
 name: tabula-release
 
 on:
   push:
     branches: [main]
-    paths: ["tabula/**"]
+    paths:
+      - "tabula/**"
+      - ".github/workflows/tabula-release.yml"
 
 permissions:
   contents: write
   pull-requests: write
 
-# Serialize release runs: two rapid merges to main must not race the
-# release-please PR / tag creation. Non-cancelling — every push is processed,
-# since a cancelled release-please run could drop a release (issue #461).
-concurrency:
-  group: tabula-release
-  cancel-in-progress: false
-
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    # Just a full-history checkout + changed-package diff; cap it so a hung
+    # clone/step can't pin a runner. release-please is capped separately below.
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # need history for the diff
+      - id: set-matrix
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          # Detect changed files in this push. Fall back to all packages if the
+          # before SHA is the zero-ref (branch creation / force push).
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ "${BEFORE_SHA}" = "${ZERO_SHA}" ] || ! git rev-parse --verify --quiet "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            echo "setup: cannot compute diff (new branch or force-push) → releasing all packages"
+            ALL=true
+          else
+            CHANGED_FILES="$(git diff --name-only "${BEFORE_SHA}" HEAD)"
+            ALL=false
+          fi
+
+          # Discover every package that has a release-please-config.json under
+          # tabula/ (the package dir is repo-root relative, e.g. tabula/api or
+          # the root package "tabula" itself).
+          ALL_PKGS=$(find tabula -name "release-please-config.json" -exec dirname {} \;)
+
+          if [ "${ALL}" = "true" ]; then
+            MATCHED_PKGS="${ALL_PKGS}"
+          else
+            # Keep only packages where at least one changed file falls under the
+            # package's directory. The root package "tabula" matches any tabula/
+            # change; its config's exclude-paths keep it from double-counting the
+            # sub-packages, so an api-only change yields a no-op root run at worst.
+            MATCHED_PKGS=""
+            while IFS= read -r pkg; do
+              [ -z "${pkg}" ] && continue
+              if echo "${CHANGED_FILES}" | grep -q "^${pkg}/"; then
+                MATCHED_PKGS="${MATCHED_PKGS}${MATCHED_PKGS:+$'\n'}${pkg}"
+              fi
+            done <<< "${ALL_PKGS}"
+          fi
+
+          if [ -z "${MATCHED_PKGS}" ]; then
+            echo "setup: no tabula packages changed → empty matrix"
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "setup: releasing packages:"
+            echo "${MATCHED_PKGS}" | sed 's/^/  /'
+            json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "matrix=$json_array" >> "$GITHUB_OUTPUT"
+          fi
+
   release-please:
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    outputs:
-      extension_release_created: ${{ steps.release.outputs['tabula/extension--release_created'] }}
-      extension_tag_name: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
+    permissions:
+      contents: write
+      pull-requests: write
+    # Per-package concurrency: serialize each package's runs independently so two
+    # rapid merges to main can't race its release PR / tag creation, while
+    # different packages still run in parallel. Non-cancelling — a cancelled
+    # release-please run could drop a release (issue #461).
+    concurrency:
+      group: tabula-release-${{ matrix.package }}-${{ github.ref }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        package: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       # Mint a GitHub App token so the release PR is authored by the App, not by
-      # GITHUB_TOKEN. main now has required status checks (the live merge queue,
-      # #83), and a PR opened with GITHUB_TOKEN never triggers workflow runs — so
-      # a GITHUB_TOKEN-authored release PR could never satisfy the required checks
+      # GITHUB_TOKEN. main has required status checks (the merge queue, #83), and
+      # a PR opened with GITHUB_TOKEN never triggers workflow runs — so a
+      # GITHUB_TOKEN-authored release PR could never satisfy the required checks
       # and would be unmergeable. The App-authored PR triggers CI normally.
       - name: Mint App token for the release PR
         id: app-token
@@ -72,24 +144,24 @@ jobs:
         id: release
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: tabula/release-please-config.json
-          manifest-file: tabula/.release-please-manifest.json
+          config-file: ${{ matrix.package }}/release-please-config.json
+          manifest-file: ${{ matrix.package }}/.release-please-manifest.json
           target-branch: main
 
-  package-extension:
-    needs: release-please
-    if: needs.release-please.outputs.extension_release_created == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
+      # tabula/extension only: when the extension release is cut, build the
+      # Chrome zip and attach it to that GitHub Release. Gated on this matrix
+      # leg being the extension AND a release having just been created, so it is
+      # a no-op for every other package's run.
+      - name: Checkout for extension packaging
+        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
+        uses: actions/checkout@v7
 
       - name: Set up Bazel
+        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
         uses: ./.github/actions/setup-bazel
 
       - name: Build extension package
+        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
         env:
           # Cache-only (see --config=remotecache in tools/remote.bazelrc): reuse
           # the chrome_zip build CI already cached; outputs stay local for the cp.
@@ -97,9 +169,10 @@ jobs:
         run: bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" //tabula/extension:chrome_zip
 
       - name: Stamp build identity and attach to release
+        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.release-please.outputs.extension_tag_name }}
+          TAG: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
         run: |
           cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
             "$RUNNER_TEMP/${TAG}-chrome.zip"
@@ -109,13 +182,13 @@ jobs:
           printf '{"commit":"%s","builtAt":"%s","version":"%s"}\n' \
             "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$VERSION" \
             > build_info.json
-          # Replace the placeholder entry in place — same post-Bazel stamping
-          # as tabula-dev-latest.yaml; the hermetic build stays untouched.
-          # Without this, beta installs would carry commit "dev" and the
-          # update checker would disable itself.
+          # Replace the placeholder entry in place — same post-Bazel stamping as
+          # tabula-dev-latest.yaml; the hermetic build stays untouched. Without
+          # this, beta installs would carry commit "dev" and the update checker
+          # would disable itself.
           zip -q "${TAG}-chrome.zip" build_info.json
-          # --repo is required: after the cd above, gh runs outside the
-          # checkout and cannot infer the repository from git (this exact
-          # gap failed the v0.1.11 cut with "not a git repository").
+          # --repo is required: after the cd above, gh runs outside the checkout
+          # and cannot infer the repository from git (this exact gap failed the
+          # v0.1.11 cut with "not a git repository").
           gh release upload "$TAG" "$RUNNER_TEMP/${TAG}-chrome.zip" \
             --repo "$GITHUB_REPOSITORY" --clobber
