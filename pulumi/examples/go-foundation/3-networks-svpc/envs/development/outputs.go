@@ -17,9 +17,8 @@
 package main
 
 import (
-	"sort"
-
 	"foundation-3-networks-svpc/modules/base_env"
+	"sort"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
