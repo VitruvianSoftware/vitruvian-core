@@ -42,7 +42,22 @@ export GOWORK=off
 # the map are unaffected.
 _id_map="${BUILD_WORKSPACE_DIRECTORY}/infrastructure/gcp-identities.tsv"
 _id_resolver="${BUILD_WORKSPACE_DIRECTORY}/tools/pulumi/resolve_identity.sh"
-if [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
+if [ -n "${GOOGLE_OAUTH_ACCESS_TOKEN:-}" ] || [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${CLOUDSDK_AUTH_ACCESS_TOKEN:-}" ]; then
+  # Ambient GCP credentials are already present -- do NOT override with a pinned
+  # per-identity token. Two cases:
+  #   * CI: google-github-actions/auth (keyless WIF) exports
+  #     GOOGLE_APPLICATION_CREDENTIALS pointing at the WIF credential file, so the
+  #     job runs as its per-env deploy SA -- exactly what the gcp-identities.tsv
+  #     rows for the app dirs note ("CI runs as the per-env deploy SA").
+  #   * Break-glass local: an operator (or a wrapping deploy target) exports
+  #     GOOGLE_OAUTH_ACCESS_TOKEN itself, e.g. an ADC token when the pinned
+  #     account's user token can't be interactively refreshed
+  #     (`GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token)`).
+  # This is what lets CI and a laptop run the SAME deploy code path -- auth is
+  # chosen at the edge, not baked into the wrapper. Pure-local runs (no ambient
+  # creds) still get the deterministic gcp-identities.tsv pin below.
+  echo "→ GCP auth: ambient credentials present -- honoring them (skipping the gcp-identities.tsv pin) for $PROJECT_DIR" >&2
+elif [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
   IFS=$'\t' read -r _gcp_account _gcp_project < <(bash "$_id_resolver" "$_id_map" "$PROJECT_DIR") || true
   if [ -n "${_gcp_account:-}" ]; then
     if ! command -v gcloud >/dev/null 2>&1; then
