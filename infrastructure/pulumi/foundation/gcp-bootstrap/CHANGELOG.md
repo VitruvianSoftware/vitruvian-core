@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.1...foundation-gcp-bootstrap-v0.8.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-bootstrap:** projects SA needs billing.projectManager to re-assign billing ([#1135](https://github.com/VitruvianSoftware/vitruvian-core/issues/1135)) ([3397e6f](https://github.com/VitruvianSoftware/vitruvian-core/commit/3397e6facc201fded81619f6a429005b9f2cf578))
+
 ## [0.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.0...foundation-gcp-bootstrap-v0.8.1) (2026-07-24)
 
 
