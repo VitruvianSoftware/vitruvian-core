@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.10.0...foundation-gcp-projects-v1.11.0) (2026-07-24)
+
+
+### Features
+
+* **billing:** fund bu1/bu2 projects from James's personal billing account ([#1133](https://github.com/VitruvianSoftware/vitruvian-core/issues/1133)) ([1d9dc46](https://github.com/VitruvianSoftware/vitruvian-core/commit/1d9dc46e38e2248a1a85e91e89942d6f21d59309))
+
 ## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.9.0...foundation-gcp-projects-v1.10.0) (2026-07-23)
 
 
