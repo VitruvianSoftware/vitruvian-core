@@ -111,7 +111,7 @@ bazel run //tools/release:publish-local -- mcp-slack --execute
 #   --package <name> limits to one; already-published versions/tags are skipped.
 ```
 
-It fetches the npm token from the `sync-env-secrets` store (**prerequisite:** add `NPM_PUBLISH_TOKEN` once — a `@vitruviansoftware` npm automation token — via `bw-push`; it is the only publish cred with no local equivalent). GitHub-side auth is your `gh auth token`. Go-module "publishing" is just the tag `go/pkg/<name>/vX.Y.Z` (**slash** before the version — a dash is `go get`'s "unknown revision"; the tool enforces it, guarded by a test).
+On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoftware` automation token — the only publish cred with no local equivalent), stores it, backs it up to Bitwarden, and reuses it thereafter — no pre-setup, no hunting. GitHub-side auth is your `gh auth token`. Go-module "publishing" is just the tag `go/pkg/<name>/vX.Y.Z` (**slash** before the version — a dash is `go get`'s "unknown revision"; the tool enforces it, guarded by a test).
 
 **Go binaries** (devx, homelab) and **nexus-agent** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
 

@@ -85,17 +85,35 @@ trap 'rm -rf "$SCRATCH"' EXIT
 # every GitHub-side operation (tags, releases). Fail loud if gh isn't logged in.
 gh_token() { gh auth token 2>/dev/null || die "not logged in to GitHub -- run 'gh auth login'"; }
 
-# The npm publish token is the ONE credential with no GitHub equivalent; read it
-# from the sync-env-secrets store (never argv/stdout). Absent -> actionable error.
+# The npm publish token is the ONE credential with no GitHub equivalent. Read it
+# from the sync-env-secrets store; if it isn't there yet, PROMPT for it here,
+# store it, and continue -- never make the operator leave the tool to go run
+# bw-push (reducing operator friction is the point). Never on argv/stdout.
 npm_token() {
-  local f
-  for f in "$ROOT/tools/sync-env-secrets/secrets"/*/"$NPM_TOKEN_SECRET"; do
+  local store="$ROOT/tools/sync-env-secrets/secrets" f
+  for f in "$store"/*/"$NPM_TOKEN_SECRET"; do
     [ -f "$f" ] && { cat "$f"; return 0; }
   done
-  die "no $NPM_TOKEN_SECRET in the secret store. Add it once:
-  printf '%s' '<npm-automation-token>' > tools/sync-env-secrets/secrets/<env>/$NPM_TOKEN_SECRET
-  bazel run //tools/sync-env-secrets:bw-push
-(an automation token for the @vitruviansoftware npm org; it is the only publish cred with no local equivalent)"
+  note ""
+  note "$NPM_TOKEN_SECRET isn't stored yet -- I'll take it now and save it (no manual steps)."
+  note "It's a @vitruviansoftware npm AUTOMATION token: npmjs.com -> the org -> Access Tokens -> Generate -> Automation."
+  [ -r /dev/tty ] || die "$NPM_TOKEN_SECRET missing and no terminal to prompt on -- run this interactively."
+  local token=""
+  read -rs -p "publish-local: paste the npm token (input hidden): " token </dev/tty
+  printf '\n' >&2
+  [ -n "$token" ] || die "no token entered"
+  local dest="$store/shared/$NPM_TOKEN_SECRET" # 'shared' = a shared publish cred, not a GitHub env
+  mkdir -p "$store/shared"
+  (umask 077 && printf '%s' "$token" >"$dest")
+  note "saved to tools/sync-env-secrets/secrets/shared/$NPM_TOKEN_SECRET (git-ignored)."
+  # Persist to Bitwarden so it survives a bw-pull and reaches other machines.
+  # Best-effort: if the vault is locked it just stays local for this run.
+  if BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$ROOT/tools/sync-env-secrets/sync-env-secrets.sh" bw-push; then
+    note "backed up to Bitwarden."
+  else
+    note "(Bitwarden backup didn't complete -- the token is saved locally and used from here; back it up when the vault is unlocked.)"
+  fi
+  printf '%s' "$token"
 }
 
 # --- Go modules (pulumi-library): push the slash tag at the mirror's HEAD. -----
