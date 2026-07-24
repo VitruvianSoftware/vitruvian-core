@@ -239,6 +239,16 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			// freshly created project — that owner grant does not persist, so every
 			// post-creation API addition 403'd until this. Admin supersedes Consumer.
 			"roles/serviceusage.serviceUsageAdmin",
+			// billing.projectManager: the projects stage RE-ASSIGNS a project's billing
+			// account (e.g. moving bu1/bu2 onto a different account). Changing a
+			// project's billing needs resourcemanager.projects.createBillingAssignment
+			// + deleteBillingAssignment ON THE PROJECT — which no other standing role
+			// here grants (the SA held it only transiently as projectCreator/owner at
+			// creation, same non-persistence as the serviceUsageAdmin case). billing.user
+			// on the target account covers the ACCOUNT side (billing.resourceAssociations.
+			// create); this covers the PROJECT side. Without it the re-link 403s
+			// "User does not have permission on project to activate billing".
+			"roles/billing.projectManager",
 			"roles/cloudkms.admin",
 		),
 	}
