@@ -134,9 +134,14 @@ jobs:
   # artifact that was smoke-tested in development.
   build:
     needs: [gate]
-    # Builds on: a release (promote path), a dispatch (break-glass), or a push
-    # the gate found affected (or a gate that errored — fail-open).
-    if: ${{ !cancelled() && (github.event_name == 'release' || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    # Builds on: THIS app's release (promote path), a dispatch (break-glass), or
+    # a push the gate found affected (or a gate that errored — fail-open). The
+    # release tag guard matters because `on: release` fires on EVERY published
+    # release in the repo (GitHub has no per-tag filter on the event); without
+    # it the tabula image rebuilt on every unrelated component's release
+    # (foundation-*, oauth-*, ...) — wasted compute, since deploy-nonprod/prod
+    # below are already filtered to `tabula-api-v*`.
+    if: ${{ !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

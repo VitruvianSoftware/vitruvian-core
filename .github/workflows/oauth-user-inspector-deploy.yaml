@@ -136,8 +136,17 @@ jobs:
 
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable
-  # digest every env promotes. The build environment is ungated.
+  # digest every env promotes. The build ENVIRONMENT is ungated (no reviewer),
+  # but the JOB is scoped to this app: the `release:` trigger fires on EVERY
+  # published release in the repo (GitHub offers no per-tag filter on the
+  # `on: release` event), so without this guard the image rebuilt on every
+  # unrelated component's release (foundation-*, tabula-*, ...), wasting a WIF
+  # auth + buildx run and painting a false-red on that release's checks when the
+  # build flaked. The promotion jobs below are already tag-filtered to
+  # `oauth-user-inspector-v*`; match the build to the union of cases where its
+  # digest is actually consumed (push, dispatch, or THIS app's release).
   build:
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
