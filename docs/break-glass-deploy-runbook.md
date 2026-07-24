@@ -102,10 +102,17 @@ bazel run ${LEAF}:up
 - **Blue-green.** Candidate at **0% traffic** (`candidate` tag) → **smoke it** → only then promote. **Never** promote an unsmoked revision. Build **once**, promote by **digest**, never a mutable `:tag`.
 - **Migrations are EXPAND-only.** `--phase expand` refuses any `*_contract` migration — leave that. **Never** `--phase contract` during a hotfix; contract runs deliberately, *after* the new revision soaks. Don't bypass the `migration-safety` gate.
 
+## Landing the fix (when the merge queue is wedged)
+
+An Actions outage also stalls the **merge queue** — the required checks can't run or report, so a PR can't merge the normal way. Two routes, in order of preference:
+
+1. **Deploy first, merge later.** The `:deploy` targets run off *any* checkout, so ship the fix to prod from your branch now (Step 1) — you don't need it on `main` first. Then reconcile once Actions recovers (below). In an incident this is usually the right move: stop the bleeding, tidy up after.
+2. **Admin-merge it.** If it must land on `main` immediately, a repository **admin** can bypass the wedged queue — the merge-queue ruleset lists `RepositoryRole:5` (admin) as a bypass actor. Use `gh pr merge <PR> --admin --squash` or the GitHub UI's *"merge without waiting for requirements"*. The merge is a GitHub API call and does **not** need Actions, so it works during the outage. ⚠️ It **skips every required check** (build, tests, `migration-safety`, license) — so only do it when you've verified the fix locally (`bazel test //...` + the relevant lint), because nothing else will.
+
 ## After Actions recovers — reconcile
 
 A manual `pulumi up` updates Pulumi state, but the pipeline is still the source of truth:
 
-1. **Merge the fix commit to main** — a manual deploy off an unmerged branch strands the change ("pushed" ≠ "in main"). Verify: `git merge-base --is-ancestor <sha> origin/main`.
+1. **Merge the fix commit to main** — a manual deploy off an unmerged branch strands the change ("pushed" ≠ "in main"). Verify: `git merge-base --is-ancestor <sha> origin/main`. If you **admin-merged** during the outage, the required checks were skipped — re-run them on that commit (or confirm the next PR's checks are green) so `main` is actually proven.
 2. **Let the normal deploy pipeline run** on that commit and confirm it's a **no-op / green** — proves live == git (no out-of-band drift).
 3. **Verify the live effect** — the service serves the fix — not just that the plan applied.
