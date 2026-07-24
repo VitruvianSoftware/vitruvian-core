@@ -49,7 +49,6 @@ config:
   # revision / traffic / invoker block is skipped (the leaf owns and deploys the
   # workload). Pairs with tabula-deploy.yaml deploy-prod workload-migrated: true.
   # Mirrors development (#1088) and nonproduction (#1093).
-  tabula-app:workloadMigrated: "true"
   # Public base the app builds its WorkOS redirect URI from
   # (`${API_URL}/auth/callback`), and the exact origin the auth callback page
   # postMessages the token to. Both are public, both were set by the retired

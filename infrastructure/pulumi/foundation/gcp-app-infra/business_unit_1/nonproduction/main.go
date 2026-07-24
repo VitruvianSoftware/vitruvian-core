@@ -18,11 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Foundation stage 5 (app-infra) — thin business-unit leaf for the nonproduction
+// Foundation stage 5 (app-infra) — thin business-unit leaf for the development
 // environment, mirroring upstream terraform-example-foundation
 // 5-app-infra/business_unit_1/nonproduction. This leaf pins the environment
-// identity (development/d) and calls the shared modules/ for the application
-// infrastructure that belongs to the platform.
+// identity (development/d) and reads/re-exports the stage-4 facts an app needs.
 //
 // File layout mirrors the upstream leaf: main.go (orchestration, upstream
 // main.tf), config.go (variables.tf), remote.go (remote.tf), outputs.go
@@ -30,55 +29,24 @@
 //
 // WHAT THIS LEAF OWNS, AND WHY
 // (docs/engineering/core-vs-application-infrastructure.md):
-//   - Application WORKLOADS built from the stage's archetype catalog.
+//   - SCAFFOLDING ONLY. It creates ZERO GCP resources. It CONSUMES the stage-4
+//     gcp-projects facts (host project id/number, region, per-app deploy SA) via
+//     StackReference and re-EXPORTS them (outputs.go) as the contract each app's
+//     own infra/app stack reads.
 //
-// It deliberately does NOT own the platform-issued deploy identity. That is
-// minted one stage up, in gcp-projects/modules/app_deploy_identity, mirroring
-// upstream's seeding of app-infra pipeline SAs in 4-projects. The separation
-// is what lets this stage be deployed BY that identity without a reviewer gate
-// on every routine app deploy: the identity cannot edit its own grants,
-// because its grants live in a stage it does not deploy. This leaf CONSUMES
-// the identity by StackReference and re-exports it.
-//
-// SERVERLESS WORKLOADS are wired through modules/serverless_space, but each app
-// is gated on <app>_workload_enabled and every app currently ships FALSE. A
-// Pulumi stack cannot take ownership of a live resource by declaring it, so the
-// cutover per env is: `pulumi import` the running service into this stack, flip
-// this flag, then state-delete it from the app stack. Until then the app's own
-// stack keeps serving. Runbook:
-// docs/engineering/core-vs-application-infrastructure.md §7.
+// It deliberately does NOT own the container WORKLOAD (the Cloud Run service).
+// The workload is image-coupled, so it lives in the app's own Pulumi stack
+// (<app>/infra/app), deployed by the app's pipeline WITH the image digest that
+// pipeline builds — never in this image-less foundation stage. It also does NOT
+// own the platform-issued deploy identity (minted one stage up in
+// gcp-projects/modules/app_deploy_identity); this leaf only re-exports it, which
+// is what lets this stage be deployed BY that identity without a per-app
+// reviewer gate.
 package main
 
 import (
-	"foundation-app-infra/modules/serverless_space"
-	"os"
-	"strings"
-
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
-
-// Per-invocation deploy inputs come from the environment, never committed
-// config: the image digest is produced by the build-once job and the
-// promote/stable-revision pair drives blue-green. Mirrors how the app stack
-// reads them today (<APP_PREFIX>_IMAGE_DIGEST etc.), so the deploy workflow
-// keeps the same contract across the cutover.
-func appEnv(app, suffix string) string {
-	return os.Getenv(strings.ToUpper(strings.ReplaceAll(app, "-", "_")) + "_" + suffix)
-}
-
-func imageDigest(app string) string    { return appEnv(app, "IMAGE_DIGEST") }
-func stableRevision(app string) string { return appEnv(app, "STABLE_REVISION") }
-func promote(app string) bool          { return appEnv(app, "PROMOTE") == "true" }
-
-// revisionSuffix derives a stable, referenceable revision name fragment from
-// the digest — a digest is not itself a legal revision name.
-func revisionSuffix(app string) string {
-	d := imageDigest(app)
-	if i := strings.LastIndex(d, "@sha256:"); i >= 0 && len(d) >= i+16 {
-		return d[i+8 : i+16]
-	}
-	return ""
-}
 
 // Environment pinned by this leaf project — upstream
 // 5-app-infra/business_unit_1/nonproduction hardcodes env in its main.tf; the
@@ -92,58 +60,17 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadConfig(ctx)
 
-		// 1. Cross-stage StackReferences (remote.go) — the env's app-hosting
+		// Cross-stage StackReferences (remote.go) — the env's app-hosting
 		// project from stage 4 and the shared WIF pool from stage 0.
 		refs, err := loadStackReferences(ctx, cfg)
 		if err != nil {
 			return err
 		}
 
-		// Deploy identities are consumed, not created (see the package note).
-		deploySAs := refs.DeployServiceAccounts
-
-		// Serverless workloads, per app, gated on the cutover switch.
-		serviceURLs := map[string]pulumi.StringOutput{}
-		serviceNames := map[string]pulumi.StringOutput{}
-		for _, app := range cfg.Apps {
-			if !app.WorkloadEnabled {
-				continue
-			}
-			res, err := serverless_space.DeployServerlessSpace(ctx, app.Name, &serverless_space.ServerlessSpaceArgs{
-				Env:                        cfg.Env,
-				BusinessUnit:               cfg.BusinessCode,
-				ProjectID:                  refs.OSSFloatingProjectID,
-				Region:                     refs.Region,
-				ServiceName:                app.ServiceName,
-				ImageDigest:                pulumi.String(imageDigest(app.Name)),
-				RuntimeServiceAccountEmail: pulumi.String(app.RuntimeServiceAccount),
-				SecretPrefix:               app.SecretPrefix,
-				// Config-driven so it can reproduce the LIVE service exactly.
-				// A var missing here is not cosmetic: the post-import apply
-				// would STRIP it off a running service (§7 step 2).
-				EnvVars:        app.EnvVars,
-				PublicInvoker:  app.PublicInvoker,
-				MaxInstances:   app.MaxInstances,
-				RevisionSuffix: revisionSuffix(app.Name),
-				StableRevision: stableRevision(app.Name),
-				Promote:        promote(app.Name),
-			})
-			if err != nil {
-				return err
-			}
-			serviceURLs[app.Name] = res.ServiceUri
-			serviceNames[app.Name] = res.ServiceName
-		}
-		for app, u := range serviceURLs {
-			ctx.Export(app+"_service_uri", u)
-		}
-		for app, n := range serviceNames {
-			// The app stack's DomainMapping binds by the run service's SHORT
-			// NAME, so it must read this once the workload lives here.
-			ctx.Export(app+"_service_name", n)
-		}
-
-		exportOutputs(ctx, cfg, refs, deploySAs)
+		// Scaffolding contract only: re-export the stage-4 facts (project
+		// id/number, region, per-app deploy SA) that each app's own infra/app
+		// stack consumes. No workload is created here.
+		exportOutputs(ctx, cfg, refs, refs.DeployServiceAccounts)
 		return nil
 	})
 }

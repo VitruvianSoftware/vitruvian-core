@@ -1,9 +1,19 @@
 # Core vs. Application Infrastructure
 
+> **⚠️ Direction reversed (2026-07-24).** The §7 "cutover" — moving the Cloud Run **workload** into the
+> foundation `gcp-app-infra` leaf — was **reversed**. The image-coupled workload stays in each app's own
+> stack (`<app>/infra/app`); the foundation leaf is **scaffolding-only** (re-exports stage-4 facts,
+> declares zero GCP resources). Reason: an image-less foundation-release chain cannot supply a digest, so
+> a leaf-owned workload failed the deploy digest guard on every release. §7 below is retained as historical
+> context; the authoritative plan is now
+> [app-infra-scaffolding-boundary-migration.md](app-infra-scaffolding-boundary-migration.md). The §3
+> decision rule (workload = application infra, scaffolding = core infra) is **unchanged** — this reversal
+> makes the code match it.
+>
 > **Status:** Authoritative standard for where infrastructure-as-code lives in this monorepo. The live
 > `gcp-app-infra` stage exists and has applied in all three environments. Its **archetype catalog** (§4)
-> is instantiated but gated: no app runs through `serverless_space` yet, and `oauth-user-inspector`'s
-> Cloud Run service still deploys from its own stack until the §7 cutover runs. §8 tracks the remaining
+> is instantiated but gated: no app runs through `serverless_space` yet, and each app's Cloud Run service
+> deploys from its own stack (the intended end-state, per the reversal above). §8 tracks the remaining
 > open calls and current-state deltas.
 >
 > **Audience:** Anyone adding infrastructure for an application, extending the foundation, or reviewing
@@ -283,6 +293,11 @@ verified only in the passing direction is decoration.
 ---
 
 ## 7. Moving a live workload onto an archetype (cutover runbook)
+
+> **⚠️ Historical (2026-07-24): this cutover was reversed.** The workload stays in each app's own stack;
+> the foundation leaf is scaffolding-only. The mechanics below (state-move to avoid `deletionProtection`
+> blocks, recreate-vs-import) still apply to the *reverse* move — see
+> [app-infra-scaffolding-boundary-migration.md](app-infra-scaffolding-boundary-migration.md).
 
 Declaring a resource in a new stack does **not** transfer ownership. A running
 Cloud Run service exists in the cloud but not in the new stack's state, so an

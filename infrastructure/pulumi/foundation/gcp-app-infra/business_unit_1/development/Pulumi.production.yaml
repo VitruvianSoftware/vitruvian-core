@@ -4,7 +4,6 @@
 #
 # Scope today: the PLATFORM-ISSUED deploy identity per app per env
 # (docs/engineering/core-vs-application-infrastructure.md 4.1). The Cloud Run
-# workload itself is still deployed by oauth-user-inspector/infra/app; moving it
 # onto modules/serverless_space adopts a live traffic-serving service and is a
 # separate change.
 #
@@ -22,8 +21,6 @@ config:
   # Deploy identities are minted in gcp-projects (one stage up) and consumed
   # here by StackReference — see that leaf's `apps` config.
 
-  # --- oauth-user-inspector serverless workload (NOT YET CUT OVER) ---
-  # workload_enabled is the cutover switch and is deliberately FALSE: the
   # Cloud Run service is live and serving from oauth-user-inspector/infra/app.
   # A Pulumi stack cannot adopt a running resource by declaring it, so flipping
   # this alone would try to CREATE a service that already exists and fail.
@@ -31,11 +28,4 @@ config:
   # §7: import here -> flip to true -> state-delete from the app stack.
   # The values below are replicated from that stack so the imported resource
   # matches and the diff after import is empty.
-  foundation-app-infra-bu1-development:oauth-user-inspector_workload_enabled: "true"
-  foundation-app-infra-bu1-development:oauth-user-inspector_service_name: "oauth-user-inspector"
-  foundation-app-infra-bu1-development:oauth-user-inspector_secret_prefix: "OAUTH_USER_INSPECTOR_"
-  foundation-app-infra-bu1-development:oauth-user-inspector_env_vars: "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=prj-d-bu1-oss-floating-648a"
-  foundation-app-infra-bu1-development:oauth-user-inspector_runtime_service_account: "oauth-user-inspector-rt@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com"
-  foundation-app-infra-bu1-development:oauth-user-inspector_max_instances: "10"
-  foundation-app-infra-bu1-development:oauth-user-inspector_public_invoker: "true"
 
