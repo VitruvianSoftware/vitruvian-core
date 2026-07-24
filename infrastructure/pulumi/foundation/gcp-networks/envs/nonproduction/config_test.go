@@ -89,3 +89,21 @@ func TestLoadNetConfig(t *testing.T) {
 	}, pulumi.WithMocks("project", "stack", mocks(0)))
 	assert.NoError(t, err)
 }
+
+// TestCommittedRegionsAreCanonical guards the ACTUAL drift vector that
+// TestLoadNetConfig does NOT: the committed Pulumi config file value. That test
+// forces the region env/config empty and only checks the code fallback, so it
+// would still pass if this file were edited back to us-south1. The region that
+// actually deploys is the committed secondary_region (bootstrap injects it at
+// deploy; the file is the fallback), and it MUST equal the canonical bootstrap
+// regions. This is the guard that catches secondary_region: "us-south1" at source.
+func TestCommittedRegionsAreCanonical(t *testing.T) {
+	b, err := os.ReadFile("Pulumi.production.yaml")
+	if err != nil {
+		t.Fatalf("read Pulumi.production.yaml: %v", err)
+	}
+	s := string(b)
+	assert.Contains(t, s, `default_region: "us-central1"`, "committed default_region must be the canonical primary (bootstrap common_config.default_region)")
+	assert.Contains(t, s, `secondary_region: "us-west1"`, "committed secondary_region must be the canonical secondary (bootstrap common_config.default_region_2)")
+	assert.NotContains(t, s, "us-south1", "no networks stack may commit us-south1 (the historical drift)")
+}
