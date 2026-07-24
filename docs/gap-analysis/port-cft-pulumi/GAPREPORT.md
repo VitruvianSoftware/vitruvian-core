@@ -1,5 +1,12 @@
 # Pulumi Foundation Ports — Gap Report vs `terraform-example-foundation`
 
+> **⚠️ Re-verified 2026-07-24 — read [`REVERIFICATION-2026-07-24.md`](./REVERIFICATION-2026-07-24.md) first.**
+> 111 of these 236 gaps are now **fixed** (0 regressed); 79 still open, 41 partial. 21
+> **new** findings were confirmed, and 8 audit dimensions this report never covered are
+> catalogued in [`METHODOLOGY-BLINDSPOTS.md`](./METHODOLOGY-BLINDSPOTS.md) (the value/wiring
+> planes where the `us-south1` region drift lived). The list below is the original
+> baseline; per-gap current status is in the re-verification.
+
 _Functional gaps between Google's `terraform-example-foundation` and its two Pulumi ports (`pulumi_go-example-foundation`, `pulumi_ts-example-foundation`) and their shared `pulumi-library`. Every gap below was produced by a per-stage/per-dimension finder, then confirmed by an independent adversarial verifier tasked with refuting it, then spot-checked by a completeness critic. Near-identical findings from different finders are merged (marked “corroborated by N finders”)._
 
 **236 confirmed gaps** — 23 critical, 94 major, 100 minor, 19 info. By port: 87 TS-only, 63 Go-only, 86 both. (10 additional claims were investigated and refuted; they are listed at the end and excluded from these counts.)
