@@ -60,7 +60,7 @@ Usage:
 
 Publish the EXPORTED bump only -- run `bazel run //tools/copybara/sync -- export <component>` first.
 GoReleaser binaries (devx, homelab) and nexus-agent are manual: see
-docs/break-glass-deploy-runbook.md.
+docs/operations/break-glass-deploy-runbook.md.
 EOF
   exit "${1:-1}"
 }

@@ -18,13 +18,54 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-site_name: 'generated-docs'
-repo_url: https://github.com/VitruvianSoftware/go/tree/platform
-edit_uri: edit/platform/docs
+site_name: vitruvian-core
+repo_url: https://github.com/VitruvianSoftware/vitruvian-core
+edit_uri: edit/main/docs
 
-# nav:
-#   - Home: docs/index.md
-#   - Root: README.bazel.md
+nav:
+  - Home: README.md
+  - Getting started:
+      - Application developer: getting-started/app-developer.md
+      - Platform engineer: getting-started/platform-engineer.md
+      - Operator: getting-started/operator.md
+      - Repo admin: getting-started/repo-admin.md
+  - Concepts:
+      - The SDLC: concepts/sdlc.md
+      - Monorepo architecture: concepts/monorepo-architecture.md
+      - Guiding Principles: engineering/application-development-principles.md
+      - Core vs application infra: engineering/core-vs-application-infrastructure.md
+      - Deployment strategy: engineering/deployment-strategy.md
+      - CI/CD approach: engineering/ci-cd-approach.md
+  - Guides:
+      - OSS app onboarding: guides/oss-app-onboarding-checklist.md
+      - Build caching: guides/build-cache.md
+      - Remote builds (RBE): guides/remote-build.md
+      - Flaky tests: engineering/flaky-tests.md
+      - Dependency versioning: dependency-versioning/index.md
+  - Reference:
+      - Bazel targets & tools: reference/bazel-targets.md
+      - Infrastructure reference: infrastructure/reference.md
+      - Version-pin exceptions: engineering/version-pin-exceptions.md
+      - App launch status: engineering/app-launch-status.md
+      - Domain zones: engineering/domain-zone-conventions.md
+  - Infrastructure:
+      - Overview: infrastructure/index.md
+      - Architecture: infrastructure/architecture.md
+      - User guide: infrastructure/user-guide.md
+      - dev-local cluster: infrastructure/dev-local-cluster.md
+      - dev-local vs GKE: infrastructure/dev-local-vs-gke.md
+      - Resilience catalog: infrastructure/resilience-catalog.md
+  - Operations:
+      - Overview: operations/README.md
+      - Break-glass deploy: operations/break-glass-deploy-runbook.md
+      - Sealed secrets: operations/sealed-secrets.md
+      - Key rotation: operations/key-rotation.md
+      - Foundation teardown: operations/foundation-teardown-redeploy-runbook.md
+  - Administration:
+      - Overview: admin/README.md
+      - Copybara sync: admin/copybara-sync.md
+  - Engineering standards:
+      - Alignment gaps: engineering/application-alignment-gaps.md
 
 plugins:
   - techdocs-core

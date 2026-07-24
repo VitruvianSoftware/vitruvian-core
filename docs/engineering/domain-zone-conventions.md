@@ -129,4 +129,4 @@ describe actually happened:
    still had the `run.app` URL baked into `host_permissions` took that extension
    offline.
 
-See also: [`docs/oss-app-onboarding-checklist.md`](../oss-app-onboarding-checklist.md).
+See also: [`docs/oss-app-onboarding-checklist.md`](../guides/oss-app-onboarding-checklist.md).

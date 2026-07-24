@@ -1,7 +1,7 @@
 # Centralized Dependabot for vitruvian-core + Copybara bidi-sync — Design
 
 **Status:** approved design (2026-05-26), pending implementation plan.
-**Related:** [`docs/copybara-sync.md`](../copybara-sync.md) (sync runbook),
+**Related:** [`docs/copybara-sync.md`](../../admin/copybara-sync.md) (sync runbook),
 [`docs/planning/2026-05-25-copybara-bidi-sync-plan.md`](2026-05-25-copybara-bidi-sync-plan.md).
 
 ## Goal

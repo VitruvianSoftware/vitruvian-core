@@ -41,7 +41,7 @@ The short version:
 |---|---|
 | **Core vs. Application Infrastructure** (this doc) | *Where* a resource's IaC lives, and who owns it. |
 | [Application Development Guiding Principles](application-development-principles.md) | *What good looks like* for an application overall — stack, build, deploy, secrets, observability. |
-| [OSS App Onboarding Checklist](../oss-app-onboarding-checklist.md) | The *sequence* for standing a new app up end to end. |
+| [OSS App Onboarding Checklist](../guides/oss-app-onboarding-checklist.md) | The *sequence* for standing a new app up end to end. |
 
 ---
 

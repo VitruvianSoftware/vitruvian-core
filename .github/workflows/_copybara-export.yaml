@@ -26,7 +26,7 @@ name: Copybara Export (reusable)
 #
 # Auth: monorepo origin over HTTPS via GITHUB_TOKEN; standalone destination
 # over SSH via the component's write deploy key (sync_ssh_key).
-# Add per-component callers via the runbook (docs/copybara-sync.md).
+# Add per-component callers via the runbook (docs/admin/copybara-sync.md).
 on:
     workflow_call:
         inputs:

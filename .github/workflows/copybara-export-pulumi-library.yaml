@@ -28,7 +28,7 @@ name: Copybara Export (pulumi-library)
 # FIRST SEED IS MANUAL: the standalone already has history, so seed the
 # MONOREPO_REV_ID baseline once via workflow_dispatch with '--force --ignore-noop'
 # and INSPECT the resulting push before enabling routine runs. See
-# docs/copybara-pulumi-oneway-cutover.md. This push-triggered file does NOT fire
+# docs/archive/copybara/copybara-pulumi-oneway-cutover.md. This push-triggered file does NOT fire
 # on the PR that introduces it (that PR touches tooling, not pulumi/library/**),
 # so nothing exports until an operator seeds deliberately.
 on:

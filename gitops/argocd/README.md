@@ -25,7 +25,7 @@ fully automatically.
 > would manage have to be applied by hand — which is exactly the gap that caused
 > the 2026-06-21 confusion (the `app-of-platform` root was authored but never
 > deployed, so AppSet changes silently required `bazel run …:apply`). See
-> `docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md`.
+> `docs/operations/incidents/2026-06-21-fedora-freeze-cluster-cascade.md`.
 
 ## Making a change
 

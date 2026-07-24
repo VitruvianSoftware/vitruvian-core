@@ -51,7 +51,7 @@ common --disk_cache=/absolute/path/to/cache
 common --remote_cache=grpcs://cache.example.com
 common --remote_upload_local_results=false
 
-# buildbuddy — cache + remote execution (see docs/remote-build.md)
+# buildbuddy — cache + remote execution (see docs/guides/remote-build.md)
 common --config=remote
 ```
 

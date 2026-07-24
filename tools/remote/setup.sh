@@ -7,7 +7,7 @@
 #
 # Presents a menu of build caches (none / local / shared bazel-remote / BuildBuddy)
 # and writes your choice to user.bazelrc (git-ignored). Nothing is enabled until you
-# run it. See docs/build-cache.md (and docs/remote-build.md for BuildBuddy/RBE).
+# run it. See docs/guides/build-cache.md (and docs/guides/remote-build.md for BuildBuddy/RBE).
 set -euo pipefail
 
 # `bazel run` executes from the runfiles dir; operate on the repo root instead.
@@ -211,7 +211,7 @@ else
     echo "# (>=2.28) for tests/tools that use \`git init -b\`, \`git switch\`, etc. Ubuntu"
     echo "# 22.04 (rbe-ubuntu22-04) provides git 2.34 / glibc 2.35. Adjust to match your"
     echo "# toolchains. NOTE: macOS targets cannot run on Linux RBE — keep them local."
-    echo "# See docs/remote-build.md."
+    echo "# See docs/guides/remote-build.md."
     echo "common:remote --remote_default_exec_properties=OSFamily=linux"
     echo "common:remote --remote_default_exec_properties=container-image=docker://gcr.io/flame-public/rbe-ubuntu22-04:latest"
     echo ""
@@ -311,4 +311,4 @@ echo
 echo "Done. Cache: buildbuddy — provider $PROVIDER ($ENDPOINT)."
 echo "  • Local:  bazel test --config=remote //..."
 echo "  • CI:     add the snippet above (secret $SECRET_NAME is set automatically when gh is available)."
-echo "  • Details: docs/build-cache.md and docs/remote-build.md."
+echo "  • Details: docs/guides/build-cache.md and docs/guides/remote-build.md."

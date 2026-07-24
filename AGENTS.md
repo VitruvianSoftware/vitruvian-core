@@ -1,5 +1,18 @@
 # Agent guide — vitruvian-core
 
+## Orient first: principles, SDLC, docs hub
+
+Before shaping any non-trivial change, read the
+[Guiding Principles](docs/engineering/application-development-principles.md) — they
+are the authoritative standard and exist precisely to steer agents toward the right
+shape: everything-as-code (never click-ops or imperative one-offs), the pipeline as
+the only trigger, secrets never in git, bazel-wrapped tooling, expand/contract
+sequencing, and "every fix ships with the check that would catch it again". The
+[SDLC walkthrough](docs/concepts/sdlc.md) explains how a change reaches production;
+the [docs hub](docs/README.md) routes everything else, and the
+[Bazel targets catalog](docs/reference/bazel-targets.md) lists the sanctioned tool
+surface. When an app's own docs conflict with `CONTRIBUTING.md`, CONTRIBUTING wins.
+
 ## GCP identity is pinned per-infrastructure
 
 This repo manages cloud infrastructure under multiple Google accounts (personal,
@@ -124,12 +137,12 @@ come back only as a mirror PR labelled `import-to-monorepo`, imported hourly as 
 review. Never edit a mirror directly, never delete standalone-only files or import monorepo-only
 ones — respect `standalone_only` (e.g. `package-lock.json`,
 `.github/workflows/sync-to-monorepo.yaml`) and the gazelle-generated `BUILD` files (monorepo-only).
-See `docs/copybara-sync.md`.
+See `docs/admin/copybara-sync.md`.
 
 ## How this repo is maintained
 - vitruvian-core was generated from the **kitchen-sink** starter and **does not auto-receive
   template updates** — platform changes are *manually ported* here (this repo doubles as the test
   bed that proves starter-template changes actually build).
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:` …).
-- Planning docs live in `docs/` and `docs/planning/`. Ones marked `status: completed` are done —
+- Planning docs live in `docs/archive/planning/` and `docs/superpowers/`. Ones marked `status: completed` are done —
   don't treat them as open TODOs.
