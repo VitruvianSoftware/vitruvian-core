@@ -29,7 +29,7 @@
 | app | `pulumi-dir` | dev project | region | migrations | smoke |
 |---|---|---|---|---|---|
 | `tabula` (service `tabula-api`) | `tabula/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
-| `oauth-user-inspector` | `oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-west1` | no | `GET /` + DOM mount check |
+| `oauth-user-inspector` | `oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-central1` | no | `GET /` + DOM mount check |
 
 Nonproduction / production use `prj-n-…` / `prj-p-…` projects (same suffix scheme) — **VERIFY suffixes live**. Both apps fetch `CLOUDFLARE_API_TOKEN` at deploy time (customDomain grey-cloud DNS).
 

@@ -26,7 +26,7 @@ image:
   # OAuth User Inspector container images publish to GCP Artifact Registry (see
   # the oauth-user-inspector-deploy workflow's docker buildx push). Only the
   # CHART lives in GHCR. Set the real project/repo per env.
-  repository: us-west1-docker.pkg.dev/REPLACE_PROJECT/oauth-user-inspector/app
+  repository: us-central1-docker.pkg.dev/REPLACE_PROJECT/oauth-user-inspector/app
   tag: latest
   pullPolicy: IfNotPresent
 

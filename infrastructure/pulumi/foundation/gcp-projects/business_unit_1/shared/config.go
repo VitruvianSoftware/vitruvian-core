@@ -47,10 +47,11 @@ type AppBuildSpaceConfig struct {
 	GitHubEnvironment string
 	KeepCount         int
 	// Region overrides the shared leaf's default region for THIS app's
-	// Artifact Registry repository. Apps do not all deploy to one region
-	// (oauth-user-inspector is us-west1, tabula us-central1), and the repo must
-	// be created in the same region as the live one it adopts or the adoption
-	// creates a second repo in the wrong location. Empty = the shared default.
+	// Artifact Registry repository. Empty (the norm) = inherit the leaf default,
+	// which is the foundation's primary region (us-central1) consumed from the
+	// earlier bootstrap phase — keeping every phase consistent. Only set this to
+	// pin an app to a non-primary region (e.g. when adopting a live repo that a
+	// legacy app-owned build stack created elsewhere).
 	Region string
 }
 
