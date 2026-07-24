@@ -58,6 +58,11 @@ func TestPinnedEnvIdentity(t *testing.T) {
 }
 
 func TestLoadNetConfig(t *testing.T) {
+	// Guard exercises the committed/const FALLBACK (deploy injects the real
+	// bootstrap value via these env vars — see envOrConfig). Force them empty
+	// so the fallback is what we assert equals the canonical bootstrap regions.
+	t.Setenv("NETWORKS_DEFAULT_REGION", "")
+	t.Setenv("NETWORKS_SECONDARY_REGION", "")
 	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
