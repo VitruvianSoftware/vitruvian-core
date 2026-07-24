@@ -43,6 +43,7 @@ def cloud_run_deploy(
         region = None,
         smoke_path = "/",
         custom_smoke_script = None,
+        custom_smoke_script_file = None,
         refresh = False,
         visibility = ["//visibility:public"]):
     """Generate a per-app `:deploy` run target wrapping //tools/deploy:cloud-run.
@@ -77,8 +78,17 @@ def cloud_run_deploy(
     ]
     if refresh:
         args.append("--refresh")
+    if custom_smoke_script and custom_smoke_script_file:
+        fail("cloud_run_deploy: set at most one of custom_smoke_script / custom_smoke_script_file")
     if custom_smoke_script:
-        args += ["--custom-smoke-script", custom_smoke_script]
+        # sh_binary `args` undergo Bazel "Make variable" expansion, so a shell
+        # `$` (e.g. ${CAND}) must be escaped to `$$` to reach the shell literally.
+        # NB: a MULTI-line inline script is word-split by the bazel-run launcher --
+        # use custom_smoke_script_file for anything beyond a one-liner.
+        args += ["--custom-smoke-script", custom_smoke_script.replace("$", "$$")]
+    if custom_smoke_script_file:
+        # A workspace-relative path; the tool reads it from the source tree.
+        args += ["--custom-smoke-script-file", custom_smoke_script_file]
     sh_binary(
         name = name,
         srcs = ["//tools/deploy:cloud-run.sh"],
