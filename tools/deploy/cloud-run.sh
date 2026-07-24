@@ -70,13 +70,20 @@ pulumi_wrap() {
 }
 
 deploy_phase() { # $1 = promote (true|false)
-  local promote="$1"
+  local promote="$1" refresh=""
+  # --refresh reconciles Pulumi state against the live cloud before the 0%-traffic
+  # candidate up (so e.g. a resource deleted to force a rebuild is seen as gone and
+  # recreated). The promote is a second up of the SAME program seconds later, with
+  # state already reconciled by the candidate up -- so it NEVER refreshes. This
+  # matches _deploy-cloud-run.yaml's inline behavior (candidate `up --refresh`,
+  # promote plain `up`).
+  [ "$promote" = false ] && refresh="$REFRESH"
   export "$(image_env_kv)"
   export "${PREFIX}_STABLE_REVISION=${STABLE}"
   export "${PREFIX}_PROMOTE=${promote}"
   echo "cloud-run: [$([ "$promote" = true ] && echo promote || echo candidate)] ${PREFIX}_PROMOTE=${promote} ${PREFIX}_STABLE_REVISION=${STABLE:-<empty>}" >&2
-  # shellcheck disable=SC2086  # REFRESH must expand to nothing when empty
-  pulumi_wrap up --stack "$ENV" --yes ${REFRESH}
+  # shellcheck disable=SC2086  # refresh must expand to nothing when empty
+  pulumi_wrap up --stack "$ENV" --yes ${refresh}
 }
 
 smoke_phase() {
