@@ -56,6 +56,14 @@ echo "$out" | grep -q '\[promote\] TABULA_PROMOTE=true TABULA_STABLE_REVISION=re
   && ok "phase=all issues exactly two pulumi up (candidate + promote)" || bad "expected 2 pulumi up:\n$out"
 echo "$out" | grep -q 'first_deploy=false' && ok "seeded stable => not a first deploy" || bad "should be non-first:\n$out"
 
+# --refresh scopes to the candidate up ONLY (matches _deploy-cloud-run.yaml:
+# candidate `up --refresh`, promote plain `up` -- state is already reconciled).
+out="$(bash "$SCRIPT" "${common[@]}" --stable-revision rev-old --phase all --refresh 2>&1)"
+echo "$out" | grep -q 'DRYRUN pulumi: .* pulumi up --stack development --yes --refresh' \
+  && ok "candidate up refreshes when --refresh is given" || bad "candidate should refresh:\n$out"
+[ "$(echo "$out" | grep -c 'pulumi up --stack development --yes --refresh')" -eq 1 ] \
+  && ok "ONLY the candidate refreshes; promote never does" || bad "refresh must scope to candidate only:\n$out"
+
 # first-ever deploy: no --stable-revision, dry-run => STABLE empty => first_deploy=true
 out="$(bash "$SCRIPT" "${common[@]}" --phase candidate 2>&1)"
 echo "$out" | grep -q 'first_deploy=true' && ok "no stable => first deploy" || bad "should be first deploy:\n$out"
