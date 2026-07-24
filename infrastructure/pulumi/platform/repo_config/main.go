@@ -394,7 +394,7 @@ func main() {
 // (committed in Pulumi.<stack>.yaml — they are identifiers, not secrets):
 //
 //	pulumi config set --path 'tabulaVars["development"]' \
-//	  '{"GCP_PROJECT_ID":"...","GCP_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
+//	  '{"GCP_PROJECT_ID":"...","GCP_DEPLOY_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
 //
 // Environments with no config entry are still created (empty), so protection
 // rules exist before the first deploy is wired up.

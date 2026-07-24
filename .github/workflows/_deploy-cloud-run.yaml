@@ -87,9 +87,11 @@ on:
       default-region:
         description: >-
           Fallback region when the GitHub Environment defines no GCP_REGION
-          variable. Kept caller-scoped because different apps live in
-          different regions (tabula: us-central1, oauth-user-inspector:
-          us-west1).
+          variable. Kept caller-scoped so each app can pin its region
+          explicitly; both current apps deploy to the primary region
+          (tabula: us-central1, oauth-user-inspector: us-central1). us-west1
+          is the fleet's SECONDARY region (bootstrap default_region_2), NOT
+          any app's region — do not "reconcile" GCP_REGION to it.
         required: false
         type: string
         default: "us-central1"
