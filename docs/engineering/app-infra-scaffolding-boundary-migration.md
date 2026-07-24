@@ -103,6 +103,32 @@ Zero-downtime alternative (if ever needed): after step 1, `pulumi import` the li
 invoker into the app stack instead of steps 2–3 — avoids the gap but requires exact input
 matching. Recreate is preferred here (apps not launched, fewer failure modes).
 
+## ✅ Executed (2026-07-24) — all 6 envs
+
+The state-move ran for all six envs after #1137 merged; every env verified: leaf state
+**workload-free**, app stack owns **Service + invoker + DomainMapping**, live service **HTTP 200**.
+Recreate deploys: oauth dev/nonprod/prod + tabula dev/nonprod/prod all green.
+
+Execution notes (landmines the runbook above didn't anticipate):
+- **Delete order within the leaf is child-first for a reason.** The public invoker's `Name`
+  references `Service.Name`, so Pulumi treats the invoker as a *dependent* of the Service —
+  deleting the Service first errors `…depend on it…`. Correct order: **invoker → Service →
+  component**.
+- **Per-env `protect` flag was inconsistent.** `tabula-nonprod` and `tabula-prod` had Pulumi
+  `protect=true` on the Service+component (the others didn't), so those two needed
+  `pulumi state delete … --force`. (This is the Pulumi `protect` flag, distinct from the
+  provider-side `deletion_protection` input.)
+- **`gcloud run services delete` is NOT blocked by `deletion_protection`** — that guard is a
+  provider-side input enforced only on a Pulumi `up`/replace, invisible to gcloud.
+- **Identity for the gcloud delete:** the org USER token (`james@vitruviansoftware.dev`) can't
+  refresh headless; use the still-valid ADC token —
+  `CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token)`. (Pulumi
+  *state* ops need no GCP identity — they only touch Pulumi Cloud state; `whoami`=ipv1337.)
+- **Prod recreate gates:** `gh workflow run <app>-deploy.yaml -f environment=production` pauses
+  at the `production` GitHub Environment reviewer gate (oauth gates *twice* — `zitadel-prod` and
+  `deploy-prod`); approve via `POST /actions/runs/{id}/pending_deployments`
+  (`environment_ids[]=<id>`, `state=approved`).
+
 ## Risks
 - `deletion_protection=true` blocks any Pulumi-side delete → use `pulumi state delete` (step 1), never `pulumi up`.
 - bu2 deploy-SA output gap: tabula-deploy is minted in `tabula/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
