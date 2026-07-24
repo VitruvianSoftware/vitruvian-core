@@ -18,7 +18,6 @@ package main
 
 import (
 	"foundation-3-networks-svpc/modules/base_env"
-	"sort"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -40,25 +39,14 @@ func exportOutputs(ctx *pulumi.Context, cfg *NetConfig, res *base_env.Result) {
 	ctx.Export("access_level_name", res.AccessLevelName)
 	ctx.Export("access_level_name_dry_run", res.AccessLevelDryRunName)
 
-	// vpcModule.Subnets is a Go map, whose range order is randomized on every
-	// run. Ranging it directly makes the exported arrays reshuffle between
-	// previews (spurious diffs with zero real changes) and lets any consumer that
-	// reads an export by index bind to a different subnet each run. Iterate a
-	// name-sorted order instead: the subnet name (the map key) is a synchronous,
-	// plan-time string, so sorting needs no Output resolution. Mirrors Terraform,
-	// which emits map-derived outputs in sorted-key order. (subnets_secondary_ranges
-	// below is exported as a keyed pulumi.Map, which serializes deterministically
-	// regardless of insertion order, so it is left ranging the map directly.)
-	subnetOrder := make([]string, 0, len(vpcModule.Subnets))
-	for name := range vpcModule.Subnets {
-		subnetOrder = append(subnetOrder, name)
-	}
-	sort.Strings(subnetOrder)
-
-	// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges)
+	// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges).
+	// OrderedSubnets() returns the subnets in a deterministic, name-sorted order;
+	// vpcModule.Subnets is a Go map with randomized range order, so ranging it
+	// directly would churn these arrays between previews (see the helper's godoc).
+	// subnets_secondary_ranges below is a keyed pulumi.Map, which serializes
+	// deterministically regardless of order, so it still ranges the map directly.
 	var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-	for _, name := range subnetOrder {
-		subnet := vpcModule.Subnets[name]
+	for _, subnet := range vpcModule.OrderedSubnets() {
 		subnetNames = append(subnetNames, subnet.Name)
 		subnetIPs = append(subnetIPs, subnet.IpCidrRange)
 		subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
