@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.14...foundation-gcp-networks-v0.3.15) (2026-07-24)
+
+
+### Bug Fixes
+
+* **foundation:** close two audit findings — region guard gap + inert SCC key ([#1128](https://github.com/VitruvianSoftware/vitruvian-core/issues/1128)) ([cbd3cff](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbd3cff51355407ee1783487389dae2b35b314dc))
+
 ## [0.3.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.13...foundation-gcp-networks-v0.3.14) (2026-07-24)
 
 
