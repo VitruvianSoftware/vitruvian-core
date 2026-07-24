@@ -150,10 +150,24 @@ func main() {
 		// billing account — the Vitruvian foundation SAs cannot grant IAM on it. This
 		// stack must apply BEFORE gcp-projects re-links bu1/bu2 (which reads the new
 		// billing_account from its leaf yamls).
+		vitruvianProjSA := "serviceAccount:sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com"
+		// billing.user: associate/re-associate projects with this account.
 		_, err = billing.NewAccountIamMember(ctx, "vitruvian-proj-sa-billing-user", &billing.AccountIamMemberArgs{
 			BillingAccountId: pulumi.String("008CAA-C364C4-B29B67"),
 			Role:             pulumi.String("roles/billing.user"),
-			Member:           pulumi.String("serviceAccount:sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com"),
+			Member:           pulumi.String(vitruvianProjSA),
+		})
+		if err != nil {
+			return err
+		}
+		// billing.costsManager: the foundation creates a per-project Budget on the
+		// billing account; a Budget's identity includes the account, so moving accounts
+		// REPLACES each budget onto 008CAA. Creating/deleting budgets needs
+		// billing.budgets.* — which billing.user lacks but costsManager provides.
+		_, err = billing.NewAccountIamMember(ctx, "vitruvian-proj-sa-billing-costsmanager", &billing.AccountIamMemberArgs{
+			BillingAccountId: pulumi.String("008CAA-C364C4-B29B67"),
+			Role:             pulumi.String("roles/billing.costsManager"),
+			Member:           pulumi.String(vitruvianProjSA),
 		})
 		if err != nil {
 			return err
