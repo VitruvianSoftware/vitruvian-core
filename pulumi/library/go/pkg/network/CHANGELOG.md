@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.3...go-network-v2.1.0) (2026-07-24)
+
+
+### Features
+
+* **network:** add OrderedSubnets accessor as deterministic-ordering guardrail ([#1114](https://github.com/VitruvianSoftware/vitruvian-core/issues/1114)) ([e184cc1](https://github.com/VitruvianSoftware/vitruvian-core/commit/e184cc146013a99428d95c7986ce363e8619c81f))
+
 ## [2.0.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-network-v2.0.2...go-network-v2.0.3) (2026-07-10)
 
 
