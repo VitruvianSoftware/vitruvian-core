@@ -112,7 +112,16 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		"proj": withCommon(
 			"roles/accesscontextmanager.policyAdmin",
 			"roles/resourcemanager.organizationAdmin",
-			"roles/serviceusage.serviceUsageConsumer",
+			// serviceUsageAdmin, NOT just Consumer: the projects stage OWNS each
+			// project's activate_apis list, so enabling services is a core part of
+			// its job. Consumer only lets it USE services; enabling a NEW API on an
+			// ALREADY-created project (e.g. secretmanager added to the shared
+			// infra-pipeline project for stage-5 app cross-env creds) needs
+			// serviceusage.services.enable, which lives in Admin. Consumer worked
+			// for the initial API set only because projectCreator auto-owns a
+			// freshly created project — that owner grant does not persist, so every
+			// post-creation API addition 403'd until this. Admin supersedes Consumer.
+			"roles/serviceusage.serviceUsageAdmin",
 			"roles/cloudkms.admin",
 		),
 	}
