@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.0...foundation-gcp-bootstrap-v0.8.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-bootstrap:** projects SA needs serviceUsageAdmin, not just Consumer ([#1118](https://github.com/VitruvianSoftware/vitruvian-core/issues/1118)) ([c262b40](https://github.com/VitruvianSoftware/vitruvian-core/commit/c262b405afee013babf178032aac125796cb42d2))
+
 ## [0.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.7.0...foundation-gcp-bootstrap-v0.8.0) (2026-07-21)
 
 
