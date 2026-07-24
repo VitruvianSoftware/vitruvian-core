@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.12...foundation-gcp-networks-v0.3.13) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-networks:** sort subnet exports for deterministic ordering ([#1111](https://github.com/VitruvianSoftware/vitruvian-core/issues/1111)) ([719e153](https://github.com/VitruvianSoftware/vitruvian-core/commit/719e1538f9bb136f1801030ad04f0a43a2e0011e))
+
 ## [0.3.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.11...foundation-gcp-networks-v0.3.12) (2026-07-23)
 
 
