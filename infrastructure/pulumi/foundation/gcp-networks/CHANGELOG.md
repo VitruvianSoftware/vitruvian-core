@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.13...foundation-gcp-networks-v0.3.14) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-networks:** consume region from bootstrap; secondary us-south1 → us-west1 ([#1122](https://github.com/VitruvianSoftware/vitruvian-core/issues/1122)) ([3e7e1c6](https://github.com/VitruvianSoftware/vitruvian-core/commit/3e7e1c63f121b1c8d0d882d4c8460170e5940f6f))
+
 ## [0.3.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.12...foundation-gcp-networks-v0.3.13) (2026-07-24)
 
 
