@@ -25,6 +25,7 @@ import (
 	"fmt"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp"
+	"github.com/pulumi/pulumi-gcp/sdk/v7/go/gcp/billing"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
@@ -134,6 +135,25 @@ func main() {
 			ProjectID: projectID,
 			Member:    "user:" + userEmail,
 			Role:      "roles/viewer", // Grant viewer role to your personal email
+		})
+		if err != nil {
+			return err
+		}
+
+		// 5b. Cross-account billing grant.
+		// James funds the Vitruvian foundation's bu1/bu2 projects from this PERSONAL
+		// billing account (008CAA-C364C4-B29B67). For that to work, the Vitruvian
+		// projects-stage service account (sa-terraform-proj, which the gcp-projects
+		// stage runs as) needs roles/billing.user on this account so it can associate
+		// the bu1/bu2 projects with it. The grant lives HERE, in the personal-account
+		// stack, because only this stack's identity (james.nguyen@gmail.com) admins the
+		// billing account — the Vitruvian foundation SAs cannot grant IAM on it. This
+		// stack must apply BEFORE gcp-projects re-links bu1/bu2 (which reads the new
+		// billing_account from its leaf yamls).
+		_, err = billing.NewAccountIamMember(ctx, "vitruvian-proj-sa-billing-user", &billing.AccountIamMemberArgs{
+			BillingAccountId: pulumi.String("008CAA-C364C4-B29B67"),
+			Role:             pulumi.String("roles/billing.user"),
+			Member:           pulumi.String("serviceAccount:sa-terraform-proj@prj-b-seed-c010.iam.gserviceaccount.com"),
 		})
 		if err != nil {
 			return err

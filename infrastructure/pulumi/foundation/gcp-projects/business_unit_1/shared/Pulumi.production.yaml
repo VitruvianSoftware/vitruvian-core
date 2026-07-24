@@ -16,7 +16,7 @@ config:
   foundation-projects-bu1-shared:business_code: "bu1"
 
   # --- Core identifiers ---
-  foundation-projects-bu1-shared:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu1-shared:billing_account: "008CAA-C364C4-B29B67"
   foundation-projects-bu1-shared:project_prefix: "prj"
 
   # --- Cross-stage reference (1-org root at envs/shared) ---

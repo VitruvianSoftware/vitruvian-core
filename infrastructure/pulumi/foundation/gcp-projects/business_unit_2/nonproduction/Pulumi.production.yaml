@@ -16,7 +16,7 @@ config:
   foundation-projects-bu2-nonproduction:business_code: "bu2"
 
   # --- Core identifiers ---
-  foundation-projects-bu2-nonproduction:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu2-nonproduction:billing_account: "008CAA-C364C4-B29B67"
   foundation-projects-bu2-nonproduction:project_prefix: "prj"
   foundation-projects-bu2-nonproduction:folder_prefix: "fldr"
 
