@@ -95,25 +95,14 @@ npm_token() {
     [ -f "$f" ] && { cat "$f"; return 0; }
   done
   note ""
-  note "$NPM_TOKEN_SECRET isn't stored yet -- I'll take it now and save it (no manual steps)."
+  note "$NPM_TOKEN_SECRET isn't stored yet -- saving it now via the secret store (it prompts, then pulls -> writes -> pushes SAFELY, so it can't clobber your vault)."
   note "It's a @vitruviansoftware npm AUTOMATION token: npmjs.com -> the org -> Access Tokens -> Generate -> Automation."
-  [ -r /dev/tty ] || die "$NPM_TOKEN_SECRET missing and no terminal to prompt on -- run this interactively."
-  local token=""
-  read -rs -p "publish-local: paste the npm token (input hidden): " token </dev/tty
-  printf '\n' >&2
-  [ -n "$token" ] || die "no token entered"
-  local dest="$store/shared/$NPM_TOKEN_SECRET" # 'shared' = a shared publish cred, not a GitHub env
-  mkdir -p "$store/shared"
-  (umask 077 && printf '%s' "$token" >"$dest")
-  note "saved to tools/sync-env-secrets/secrets/shared/$NPM_TOKEN_SECRET (git-ignored)."
-  # Persist to Bitwarden so it survives a bw-pull and reaches other machines.
-  # Best-effort: if the vault is locked it just stays local for this run.
-  if BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$ROOT/tools/sync-env-secrets/sync-env-secrets.sh" bw-push; then
-    note "backed up to Bitwarden."
-  else
-    note "(Bitwarden backup didn't complete -- the token is saved locally and used from here; back it up when the vault is unlocked.)"
-  fi
-  printf '%s' "$token"
+  # Delegate to the store tool's safe set (pull-first, so a partial local store
+  # never overwrites the vault). Redirect its stdout to stderr so only the token
+  # (below) reaches this function's stdout, which the caller captures.
+  BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$ROOT/tools/sync-env-secrets/sync-env-secrets.sh" set shared "$NPM_TOKEN_SECRET" 1>&2 \
+    || die "could not save $NPM_TOKEN_SECRET. Unlock Bitwarden (bazel run //tools/sync-env-secrets:unlock) and retry -- no partial push occurred."
+  cat "$store/shared/$NPM_TOKEN_SECRET"
 }
 
 # --- Go modules (pulumi-library): push the slash tag at the mirror's HEAD. -----
