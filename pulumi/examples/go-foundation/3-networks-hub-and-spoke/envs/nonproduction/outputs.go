@@ -17,6 +17,8 @@
 package main
 
 import (
+	"sort"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
@@ -32,9 +34,23 @@ func exportSpokeOutputs(ctx *pulumi.Context, cfg *NetConfig, spokeVpc *networkin
 	ctx.Export("network_name", spokeVpc.VPC.Name)
 	ctx.Export("network_self_link", spokeVpc.VPC.SelfLink)
 
+	// spokeVpc.Subnets is a Go map, whose range order is randomized on every
+	// run. Ranging it directly makes the exported arrays reshuffle between
+	// previews (spurious diffs with zero real changes) and lets any consumer that
+	// reads an export by index bind to a different subnet each run. Iterate a
+	// name-sorted order instead: the subnet name (the map key) is a synchronous,
+	// plan-time string, so sorting needs no Output resolution. Mirrors Terraform,
+	// which emits map-derived outputs in sorted-key order.
+	subnetOrder := make([]string, 0, len(spokeVpc.Subnets))
+	for name := range spokeVpc.Subnets {
+		subnetOrder = append(subnetOrder, name)
+	}
+	sort.Strings(subnetOrder)
+
 	// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges)
 	var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-	for _, subnet := range spokeVpc.Subnets {
+	for _, name := range subnetOrder {
+		subnet := spokeVpc.Subnets[name]
 		subnetNames = append(subnetNames, subnet.Name)
 		subnetIPs = append(subnetIPs, subnet.IpCidrRange)
 		subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
@@ -45,7 +61,8 @@ func exportSpokeOutputs(ctx *pulumi.Context, cfg *NetConfig, spokeVpc *networkin
 	// Secondary ranges: build a list from each subnet's secondary_ip_ranges.
 	// TF outputs this as a list of objects with range_name and ip_cidr_range.
 	var secondaryRangesList pulumi.ArrayOutput
-	for _, subnet := range spokeVpc.Subnets {
+	for _, name := range subnetOrder {
+		subnet := spokeVpc.Subnets[name]
 		secondaryRangesList = pulumi.All(secondaryRangesList, subnet.SecondaryIpRanges).ApplyT(func(args []interface{}) []interface{} {
 			existing, _ := args[0].([]interface{})
 			ranges, _ := args[1].([]interface{})
