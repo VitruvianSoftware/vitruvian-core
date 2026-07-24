@@ -94,6 +94,35 @@ bazel run ${LEAF}:up
 
 > Stages that create a `billing.Budget` under a user credential also need `USER_PROJECT_OVERRIDE=true` + `GOOGLE_BILLING_PROJECT=<seed>`. Org custom-role changes must run with an **impersonated `sa-terraform-<stage>`** token (Prerequisite), never as `james@`.
 
+## Step 3 — Publish a package release (npm / Go) when Actions is down
+
+Releases normally flow: `release-please` bumps the manifest → `//tools/copybara/sync` exports the bump to the mirror → the mirror's workflow tags + publishes. With Actions down, do the last step by hand. **Always export first** so the mirror has the bumped code + manifest:
+
+```bash
+bazel run //tools/copybara/sync -- export <component>     # push the bump to the mirror
+```
+
+**npm packages + Go modules** (mcp-slack, and the pulumi-library `ts/packages/*` + `go/pkg/*`) — one tool, dry-run by default:
+
+```bash
+bazel run //tools/release:publish-local -- pulumi-library            # dry run: prints the plan
+bazel run //tools/release:publish-local -- pulumi-library --execute  # publish (npm + slash-form go tags)
+bazel run //tools/release:publish-local -- mcp-slack --execute
+#   --package <name> limits to one; already-published versions/tags are skipped.
+```
+
+On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoftware` automation token — the only publish cred with no local equivalent), stores it, backs it up to Bitwarden, and reuses it thereafter — no pre-setup, no hunting. GitHub-side auth is your `gh auth token`. Go-module "publishing" is just the tag `go/pkg/<name>/vX.Y.Z` (**slash** before the version — a dash is `go get`'s "unknown revision"; the tool enforces it, guarded by a test).
+
+**Go binaries** (devx, homelab) and **nexus-agent** (macOS `.app`/DMG/cask) are Mac/toolchain-bound and stay **manual** — no tool:
+
+```bash
+# clone the mirror, tag the release, run GoReleaser (needs gh token with contents:write on the
+# mirror AND the homebrew-tap repo). homelab is darwin-only; nexus-agent needs Swift + create-dmg.
+git clone https://github.com/VitruvianSoftware/<component>.git && cd <component>
+git tag vX.Y.Z && git push origin vX.Y.Z           # nexus-agent: plain vX.Y.Z, NOT nexus-agent-vX
+GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # devx/homelab; nexus-agent: see its release.yml
+```
+
 ## Guardrails — do not skip
 
 - **Preview before you apply.** Foundation: `bazel run <leaf>:preview`. Apps: `bazel run <app>/infra/app:deploy -- … --dry-run` (or `--phase candidate` to stop at 0% traffic). If a preview shows **deletes / replaces you did not intend**, **STOP** — almost always the gitignored config is missing (next point). Never apply a destructive plan to fix an outage.

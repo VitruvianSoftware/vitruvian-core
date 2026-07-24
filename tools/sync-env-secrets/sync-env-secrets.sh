@@ -189,7 +189,33 @@ cmd_lock() {
   echo "✓ cleared the cached session and locked the vault."
 }
 
+# Safely add/update one secret: prompt for the value, then persist. bw-push
+# REPLACES the vault attachment with the whole local store, so we bw-pull FIRST
+# to make the local store complete -- otherwise pushing a partial store would
+# DELETE other secrets from the vault. cmd_bw_pull aborts (ensure_bw_session) on
+# a locked vault BEFORE anything is written or pushed, so a locked vault can
+# never cause data loss.
+cmd_set() {
+  local env="${1:-}" name="${2:-}" val=""
+  { [ -n "$env" ] && [ -n "$name" ]; } || die "usage: set <github-environment> <SECRET_NAME>"
+  [ -r /dev/tty ] || die "set needs a terminal to prompt for the value"
+  echo "→ syncing the store from Bitwarden first (so a partial store is never pushed)…" >&2
+  cmd_bw_pull
+  read -rs -p "value for ${env}/${name} (hidden): " val </dev/tty
+  printf '\n' >&2
+  [ -n "$val" ] || die "empty value — nothing written"
+  mkdir -p "$STORE/$env"
+  (umask 077 && printf '%s' "$val" >"$STORE/$env/$name")
+  echo "→ wrote $STORE/$env/$name; pushing the full store back to Bitwarden…" >&2
+  cmd_bw_push
+  echo "✓ ${name} saved to Bitwarden and the local store." >&2
+}
+
 case "${1:-}" in
+  set)
+    shift
+    cmd_set "$@"
+    ;;
   apply)
     shift
     cmd_apply "$@"
