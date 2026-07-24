@@ -128,6 +128,47 @@ func TestNewNetworking_WithSubnets(t *testing.T) {
 	}
 }
 
+func TestNewNetworking_OrderedSubnetsDeterministic(t *testing.T) {
+	// Subnets are supplied out of lexical order; OrderedSubnetNames and
+	// OrderedSubnets must always return them sorted by name so exports built by
+	// iterating them don't churn between runs (Go map range order is randomized).
+	tracker := testutil.NewTracker()
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		n, err := NewNetworking(ctx, "test-ordered", &NetworkingArgs{
+			ProjectID: pulumi.String("prj-ordered"),
+			VPCName:   pulumi.String("vpc-ordered"),
+			Subnets: []SubnetArgs{
+				{Name: "sb-d-svpc-spoke-us-south1", Region: "us-south1", CIDR: "10.1.0.0/24"},
+				{Name: "sb-d-svpc-spoke-us-central1-proxy", Region: "us-central1", CIDR: "10.2.0.0/24"},
+				{Name: "sb-d-svpc-spoke-us-central1", Region: "us-central1", CIDR: "10.0.0.0/24"},
+				{Name: "sb-d-svpc-spoke-us-south1-proxy", Region: "us-south1", CIDR: "10.3.0.0/24"},
+			},
+		})
+		require.NoError(t, err)
+
+		want := []string{
+			"sb-d-svpc-spoke-us-central1",
+			"sb-d-svpc-spoke-us-central1-proxy",
+			"sb-d-svpc-spoke-us-south1",
+			"sb-d-svpc-spoke-us-south1-proxy",
+		}
+
+		// Stable across repeated calls (guards against a map-order regression).
+		for i := 0; i < 20; i++ {
+			assert.Equal(t, want, n.OrderedSubnetNames())
+		}
+
+		ordered := n.OrderedSubnets()
+		require.Len(t, ordered, len(want))
+		for i, name := range want {
+			assert.Same(t, n.Subnets[name], ordered[i],
+				"OrderedSubnets()[%d] should be the %q subnetwork", i, name)
+		}
+		return nil
+	}, pulumi.WithMocks("test-project", "test-stack", tracker))
+	require.NoError(t, err)
+}
+
 func TestNewNetworking_SubnetFlowLogs(t *testing.T) {
 	tracker := testutil.NewTracker()
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
