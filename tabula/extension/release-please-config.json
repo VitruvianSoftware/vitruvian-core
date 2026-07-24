@@ -7,17 +7,10 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "packages": {
-    "tabula": {
-      "package-name": "tabula",
-      "component": "tabula",
-      "changelog-path": "CHANGELOG.md",
-      "exclude-paths": [
-        "tabula/infra",
-        "tabula/api",
-        "tabula/cli",
-        "tabula/extension",
-        "tabula/web"
-      ]
+    "tabula/extension": {
+      "package-name": "@tabula/extension",
+      "component": "tabula-extension",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }
