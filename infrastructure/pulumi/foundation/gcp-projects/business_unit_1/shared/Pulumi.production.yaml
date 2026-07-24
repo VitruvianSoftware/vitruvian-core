@@ -35,11 +35,12 @@ config:
   # docs/engineering/core-vs-application-infrastructure.md §3. Reader grants live
   # in the env leaves (the consuming SAs are per-env).
   #
-  # oauth-user-inspector: adopts the live repo/SA the app's build stack created
-  # (createIgnoreAlreadyExists + retainOnDelete in app_build_space make this
-  # non-destructive). Region is us-west1 — the app's region, NOT the leaf default
-  # us-central1 — so the declared repo matches the live one and adoption is a
-  # no-op rather than a second repo in the wrong location.
+  # oauth-user-inspector: no per-app `_ar_region` override, so the repo inherits
+  # the leaf default region (us-central1, the foundation's primary, exported by
+  # bootstrap as default_region). Consuming the region from the earlier phase
+  # keeps every phase consistent (foundation design). oauth was originally stood
+  # up on us-west1 by the app's own build stack; it has since been migrated to the
+  # primary region and that legacy stack is retired (its us-west1 repo is orphaned).
   foundation-projects-bu1-shared:app_build_spaces: "oauth-user-inspector"
   foundation-projects-bu1-shared:oauth-user-inspector_ar_repository_id: "oauth-user-inspector"
   foundation-projects-bu1-shared:oauth-user-inspector_build_account_id: "oauth-user-inspector-build"

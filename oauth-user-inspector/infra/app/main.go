@@ -80,13 +80,13 @@ func main() {
 		project := cfg.Require("project") // the env's oss-floating project id
 		region := cfg.Get("region")
 		if region == "" {
-			region = "us-west1"
+			region = "us-central1"
 		}
 		env := cfg.Require("environment")
 		runtimeSA := cfg.Require("runtimeServiceAccount")
 
 		// Immutable digest ref into the SHARED build Artifact Registry, e.g.
-		//   us-west1-docker.pkg.dev/<infra-pipeline proj>/oauth-user-inspector/app@sha256:...
+		//   us-central1-docker.pkg.dev/<infra-pipeline proj>/oauth-user-inspector/app@sha256:...
 		// There is deliberately no mutable-tag fallback: deploying anything but a
 		// pinned digest would break build-once/promote-digest.
 		imageDigest := envOrConfig("OAUTH_USER_INSPECTOR_IMAGE_DIGEST", cfg, "imageDigest")
