@@ -124,6 +124,14 @@ main() {
       --image-tag) IMAGE_TAG="${2:-}"; shift 2 ;;
       --smoke-path) SMOKE_PATH="${2:-}"; shift 2 ;;
       --custom-smoke-script) CUSTOM_SMOKE="${2:-}"; shift 2 ;;
+      # A workspace-relative path to a smoke script (read from the source tree,
+      # same as the pulumi wrapper above). Preferred over --custom-smoke-script
+      # for a multi-line script: an sh_binary `args`-baked multi-line string is
+      # word-split by the bazel-run launcher, whereas a file path is one token.
+      --custom-smoke-script-file)
+        CUSTOM_SMOKE="$(cat "${BUILD_WORKSPACE_DIRECTORY:?--custom-smoke-script-file needs bazel run}/${2:-}")"
+        shift 2
+        ;;
       --refresh) REFRESH="--refresh"; shift ;;
       --stable-revision) STABLE_OVERRIDE="${2:-}"; shift 2 ;;
       --phase) PHASE="${2:-}"; shift 2 ;;
