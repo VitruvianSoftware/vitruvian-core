@@ -232,27 +232,9 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS. index.html is a static shell that returns
-        #    200 even when the React bundle throws on mount — exactly how the
-        #    2026-06-27 react/react-dom mismatch reached prod past the old
-        #    HTTP-200-only check. Headless-render and assert a marker that only
-        #    exists once React has rendered (not in the static #root fallback).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit
 
   # ---- nonproduction (release-gated: promoted only on an app release) -------
@@ -288,23 +270,9 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit
 
   # ---- production (release-gated + reviewer-gated final checkpoint) ---------
@@ -339,21 +307,7 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit

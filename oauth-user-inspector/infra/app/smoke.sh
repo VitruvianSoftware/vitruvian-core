@@ -24,9 +24,9 @@
 # HTTP-200-only check), so a plain curl is not enough. $CAND is the candidate
 # revision's dedicated URL, exported by //tools/deploy:cloud-run.
 #
-# Kept identical to oauth-user-inspector-deploy.yaml's custom-smoke-script so a
-# local `bazel run //oauth-user-inspector/infra/app:deploy` smokes exactly what
-# CI does.
+# Single source of truth for the oauth smoke: BOTH the local `:deploy` target
+# (BUILD custom_smoke_script_file) and CI (oauth-user-inspector-deploy.yaml's
+# custom-smoke-script-file) read this exact file, so they can't drift.
 echo "Smoke-checking ${CAND}/"
 curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
 CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"

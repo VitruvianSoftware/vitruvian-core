@@ -166,6 +166,11 @@ on:
         required: false
         type: string
         default: ""
+      custom-smoke-script-file:
+        description: "Workspace-relative path to a smoke script, read from the source tree. Preferred over custom-smoke-script for a multi-line script, so CI and the local :deploy target share ONE file (no drift)."
+        required: false
+        type: string
+        default: ""
       cloudflare-token-secret-project:
         description: >-
           GCP project whose Secret Manager holds the CLOUDFLARE_API_TOKEN
@@ -403,6 +408,7 @@ jobs:
           IMAGE_DIGEST: ${{ inputs.image-digest }}
           SMOKE_PATH: ${{ inputs.smoke-url-path }}
           CUSTOM_SMOKE_SCRIPT: ${{ inputs.custom-smoke-script }}
+          CUSTOM_SMOKE_SCRIPT_FILE: ${{ inputs.custom-smoke-script-file }}
           REFRESH_FLAG: ${{ inputs.pulumi-refresh && '--refresh' || '' }}
         run: |
           set -euo pipefail
@@ -422,5 +428,6 @@ jobs:
             args+=(--image-tag "$GITHUB_SHA")
           fi
           if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then args+=(--custom-smoke-script "$CUSTOM_SMOKE_SCRIPT"); fi
+          if [ -n "$CUSTOM_SMOKE_SCRIPT_FILE" ]; then args+=(--custom-smoke-script-file "$CUSTOM_SMOKE_SCRIPT_FILE"); fi
           if [ -n "$REFRESH_FLAG" ]; then args+=(--refresh); fi
           bazel run //tools/deploy:cloud-run -- "${args[@]}"
