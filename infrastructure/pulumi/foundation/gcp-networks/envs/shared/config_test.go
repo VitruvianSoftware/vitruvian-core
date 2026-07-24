@@ -47,6 +47,11 @@ func TestPinnedSharedIdentity(t *testing.T) {
 }
 
 func TestLoadNetSharedConfig(t *testing.T) {
+	// Guard exercises the committed/const FALLBACK (deploy injects the real
+	// bootstrap value via these env vars — see envOrConfig). Force them empty
+	// so the fallback is what we assert equals the canonical bootstrap regions.
+	t.Setenv("NETWORKS_DEFAULT_REGION", "")
+	t.Setenv("NETWORKS_SECONDARY_REGION", "")
 	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
@@ -62,8 +67,12 @@ func TestLoadNetSharedConfig(t *testing.T) {
 		assert.Equal(t, "10.27.0.0/23", cfg.HubProxy2Cidr)
 
 		// Verify defaults
+		// Region defaults are pinned to the canonical bootstrap regions
+		// (common_config.default_region / default_region_2). If a config drift
+		// makes this fail, fix the config back to bootstrap — do NOT relax the
+		// assertion (that is how the secondary silently became us-south1).
 		assert.Equal(t, "us-central1", cfg.Region1)
-		assert.Equal(t, "us-south1", cfg.Region2)
+		assert.Equal(t, "us-west1", cfg.Region2)
 		assert.Equal(t, "ipv1337/foundation-org-shared/production", cfg.OrgStackName)
 		assert.Equal(t, 64514, cfg.BgpAsn)
 		assert.Equal(t, 2, cfg.NatNumAddresses)
