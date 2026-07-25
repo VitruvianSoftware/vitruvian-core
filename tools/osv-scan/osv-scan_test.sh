@@ -118,6 +118,7 @@ fake_scanner_seq() {
 #!/usr/bin/env bash
 state="__STATE__"
 echo call >> "${state}/calls"
+printf '%s\n' "$*" >> "${state}/args"
 n="$(wc -l < "${state}/calls" | tr -d ' ')"
 nspecs="$(cat "${state}/nspecs")"
 idx="${n}"; [ "${idx}" -gt "${nspecs}" ] && idx="${nspecs}"
@@ -222,15 +223,18 @@ calls="$(wc -l < "${st}/calls" | tr -d ' ')"
 check "...having actually invoked the scanner twice" "$([ "${calls}" = "2" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
-# --- 9. a PERSISTENT transient failure still fails closed. -------------------
-# Retry must not become fail-open: if every attempt fails, the gate is still red.
+# --- 9. a resolver failure that even --no-resolve cannot survive fails closed. -
+# Retry must not become fail-open. When the fallback ALSO fails, the network is
+# no longer a sufficient explanation and the gate stays red -- here the fallback
+# writes no JSON either, so there is no coverage evidence and no verdict.
+# Six invocations: five of the retry budget, then the resolution-free fallback.
 root="$(new_root)"; bin="$(mktemp -d)"; st="$(mktemp -d)"
 fake_scanner_seq "${bin}" "${st}" \
   "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable"
 run_under_test "${root}" "${bin}"
-check "persistent resolver failure still FAILS (never green)" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+check "resolver failure surviving the fallback still FAILS (never green)" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 calls="$(wc -l < "${st}/calls" | tr -d ' ')"
-check "...after exhausting the attempt budget (5)" "$([ "${calls}" = "5" ] && echo 0 || echo 1)"
+check "...after the 5-attempt budget plus one --no-resolve fallback" "$([ "${calls}" = "6" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
 # --- 10. a real FINDING is never retried away. -------------------------------
@@ -253,6 +257,44 @@ run_under_test "${root}" "${bin}"
 check "a non-network crash fails without retrying" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 calls="$(wc -l < "${st}/calls" | tr -d ' ')"
 check "...in exactly one attempt" "$([ "${calls}" = "1" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}" "${st}"
+
+# --- 12. deps.dev down -> resolution-free fallback, GREEN but annotated. -----
+# The property the whole fallback exists for. A required merge-blocking check
+# must not take a third-party service's availability as an input: when deps.dev
+# sheds load, every open dependency PR reddens on the single unpinned
+# requirements.txt none of them touch (#1226). After the retry budget the scan
+# is retried WITHOUT resolution; if that is clean the gate goes green, but the
+# reduced PyPI coverage is stated rather than passed off as an unqualified pass.
+root="$(new_root)"; bin="$(mktemp -d)"; st="$(mktemp -d)"
+fake_scanner_seq "${bin}" "${st}" \
+  "0|127|failed resolution for x/requirements.txt: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution for x/requirements.txt: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution for x/requirements.txt: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution for x/requirements.txt: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution for x/requirements.txt: rpc error: code = Unavailable desc = service unavailable" \
+  "60|0|"
+run_under_test "${root}" "${bin}"
+check "deps.dev outage degrades to a resolution-free scan and passes" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+grep -q -- '--no-resolve' "${st}/args"; check "...the fallback actually passed --no-resolve" "$?"
+case "${out}" in *UNAVAILABLE*) check "...and the degraded coverage is stated, not silent" 0 ;; *) check "...and the degraded coverage is stated, not silent" 1 ;; esac
+head -5 "${st}/args" | grep -q -- '--no-resolve' && check "...and resolution stayed ON for the primary attempts" 1 || check "...and resolution stayed ON for the primary attempts" 0
+rm -rf "${root}" "${bin}" "${st}"
+
+# --- 13. the fallback still fails closed on a real advisory. -----------------
+# The regression that would make the fallback a security hole: degrading to
+# --no-resolve must lose COVERAGE, never the VERDICT. An advisory the
+# resolution-free scan can still see has to block the merge exactly as before.
+root="$(new_root)"; bin="$(mktemp -d)"; st="$(mktemp -d)"
+fake_scanner_seq "${bin}" "${st}" \
+  "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable" \
+  "0|127|failed resolution: rpc error: code = Unavailable desc = service unavailable" \
+  "60|1|"
+run_under_test "${root}" "${bin}"
+check "an advisory found by the fallback still FAILS the gate" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
 echo
