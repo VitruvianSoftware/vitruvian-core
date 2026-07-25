@@ -59,6 +59,7 @@ package app_deploy_identity
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
@@ -78,6 +79,21 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 	}
 	if args.GitHubEnvironment == "" {
 		return nil, fmt.Errorf("GitHubEnvironment is required (the per-env isolation layer)")
+	}
+
+	// Refuse Secret Manager roles in the UNCONDITIONED list. These projects are
+	// shared by co-tenant OSS applications, and an unconditioned
+	// secretmanager.admin/secretAccessor hands one app's deploy identity every
+	// other app's secrets. That is a silent privilege ESCALATION no CI check
+	// would catch — the apply succeeds and nothing looks wrong. The prefix
+	// condition is the isolation boundary, so these roles must be declared as
+	// ConditionalDeployRoles.
+	for _, role := range args.DeployRoles {
+		if strings.HasPrefix(role, "roles/secretmanager.") {
+			return nil, fmt.Errorf(
+				"%q must be declared in ConditionalDeployRoles with a secret-prefix condition, not in DeployRoles: "+
+					"an unconditioned Secret Manager grant reaches every co-tenant app's secrets in this shared project", role)
+		}
 	}
 
 	accountID := args.DeployAccountID
@@ -110,6 +126,58 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		}
 	}
 
+	// 2b. Project-level deploy roles carrying an IAM CONDITION. Declared in a
+	// separate loop under a distinct `-deploy-cond-` name prefix so the
+	// resource names of the unconditioned grants above are untouched: a changed
+	// Pulumi resource name is a delete + create of a LIVE IAM binding on a
+	// production deploy identity, and these bindings are non-authoritative
+	// (delete = remove member), so that would revoke the running pipeline's
+	// access rather than merely renaming a resource.
+	condNames := make(map[string]string, len(args.ConditionalDeployRoles))
+	for _, cr := range args.ConditionalDeployRoles {
+		if cr.Role == "" || cr.Title == "" || cr.Expression == "" {
+			return nil, fmt.Errorf("conditional role %+v: Role, Title and Expression are all required "+
+				"(Title and Expression are part of the binding's identity in GCP)", cr)
+		}
+		// Fail at PREVIEW on an unknown placeholder rather than writing a dead
+		// condition into a live IAM policy: a condition that never matches
+		// silently denies, which surfaces only when the pipeline next runs.
+		if _, err := expandCondition(cr.Expression, "0", "preview-only"); err != nil {
+			return nil, fmt.Errorf("conditional role %q: %w", cr.Role, err)
+		}
+		if args.ProjectNumber == nil && strings.Contains(cr.Expression, "${projectNumber}") {
+			return nil, fmt.Errorf("conditional role %q uses ${projectNumber} but Args.ProjectNumber is not set", cr.Role)
+		}
+		rn := fmt.Sprintf("%s-deploy-cond-%s", name, sanitize(cr.Role))
+		if prev, dup := condNames[rn]; dup {
+			return nil, fmt.Errorf("conditional roles %q and %q both map to resource name %q; "+
+				"two conditions on the same role need distinct role entries", prev, cr.Role, rn)
+		}
+		condNames[rn] = cr.Role
+
+		projectNumber := args.ProjectNumber
+		if projectNumber == nil {
+			projectNumber = pulumi.String("")
+		}
+		expr := pulumi.All(projectNumber, args.ProjectID).ApplyT(func(vs []interface{}) (string, error) {
+			num, _ := vs[0].(string)
+			pid, _ := vs[1].(string)
+			return expandCondition(cr.Expression, num, pid)
+		}).(pulumi.StringOutput)
+
+		if _, err := projects.NewIAMMember(ctx, rn, &projects.IAMMemberArgs{
+			Project: args.ProjectID,
+			Role:    pulumi.String(cr.Role),
+			Member:  sa.Email.ApplyT(func(e string) string { return "serviceAccount:" + e }).(pulumi.StringOutput),
+			Condition: &projects.IAMMemberConditionArgs{
+				Title:      pulumi.String(cr.Title),
+				Expression: expr,
+			},
+		}); err != nil {
+			return nil, err
+		}
+	}
+
 	// 3. WIF: let this app's per-env GitHub Environment impersonate the SA. The
 	// pool is the shared foundation-pool from gcp-bootstrap — apps never mint
 	// their own. The provider's attribute condition already pins
@@ -131,6 +199,30 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		DeployServiceAccountEmail: sa.Email,
 		DeployServiceAccountName:  sa.Name,
 	}, nil
+}
+
+// expandCondition substitutes the supported placeholders in an IAM condition
+// CEL expression and REJECTS any that remain.
+//
+// Secret Manager conditions must address secrets by project NUMBER, which
+// differs per environment and is only known as a stack output — so the
+// expression is authored as a template and resolved here. Rejecting leftover
+// placeholders is the point: a typo like ${projectNo} would otherwise be
+// written verbatim into a live IAM policy as a condition that never matches,
+// silently denying access in a way that only surfaces at the next deploy.
+func expandCondition(expr, projectNumber, projectID string) (string, error) {
+	out := strings.NewReplacer(
+		"${projectNumber}", projectNumber,
+		"${projectId}", projectID,
+	).Replace(expr)
+	if i := strings.Index(out, "${"); i >= 0 {
+		rest := out[i:]
+		if j := strings.Index(rest, "}"); j >= 0 {
+			rest = rest[:j+1]
+		}
+		return "", fmt.Errorf("unknown placeholder %s in condition expression (supported: ${projectNumber}, ${projectId})", rest)
+	}
+	return out, nil
 }
 
 // sanitize turns an IAM role into a stable, unique Pulumi resource-name suffix
