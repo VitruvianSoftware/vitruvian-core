@@ -157,6 +157,32 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		}
 	}
 
+	// The app-infra stage (stage 5) authenticates as the BU app-infra PIPELINE
+	// SA (sa-app-infra-<bu>), minted per env in gcp-projects — NOT as the proj
+	// SA. That separation is the whole point: the pipeline SA's grants are
+	// authored in stage 4, which it does not apply, so it cannot widen its own
+	// permissions and stage 5 can be ungated for routine app deploys.
+	//
+	// Its WIF binding is created ALONGSIDE the SA in gcp-projects (it needs the
+	// SA's own name), so nothing is bound here. The bindings below remain on
+	// the proj SA only for the stage-5 PREVIEW leg, which runs read-only and
+	// predates the pipeline SA:
+	//   foundation-app-development  → auto-deploy
+	//   foundation-app-nonproduction → manual approval
+	//   foundation-app-production    → manual approval
+	//   foundation-app-preview       → PR preview (ungated environment)
+	// Stage 5 has no `shared` leaf (upstream 5-app-infra has none).
+	//
+	// THIS MUST APPLY BEFORE the first foundation-app-* deploy can authenticate.
+	if projSA, ok := sas["proj"]; ok {
+		for _, envName := range []string{"preview"} {
+			saMappings[fmt.Sprintf("app-%s", envName)] = libcicd.SAMappingEntry{
+				SAName:    projSA.Name,
+				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-app-%s", envName)),
+			}
+		}
+	}
+
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
 	// An org may deny all external WIF issuers via

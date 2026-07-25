@@ -182,9 +182,12 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		GCPAuditViewer:        conf.Get("gcp_audit_viewer"),
 
 		// SCC
-		SCCNotificationName:      conf.Get("scc_notification_name"),
-		SCCNotificationFilter:    conf.Get("scc_notification_filter"),
-		EnableSCCResources:       conf.Get("enable_scc_resources") == "true",
+		SCCNotificationName:   conf.Get("scc_notification_name"),
+		SCCNotificationFilter: conf.Get("scc_notification_filter"),
+		// Key MUST match the go-foundation example / upstream (enable_scc_resources_in_pulumi).
+		// It had drifted to "enable_scc_resources" here — a silently-inert divergence: an
+		// operator copying the example's key into this leaf's yaml would set nothing.
+		EnableSCCResources:       conf.Get("enable_scc_resources_in_pulumi") == "true",
 		EnableBillingAccountSink: conf.Get("enable_billing_account_sink") != "false",
 
 		// Policies

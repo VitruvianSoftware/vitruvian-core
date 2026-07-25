@@ -20,4 +20,4 @@
 
 name: vitruvian-core-infra
 runtime: go
-description: Infrastructure as code for the Copybara bidirectional sync auth between vitruvian-core and its standalone component repositories (deploy keys + GitHub App dispatch secrets).
+description: Infrastructure as code for the Copybara sync auth between vitruvian-core and its standalone component repositories (deploy keys + GitHub App dispatch secrets).

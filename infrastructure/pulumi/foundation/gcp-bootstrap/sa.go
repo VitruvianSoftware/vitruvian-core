@@ -229,7 +229,26 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 		"proj": withCommon(
 			"roles/accesscontextmanager.policyAdmin",
 			"roles/resourcemanager.organizationAdmin",
-			"roles/serviceusage.serviceUsageConsumer",
+			// serviceUsageAdmin, NOT just Consumer: the projects stage OWNS each
+			// project's activate_apis list, so enabling services is a core part of
+			// its job. Consumer only lets it USE services; enabling a NEW API on an
+			// ALREADY-created project (e.g. secretmanager added to the shared
+			// infra-pipeline project for stage-5 app cross-env creds) needs
+			// serviceusage.services.enable, which lives in Admin. Consumer worked
+			// for the initial API set only because projectCreator auto-owns a
+			// freshly created project — that owner grant does not persist, so every
+			// post-creation API addition 403'd until this. Admin supersedes Consumer.
+			"roles/serviceusage.serviceUsageAdmin",
+			// billing.projectManager: the projects stage RE-ASSIGNS a project's billing
+			// account (e.g. moving bu1/bu2 onto a different account). Changing a
+			// project's billing needs resourcemanager.projects.createBillingAssignment
+			// + deleteBillingAssignment ON THE PROJECT — which no other standing role
+			// here grants (the SA held it only transiently as projectCreator/owner at
+			// creation, same non-persistence as the serviceUsageAdmin case). billing.user
+			// on the target account covers the ACCOUNT side (billing.resourceAssociations.
+			// create); this covers the PROJECT side. Without it the re-link 403s
+			// "User does not have permission on project to activate billing".
+			"roles/billing.projectManager",
 			"roles/cloudkms.admin",
 		),
 	}

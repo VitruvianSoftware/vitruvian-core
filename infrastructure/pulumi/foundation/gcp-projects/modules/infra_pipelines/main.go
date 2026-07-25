@@ -46,6 +46,33 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+// infraPipelineActivateApis is the API surface of the shared infra-pipeline
+// project. A missing entry here fails LATE and confusingly: not at project
+// creation, but whenever some tenant stack first tries to use the API, as a 403
+// "<API> has not been used in project <id> before or it is disabled" mid-apply.
+// Extracted from the resource args so apis_test.go can pin the stage-5
+// requirements against it.
+var infraPipelineActivateApis = []string{
+	"cloudbuild.googleapis.com",
+	"cloudkms.googleapis.com",
+	"iam.googleapis.com",
+	"artifactregistry.googleapis.com",
+	"cloudresourcemanager.googleapis.com",
+	"billingbudgets.googleapis.com",
+	"confidentialcomputing.googleapis.com",
+	// Stage-5 app-tier: iamcredentials so a WIF-federated CI job can mint
+	// an access token by impersonating the per-app build SA homed in this
+	// shared infra-pipeline project (monorepo/serverless-WIF specific).
+	"iamcredentials.googleapis.com",
+	// Stage-5 app-tier: this project holds each app's CROSS-ENVIRONMENT
+	// management credentials — e.g. the account-level Neon and Upstash API keys
+	// that provision an app's external SaaS resources. Those are not per-env
+	// runtime secrets (which live in each app's own oss floating project,
+	// prefixed and scoped to that env), so they cannot be homed there without
+	// either under-serving the other envs or over-granting one of them.
+	"secretmanager.googleapis.com",
+}
+
 // Deploy creates the shared infrastructure-pipeline project under the COMMON
 // folder. This project hosts the CI/CD pipeline for deploying application
 // infrastructure (Stage 5): the build-once Artifact Registry plus the per-app
@@ -72,26 +99,14 @@ import (
 // add upstream's Cloud-Build / shared-VPC pipeline-SA roles to this project.
 func Deploy(ctx *pulumi.Context, args *Args) (*Result, error) {
 	infraProject, err := project.NewProject(ctx, "infra-pipeline-project", &project.ProjectArgs{
-		ProjectID:       pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", args.ProjectPrefix, args.BusinessCode)),
-		Name:            pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", args.ProjectPrefix, args.BusinessCode)),
-		FolderID:        args.CommonFolderID,
-		BillingAccount:  pulumi.String(args.BillingAccount),
-		RandomProjectID: args.RandomSuffix,
-		Labels:          args.Labels,
-		Budget:          args.Budget,
-		ActivateApis: []string{
-			"cloudbuild.googleapis.com",
-			"cloudkms.googleapis.com",
-			"iam.googleapis.com",
-			"artifactregistry.googleapis.com",
-			"cloudresourcemanager.googleapis.com",
-			"billingbudgets.googleapis.com",
-			"confidentialcomputing.googleapis.com",
-			// Stage-5 app-tier: iamcredentials so a WIF-federated CI job can mint
-			// an access token by impersonating the per-app build SA homed in this
-			// shared infra-pipeline project (monorepo/serverless-WIF specific).
-			"iamcredentials.googleapis.com",
-		},
+		ProjectID:             pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", args.ProjectPrefix, args.BusinessCode)),
+		Name:                  pulumi.String(fmt.Sprintf("%s-c-%s-infra-pipeline", args.ProjectPrefix, args.BusinessCode)),
+		FolderID:              args.CommonFolderID,
+		BillingAccount:        pulumi.String(args.BillingAccount),
+		RandomProjectID:       args.RandomSuffix,
+		Labels:                args.Labels,
+		Budget:                args.Budget,
+		ActivateApis:          infraPipelineActivateApis,
 		ApiPropagationSeconds: args.ApiPropagationSeconds,
 	})
 	if err != nil {

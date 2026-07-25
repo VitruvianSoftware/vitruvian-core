@@ -36,6 +36,8 @@
 package main
 
 import (
+	"fmt"
+	"foundation-projects/modules/app_build_space"
 	"foundation-projects/modules/infra_pipelines"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -78,8 +80,40 @@ func main() {
 			}
 		}
 
+		// Per-app build spaces: the Artifact Registry repository an app's
+		// images live in, plus the identity allowed to push. Foundation-owned
+		// because the repository sits in the BU's infra-pipeline project — an
+		// app granting IAM there is the §3 test-4 inversion.
+		//
+		// This leaf is the SOLE owner of each app's build space; apps no longer
+		// carry their own build stack.
+		buildSpaces := map[string]*app_build_space.Result{}
+		for _, bs := range cfg.AppBuildSpaces {
+			if pipeline == nil {
+				return fmt.Errorf("app_build_space %q: infra_pipeline_enabled must be true (the repository lives in that project)", bs.App)
+			}
+			region := bs.Region
+			if region == "" {
+				region = cfg.Region
+			}
+			res, err := app_build_space.Deploy(ctx, &app_build_space.Args{
+				App:                  bs.App,
+				BuildProjectID:       pipeline.ProjectID,
+				Region:               region,
+				RepositoryID:         bs.RepositoryID,
+				BuildAccountID:       bs.BuildAccountID,
+				WorkloadIdentityPool: refs.WIFPoolName,
+				GitHubEnvironment:    bs.GitHubEnvironment,
+				KeepCount:            bs.KeepCount,
+			})
+			if err != nil {
+				return err
+			}
+			buildSpaces[bs.App] = res
+		}
+
 		// Exports (outputs.go)
-		exportStackOutputs(ctx, cfg, pipeline)
+		exportStackOutputs(ctx, cfg, pipeline, buildSpaces)
 
 		return nil
 	})

@@ -38,6 +38,7 @@ import { backupRoutes } from "./routes/backup.routes";
 import { syncRoutes } from "./routes/sync.routes";
 import { sharingRoutes } from "./routes/sharing.routes";
 import { relayRoutes } from "./routes/relay.routes";
+import { bootstrapSecrets } from "./lib/secrets";
 
 // Load environment variables
 dotenv.config();
@@ -138,11 +139,28 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
   return app;
 };
 
-const app = buildApp();
+// NOT built at module scope. buildApp() reads JWT_SECRET (lib/auth) eagerly, so
+// constructing it here would run BEFORE bootstrapSecrets() resolves Secret
+// Manager — which is exactly the cold-deploy failure this whole change exists to
+// prevent. The container died with "JWT_SECRET environment variable is required
+// in production" on the first bu2 deploy for this reason.
+let app: ReturnType<typeof buildApp>;
 
 // Start server
 const start = async () => {
   try {
+    // Resolve secrets FIRST, then construct the app against a populated env.
+    const missingSecrets = await bootstrapSecrets();
+
+    app = buildApp();
+
+    if (missingSecrets.length > 0) {
+      app.log.warn(
+        { secrets: missingSecrets },
+        "optional secrets unresolved; features depending on them are disabled",
+      );
+    }
+
     // Refuse to serve traffic against a database that is behind this code (a
     // migration-less rollout). Crash-looping here keeps Cloud Run on the
     // previous healthy revision instead of surfacing schema errors to users.
@@ -161,14 +179,14 @@ const start = async () => {
 
 // Handle shutdown gracefully
 process.on("SIGTERM", async () => {
-  app.log.info("SIGTERM received, shutting down gracefully");
-  await app.close();
+  app?.log.info("SIGTERM received, shutting down gracefully");
+  await app?.close();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
-  app.log.info("SIGINT received, shutting down gracefully");
-  await app.close();
+  app?.log.info("SIGINT received, shutting down gracefully");
+  await app?.close();
   process.exit(0);
 });
 

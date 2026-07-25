@@ -317,7 +317,7 @@ webpack_cli.webpack_cli(
     ],
     chdir = package_name(),
     env = {
-        "API_URL": "https://tabula-api-dev-q7dosy3wiq-uc.a.run.app/api/v1",
+        "API_URL": "https://tabula-api.dev.vitruviansoftware.dev/api/v1",
         "NODE_ENV": "production",
         "WEBPACK_OUT_DIR": "dist_release",
     },

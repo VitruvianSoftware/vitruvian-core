@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.14...foundation-gcp-networks-v0.3.15) (2026-07-24)
+
+
+### Bug Fixes
+
+* **foundation:** close two audit findings — region guard gap + inert SCC key ([#1128](https://github.com/VitruvianSoftware/vitruvian-core/issues/1128)) ([cbd3cff](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbd3cff51355407ee1783487389dae2b35b314dc))
+
+## [0.3.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.13...foundation-gcp-networks-v0.3.14) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-networks:** consume region from bootstrap; secondary us-south1 → us-west1 ([#1122](https://github.com/VitruvianSoftware/vitruvian-core/issues/1122)) ([3e7e1c6](https://github.com/VitruvianSoftware/vitruvian-core/commit/3e7e1c63f121b1c8d0d882d4c8460170e5940f6f))
+
+## [0.3.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.12...foundation-gcp-networks-v0.3.13) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-networks:** sort subnet exports for deterministic ordering ([#1111](https://github.com/VitruvianSoftware/vitruvian-core/issues/1111)) ([719e153](https://github.com/VitruvianSoftware/vitruvian-core/commit/719e1538f9bb136f1801030ad04f0a43a2e0011e))
+
+## [0.3.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.11...foundation-gcp-networks-v0.3.12) (2026-07-23)
+
+
+### Bug Fixes
+
+* **examples:** region-consume in the app-infra example + compile it in CI ([#1100](https://github.com/VitruvianSoftware/vitruvian-core/issues/1100)) ([3e98243](https://github.com/VitruvianSoftware/vitruvian-core/commit/3e9824361ee566c82477747c4db7763d7e316ee8))
+
 ## [0.3.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-networks-v0.3.10...foundation-gcp-networks-v0.3.11) (2026-07-18)
 
 

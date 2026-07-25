@@ -24,6 +24,7 @@
 package main
 
 import (
+	"foundation-projects/modules/app_build_space"
 	"foundation-projects/modules/infra_pipelines"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -31,7 +32,14 @@ import (
 
 // exportStackOutputs registers the leaf's stack exports. pipeline is nil when
 // the infra-pipeline project is toggled off.
-func exportStackOutputs(ctx *pulumi.Context, cfg *SharedConfig, pipeline *infra_pipelines.Result) {
+func exportStackOutputs(ctx *pulumi.Context, cfg *SharedConfig, pipeline *infra_pipelines.Result, buildSpaces map[string]*app_build_space.Result) {
+	// Per-app build space outputs. The env leaves consume these to grant their
+	// own runtime/deploy identities READER on the repository — they cannot be
+	// granted here because those identities live in stacks that apply later.
+	for app, bs := range buildSpaces {
+		ctx.Export(app+"_ar_repository_id", bs.RepositoryID)
+		ctx.Export(app+"_build_service_account", bs.BuildServiceAccountEmail)
+	}
 	if pipeline != nil {
 		// Upstream shared/outputs.tf exports cloudbuild_project_id; our WIF
 		// port keeps the established export name (Stage 5 consumes it as the

@@ -1,6 +1,6 @@
 {
   "name": "@tabula/extension",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "private": true,
   "description": "Tabula browser extension for Chrome, Edge, and Firefox",
   "license": "MIT",
@@ -10,15 +10,15 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tabula/shared": "workspace:*",
     "framer-motion": "^12.42.2",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "1.57.0",
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/chrome": "^0.2.2",
     "@types/jest": "^30.0.0",

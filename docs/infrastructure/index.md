@@ -81,19 +81,21 @@ A handful of conventions are shared by every project; the
   in **Pulumi Cloud** under the `ipv1337` account — dev-local's stack is
   `monorepo/local`; its config passphrase lives in the project's gitignored
   `.env`.
-- **Secrets stay out of git.** `Pulumi.<stack>.yaml` files that hold real config
-  live locally and are git-ignored; only `*.example` templates and encrypted
-  `secure:` values are committed.
+- **Secrets stay out of git — even encrypted.** `Pulumi.<stack>.yaml` files that hold
+  secrets live locally and are git-ignored (never commit a `secure:` blob); CI gets
+  the same values as injected env via the shared `secrets.EnvOrConfig` helper.
+  Non-secret identifiers (project id, region, SA emails) *are* committed as
+  config-as-code. See [CONTRIBUTING § Secrets handling](../../CONTRIBUTING.md#7-secrets-handling).
 
 ## Related documentation
 
 This section covers the Pulumi estate and how it is operated. Adjacent platform
 topics have their own docs — they are referenced here rather than duplicated:
 
-- [Copybara bidirectional sync](../copybara-bidi-sync.md) — the sync mechanism
+- [Copybara sync](../admin/copybara-sync.md) — the sync mechanism
   that **sync-auth** provisions credentials for.
-- [Remote Build Execution](../remote-build.md) — BuildBuddy RBE used by CI.
-- [Secret & API-key rotation](../key-rotation.md) — SOP for the secrets these
+- [Remote Build Execution](../guides/remote-build.md) — BuildBuddy RBE used by CI.
+- [Secret & API-key rotation](../operations/key-rotation.md) — SOP for the secrets these
   projects depend on.
 - [Dependency versioning](../dependency-versioning/index.md) — the One Version
   Rule and why these Pulumi modules sit *outside* `go.work`.

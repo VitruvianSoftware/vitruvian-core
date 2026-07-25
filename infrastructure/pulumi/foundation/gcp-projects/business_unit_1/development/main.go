@@ -33,7 +33,10 @@ package main
 
 import (
 	"fmt"
+	"foundation-projects/modules/app_deploy_identity"
 	"foundation-projects/modules/base_env"
+
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/artifactregistry"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -141,6 +144,103 @@ func main() {
 		}
 
 		// 5. Exports (outputs.go)
+		// Platform-issued deploy identities for the apps hosted on this env's
+		// oss-floating project. Minted HERE, one stage above the 5-app-infra
+		// workloads they deploy, so an app's pipeline can never edit the stack
+		// that defines its own permissions
+		// (docs/engineering/core-vs-application-infrastructure.md §4.1).
+		deploySAs := map[string]pulumi.StringOutput{}
+		if cfg.OSSFloatingProjectEnabled {
+			for _, app := range cfg.Apps {
+				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
+					App:             app.Name,
+					Env:             cfg.Env,
+					ProjectID:       projects.OSSFloatingProjectID,
+					DeployAccountID: app.DeployAccountID,
+					DeployRoles:     app.DeployRoles,
+					// Resolves ${projectNumber} in the IAM condition below.
+					// Secret Manager conditions address secrets by project
+					// NUMBER, which differs per environment.
+					ProjectNumber:          projects.OSSFloatingProjectNumber,
+					ConditionalDeployRoles: app.ConditionalDeployRoles,
+					WorkloadIdentityPool:   refs.WIFPoolName,
+					GitHubEnvironment:      app.GitHubEnvironment(cfg.Env),
+				})
+				if err != nil {
+					return err
+				}
+				deploySAs[app.Name] = res.DeployServiceAccountEmail
+			}
+		}
+		// The BU's app-infra pipeline identity: applies the stage-5 leaf for
+		// this BU+env. Separate from the per-app SAs above because a stage-5
+		// leaf is ONE stack that may host several apps, so it cannot be applied
+		// by any single app's identity. Its own grants live here, in a stage it
+		// does not apply — which is what makes ungating stage 5 safe.
+		if cfg.OSSFloatingProjectEnabled && len(cfg.Apps) > 0 {
+			pipeline, err := app_deploy_identity.DeployBUPipeline(ctx, cfg.BusinessCode, &app_deploy_identity.PipelineArgs{
+				BusinessCode:         cfg.BusinessCode,
+				Env:                  cfg.Env,
+				ProjectID:            projects.OSSFloatingProjectID,
+				Roles:                defaultAppInfraPipelineRoles,
+				WorkloadIdentityPool: refs.WIFPoolName,
+				GitHubEnvironment:    "foundation-app-" + cfg.Env,
+			})
+			if err != nil {
+				return err
+			}
+			ctx.Export("app_infra_pipeline_service_account", pipeline.ServiceAccountEmail)
+
+			// The BU pipeline SA must be able to PULL the images it deploys.
+			// A cross-project Artifact Registry pull needs reader for BOTH the
+			// Cloud Run service agent AND the deploying identity; the service
+			// agent is granted by the app's build stack, and this is the
+			// deploying half. Without it a stage-5 apply fails 403
+			// artifactregistry.repositories.downloadArtifacts — which is
+			// exactly how the dev cutover failed.
+			//
+			// Granted HERE rather than in the shared leaf on purpose: the
+			// identity is per-environment and shared applies FIRST, so shared
+			// cannot see it. app_build_space documents the same split.
+			for _, g := range cfg.AppBuildReaderGrants {
+				// Everyone who must PULL the app's images needs reader on the
+				// (foundation-owned) repository. All three identities are
+				// per-environment, so they are granted HERE, not in the shared
+				// leaf (which applies first and cannot see them):
+				//   1. the BU app-infra pipeline SA (applies the stage-5 leaf),
+				//   2. the app's deploy SA,
+				//   3. the Cloud Run service agent (serverless-robot), which is
+				//      what actually pulls the image at deploy time.
+				readers := map[string]pulumi.StringInput{
+					"app-infra": pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
+					"agent": pulumi.Sprintf(
+						"serviceAccount:service-%s@serverless-robot-prod.iam.gserviceaccount.com",
+						projects.OSSFloatingProjectNumber,
+					),
+				}
+				if sa, ok := deploySAs[g.App]; ok {
+					readers["deploy"] = pulumi.Sprintf("serviceAccount:%s", sa)
+				}
+				for who, member := range readers {
+					if _, err := artifactregistry.NewRepositoryIamMember(ctx,
+						"ar-reader-"+who+"-"+g.App,
+						&artifactregistry.RepositoryIamMemberArgs{
+							Project:    pulumi.String(g.RepositoryProject),
+							Location:   pulumi.String(g.Region),
+							Repository: pulumi.String(g.RepositoryID),
+							Role:       pulumi.String("roles/artifactregistry.reader"),
+							Member:     member,
+						}); err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		for app, email := range deploySAs {
+			ctx.Export(app+"_deploy_service_account", email)
+		}
+
 		exportStackOutputs(ctx, cfg, projects)
 
 		return nil

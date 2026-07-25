@@ -18,9 +18,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
     name = "oauth-user-inspector",
     dir = "oauth-user-inspector/infra/app",
+)
+
+# One-command local blue-green deploy -- the SAME rollout CI runs
+# (oauth-user-inspector-deploy.yaml), so a break-glass laptop and CI execute
+# identical code. oauth builds its image once in the infra-pipeline project and
+# promotes by digest, so pass --image-digest; it is stateless (no migrations).
+# E.g.:
+#   bazel run //oauth-user-inspector/infra/app:deploy -- \
+#     --env development --project prj-d-bu1-oss-floating-648a --image-digest <ref@sha256:..>
+cloud_run_deploy(
+    name = "deploy",
+    # Reachable AND the React SPA actually mounts (see smoke.sh) -- kept in sync
+    # with oauth-user-inspector-deploy.yaml's custom-smoke-script.
+    custom_smoke_script_file = "oauth-user-inspector/infra/app/smoke.sh",
+    env_prefix = "OAUTH_USER_INSPECTOR",
+    pulumi_dir = "oauth-user-inspector/infra/app",
+    region = "us-central1",
+    service = "oauth-user-inspector",
+    smoke_path = "/",
 )

@@ -180,6 +180,23 @@ DELETED="$(meta DELETED)";   DELETED="${DELETED:-0}"
 UNCHANGED="$(meta UNCHANGED)"; UNCHANGED="${UNCHANGED:-0}"
 ERRORED="$(meta ERRORED)";   ERRORED="${ERRORED:-0}"
 
+# Expose the machine-readable counts to a GitHub Actions caller so it can GATE
+# on them — e.g. refuse to apply a plan that deletes resources. Deliberately
+# reuses THIS parser rather than letting callers re-parse pulumi's output with a
+# second implementation that would drift from this one (the whole point of the
+# script: one parser feeds every sink).
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    printf 'created=%s\n'     "$CREATED"
+    printf 'updated=%s\n'     "$UPDATED"
+    printf 'replaced=%s\n'    "$REPLACED"
+    printf 'deleted=%s\n'     "$DELETED"
+    printf 'unchanged=%s\n'   "$UNCHANGED"
+    printf 'errored=%s\n'     "$ERRORED"
+    printf 'destructive=%s\n' "$((DELETED + REPLACED))"
+  } >> "$GITHUB_OUTPUT"
+fi
+
 case "$OP" in
   up)      OP_DISPLAY="pulumi up" ;;
   preview) OP_DISPLAY="pulumi preview" ;;

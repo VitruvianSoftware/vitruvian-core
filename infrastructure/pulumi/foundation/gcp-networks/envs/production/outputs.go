@@ -21,6 +21,8 @@
 package main
 
 import (
+	"sort"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	networking "github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2"
@@ -36,9 +38,23 @@ func exportSpokeOutputs(ctx *pulumi.Context, spokeProjectID pulumi.StringOutput,
 	ctx.Export("network_name", net.VPC.Name)
 	ctx.Export("network_self_link", net.VPC.SelfLink)
 
+	// net.Subnets is a Go map, whose range order is randomized on every run.
+	// Ranging it directly makes the exported arrays reshuffle between previews
+	// (spurious diffs with zero real changes) and lets any consumer that reads an
+	// export by index bind to a different subnet each run. Iterate a name-sorted
+	// order instead: the subnet name (the map key) is a synchronous, plan-time
+	// string, so sorting needs no Output resolution. Mirrors Terraform, which
+	// emits map-derived outputs in sorted-key order.
+	subnetOrder := make([]string, 0, len(net.Subnets))
+	for name := range net.Subnets {
+		subnetOrder = append(subnetOrder, name)
+	}
+	sort.Strings(subnetOrder)
+
 	// Subnet exports as arrays (matching TF subnets_names/ips/self_links)
 	var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-	for _, subnet := range net.Subnets {
+	for _, name := range subnetOrder {
+		subnet := net.Subnets[name]
 		subnetNames = append(subnetNames, subnet.Name)
 		subnetIPs = append(subnetIPs, subnet.IpCidrRange)
 		subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)
@@ -52,9 +68,9 @@ func exportSpokeOutputs(ctx *pulumi.Context, spokeProjectID pulumi.StringOutput,
 	// (nil OutputState) and passing it to pulumi.All on the first iteration
 	// panics with a nil-pointer deref, so gather the per-subnet inputs and
 	// combine them in a single pulumi.All instead of an N-deep ApplyT chain.
-	secondaryRangeInputs := make([]interface{}, 0, len(net.Subnets))
-	for _, subnet := range net.Subnets {
-		secondaryRangeInputs = append(secondaryRangeInputs, subnet.SecondaryIpRanges)
+	secondaryRangeInputs := make([]interface{}, 0, len(subnetOrder))
+	for _, name := range subnetOrder {
+		secondaryRangeInputs = append(secondaryRangeInputs, net.Subnets[name].SecondaryIpRanges)
 	}
 	if len(secondaryRangeInputs) == 0 {
 		ctx.Export("subnets_secondary_ranges", pulumi.ToStringArray([]string{}))

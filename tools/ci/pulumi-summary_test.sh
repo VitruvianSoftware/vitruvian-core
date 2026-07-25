@@ -169,6 +169,45 @@ out="$(bash "$SCRIPT" some-app "$empty" 0)"; rm -f "$empty"
 assert_has  "renders with no pulumi output" "$out" '(no pulumi output captured)'
 assert_has  "still shows a title"           "$out" '## 🏗️ some-app'
 
+# ── GITHUB_OUTPUT counts: the deploy gate keys off these ──────────────────────
+# foundation-proj-deploy.yaml refuses to apply a destructive plan based on the
+# `deleted` / `replaced` / `destructive` outputs emitted here. If this emission
+# regresses, the guard silently passes everything through and a stale run can
+# revoke live IAM again — so assert it directly, both ways.
+echo "GITHUB_OUTPUT counts (deploy gate depends on these):"
+
+destructive_plan="$(mktemp)"
+cat > "$destructive_plan" <<'PLAN'
+Previewing update (production):
+    -   gcp:projects/iAMMember:IAMMember some-binding delete
+Resources:
+    - 1 to delete
+    46 unchanged
+PLAN
+gho="$(mktemp)"; : > "$gho"
+GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$destructive_plan" 0 >/dev/null
+counts="$(cat "$gho")"
+assert_has "destructive plan emits deleted=1"     "$counts" 'deleted=1'
+assert_has "destructive plan emits destructive=1" "$counts" 'destructive=1'
+rm -f "$destructive_plan" "$gho"
+
+clean_plan="$(mktemp)"
+cat > "$clean_plan" <<'PLAN'
+Previewing update (production):
+Resources:
+    47 unchanged
+PLAN
+gho="$(mktemp)"; : > "$gho"
+GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$clean_plan" 0 >/dev/null
+counts="$(cat "$gho")"
+assert_has "clean plan emits deleted=0"     "$counts" 'deleted=0'
+assert_has "clean plan emits destructive=0" "$counts" 'destructive=0'
+rm -f "$clean_plan" "$gho"
+
+# Absent GITHUB_OUTPUT (local runs / the PR-comment sink) must not error.
+out="$(bash "$SCRIPT" gate-test /dev/null 0)"
+assert_has "works with no GITHUB_OUTPUT set" "$out" '## 🏗️ gate-test'
+
 echo
 if [ "$fails" -eq 0 ]; then
   echo "PASS — all pulumi-summary assertions held"

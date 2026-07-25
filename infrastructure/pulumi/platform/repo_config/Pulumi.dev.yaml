@@ -16,11 +16,36 @@ config:
   vitruvian-core-repo-config:requireCodeOwnerReview: "false"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
+  # Stage-5 multi-env on business unit 2. Every environment federates the SHARED
+  # foundation-pool (repo-pinned provider) scoped to its GitHub Environment:
+  # `build` pushes the shared Artifact Registry in bu2's infra-pipeline project
+  # as the build SA; development/nonproduction/production deploy the promoted
+  # digest into their own bu2 project as that env's per-app deploy SA.
+  #
+  # This replaces the personal-project pipeline identity (WIF pool
+  # github-actions-dev-1 in tabula-dev-0001), which was NOT environment-scoped
+  # and also trusted the archived BlueCentre/tabula repo.
   vitruvian-core-repo-config:tabulaVars:
+    build:
+      GCP_DEPLOY_SERVICE_ACCOUNT: tabula-build@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-c-bu2-infra-pipeline-3d09
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     development:
-      GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-dev@tabula-dev-0001.iam.gserviceaccount.com
-      GCP_PROJECT_ID: tabula-dev-0001
-      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/796264355044/locations/global/workloadIdentityPools/github-actions-dev-1/providers/github-actions-dev
+      GCP_DEPLOY_SERVICE_ACCOUNT: tabula-deploy@prj-d-bu2-oss-floating-c3d1.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-d-bu2-oss-floating-c3d1
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    nonproduction:
+      GCP_DEPLOY_SERVICE_ACCOUNT: tabula-deploy@prj-n-bu2-oss-floating-a943.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-n-bu2-oss-floating-a943
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    production:
+      GCP_DEPLOY_SERVICE_ACCOUNT: tabula-deploy@prj-p-bu2-oss-floating-8663.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-p-bu2-oss-floating-8663
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   vitruvian-core-repo-config:foundationVars:
     foundation-bootstrap:
       GCP_PROJECT_ID: prj-b-seed-c010
@@ -69,22 +94,22 @@ config:
     build:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-build@prj-c-bu1-infra-pipeline-4b48.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-c-bu1-infra-pipeline-4b48
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     development:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-d-bu1-oss-floating-648a
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     nonproduction:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-n-bu1-oss-floating-630b
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     production:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-p-bu1-oss-floating-16e0
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
   # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline

@@ -20,7 +20,7 @@
 #
 # cilium — CNI (Flannel + kube-proxy + MetalLB replacement) for the GKE-shaped
 # migration. Chart pinned 1.17.17 (helm.cilium.io). Phase 2 of
-# docs/design/cilium-gateway-api-migration.md.
+# docs/archive/design/cilium-gateway-api-migration.md.
 #
 # Cilium is live on all nodes (Flannel + kube-proxy migrated out, 2026-06-24). The
 # rolling migration used a nodeSelector gate (now removed) so the agent ran only on

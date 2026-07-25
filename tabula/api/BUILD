@@ -105,6 +105,7 @@ ts_project(
         ":node_modules/@fastify/cors",
         ":node_modules/@fastify/jwt",
         ":node_modules/@fastify/rate-limit",
+        ":node_modules/@google-cloud/secret-manager",
         ":node_modules/@prisma/adapter-pg",
         ":node_modules/@prisma/client",
         ":node_modules/@types/jsonwebtoken",
@@ -340,6 +341,7 @@ jest_test(
         ":node_modules/@fastify/cors",
         ":node_modules/@fastify/jwt",
         ":node_modules/@fastify/rate-limit",
+        ":node_modules/@google-cloud/secret-manager",
         ":node_modules/@prisma/adapter-pg",
         ":node_modules/@prisma/client",
         ":node_modules/@swc/core",
@@ -449,7 +451,7 @@ itest_service(
     ],
 )
 
-# --- Container image + push (deployed by //infrastructure/pulumi/apps/tabula) ----
+# --- Container image + push (deployed by //tabula/infra/app) ----
 
 node_image(
     name = "image",

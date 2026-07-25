@@ -1,0 +1,141 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Supply-chain gates: the class of check this repo had NONE of.
+#
+# Before this, the only dependency-security surface was Dependabot version
+# bumps -- which alert AFTER a vulnerable dependency is already on main -- and
+# GitHub secret scanning, which covers known PROVIDER patterns only
+# (`secret_scanning_non_provider_patterns` is off, so a generic token or a
+# private key pasted into a file raised nothing). Neither BLOCKS a merge.
+#
+# One REQUIRED merge-queue check (repo_config/main.go):
+#   secret-scan — gitleaks over the commits the change ADDS.
+#   osv-scan    — google/osv-scanner over the lockfiles.
+#
+# NO workflow-level `paths:` filter, deliberately: a required check behind a
+# path filter never reports on PRs outside those paths and wedges them
+# "pending" forever. `//tools/conformance:check` asserts exactly this.
+#
+# The job uses the repo's run-then-noop-green shape so it ALWAYS reports a
+# result on every event, including merge_group.
+
+name: Supply Chain
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+  # Nightly, so osv-scan is CONTINUOUS monitoring and not only a pre-merge gate.
+  #
+  # This is what makes dropping GitHub's dependency graph safe. Dependabot ALERTS
+  # are built on that graph, and the graph is only on here via a code security
+  # configuration that must also set advanced_security -- free while this repo is
+  # public, billed per active committer once it is private. Removing that config
+  # therefore removes the alerts too.
+  #
+  # A pre-merge gate alone does not replace them: it catches a vulnerable
+  # dependency you INTRODUCE, but nothing notices a NEW advisory published
+  # against a dependency you already ship. That is precisely what the alerts did.
+  # A nightly scan restores it, for free, at any repository visibility -- and
+  # covers Cargo and PyPI, which the graph handled poorly here.
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC, an hour after the nightly full sweep
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Blocks a PR whose lockfiles contain a dependency with a known advisory --
+  # the pre-merge counterpart to Dependabot, which only opens a fix PR once the
+  # vulnerable version is already on main.
+  #
+  # This replaced GitHub's `dependency-review`. That action reads GitHub's
+  # DEPENDENCY GRAPH, an Advanced Security feature: free on public repositories,
+  # BILLED PER ACTIVE COMMITTER on private ones. Verified against the API, the
+  # code security configuration enabling the graph cannot omit
+  # advanced_security (accepted values are only
+  # enabled|disabled|code_security|secret_protection), so as a REQUIRED check it
+  # could not survive this repo turning private without either an invoice or a
+  # wedged merge queue -- the action hard-errors the moment the graph is gone.
+  #
+  # osv-scanner reads the LOCKFILES directly against the public OSV database:
+  # free at any visibility, runnable locally (`bazel run //tools/osv-scan`,
+  # which dependency-review could never be), and it also covers Cargo and PyPI.
+  #
+  # The JOB is unconditional so it always reports on every event including
+  # merge_group -- the run-then-noop-green shape every required check here uses.
+  osv-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install osv-scanner (pinned + checksum-verified)
+        env:
+          OSV_SCANNER_VERSION: v2.4.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
+          # Keep the ORIGINAL filename so it matches its entry in SHA256SUMS.
+          curl -fsSL -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL -O "${base}/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 osv-scanner_linux_amd64 "${HOME}/.local/bin/osv-scanner"
+          rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Scan lockfiles for known advisories
+        run: bash tools/osv-scan/osv-scan.sh
+
+  secret-scan:
+    # gitleaks over the commits this change introduces. Diff-scoped on purpose:
+    # the repo carries known historical findings (a rotated BuildBuddy key, an
+    # old local-dev kubeconfig), and a permanently-red gate is one everybody
+    # learns to ignore. See tools/ci/secret-scan.sh.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The scan range is resolved against the merge-base / before-rev.
+          fetch-depth: 0
+
+      # Skipped on the nightly schedule: this gate is DIFF-scoped, and a schedule
+      # run has no diff base at all (both vars below resolve empty), so it would
+      # fall back to scanning the whole history and trip over the repo's known
+      # historical findings -- a nightly red that means nothing. The nightly run
+      # exists for osv-scan, which is the check that benefits from it. secret-scan
+      # still runs on every pull_request/push/merge_group, so its required-check
+      # behaviour is unchanged.
+      - name: Scan added commits for secrets
+        if: github.event_name != 'schedule'
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        run: bash tools/ci/secret-scan.sh

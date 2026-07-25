@@ -36,8 +36,19 @@
 # *variables* (repo_config oauthVars) — keyless WIF via the foundation-pool
 # means none of them is a credential.
 #
-# workflow_dispatch redeploys a SINGLE chosen environment (it rebuilds at the
-# current sha and deploys just that env); pushes to main run the full chain.
+# DEPLOYMENT STRATEGY (repo-wide — docs/engineering/deployment-strategy.md):
+#   - Push to main  -> deploy DEVELOPMENT only. main is the continuous-integration
+#     surface; every merge lands on dev.
+#   - Release-please release published (tag `oauth-user-inspector-v*`) -> promote
+#     to NONPRODUCTION then PRODUCTION. Cutting a release (merging the app's
+#     release-please PR) is the deliberate, reviewable promotion gate; a bare
+#     merge never touches nonprod/prod.
+#   - workflow_dispatch redeploys a SINGLE chosen environment (break-glass; it
+#     rebuilds at the current sha and deploys just that env).
+#
+# A release-please PR is version-bump + changelog only, so the release commit is
+# code-identical to what already soaked on dev; build-once-per-run then promotes
+# ONE digest across nonprod+prod (build-once / promote-by-digest).
 
 name: oauth-user-inspector-deploy
 
@@ -50,7 +61,7 @@ on:
     # tools/conformance for exactly this reason), so it has no cross-package
     # Bazel dependencies a directory glob could under-trigger on. These globs
     # ARE its complete input set. Revisit if/when the app migrates to
-    # Bazel rules_oci (docs/repo-assessment.md §5.1) -- then it gates via
+    # Bazel rules_oci (docs/archive/assessments/repo-assessment.md §5.1) -- then it gates via
     # tools/ci/deploy-affected.sh like tabula.
     paths:
       # NOTE: "oauth-user-inspector/**" already covers the co-located app stack
@@ -60,13 +71,23 @@ on:
       - "oauth-user-inspector/**"
       - "!oauth-user-inspector/infra/identity/**"
       - "infrastructure/pulumi/platform/zitadel-apps/**"
+      # The rollout sequencer this app's deploy actually executes
+      # (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`), so a
+      # change to the candidate -> smoke -> promote sequence is a real input to
+      # this deploy and belongs in the complete input set above.
+      - "tools/deploy/**"
       - ".github/workflows/oauth-user-inspector-deploy.yaml"
       - ".github/workflows/_deploy-cloud-run.yaml"
       - ".github/workflows/_zitadel-apps-apply.yaml"
+  # Promotion trigger. release-please (apps-release.yml) publishes a GitHub
+  # Release when this app's release PR merges; that fires here and drives the
+  # nonprod -> prod ladder. Filtered to this app's tag in each promotion job.
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment (single-env redeploy; pushes run the full chain)
+        description: Target environment (single-env break-glass redeploy)
         type: choice
         required: true
         default: development
@@ -87,21 +108,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Render oauth-user-inspector's latest changelog into the run page before the
-  # (gated) env deploys, so an approver reads what is shipping. Ungated +
-  # independent, so it never delays a rollout.
+  # Render WHAT IS SHIPPING into the run page before the (gated) env deploys, so
+  # an approver reads the actual scope. Ungated + independent, so it never delays
+  # a rollout.
+  #
+  # The commit range is the authoritative half: `github.event.before..sha` is the
+  # push being deployed, derived from git so it cannot drift. The changelog block
+  # below it is the curated narrative (release-please-generated). Before #971 this
+  # job rendered ONLY the changelog, which had sat unchanged for 69 commits — every
+  # run told the approver the app had just been vendored.
   changelog:
+    # Push-only: this renders the `github.event.before..sha` push range, which
+    # does not exist on a release event (the release already carries its own
+    # curated changelog).
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Changelog → step summary
-        run: bash tools/ci/changelog-summary.sh oauth-user-inspector/CHANGELOG.md "" oauth-user-inspector
+        with:
+          # `git log <before>..<sha>` needs the history; the default depth-1
+          # checkout would degrade every run to "scope could not be determined".
+          fetch-depth: 0
+      - name: What's shipping → step summary
+        run: |
+          bash tools/ci/changelog-summary.sh \
+            oauth-user-inspector/CHANGELOG.md "" oauth-user-inspector \
+            --range "${BEFORE}..${SHA}" --path oauth-user-inspector
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
 
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable
-  # digest every env promotes. The build environment is ungated.
+  # digest every env promotes. The build ENVIRONMENT is ungated (no reviewer),
+  # but the JOB is scoped to this app: the `release:` trigger fires on EVERY
+  # published release in the repo (GitHub offers no per-tag filter on the
+  # `on: release` event), so without this guard the image rebuilt on every
+  # unrelated component's release (foundation-*, tabula-*, ...), wasting a WIF
+  # auth + buildx run and painting a false-red on that release's checks when the
+  # build flaked. The promotion jobs below are already tag-filtered to
+  # `oauth-user-inspector-v*`; match the build to the union of cases where its
+  # digest is actually consumed (push, dispatch, or THIS app's release).
   build:
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -110,7 +160,7 @@ jobs:
     environment: oauth-user-inspector-build
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION || 'us-west1' }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
     outputs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
@@ -182,8 +232,13 @@ jobs:
       app-name: oauth-user-inspector
       environment: development
       image-digest: ${{ needs.build.outputs.image-digest }}
-      default-region: us-west1
+      default-region: us-central1
       service-name: oauth-user-inspector
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
@@ -192,48 +247,38 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS. index.html is a static shell that returns
-        #    200 even when the React bundle throws on mount — exactly how the
-        #    2026-06-27 react/react-dom mismatch reached prod past the old
-        #    HTTP-200-only check. Headless-render and assert a marker that only
-        #    exists once React has rendered (not in the static #root fallback).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit
 
-  # ---- nonproduction (reviewer-gated environment) --------------------------
+  # ---- nonproduction (release-gated: promoted only on an app release) -------
+  # No longer cascades from a push. Triggers when THIS app's release-please PR
+  # merges (release published with an `oauth-user-inspector-v*` tag), or via a
+  # single-env workflow_dispatch. The release merge is the promotion gate, so
+  # this environment carries no separate reviewer (production does).
   zitadel-nonprod:
-    needs: [deploy-dev]
-    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_zitadel-apps-apply.yaml
     with:
       environment: nonproduction
     secrets: inherit
 
   deploy-nonprod:
-    needs: [build, deploy-dev, zitadel-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-dev.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    needs: [build, zitadel-nonprod]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
       environment: nonproduction
       image-digest: ${{ needs.build.outputs.image-digest }}
-      default-region: us-west1
+      default-region: us-central1
       service-name: oauth-user-inspector
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
@@ -242,29 +287,18 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit
 
-  # ---- production (reviewer-gated environment) -----------------------------
+  # ---- production (release-gated + reviewer-gated final checkpoint) ---------
+  # Same release trigger as nonprod, but LADDERED behind deploy-nonprod success
+  # (nonprod smoke-gates prod within the release) AND the production environment
+  # keeps a required reviewer — the one deliberate human checkpoint before prod.
   zitadel-prod:
     needs: [deploy-nonprod]
-    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    if: ${{ !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_zitadel-apps-apply.yaml
     with:
       environment: production
@@ -272,14 +306,19 @@ jobs:
 
   deploy-prod:
     needs: [build, deploy-nonprod, zitadel-prod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'push' && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-prod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector
       environment: production
       image-digest: ${{ needs.build.outputs.image-digest }}
-      default-region: us-west1
+      default-region: us-central1
       service-name: oauth-user-inspector
+      # The app stack OWNS its Cloud Run service (core-vs-application split):
+      # the foundation gcp-app-infra leaf is scaffolding-only and declares no
+      # workload, so this stack runs the full blue-green (candidate → smoke →
+      # promote) in its own dir (PHASE=all).
+      workload-migrated: false
       pulumi-dir: oauth-user-inspector/infra/app
       env-prefix: OAUTH_USER_INSPECTOR
       # The app stack's Cloudflare provider (customDomain grey-cloud CNAME)
@@ -288,21 +327,7 @@ jobs:
       # domainVerificationAnchor grants every env's deploy SA secretAccessor
       # on it). Never a GitHub secret (secrets model §pipeline-env).
       cloudflare-token-secret-project: prj-d-bu1-oss-floating-648a
-      custom-smoke-script: |
-        echo "Smoke-checking ${CAND}/"
-        # 1) Reachable (HTTP 2xx).
-        curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
-        # 2) The SPA actually MOUNTS (see the development smoke for rationale).
-        CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
-        if [ -z "$CHROME" ]; then
-          echo "::error::no headless Chrome on the runner — cannot verify the app mounts"; exit 1
-        fi
-        DOM="$("$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom "${CAND}/" 2>/dev/null || true)"
-        if printf '%s' "$DOM" | grep -q "Select a provider"; then
-          echo "Smoke OK: React app mounted."
-        else
-          echo "::error::App did NOT mount — served only the static fallback (broken frontend bundle)."
-          printf '%s' "$DOM" | head -c 800
-          exit 1
-        fi
+      # Single source of truth: the local `:deploy` target reads the same file
+      # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
+      custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
     secrets: inherit

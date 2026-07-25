@@ -77,7 +77,7 @@ Resolver: [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_identi
 | `GOOGLE_CLOUD_PROJECT`, `CLOUDSDK_CORE_PROJECT` | the wrapper (when map has a project) | GCP provider default project |
 | `GITHUB_TOKEN` | you / CI | GitHub provider (sync-auth, repo_config) |
 | `PULUMI_ACCESS_TOKEN` | CI secret | Pulumi Cloud backend in Actions |
-| `BUILDBUDDY_API_KEY` | CI secret / `user.bazelrc` | RBE (`--config=remote`) — see [remote-build](../remote-build.md) |
+| `BUILDBUDDY_API_KEY` | CI secret / `user.bazelrc` | RBE (`--config=remote`) — see [remote-build](../guides/remote-build.md) |
 
 ## File & secret locations
 
@@ -100,11 +100,11 @@ Under [`.github/workflows/`](../../.github/workflows).
 | `ci.yaml` | push/PR to `main` | `build-test` (RBE), `build-macos`, `license-check` |
 | `_repo-config-preview.yaml` | PR touching `repo_config/**` (gated `REPO_CONFIG_PREVIEW_ENABLED`) | post `pulumi preview --diff` comment |
 | `_repo-config-apply.yaml` | push to default branch, same path (gated `REPO_CONFIG_AUTO_APPLY`) | `pulumi up` |
-| `_copybara-export.yaml` / `_copybara-import.yaml` + per-component callers | push / `repository_dispatch` | [Copybara sync](../copybara-bidi-sync.md) (uses sync-auth creds) |
+| `_copybara-export.yaml` + per-component callers, `copybara-import-pr.yaml` | push / `repository_dispatch` | [Copybara sync](../admin/copybara-sync.md) (uses sync-auth creds) |
 | `dependabot-*.yml` | Dependabot / schedule | bazel reconcile + auto-merge (uses sync App) |
 
 ## See also
 
 - [Architecture](architecture.md) · [User guide](user-guide.md)
-- [Copybara bidirectional sync](../copybara-bidi-sync.md) · [Remote Build Execution](../remote-build.md) · [Key rotation](../key-rotation.md)
+- [Copybara sync](../admin/copybara-sync.md) · [Remote Build Execution](../guides/remote-build.md) · [Key rotation](../operations/key-rotation.md)
 - [AGENTS.md](../../AGENTS.md) — GCP identity pinning

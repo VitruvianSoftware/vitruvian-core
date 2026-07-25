@@ -47,6 +47,11 @@ func TestPinnedSharedIdentity(t *testing.T) {
 }
 
 func TestLoadNetSharedConfig(t *testing.T) {
+	// Guard exercises the committed/const FALLBACK (deploy injects the real
+	// bootstrap value via these env vars — see envOrConfig). Force them empty
+	// so the fallback is what we assert equals the canonical bootstrap regions.
+	t.Setenv("NETWORKS_DEFAULT_REGION", "")
+	t.Setenv("NETWORKS_SECONDARY_REGION", "")
 	os.Setenv("PULUMI_CONFIG", `{"project:org_id":"123"}`)
 	defer os.Unsetenv("PULUMI_CONFIG")
 
@@ -62,8 +67,12 @@ func TestLoadNetSharedConfig(t *testing.T) {
 		assert.Equal(t, "10.27.0.0/23", cfg.HubProxy2Cidr)
 
 		// Verify defaults
+		// Region defaults are pinned to the canonical bootstrap regions
+		// (common_config.default_region / default_region_2). If a config drift
+		// makes this fail, fix the config back to bootstrap — do NOT relax the
+		// assertion (that is how the secondary silently became us-south1).
 		assert.Equal(t, "us-central1", cfg.Region1)
-		assert.Equal(t, "us-south1", cfg.Region2)
+		assert.Equal(t, "us-west1", cfg.Region2)
 		assert.Equal(t, "ipv1337/foundation-org-shared/production", cfg.OrgStackName)
 		assert.Equal(t, 64514, cfg.BgpAsn)
 		assert.Equal(t, 2, cfg.NatNumAddresses)
@@ -78,4 +87,22 @@ func TestLoadNetSharedConfig(t *testing.T) {
 		return nil
 	}, pulumi.WithMocks("project", "stack", mocks(0)))
 	assert.NoError(t, err)
+}
+
+// TestCommittedRegionsAreCanonical guards the ACTUAL drift vector that
+// TestLoadNetConfig does NOT: the committed Pulumi config file value. That test
+// forces the region env/config empty and only checks the code fallback, so it
+// would still pass if this file were edited back to us-south1. The region that
+// actually deploys is the committed secondary_region (bootstrap injects it at
+// deploy; the file is the fallback), and it MUST equal the canonical bootstrap
+// regions. This is the guard that catches secondary_region: "us-south1" at source.
+func TestCommittedRegionsAreCanonical(t *testing.T) {
+	b, err := os.ReadFile("Pulumi.production.yaml")
+	if err != nil {
+		t.Fatalf("read Pulumi.production.yaml: %v", err)
+	}
+	s := string(b)
+	assert.Contains(t, s, `default_region: "us-central1"`, "committed default_region must be the canonical primary (bootstrap common_config.default_region)")
+	assert.Contains(t, s, `secondary_region: "us-west1"`, "committed secondary_region must be the canonical secondary (bootstrap common_config.default_region_2)")
+	assert.NotContains(t, s, "us-south1", "no networks stack may commit us-south1 (the historical drift)")
 }

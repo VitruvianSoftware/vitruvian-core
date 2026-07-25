@@ -1,20 +1,20 @@
 {
   "name": "@tabula/web",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "private": true,
   "description": "Tabula web dashboard for workspace management, analytics, and data export",
   "license": "MIT",
   "dependencies": {
     "@tabula/shared": "workspace:*",
     "geist": "^1.5.0",
-    "next": "16.2.10",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "next": "16.2.11",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/chrome": "^0.2.2",
     "@types/jest": "^30.0.0",

@@ -4,12 +4,14 @@ OAuth User Inspector is a full-stack web application designed to inspect OAuth u
 
 **Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.**
 
+> Design and operations detail live in [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md). The commands below use `npm`, but the repo's package manager is `pnpm` (via `corepack`) — either works locally.
+
 ## Working Effectively
 
 - **Bootstrap, build, and test the repository:**
   - `npm install` -- takes ~25 seconds. Set timeout to 60+ seconds.
   - `npm run build` -- takes ~5 seconds. Builds both frontend (Vite) and backend (TypeScript compilation).
-  - `npm test` -- takes ~2 seconds. Runs Jest tests with MSW mocking.
+  - `npm test` -- takes ~2 seconds. Runs Jest tests with a pure-CommonJS fetch mock (`server/__tests__/fetch-mock.ts`), not MSW.
   - `npx prettier --write .` -- takes ~3 seconds. Formats all code files.
 
 - **Run the application in development mode:**
@@ -91,7 +93,7 @@ The following are outputs from frequently run commands. Reference them instead o
   "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json",
   "build:frontend": "npm run typecheck:frontend && cd frontend && vite build",
   "build:server": "tsc -p server/tsconfig.server.json",
-  "start": "GOOGLE_CLOUD_PROJECT=gen-lang-client-0352693779 node dist-server/server.js",
+  "start": "node dist-server/server.js",
   "test": "jest",
   "setup-dev": "sh scripts/setup-dev.sh",
   "deploy": "./scripts/deploy.sh"

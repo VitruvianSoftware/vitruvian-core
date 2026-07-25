@@ -21,6 +21,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
@@ -98,8 +100,8 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	c := &NetSharedConfig{
 		OrgID:        conf.Require("org_id"),
 		ParentID:     conf.Get("parent_id"),
-		Region1:      conf.Get("default_region"),
-		Region2:      conf.Get("secondary_region"),
+		Region1:      envOrConfig("NETWORKS_DEFAULT_REGION", conf, "default_region"),
+		Region2:      envOrConfig("NETWORKS_SECONDARY_REGION", conf, "secondary_region"),
 		OrgStackName: conf.Get("org_stack_name"),
 		Domain:       conf.Get("domain"),
 		PscIP:        conf.Get("psc_ip"),
@@ -156,11 +158,22 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	}
 
 	// Apply defaults
+	// Region defaults. Source of truth = gcp-bootstrap common_config
+	// (default_region=us-central1, default_region_2=us-west1). The deploy CONSUMES
+	// those from bootstrap: foundation-net-deploy reads bootstrap's stack output and
+	// injects NETWORKS_DEFAULT_REGION / NETWORKS_SECONDARY_REGION, which win here
+	// (see envOrConfig below). We can't read them via an in-program StackReference
+	// because a StackReference output is async and the region is baked into LOGICAL
+	// resource names (subnets via network/v2 networking.go "name+"-"+s.Name", the
+	// hub cloud routers "hub-cr-<region>-..."), which must be static strings. The
+	// committed config / const fallback below is the preview + local value and is
+	// GUARDED in config_test.go to equal the canonical bootstrap regions, so preview
+	// and deploy agree and a silent drift (how the secondary became us-south1) fails CI.
 	if c.Region1 == "" {
 		c.Region1 = "us-central1"
 	}
 	if c.Region2 == "" {
-		c.Region2 = "us-south1"
+		c.Region2 = "us-west1"
 	}
 	if c.Domain == "" {
 		c.Domain = "example.com."
@@ -198,4 +211,14 @@ func loadNetSharedConfig(ctx *pulumi.Context) *NetSharedConfig {
 	c.NatNumAddresses = 2
 
 	return c
+}
+
+// envOrConfig returns the environment variable env when set (non-empty), else the
+// Pulumi config value at key. The deploy injects the bootstrap-sourced region via
+// env (see the Region defaults note in loadNetConfig); config/const is the fallback.
+func envOrConfig(env string, conf *config.Config, key string) string {
+	if v := os.Getenv(env); v != "" {
+		return v
+	}
+	return conf.Get(key)
 }

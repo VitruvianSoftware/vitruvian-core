@@ -1,0 +1,57 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Committed stack config for the nonproduction environment (config-as-code): the
+# env's oss-floating project, region, and runtime SA (minted by the sibling
+# tabula-deploy-identity stack). The image digest is a
+# per-invocation input (TABULA_IMAGE_DIGEST) from the build-once
+# job, never committed. Runtime secrets stay in GCP Secret Manager under the
+# TABULA_ prefix.
+config:
+  gcp:project: prj-n-bu2-oss-floating-a943
+  tabula-app:project: prj-n-bu2-oss-floating-a943
+  tabula-app:region: us-central1
+  tabula-app:environment: nonproduction
+  tabula-app:runtimeServiceAccount: tabula-rt@prj-n-bu2-oss-floating-a943.iam.gserviceaccount.com
+  # Custom domain (opt-in): Cloud Run DomainMapping + grey-cloud Cloudflare
+  # CNAME (main.go). cloudflareZoneId is pinned so preview and deploy resolve
+  # the same id (no phantom replace); a zone id is not a secret (it appears in
+  # the dashboard URL and every preview diff). cloudflareZone is kept for the
+  # name→id LookupZone fallback if the id is ever unset.
+  tabula-app:cloudflareZone: vitruviansoftware.dev
+  # Custom domain: Cloud Run DomainMapping (ForceOverride) + a grey-cloud
+  # Cloudflare CNAME. The zone id is PINNED so a token-less preview resolves it
+  # without a LookupZone (which otherwise shows a phantom ~zoneId replace).
+  tabula-app:customDomain: tabula-api.staging.vitruviansoftware.dev
+  tabula-app:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+  # The foundation gcp-app-infra business_unit_2 nonproduction leaf has adopted
+  # the Cloud Run service (core-vs-application-infrastructure.md §7). With this
+  # true, the app stack reconciles ONLY the custom-domain resources; the service
+  # / revision / traffic / invoker block is skipped (the leaf owns and deploys
+  # the workload). Pairs with tabula-deploy.yaml deploy-nonprod
+  # workload-migrated: true. Mirrors development (#1088).
+  # Public base the app builds its WorkOS redirect URI from
+  # (`${API_URL}/auth/callback`), and the exact origin the auth callback page
+  # postMessages the token to. Both are public, both were set by the retired
+  # pre-bu2 stack, and both must be present for extension login to work.
+  # The redirect URI below must also be registered in the WorkOS dashboard
+  # (Applications -> Redirects); WorkOS rejects an unregistered redirect_uri.
+  tabula-app:apiUrl: https://tabula-api.staging.vitruviansoftware.dev/api/v1
+  tabula-app:authPostmessageOrigin: chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof

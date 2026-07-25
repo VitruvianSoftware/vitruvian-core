@@ -1,5 +1,96 @@
 # Changelog
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.13.0...foundation-gcp-projects-v1.14.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** mint tabula's deploy identity in stage-4 (bu2 port) ([#1156](https://github.com/VitruvianSoftware/vitruvian-core/issues/1156)) ([704b8a8](https://github.com/VitruvianSoftware/vitruvian-core/commit/704b8a80400cd7839716abadfc49b41d539ef015))
+
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.12.0...foundation-gcp-projects-v1.13.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** declare oauth's conditioned secretmanager.admin in stage-4 ([#1153](https://github.com/VitruvianSoftware/vitruvian-core/issues/1153)) ([1710252](https://github.com/VitruvianSoftware/vitruvian-core/commit/1710252817e35ba803c648f4b377de2fd58893cf))
+
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.11.0...foundation-gcp-projects-v1.12.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** support IAM-conditioned deploy roles in app_deploy_identity ([#1148](https://github.com/VitruvianSoftware/vitruvian-core/issues/1148)) ([7a0e01f](https://github.com/VitruvianSoftware/vitruvian-core/commit/7a0e01fdbceae4c826370303731602d03e5ed9fb))
+
+## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.10.0...foundation-gcp-projects-v1.11.0) (2026-07-24)
+
+
+### Features
+
+* **billing:** fund bu1/bu2 projects from James's personal billing account ([#1133](https://github.com/VitruvianSoftware/vitruvian-core/issues/1133)) ([1d9dc46](https://github.com/VitruvianSoftware/vitruvian-core/commit/1d9dc46e38e2248a1a85e91e89942d6f21d59309))
+
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.9.0...foundation-gcp-projects-v1.10.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth build space in us-central1; strip the app build stack ([#1107](https://github.com/VitruvianSoftware/vitruvian-core/issues/1107)) ([c8e6d08](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8e6d086e76f8a89573bafd250d94b452569a7a1))
+
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.8.0...foundation-gcp-projects-v1.9.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth-user-inspector build space (adopt) ([#1086](https://github.com/VitruvianSoftware/vitruvian-core/issues/1086)) ([e2525c7](https://github.com/VitruvianSoftware/vitruvian-core/commit/e2525c742fbf9fe803bb308d6e0ab00bfb3523b0))
+
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.7.0...foundation-gcp-projects-v1.8.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** mint the bu2 app-infra pipeline identity (sa-app-infra-bu2) ([#1078](https://github.com/VitruvianSoftware/vitruvian-core/issues/1078)) ([42c62c9](https://github.com/VitruvianSoftware/vitruvian-core/commit/42c62c9464b6cc09fdb79815021dece76b0aa363))
+
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.6.0...foundation-gcp-projects-v1.7.0) (2026-07-22)
+
+
+### Features
+
+* **gcp-projects:** env leaves grant the BU pipeline SA artifact-registry reader ([#1057](https://github.com/VitruvianSoftware/vitruvian-core/issues/1057)) ([928ae6b](https://github.com/VitruvianSoftware/vitruvian-core/commit/928ae6b4eee4bd509382d2f3a43156e85c5a3cb0))
+
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.1...foundation-gcp-projects-v1.6.0) (2026-07-22)
+
+
+### Features
+
+* **gcp-projects:** foundation-owned app build space (AR repo + build identity) ([#1055](https://github.com/VitruvianSoftware/vitruvian-core/issues/1055)) ([8e6aa7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/8e6aa7b20886137ba5c7599de9b9cb7828c0c62e))
+
+## [1.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.5.0...foundation-gcp-projects-v1.5.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **gcp-projects:** enable Secret Manager on the shared infra-pipeline project ([#1022](https://github.com/VitruvianSoftware/vitruvian-core/issues/1022)) ([692f76c](https://github.com/VitruvianSoftware/vitruvian-core/commit/692f76c69d20b4b7754d2b4eaa6ea9ecd3a6454f))
+
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.1...foundation-gcp-projects-v1.5.0) (2026-07-21)
+
+
+### Features
+
+* **foundation:** issue a BU app-infra pipeline identity and ungate stage 5 ([#1008](https://github.com/VitruvianSoftware/vitruvian-core/issues/1008)) ([7892f92](https://github.com/VitruvianSoftware/vitruvian-core/commit/7892f92687e812190de59bf322a4b9aec02541b6))
+
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.4.0...foundation-gcp-projects-v1.4.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **gcp-projects:** correct the deploy SA description after the stage relocation ([#1000](https://github.com/VitruvianSoftware/vitruvian-core/issues/1000)) ([ab0ea1a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ab0ea1a4ebcc98757d22306e6d76f47a3b223413))
+
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.4...foundation-gcp-projects-v1.4.0) (2026-07-21)
+
+
+### Features
+
+* **gcp-projects:** add business_unit_2 for tabula's dedicated per-env projects ([#973](https://github.com/VitruvianSoftware/vitruvian-core/issues/973)) ([1215ec6](https://github.com/VitruvianSoftware/vitruvian-core/commit/1215ec6f9d078a02a7bd8e27815e7c81198edd60))
+
 ## [1.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.3.3...foundation-gcp-projects-v1.3.4) (2026-07-20)
 
 

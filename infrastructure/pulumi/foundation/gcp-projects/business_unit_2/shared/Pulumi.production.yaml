@@ -1,0 +1,26 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 4 — bu2 shared leaf.
+#
+# The once-per-BU, environment-independent resources (upstream
+# 4-projects/business_unit_2/shared): the app-infra pipeline project
+# prj-c-bu2-infra-pipeline under the 1-org COMMON folder. This shared,
+# cross-env project hosts stage-5 app CI/CD + the build-once Artifact
+# Registry; the common/c identity is pinned in this leaf's main.go.
+#
+# This leaf replaces the old per-env infra_pipeline_enabled toggle (previously
+# enabled only in the production env stack to avoid duplicate projects): the
+# pipeline now has exactly one structural home. dev/nonprod/prod app stacks
+# consume infra_pipeline_project_id from
+# ipv1337/foundation-projects-bu2-shared/production.
+config:
+  # --- Business unit identity ---
+  foundation-projects-bu2-shared:business_code: "bu2"
+
+  # --- Core identifiers ---
+  foundation-projects-bu2-shared:billing_account: "008CAA-C364C4-B29B67"
+  foundation-projects-bu2-shared:project_prefix: "prj"
+
+  # --- Cross-stage reference (1-org root at envs/shared) ---
+  foundation-projects-bu2-shared:org_stack_name: "ipv1337/foundation-org-shared/production"
+
+  # --- App-infra pipeline (the leaf's reason to exist; explicit for clarity) ---
+  foundation-projects-bu2-shared:infra_pipeline_enabled: "true"

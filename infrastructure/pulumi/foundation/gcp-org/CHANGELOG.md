@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.6.0...foundation-gcp-org-v0.6.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **foundation:** close two audit findings — region guard gap + inert SCC key ([#1128](https://github.com/VitruvianSoftware/vitruvian-core/issues/1128)) ([cbd3cff](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbd3cff51355407ee1783487389dae2b35b314dc))
+
+## [0.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.5.1...foundation-gcp-org-v0.6.0) (2026-07-21)
+
+
+### Features
+
+* **tabula:** repoint CI identity at the bu2 projects + allow public invoker ([#978](https://github.com/VitruvianSoftware/vitruvian-core/issues/978)) ([ab04390](https://github.com/VitruvianSoftware/vitruvian-core/commit/ab04390d3c71860a8581eeea75be4907d70d42c5))
+
 ## [0.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.5.0...foundation-gcp-org-v0.5.1) (2026-07-18)
 
 

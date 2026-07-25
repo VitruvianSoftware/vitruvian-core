@@ -6,6 +6,8 @@ This is a full-stack web application designed to inspect OAuth user information 
 
 The frontend is a React application built with Vite and styled with Tailwind CSS. It allows users to authenticate using OAuth or a Personal Access Token (PAT). The backend is an Express server written in TypeScript that handles the server-side part of the OAuth flow, and now lives entirely under `server/`.
 
+> For the full design and operations detail see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md). This file is a quick orientation for coding agents.
+
 ## Repository Structure
 
 ```
@@ -71,17 +73,13 @@ Run backend tests (Jest + ts-jest):
 npm test
 ```
 
-Tests are located under `server/__tests__`. External calls are mocked using MSW; Google Cloud dependencies (Secret Manager, Cloud Logging) are stubbed. If you add tests that perform network calls, add MSW handlers.
+Tests are located under `server/__tests__` (and frontend helpers under `frontend/__tests__`). External calls are mocked with a pure-CommonJS fetch mock (`server/__tests__/fetch-mock.ts`) — **not** MSW, whose ESM-only build broke under ts-jest/Bazel. Google Cloud dependencies (Secret Manager, Cloud Logging) are stubbed. If you add a test that performs a network call, register a handler via `fetchMock.register()` / `.use()` or it throws "No handler registered". In CI the suite also runs as `bazel test //oauth-user-inspector:unit_tests`.
 
 ### Deployment
 
-Deploy to Google Cloud Run using the provided script:
+The deployed instances run on **Cloud Run**, one per environment, shipped through CI/CD — build once, promote the same image digest through development → nonproduction → production. Do **not** deploy from a workstation. The full pipeline, identity, secrets, and runbooks are in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
-```bash
-npm run deploy
-```
-
-This uses Google Cloud Build to build the Docker image (the Dockerfile copies `server/`) and deploy to Cloud Run.
+The legacy `scripts/deploy.sh` (`pnpm run deploy`, Google Cloud Build to a single project) is **not** how the live instances are deployed.
 
 ## Development Conventions
 

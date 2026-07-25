@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.1...foundation-gcp-bootstrap-v0.8.2) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-bootstrap:** projects SA needs billing.projectManager to re-assign billing ([#1135](https://github.com/VitruvianSoftware/vitruvian-core/issues/1135)) ([3397e6f](https://github.com/VitruvianSoftware/vitruvian-core/commit/3397e6facc201fded81619f6a429005b9f2cf578))
+
+## [0.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.0...foundation-gcp-bootstrap-v0.8.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **gcp-bootstrap:** projects SA needs serviceUsageAdmin, not just Consumer ([#1118](https://github.com/VitruvianSoftware/vitruvian-core/issues/1118)) ([c262b40](https://github.com/VitruvianSoftware/vitruvian-core/commit/c262b405afee013babf178032aac125796cb42d2))
+
+## [0.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.7.0...foundation-gcp-bootstrap-v0.8.0) (2026-07-21)
+
+
+### Features
+
+* **foundation:** issue a BU app-infra pipeline identity and ungate stage 5 ([#1008](https://github.com/VitruvianSoftware/vitruvian-core/issues/1008)) ([7892f92](https://github.com/VitruvianSoftware/vitruvian-core/commit/7892f92687e812190de59bf322a4b9aec02541b6))
+
+## [0.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.6.1...foundation-gcp-bootstrap-v0.7.0) (2026-07-21)
+
+
+### Features
+
+* **gcp-app-infra:** add the live foundation stage 5 and adopt the app deploy identity ([#995](https://github.com/VitruvianSoftware/vitruvian-core/issues/995)) ([e631130](https://github.com/VitruvianSoftware/vitruvian-core/commit/e63113009aa39d409b9e1e3db7d20b11dc6d4b92))
+
 ## [0.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.6.0...foundation-gcp-bootstrap-v0.6.1) (2026-07-18)
 
 

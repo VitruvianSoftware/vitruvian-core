@@ -177,3 +177,56 @@ func TestPeeringResultStruct(t *testing.T) {
 	pr := &base_env.PeeringResult{}
 	assert.NotNil(t, pr)
 }
+
+// REGRESSION GUARD for the adoption of oauth-user-inspector's deploy SA. That
+// account is live and deploying; if this stage grants it a different role set,
+// adoption silently widens or narrows a running pipeline's permissions. This
+// list is the one the app-side stack held at adoption time — changing it must
+// be a deliberate, reviewed edit to BOTH this test and the stack config.
+func TestDefaultAppDeployRolesMatchAdoptedSet(t *testing.T) {
+	want := []string{
+		"roles/run.admin",
+		"roles/iam.serviceAccountUser",
+		"roles/serviceusage.serviceUsageConsumer",
+		"roles/logging.viewer",
+	}
+	if len(defaultAppDeployRoles) != len(want) {
+		t.Fatalf("defaultAppDeployRoles = %v, want %v", defaultAppDeployRoles, want)
+	}
+	for i := range want {
+		if defaultAppDeployRoles[i] != want[i] {
+			t.Errorf("defaultAppDeployRoles[%d] = %q, want %q", i, defaultAppDeployRoles[i], want[i])
+		}
+	}
+}
+
+// The WIF principalSet binds per GitHub Environment, not per repository — that
+// is the per-env isolation layer.
+func TestAppGitHubEnvironmentNaming(t *testing.T) {
+	got := AppIdentityConfig{Name: "oauth-user-inspector"}.GitHubEnvironment("production")
+	want := "oauth-user-inspector-production"
+	if got != want {
+		t.Fatalf("GitHubEnvironment = %q, want %q", got, want)
+	}
+}
+
+// The BU app-infra pipeline SA applies the stage-5 leaf, which is UNGATED so
+// routine app deploys don't need a human approval. That is only safe while its
+// grants stay in this stage — the one it does not apply. If someone gives it a
+// role that lets it edit stage-4 state (resourcemanager/iam admin), the
+// separation collapses silently and stage 5 becomes a privilege-escalation
+// path. Keep this list to what applying a Cloud Run workload actually needs.
+func TestAppInfraPipelineRolesCannotSelfEscalate(t *testing.T) {
+	forbidden := []string{
+		"roles/owner", "roles/editor",
+		"roles/iam.securityAdmin", "roles/iam.serviceAccountAdmin",
+		"roles/resourcemanager.projectIamAdmin",
+	}
+	for _, role := range defaultAppInfraPipelineRoles {
+		for _, bad := range forbidden {
+			if role == bad {
+				t.Errorf("defaultAppInfraPipelineRoles contains %q — the stage-5 pipeline SA could then author its own grants, and stage 5 is ungated", role)
+			}
+		}
+	}
+}

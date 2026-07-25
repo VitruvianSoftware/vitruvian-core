@@ -373,6 +373,10 @@ ROWS_SWEEP=""
 ROWS_IAC=""
 ROWS_META=""
 ROWS_COPYBARA=""
+ROWS_RELEASE=""
+ROWS_LOCALPATH=""
+ROWS_GATE=""
+ROWS_PULUMI=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -390,6 +394,19 @@ emit() {
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
+    release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
+    localpath)    ROWS_LOCALPATH="${ROWS_LOCALPATH}${_row}" ;;
+    gate)         ROWS_GATE="${ROWS_GATE}${_row}" ;;
+    pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
+    # An unrouted group silently DISCARDS its rows: the check still increments
+    # FAIL_COUNT, so the run fails with a number and no explanation of what
+    # broke. That is what `pulumi` did -- check_pulumi_project_names (the
+    # duplicate-stack-name guard) could only ever report an unattributed "1
+    # fail". Fail loudly instead of losing the row.
+    *)
+      printf 'conformance: internal error - emit() has no bucket for group %s\n' "$1" >&2
+      OVERALL_FAIL=1
+      ;;
   esac
 }
 
@@ -772,12 +789,28 @@ check_merge_queue() {
   [ -d "$WORKFLOWS_DIR" ] || return 0
 
   # Required-check names: the quoted strings in the default `checks = []string{...}`.
+  #
+  # Comments are stripped FIRST. The list is heavily commented, and a naive
+  # scrape treats a double-quoted word inside a `//` comment as a required check
+  # name -- which then reports as MISSING and fails this guard with a phantom
+  # entry that exists nowhere in repo_config. (Writing `wedge a PR "pending"` in
+  # a comment there really did invent a required check called `pending`.)
+  # strip_comment is quote-aware so a `//` inside a string literal survives.
   required="$(awk '
+    function strip_comment(line,   i, inq, c) {
+      inq = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (c == "\"") { inq = !inq; continue }
+        if (!inq && c == "/" && substr(line, i + 1, 1) == "/") return substr(line, 1, i - 1)
+      }
+      return line
+    }
     /checks = \[\]string\{/ { grab=1 }
     grab {
-      s=$0
+      s = strip_comment($0)
       while (match(s, /"[^"]*"/)) { print substr(s, RSTART+1, RLENGTH-2); s=substr(s, RSTART+RLENGTH) }
-      if (index($0,"}")>0) exit
+      if (index(s,"}")>0) exit
     }' "$REPO_CONFIG_MAIN")"
   [ -n "$required" ] || return 0   # no declared gate set -> nothing to assert
 
@@ -1075,6 +1108,322 @@ EOF
 # ---------------------------------------------------------------------------
 COPYBARA_CONFIG_FILE="$ROOT/tools/copybara/copy.bara.sky"
 
+# Every Pulumi.yaml `name:` must be UNIQUE across the repo. Pulumi keys STACK
+# STATE on that name, so two programs sharing one produces a stack collision:
+# the second program adopts the first's resources and reconciles them against
+# the wrong project. It applies cleanly and is silently wrong.
+#
+# This is not hypothetical. During the tabula bu2 migration it happened FOUR
+# times, because the name lives inside Pulumi.yaml, is conventionally written
+# with underscores, and therefore survives both a directory rename and a
+# hyphenated find-and-replace. The worst instance had tabula's new app stack
+# named `pulumi_tabula` -- the same as the existing personal-project program --
+# so the bu2 deploy inherited 21 resources pointing at the old project.
+check_pulumi_project_names() {
+  # Scope: the LIVE deployed tree only. pulumi/examples/** are scaffold
+  # templates (ts- and go-foundation carry the same names by design, and the
+  # example mirrors the live stage names) -- they are never deployed into the
+  # same Pulumi organization, so they cannot collide.
+  pulumi_names() {
+    grep -rh --include='Pulumi.yaml' -E '^name:[[:space:]]*\S+' \
+      infrastructure/pulumi */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
+  }
+  dupes="$(pulumi_names | sort | uniq -d)"
+  [ -z "$dupes" ] && { emit "pulumi" "$GLYPH_OK" "$C_GREEN" "Pulumi.yaml" "unique" "unique" \
+      "every Pulumi project name is unique" ""; return 0; }
+  for d in $dupes; do
+    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
+    emit "pulumi" "$GLYPH_FAIL" "$C_RED" "Pulumi.yaml" "duplicate: $d" "unique" \
+      "Pulumi project name '$d' is declared by more than one program ($where) - they SHARE stack state, so one will adopt the other's resources and reconcile them against the wrong target" \
+      "give each program a distinct name: in its Pulumi.yaml (renaming the directory is NOT enough - the name is independent of the path)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  done
+}
+
+# A customDomain must live UNDER the cloudflareZone declared beside it.
+#
+# Both the Cloud Run DomainMapping's grey-cloud CNAME and the domain-ownership
+# verification TXT (tools/ci/ensure-site-verification.sh) are written into the
+# zone named by `cloudflareZone`. If that zone is not the registrable parent of
+# `customDomain`, both land on the WRONG domain: the CNAME is created somewhere
+# it can never serve the hostname, and the verification token is planted on a
+# zone Google will not consult for it -- leaving the DomainMapping stuck at
+# "Caller is not authorized to administer the domain" with DNS that looks
+# superficially fine.
+#
+# This is a live hazard now that apps span two zones by convention (OSS apps on
+# ipv1337.dev, paid/commercial on vitruviansoftware.dev): a config copied from
+# an app on the other zone carries the source app's cloudflareZone, and nothing
+# downstream cross-checks the two keys against each other.
+check_custom_domain_zone() {
+  ok=1
+  for f in */infra/*/Pulumi.*.yaml; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in Pulumi.yaml) continue ;; esac
+    # Namespace-agnostic: the Pulumi config namespace is per-app and is not
+    # derivable from the project name (tabula's is `tabula-app`, its project
+    # `pulumi_tabula_app`).
+    dom="$(sed -n "s/^[[:space:]]*[A-Za-z0-9_.-]\{1,\}:customDomain:[[:space:]]*//p" "$f" | head -n1 | tr -d "\"'")"
+    [ -n "$dom" ] || continue
+    zone="$(sed -n "s/^[[:space:]]*[A-Za-z0-9_.-]\{1,\}:cloudflareZone:[[:space:]]*//p" "$f" | head -n1 | tr -d "\"'")"
+    rel="${f#./}"
+    if [ -z "$zone" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "no cloudflareZone" "zone declared" \
+        "$rel sets customDomain=$dom but declares no cloudflareZone - the CNAME and the ownership-verification TXT would have no zone to be written into" \
+        "add the registrable parent zone, e.g. '<ns>:cloudflareZone: ${dom#*.}'"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+      continue
+    fi
+    case "$dom" in
+      "$zone" | *".$zone") ;;
+      *)
+        emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "$dom not under $zone" "domain under zone" \
+          "$rel maps customDomain=$dom into cloudflareZone=$zone, but $dom is not $zone or a subdomain of it - the grey-cloud CNAME and the google-site-verification TXT would both be written to the WRONG zone" \
+          "set cloudflareZone (and its pinned cloudflareZoneId) to the zone that actually contains $dom"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+        ;;
+    esac
+  done
+  [ "$ok" = 1 ] && emit "pulumi" "$GLYPH_OK" "$C_GREEN" "customDomain" "under its zone" "under its zone" \
+    "every customDomain is a subdomain of the cloudflareZone declared beside it" ""
+}
+
+# Release-unit boundary guard for CO-LOCATED app infrastructure.
+#
+# A release-please package claims every commit touching files under its path.
+# Since app infra moved next to the app it serves (`<app>/infra/`), a purely
+# INFRASTRUCTURE change now lands inside an APPLICATION's release unit -- so a
+# `feat:` commit touching `<app>/infra/**` bumps the app's semver and writes a
+# changelog entry for a feature the app does not have. The resulting release
+# commit rewrites <app>/package.json + CHANGELOG.md, which matches the app's
+# deploy path filter, so it also DEPLOYS an unchanged artifact.
+#
+# That is not hypothetical: it shipped oauth-user-inspector 1.1.0 (#995 ->
+# #997), whose sole changelog line credits a foundation change, and triggered a
+# full dev->nonprod->prod promotion of byte-identical code.
+#
+# The fix is release-please's per-package `exclude-paths` (repo-root-relative;
+# a commit is dropped when ALL of its files under that package path match --
+# verified against release-please src/util/commit-exclude.ts). This check makes
+# that mandatory, so the NEXT app to co-locate its infra cannot silently
+# reintroduce the bug. It is the release-side sibling of the Copybara
+# infra-leak guard above: same `<app>/infra/` convention, different automation
+# that has to be taught the artifact boundary.
+# Leaked local-filesystem path guard.
+#
+# A developer/agent machine path must never reach a committed file. It is
+# meaningless to everyone else, it leaks the author's directory layout, and
+# when it lands in a config KEY it silently breaks the consumer.
+#
+# This is not hypothetical. Generating the stage-5 stack configs from an
+# UNQUOTED zsh heredoc turned `$env:apps` into zsh's `:a` (absolute path)
+# history modifier and `$env:region` into `:r` (remove extension), producing:
+#
+#   foundation-app-infra-bu1-<abs path to the author worktree>/developmentpps:
+#   foundation-app-infra-bu1-developmentegion:
+#
+# Both parse as valid YAML, so nothing complained until the stage-5 deploy
+# failed with "config name ... exceeds max length of 128". Committed, merged,
+# and only caught by a live deploy.
+#
+# Lesson encoded here: generate config with a real templating language, and let
+# CI — not a deploy — catch it when that slips.
+# CI gate global-impact list drift guard.
+#
+# deploy-affected.sh and affected-targets.sh each carry a "global-impact"
+# allowlist: a change under tools/ OUTSIDE the allowlist forces affected=true
+# (fail open). The two lists MUST be identical -- affected-targets.sh picks
+# which tests run, deploy-affected.sh picks whether a live deploy runs, and a
+# divergence means CI and deploy disagree about what a change can affect.
+#
+# They were kept in sync only by a comment saying "same set as
+# affected-targets.sh". This enforces it.
+#
+# Why it matters concretely: tools/conformance/ was NOT allowlisted, so editing
+# the conformance script alone marked tabula's deploy targets affected and ran
+# a live Cloud Run deploy. `bazel query somepath(<deploy targets>,
+# //tools/conformance/... )` returns EMPTY -- no deployable artifact depends on
+# it -- so that deploy could never have shipped anything different. It did,
+# however, re-run a deploy that was already failing for unrelated reasons and
+# painted an unrelated PR's merge red.
+check_ci_gate_lists_match() {
+  da="$ROOT/tools/ci/deploy-affected.sh"; ta="$ROOT/tools/ci/affected-targets.sh"
+  a="$(grep -o "\^tools/([^']*)" "$da" 2>/dev/null | head -1)"
+  b="$(grep -o "\^tools/([^']*)" "$ta" 2>/dev/null | head -1)"
+  if [ -z "$a" ] || [ -z "$b" ]; then
+    emit "gate" "$GLYPH_FAIL" "$C_RED" "tools/ci/*-affected*.sh" "pattern not found" "one per file" \
+      "could not locate the global-impact allowlist in one of the gate scripts - the guard cannot verify them" \
+      "check the '^tools/(...)' pattern still exists in both deploy-affected.sh and affected-targets.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+  fi
+  if [ "$a" = "$b" ]; then
+    emit "gate" "$GLYPH_OK" "$C_GREEN" "tools/ci/*-affected*.sh" "identical" "identical" \
+      "the deploy gate and the test gate agree on global-impact paths" ""
+    return 0
+  fi
+  emit "gate" "$GLYPH_FAIL" "$C_RED" "tools/ci/*-affected*.sh" "diverged" "identical" \
+    "deploy-affected.sh and affected-targets.sh disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect" \
+    "make the '^tools/(...)' patterns identical in both files"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+}
+
+# The rollout sequencer (//tools/deploy:cloud-run.sh) is allowlisted OUT of the
+# global-impact guard shared by tools/ci/{affected-targets,deploy-affected}.sh,
+# so changing it no longer forces a full //... sweep. That is safe for the TEST
+# gate -- target-determinator tracks the tools/deploy/defs.bzl load edge and the
+# srcs=["//tools/deploy:cloud-run.sh"] edge onto each app's `:deploy` target.
+#
+# It is NOT automatically safe for the DEPLOY gate: that gate's TD universe is
+# DEPLOY_TARGETS (the image/zip artifacts), which do NOT depend on `:deploy`, so
+# nothing in it would notice a sequencer change. Every workflow that actually
+# runs a rollout must therefore name tools/deploy/ in its OWN trigger set --
+# EXTRA_PATH_REGEX for the graph-gated apps, a push `paths:` glob for the
+# path-gated ones -- or a candidate->smoke->promote change could merge and never
+# be deployed. This guard makes that coupling structural instead of a comment.
+check_deploy_sequencer_gate() {
+  _allow="$(grep -o "\^tools/([^']*)" "$ROOT/tools/ci/affected-targets.sh" 2>/dev/null | head -1)"
+  case "$_allow" in
+    *"|deploy/|"*) ;;
+    *)
+      emit "gate" "$GLYPH_OK" "$C_GREEN" "tools/deploy" "force-sweeps" "n/a" \
+        "tools/deploy is not allowlisted, so the global-impact guard still covers a sequencer change" ""
+      return 0 ;;
+  esac
+
+  _missing=""
+  for _wf in "$ROOT"/.github/workflows/*.yaml "$ROOT"/.github/workflows/*.yml; do
+    [ -f "$_wf" ] || continue
+    # Only the CALLERS of the reusable rollout workflow actually deploy.
+    grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$_wf" 2>/dev/null || continue
+    # Must appear in a real trigger (EXTRA_PATH_REGEX or a paths: glob) -- a
+    # passing mention in a comment must NOT satisfy this.
+    if ! grep -qE '^[[:space:]]*(EXTRA_PATH_REGEX:.*tools/deploy/|-[[:space:]]*"tools/deploy/)' "$_wf" 2>/dev/null; then
+      _missing="${_missing} $(basename "$_wf")"
+    fi
+  done
+
+  if [ -z "$_missing" ]; then
+    emit "gate" "$GLYPH_OK" "$C_GREEN" "_deploy-cloud-run.yaml callers" "trigger on tools/deploy/" "all callers" \
+      "every Cloud Run rollout workflow redeploys when the sequencer changes" ""
+    return 0
+  fi
+
+  emit "gate" "$GLYPH_FAIL" "$C_RED" "${_missing# }" "no tools/deploy/ trigger" "tools/deploy/" \
+    "tools/deploy/ is allowlisted out of the global-impact guard, so these rollout workflows would NOT redeploy when the candidate->smoke->promote sequencer changes" \
+    "add tools/deploy/ to the workflow's EXTRA_PATH_REGEX (graph-gated apps), or 'tools/deploy/**' to its push paths: (path-gated apps)"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+}
+
+check_no_local_paths() {
+  # Scope: committed text likely to be machine-generated. Docs legitimately
+  # quote example paths, and this file names the pattern it greps for.
+  # Deliberately NARROW: match only paths that can only come from someone's own
+  # working copy — an agent worktree, or a home-rooted path into this repo's
+  # checkout. Container/remote paths like /home/vscode/go, /home/k3s/storage and
+  # /home/kubernetes/bin are legitimate values, not leaks, so a blanket
+  # /home/... pattern would be pure noise and get ignored.
+  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    emit "localpath" "$GLYPH_FAIL" "$C_RED" "tree" "not a git repo" "scannable" \
+      "the leaked-local-path guard cannot scan - it would report green without looking" \
+      "check \$ROOT ($ROOT) is the git worktree"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+  fi
+  hits="$(git -C "$ROOT" grep -nI -E '\.claude-worktrees/|/(Users|home)/[^/ \"]+/[^ \"]*vitruvian-core' -- \
+      '*.yaml' '*.yml' '*.json' '*.go' '*.ts' '*.tsx' '*.sh' '*.sky' '*.bzl' 2>/dev/null \
+    | grep -v '^tools/conformance/check.sh:' \
+    | grep -v -E '^(docs|devx/docs)/' || true)"
+  if [ -z "$hits" ]; then
+    emit "localpath" "$GLYPH_OK" "$C_GREEN" "tree" "no local paths" "none" \
+      "no committed file embeds a developer machine path" ""
+    return 0
+  fi
+  printf '%s\n' "$hits" | while IFS= read -r h; do
+    [ -z "$h" ] && continue
+    emit "localpath" "$GLYPH_FAIL" "$C_RED" "${h%%:*}" "local path" "none" \
+      "embeds a developer machine path: ${h#*:}" \
+      "remove it - if this file is generated, generate it with a real template, not a shell heredoc (zsh applies :a/:r history modifiers inside \$var:word)"
+  done
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  return 1
+}
+
+# Every pulumi-library package must carry BOTH release-please files, and its
+# `component` must match its directory.
+#
+# release-please needs a per-package `.release-please-manifest.json` beside the
+# config; without it the release job dies with "Missing required manifest
+# versions" and the package NEVER PUBLISHES — which in turn blocks anything that
+# consumes it by version, since library consumers pin published versions rather
+# than local paths.
+#
+# The `component` is the release TAG PREFIX. A package whose config was copied
+# from a sibling keeps the SOURCE package's component, so it would publish under
+# another package's tag namespace. Both mistakes shipped together when pkg/neon
+# and pkg/upstash were added by copying pkg/pubsub's config: the manifest was
+# missing and both components still read "go-pubsub".
+check_release_please_packages() {
+  ok=1
+  for cfg in pulumi/library/go/pkg/*/release-please-config.json; do
+    [ -e "$cfg" ] || continue
+    dir="$(dirname "$cfg")"
+    pkg="$(basename "$dir")"
+    rel="${cfg#./}"
+    if [ ! -e "$dir/.release-please-manifest.json" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "no manifest" "manifest present" \
+        "$dir has release-please-config.json but no .release-please-manifest.json - the release job fails with \"Missing required manifest versions\" and this package never publishes" \
+        "add $dir/.release-please-manifest.json containing {\"$dir\": \"0.0.0\"}"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+    # Convention: "go-" + the directory with underscores as hyphens
+    # (pkg/cai_monitoring -> go-cai-monitoring).
+    want="go-$(printf '%s' "$pkg" | tr '_' '-')"
+    got="$(sed -n 's/.*"component"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -n1)"
+    if [ -n "$got" ] && [ "$got" != "$want" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$rel" "component: $got" "$want" \
+        "$rel declares component '$got' but lives in $dir - the component is the release TAG PREFIX, so this package would publish under another package's tag namespace (the signature of a config copied from a sibling)" \
+        "set \"component\": \"$want\""
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+  done
+  [ "$ok" = 1 ] && emit "pulumi" "$GLYPH_OK" "$C_GREEN" "release-please" "config+manifest" "config+manifest" \
+    "every pulumi-library package has both release-please files and a matching component" ""
+}
+
+check_release_infra_exclude() {
+  ok=1
+  seen=0
+  for cfg in "$ROOT"/*/release-please-config.json; do
+    [ -f "$cfg" ] || continue
+    seen=$((seen + 1))
+    rel="${cfg#"$ROOT"/}"
+    app="${rel%%/*}"
+    [ -d "$ROOT/$app/infra" ] || continue   # only co-located apps are at risk
+    excluded="$(python3 - "$cfg" "$app" <<'PY'
+import json, sys
+cfg, app = sys.argv[1], sys.argv[2]
+pkg = json.load(open(cfg)).get("packages", {}).get(app, {})
+print("yes" if f"{app}/infra" in (pkg.get("exclude-paths") or []) else "no")
+PY
+)"
+    if [ "$excluded" = "yes" ]; then
+      emit "release" "$GLYPH_OK" "$C_GREEN" "$rel" "$app/infra excluded" "excluded"         "co-located infra is outside the app's release unit" ""
+    else
+      emit "release" "$GLYPH_FAIL" "$C_RED" "$rel" "$app/infra NOT excluded" "excluded"         "$app co-locates infra at $app/infra, so an infrastructure-only commit bumps the APP's version and triggers a deploy of unchanged code"         "add \"exclude-paths\": [\"$app/infra\"] to packages[\"$app\"] in $rel (paths are repo-root-relative)"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+  done
+  # A guard that silently inspects NOTHING is worse than no guard: it reports
+  # green forever. This one previously used a CWD-relative glob and matched
+  # zero files under `bazel run`, so it passed without checking anything.
+  if [ "$seen" -eq 0 ]; then
+    emit "release" "$GLYPH_FAIL" "$C_RED" "*/release-please-config.json" "none found" "at least 1" \
+      "the release-unit guard found no release-please configs to inspect - it is running blind, not passing" \
+      "check the glob resolves from \$ROOT ($ROOT)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+  fi
+  return $((1 - ok))
+}
+
 check_copybara_infra_exclude() {
   cb="$COPYBARA_CONFIG_FILE"
   [ -f "$cb" ] || return 0
@@ -1259,8 +1608,15 @@ check_app_metadata
 check_merge_queue
 check_sweep_backstop
 check_zitadel_import
+check_pulumi_project_names
+check_custom_domain_zone
+check_release_please_packages
 check_copybara_infra_exclude
 
+check_release_infra_exclude
+check_no_local_paths
+check_ci_gate_lists_match
+check_deploy_sequencer_gate
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1275,7 +1631,11 @@ print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$RO
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
+print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
+print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
+print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
+print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

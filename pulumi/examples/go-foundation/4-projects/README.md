@@ -152,21 +152,49 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 
 ### Adding Additional Business Units
 
-To create a new business unit (e.g., `bu2`), copy the `business_unit_1` leaf
-tree to `business_unit_2` (as upstream does), then set `business_code: "bu2"`
-in each leaf's stack configuration:
+A business unit is **data plus a directory**, not new module code: copy the
+`business_unit_1` leaf tree to `business_unit_2` (as upstream does) and re-point
+its identifiers. Nothing under `modules/` changes.
 
 ```bash
 cp -r business_unit_1 business_unit_2
-cd business_unit_2/shared
-pulumi stack init production
-pulumi config set business_code "bu2"
-pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
-pulumi config set org_stack_name "organization/vitruvian/foundation-org-shared/production"
-pulumi up
 ```
 
-Repeat for each environment leaf in the new business unit.
+Then, in **each** of the four leaves (`shared`, `development`, `nonproduction`,
+`production`), rename the identifiers that carry the BU:
+
+| File | Change |
+| --- | --- |
+| `go.mod` | `module foundation-projects-bu2-<leaf>` — keep the `replace … => ../../modules` line, copy `go.sum` verbatim |
+| `Pulumi.yaml` | `name: foundation-projects-bu2-<leaf>` (the stack name is derived from this, so it must be unique per BU) |
+| `Pulumi.<stack>.yaml` | re-namespace **every** key to `foundation-projects-bu2-<leaf>:` and set `business_code: "bu2"` |
+| `config_test.go` | flip the `"bu1"` assertions to `"bu2"` |
+| `BUILD` | point `pulumi_project(dir = …)` at the new path |
+
+`main.go`, `remote.go`, `config.go` and `outputs.go` are copied **unchanged** —
+the environment is pinned per leaf and the BU identity is config-driven.
+
+Choose the project types the new BU actually needs. A BU that only hosts a
+serverless app wants just the floating project:
+
+```yaml
+foundation-projects-bu2-development:oss_floating_project_enabled: "true"
+foundation-projects-bu2-development:floating_project_enabled: "false"   # no -sample-floating
+foundation-projects-bu2-development:svpc_project_enabled: "false"
+```
+
+Three things are easy to miss:
+
+- **The stack-config allow-list.** `Pulumi.*.yaml` is git-ignored by default;
+  add a `!…/business_unit_2/*/Pulumi.*.yaml` negation or the new BU's committed
+  config is silently untracked and `cfg.Require` fails on a clean checkout.
+- **The deploy workflow's concurrency group** must include the business unit —
+  otherwise two BUs sharing one group serialize against each other (and a
+  hardcoded `business_unit_1` path deploys the wrong leaf entirely).
+- **Peering CIDRs are per-BU.** `subnet_ip_range` defaults to the same range for
+  every BU; if a second BU ever enables peering it needs a distinct block.
+
+Apply through your CI pipeline, never a local `pulumi up`.
 
 ### Running Pulumi Locally
 

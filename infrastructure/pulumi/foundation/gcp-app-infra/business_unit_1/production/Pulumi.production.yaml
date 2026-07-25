@@ -1,0 +1,28 @@
+# Stack config for the vitruviansoftware.dev foundation Phase 5 (app-infra) -
+# bu1 production leaf. The environment identity is pinned in this leaf's main.go,
+# not configured here (upstream business_unit_1/<env> layout).
+#
+# Scope today: the PLATFORM-ISSUED deploy identity per app per env
+# (docs/engineering/core-vs-application-infrastructure.md 4.1). The Cloud Run
+# onto modules/serverless_space adopts a live traffic-serving service and is a
+# separate change.
+#
+# Promotion order: development -> nonproduction -> production
+config:
+  foundation-app-infra-bu1-production:business_code: "bu1"
+
+  # --- Cross-stage reference ---
+  foundation-app-infra-bu1-production:projects_stack_name: "ipv1337/foundation-projects-bu1-production/production"
+
+  # --- Applications hosted in this environment ---
+  # Adding an app is a one-line change here plus its per-app overrides below.
+  foundation-app-infra-bu1-production:apps: "oauth-user-inspector"
+
+  # Deploy identities are minted in gcp-projects (one stage up) and consumed
+  # here by StackReference — see that leaf's `apps` config.
+
+  # Cloud Run service, adopted from oauth-user-inspector/infra/app per §7
+  # (import -> foundation deploy -> app-side state cleanup). Proven on dev
+  # (#1068) and nonprod (#1071) with HTTP 200 throughout. Values below are
+  # replicated from the former app stack so the adoption is a no-op.
+

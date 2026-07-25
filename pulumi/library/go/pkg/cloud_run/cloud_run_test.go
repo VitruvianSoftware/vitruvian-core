@@ -39,7 +39,7 @@ func TestNewCloudRun_Basic(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cr, err := NewCloudRun(ctx, "app", &CloudRunArgs{
 			ProjectID:           pulumi.String("prj-d-bu1-oss-floating-2ad6"),
-			Region:              "us-west1",
+			Region:              pulumi.String("us-west1"),
 			Name:                "oauth-user-inspector",
 			Image:               pulumi.String("us-west1-docker.pkg.dev/p/r/app@sha256:abc"),
 			ServiceAccountEmail: pulumi.String("rt@prj.iam.gserviceaccount.com"),
@@ -58,7 +58,7 @@ func TestNewCloudRun_WithSecretEnv(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewCloudRun(ctx, "app", &CloudRunArgs{
 			ProjectID:           pulumi.String("test-proj"),
-			Region:              "us-west1",
+			Region:              pulumi.String("us-west1"),
 			Name:                "app",
 			Image:               pulumi.String("img@sha256:abc"),
 			ServiceAccountEmail: pulumi.String("rt@test.iam.gserviceaccount.com"),
@@ -83,7 +83,7 @@ func TestNewCloudRun_BlueGreenTraffic(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		_, err := NewCloudRun(ctx, "app", &CloudRunArgs{
 			ProjectID:           pulumi.String("test-proj"),
-			Region:              "us-west1",
+			Region:              pulumi.String("us-west1"),
 			Name:                "app",
 			Image:               pulumi.String("img@sha256:abc"),
 			ServiceAccountEmail: pulumi.String("rt@test.iam.gserviceaccount.com"),
@@ -101,11 +101,15 @@ func TestNewCloudRun_BlueGreenTraffic(t *testing.T) {
 	tracker.RequireType(t, "gcp:cloudrunv2/service:Service", 1)
 }
 
-func TestNewCloudRun_RequiresRegionAndName(t *testing.T) {
+func TestNewCloudRun_RequiresName(t *testing.T) {
+	// Region is now a pulumi.StringInput (so it can be threaded from an upstream
+	// stack's default_region output); it can no longer be validated synchronously
+	// at construction, so only Name is checked here. A missing region surfaces at
+	// apply as a Location error from the provider.
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		_, err := NewCloudRun(ctx, "test", &CloudRunArgs{Name: "x"})
+		_, err := NewCloudRun(ctx, "test", &CloudRunArgs{Region: pulumi.String("us-central1")})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "Region is required")
+		require.Contains(t, err.Error(), "Name is required")
 		return nil
 	}, pulumi.WithMocks("project", "stack", testutil.NewTracker()))
 	require.NoError(t, err)

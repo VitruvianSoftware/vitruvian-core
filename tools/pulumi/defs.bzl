@@ -47,6 +47,16 @@ _SUBCOMMANDS = [
     # ArgoCD cutover without touching the live (ArgoCD-managed) objects.
     "stack",
     "state",
+    # `import` adopts an already-existing cloud resource into this stack's state
+    # WITHOUT changing the resource. It is the ONE sanctioned local exception to
+    # "every apply runs in the pipeline" (core-vs-application-infrastructure.md
+    # §7): a state-only adoption, in kind unlike `up`/`destroy` which mutate the
+    # cloud. Used to move a live Cloud Run service (or a deploy identity) onto a
+    # foundation stack during a workload cutover, e.g.
+    #   bazel run //infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/development:import -- \
+    #     --stack production --generate-code=false \
+    #     gcp:cloudrunv2/service:Service tabula projects/<proj>/locations/<region>/services/tabula-api-development
+    "import",
 ]
 
 def pulumi_project(name, dir, visibility = ["//visibility:public"]):

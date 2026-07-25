@@ -25,7 +25,7 @@
 set -e
 
 PROJECT_ID=${1:-$(gcloud config get-value project)}
-REGION=${2:-us-west1}
+REGION=${2:-us-central1}
 SERVICE_NAME="oauth-user-inspector"
 
 echo "🚀 Deploying OAuth User Inspector to Google Cloud Run"

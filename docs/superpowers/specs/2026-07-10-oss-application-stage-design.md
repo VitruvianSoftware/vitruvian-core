@@ -4,6 +4,7 @@
 **Status:** Design — pending review
 **Branch:** `feat/oss-application-stage-spec`
 **Reference app:** `oauth-user-inspector` (first serverless OSS app)
+**Onboarding the next app:** see the practical checklist at [`docs/oss-app-onboarding-checklist.md`](../../guides/oss-app-onboarding-checklist.md)
 
 ## 1. Context & goal
 

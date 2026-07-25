@@ -19,8 +19,12 @@ Pulumi.*.yaml
 !identity/Pulumi.development.yaml
 !identity/Pulumi.nonproduction.yaml
 !identity/Pulumi.production.yaml
+# build is the single SHARED stack (not per-env): one production config holding
+# only the region; its target projects are StackReference-driven.
+!build/Pulumi.production.yaml
 
 # Compiled Go pulumi-program binary left behind by a stray `go build .` (named
 # after each module's last path element) — never track.
 /app/oauth-user-inspector
 /identity/oauth-user-inspector-deploy-identity
+/build/oauth-user-inspector-build

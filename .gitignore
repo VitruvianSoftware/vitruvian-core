@@ -23,8 +23,18 @@ vendor/bundle/
 
 # Claude Code working dir (transient worktrees from spawned tasks; pollutes bazel //... + gazelle)
 .claude/
+scratchpad/
 
 # Raw GitHub Actions log dumps accidentally saved to the repo root
 /log.txt
 /job.txt
 /bootstrap_log.txt
+
+# Kubeconfigs carry a client private key. devx/k3s.yaml was committed once
+# (May 2026, a local 127.0.0.1 k3s dev cluster) and later removed, but it is
+# still in this public repo's history -- see the secret-scan gate. Ignore the
+# whole class so it cannot happen again.
+k3s.yaml
+kubeconfig
+kubeconfig.yaml
+*.kubeconfig
