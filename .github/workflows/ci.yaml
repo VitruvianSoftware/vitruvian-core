@@ -219,6 +219,19 @@ jobs:
       (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true')
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      # The premium macOS runner was the one Bazel lane with NO action cache at
+      # all (setup-bazel gives only bazelisk + repository caches, which are
+      # DOWNLOAD caches). --config=remotecache adds the BuildBuddy remote action
+      # cache and async BES but sets NO --remote_executor, so execution stays
+      # LOCAL -- mandatory here, since the Apple toolchain cannot run on the
+      # Linux RBE workers, and outputs stay materialised for the objc link and
+      # XCTest run. The cache is self-warming: this job runs on every push to
+      # main, so a nexus-agent PR branched off recent main pulls most unchanged
+      # Swift/objc outputs instead of recompiling them. Content-addressed, so
+      # macOS action digests only ever hit from prior macOS runs; a cache error
+      # falls back to local execution (never slower, never incorrect).
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v7
       - name: Set up Bazel
@@ -228,12 +241,22 @@ jobs:
       # tags=["manual"], so the wildcard skips it -- build it explicitly by
       # label. The wildcard still builds the rest of nexus-agent (Swift lib,
       # Node bridge, hooks) on macOS.
+      #
+      # The remote cache is only wired when the key is present: a fork PR has no
+      # secret, and passing an empty --remote_header would fail the build rather
+      # than degrade to local.
       - name: Build macOS app
         run: |
-          bazel build --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          else
+            echo "::notice::no BuildBuddy key (fork PR?) -- building without the remote cache."
+          fi
+          bazel build "${cache[@]}" --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test --config=macos-app //nexus-agent/macos:NexusAgent_tests
+          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgent_tests
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
@@ -272,14 +295,43 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The gate below diffs against the merge-base / before-rev.
+          fetch-depth: 0
+      # This was the last heavy Bazel lane with NO changed-paths gate, so a
+      # docs-only PR still paid the full ~3min LLVM toolchain fetch here after
+      # build-test/tidy-check/conformance-check had all already short-circuited.
+      # Same run-then-noop-green shape as those lanes: the JOB always runs and
+      # reports (it is a REQUIRED check -- skipping it would wedge the queue
+      # "pending"), only the Bazel steps are gated.
+      #
+      # IGNORE_REGEX is deliberately NARROWER than the script default, which
+      # also treats gitops/ as inert. addlicense does not ignore gitops/ (those
+      # manifests carry MIT headers today) and //tools/license:{check,verify}
+      # are `bazel run` sh_binaries with no sh_test, so `bazel test //...` and
+      # the nightly periodic-full-sweep never cover them. Treating gitops/ as
+      # skippable here would let an unlicensed gitops file dodge a required
+      # check with no backstop. docs/ and *.md ARE inert: addlicense ignores
+      # **/docs/** and never headers markdown, and :verify only scans source
+      # extensions.
+      - name: Gate on changed paths
+        id: gate
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+          IGNORE_REGEX: '^docs/|\.md$'
+        run: bash tools/ci/relevant-paths.sh
       - name: Set up Bazel
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
       - name: Check license headers present (whole repo)
+        if: steps.gate.outputs.relevant != 'false'
         run: bazel run //tools/license:check
       # addlicense -check above is PRESENCE-only (an Apache header with a wrong
       # holder passes it). This CONTENT gate enforces MIT + VitruvianSoftware in
       # every first-party LICENSE and any source header present (issue #457).
       - name: Verify license content is MIT + VitruvianSoftware
+        if: steps.gate.outputs.relevant != 'false'
         run: bazel run //tools/license:verify
 
   go-lint:
@@ -329,6 +381,11 @@ jobs:
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
           go-version-file: ${{ matrix.module }}/go.mod
+          # setup-go keys its module/build cache on a dependency file, defaulting
+          # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
+          # modules whose go.sum lives under <module>/, so the default key missed
+          # and the cache never restored. Same wiring go-test already uses.
+          cache-dependency-path: ${{ matrix.module }}/go.sum
       - name: golangci-lint (${{ matrix.module }})
         if: >-
           github.event_name == 'push' ||
@@ -384,6 +441,121 @@ jobs:
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         working-directory: ${{ matrix.module }}
         run: go test -race -cover ./...
+
+  go-test-infra:
+    # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
+    #
+    # These had NO test lane at all. They are outside go.work, the `go-test`
+    # matrix above covers only devx/homelab, and `pulumi_project` emits just
+    # `bazel run` wrappers -- no go_test target -- so `bazel test //...` never
+    # saw them either. Tests written for these programs were therefore DEAD:
+    # they compiled on a developer's laptop and never executed in CI.
+    #
+    # That was not hypothetical. The floating-project toggle regression guard
+    # (modules/base_env, added with the bu2 rollout) had never once run.
+    #
+    # Modules are discovered rather than listed so a new app's infra is covered
+    # the day it lands, and only modules that actually contain a _test.go are
+    # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
+    # is off because these modules are deliberately not workspace members.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect IaC-relevant changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            iac:
+              - 'infrastructure/pulumi/**'
+              - '*/infra/**'
+              - '.github/workflows/ci.yaml'
+      - uses: actions/setup-go@v7
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
+        with:
+          go-version-file: go.mod
+      - name: go test (IaC modules with tests)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
+        run: |
+          set -euo pipefail
+          ran=0
+          while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            # Only modules that actually carry tests: `go test ./...` in a
+            # module with none is a slow no-op that still resolves the graph.
+            if ! find "$dir" -name '*_test.go' -print -quit | grep -q .; then
+              continue
+            fi
+            ran=$((ran + 1))
+            echo "::group::go test $dir"
+            (cd "$dir" && go test ./...)
+            echo "::endgroup::"
+          done < <(find infrastructure/pulumi */infra -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort)
+          echo "ran go test in $ran IaC module(s)"
+
+  example-build:
+    # The go-foundation EXAMPLE (pulumi/examples/go-foundation) is a reference
+    # users copy. Its Go is otherwise compiled ONLY in its downstream copybara
+    # mirror, so a change here that breaks it (e.g. #1097 broke the app-infra
+    # example leaf while this repo's CI stayed green) was invisible until the
+    # mirror re-ran. This compiles every example module IN THE SOURCE REPO.
+    #
+    # Own job (not folded into go-test-infra) + generous timeout because it is
+    # ~27 standalone modules each pulling the Pulumi SDK; path-gated so it only
+    # runs when the example — or a library it consumes — actually changes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Detect example/library changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          filters: |
+            ex:
+              - 'pulumi/examples/go-foundation/**'
+              - 'pulumi/library/**'
+              - '.github/workflows/ci.yaml'
+      - uses: actions/setup-go@v7
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
+        with:
+          go-version-file: go.mod
+      - name: go build (every example module)
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
+        run: |
+          set -euo pipefail
+          n=0
+          while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            n=$((n + 1))
+            echo "::group::go build $dir"
+            (cd "$dir" && go build ./...)
+            echo "::endgroup::"
+          done < <(find pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          echo "compiled $n example module(s)"
 
   validate-butane:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There

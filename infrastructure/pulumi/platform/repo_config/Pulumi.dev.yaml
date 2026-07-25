@@ -94,22 +94,22 @@ config:
     build:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-build@prj-c-bu1-infra-pipeline-4b48.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-c-bu1-infra-pipeline-4b48
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     development:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-d-bu1-oss-floating-648a
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     nonproduction:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-n-bu1-oss-floating-630b
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     production:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-p-bu1-oss-floating-16e0.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-p-bu1-oss-floating-16e0
-      GCP_REGION: us-west1
+      GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
   # buildbuddyApiKey is NO LONGER committed here (issue #456 / §2.4). The CI
   # apply/preview inject it as the BUILDBUDDY_API_KEY env var from the pipeline

@@ -46,6 +46,30 @@ common:lint --aspects=//tools/lint:linters.bzl%ty
 common:lint --aspects=//tools/lint:linters.bzl%clang_tidy
 common:lint --aspects=//tools/lint:linters.bzl%ktlint
 common:lint --aspects=//tools/lint:linters.bzl%pmd
+
+# Share the downloaded-archive cache across every output_base on the machine.
+#
+# Bazel's repository cache defaults to <output_user_root>/cache/repos/v1. That
+# is fine for a single checkout, but //tools/worktree deliberately pins a
+# per-worktree `startup --output_user_root=...` (issue #455, so worktrees do not
+# contend on one Bazel server) -- and relocating the output_user_root silently
+# relocates the download cache with it. Every worktree therefore re-downloads
+# every external archive from scratch.
+#
+# Measured on this repo (fresh output_user_root, `bazel build //devx:devx`):
+#   own cache (today):    193s, 9.7 GB downloaded
+#   shared cache:          65s, 0 downloaded
+# ~3x faster for one small target, and the download saving compounds with every
+# worktree a developer creates.
+#
+# Pinning it here decouples the download cache from output_user_root, so
+# worktrees keep their isolated analysis cache and Bazel server while sharing
+# archives. `~` is expanded by Bazel (verified). This is deliberately in the
+# committed .bazelrc rather than user.bazelrc so every checkout gets it; a
+# developer can still override it in their gitignored user.bazelrc, which is
+# imported last.
+common --repository_cache=~/.cache/bazel/repository-cache
+
 # Load any settings & overrides specific to the current user from `.aspect/bazelrc/user.bazelrc`.
 # This file should appear in `.gitignore` so that settings are not shared with team members. This
 # should be last statement in this config so the user configuration is able to overwrite flags from

@@ -50,4 +50,30 @@ type Args struct {
 	// provider already pins the repository, so the environment is the isolation
 	// layer.
 	GitHubEnvironment string
+	// ConditionalDeployRoles are project-level roles granted WITH an IAM
+	// condition. Nil (the zero value) reproduces the pre-existing behaviour
+	// exactly. They are a SEPARATE field, not entries in DeployRoles, because
+	// in GCP an IAM condition is part of the BINDING'S IDENTITY: the same role
+	// with a condition is a different binding, not a modified one. Granting a
+	// prefix-scoped role unconditionally would silently widen it to every
+	// co-tenant application in the shared project.
+	ConditionalDeployRoles []ConditionalRole
+	// ProjectNumber resolves the ${projectNumber} placeholder in condition
+	// expressions. Required only when some expression uses that placeholder —
+	// Secret Manager conditions must address secrets by project NUMBER, which
+	// differs per environment and is only known as a stack output.
+	ProjectNumber pulumi.StringInput
+}
+
+// ConditionalRole is a project-level role grant carrying an IAM condition.
+//
+// Expression is CEL and may contain the placeholders ${projectNumber} and
+// ${projectId}, which are substituted from Args. Both Title and Expression are
+// part of the binding's identity in GCP, so neither may be normalised or
+// reconstructed — they must match the live binding byte for byte or the apply
+// creates a SECOND binding instead of adopting the existing one.
+type ConditionalRole struct {
+	Role       string
+	Title      string
+	Expression string
 }

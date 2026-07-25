@@ -18,6 +18,7 @@ package network
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -80,6 +81,39 @@ type Networking struct {
 	// Exposed so callers can serialize other peering-mutating operations behind
 	// it (GCP allows only one peering-mutating op at a time per VPC).
 	PSAConnection *servicenetworking.Connection // nil unless EnablePSA
+}
+
+// OrderedSubnetNames returns the subnet map keys (subnet names) sorted
+// lexicographically.
+//
+// Subnets is a Go map, whose range order is randomized on every run. Any caller
+// that builds an index-addressable export by ranging it directly (subnets_names,
+// subnets_ips, subnets_self_links, flattened secondary ranges) will see the
+// exported arrays reshuffle between runs — spurious preview diffs with zero real
+// resource changes — and any downstream consumer that reads an export by index
+// can bind to a different subnet each run. Iterate this instead: the subnet name
+// (the map key) is a synchronous, plan-time string, so sorting is deterministic
+// and needs no Output resolution. This mirrors Terraform, which emits
+// map-derived outputs in sorted-key order.
+func (n *Networking) OrderedSubnetNames() []string {
+	names := make([]string, 0, len(n.Subnets))
+	for name := range n.Subnets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// OrderedSubnets returns the subnetworks in OrderedSubnetNames order, giving a
+// stable, deterministic sequence for exports. Prefer this over ranging Subnets
+// directly whenever iteration order is observable.
+func (n *Networking) OrderedSubnets() []*compute.Subnetwork {
+	names := n.OrderedSubnetNames()
+	subnets := make([]*compute.Subnetwork, 0, len(names))
+	for _, name := range names {
+		subnets = append(subnets, n.Subnets[name])
+	}
+	return subnets
 }
 
 func NewNetworking(ctx *pulumi.Context, name string, args *NetworkingArgs, opts ...pulumi.ResourceOption) (*Networking, error) {

@@ -182,7 +182,7 @@ kubectl cluster-info --context kind-blueprint-dev
 
 ### Out of disk space
 
-See the [Troubleshooting Guide](../docs/user/troubleshooting.md) for disk space management, including:
+Reclaim space by (see also [`docs/guides/build-cache.md`](../docs/guides/build-cache.md)):
 
 - Relocating Bazel cache
 - Cleaning Docker resources
@@ -203,7 +203,7 @@ RUN apt-get update \
 
 ### Adding Tools via bazel_env
 
-To add cross-platform CLI tools, see [Development Guide](../docs/contributor/development.md#add-new-tool).
+To add cross-platform CLI tools, see [README.bazel.md § Installing dev tools](../README.bazel.md#installing-dev-tools).
 
 ### Modifying kind Configuration
 
@@ -225,4 +225,3 @@ After changes, restart the cluster:
 - [Dev Containers Documentation](https://containers.dev/)
 - [kind Documentation](https://kind.sigs.k8s.io/)
 - [Docker Documentation](https://docs.docker.com/)
-- [Blueprint Development Guide](../docs/contributor/development.md)

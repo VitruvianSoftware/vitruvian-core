@@ -20,7 +20,7 @@
 
 name: _deploy-cloud-run
 
-# Reusable blue-green Cloud Run deploy (#500, docs/repo-assessment.md §5.3),
+# Reusable blue-green Cloud Run deploy (#500, docs/archive/assessments/repo-assessment.md §5.3),
 # extracted verbatim from tabula's production pipeline (the reference
 # implementation): Bazel rules_oci image push -> optional Prisma migrations ->
 # Pulumi candidate at 0% traffic -> smoke the candidate's dedicated URL ->
@@ -87,9 +87,11 @@ on:
       default-region:
         description: >-
           Fallback region when the GitHub Environment defines no GCP_REGION
-          variable. Kept caller-scoped because different apps live in
-          different regions (tabula: us-central1, oauth-user-inspector:
-          us-west1).
+          variable. Kept caller-scoped so each app can pin its region
+          explicitly; both current apps deploy to the primary region
+          (tabula: us-central1, oauth-user-inspector: us-central1). us-west1
+          is the fleet's SECONDARY region (bootstrap default_region_2), NOT
+          any app's region — do not "reconcile" GCP_REGION to it.
         required: false
         type: string
         default: "us-central1"
@@ -97,6 +99,17 @@ on:
         description: "Cloud Run service name pattern; '-<environment>' is appended, e.g. tabula-api"
         required: true
         type: string
+      workload-migrated:
+        description: >-
+          When true, the app stack no longer owns the Cloud Run service (it has
+          been adopted by the foundation gcp-app-infra leaf) and this stack's
+          `pulumi up` reconciles only app-side resources (e.g. the custom
+          domain). The blue-green candidate-smoke and traffic-shift steps are
+          skipped because there is no service revision in this stack to smoke or
+          promote — the service is deployed and smoked by the foundation leaf.
+        required: false
+        type: boolean
+        default: false
       pulumi-dir:
         description: "Pulumi project dir, e.g. tabula/infra/app"
         required: true
@@ -109,12 +122,39 @@ on:
         required: false
         type: string
         default: ""
+      pulumi-refresh:
+        description: >-
+          Refresh Pulumi state against the live cloud before `up`. Off by
+          default: refresh can surface pre-existing drift and turn a working
+          deploy red, so it is opt-in per app rather than a fleet-wide change.
+
+          Turn it ON for apps whose stack owns a resource that can exist but be
+          BROKEN — the case `up` alone cannot heal, because inputs still match
+          desired state so it diffs clean and no-ops forever. A Cloud Run
+          DomainMapping is exactly that: it checks domain ownership once at
+          creation and, if the deploying principal was not yet a verified owner,
+          it sticks at Ready=False permanently (conditions stop transitioning).
+          Establishing ownership afterwards does not retrigger it, and without a
+          refresh Pulumi cannot even notice the resource was deleted to force a
+          rebuild.
+        required: false
+        type: boolean
+        default: false
       env-prefix:
         description: "Env-var prefix the Pulumi program reads, e.g. TABULA"
         required: true
         type: string
       run-migrations:
         description: "Run //tabula/api:schema_engine and //tabula/api:migrate_deploy_bin before Pulumi up"
+        required: false
+        type: boolean
+        default: false
+      skip-if-unchanged:
+        description: >-
+          Opt-in: skip the migrate + blue-green + smoke when the live service
+          already serves the desired revision. Requires the app's revision name
+          to encode image digest + config hash and a `<pulumi-dir>/cmd/revname`
+          that recomputes it (tabula only). Fail-open — any doubt deploys.
         required: false
         type: boolean
         default: false
@@ -125,6 +165,11 @@ on:
         default: "/"
       custom-smoke-script:
         description: "Custom bash script to run instead of the default curl check. The candidate URL is available as the CAND env var."
+        required: false
+        type: string
+        default: ""
+      custom-smoke-script-file:
+        description: "Workspace-relative path to a smoke script, read from the source tree. Preferred over custom-smoke-script for a multi-line script, so CI and the local :deploy target share ONE file (no drift)."
         required: false
         type: string
         default: ""
@@ -193,6 +238,24 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
+      # OPT-IN skip gate. Compares the revision name a deploy WOULD produce (the
+      # built digest + this env's config, via the app stack's own revision
+      # package) against the live serving revision. Equal -> the running service
+      # already IS the desired state, so migrate + blue-green + smoke are
+      # redundant and every step below is skipped. FAIL-OPEN: the script emits
+      # unchanged=false on any doubt (see tools/ci/tabula-deploy-preflight.sh),
+      # so a bug can only ever REDEPLOY needlessly, never skip a real change.
+      - name: Preflight — skip if live already serves the desired revision
+        id: preflight
+        if: ${{ inputs.skip-if-unchanged }}
+        env:
+          SERVICE_NAME: ${{ inputs.service-name }}
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+          PULUMI_DIR: ${{ inputs.pulumi-dir }}
+          CONFIG_FILE: Pulumi.${{ inputs.environment }}.yaml
+          GOWORK: off
+        run: ./tools/ci/tabula-deploy-preflight.sh
+
       - name: Configure docker for Artifact Registry
         if: ${{ inputs.image-digest == '' }}
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -234,7 +297,7 @@ jobs:
             ${{ inputs.dockerfile-dir }}
 
       - name: Run database migrations
-        if: ${{ inputs.run-migrations }}
+        if: ${{ inputs.run-migrations && steps.preflight.outputs.unchanged != 'true' }}
         env:
           SECRET_PREFIX: ${{ inputs.secret-prefix }}
         # Before the new revision takes traffic; vendored schema-engine keeps
@@ -280,7 +343,7 @@ jobs:
         # exported job-wide so BOTH `pulumi up` phases (deploy + promote) see
         # it — the cloudflare provider reads the env var implicitly, so it
         # never touches Pulumi config or state.
-        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         run: |
           set -euo pipefail
           # Plain assignment (not `export VAR=$(...)`): export would swallow
@@ -311,7 +374,7 @@ jobs:
         # API itself is console-only and needs a one-time manual enable per
         # project (see tools/ci/ensure-site-verification.sh). CLOUDFLARE_API_TOKEN
         # is job-wide env from the fetch step above.
-        if: ${{ inputs.cloudflare-token-secret-project != '' }}
+        if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         env:
           SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
@@ -324,108 +387,49 @@ jobs:
       # Blue-green rollout (issue #204): deploy the new revision with NO
       # traffic, smoke its dedicated candidate URL, then shift 100% only on
       # success.
-      - name: Deploy the new revision without traffic (Pulumi)
-        id: deploy
+      # Blue-green rollout via //tools/deploy:cloud-run -- the SAME tool a local
+      # break-glass deploy runs, so CI and a laptop execute identical code (single
+      # source of truth; #1116). On a migrated workload the foundation leaf owns
+      # the service, so only the 0%-traffic candidate is published (--phase
+      # candidate); otherwise the tool runs candidate -> smoke -> promote (--phase
+      # all), including the #808 fail-closed smoke and the candidate-only --refresh.
+      # Auth is ambient (WIF) here and the pinned identity locally -- the pulumi
+      # wrapper chooses (ambient-first, #1119). Runs from the repo root (bazel);
+      # the tool cd's into --pulumi-dir itself.
+      - name: Blue-green rollout (candidate → smoke → promote)
+        if: ${{ steps.preflight.outputs.unchanged != 'true' }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # CLOUDFLARE_API_TOKEN (apps with a `customDomain` config) is
-          # job-wide env from the Secret Manager fetch step above — absent
-          # entirely for apps without one, and the program skips DNS.
-          # Pulumi shells out to `go build`; the repo-root go.work does not
-          # include this module (same as tools/pulumi/pulumi_cmd.sh).
+          # CLOUDFLARE_API_TOKEN (customDomain apps) is job-wide env from the
+          # Secret Manager fetch step; GOWORK=off because Pulumi shells to go build.
           GOWORK: off
-        working-directory: ${{ inputs.pulumi-dir }}
-        run: |
-          pulumi stack select "$DEPLOY_ENV" --create
-          # Pin 100% to whatever serves now; the new revision publishes at 0%
-          # behind a `candidate` tag. Empty on the first ever deploy -> the
-          # program routes 100% straight to the new revision.
-          STABLE="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
-            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
-          echo "Current live revision: ${STABLE:-<none, first deploy>}"
-          # Publish whether this is a first-ever deploy + the stable revision, so
-          # the smoke and promote steps consume THESE values instead of re-deriving
-          # from an order-assumed traffic[0] later (#808): the smoke step must not
-          # fall back to the live (stable) URL on a normal deploy, and the promote
-          # step must re-pin the same stable captured here.
-          if [ -z "$STABLE" ]; then
-            echo "first_deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "first_deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "stable_revision=${STABLE}" >> "$GITHUB_OUTPUT"
-          # Per-invocation env, NOT `pulumi config set` (#499 de-race).
-          if [ -n "${{ inputs.image-digest }}" ]; then
-            # Promote-by-digest: every env deploys the SAME immutable artifact
-            # the build-once job produced; nothing is rebuilt per env.
-            export "${{ inputs.env-prefix }}_IMAGE_DIGEST=${{ inputs.image-digest }}"
-          else
-            export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
-          fi
-          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE}"
-          export "${{ inputs.env-prefix }}_PROMOTE=false"
-          pulumi up --yes
-
-      - name: Smoke-check the candidate revision (before any traffic shift)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          GOWORK: off
+          PHASE: ${{ inputs.workload-migrated && 'candidate' || 'all' }}
+          PULUMI_DIR: ${{ inputs.pulumi-dir }}
+          SERVICE_NAME: ${{ inputs.service-name }}
+          ENV_PREFIX: ${{ inputs.env-prefix }}
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+          SMOKE_PATH: ${{ inputs.smoke-url-path }}
           CUSTOM_SMOKE_SCRIPT: ${{ inputs.custom-smoke-script }}
-          FIRST_DEPLOY: ${{ steps.deploy.outputs.first_deploy }}
-        working-directory: ${{ inputs.pulumi-dir }}
+          CUSTOM_SMOKE_SCRIPT_FILE: ${{ inputs.custom-smoke-script-file }}
+          REFRESH_FLAG: ${{ inputs.pulumi-refresh && '--refresh' || '' }}
         run: |
           set -euo pipefail
-          pulumi stack select "$DEPLOY_ENV" >/dev/null 2>&1 || true
-          # The candidate's dedicated tag URL (the new revision at 0% traffic).
-          CAND="$(gcloud run services describe "${{ inputs.service-name }}-${DEPLOY_ENV}" \
-            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
-            --format=json | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
-          if [ -z "$CAND" ] || [ "$CAND" = "null" ]; then
-            if [ "$FIRST_DEPLOY" = "true" ]; then
-              # First-ever deploy: there is no candidate tag because traffic went
-              # straight to the new revision, so the live service URL IS the new
-              # revision -- smoke that.
-              CAND="$(pulumi stack output serviceUrl)"
-              echo "First deploy: smoking the live service URL (it is the new revision)."
-            else
-              # NOT a first deploy: the candidate URL must resolve. Falling back to
-              # the live service URL here would smoke the STABLE (old) revision, go
-              # green against untested code, and then promote the new revision to
-              # 100% -- the exact false-green in #808. Fail the deploy instead.
-              echo "::error::Could not resolve the candidate revision URL on a non-first deploy. Refusing to smoke the stable revision (that would false-green and promote an untested revision). Failing the deploy."
-              exit 1
-            fi
-          fi
-          if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then
-            echo "Running custom smoke script against ${CAND}"
-            export CAND
-            eval "$CUSTOM_SMOKE_SCRIPT"
+          args=(
+            --phase "$PHASE"
+            --pulumi-dir "$PULUMI_DIR"
+            --service "$SERVICE_NAME"
+            --env "$DEPLOY_ENV"
+            --env-prefix "$ENV_PREFIX"
+            --project "$GCP_PROJECT_ID"
+            --region "$GCP_REGION"
+            --smoke-path "$SMOKE_PATH"
+          )
+          if [ -n "$IMAGE_DIGEST" ]; then
+            args+=(--image-digest "$IMAGE_DIGEST")
           else
-            echo "Smoke-checking ${CAND}${{ inputs.smoke-url-path }}"
-            curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}${{ inputs.smoke-url-path }}"
+            args+=(--image-tag "$GITHUB_SHA")
           fi
-
-      - name: Shift 100% traffic to the new revision (Pulumi)
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # The promote is a second `pulumi up` of the SAME program, so it
-          # needs the same Cloudflare credential (job-wide env from the Secret
-          # Manager fetch step) or the program's customDomain guard fails.
-          GOWORK: off
-          STABLE_REVISION: ${{ steps.deploy.outputs.stable_revision }}
-        working-directory: ${{ inputs.pulumi-dir }}
-        run: |
-          pulumi stack select "$DEPLOY_ENV"
-          # Re-pin the SAME stable revision captured in phase 1 -- NOT a fresh
-          # traffic[0] read (the traffic array order isn't guaranteed, so this
-          # could pin the wrong revision) -- so the promote update is
-          # self-consistent with the candidate that was just smoked (#808).
-          if [ -n "${{ inputs.image-digest }}" ]; then
-            export "${{ inputs.env-prefix }}_IMAGE_DIGEST=${{ inputs.image-digest }}"
-          else
-            export "${{ inputs.env-prefix }}_IMAGE_TAG=${GITHUB_SHA}"
-          fi
-          export "${{ inputs.env-prefix }}_STABLE_REVISION=${STABLE_REVISION}"
-          export "${{ inputs.env-prefix }}_PROMOTE=true"
-          pulumi up --yes
+          if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then args+=(--custom-smoke-script "$CUSTOM_SMOKE_SCRIPT"); fi
+          if [ -n "$CUSTOM_SMOKE_SCRIPT_FILE" ]; then args+=(--custom-smoke-script-file "$CUSTOM_SMOKE_SCRIPT_FILE"); fi
+          if [ -n "$REFRESH_FLAG" ]; then args+=(--refresh); fi
+          bazel run //tools/deploy:cloud-run -- "${args[@]}"

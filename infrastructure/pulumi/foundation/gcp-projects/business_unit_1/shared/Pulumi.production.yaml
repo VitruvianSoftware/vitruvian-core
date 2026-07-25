@@ -16,11 +16,32 @@ config:
   foundation-projects-bu1-shared:business_code: "bu1"
 
   # --- Core identifiers ---
-  foundation-projects-bu1-shared:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu1-shared:billing_account: "008CAA-C364C4-B29B67"
   foundation-projects-bu1-shared:project_prefix: "prj"
 
   # --- Cross-stage reference (1-org root at envs/shared) ---
   foundation-projects-bu1-shared:org_stack_name: "ipv1337/foundation-org-shared/production"
+  # Bootstrap stack — provides wif_pool_name for app build-SA WIF bindings.
+  # Only referenced when app_build_spaces is non-empty (see remote.go).
+  foundation-projects-bu1-shared:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
 
   # --- App-infra pipeline (the leaf's reason to exist; explicit for clarity) ---
   foundation-projects-bu1-shared:infra_pipeline_enabled: "true"
+
+  # --- App build spaces (foundation owns each app's shared image registry) ----
+  # The AR repository + build SA + writer grant that let an app push images.
+  # Foundation-authored because they live in the shared infra-pipeline project
+  # (which the foundation owns) and hand out permissions — see
+  # docs/engineering/core-vs-application-infrastructure.md §3. Reader grants live
+  # in the env leaves (the consuming SAs are per-env).
+  #
+  # oauth-user-inspector: no per-app `_ar_region` override, so the repo inherits
+  # the leaf default region (us-central1, the foundation's primary, exported by
+  # bootstrap as default_region). Consuming the region from the earlier phase
+  # keeps every phase consistent (foundation design). oauth was originally stood
+  # up on us-west1 by the app's own build stack; it has since been migrated to the
+  # primary region and that legacy stack is retired (its us-west1 repo is orphaned).
+  foundation-projects-bu1-shared:app_build_spaces: "oauth-user-inspector"
+  foundation-projects-bu1-shared:oauth-user-inspector_ar_repository_id: "oauth-user-inspector"
+  foundation-projects-bu1-shared:oauth-user-inspector_build_account_id: "oauth-user-inspector-build"
+  foundation-projects-bu1-shared:oauth-user-inspector_build_github_environment: "oauth-user-inspector-build"

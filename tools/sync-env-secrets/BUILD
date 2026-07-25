@@ -23,6 +23,15 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# Safely add/update one secret: `set <github-environment> <SECRET_NAME>` prompts
+# for the value, then pull -> write -> push (never pushes a partial store).
+sh_binary(
+    name = "set",
+    srcs = ["sync-env-secrets.sh"],
+    args = ["set"],
+    visibility = ["//visibility:public"],
+)
+
 sh_binary(
     name = "bw-push",
     srcs = ["sync-env-secrets.sh"],

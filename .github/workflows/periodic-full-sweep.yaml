@@ -20,7 +20,7 @@
 
 name: Periodic Full Sweep
 
-# The scheduled full-`//...` correctness backstop (docs/repo-assessment.md §5.5).
+# The scheduled full-`//...` correctness backstop (docs/archive/assessments/repo-assessment.md §5.5).
 #
 # WHY THIS EXISTS — the pairing invariant with ci.yaml:
 # The merge queue and push-to-main lanes in ci.yaml build/test AFFECTED targets

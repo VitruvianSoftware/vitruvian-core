@@ -204,7 +204,7 @@ func DeployCnpgCluster(ctx *pulumi.Context, provider *kubernetes.Provider, opera
 				// default topology.kubernetes.io/zone is a no-op). Mirrors the live
 				// gitops cnpg-cluster AppSet + grafana.go. NOTE: hostnameAntiAffinity()
 				// is the OPERATOR helper — the cluster takes a CNPG AffinityConfiguration.
-				// See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
+				// See docs/operations/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
 				"affinity": map[string]interface{}{
 					"topologyKey": "kubernetes.io/hostname",
 				},

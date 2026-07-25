@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-green.svg)](https://nodejs.org/)
 
 ## What is Tabula?
 
@@ -50,7 +50,7 @@ suspension — all built on a cost-effective, serverless cloud architecture.
 
 ### Planned Features
 
-See our [Product Roadmap](./docs/product/roadmap.md) for detailed phase breakdowns:
+See the [product requirements](./docs/product/REQUIREMENTS.md) for detailed phase breakdowns:
 
 **Phase 2: Sync & History** (Months 4-6)
 
@@ -84,7 +84,7 @@ See our [Product Roadmap](./docs/product/roadmap.md) for detailed phase breakdow
 
 ### Backend
 
-- **API**: Node.js 18+ with Fastify
+- **API**: Node 22, TypeScript, Fastify
 - **Language**: TypeScript with strict mode
 - **Database**: Neon Postgres (serverless, autoscaling)
 - **ORM**: Prisma (type-safe database access)
@@ -93,14 +93,15 @@ See our [Product Roadmap](./docs/product/roadmap.md) for detailed phase breakdow
 
 ### Infrastructure
 
-- **Compute**: Google Cloud Run (scale-to-zero)
-- **Storage**: Google Cloud Storage (backups, assets)
-- **Scheduler**: Google Cloud Scheduler (background jobs)
-- **Messaging**: Google Pub/Sub (real-time sync)
-- **CDN**: Cloudflare (static assets)
-- **IaC**: Terraform
+- **Compute**: Google Cloud Run (scale-to-zero), per-environment GCP project
+- **Database**: Neon Postgres · **Cache**: Upstash Redis (both provisioned as code)
+- **Registry**: Google Artifact Registry
+- **IaC**: **Pulumi-in-Go** ([`tabula/infra/*`](./infra)), applied by CI via keyless WIF
+- **Rollout**: blue-green (candidate at 0% traffic → smoke → promote)
 
-See [Architecture Documentation](./docs/architecture/overview.md) for detailed system design.
+See the [Architecture documentation](./docs/architecture/overview.md) for detailed
+system design and the [Infrastructure reference](./docs/reference/infrastructure.md) for
+the Pulumi stacks.
 
 ## Quick Start
 
@@ -161,46 +162,42 @@ bazel build //tabula/extension:dist
 bazel run //tabula/cli:tabcli -- --help
 ```
 
-**Deploy to staging** happens automatically on merge to `main`
-(`.github/workflows/tabula-deploy-staging.yaml`: Bazel image -> Artifact
-Registry -> prisma migrate -> Pulumi). Manual rollout:
+**Deploy to `development`** happens automatically on merge to `main`
+(`.github/workflows/tabula-deploy.yaml`: Bazel image → Artifact Registry → prisma
+migrate → Pulumi blue-green). Deploys are **CI-only**; promotion to
+nonproduction/production is release-gated. Break-glass manual apply (preview first):
 
 ```bash
-bazel run //infrastructure/pulumi/apps/tabula:up
+bazel run //tabula/infra/app:preview
+bazel run //tabula/infra/app:up
 ```
 
-See [docs/tabula](../docs/tabula) for the full documentation set.
+See [docs/](docs/index.md) for the full documentation set.
 
 ## Project Structure
 
-```bash
+```text
 tabula/
- ├── docs/ # Documentation
- │    ├── README.md # Documentation overview
- │    ├── PRODUCT_ANALYSIS.md # Competitive analysis
- │    ├── ROADMAP.md # Product roadmap
- │    └── ARCHITECTURE.md # System architecture
- ├── infrastructure/ # Terraform IaC
- │    ├── modules/ # Reusable Terraform modules
- │    ├── environments/ # Environment-specific configs
- │    └── README.md # Infrastructure setup guide
- ├── extension/ # Browser extension (coming soon)
- ├── api/ # Backend API (coming soon)
- ├── web/ # Web dashboard (coming soon)
- ├── README.md # This file
- ├── CONTRIBUTING.md # Contribution guidelines
- ├── LICENSE # MIT License
- └── .gitignore # Git ignore rules
+ ├── api/        # TypeScript API (Prisma + Postgres, Redis) → Cloud Run
+ ├── cli/        # tabcli — admin/ops CLI
+ ├── extension/  # Manifest-V3 browser extension (React)
+ ├── web/        # Web dashboard
+ ├── shared/     # Shared TypeScript types
+ ├── infra/      # Pulumi-in-Go stacks: build, data, identity, app
+ ├── deploy/     # Helm chart
+ ├── docs/       # This documentation set (start at docs/index.md)
+ ├── README.md   # This file
+ └── CONTRIBUTING.md
 ```
 
 ## Documentation
 
-- **[Product Analysis](./docs/product/analysis.md)**: Competitive analysis of Workona and market
+- **[Competitive analysis](./docs/product/workona_walkthrough.md)**: Workona teardown and market
   positioning
-- **[Roadmap](./docs/product/roadmap.md)**: Product development phases and features
+- **[Requirements](./docs/product/REQUIREMENTS.md)**: Product development phases and features
 - **[Architecture](./docs/architecture/overview.md)**: System design, service selection, and data
   flow
-- **[Infrastructure](./docs/reference/infrastructure.md)**: Terraform setup and deployment guide
+- **[Infrastructure](./docs/reference/infrastructure.md)**: Pulumi stacks and deployment
 - **[Contributing](./CONTRIBUTING.md)**: How to contribute to Tabula
 
 ## Pricing (Planned)
@@ -244,7 +241,7 @@ Tabula is open source software licensed under the [MIT License](./LICENSE).
 - [ ] Phase 3: Integrations (Months 7-10)
 - [ ] Phase 4: Team Features (Months 11-15)
 
-See [Roadmap](./docs/product/roadmap.md) for detailed timelines and features.
+See the [product requirements](./docs/product/REQUIREMENTS.md) for detailed timelines and features.
 
 ## Acknowledgments
 

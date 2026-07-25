@@ -19,7 +19,7 @@ config:
   foundation-projects-bu1-development:business_code: "bu1"
 
   # --- Core identifiers ---
-  foundation-projects-bu1-development:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu1-development:billing_account: "008CAA-C364C4-B29B67"
   foundation-projects-bu1-development:project_prefix: "prj"
   foundation-projects-bu1-development:folder_prefix: "fldr"
 
@@ -49,3 +49,15 @@ config:
   foundation-projects-bu1-development:apps: "oauth-user-inspector"
   foundation-projects-bu1-development:oauth-user-inspector_deploy_account_id: "oauth-user-inspector-deploy"
   foundation-projects-bu1-development:oauth-user-inspector_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  # The FIFTH deploy grant: Secret Manager admin CONDITIONED to this app's
+  # secret prefix. It was NOT carried over when the deploy identity was adopted
+  # here (the "replicated EXACTLY" note above predates conditioned-role support
+  # in app_deploy_identity, added in #1148) -- the app stack still owns it.
+  # Title + expression reproduce the LIVE binding byte for byte, verified with
+  # `gcloud projects get-iam-policy`; a mismatch would create a SECOND binding
+  # instead of adopting the existing one. The ${projectNumber} placeholder
+  # resolves from this stage's own oss_floating_project_number output.
+  # It must NOT be appended to _deploy_roles: unconditioned, secretmanager.admin
+  # reaches every co-tenant app's secrets (app_deploy_identity refuses it).
+  foundation-projects-bu1-development:oauth-user-inspector_deploy_conditional_roles: 'roles/secretmanager.admin|oauth-user-inspector-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/OAUTH_USER_INSPECTOR_")'
+  foundation-projects-bu1-development:app_build_reader_grants: "oauth-user-inspector=prj-c-bu1-infra-pipeline-4b48/us-central1/oauth-user-inspector"

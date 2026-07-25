@@ -1,0 +1,70 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Local development topology for oauth-user-inspector.
+#
+#   devx up     — run the Express backend and the Vite frontend together
+#   devx map    — validate/visualise this file (run from this directory)
+#
+# NOTE: this app deliberately declares NO `databases:`. It has no Postgres or
+# Redis dependency — its runtime configuration comes from GCP Secret Manager
+# (read by the runtime service account in Cloud Run) and from environment
+# variables locally. Do not add a database here "for symmetry" with tabula.
+
+name: oauth-user-inspector
+
+services:
+  # Express backend. Serves the API and, in production, the built frontend.
+  - name: server
+    runtime: host
+    command: ["pnpm", "run", "dev:server"]
+    port: 8080
+    healthcheck:
+      http: "http://localhost:8080/api/health"
+      interval: "2s"
+      timeout: "90s"
+      retries: 3
+    env:
+      NODE_ENV: "development"
+      LOG_LEVEL: "debug"
+
+  # Vite dev server (frontend). Proxies API calls to the backend above.
+  - name: frontend
+    runtime: host
+    command: ["pnpm", "run", "dev:frontend"]
+    port: 5173
+    depends_on:
+      - name: server
+        condition: service_healthy
+    healthcheck:
+      http: "http://localhost:5173/"
+      interval: "2s"
+      timeout: "90s"
+      retries: 3
+
+# Local pre-flight checks. `lint` runs the repo hygiene entrypoint, which
+# REWRITES files (gazelle + formatters) rather than only reporting.
+pipeline:
+  test:
+    command: ["bazel", "test", "//oauth-user-inspector/..."]
+  lint:
+    command: ["bazel", "run", "//:tidy"]
+  build:
+    command: ["pnpm", "run", "build"]

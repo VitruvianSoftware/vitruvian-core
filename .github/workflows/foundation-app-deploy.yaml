@@ -56,6 +56,19 @@ on:
         type: string
         default: "infrastructure/pulumi/foundation/gcp-app-infra"
         description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
+      app_image_digests:
+        description: >-
+          Per-invocation image digests for the apps hosted in this leaf, as
+          "<app>=<digest-ref>" comma-separated. Exported to the Pulumi program as
+          <APP>_IMAGE_DIGEST, which is how the leaf sources the image
+          (build-once / promote-by-digest: the value changes every release, so it
+          is NOT stack config). Leaving it empty renders a Service with an EMPTY
+          image, which on an adopted service means the apply STRIPS the image —
+          so the deploy step below refuses to run when a workload is enabled and
+          no digest was supplied.
+        required: false
+        type: string
+        default: ""
       business_unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
@@ -77,6 +90,14 @@ on:
         type: string
         default: "infrastructure/pulumi/foundation/gcp-app-infra"
         description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
+      app_image_digests:
+        description: >-
+          Per-invocation image digests as "<app>=<digest-ref>", comma-separated.
+          Exported as <APP>_IMAGE_DIGEST for the Pulumi program. Required
+          whenever a workload is enabled — see the guard in the deploy job.
+        required: false
+        type: string
+        default: ""
       business_unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
@@ -111,7 +132,10 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: foundation-app-${{ inputs.environment }}
+    # BU-aware identity selection: bu1 keeps the legacy unsuffixed environment
+    # (foundation-app-<env>); other BUs are suffixed (foundation-app-bu2-<env>),
+    # each carrying its own sa-app-infra-<bu> — see repo_config appPhaseEnvironments.
+    environment: foundation-app-${{ inputs.business_unit == 'business_unit_2' && 'bu2-' || '' }}${{ inputs.environment }}
     env:
       GOWORK: off
       # Authenticate Pulumi's github:// plugin downloads so the job does not hit
@@ -130,6 +154,44 @@ jobs:
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      # An enabled workload with no digest renders a Service with an EMPTY
+      # image. On a leaf that has ADOPTED a live service that is not a no-op —
+      # the apply STRIPS the image off something that is serving traffic. The
+      # §7 step-2 preview caught exactly this before it reached an apply, so it
+      # is enforced here rather than trusted to the caller.
+      - name: Export image digests and refuse an enabled workload without one
+        env:
+          APP_IMAGE_DIGESTS: ${{ inputs.app_image_digests }}
+        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          # Export each "<app>=<digest>" as <APP>_IMAGE_DIGEST for the program.
+          if [ -n "${APP_IMAGE_DIGESTS}" ]; then
+            IFS=',' read -ra pairs <<< "${APP_IMAGE_DIGESTS}"
+            for pair in "${pairs[@]}"; do
+              app="${pair%%=*}"; digest="${pair#*=}"
+              [ -n "${app}" ] && [ -n "${digest}" ] || continue
+              var="$(printf '%s' "${app}" | tr '[:lower:]-' '[:upper:]_')_IMAGE_DIGEST"
+              echo "${var}=${digest}" >> "${GITHUB_ENV}"
+              echo "exporting ${var}"
+            done
+          fi
+          # Fail closed: any app with the cutover switch ON must have a digest.
+          missing=""
+          while IFS= read -r line; do
+            app="$(printf '%s' "${line}" | sed -E 's/.*:([a-z0-9-]+)_workload_enabled:.*/\1/')"
+            [ -n "${app}" ] || continue
+            case ",${APP_IMAGE_DIGESTS}," in
+              *",${app}="*) ;;
+              *) missing="${missing} ${app}" ;;
+            esac
+          done < <(grep -E '_workload_enabled: *"true"' Pulumi.production.yaml || true)
+          if [ -n "${missing}" ]; then
+            echo "::error::workload enabled but no image digest supplied for:${missing} — deploying would render an EMPTY image and strip it off the live service. Pass app_image_digests as '<app>=<ref>'."
+            exit 1
+          fi
+          echo "digest guard: OK"
 
       - name: Pulumi up (${{ inputs.environment }})
         id: pulumi

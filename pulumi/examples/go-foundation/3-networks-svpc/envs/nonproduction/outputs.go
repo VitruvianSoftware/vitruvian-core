@@ -39,9 +39,14 @@ func exportOutputs(ctx *pulumi.Context, cfg *NetConfig, res *base_env.Result) {
 	ctx.Export("access_level_name", res.AccessLevelName)
 	ctx.Export("access_level_name_dry_run", res.AccessLevelDryRunName)
 
-	// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges)
+	// Subnet exports as arrays (matching TF subnets_names/ips/self_links/secondary_ranges).
+	// OrderedSubnets() returns the subnets in a deterministic, name-sorted order;
+	// vpcModule.Subnets is a Go map with randomized range order, so ranging it
+	// directly would churn these arrays between previews (see the helper's godoc).
+	// subnets_secondary_ranges below is a keyed pulumi.Map, which serializes
+	// deterministically regardless of order, so it still ranges the map directly.
 	var subnetNames, subnetIPs, subnetSelfLinks pulumi.StringArray
-	for _, subnet := range vpcModule.Subnets {
+	for _, subnet := range vpcModule.OrderedSubnets() {
 		subnetNames = append(subnetNames, subnet.Name)
 		subnetIPs = append(subnetIPs, subnet.IpCidrRange)
 		subnetSelfLinks = append(subnetSelfLinks, subnet.SelfLink)

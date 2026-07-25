@@ -118,7 +118,7 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 	if args.PublicInvoker {
 		if _, err := cloudrunv2.NewServiceIamMember(ctx, name+"-public-invoker", &cloudrunv2.ServiceIamMemberArgs{
 			Project:  args.ProjectID,
-			Location: pulumi.String(args.Region),
+			Location: args.Region,
 			Name:     cr.Service.Name,
 			Role:     pulumi.String("roles/run.invoker"),
 			Member:   pulumi.String("allUsers"),

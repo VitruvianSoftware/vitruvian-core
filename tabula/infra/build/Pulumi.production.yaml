@@ -9,3 +9,8 @@
 config:
   tabula-build:region: "us-central1"
   tabula-build:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
+  # IAM member allowed to READ the Neon/Upstash management credentials, so the
+  # //tools/saas-cli wrappers work for a human and not only for CI. A group is
+  # preferable to a person (outlives an individual, revoked in one place); this
+  # is the sole maintainer today.
+  tabula-build:operatorPrincipal: user:james@vitruviansoftware.dev

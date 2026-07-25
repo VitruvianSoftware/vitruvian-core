@@ -9,9 +9,11 @@ Each app is also mirrored one-way to its own repo in the
 [`VitruvianSoftware`](https://github.com/VitruvianSoftware) org via Copybara — but **all development
 happens here**.
 
-**New here?** Read this page, then **[CONTRIBUTING.md](CONTRIBUTING.md)** (how to work day-to-day) and the
-**[Application Development Principles](docs/engineering/application-development-principles.md)** (how we
-build, by app type).
+**New here?** Read this page, then jump to the **[documentation hub](docs/README.md)** — it routes you to a
+quick start for your role (app developer, platform engineer, operator, repo admin) and onward to the
+**[SDLC walkthrough](docs/concepts/sdlc.md)**, **[CONTRIBUTING.md](CONTRIBUTING.md)** (the day-to-day SOP),
+and the **[Guiding Principles](docs/engineering/application-development-principles.md)** (how we build, by
+app type).
 
 ## Applications
 
@@ -78,9 +80,13 @@ so do isolated work in a **git worktree**.
 
 | I want to… | Start here |
 |---|---|
-| **Change or maintain an existing app** | the app's own `README.md`, then **[CONTRIBUTING.md](CONTRIBUTING.md)** |
-| **Build a new app** | **[Guiding Principles](docs/engineering/application-development-principles.md)** (pick a category + hosting target) → **[CONTRIBUTING.md](CONTRIBUTING.md)** |
-| **Work on infrastructure / the platform** | **[CONTRIBUTING § Infra & IaC ops](CONTRIBUTING.md#9-infra--iac-ops)** + **[AGENTS.md](AGENTS.md)** |
+| **Understand the SDLC end-to-end** (branch → PR → merge queue → deploy → release → promote) | **[The SDLC](docs/concepts/sdlc.md)** |
+| **Change or maintain an existing app** | **[App developer quick start](docs/getting-started/app-developer.md)**, then the app's own `README.md` + **[CONTRIBUTING.md](CONTRIBUTING.md)** |
+| **Build a new app** | **[Guiding Principles](docs/engineering/application-development-principles.md)** (pick a category + hosting target) → **[onboarding checklist](docs/guides/oss-app-onboarding-checklist.md)** |
+| **Work on infrastructure / the platform** | **[Platform engineer quick start](docs/getting-started/platform-engineer.md)** |
+| **Operate, promote, or handle an incident** | **[Operator quick start](docs/getting-started/operator.md)** |
+| **Administer the repo** (merge queue, CI, mirrors) | **[Repo admin quick start](docs/getting-started/repo-admin.md)** |
+| **See every `bazel run` tool available** | **[Bazel targets & tools catalog](docs/reference/bazel-targets.md)** |
 | **Understand what's not yet aligned** | **[Application Alignment Gaps](docs/engineering/application-alignment-gaps.md)** |
 
 ## How we build & ship (at a glance)
@@ -106,10 +112,16 @@ The full rationale lives in the
 
 ## Documentation
 
+**[docs/README.md](docs/README.md) is the hub** — start there. Highlights:
+
+- **[Quick starts by role](docs/getting-started/app-developer.md)** — app developer, [platform engineer](docs/getting-started/platform-engineer.md), [operator](docs/getting-started/operator.md), [repo admin](docs/getting-started/repo-admin.md).
+- **[The SDLC](docs/concepts/sdlc.md)** and **[monorepo architecture](docs/concepts/monorepo-architecture.md)** — how a change becomes production, with diagrams.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — the developer SOP (setup, local dev, build/test, secrets, deploy).
-- **[docs/engineering/](docs/engineering/)** — application development principles & alignment gaps.
-- **[docs/](docs/)** — per-app docs (e.g. [`docs/tabula/`](docs/tabula/)), [`docs/infrastructure/`](docs/infrastructure/), planning, and dependency versioning.
+- **[Guiding Principles](docs/engineering/application-development-principles.md)** — the authoritative engineering standard, plus the [alignment gaps](docs/engineering/application-alignment-gaps.md) (honest current-state delta).
+- **[Bazel targets & tools](docs/reference/bazel-targets.md)** — everything you can `bazel run` to develop, ship, and operate.
 - **[AGENTS.md](AGENTS.md)** — conventions for AI agents (GCP identity pinning, bazel-only infra ops).
+
+The same tree renders as the Backstage TechDocs site (`mkdocs.yml`).
 
 ## License
 

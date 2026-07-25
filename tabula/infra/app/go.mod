@@ -3,10 +3,11 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula
 go 1.26.2
 
 require (
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v0.3.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0
 	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.253.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -115,6 +116,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )

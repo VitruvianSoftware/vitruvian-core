@@ -123,6 +123,31 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
+      # Consume the region from the earlier phase (foundation design): read the
+      # canonical regions out of gcp-bootstrap's common_config output and hand them
+      # to the networks program as env vars, which win over the committed config
+      # (see envOrConfig in each env's config.go). This keeps every phase on ONE
+      # region source — bootstrap — and is why the leaf can't just silently drift
+      # (that is how the secondary became us-south1). We inject at the deploy layer
+      # rather than reading a StackReference in-program because the region is baked
+      # into LOGICAL resource names (network/v2 subnets, hub cloud routers), which
+      # must be static strings and a StackReference output is async. Fail-safe: if
+      # the read returns nothing the program falls back to its committed value,
+      # which config_test.go guards to equal the canonical bootstrap regions.
+      - name: Consume regions from gcp-bootstrap (single source of truth)
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          # +e: clear the inherited errexit so an empty read / skipped echo does not
+          # abort the step (GH runs steps as `bash -eo pipefail`; -uo alone keeps -e).
+          set +e -u -o pipefail
+          CC="$(pulumi stack output --stack ipv1337/foundation-bootstrap/production common_config --json 2>/dev/null || echo '{}')"
+          R1="$(printf '%s' "$CC" | jq -r '.default_region // empty')"
+          R2="$(printf '%s' "$CC" | jq -r '.default_region_2 // empty')"
+          [ -n "$R1" ] && echo "NETWORKS_DEFAULT_REGION=$R1" >> "$GITHUB_ENV"
+          [ -n "$R2" ] && echo "NETWORKS_SECONDARY_REGION=$R2" >> "$GITHUB_ENV"
+          echo "Consumed from bootstrap: default_region=${R1:-<committed-fallback>} default_region_2=${R2:-<committed-fallback>}"
+
       - name: Pulumi up (${{ inputs.environment }})
         id: pulumi
         env:

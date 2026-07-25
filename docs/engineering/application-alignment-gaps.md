@@ -63,16 +63,18 @@ Each gap below consolidates the dimension surveys and the explicitly-named sessi
 | mcp-slack | `npm install && npm run build && npm start` |
 | nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
-The worst offender is **tabula**, which ships **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `docs/tabula/getting-started/{setup,development}.md` and `CONTRIBUTING.md` describe a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. A new contributor following tabula's own getting-started docs cannot get the app running.
+The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
 
-Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs with `.env` injection, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contains a `devx.yaml`.** The repo does not dogfood its own tool.
+Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contained a `devx.yaml`.** The repo did not dogfood its own tool. **(Update: `tabula/api` and `oauth-user-inspector` now ship one. The other four apps have no backing services, so a `devx.yaml` would add ceremony without value — dogfooding is met where it is meaningful, not universally.)**
+
+> Note on a related doc-drift: `devx up` does **not** do `.env` injection, despite that claim appearing in earlier prose here and in the SOP. A `host` service receives only its `env:` map plus `PORT`; vault/`.env` injection belongs to `devx shell`, `devx db seed`, and `devx test`. The `devx` guide's own `databases.md` also documents `name:`/`version:` keys that the parser does not have and silently discards.
 
 **Target (Principles doc).** One documented "Run locally" contract per app type, `devx` as the dogfooded entrypoint for apps that need backing services, and a single `docs/` local-dev index linking each app's section.
 
 **Recommended action.**
-1. Rewrite tabula's `getting-started`/`CONTRIBUTING` to the real Bazel+pnpm+Pulumi flow (fix the `BlueCentre` clone URL, Node 18→22, drop Terraform and the non-existent compose file) — **or** commit the `docker-compose.yml` the docs assume and make them true. Pick one.
-2. Add a committed `devx.yaml` to each app, generated from the matching `devx scaffold` template, starting with the two that need Postgres/secret injection: `tabula/api` and `oauth-user-inspector`.
-3. Write one `docs/` "Local development" page linking every app's run section.
+1. ✅ **Done** — tabula's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `tabula/docs/`. A light pass on lingering `tabula/CONTRIBUTING.md` prose is the only remainder.
+2. ✅ **Done** — committed `devx.yaml` for [`tabula/api`](../../tabula/api/devx.yaml) (Postgres + Redis, API gated on both healthy) and [`oauth-user-inspector`](../../oauth-user-inspector/devx.yaml) (backend + Vite frontend). Both validated with `devx map`. Note the original framing here was wrong: `oauth-user-inspector` has **no** Postgres/Redis dependency at all (no such packages; it reads GCP Secret Manager), so its config declares no database. The remaining four apps have no backing services and need no `devx.yaml`.
+3. ✅ **Done** — [`docs/guides/local-development.md`](../guides/local-development.md) is the single local-dev index: per-app run/test/backing-services table, `devx.yaml` status, local-secret files, and the `.env.example` gaps.
 
 ### 3.2 No remote/cloud dev environment
 
@@ -332,11 +334,11 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** `gitops/argocd/platform/sealed-secrets-manifests/` holds ~13 critical SealedSecrets — including the **zitadel masterkey whose loss is total data loss** and `minio-root` — but there is no README/runbook beside them; rotation/backup logic lives only in Makefile targets referenced from commit history. (A top-level `docs/sealed-secrets.md` and `docs/key-rotation.md` exist, but the manifests dir itself is undocumented.)
+**Current state.** `gitops/argocd/platform/sealed-secrets-manifests/` holds ~13 critical SealedSecrets — including the **zitadel masterkey whose loss is total data loss** and `minio-root` — but there is no README/runbook beside them; rotation/backup logic lives only in Makefile targets referenced from commit history. (`docs/operations/sealed-secrets.md` and `docs/operations/key-rotation.md` exist, but the manifests dir itself is undocumented.)
 
 **Target.** A short README in `sealed-secrets-manifests/` documenting how to (re)seal, rotate, and back up each secret, linking the existing `sealed-secrets-verify`/`backup` make targets, so the GitOps secrets tier is self-documenting.
 
-**Recommended action.** Add the README; cross-link the existing `docs/sealed-secrets.md`.
+**Recommended action.** Add the README; cross-link the existing `docs/operations/sealed-secrets.md`.
 
 ### 3.21 No "new app" scaffold covering build+deploy+secrets+env (the meta-gap)
 

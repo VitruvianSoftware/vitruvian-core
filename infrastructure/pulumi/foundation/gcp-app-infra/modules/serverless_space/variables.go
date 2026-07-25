@@ -35,7 +35,7 @@ type ServerlessSpaceArgs struct {
 	Env          string
 	BusinessUnit string
 	ProjectID    pulumi.StringInput
-	Region       string
+	Region       pulumi.StringInput
 	ServiceName  string
 	ImageDigest  pulumi.StringInput
 	// RuntimeServiceAccountEmail, when set, is used as the Cloud Run runtime

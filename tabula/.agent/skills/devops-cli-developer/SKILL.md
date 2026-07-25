@@ -202,7 +202,7 @@ services:
 
 ## Key Files to Reference
 
-- [CLI README](file:///Users/james/Workspace/gh/lab/tabula/cli/README.md)
-- [CLI Reference Docs](file:///Users/james/Workspace/gh/lab/tabula/docs/reference/cli.md)
-- [docker-compose.yml](file:///Users/james/Workspace/gh/lab/tabula/docker-compose.yml)
-- [Commit Readiness Workflow](file:///Users/james/Workspace/gh/lab/tabula/.agent/workflows/commit-readiness.md)
+- [CLI README](../../../cli/README.md)
+- [CLI Reference Docs](../../../docs/reference/cli.md)
+- [Development guide](../../../docs/getting-started/development.md)
+- [Commit Readiness Workflow](../../workflows/commit-readiness.md)

@@ -163,7 +163,7 @@ tabcli infra secrets list
 
 ## Key Security Files
 
-- [SECURITY.md](file:///Users/james/Workspace/gh/lab/tabula/SECURITY.md)
-- [Threat Model](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/threat-model.md)
-- [Authentication Docs](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/authentication.md)
-- [Extension Manifest](file:///Users/james/Workspace/gh/lab/tabula/extension/src/manifest.json)
+- [SECURITY.md](../../../SECURITY.md)
+- [Threat Model](../../../docs/architecture/threat-model.md)
+- [Authentication Docs](../../../docs/architecture/authentication.md)
+- [Extension Manifest](../../../extension/src/manifest.json)

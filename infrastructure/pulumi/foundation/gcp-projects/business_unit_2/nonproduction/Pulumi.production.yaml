@@ -16,7 +16,7 @@ config:
   foundation-projects-bu2-nonproduction:business_code: "bu2"
 
   # --- Core identifiers ---
-  foundation-projects-bu2-nonproduction:billing_account: "013EEF-107C95-8E11BD"
+  foundation-projects-bu2-nonproduction:billing_account: "008CAA-C364C4-B29B67"
   foundation-projects-bu2-nonproduction:project_prefix: "prj"
   foundation-projects-bu2-nonproduction:folder_prefix: "fldr"
 
@@ -36,3 +36,25 @@ config:
   foundation-projects-bu2-nonproduction:cmek_enabled: "false"
   foundation-projects-bu2-nonproduction:peering_enabled: "false"
   foundation-projects-bu2-nonproduction:enforce_vpcsc: "false"
+
+  # App-infra pipeline identity (sa-app-infra-bu2): applies the stage-5
+  # gcp-app-infra/business_unit_2/nonproduction leaf. tabula's per-app deploy SA
+  # stays in tabula/infra/identity; this only mints the pipeline SA.
+  foundation-projects-bu2-nonproduction:apps: "tabula"
+  # --- Platform-issued app deploy identity (stage-5 workloads consume this) ---
+  # Minted HERE, one stage above the 5-app-infra workload it deploys, so tabula's
+  # pipeline can never edit the stack defining its own permissions (§4.1).
+  # The account id, role set and IAM conditions are replicated EXACTLY from
+  # tabula/infra/identity, which owned them before adoption -- verified against
+  # the LIVE policy with `gcloud projects get-iam-policy`. Adoption must be
+  # permission-neutral: app_deploy_identity creates the SA with
+  # CreateIgnoreAlreadyExists, and because projects.IAMMember is
+  # non-authoritative and every (role, member, condition) tuple matches, each
+  # create is an idempotent no-op patch of the existing binding.
+  # The secretmanager roles MUST stay in _deploy_conditional_roles: unconditioned
+  # they would reach every co-tenant app's secrets (the module refuses them).
+  foundation-projects-bu2-nonproduction:tabula_deploy_account_id: "tabula-deploy"
+  foundation-projects-bu2-nonproduction:tabula_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  foundation-projects-bu2-nonproduction:tabula_deploy_conditional_roles: 'roles/secretmanager.admin|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_");roles/secretmanager.secretAccessor|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_")'
+  foundation-projects-bu2-nonproduction:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
+  foundation-projects-bu2-nonproduction:app_build_reader_grants: "tabula=prj-c-bu2-infra-pipeline-3d09/us-central1/tabula"

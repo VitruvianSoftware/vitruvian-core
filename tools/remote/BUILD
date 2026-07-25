@@ -5,7 +5,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 #
 # Run `bazel run //tools/remote:setup` in your repo to point Bazel at a remote
 # builder (BuildBuddy by default, or any Remote Execution API provider) for both
-# local and CI builds. It is dormant until you run it. See docs/remote-build.md.
+# local and CI builds. It is dormant until you run it. See docs/guides/remote-build.md.
 sh_binary(
     name = "setup",
     srcs = ["setup.sh"],

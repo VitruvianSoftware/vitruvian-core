@@ -52,6 +52,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
+
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrun"
@@ -60,32 +62,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// secretPrefix namespaces this app's Secret Manager reads so co-tenant OSS
-// apps in the shared oss project cannot collide (server/server.ts getSecret
-// prepends it; the runtime SA's accessor grant is conditioned to it).
-const secretPrefix = "TABULA_"
-
-const digestMarker = "@sha256:"
-
 // cfPreviewToken is the non-secret placeholder value pulumi-preview.yaml injects
 // as CLOUDFLARE_API_TOKEN for the advisory preview (matrix.cfPreviewToken).
 // It lets the default cloudflare provider CONFIGURE without a real credential;
 // the code treats it as "not a real token" so it never calls the Cloudflare API
 // with it. Keep this in sync with pulumi-preview.yaml.
 const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
-
-// envMap builds the plain (non-secret) environment for the service.
-func envMap(project, apiURL string) map[string]string {
-	env := map[string]string{
-		"NODE_ENV":             "production",
-		"GOOGLE_CLOUD_PROJECT": project,
-		"SECRET_PREFIX":        secretPrefix,
-	}
-	if apiURL != "" {
-		env["API_URL"] = apiURL
-	}
-	return env
-}
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
@@ -114,20 +96,23 @@ func main() {
 			// `pulumi up` never takes this branch.
 			imageDigest = "preview-placeholder@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 		}
-		i := strings.LastIndex(imageDigest, digestMarker)
-		if i < 0 || len(imageDigest) < i+len(digestMarker)+8 {
-			return fmt.Errorf("imageDigest %q is not a digest ref (want <image>@sha256:<hex>)", imageDigest)
-		}
 		// Revision names must be stable + referenceable for blue-green promote;
 		// derive the suffix from the digest's short hash (a digest is not a legal
-		// revision name itself).
-		shortDigest := imageDigest[i+len(digestMarker) : i+len(digestMarker)+8]
+		// revision name itself). Shared with the deploy preflight via revision.
+		shortDigest, err := revision.ShortDigest(imageDigest)
+		if err != nil {
+			return err
+		}
 		// Cloud Run REQUIRES a revision name to be prefixed with its service
 		// name; `tabula-<env>-<sha>` against service `tabula-api-<env>` is
 		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
 		// from one serviceName so they cannot drift apart again.
 		serviceName := fmt.Sprintf("tabula-api-%s", env)
-		revisionName := fmt.Sprintf("%s-%s", serviceName, shortDigest)
+		// The env is part of the revision's identity, not just the image — see
+		// revisionNameFor. Rendered once here so the name and the deployed
+		// container are hashed from the SAME map and cannot drift.
+		serviceEnv := revision.EnvMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"))
+		revisionName := revision.Name(serviceName, shortDigest, serviceEnv)
 
 		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
 		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")
@@ -150,9 +135,19 @@ func main() {
 			}
 		}
 
+		// Core-vs-application split: this app stack OWNS its Cloud Run service
+		// (the image-coupled workload); the foundation gcp-app-infra leaf is
+		// scaffolding-only and re-exports the stage-4 facts (project, region,
+		// deploy SA) this stack consumes but declares no workload
+		// (docs/engineering/core-vs-application-infrastructure.md).
+		// routeName feeds the DomainMapping and resolves to the service's name
+		// either way, so the mapping is unaffected by how the service is built.
+		var routeName pulumi.StringInput = pulumi.String(serviceName)
+
+		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
 		app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
-			Region:              region,
+			Region:              pulumi.String(region),
 			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
@@ -163,12 +158,22 @@ func main() {
 			// created before its secrets exist.
 			//
 			// API_URL is the public base the app builds its WorkOS redirect URI
-			// from, so it must match the URI registered in the WorkOS dashboard
-			// for this env. Left unset until the per-env URL is final (the
-			// run.app URL now, the custom domain after the domains phase) —
-			// the app falls back to localhost, which fails loudly rather than
+			// from (auth.service.ts: `${API_URL}/auth/callback`), so it must
+			// match a URI registered in the WorkOS dashboard for this env —
+			// WorkOS rejects an unregistered redirect_uri outright. Unset, the
+			// app falls back to localhost, which fails loudly rather than
 			// silently authenticating against the wrong environment.
-			Env:          envMap(project, cfg.Get("apiUrl")),
+			//
+			// AUTH_POSTMESSAGE_ORIGIN is the EXACT origin the auth callback
+			// page postMessages the token to (auth.routes.ts
+			// resolvePostMessageOrigin) — the extension's chrome-extension://
+			// origin, never '*', so the token is never delivered to an
+			// arbitrary opener. Unset, it falls back to http://localhost:3000
+			// and the extension's opener never receives the token at all.
+			//
+			// Both were set by the retired infrastructure/pulumi/apps/tabula
+			// stack and were dropped in the bu2 rewrite; neither is a secret.
+			Env:          serviceEnv,
 			MaxInstances: 10,
 			Port:         8080,
 			RevisionName: revisionName,
@@ -189,6 +194,10 @@ func main() {
 		}); err != nil {
 			return err
 		}
+
+		// Pre-migration the mapping targets the service resource; capture it.
+		routeName = app.Service.Name
+		ctx.Export("serviceUrl", app.Service.Uri)
 
 		// Optional per-env custom domain (config `customDomain`, e.g.
 		// tabula-api.vitruviansoftware.dev): a Cloud Run DomainMapping (v1 API —
@@ -226,7 +235,7 @@ func main() {
 					// Reference the service OUTPUT (not the literal name) so
 					// the mapping is ordered after the service exists on a
 					// first-ever deploy.
-					RouteName: app.Service.Name,
+					RouteName: routeName,
 					// Take over the domain if it is still mapped elsewhere
 					// (e.g. a hostname still mapped to a
 					// retired gen-lang demo project). Without this the create
@@ -334,7 +343,6 @@ func main() {
 			}
 		}
 
-		ctx.Export("serviceUrl", app.Service.Uri)
 		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})

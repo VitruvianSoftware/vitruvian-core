@@ -227,7 +227,7 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 					// limit (OOM-killed twice in the fedora incident), which wedged
 					// syncs once app-of-platform/-applications put all the AppSets +
 					// their child apps under continuous reconciliation. 4x headroom.
-					// See docs/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
+					// See docs/operations/incidents/2026-06-21-fedora-freeze-cluster-cascade.md
 					"limits": map[string]interface{}{
 						"cpu":    "2000m",
 						"memory": "2Gi",

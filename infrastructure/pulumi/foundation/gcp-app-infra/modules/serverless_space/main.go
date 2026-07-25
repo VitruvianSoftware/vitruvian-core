@@ -49,9 +49,25 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 	if args == nil {
 		return nil, fmt.Errorf("args is required")
 	}
-	serviceName := args.ServiceName
-	if serviceName == "" {
-		serviceName = "serverless-space"
+	// The DEPLOYED service name is per-environment: <app>-<env>. ServiceName is
+	// the app's base name, so the env suffix is appended here rather than being
+	// baked into config — a per-env config value would make the revision naming
+	// below double up the environment (<app>-<env>-<env>-<digest>).
+	//
+	// This must match what oauth-user-inspector/infra/app already runs
+	// (fmt.Sprintf("oauth-user-inspector-%s", env)). It previously did NOT: the
+	// module used ServiceName verbatim, so the archetype would have declared
+	// "oauth-user-inspector" against a live "oauth-user-inspector-development".
+	// Importing and applying that renames the service, and a Cloud Run rename is
+	// a delete + create — an outage on the production leg of the cutover.
+	// TestServiceNameMatchesTheLiveService pins it.
+	baseName := args.ServiceName
+	if baseName == "" {
+		baseName = "serverless-space"
+	}
+	serviceName := baseName
+	if args.Env != "" {
+		serviceName = fmt.Sprintf("%s-%s", baseName, args.Env)
 	}
 
 	// 1. Runtime service account — created unless the caller supplies one.
@@ -60,8 +76,8 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 		runtimeSAEmail = args.RuntimeServiceAccountEmail.ToStringOutput()
 	} else {
 		sa, err := serviceaccount.NewAccount(ctx, name+"-sa", &serviceaccount.AccountArgs{
-			AccountId:                 pulumi.String("sa-" + serviceName),
-			DisplayName:               pulumi.Sprintf("%s serverless runtime SA", serviceName),
+			AccountId:                 pulumi.String("sa-" + baseName),
+			DisplayName:               pulumi.Sprintf("%s serverless runtime SA", baseName),
 			Project:                   args.ProjectID,
 			CreateIgnoreAlreadyExists: pulumi.Bool(true),
 		})
@@ -84,7 +100,7 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 	var revisionName string
 	var traffics []cloud_run.TrafficTarget
 	if args.RevisionSuffix != "" {
-		revisionName = fmt.Sprintf("%s-%s-%s", serviceName, args.Env, args.RevisionSuffix)
+		revisionName = fmt.Sprintf("%s-%s", serviceName, args.RevisionSuffix)
 		if args.Promote || args.StableRevision == "" {
 			traffics = []cloud_run.TrafficTarget{{Revision: revisionName, Percent: 100}}
 		} else {
@@ -122,7 +138,7 @@ func DeployServerlessSpace(ctx *pulumi.Context, name string, args *ServerlessSpa
 	if args.PublicInvoker {
 		if _, err := cloudrunv2.NewServiceIamMember(ctx, name+"-public-invoker", &cloudrunv2.ServiceIamMemberArgs{
 			Project:  args.ProjectID,
-			Location: pulumi.String(args.Region),
+			Location: args.Region,
 			Name:     cr.Service.Name,
 			Role:     pulumi.String("roles/run.invoker"),
 			Member:   pulumi.String("allUsers"),

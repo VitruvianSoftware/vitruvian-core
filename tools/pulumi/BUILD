@@ -17,6 +17,8 @@ load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
 exports_files([
     "pulumi_cmd.sh",
+    # Consumed by //tools/gcp-secrets, which pins GCP identity the same way.
+    "resolve_identity.sh",
     "pulumi_setup.sh",
     "create_app.sh",
 ])

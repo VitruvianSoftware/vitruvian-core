@@ -26,6 +26,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
@@ -35,6 +36,25 @@ import (
 
 // SharedConfig holds configuration for the shared (common) leaf of the
 // projects stage.
+// AppBuildSpaceConfig is one app's build space. The override fields exist so a
+// LIVE repository or account whose id does not follow the convention can be
+// adopted without renaming it — renaming an Artifact Registry repository would
+// orphan every image already pushed to it.
+type AppBuildSpaceConfig struct {
+	App               string
+	RepositoryID      string
+	BuildAccountID    string
+	GitHubEnvironment string
+	KeepCount         int
+	// Region overrides the shared leaf's default region for THIS app's
+	// Artifact Registry repository. Empty (the norm) = inherit the leaf default,
+	// which is the foundation's primary region (us-central1) consumed from the
+	// earlier bootstrap phase — keeping every phase consistent. Only set this to
+	// pin an app to a non-primary region (e.g. when adopting a live repo that a
+	// legacy app-owned build stack created elsewhere).
+	Region string
+}
+
 type SharedConfig struct {
 	Env            string
 	EnvCode        string
@@ -58,6 +78,16 @@ type SharedConfig struct {
 	// upstream's enable_cloudbuild_deploy toggle on the shared workspace.
 	// Default true.
 	InfraPipelineEnabled bool
+
+	// AppBuildSpaces lists the apps whose Artifact Registry repository and
+	// build identity THIS leaf owns (core-vs-application-infrastructure.md §3:
+	// the registry lives in the foundation-owned infra-pipeline project and the
+	// build SA hands out permissions, so neither belongs to the app). Apps have
+	// no separate build stack — this leaf is the sole owner.
+	AppBuildSpaces []AppBuildSpaceConfig
+
+	// BootstrapStackName supplies the Workload Identity pool for build SAs.
+	BootstrapStackName string
 
 	// ApiPropagationSeconds is passed to the project factory. When >0 the
 	// factory gates its ApisReady handle on a `sleep N` that depends on all
@@ -141,6 +171,23 @@ func loadSharedConfig(ctx *pulumi.Context) *SharedConfig {
 		c.Region = "us-central1"
 	}
 
+	c.BootstrapStackName = conf.Get("bootstrap_stack_name")
+	for _, name := range splitCSV(conf.Get("app_build_spaces")) {
+		bs := AppBuildSpaceConfig{
+			App:               name,
+			RepositoryID:      conf.Get(name + "_ar_repository_id"),
+			BuildAccountID:    conf.Get(name + "_build_account_id"),
+			GitHubEnvironment: conf.Get(name + "_build_github_environment"),
+			Region:            conf.Get(name + "_ar_region"),
+		}
+		if v := conf.Get(name + "_ar_keep_count"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				bs.KeepCount = n
+			}
+		}
+		c.AppBuildSpaces = append(c.AppBuildSpaces, bs)
+	}
+
 	return c
 }
 
@@ -170,4 +217,15 @@ func commonProjectLabels(cfg *SharedConfig, applicationName string) pulumi.Strin
 		"env_code":          pulumi.String(cfg.EnvCode),
 		"vpc":               pulumi.String("none"),
 	}
+}
+
+// splitCSV splits a comma-separated config list, trimming blanks.
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

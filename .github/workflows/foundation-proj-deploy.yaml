@@ -61,6 +61,11 @@ on:
         required: false
         type: string
         default: business_unit_1
+      allow_destructive:
+        description: "Permit an apply whose plan DELETES or REPLACES resources. Off by default; the preview gate fails closed instead."
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       environment:
@@ -82,6 +87,11 @@ on:
         required: false
         type: string
         default: business_unit_1
+      allow_destructive:
+        description: "Permit an apply whose plan DELETES or REPLACES resources (e.g. a deliberate removal or rollback). Off by default."
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   id-token: write
@@ -102,6 +112,106 @@ jobs:
           WORKDIR: ${{ inputs.working_directory }}
         run: bash tools/ci/changelog-summary.sh "$WORKDIR/CHANGELOG.md" "" "$(basename "$WORKDIR")"
 
+  # PLAN BEFORE APPROVAL. This job is deliberately UNGATED and runs ahead of
+  # `deploy`, so the diff exists on the run page *before* a reviewer is asked to
+  # approve the gated apply. Previously the only diff was produced by `pulumi up`
+  # INSIDE the gated job — i.e. after approval and after the change had already
+  # been made — so an approver was clicking approve with nothing to look at.
+  #
+  # This is the failure that revoked a live IAM binding: a release run pinned to
+  # an older commit sat at the gate, was approved in good faith, and then
+  # deleted a grant added by a newer apply. Nothing in the UI signalled it.
+  # Now the destroy is visible up front, and the guard below fails the run
+  # outright so a stale plan cannot be approved by mistake.
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # foundation-proj-preview is the ungated, read-scoped identity the PR
+    # previews already use — approval must not be required to SEE the plan.
+    environment: foundation-proj-preview
+    outputs:
+      deleted: ${{ steps.summary.outputs.deleted }}
+      replaced: ${{ steps.summary.outputs.replaced }}
+      destructive: ${{ steps.summary.outputs.destructive }}
+    env:
+      GOWORK: off
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Authenticate to GCP (WIF, keyless)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Pulumi preview (${{ inputs.environment }})
+        id: pulumi
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+        run: |
+          set +e -u -o pipefail
+          echo "::group::pulumi preview --diff --refresh (${ENVIRONMENT} leaf / production stack)"
+          # --refresh mirrors the apply below EXACTLY. A preview computed
+          # without it can differ from what the apply then does, which would
+          # make this gate worse than useless: reassuring but wrong.
+          { pulumi stack select -c "production" \
+              && pulumi preview --diff --refresh --non-interactive; } \
+            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
+          ec="${PIPESTATUS[0]}"
+          echo "::endgroup::"
+          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+          exit "${ec}"
+
+      # Same renderer as the apply, so the plan the approver reads and the
+      # receipt they get afterwards are produced by one parser and cannot drift.
+      # It also exports the counts this job gates on.
+      - name: Pulumi plan → step summary
+        id: summary
+        if: always()
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working_directory }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          BUSINESS_UNIT: ${{ inputs.business_unit }}
+          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+            "$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${ENVIRONMENT} (plan)" \
+            "${RUNNER_TEMP}/pulumi-out.txt" \
+            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+
+      # FAIL CLOSED on a destructive plan. gcp projects/serviceaccount IAMMember
+      # are non-authoritative: a delete REMOVES the member, revoking live access
+      # that the owning stack will not re-add. Requiring an explicit opt-in makes
+      # a silent revert impossible — a deliberate removal or rollback still
+      # works, it just has to say so.
+      - name: Guard — refuse a destructive plan
+        if: ${{ steps.pulumi.outputs.exit_code == '0' && !inputs.allow_destructive }}
+        env:
+          DELETED: ${{ steps.summary.outputs.deleted }}
+          REPLACED: ${{ steps.summary.outputs.replaced }}
+        run: |
+          set -euo pipefail
+          # FAIL CLOSED on missing counts. If the summary step did not emit them
+          # the plan was never successfully parsed, so we cannot claim it is
+          # safe — defaulting to 0 here would turn a broken parser into a
+          # rubber stamp, which is the exact failure this guard exists to stop.
+          if [ -z "${DELETED:-}" ] || [ -z "${REPLACED:-}" ]; then
+            echo "::error::Refusing to apply: the plan summary produced no resource counts, so the plan could not be verified as non-destructive. Check the 'Pulumi plan → step summary' step."
+            exit 1
+          fi
+          if [ "$DELETED" -gt 0 ] || [ "$REPLACED" -gt 0 ]; then
+            echo "::error::Refusing to apply: this plan would DELETE ${DELETED} and REPLACE ${REPLACED} resource(s). See the plan in this run's summary. If the removal is intended (a deliberate deletion or a rollback), re-run with allow_destructive=true. If it is NOT intended, this run is probably built from a commit older than the last apply to this stack — compare it against main before approving."
+            exit 1
+          fi
+          echo "plan is non-destructive (0 deleted, 0 replaced) — safe to apply"
+
   deploy:
     # Serialize per (stack dir + environment): a newer promotion run waits for an
     # older in-flight one rather than racing/deploying out of order onto live org
@@ -109,6 +219,9 @@ jobs:
     concurrency:
       group: foundation-proj-deploy-${{ inputs.working_directory }}-${{ inputs.business_unit }}-${{ inputs.environment }}
       cancel-in-progress: false
+    # The plan must exist and be non-destructive before anyone is asked to
+    # approve the apply (see the `preview` job).
+    needs: preview
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: foundation-proj-${{ inputs.environment }}
@@ -143,9 +256,17 @@ jobs:
           # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
           # pipeline does not abort here and we capture pulumi's real exit code.
           set +e -u -o pipefail
-          echo "::group::pulumi up --diff (${ENVIRONMENT} leaf / production stack)"
+          echo "::group::pulumi up --diff --refresh (${ENVIRONMENT} leaf / production stack)"
+          # --refresh makes this stage SELF-HEALING for non-authoritative IAM.
+          # gcp.projects/serviceaccount IAMMember are additive: create = add
+          # member, delete = REMOVE member. Several app deploy-identity grants
+          # are currently dual-declared here and in the app's own identity stack
+          # during the §4.1 migration, so if the app stack ever drops a member,
+          # this stack's state still claims to own it and would never re-add it
+          # — a permanent silent revocation that breaks the app's CI. Refreshing
+          # first reconciles state with reality so the member is restored.
           { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
+              && pulumi up --yes --diff --refresh --non-interactive; } \
             2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
           ec="${PIPESTATUS[0]}"
           echo "::endgroup::"

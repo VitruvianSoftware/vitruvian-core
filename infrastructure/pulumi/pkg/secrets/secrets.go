@@ -22,7 +22,7 @@
 // module resolves a secret value, so no stack commits a secret to git and every
 // stack marks its secrets consistently.
 //
-// The repo's secrets model (see docs/repo-assessment.md and the repo memory) is:
+// The repo's secrets model (see docs/archive/assessments/repo-assessment.md and the repo memory) is:
 // secrets never live in git — not even Pulumi-`secure:`-encrypted. In CI the
 // GitHub pipeline secrets are injected as environment variables; in local dev
 // they come from the gitignored Pulumi stack config. EnvOrConfig implements
