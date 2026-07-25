@@ -4,6 +4,8 @@ go 1.26.2
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.4.0
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.4.0
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.253.0
 )
