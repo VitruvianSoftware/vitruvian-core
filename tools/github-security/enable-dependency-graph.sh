@@ -42,6 +42,15 @@
 #   authority for secret scanning, push protection and Dependabot. Attaching a
 #   broader configuration (e.g. GitHub's "recommended") would fight Pulumi.
 #
+#   advanced_security=enabled is the ONE unavoidable companion: the API rejects
+#   a configuration that turns on any GHAS feature without it --
+#     "GitHub advanced security must be enabled when any GHAS feature is set to
+#      enabled (HTTP 422)"
+#   It is the gate for the feature set, not a feature itself: with every actual
+#   GHAS feature left `not_set`, enabling it turns nothing else on. This repo is
+#   PUBLIC, where GHAS features carry no charge -- so verify visibility before
+#   reusing this on a private repo, where it WOULD have billing consequences.
+#
 # Idempotent: re-running when the graph is already on is a no-op.
 #
 # Run: bazel run //tools/github-security:enable-dependency-graph
@@ -65,6 +74,30 @@ if gh api "repos/${ORG}/${REPO}/dependency-graph/sbom" --silent >/dev/null 2>&1;
   exit 0
 fi
 info "Dependency graph is OFF for ${ORG}/${REPO} (the SBOM endpoint does not answer)."
+
+# --- 0b. visibility gate: advanced_security is FREE on public, BILLED on private.
+# The configuration below must set advanced_security=enabled -- the API rejects
+# any config enabling a GHAS feature without it, and (verified) it cannot be
+# `not_set`; the only accepted values are enabled|disabled|code_security|
+# secret_protection. On a PUBLIC repo that is free and enables nothing by
+# itself. On a PRIVATE repo it turns on GitHub Advanced Security, which bills
+# per active committer -- so never let this run blind against a private repo.
+visibility="$(gh api "repos/${ORG}/${REPO}" --jq '.visibility' 2>/dev/null || echo unknown)"
+info "repository visibility: ${visibility}"
+if [ "${visibility}" != "public" ]; then
+  printf '\033[33m!\033[0m %s\n' "${REPO} is ${visibility}, not public."
+  echo "     This creates a code security configuration with advanced_security=enabled,"
+  echo "     which on a private repository enables GitHub Advanced Security and BILLS"
+  echo "     PER ACTIVE COMMITTER. It cannot be omitted: the API rejects a config that"
+  echo "     enables any GHAS feature without it, and it cannot be set to not_set."
+  echo "     Consider the granular SKUs instead (advanced_security=code_security)."
+  if [ ! -t 0 ]; then
+    die "refusing to enable a billable feature non-interactively. Re-run from a terminal to confirm."
+  fi
+  printf '     Type EXACTLY "i accept the billing" to continue: '
+  read -r confirm </dev/tty
+  [ "${confirm}" = "i accept the billing" ] || die "aborted — nothing was changed."
+fi
 
 # --- 1. make sure we hold admin:org. -----------------------------------------
 # Creating/attaching an org code security configuration needs admin:org, which a
@@ -98,6 +131,7 @@ else
   config_id="$(gh api -X POST "orgs/${ORG}/code-security/configurations" \
     -f name="${CONFIG_NAME}" \
     -f description='Enables ONLY the dependency graph (prerequisite for the dependency-review gate). All other settings are not_set so repo_config/Pulumi stays the authority.' \
+    -f advanced_security='enabled' \
     -f dependency_graph='enabled' \
     -f dependabot_alerts='not_set' \
     -f dependabot_security_updates='not_set' \

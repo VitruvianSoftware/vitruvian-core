@@ -45,6 +45,9 @@ echo "\$*" >> "${bin}/calls.log"
 case "\$*" in
   *dependency-graph/sbom*) exit ${sbom_rc} ;;
   *"-i user"*)             echo "x-oauth-scopes: gist, read:org, repo, workflow"; exit 0 ;;
+  # Default to a PUBLIC repo so each test exercises the gate it is about; the
+  # billing test overrides this to private.
+  *.visibility*)           echo "\${FAKE_VISIBILITY:-public}"; exit 0 ;;
   *code-security/configurations*) echo ""; exit 0 ;;
   *) echo ""; exit 0 ;;
 esac
@@ -86,9 +89,14 @@ rm -rf "${tmp}"
 # --- 4. posture: the configuration must widen NOTHING but the graph. ---------
 # Guards against a future edit flipping one of these to `enabled` and silently
 # taking ownership of a setting repo_config/Pulumi manages.
+# Exactly TWO settings may be 'enabled': dependency_graph (what we want) and
+# advanced_security (which the API demands as its gate -- a config enabling any
+# GHAS feature without it is rejected with HTTP 422). advanced_security turns on
+# no feature by itself while every real feature below stays not_set.
 enabled_count="$(grep -cE "^ *-f [a-z_]+='enabled'" "${UNDER_TEST}" || true)"
-check "exactly one setting is 'enabled'" "$([ "${enabled_count}" = "1" ] && echo 0 || echo 1)"
-grep -qE "^ *-f dependency_graph='enabled'" "${UNDER_TEST}"; check "...and it is dependency_graph" "$?"
+check "exactly two settings are 'enabled'" "$([ "${enabled_count}" = "2" ] && echo 0 || echo 1)"
+grep -qE "^ *-f dependency_graph='enabled'" "${UNDER_TEST}"; check "...dependency_graph is one" "$?"
+grep -qE "^ *-f advanced_security='enabled'" "${UNDER_TEST}"; check "...advanced_security is the other (API gate)" "$?"
 for f in dependabot_alerts dependabot_security_updates secret_scanning secret_scanning_push_protection code_scanning_default_setup private_vulnerability_reporting; do
   grep -qE "^ *-f ${f}='not_set'" "${UNDER_TEST}"; check "${f} left not_set" "$?"
 done
@@ -96,6 +104,17 @@ done
 # --- 5. blast radius: attach to selected repos only, never the whole org. ----
 grep -q "scope='selected'" "${UNDER_TEST}"; check "attaches with scope=selected" "$?"
 if grep -qE "scope='all'" "${UNDER_TEST}"; then check "never attaches org-wide" 1; else check "never attaches org-wide" 0; fi
+
+# --- 6. billing guard: must REFUSE a non-public repo without confirmation. ----
+# advanced_security is free on public repos but BILLS PER COMMITTER on private
+# ones, and the API will not let us omit it. A silent enable would be a real
+# invoice.
+tmp="$(mktemp -d)"; make_fake_gh "${tmp}" 1
+out="$(FAKE_VISIBILITY=private PATH="${tmp}:${PATH}" bash "${UNDER_TEST}" </dev/null 2>&1)"; rc=$?
+check "private repo refused without a TTY" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+case "${out}" in *"BILLS PER ACTIVE COMMITTER"*|*"billable"*|*"BILL"*) check "private refusal names the billing risk" 0 ;; *) check "private refusal names the billing risk" 1 ;; esac
+if grep -qE 'POST' "${tmp}/calls.log" 2>/dev/null; then check "private repo mutates nothing" 1; else check "private repo mutates nothing" 0; fi
+rm -rf "${tmp}"
 
 echo
 if [ "${FAIL}" -ne 0 ]; then
