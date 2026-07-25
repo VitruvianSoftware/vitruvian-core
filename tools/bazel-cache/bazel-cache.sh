@@ -21,26 +21,45 @@
 
 # bazel-cache.sh — local Bazel cache upkeep.
 #
-#   bazel run //tools/bazel-cache:seed          # populate the shared download cache
 #   bazel run //tools/bazel-cache:gc            # DRY-RUN: list reclaimable output_bases
 #   bazel run //tools/bazel-cache:gc -- --execute
 #   bazel run //tools/bazel-cache:gc -- --days 60 --execute
 #
 # WHY:
 #   .bazelrc pins `common --repository_cache=~/.cache/bazel/repository-cache` so
-#   the downloaded-archive cache is shared across every output_base. Without it,
+#   the repository cache is shared across every output_base. Without it,
 #   //tools/worktree's per-worktree `--output_user_root` (issue #455) silently
-#   relocates the download cache too, and every worktree re-downloads everything.
+#   relocates that cache too, and every worktree re-fetches everything.
 #   Measured: fresh output_user_root, `bazel build //devx:devx` -- 193s and 9.7GB
-#   downloaded with its own cache, versus 65s and 0 downloaded when shared.
+#   fetched with its own cache, versus 65s and 0 fetched when shared.
 #
-#   `seed` back-fills the shared cache from the legacy per-root location so the
-#   first build after adopting the pin is not a full re-download.
 #   `gc` reclaims output_bases left behind by deleted worktrees.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO -- read before adding a subcommand:
+#   The Bazel 8/9 repository cache is NOT a passive archive of downloads. It is
+#   the repo CONTENTS cache, and every output_base reaches its external repos by
+#   ABSOLUTE symlink into it, e.g.
+#     <output_base>/external/+http_archive+net_sourceforge_pmd
+#       -> <repo-cache>/contents/<hash>/<uuid>
+#   Two consequences, both load-bearing:
+#     1. The legacy cache under <bazel-root>/cache/repos/v1 is NOT a stale
+#        duplicate of the shared one. It is the live backing store for every
+#        output_base created before the .bazelrc pin. Deleting or "merging" it
+#        dangles every external/* symlink in those bases -- including any with a
+#        running server -- and forces exactly the full re-fetch the pin exists to
+#        avoid. NEVER delete a repository cache. `gc` skips `cache`/`install`.
+#     2. Back-filling the shared cache by copying entries out of the legacy one
+#        is NOT proven safe: entries are materialized repo directories with their
+#        own metadata, not flat files, and Bazel runs its own age-based GC over
+#        them (see the gc_lock in that directory), so naively copied entries can
+#        be unrecognized or promptly evicted. A `seed` subcommand was written and
+#        REMOVED for exactly this reason. Do not reintroduce one without first
+#        proving Bazel accepts the copied entries.
+#   Migration therefore needs no action: existing bases keep using the legacy
+#   cache, new ones populate the shared cache lazily, and the two coexist.
 
 set -euo pipefail
 
-SHARED_CACHE="${HOME}/.cache/bazel/repository-cache"
 BAZEL_ROOT="${HOME}/Library/Caches/bazel/_bazel_${USER}"
 [ -d "${BAZEL_ROOT}" ] || BAZEL_ROOT="${HOME}/.cache/bazel/_bazel_${USER}"
 
@@ -52,44 +71,6 @@ die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 human() { # bytes -> human
   awk -v b="${1:-0}" 'BEGIN{s="B KB MB GB TB";split(s,a," ");i=1;
     while(b>=1024&&i<5){b/=1024;i++} printf "%.1f%s", b, a[i]}'
-}
-
-# --- seed --------------------------------------------------------------------
-# Copies the legacy per-output_user_root download cache into the shared one.
-# Uses APFS copy-on-write clones (cp -c) where available: instant, consumes no
-# extra disk, and -- unlike hardlinks -- a later write to either copy cannot
-# corrupt the other. Falls back to a plain copy elsewhere.
-cmd_seed() {
-  mkdir -p "${SHARED_CACHE}"
-  local legacy found=0 copied=0 skipped=0
-  info "shared cache: ${SHARED_CACHE}"
-
-  for legacy in "${BAZEL_ROOT}"/cache/repos/v1 "${HOME}"/.cache/bazel/worktrees/*/cache/repos/v1; do
-    [ -d "${legacy}" ] || continue
-    [ "${legacy}" = "${SHARED_CACHE}" ] && continue
-    found=$((found+1))
-    info "seeding from ${legacy}"
-    # content/ is the sha256-addressed store; that is all that is portable.
-    if [ -d "${legacy}/content_addressable" ]; then
-      src="${legacy}/content_addressable"; dst="${SHARED_CACHE}/content_addressable"
-    else
-      src="${legacy}"; dst="${SHARED_CACHE}"
-    fi
-    mkdir -p "${dst}"
-    while IFS= read -r f; do
-      rel="${f#"${src}"/}"
-      target="${dst}/${rel}"
-      [ -e "${target}" ] && { skipped=$((skipped+1)); continue; }
-      mkdir -p "$(dirname "${target}")"
-      if cp -c "${f}" "${target}" 2>/dev/null || cp "${f}" "${target}" 2>/dev/null; then
-        copied=$((copied+1))
-      fi
-    done < <(find "${src}" -type f 2>/dev/null)
-  done
-
-  [ "${found}" -eq 0 ] && { warn "no legacy cache found — nothing to seed (a cold cache just fills itself)"; return 0; }
-  ok "seeded ${copied} archives (${skipped} already present) into ${SHARED_CACHE}"
-  info "size now: $(du -sh "${SHARED_CACHE}" 2>/dev/null | cut -f1)"
 }
 
 # --- gc ----------------------------------------------------------------------
@@ -145,9 +126,19 @@ cmd_gc() {
       "$(find "${d}" -maxdepth 0 -exec stat -f '%Sm' -t '%Y-%m-%d' {} \; 2>/dev/null)"
 
     if [ "${execute}" = "1" ]; then
-      # Re-check liveness immediately before deleting (a build may have started).
+      # Re-check liveness immediately before deleting. A build may have started
+      # since classification, and the pidfile alone is not enough: there is a
+      # window during server startup where the process exists but
+      # server/server.pid.txt has not been written yet. (Note the lock file next
+      # to it is NOT an advisory lock in Bazel 9 -- it can be flock'd freely
+      # during an active build -- so it must not be used as a liveness signal.)
+      # Re-stat'ing the mtime closes most of that window: anything that has
+      # touched the base since we classified it makes us skip.
       if [ -f "${pidf}" ] && kill -0 "$(cat "${pidf}" 2>/dev/null || echo 0)" 2>/dev/null; then
         warn "  ${name} became live — skipping"; continue
+      fi
+      if [ -z "$(find "${d}" -maxdepth 0 -mtime "+${days}" 2>/dev/null)" ]; then
+        warn "  ${name} was touched since classification — skipping"; continue
       fi
       chmod -R u+w "${d}" 2>/dev/null || true
       rm -rf "${d}" 2>/dev/null || warn "  could not fully remove ${name}"
@@ -165,7 +156,6 @@ cmd_gc() {
 }
 
 case "${1:-}" in
-  seed) shift; cmd_seed "$@" ;;
   gc)   shift; cmd_gc "$@" ;;
-  *) die "usage: bazel-cache.sh {seed|gc [--days N] [--execute]}" ;;
+  *) die "usage: bazel-cache.sh gc [--days N] [--execute]" ;;
 esac

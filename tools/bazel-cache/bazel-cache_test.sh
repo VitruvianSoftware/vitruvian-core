@@ -62,7 +62,20 @@ out="$(run gc --days 1 --execute)"
 [ -d "${root}/fresh333" ]; check "recently-used output_base is never deleted" "$?"
 
 # 5. install/ and cache/ are structural, never candidates.
-grep -q 'install|cache' "${UNDER_TEST}"; check "install/ and cache/ are skipped" "$?"
+# 5. THE data-loss invariant, asserted behaviourally rather than by grepping the
+#    source. The repository cache is not a passive download cache: every
+#    output_base reaches its external repos by ABSOLUTE symlink into
+#    <root>/cache/repos/v1/contents/..., so deleting `cache` dangles every one of
+#    them (including bases with a live server) and forces a full re-fetch.
+#    `install` holds the unpacked Bazel install. Both must survive --execute even
+#    when their mtimes are ancient.
+mkdir -p "${root}/cache/repos/v1/contents" "${root}/install/abc"
+echo x > "${root}/cache/repos/v1/contents/entry"
+echo x > "${root}/install/abc/f"
+touch -t 202001010000 "${root}/cache" "${root}/install"
+run gc --days 1 --execute >/dev/null 2>&1
+[ -f "${root}/cache/repos/v1/contents/entry" ]; check "repository cache SURVIVES --execute (data-loss guard)" "$?"
+[ -f "${root}/install/abc/f" ];               check "install/ SURVIVES --execute" "$?"
 
 rm -rf "${fake_home}"
 echo

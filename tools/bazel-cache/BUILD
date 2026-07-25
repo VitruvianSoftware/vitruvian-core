@@ -1,6 +1,5 @@
 """Local Bazel cache upkeep (developer-machine only; nothing here runs in CI).
 
-  bazel run //tools/bazel-cache:seed        # back-fill the shared download cache
   bazel run //tools/bazel-cache:gc          # DRY-RUN: list reclaimable output_bases
   bazel run //tools/bazel-cache:gc -- --execute
 
@@ -16,13 +15,6 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(["bazel-cache.sh"])
-
-sh_binary(
-    name = "seed",
-    srcs = ["bazel-cache.sh"],
-    args = ["seed"],
-    visibility = ["//visibility:public"],
-)
 
 sh_binary(
     name = "gc",
