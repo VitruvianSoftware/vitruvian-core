@@ -1321,9 +1321,28 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	// secret is simply not managed -- the same optional shape as BuildBuddy, so
 	// auto-apply stays green either way.
 	//
+	// APP_PRIVATE_KEY is the same story one layer earlier. _repo-config-preview
+	// mints a GitHub App token for the Pulumi GitHub provider from it, so on a
+	// Dependabot PR create-github-app-token failed with "The 'private-key' input
+	// must be set to a non-empty string" before pulumi ran at all (#1210). That
+	// leg now degrades to noop-green when the key is absent, and -- as with
+	// PULUMI_ACCESS_TOKEN above -- mirroring it here is what RESTORES the preview
+	// rather than merely silencing it.
+	//
+	// This one is a deliberate trust decision, not a mechanical fix: it puts a
+	// GitHub App private key where Dependabot-triggered runs can read it. Taken
+	// knowingly, on two grounds. The App is the narrowly-scoped Pulumi provider
+	// App (PULUMI_APP_ID), not a broadly-privileged one; and a sibling App key,
+	// SYNC_APP_PRIVATE_KEY, is already in this store (pkg/copybara_sync) for the
+	// reconcile automation, so the boundary this crosses was crossed already.
+	// Revoking it means rotating the App key, not deleting this line -- if that
+	// tradeoff is ever re-litigated, the preview degrade still stands on its own
+	// and dropping this entry is safe.
+	//
 	// `bazel run //tools/ci-preflight` reports exactly this class of gap: any
 	// secret a pull_request-triggered workflow reads that the Dependabot store
-	// does not carry.
+	// does not carry. It queries the live API, so it turns clean only after this
+	// program applies -- not merely because the entry exists here.
 	for _, s := range []struct {
 		resource string // pulumi resource name (stable; renaming forces replace)
 		env      string // CI env var / GitHub secret name
@@ -1331,6 +1350,7 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	}{
 		{"buildbuddy-api-key-dependabot", "BUILDBUDDY_API_KEY", "buildbuddyApiKey"},
 		{"pulumi-access-token-dependabot", "PULUMI_ACCESS_TOKEN", "pulumiAccessToken"},
+		{"app-private-key-dependabot", "APP_PRIVATE_KEY", "appPrivateKey"},
 	} {
 		// Optional by design: a value that is not available in this context is
 		// skipped, never defaulted to empty. Writing an empty Dependabot secret
