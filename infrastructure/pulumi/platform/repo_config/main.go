@@ -258,43 +258,28 @@ func main() {
 					// secret scanning covers known PROVIDER patterns only;
 					// neither BLOCKS a merge.
 					//
-					// dependency-review is inherently pull_request-scoped (it
-					// diffs the dependency graph between base and head) and
-					// secret-scan is diff-scoped, so BOTH use the
+					// Both are diff/lockfile-scoped but use the
 					// run-then-noop-green shape: the job always runs and
 					// reports on every event including merge_group, which is
-					// what makes it safe to require. It carries no
-					// pull_request paths filter, so it cannot leave a PR stuck
+					// what makes them safe to require. Neither carries a
+					// pull_request paths filter, so they cannot leave a PR stuck
 					// unmergeable (asserted by the conformance check).
 					//
-					// dependency-review (#1144) blocks a PR that introduces a
-					// dependency with a known advisory. It needs the GitHub
-					// Dependency graph, which was OFF and is not expressible in
-					// pulumi-github v6.14.0 (organization resource only, never per
-					// repository). It is now ON via an org code security
-					// configuration attached to this repo alone --
-					// `bazel run //tools/github-security:enable-dependency-graph`,
-					// which is idempotent, so re-run it if this check ever starts
-					// erroring with "not supported on this repository". The job is
-					// unconditional (only the action step is pull_request-scoped),
-					// so it always reports -- safe to require.
-					"dependency-review",
-					"go-test-infra",
-					// Supply-chain gates (supply-chain.yaml) -- the class of
-					// check this repo had NONE of. Dependabot only alerts AFTER
-					// a vulnerable dependency is already on main, and GitHub
-					// secret scanning covers known PROVIDER patterns only;
-					// neither BLOCKS a merge.
-					//
-					// dependency-review is inherently pull_request-scoped (it
-					// diffs the dependency graph between base and head) and
-					// secret-scan is diff-scoped, so BOTH use the
-					// run-then-noop-green shape: the job always runs and
-					// reports on every event including merge_group, which is
-					// what makes it safe to require. It carries no
-					// pull_request paths filter, so it cannot leave a PR stuck
-					// unmergeable (asserted by the conformance check).
-					//
+					// osv-scan (google/osv-scanner) replaced GitHub's
+					// dependency-review gate. dependency-review reads GitHub's
+					// dependency graph, which is an Advanced Security feature:
+					// free on public repos but BILLED PER ACTIVE COMMITTER on
+					// private ones, and (verified against the API) the
+					// configuration enabling it cannot omit advanced_security --
+					// the only accepted values are
+					// enabled|disabled|code_security|secret_protection. So the
+					// gate could not survive this repo going private without
+					// either an invoice or a wedged merge queue. osv-scanner
+					// reads the LOCKFILES directly instead, so it costs nothing
+					// at any visibility, runs locally as well as in CI, and also
+					// covers Cargo and PyPI, which GitHub's graph handled poorly
+					// here.
+					"osv-scan",
 					"secret-scan",
 				}
 			}
