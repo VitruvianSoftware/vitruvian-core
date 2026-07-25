@@ -102,17 +102,29 @@ done
 # ---------------------------------------------------------------------------
 
 # A workflow "runs on PRs" when `pull_request` (or pull_request_target) appears
-# as a key of the top-level `on:` block. Scraped with awk rather than a YAML
-# parser for the same reason tools/conformance/check.sh does: no dependency on a
-# python YAML module being importable wherever this runs.
+# as a key of the top-level `on:` block. Scraped rather than YAML-parsed for the
+# same reason tools/conformance/check.sh does it: no dependency on a python YAML
+# module being importable wherever this runs.
+#
+# grep + sed, NOT awk, and no interval expressions -- this is a portability bug
+# fixed, not a style preference. The first version used
+# `/^[[:space:]]{2}pull_request(_target)?:/` in awk. That works under the mawk on
+# a dev box and under gawk, and silently matches NOTHING under an awk without
+# ERE interval support (busybox, older mawk) -- so every workflow read as
+# not-PR-triggered, the Dependabot section came up empty, and the tool reported
+# no gaps at all. It passed locally and failed in the RBE container, which is the
+# worst possible failure mode for a checker: a false ALL-CLEAR.
+#
+# Alternation instead of `(_target)?`, and literal two spaces instead of `{2}`:
+# both are bulletproof across grep implementations. Two spaces (not "any
+# indent") is deliberate -- it pins the key to the top-level `on:` mapping, so a
+# `pull_request` mentioned deeper in the file cannot be mistaken for a trigger.
 pr_triggered() { # pr_triggered <workflow-file> -> exit 0 if PR-triggered
-  awk '
-    /^on:[[:space:]]*$/          { in_on = 1; next }
-    /^on:[[:space:]]*\[/         { if ($0 ~ /pull_request/) { found = 1 } ; next }
-    /^[^[:space:]#]/             { in_on = 0 }
-    in_on && /^[[:space:]]{2}pull_request(_target)?:[[:space:]]*$/ { found = 1 }
-    END { exit(found ? 0 : 1) }
-  ' "$1"
+  # Flow style: `on: [pull_request, push]`
+  grep -qE '^on:[[:space:]]*\[.*pull_request' "$1" && return 0
+  # Block style: the `on:` mapping, up to the next top-level key.
+  sed -n '/^on:[[:space:]]*$/,/^[^[:space:]#]/p' "$1" |
+    grep -qE '^  pull_request:|^  pull_request_target:'
 }
 
 refs_in() { # refs_in <kind: secrets|vars> <file...>

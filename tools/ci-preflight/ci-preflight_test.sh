@@ -122,6 +122,69 @@ check "flags a PR-triggered secret missing from the Dependabot store" "$?"
 grep -q "gh secret set" <<<"${out}"
 check "names the remediation" "$?"
 
+# --- 3b. PR detection must not depend on awk. --------------------------------
+# Regression pin. The first version scraped the `on:` block with awk using an
+# ERE interval (`[[:space:]]{2}`). That works under gawk and current mawk and
+# matches NOTHING under an awk without interval support -- so every workflow read
+# as not-PR-triggered and the tool reported no Dependabot gaps at all. Passed on
+# a dev box, failed in the RBE container, and the failure mode was a false
+# ALL-CLEAR from a checker. A hostile `awk` proves the dependency is gone.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_repo "${tmp}"; make_fake_gh "${bin}" ""
+cat > "${bin}/awk" <<'EOF'
+#!/usr/bin/env bash
+echo "awk must not be used for trigger detection" >&2
+exit 127
+EOF
+chmod +x "${bin}/awk"
+out="$(run "${tmp}" "${bin}")"
+grep -q "empty on Dependabot PRs" <<<"${out}"
+check "PR detection works with a hostile awk on PATH" "$?"
+
+# --- 3c. flow-style triggers. ------------------------------------------------
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+mkdir -p "${tmp}/.github/workflows"
+cat > "${tmp}/.github/workflows/flow.yaml" <<'EOF'
+name: Flow
+on: [pull_request, push]
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          T: ${{ secrets.PR_SECRET }}
+        run: echo hi
+EOF
+make_fake_gh "${bin}" "" "PR_SECRET"
+out="$(run "${tmp}" "${bin}")"
+grep -q "empty on Dependabot PRs" <<<"${out}"
+check "flow-style 'on: [pull_request, …]' is detected" "$?"
+
+# --- 3d. a nested pull_request is NOT a trigger. -----------------------------
+# Guards the decision to pin the key to the top-level `on:` mapping: a
+# `pull_request` appearing deeper in the file must not be read as a trigger, or
+# every push-only workflow gets a spurious Dependabot finding.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+mkdir -p "${tmp}/.github/workflows"
+cat > "${tmp}/.github/workflows/nested.yaml" <<'EOF'
+name: Nested
+on:
+  push:
+    branches: [main]
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.number
+    steps:
+      - env:
+          T: ${{ secrets.PUSH_SECRET }}
+        run: echo pull_request
+EOF
+make_fake_gh "${bin}" "" "PUSH_SECRET"
+out="$(run "${tmp}" "${bin}")"
+! grep -q "empty on Dependabot PRs" <<<"${out}"
+check "a nested pull_request reference is not a trigger" "$?"
+
 # --- 4. present in the Dependabot store -> no finding. -----------------------
 tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_repo "${tmp}"; make_fake_gh "${bin}" "PR_SECRET"
