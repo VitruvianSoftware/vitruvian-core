@@ -75,10 +75,15 @@ jobs:
             # check would silently miss both. The secrets context is not usable
             # in an `if:`, hence the detour through env + an output.
             #
-            # NOTE this is the degrade, not the cure. Mirroring APP_PRIVATE_KEY
-            # into the Dependabot store is what would RESTORE preview coverage
-            # here; that exposes a GitHub App key to Dependabot-triggered runs
-            # and is a deliberate governance decision, left open on purpose.
+            # The CURE ships alongside this: repo_config now mirrors
+            # APP_PRIVATE_KEY into the Dependabot store (dependabotSecrets), so
+            # once that applies, Dependabot PRs take the real preview path and
+            # this branch goes dormant for them.
+            #
+            # Kept anyway, because it still fires for fork PRs -- which cannot
+            # read the Dependabot store either -- and during any window where the
+            # App key is rotated or the mirror is withdrawn. Deleting it would
+            # re-open the exact red-X-about-the-runner failure on those paths.
             - name: Detect GitHub App credential
               id: creds
               env:
@@ -120,6 +125,12 @@ jobs:
                   # Same value the apply injects (#456) so the preview resolves the
                   # Dependabot secret from env, not a committed secure: value.
                   BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+                  # Required for the same reason, and load-bearing in a way that is
+                  # easy to miss: dependabotSecrets skips an entry whose value is
+                  # absent, so a preview WITHOUT this in env would resolve the entry
+                  # to nil and render the mirrored secret as a pending DELETE. It is
+                  # here to keep preview and apply seeing the same desired state.
+                  APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
               run: |
                   # +e so a failing preview does not abort before we capture its
                   # exit code. --color=no --curses=no stops Bazel ANSI/cursor noise;
