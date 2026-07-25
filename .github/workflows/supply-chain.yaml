@@ -46,6 +46,21 @@ on:
     branches: [main]
   merge_group:
   workflow_dispatch:
+  # Nightly, so osv-scan is CONTINUOUS monitoring and not only a pre-merge gate.
+  #
+  # This is what makes dropping GitHub's dependency graph safe. Dependabot ALERTS
+  # are built on that graph, and the graph is only on here via a code security
+  # configuration that must also set advanced_security -- free while this repo is
+  # public, billed per active committer once it is private. Removing that config
+  # therefore removes the alerts too.
+  #
+  # A pre-merge gate alone does not replace them: it catches a vulnerable
+  # dependency you INTRODUCE, but nothing notices a NEW advisory published
+  # against a dependency you already ship. That is precisely what the alerts did.
+  # A nightly scan restores it, for free, at any repository visibility -- and
+  # covers Cargo and PyPI, which the graph handled poorly here.
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC, an hour after the nightly full sweep
 
 permissions:
   contents: read
@@ -111,7 +126,15 @@ jobs:
           # The scan range is resolved against the merge-base / before-rev.
           fetch-depth: 0
 
+      # Skipped on the nightly schedule: this gate is DIFF-scoped, and a schedule
+      # run has no diff base at all (both vars below resolve empty), so it would
+      # fall back to scanning the whole history and trip over the repo's known
+      # historical findings -- a nightly red that means nothing. The nightly run
+      # exists for osv-scan, which is the check that benefits from it. secret-scan
+      # still runs on every pull_request/push/merge_group, so its required-check
+      # behaviour is unchanged.
       - name: Scan added commits for secrets
+        if: github.event_name != 'schedule'
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
           BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
