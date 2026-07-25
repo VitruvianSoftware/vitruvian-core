@@ -75,6 +75,30 @@ if gh api "repos/${ORG}/${REPO}/dependency-graph/sbom" --silent >/dev/null 2>&1;
 fi
 info "Dependency graph is OFF for ${ORG}/${REPO} (the SBOM endpoint does not answer)."
 
+# --- 0b. visibility gate: advanced_security is FREE on public, BILLED on private.
+# The configuration below must set advanced_security=enabled -- the API rejects
+# any config enabling a GHAS feature without it, and (verified) it cannot be
+# `not_set`; the only accepted values are enabled|disabled|code_security|
+# secret_protection. On a PUBLIC repo that is free and enables nothing by
+# itself. On a PRIVATE repo it turns on GitHub Advanced Security, which bills
+# per active committer -- so never let this run blind against a private repo.
+visibility="$(gh api "repos/${ORG}/${REPO}" --jq '.visibility' 2>/dev/null || echo unknown)"
+info "repository visibility: ${visibility}"
+if [ "${visibility}" != "public" ]; then
+  printf '\033[33m!\033[0m %s\n' "${REPO} is ${visibility}, not public."
+  echo "     This creates a code security configuration with advanced_security=enabled,"
+  echo "     which on a private repository enables GitHub Advanced Security and BILLS"
+  echo "     PER ACTIVE COMMITTER. It cannot be omitted: the API rejects a config that"
+  echo "     enables any GHAS feature without it, and it cannot be set to not_set."
+  echo "     Consider the granular SKUs instead (advanced_security=code_security)."
+  if [ ! -t 0 ]; then
+    die "refusing to enable a billable feature non-interactively. Re-run from a terminal to confirm."
+  fi
+  printf '     Type EXACTLY "i accept the billing" to continue: '
+  read -r confirm </dev/tty
+  [ "${confirm}" = "i accept the billing" ] || die "aborted — nothing was changed."
+fi
+
 # --- 1. make sure we hold admin:org. -----------------------------------------
 # Creating/attaching an org code security configuration needs admin:org, which a
 # default `gh auth login` does NOT grant. Rather than telling the operator to go

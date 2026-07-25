@@ -45,6 +45,9 @@ echo "\$*" >> "${bin}/calls.log"
 case "\$*" in
   *dependency-graph/sbom*) exit ${sbom_rc} ;;
   *"-i user"*)             echo "x-oauth-scopes: gist, read:org, repo, workflow"; exit 0 ;;
+  # Default to a PUBLIC repo so each test exercises the gate it is about; the
+  # billing test overrides this to private.
+  *.visibility*)           echo "\${FAKE_VISIBILITY:-public}"; exit 0 ;;
   *code-security/configurations*) echo ""; exit 0 ;;
   *) echo ""; exit 0 ;;
 esac
@@ -101,6 +104,17 @@ done
 # --- 5. blast radius: attach to selected repos only, never the whole org. ----
 grep -q "scope='selected'" "${UNDER_TEST}"; check "attaches with scope=selected" "$?"
 if grep -qE "scope='all'" "${UNDER_TEST}"; then check "never attaches org-wide" 1; else check "never attaches org-wide" 0; fi
+
+# --- 6. billing guard: must REFUSE a non-public repo without confirmation. ----
+# advanced_security is free on public repos but BILLS PER COMMITTER on private
+# ones, and the API will not let us omit it. A silent enable would be a real
+# invoice.
+tmp="$(mktemp -d)"; make_fake_gh "${tmp}" 1
+out="$(FAKE_VISIBILITY=private PATH="${tmp}:${PATH}" bash "${UNDER_TEST}" </dev/null 2>&1)"; rc=$?
+check "private repo refused without a TTY" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+case "${out}" in *"BILLS PER ACTIVE COMMITTER"*|*"billable"*|*"BILL"*) check "private refusal names the billing risk" 0 ;; *) check "private refusal names the billing risk" 1 ;; esac
+if grep -qE 'POST' "${tmp}/calls.log" 2>/dev/null; then check "private repo mutates nothing" 1; else check "private repo mutates nothing" 0; fi
+rm -rf "${tmp}"
 
 echo
 if [ "${FAIL}" -ne 0 ]; then

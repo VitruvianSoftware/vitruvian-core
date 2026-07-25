@@ -74,6 +74,29 @@ jobs:
   # reports a result -- the run-then-noop-green shape every required check in
   # this repo uses. A required check that is sometimes skipped leaves the merge
   # queue pending forever.
+  # ⚠ BEFORE MAKING THIS REPOSITORY PRIVATE — READ THIS.
+  #
+  # Dependency review is free on PUBLIC repositories. On a PRIVATE repository it
+  # requires GitHub Code Security (paid, per active committer). Flipping this
+  # repo to private without acting FIRST breaks merges outright, because
+  # dependency-review is a REQUIRED check (repo_config/main.go): the action
+  # starts hard-erroring, the required check goes red on every PR, and the merge
+  # queue blocks everything.
+  #
+  # Two supported paths, both to be taken BEFORE the visibility flip:
+  #   a) Keep the gate — buy GitHub Code Security, and set advanced_security to
+  #      `code_security` on the `dependency-graph-only` configuration
+  #      (org code-security configurations; //tools/github-security).
+  #   b) Drop the gate — remove "dependency-review" from the required-check list
+  #      in repo_config/main.go and delete this job. //tools/conformance:check
+  #      enforces that those two stay in sync, so a half-done removal fails CI
+  #      rather than wedging the queue.
+  #
+  # Note the companion billing hazard: the configuration that enables the
+  # dependency graph must set advanced_security=enabled (the API rejects a GHAS
+  # feature without it, and it cannot be `not_set`). That is free while this repo
+  # is public and BILLABLE once it is private. //tools/github-security's target
+  # refuses to run against a non-public repo without explicit confirmation.
   dependency-review:
     runs-on: ubuntu-latest
     timeout-minutes: 10
