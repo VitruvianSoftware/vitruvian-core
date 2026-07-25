@@ -1,0 +1,51 @@
+{
+  "name": "@vitruviansoftware/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Vitruvian — the Vitruvian Software design language: tokens, React components and Storybook",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./vitruvian.css": "./src/vitruvian.css",
+    "./tokens.css": "./src/tokens.css"
+  },
+  "files": [
+    "dist",
+    "src/tokens.css",
+    "src/vitruvian.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o dist-storybook",
+    "typecheck": "tsc -p tsconfig.stories.json --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^9.1.10",
+    "@storybook/addon-docs": "^9.1.10",
+    "@storybook/react-vite": "^9.1.10",
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "storybook": "^9.1.10",
+    "tailwindcss": "^4",
+    "typescript": "6.0.3",
+    "vite": "^7"
+  }
+}
