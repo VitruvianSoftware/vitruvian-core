@@ -99,4 +99,4 @@ This section outlines the high-level capabilities. Status is tracked as:
 
 ---
 
-_Verified Journeys tracked in: `[Verified Journeys Log](./verified_journeys.md)`._
+_Verified Journeys tracked in: `[Verified Journeys Log](verified_journeys.md)`._

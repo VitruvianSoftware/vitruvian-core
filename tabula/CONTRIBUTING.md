@@ -476,17 +476,11 @@ tabula/
 │   ├── tailwind.config.js
 │   └── next.config.js
 │
-├── infrastructure/        # Terraform IaC
-│   ├── modules/           # Reusable Terraform modules
-│   │   ├── cloud-run/
-│   │   ├── database/
-│   │   ├── storage/
-│   │   └── scheduler/
-│   ├── environments/      # Environment-specific configs
-│   │   ├── dev/
-│   │   ├── staging/
-│   │   └── prod/
-│   └── README.md
+├── infra/                 # Pulumi-in-Go IaC (per-app stacks)
+│   ├── build/             # Artifact Registry + image build
+│   ├── data/             # Neon Postgres + Upstash Redis (as code)
+│   ├── identity/          # keyless WIF deploy + runtime SAs
+│   └── app/               # Cloud Run service (blue-green deploy)
 │
 ├── docs/                  # Documentation
 │   ├── architecture/      # Architecture docs (overview, specs, NFRs)

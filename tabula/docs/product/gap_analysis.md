@@ -5,9 +5,9 @@
 > adversarial verification, then a **live hands-on audit** of the Workona web app (paid account) and
 > confirmed third-party pricing. Tabula side is ground truth from this repo.
 >
-> Related references: [`workona_walkthrough.md`](./workona_walkthrough.md),
+> Related references: [`workona_walkthrough.md`](workona_walkthrough.md),
 > [`../architecture/workona_research.md`](../architecture/workona_research.md),
-> [`ui-design-language.md`](./ui-design-language.md), [`REQUIREMENTS.md`](./REQUIREMENTS.md).
+> [`ui-design-language.md`](ui-design-language.md), [`REQUIREMENTS.md`](REQUIREMENTS.md).
 >
 > **Tracking:** organized as GitHub milestones **M1 Organizer Hardening · M2 Sync & Sharing
 > Foundation · M3 Connected Layer · M4 Team & Collaboration Hub** — §5 maps each gap to one. This
@@ -185,7 +185,7 @@ the **relay pattern** is the template for doing it right.
 - Pricing is third-party-aggregated, not from a billing page; the $6–9 Pro spread reflects
   source variation.
 - Tabula `[/]` items (sync, conflict resolution, tab save/restore/suspend) are coded-but-not-verified
-  per [`REQUIREMENTS.md`](./REQUIREMENTS.md) and rated partial, not done.
+  per [`REQUIREMENTS.md`](REQUIREMENTS.md) and rated partial, not done.
 - "Tab management off by default" for Workona is inferred from its onboarding (optional step 3).
 
 ## 9. Sources

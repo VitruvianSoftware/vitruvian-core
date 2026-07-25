@@ -300,8 +300,8 @@ Planned improvements for the web dashboard:
 
 ## Related Documentation
 
-- [Command Palette](./command-palette.md): Global search in browser extension
-- [Workspace Operations](./workspace-operations.md): Managing workspaces
+- [Command Palette](command-palette.md): Global search in browser extension
+- [Workspace Operations](workspace-operations.md): Managing workspaces
 - [Getting Started](../getting-started/development.md): Development setup
 
 ## Support
@@ -309,5 +309,5 @@ Planned improvements for the web dashboard:
 For issues or questions about the web dashboard:
 
 1. Check the [GitHub Issues](https://github.com/VitruvianSoftware/vitruvian-core/issues)
-2. Review the [Contributing Guide](../../../tabula/CONTRIBUTING.md)
+2. Review the [Contributing Guide](../../CONTRIBUTING.md)
 3. Contact the maintainers

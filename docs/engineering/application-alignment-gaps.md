@@ -63,14 +63,14 @@ Each gap below consolidates the dimension surveys and the explicitly-named sessi
 | mcp-slack | `npm install && npm run build && npm start` |
 | nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
-The worst offender is **tabula**, which ships **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `docs/tabula/getting-started/{setup,development}.md` and `CONTRIBUTING.md` describe a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. A new contributor following tabula's own getting-started docs cannot get the app running.
+The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
 
 Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs with `.env` injection, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contains a `devx.yaml`.** The repo does not dogfood its own tool.
 
 **Target (Principles doc).** One documented "Run locally" contract per app type, `devx` as the dogfooded entrypoint for apps that need backing services, and a single `docs/` local-dev index linking each app's section.
 
 **Recommended action.**
-1. Rewrite tabula's `getting-started`/`CONTRIBUTING` to the real Bazel+pnpm+Pulumi flow (fix the `BlueCentre` clone URL, Node 18→22, drop Terraform and the non-existent compose file) — **or** commit the `docker-compose.yml` the docs assume and make them true. Pick one.
+1. ✅ **Done** — tabula's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `tabula/docs/`. A light pass on lingering `tabula/CONTRIBUTING.md` prose is the only remainder.
 2. Add a committed `devx.yaml` to each app, generated from the matching `devx scaffold` template, starting with the two that need Postgres/secret injection: `tabula/api` and `oauth-user-inspector`.
 3. Write one `docs/` "Local development" page linking every app's run section.
 
