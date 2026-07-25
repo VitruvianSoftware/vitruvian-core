@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.13.0...foundation-gcp-projects-v1.14.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** mint tabula's deploy identity in stage-4 (bu2 port) ([#1156](https://github.com/VitruvianSoftware/vitruvian-core/issues/1156)) ([704b8a8](https://github.com/VitruvianSoftware/vitruvian-core/commit/704b8a80400cd7839716abadfc49b41d539ef015))
+
 ## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.12.0...foundation-gcp-projects-v1.13.0) (2026-07-25)
 
 
