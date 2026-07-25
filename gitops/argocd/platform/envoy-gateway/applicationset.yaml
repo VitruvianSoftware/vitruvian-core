@@ -23,7 +23,7 @@
 # Cilium Gateway and GKE Gateway use, so HTTPRoutes carry over to the eventual
 # Cilium Gateway (Phase 3). Gateway API CRDs are already installed cluster-wide, so
 # this chart installs ONLY the controller (no CRDs).
-# See docs/design/cilium-gateway-api-migration.md.
+# See docs/archive/design/cilium-gateway-api-migration.md.
 #   chart gateway-helm v1.8.1 (OCI docker.io/envoyproxy), ns envoy-gateway-system.
 #   repoURL is SCHEME-LESS on purpose — ArgoCD v3.4 resolves docker.io/<ns> + chart
 #   as OCI natively (no repo registration needed); an oci:// scheme makes it drop

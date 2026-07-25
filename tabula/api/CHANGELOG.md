@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.22...tabula-api-v0.1.23) (2026-07-25)
+
+
+### Features
+
+* **devx:** dogfood devx.yaml, add local-dev index, fix agent-skill links ([#1154](https://github.com/VitruvianSoftware/vitruvian-core/issues/1154)) ([4e3d73d](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e3d73da5270f30e538db165917c8403428cad4c))
+
+## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.21...tabula-api-v0.1.22) (2026-07-24)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+* **tabula/api:** resolve secrets lazily behind SECRET_PREFIX ([#975](https://github.com/VitruvianSoftware/vitruvian-core/issues/975)) ([60ff4b1](https://github.com/VitruvianSoftware/vitruvian-core/commit/60ff4b1e25b12629d04a6ac8f4cd0fbbe86a6350))
+
+
+### Bug Fixes
+
+* **tabula/api:** resolve secrets BEFORE constructing the app ([#991](https://github.com/VitruvianSoftware/vitruvian-core/issues/991)) ([eb6cb52](https://github.com/VitruvianSoftware/vitruvian-core/commit/eb6cb52fc2b9cd43f726c839f274b313384fd3ca))
+* **tabula:** jest 30 symlink-preserving resolver so mocks + coverage agree under Bazel ([#794](https://github.com/VitruvianSoftware/vitruvian-core/issues/794)) ([fb6dcaf](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb6dcaf3dc20b30a173f1fd23c8b279c7311c426))
+
 ## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.20...tabula-api-v0.1.21) (2026-06-14)
 
 

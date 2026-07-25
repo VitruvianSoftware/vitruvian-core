@@ -41,3 +41,17 @@ config:
   # without a LookupZone (which otherwise shows a phantom ~zoneId replace).
   tabula-app:customDomain: tabula-api.staging.vitruviansoftware.dev
   tabula-app:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+  # The foundation gcp-app-infra business_unit_2 nonproduction leaf has adopted
+  # the Cloud Run service (core-vs-application-infrastructure.md §7). With this
+  # true, the app stack reconciles ONLY the custom-domain resources; the service
+  # / revision / traffic / invoker block is skipped (the leaf owns and deploys
+  # the workload). Pairs with tabula-deploy.yaml deploy-nonprod
+  # workload-migrated: true. Mirrors development (#1088).
+  # Public base the app builds its WorkOS redirect URI from
+  # (`${API_URL}/auth/callback`), and the exact origin the auth callback page
+  # postMessages the token to. Both are public, both were set by the retired
+  # pre-bu2 stack, and both must be present for extension login to work.
+  # The redirect URI below must also be registered in the WorkOS dashboard
+  # (Applications -> Redirects); WorkOS rejects an unregistered redirect_uri.
+  tabula-app:apiUrl: https://tabula-api.staging.vitruviansoftware.dev/api/v1
+  tabula-app:authPostmessageOrigin: chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof

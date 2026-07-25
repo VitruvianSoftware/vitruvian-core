@@ -96,7 +96,7 @@ spec:
                 purge: false
               # Thanos TSDB block storage for the HA Prometheus migration (sidecar
               # upload + Store Gateway reads + Compactor). See
-              # docs/design/prometheus-thanos-ha.md.
+              # docs/archive/design/prometheus-thanos-ha.md.
               - name: thanos
                 policy: none
                 purge: false

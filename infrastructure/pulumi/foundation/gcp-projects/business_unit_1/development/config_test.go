@@ -209,3 +209,24 @@ func TestAppGitHubEnvironmentNaming(t *testing.T) {
 		t.Fatalf("GitHubEnvironment = %q, want %q", got, want)
 	}
 }
+
+// The BU app-infra pipeline SA applies the stage-5 leaf, which is UNGATED so
+// routine app deploys don't need a human approval. That is only safe while its
+// grants stay in this stage — the one it does not apply. If someone gives it a
+// role that lets it edit stage-4 state (resourcemanager/iam admin), the
+// separation collapses silently and stage 5 becomes a privilege-escalation
+// path. Keep this list to what applying a Cloud Run workload actually needs.
+func TestAppInfraPipelineRolesCannotSelfEscalate(t *testing.T) {
+	forbidden := []string{
+		"roles/owner", "roles/editor",
+		"roles/iam.securityAdmin", "roles/iam.serviceAccountAdmin",
+		"roles/resourcemanager.projectIamAdmin",
+	}
+	for _, role := range defaultAppInfraPipelineRoles {
+		for _, bad := range forbidden {
+			if role == bad {
+				t.Errorf("defaultAppInfraPipelineRoles contains %q — the stage-5 pipeline SA could then author its own grants, and stage 5 is ungated", role)
+			}
+		}
+	}
+}

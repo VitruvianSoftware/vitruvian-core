@@ -137,14 +137,14 @@ A few rules hold everywhere:
 - **Secrets are set with `--secret`**, so they are stored as encrypted `secure:`
   values and never appear in plaintext in state or outputs.
 - Rotating any of the GitHub/RBE secrets these projects rely on follows the
-  [key-rotation SOP](../key-rotation.md).
+  [key-rotation SOP](../operations/key-rotation.md).
 
 ## Per-project architecture
 
 ### sync-auth (`infrastructure/pulumi`)
 
 Pulumi project `vitruvian-core-infra`. Provisions the GitHub auth that backs
-[Copybara sync](../copybara-sync.md) between the monorepo and
+[Copybara sync](../admin/copybara-sync.md) between the monorepo and
 each standalone component repo. For every component (`mcp-slack`, `devx`,
 `homelab`, `nexus-agent`) it creates a fresh ED25519 key pair and wires the two
 halves where each side of the sync needs them; it also places the shared sync
@@ -269,7 +269,7 @@ Actions:
   App created once via `bazel run //tools/pulumi:create-app`.
 - **sync-auth** — not run on a schedule; it is applied when sync credentials
   change. The credentials it places are consumed by the Copybara
-  [export/import workflows](../copybara-sync.md) and the Dependabot
+  [export/import workflows](../admin/copybara-sync.md) and the Dependabot
   automation.
 
 The repository's main [CI](../../.github/workflows/ci.yaml) (`build-test` on RBE,

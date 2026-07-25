@@ -28,6 +28,10 @@ import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 // stackRefs carries the cross-stage outputs this leaf consumes.
 type stackRefs struct {
 	// From the gcp-projects BU leaf: the environment's OSS app-hosting project.
+	// Deployment region: the leaf's region config when set, otherwise the
+	// gcp-projects default_region — CONSUMED from the earlier phase so region
+	// flows bootstrap -> ... -> projects -> app-infra and cannot drift.
+	Region                   pulumi.StringOutput
 	OSSFloatingProjectID     pulumi.StringOutput
 	OSSFloatingProjectNumber pulumi.StringOutput
 	// From the gcp-projects BU leaf: the platform-issued deploy SA per app.
@@ -49,7 +53,12 @@ func loadStackReferences(ctx *pulumi.Context, cfg *AppInfraConfig) (*stackRefs, 
 	for _, app := range cfg.Apps {
 		deploySAs[app.Name] = projectsStack.GetStringOutput(pulumi.String(app.Name + "_deploy_service_account"))
 	}
+	appRegion := projectsStack.GetStringOutput(pulumi.String("default_region"))
+	if cfg.Region != "" {
+		appRegion = pulumi.String(cfg.Region).ToStringOutput()
+	}
 	return &stackRefs{
+		Region:                   appRegion,
 		OSSFloatingProjectID:     projectsStack.GetStringOutput(pulumi.String("oss_floating_project")),
 		OSSFloatingProjectNumber: projectsStack.GetStringOutput(pulumi.String("oss_floating_project_number")),
 		DeployServiceAccounts:    deploySAs,

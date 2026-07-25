@@ -43,8 +43,11 @@ type AppInfraConfig struct {
 	Apps []AppConfig
 }
 
-// AppConfig is one application hosted in this environment. Its deploy identity
-// is minted in gcp-projects and consumed here by StackReference.
+// AppConfig is one application hosted in this environment. This leaf is
+// scaffolding only: it re-exports the app's stage-4 deploy identity (keyed by
+// Name) for the app's own infra/app stack to consume. The workload knobs
+// (runtime SA, service name, env vars, invoker, max-instances) moved to the
+// app's own stack along with the Cloud Run service.
 type AppConfig struct {
 	Name string
 }
@@ -57,7 +60,7 @@ func loadConfig(ctx *pulumi.Context) *AppInfraConfig {
 		Env:               pinnedEnv,
 		EnvCode:           pinnedEnvCode,
 		BusinessCode:      orDefault(cfg.Get("business_code"), "bu1"),
-		Region:            orDefault(cfg.Get("region"), "us-west1"),
+		Region:            cfg.Get("region"), // empty => inherit projects default_region (remote.go)
 		ProjectsStackName: cfg.Require("projects_stack_name"),
 	}
 

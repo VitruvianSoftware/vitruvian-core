@@ -27,6 +27,7 @@ package main
 
 import (
 	"fmt"
+	"foundation-projects/modules/app_deploy_identity"
 	"strings"
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
@@ -76,6 +77,10 @@ type ProjectsConfig struct {
 	// (modules/single_project sa_roles) — one stage ABOVE the 5-app-infra
 	// workloads they deploy, so the identity cannot edit its own grants.
 	Apps []AppIdentityConfig
+
+	// AppBuildReaderGrants lets the BU app-infra pipeline SA pull each app\'s
+	// images from the shared infra-pipeline project. Empty = no grants.
+	AppBuildReaderGrants []AppBuildReaderGrant
 
 	// BootstrapStackName is the gcp-bootstrap stack providing the shared WIF
 	// pool. Required only when Apps is non-empty.
@@ -220,6 +225,13 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 			DeployAccountID: conf.Get(name + "_deploy_account_id"),
 			DeployRoles:     splitAppList(conf.Get(name + "_deploy_roles")),
 		}
+		if raw := conf.Get(name + "_deploy_conditional_roles"); raw != "" {
+			parsed, err := parseConditionalRoles(raw)
+			if err != nil {
+				panic(fmt.Sprintf("%s_deploy_conditional_roles: %v", name, err))
+			}
+			app.ConditionalDeployRoles = parsed
+		}
 		if len(app.DeployRoles) == 0 {
 			app.DeployRoles = defaultAppDeployRoles
 		}
@@ -331,6 +343,8 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		c.FolderDeletionProtection = true
 	}
 
+	c.AppBuildReaderGrants = appBuildReaderGrants(conf.Get("app_build_reader_grants"))
+
 	return c
 }
 
@@ -364,6 +378,12 @@ type AppIdentityConfig struct {
 	Name            string
 	DeployAccountID string
 	DeployRoles     []string
+	// ConditionalDeployRoles are project roles granted with an IAM condition,
+	// e.g. Secret Manager scoped to the app's secret prefix. They are separate
+	// from DeployRoles because the condition is part of the binding's identity
+	// in GCP, and because granting such a role UNCONDITIONALLY would reach
+	// every co-tenant app's secrets in the shared project.
+	ConditionalDeployRoles []app_deploy_identity.ConditionalRole
 }
 
 // GitHubEnvironment is the per-env GitHub Environment permitted to impersonate
@@ -377,6 +397,18 @@ func (a AppIdentityConfig) GitHubEnvironment(env string) string {
 // defaultAppDeployRoles is replicated EXACTLY from the app-side stack this
 // identity was adopted from (oauth-user-inspector/infra/identity) — adoption
 // must be permission-neutral.
+// defaultAppInfraPipelineRoles are what the BU's app-infra pipeline SA needs to
+// apply stage-5 workloads: manage Cloud Run services, act as the runtime SA it
+// sets on them, and read its own project's service usage. Deliberately the same
+// shape as a per-app deploy SA — the pipeline applies the same class of
+// resource, just for the whole BU leaf rather than one app.
+var defaultAppInfraPipelineRoles = []string{
+	"roles/run.admin",
+	"roles/iam.serviceAccountUser",
+	"roles/serviceusage.serviceUsageConsumer",
+	"roles/logging.viewer",
+}
+
 var defaultAppDeployRoles = []string{
 	"roles/run.admin",
 	"roles/iam.serviceAccountUser",
@@ -393,4 +425,75 @@ func splitAppList(v string) []string {
 		}
 	}
 	return out
+}
+
+// AppBuildReaderGrant lets the BU's app-infra pipeline SA PULL an app's images.
+// The repository lives in the BU's shared infra-pipeline project, so the values
+// are config rather than a StackReference: the shared leaf applies BEFORE this
+// one and does not know this environment's pipeline identity.
+type AppBuildReaderGrant struct {
+	App               string
+	RepositoryProject string
+	RepositoryID      string
+	Region            string
+}
+
+// appBuildReaderGrants parses "<app>=<project>/<region>/<repo>" entries.
+func appBuildReaderGrants(raw string) []AppBuildReaderGrant {
+	var out []AppBuildReaderGrant
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		app, rest, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		bits := strings.Split(rest, "/")
+		if len(bits) != 3 {
+			continue
+		}
+		out = append(out, AppBuildReaderGrant{
+			App: app, RepositoryProject: bits[0], Region: bits[1], RepositoryID: bits[2],
+		})
+	}
+	return out
+}
+
+// parseConditionalRoles parses the `<app>_deploy_conditional_roles` config into
+// IAM-conditioned role grants.
+//
+// Grammar: entries separated by ";", fields by "|":
+//
+//	<role>|<condition title>|<CEL expression>
+//
+// A ";" separator (not ",") because CEL legitimately contains commas, and only
+// the FIRST TWO "|" are separators so a CEL "a || b" survives intact. The
+// expression may use ${projectNumber} / ${projectId}, resolved by the module —
+// Secret Manager conditions must address secrets by project NUMBER, which
+// differs per environment and is only known as a stack output.
+//
+// Title and Expression are part of the binding's IDENTITY in GCP, so they must
+// reproduce the live binding exactly; a mismatch creates a SECOND binding
+// rather than adopting the existing one.
+func parseConditionalRoles(raw string) ([]app_deploy_identity.ConditionalRole, error) {
+	var out []app_deploy_identity.ConditionalRole
+	for _, entry := range strings.Split(raw, ";") {
+		if strings.TrimSpace(entry) == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, "|", 3)
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("entry %q: want <role>|<title>|<expression>", entry)
+		}
+		role := strings.TrimSpace(parts[0])
+		title := strings.TrimSpace(parts[1])
+		expr := strings.TrimSpace(parts[2])
+		if role == "" || title == "" || expr == "" {
+			return nil, fmt.Errorf("entry %q: role, title and expression are all required", entry)
+		}
+		out = append(out, app_deploy_identity.ConditionalRole{Role: role, Title: title, Expression: expr})
+	}
+	return out, nil
 }

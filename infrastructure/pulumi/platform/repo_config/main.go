@@ -95,6 +95,16 @@ func main() {
 					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
 						Status: pulumi.String("enabled"),
 					},
+					// Provider patterns only match credentials GitHub can
+					// attribute to a known issuer (an AWS key, a Slack token,
+					// ...). A generic API token, a database password or a bare
+					// private key raised NOTHING until this was enabled -- the
+					// same class the secret-scan gate covers, but applied to
+					// pushes and to the existing tree rather than to a PR diff,
+					// so the two are complementary rather than redundant.
+					SecretScanningNonProviderPatterns: &github.RepositorySecurityAndAnalysisSecretScanningNonProviderPatternsArgs{
+						Status: pulumi.String("enabled"),
+					},
 				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
@@ -231,6 +241,46 @@ func main() {
 					// self-test on every event (and carries no pull_request paths filter),
 					// so it always reports — safe to require.
 					"migration-safety",
+					// go-test-infra (#1015) runs the Go tests for the IaC programs
+					// (infrastructure/pulumi/** and <app>/infra/**), which are outside
+					// go.work and emit no go_test target -- so before that job existed
+					// they never executed in CI at all. It landed advisory and, like
+					// go-lint/go-test/validate-butane before it, ran on every PR without
+					// gating: an IaC test regression could still merge. Its job is
+					// unconditional (only the STEPS are gated, on a dorny/paths-filter
+					// that returns 'false' for non-IaC diffs), so it always reports --
+					// safe to require, and a no-op in seconds for the PRs that don't
+					// touch IaC.
+					"go-test-infra",
+					// Supply-chain gates (supply-chain.yaml) -- the class of
+					// check this repo had NONE of. Dependabot only alerts AFTER
+					// a vulnerable dependency is already on main, and GitHub
+					// secret scanning covers known PROVIDER patterns only;
+					// neither BLOCKS a merge.
+					//
+					// Both are diff/lockfile-scoped but use the
+					// run-then-noop-green shape: the job always runs and
+					// reports on every event including merge_group, which is
+					// what makes them safe to require. Neither carries a
+					// pull_request paths filter, so they cannot leave a PR stuck
+					// unmergeable (asserted by the conformance check).
+					//
+					// osv-scan (google/osv-scanner) replaced GitHub's
+					// dependency-review gate. dependency-review reads GitHub's
+					// dependency graph, which is an Advanced Security feature:
+					// free on public repos but BILLED PER ACTIVE COMMITTER on
+					// private ones, and (verified against the API) the
+					// configuration enabling it cannot omit advanced_security --
+					// the only accepted values are
+					// enabled|disabled|code_security|secret_protection. So the
+					// gate could not survive this repo going private without
+					// either an invoice or a wedged merge queue. osv-scanner
+					// reads the LOCKFILES directly instead, so it costs nothing
+					// at any visibility, runs locally as well as in CI, and also
+					// covers Cargo and PyPI, which GitHub's graph handled poorly
+					// here.
+					"osv-scan",
+					"secret-scan",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
@@ -383,7 +433,7 @@ func main() {
 // (committed in Pulumi.<stack>.yaml — they are identifiers, not secrets):
 //
 //	pulumi config set --path 'tabulaVars["development"]' \
-//	  '{"GCP_PROJECT_ID":"...","GCP_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
+//	  '{"GCP_PROJECT_ID":"...","GCP_DEPLOY_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
 //
 // Environments with no config entry are still created (empty), so protection
 // rules exist before the first deploy is wired up.
@@ -402,16 +452,20 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			Environment: pulumi.String(name),
 		}
 
+		// Deployment strategy (docs/engineering/deployment-strategy.md): both
+		// nonproduction and production deploy only from protected branches (main),
+		// but promotion is release-gated in tabula-deploy.yaml (a tabula-api
+		// release merge), so nonproduction carries NO reviewer — the release merge
+		// is the human gate. production keeps a required reviewer as the final
+		// checkpoint. GitHub allows self-approval, so on a single-maintainer repo
+		// that reviewer is a deliberate "break glass" pause, not a four-eyes gate.
 		if env == "nonproduction" || env == "production" {
-			// nonproduction and production deploy only from protected branches
-			// (main) and require an approval from the repo owner (or the configured
-			// reviewer ids). GitHub allows self-approval of deployments, so
-			// this works for a single-maintainer repo as a deliberate
-			// "break glass" pause rather than a four-eyes gate.
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(true),
 				CustomBranchPolicies: pulumi.Bool(false),
 			}
+		}
+		if env == "production" {
 			reviewerIds, err := productionReviewerIds(ctx, cfg)
 			if err != nil {
 				return err
@@ -508,19 +562,28 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 
-	// Environment set. `development` is adopted (imported); the rest are new.
-	// nonproduction + production are reviewer-gated deploy pauses; build (the
-	// build-once image stage) and preview (PR previews) are ungated.
+	// Environment set + gating, per the repo-wide deployment strategy
+	// (docs/engineering/deployment-strategy.md):
+	//   - development: auto on push, ungated.
+	//   - nonproduction: promoted only when the app's release-please PR merges
+	//     (release-gated in the deploy workflow). The release merge IS the human
+	//     gate, so this env keeps the protected-branch policy but carries NO
+	//     reviewer — that removes the every-run approval without weakening the
+	//     "deploy only from main" guarantee.
+	//   - production: release-gated AND a required reviewer — the one deliberate
+	//     human checkpoint before prod.
+	//   - build / preview: ungated.
 	envs := []struct {
-		env      string
-		gated    bool
-		imported bool
+		env          string
+		branchPolicy bool // restrict deploys to protected branches (main)
+		reviewer     bool // require a human approval
+		imported     bool
 	}{
-		{"development", false, true},
-		{"nonproduction", true, false},
-		{"production", true, false},
-		{"build", false, false},
-		{"preview", false, false},
+		{"development", false, false, true},
+		{"nonproduction", true, false, false},
+		{"production", true, true, false},
+		{"build", false, false, false},
+		{"preview", false, false, false},
 	}
 
 	for _, e := range envs {
@@ -530,14 +593,17 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 			Repository:  repo.Name,
 			Environment: pulumi.String(name),
 		}
-		if e.gated {
-			// Deploy only from protected branches (main), with an approval from
-			// the configured reviewer(s). GitHub permits self-approval, so on a
-			// single-maintainer repo this is a deliberate "break glass" pause.
+		if e.branchPolicy {
+			// Deploy only from protected branches (main).
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(true),
 				CustomBranchPolicies: pulumi.Bool(false),
 			}
+		}
+		if e.reviewer {
+			// Require an approval from the configured reviewer(s). GitHub permits
+			// self-approval, so on a single-maintainer repo this is a deliberate
+			// "break glass" pause.
 			reviewerIds, err := productionReviewerIds(ctx, cfg)
 			if err != nil {
 				return err
@@ -897,9 +963,19 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// workflow where each leaf is its own leaf Pulumi project (single production
 	// stack) deployed via the reusable foundation-app-deploy.yaml workflow:
 	//
-	//   foundation-app-development  → auto-deploy (no reviewers)
-	//   foundation-app-nonproduction → manual approval (requires reviewers)
-	//   foundation-app-production    → manual approval (requires reviewers)
+	//   foundation-app-development  → auto-deploy
+	//   foundation-app-nonproduction → auto-deploy
+	//   foundation-app-production    → auto-deploy
+	//
+	// UNGATED ON PURPOSE — and this is only safe because of where the identity
+	// lives. Stage 5 holds application WORKLOADS; a routine app deploy runs it
+	// (twice, for the blue-green publish/promote phases). Gating it would put a
+	// human approval in front of every code change. What makes ungating safe is
+	// that the SA applying it — the BU app-infra pipeline SA — has ALL of its
+	// grants authored in stage 4, which it does not apply. It cannot widen its
+	// own permissions, so the reviewer gate has nothing left to protect here.
+	// Privileged IAM changes still land in gcp-projects, which IS gated.
+	// See docs/engineering/core-vs-application-infrastructure.md §4.1.
 	//
 	// Unlike stage 4 there is NO `shared` leaf — upstream 5-app-infra has none.
 	//
@@ -912,13 +988,23 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// exactly the scope this stage needs and no new org-level identity is
 	// introduced. If stage 5 ever grows resources outside those projects, give it
 	// its own SA rather than widening this one.
+	// One entry per business-unit per env. bu1 keeps the legacy unsuffixed name
+	// (foundation-app-<env>) that the live workflow + WIF bindings already use —
+	// renaming it would break the completed oauth cutover. bu2 (tabula) is
+	// BU-suffixed (foundation-app-bu2-<env>) and reads sa-app-infra-bu2 from the
+	// bu2 projects leaf. projBU selects which gcp-projects leaf mints the SA.
 	appPhaseEnvironments := []struct {
 		name            string
+		env             string
+		projBU          string
 		requireReviewer bool
 	}{
-		{"foundation-app-development", false},
-		{"foundation-app-nonproduction", true},
-		{"foundation-app-production", true},
+		{"foundation-app-development", "development", "bu1", false},
+		{"foundation-app-nonproduction", "nonproduction", "bu1", false},
+		{"foundation-app-production", "production", "bu1", false},
+		{"foundation-app-bu2-development", "development", "bu2", false},
+		{"foundation-app-bu2-nonproduction", "nonproduction", "bu2", false},
+		{"foundation-app-bu2-production", "production", "bu2", false},
 	}
 
 	for _, envDef := range appPhaseEnvironments {
@@ -950,8 +1036,70 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 
 		// Propagate foundation WIF variables so the reusable deploy workflow
-		// resolves ${{ vars.GCP_* }}. Shares the proj SA's vars (see above).
-		envVars := foundationVars["foundation-proj"]
+		// resolves ${{ vars.GCP_* }}. The pool/provider and project are shared
+		// with the proj stage, but GCP_SERVICE_ACCOUNT MUST be the BU app-infra
+		// pipeline SA: stage 5 is UNGATED, and sa-terraform-proj can author its
+		// own grants, so an ungated environment must never reach it.
+		//
+		// The value is read from the gcp-projects leaf that MINTS the SA rather
+		// than from stack config. An earlier revision used
+		// cfg.Get("appInfraPipelineServiceAccount") with a fall-through to the
+		// proj SA when unset — and because that config lives in the gitignored
+		// Pulumi.dev.yaml it was never set, so the ungated stage-5 environments
+		// silently pointed at the PRIVILEGED SA. A silent fall-back to a
+		// more-privileged identity is the wrong default; sourcing it from the
+		// stack output makes the value self-maintaining and removes the
+		// fall-back entirely. If the projects leaf has not applied yet the
+		// output is empty, the variable is empty, and the deploy fails loudly
+		// at google-github-actions/auth — fail-closed, which is the point.
+		envVars := map[string]string{}
+		for k, v := range foundationVars["foundation-proj"] {
+			envVars[k] = v
+		}
+		delete(envVars, "GCP_SERVICE_ACCOUNT") // set from the stack output below
+
+		projLeaf, err := pulumi.NewStackReference(ctx,
+			fmt.Sprintf("projects-%s-%s", envDef.projBU, envDef.env), &pulumi.StackReferenceArgs{
+				Name: pulumi.String(fmt.Sprintf("ipv1337/foundation-projects-%s-%s/production", envDef.projBU, envDef.env)),
+			})
+		if err != nil {
+			return err
+		}
+		// GetStringOutput would ERROR the whole apply when the output is not
+		// there yet ("stack reference output ... does not exist"), which took
+		// repo_config down with it — and repo_config owns the merge-queue
+		// ruleset and repo security settings, so an unrelated foundation
+		// rollout must never be able to block it. GetOutputDetails returns nil
+		// fields instead, so we can skip the variable and keep applying.
+		//
+		// Skipping is the SAFE outcome, not a degraded one: with no
+		// GCP_SERVICE_ACCOUNT the stage-5 deploy fails loudly at
+		// google-github-actions/auth. What must never happen is the variable
+		// carrying a MORE-privileged identity (see the git history of this
+		// block) — absent beats wrong.
+		saDetails, err := projLeaf.GetOutputDetails("app_infra_pipeline_service_account")
+		if err != nil {
+			return err
+		}
+		if sa, ok := saDetails.Value.(string); ok && sa != "" {
+			if _, err := github.NewActionsEnvironmentVariable(ctx,
+				fmt.Sprintf("%s-GCP_SERVICE_ACCOUNT", envDef.name), &github.ActionsEnvironmentVariableArgs{
+					Repository:   repo.Name,
+					Environment:  envRes.Environment,
+					VariableName: pulumi.String("GCP_SERVICE_ACCOUNT"),
+					Value:        pulumi.String(sa),
+				}); err != nil {
+				return err
+			}
+		} else {
+			ctx.Log.Warn(fmt.Sprintf(
+				"%s: gcp-projects %s-%s has not exported app_infra_pipeline_service_account yet; "+
+					"leaving GCP_SERVICE_ACCOUNT UNSET so stage-5 deploys fail closed rather than "+
+					"authenticating as a privileged SA. Re-run after that leaf applies.",
+				envDef.name, envDef.projBU, envDef.env,
+			), nil)
+		}
+
 		varKeys := make([]string, 0, len(envVars))
 		for k := range envVars {
 			varKeys = append(varKeys, k)

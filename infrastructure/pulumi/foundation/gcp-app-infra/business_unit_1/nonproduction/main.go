@@ -18,11 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Foundation stage 5 (app-infra) — thin business-unit leaf for the nonproduction
+// Foundation stage 5 (app-infra) — thin business-unit leaf for the development
 // environment, mirroring upstream terraform-example-foundation
 // 5-app-infra/business_unit_1/nonproduction. This leaf pins the environment
-// identity (development/d) and calls the shared modules/ for the application
-// infrastructure that belongs to the platform.
+// identity (development/d) and reads/re-exports the stage-4 facts an app needs.
 //
 // File layout mirrors the upstream leaf: main.go (orchestration, upstream
 // main.tf), config.go (variables.tf), remote.go (remote.tf), outputs.go
@@ -30,25 +29,24 @@
 //
 // WHAT THIS LEAF OWNS, AND WHY
 // (docs/engineering/core-vs-application-infrastructure.md):
-//   - Application WORKLOADS built from the stage's archetype catalog.
+//   - SCAFFOLDING ONLY. It creates ZERO GCP resources. It CONSUMES the stage-4
+//     gcp-projects facts (host project id/number, region, per-app deploy SA) via
+//     StackReference and re-EXPORTS them (outputs.go) as the contract each app's
+//     own infra/app stack reads.
 //
-// It deliberately does NOT own the platform-issued deploy identity. That is
-// minted one stage up, in gcp-projects/modules/app_deploy_identity, mirroring
-// upstream's seeding of app-infra pipeline SAs in 4-projects. The separation
-// is what lets this stage be deployed BY that identity without a reviewer gate
-// on every routine app deploy: the identity cannot edit its own grants,
-// because its grants live in a stage it does not deploy. This leaf CONSUMES
-// the identity by StackReference and re-exports it.
-//
-// NOT YET INSTANTIATED: modules/serverless_space (the Cloud Run archetype) is
-// ported and compiled but no app is wired through it here yet.
-// oauth-user-inspector's Cloud Run service is still deployed by
-// oauth-user-inspector/infra/app; moving it onto the archetype adopts a live,
-// traffic-serving service and is deliberately a separate change so it can be
-// reverted on its own.
+// It deliberately does NOT own the container WORKLOAD (the Cloud Run service).
+// The workload is image-coupled, so it lives in the app's own Pulumi stack
+// (<app>/infra/app), deployed by the app's pipeline WITH the image digest that
+// pipeline builds — never in this image-less foundation stage. It also does NOT
+// own the platform-issued deploy identity (minted one stage up in
+// gcp-projects/modules/app_deploy_identity); this leaf only re-exports it, which
+// is what lets this stage be deployed BY that identity without a per-app
+// reviewer gate.
 package main
 
-import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+import (
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
 
 // Environment pinned by this leaf project — upstream
 // 5-app-infra/business_unit_1/nonproduction hardcodes env in its main.tf; the
@@ -62,17 +60,17 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := loadConfig(ctx)
 
-		// 1. Cross-stage StackReferences (remote.go) — the env's app-hosting
+		// Cross-stage StackReferences (remote.go) — the env's app-hosting
 		// project from stage 4 and the shared WIF pool from stage 0.
 		refs, err := loadStackReferences(ctx, cfg)
 		if err != nil {
 			return err
 		}
 
-		// Deploy identities are consumed, not created (see the package note).
-		deploySAs := refs.DeployServiceAccounts
-
-		exportOutputs(ctx, cfg, refs, deploySAs)
+		// Scaffolding contract only: re-export the stage-4 facts (project
+		// id/number, region, per-app deploy SA) that each app's own infra/app
+		// stack consumes. No workload is created here.
+		exportOutputs(ctx, cfg, refs, refs.DeployServiceAccounts)
 		return nil
 	})
 }

@@ -20,4 +20,4 @@
 
 name: pulumi_tabula_app
 runtime: go
-description: OAuth User Inspector on Cloud Run + Artifact Registry.
+description: Tabula API on Cloud Run + Artifact Registry.

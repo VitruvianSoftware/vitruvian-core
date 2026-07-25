@@ -276,7 +276,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	}
 
 	// Monorepo-side App credentials for the Dependabot reconcile + auto-merge
-	// automation (docs/planning/2026-05-26-centralized-dependabot-design.md).
+	// automation (docs/archive/planning/2026-05-26-centralized-dependabot-design.md).
 	// Dependabot-triggered workflow runs cannot read normal Actions secrets, so
 	// the App id/key are placed as a Dependabot secret; the Actions-secret twins
 	// cover any non-Dependabot-context step. Both reuse the single sync App.

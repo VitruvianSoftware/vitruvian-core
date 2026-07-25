@@ -123,20 +123,55 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
-          # gcp-app-infra (stage 5) is NOT previewed yet — deliberately.
-          # The preview leg authenticates through the `foundation-app-preview`
-          # GitHub Environment, which repo_config provisions and which therefore
-          # does not exist until repo_config has APPLIED from main. Adding the
-          # matrix entry in the same PR that creates the environment fails the
-          # leg with "must specify exactly one of workload_identity_provider" —
-          # the env has no GCP_* vars yet. Add this entry in a follow-up once
-          # repo_config and gcp-bootstrap have applied:
-          #   - app: gcp-app-infra-development
-          #     dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
-          #     stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
-          #     modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
-          #     stack: production
-          #     environment: foundation-app-preview
+          # nonproduction + production leaves of BOTH business units. Previously
+          # UNCOVERED: only the shared/development leaves above were previewed,
+          # so a config or type error confined to a nonprod/prod leaf reached
+          # main and first surfaced at deploy time — against the environments
+          # where a failed apply costs the most. These leaves carry per-env
+          # values (project numbers, per-app deploy identities and their IAM
+          # conditions) that development's leg cannot stand in for.
+          - app: gcp-projects-nonproduction
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/nonproduction
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
+          - app: gcp-projects-production
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/production
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
+          - app: gcp-projects-bu2-nonproduction
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_2/nonproduction
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
+          - app: gcp-projects-bu2-production
+            dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_2/production
+            stage_dir: infrastructure/pulumi/foundation/gcp-projects
+            stack: production
+            environment: foundation-proj-preview
+          # gcp-app-infra (stage 5). Its own config bug reached main and only
+          # failed at deploy time because this leg was missing — previewing this
+          # leaf would have caught the mangled config key immediately. Enabled
+          # now that repo_config and gcp-bootstrap have applied, so
+          # foundation-app-preview exists with its GCP_* variables.
+          - app: gcp-app-infra-development
+            dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
+            modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
+            stack: production
+            environment: foundation-app-preview
+          # gcp-app-infra bu2 (tabula): one representative leaf. No modules_dir —
+          # the bu1 leg above already runs the single modules vet/test for this
+          # stage. This leg exists so the bu2 leaves' go vet/test run in CI and a
+          # `pulumi preview` catches a mangled config key BEFORE deploy (the exact
+          # failure mode that reached main for the bu1 leaf, and that a zsh history
+          # modifier can silently introduce while editing the stack config).
+          - app: gcp-app-infra-bu2-development
+            dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/development
+            stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
+            stack: production
+            environment: foundation-app-preview
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off

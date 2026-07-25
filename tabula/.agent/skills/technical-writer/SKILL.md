@@ -174,8 +174,8 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
 
 ## Key Documentation Files
 
-- [README.md](file:///Users/james/Workspace/gh/lab/tabula/README.md)
-- [CONTRIBUTING.md](file:///Users/james/Workspace/gh/lab/tabula/CONTRIBUTING.md)
-- [Architecture Overview](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/overview.md)
-- [Sync Strategy](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/sync-strategy.md)
-- [mkdocs.yml](file:///Users/james/Workspace/gh/lab/tabula/mkdocs.yml)
+- [README.md](../../../README.md)
+- [CONTRIBUTING.md](../../../CONTRIBUTING.md)
+- [Architecture Overview](../../../docs/architecture/overview.md)
+- [Sync Strategy](../../../docs/architecture/sync-strategy.md)
+- [mkdocs.yml](../../../../mkdocs.yml)

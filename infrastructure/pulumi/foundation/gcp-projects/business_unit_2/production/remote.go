@@ -33,6 +33,8 @@ import (
 // stackRefs carries the cross-stage outputs this leaf consumes, resolved from
 // the earlier stages' stacks by loadStackReferences.
 type stackRefs struct {
+	// From gcp-bootstrap: the shared WIF pool the pipeline identity binds to.
+	WIFPoolName pulumi.StringOutput
 	// From the 2-environments leaf stack (always required).
 	FolderID     pulumi.StringOutput
 	KMSProjectID pulumi.StringOutput
@@ -54,9 +56,22 @@ func loadStackReferences(ctx *pulumi.Context, cfg *ProjectsConfig) (*stackRefs, 
 		NetworkProjectID: emptyStr,
 		ACMPolicyID:      emptyStr,
 		PerimeterName:    emptyStr,
+		WIFPoolName:      emptyStr,
 	}
 
 	// 1. Environment StackReference (Stage 2) — always required: it provides
+	// Bootstrap StackReference (Stage 0) — only when this leaf mints the
+	// app-infra pipeline identity, which binds against the shared WIF pool.
+	if len(cfg.Apps) > 0 {
+		bootstrapStack, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
+			Name: pulumi.String(cfg.BootstrapStackName),
+		})
+		if err != nil {
+			return nil, err
+		}
+		refs.WIFPoolName = bootstrapStack.GetStringOutput(pulumi.String("wif_pool_name"))
+	}
+
 	// the environment folder (BU-folder parent) and the per-env KMS project.
 	envStack, err := pulumi.NewStackReference(ctx, "environment", &pulumi.StackReferenceArgs{
 		Name: pulumi.String(cfg.EnvStackName),

@@ -19,7 +19,7 @@
 # SOFTWARE.
 #
 # thanos -- the HA query/dedup + durable-storage layer for the Prometheus->Thanos
-# migration (docs/design/prometheus-thanos-ha.md). PHASE 1a: deploy Query + Store
+# migration (docs/archive/design/prometheus-thanos-ha.md). PHASE 1a: deploy Query + Store
 # Gateway + Compactor ONLY. This is purely ADDITIVE -- it does not touch the live
 # single Prometheus. The Store Gateway / Compactor read the (currently empty)
 # `thanos` MinIO bucket (Phase 0); the Querier already dedups, but has no sidecars

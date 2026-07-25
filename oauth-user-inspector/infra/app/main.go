@@ -80,13 +80,13 @@ func main() {
 		project := cfg.Require("project") // the env's oss-floating project id
 		region := cfg.Get("region")
 		if region == "" {
-			region = "us-west1"
+			region = "us-central1"
 		}
 		env := cfg.Require("environment")
 		runtimeSA := cfg.Require("runtimeServiceAccount")
 
 		// Immutable digest ref into the SHARED build Artifact Registry, e.g.
-		//   us-west1-docker.pkg.dev/<infra-pipeline proj>/oauth-user-inspector/app@sha256:...
+		//   us-central1-docker.pkg.dev/<infra-pipeline proj>/oauth-user-inspector/app@sha256:...
 		// There is deliberately no mutable-tag fallback: deploying anything but a
 		// pinned digest would break build-once/promote-digest.
 		imageDigest := envOrConfig("OAUTH_USER_INSPECTOR_IMAGE_DIGEST", cfg, "imageDigest")
@@ -132,10 +132,21 @@ func main() {
 			}
 		}
 
+		// Core-vs-application split: this app stack OWNS its Cloud Run service
+		// (the image-coupled workload), and the foundation gcp-app-infra leaf is
+		// scaffolding-only — it re-exports the stage-4 facts (project, region,
+		// deploy SA) this stack consumes but declares no workload
+		// (docs/engineering/core-vs-application-infrastructure.md).
+		serviceName := fmt.Sprintf("oauth-user-inspector-%s", env)
+		// routeName feeds the DomainMapping; it resolves to the service's name
+		// either way, so the mapping is unaffected by how the service is built.
+		var routeName pulumi.StringInput = pulumi.String(serviceName)
+
+		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
 		app, err := cloud_run.NewCloudRun(ctx, "oauth-user-inspector", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
-			Region:              region,
-			Name:                fmt.Sprintf("oauth-user-inspector-%s", env),
+			Region:              pulumi.String(region),
+			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
 			Env: map[string]string{
@@ -151,9 +162,12 @@ func main() {
 		if err != nil {
 			return err
 		}
+		routeName = app.Service.Name
+		ctx.Export("serviceUrl", app.Service.Uri)
 
-		// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves IAM to
-		// the caller). Permitted on the oss projects by the gcp-org DRS override.
+		// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves
+		// IAM to the caller). Permitted on the oss projects by the gcp-org
+		// DRS override.
 		if _, err := cloudrunv2.NewServiceIamMember(ctx, "oauth-user-inspector-public", &cloudrunv2.ServiceIamMemberArgs{
 			Project:  pulumi.String(project),
 			Location: pulumi.String(region),
@@ -200,7 +214,7 @@ func main() {
 					// Reference the service OUTPUT (not the literal name) so
 					// the mapping is ordered after the service exists on a
 					// first-ever deploy.
-					RouteName: app.Service.Name,
+					RouteName: routeName,
 					// Take over the domain if it is still mapped elsewhere
 					// (e.g. prod's oauth-inspector.ipv1337.dev was mapped to a
 					// retired gen-lang demo project). Without this the create
@@ -304,7 +318,6 @@ func main() {
 			}
 		}
 
-		ctx.Export("serviceUrl", app.Service.Uri)
 		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})

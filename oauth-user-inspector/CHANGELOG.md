@@ -8,6 +8,27 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.2.0...oauth-user-inspector-v1.3.0) (2026-07-25)
+
+
+### Features
+
+* **devx:** dogfood devx.yaml, add local-dev index, fix agent-skill links ([#1154](https://github.com/VitruvianSoftware/vitruvian-core/issues/1154)) ([4e3d73d](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e3d73da5270f30e538db165917c8403428cad4c))
+
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.1.1...oauth-user-inspector-v1.2.0) (2026-07-23)
+
+
+### Features
+
+* **gcp-projects:** foundation owns the oauth build space in us-central1; strip the app build stack ([#1107](https://github.com/VitruvianSoftware/vitruvian-core/issues/1107)) ([c8e6d08](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8e6d086e76f8a89573bafd250d94b452569a7a1))
+
+## [1.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.1.0...oauth-user-inspector-v1.1.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **release:** keep co-located &lt;app&gt;/infra out of the app's release unit ([#1006](https://github.com/VitruvianSoftware/vitruvian-core/issues/1006)) ([eadfa39](https://github.com/VitruvianSoftware/vitruvian-core/commit/eadfa39280589eedb62b6b267a31859d9506884c))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.0.1...oauth-user-inspector-v1.1.0) (2026-07-21)
 
 

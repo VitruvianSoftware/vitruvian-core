@@ -33,8 +33,10 @@ package main
 
 import (
 	"fmt"
+	"foundation-projects/modules/app_deploy_identity"
 	"foundation-projects/modules/base_env"
 
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/artifactregistry"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -141,6 +143,75 @@ func main() {
 		}
 
 		// 5. Exports (outputs.go)
+		// Platform-issued deploy identities for the apps hosted on this env's
+		// oss-floating project (§4.1): minted HERE, one stage above the
+		// 5-app-infra workloads they deploy, so an app's pipeline can never edit
+		// the stack that defines its own permissions.
+		deploySAs := map[string]pulumi.StringOutput{}
+		if cfg.OSSFloatingProjectEnabled {
+			for _, app := range cfg.Apps {
+				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
+					App:             app.Name,
+					Env:             cfg.Env,
+					ProjectID:       projects.OSSFloatingProjectID,
+					DeployAccountID: app.DeployAccountID,
+					DeployRoles:     app.DeployRoles,
+					// Resolves ${projectNumber} in the IAM conditions below.
+					ProjectNumber:          projects.OSSFloatingProjectNumber,
+					ConditionalDeployRoles: app.ConditionalDeployRoles,
+					WorkloadIdentityPool:   refs.WIFPoolName,
+					GitHubEnvironment:      app.GitHubEnvironment(cfg.Env),
+				})
+				if err != nil {
+					return err
+				}
+				deploySAs[app.Name] = res.DeployServiceAccountEmail
+			}
+		}
+
+		// The BU's app-infra pipeline identity applies the stage-5 leaf for this
+		// BU+env (docs/engineering/core-vs-application-infrastructure.md §8). Its
+		// grants live HERE, in a stage it does not apply, which is what makes
+		// ungating stage 5 safe. Minted only when this env hosts apps and the
+		// oss-floating project exists. Mirrors bu1; tabula's per-app deploy SA
+		// stays in tabula/infra/identity for now (the leaf only re-exports it),
+		// so this leaf mints ONLY the pipeline identity, not per-app deploy SAs.
+		if cfg.OSSFloatingProjectEnabled && len(cfg.Apps) > 0 {
+			pipeline, err := app_deploy_identity.DeployBUPipeline(ctx, cfg.BusinessCode, &app_deploy_identity.PipelineArgs{
+				BusinessCode:         cfg.BusinessCode,
+				Env:                  cfg.Env,
+				ProjectID:            projects.OSSFloatingProjectID,
+				Roles:                defaultAppInfraPipelineRoles,
+				WorkloadIdentityPool: refs.WIFPoolName,
+				GitHubEnvironment:    "foundation-app-" + cfg.BusinessCode + "-" + cfg.Env,
+			})
+			if err != nil {
+				return err
+			}
+			ctx.Export("app_infra_pipeline_service_account", pipeline.ServiceAccountEmail)
+
+			// The pipeline SA must PULL the images it deploys from the shared
+			// infra-pipeline project's Artifact Registry, or a stage-5 apply
+			// fails 403 artifactregistry.repositories.downloadArtifacts.
+			for _, g := range cfg.AppBuildReaderGrants {
+				if _, err := artifactregistry.NewRepositoryIamMember(ctx,
+					"ar-reader-app-infra-"+g.App,
+					&artifactregistry.RepositoryIamMemberArgs{
+						Project:    pulumi.String(g.RepositoryProject),
+						Location:   pulumi.String(g.Region),
+						Repository: pulumi.String(g.RepositoryID),
+						Role:       pulumi.String("roles/artifactregistry.reader"),
+						Member:     pulumi.Sprintf("serviceAccount:%s", pipeline.ServiceAccountEmail),
+					}); err != nil {
+					return err
+				}
+			}
+		}
+
+		for app, email := range deploySAs {
+			ctx.Export(app+"_deploy_service_account", email)
+		}
+
 		exportStackOutputs(ctx, cfg, projects)
 
 		return nil
