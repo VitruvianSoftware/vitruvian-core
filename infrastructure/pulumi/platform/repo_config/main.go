@@ -885,7 +885,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// the reusable foundation-proj-deploy.yaml workflow:
 	//
 	//   foundation-proj-development  → auto-deploy (no reviewers)
-	//   foundation-proj-nonproduction → manual approval (requires reviewers)
+	//   foundation-proj-nonproduction → release-gated, NO reviewer
 	//   foundation-proj-shared        → manual approval (requires reviewers)
 	//   foundation-proj-production    → manual approval (requires reviewers)
 	//
@@ -893,6 +893,23 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// infra-pipeline, modules/infra_pipelines). It is production-tier —
 	// upstream applies business_unit_1/shared from the production branch — so
 	// it gets the same reviewer gate as production.
+	//
+	// nonproduction carries NO reviewer, matching the repo-wide deployment
+	// strategy already applied to oauthEnvironment above: this stage only
+	// promotes when a component's release-please PR merges, so the release
+	// merge IS the human gate. Keeping a second per-run approval here meant a
+	// single promotion needed ~6 manual clicks (bu1 + bu2 x shared/nonprod/prod)
+	// for changes the preview job had already proven non-destructive. The
+	// protected-branch policy below is unchanged, so "deploy only from main"
+	// still holds.
+	//
+	// shared and production KEEP the reviewer, for different reasons:
+	//   - production is the deliberate last-look before prod.
+	//   - shared is the BU infra-pipeline every other leaf consumes, so a bad
+	//     apply there has a blast radius across development, nonproduction AND
+	//     production at once. The per-leaf "0 deleted / 0 replaced" preview gate
+	//     is scoped to one stack and cannot see that cross-env fallout, so the
+	//     human check stays.
 	//
 	// Uses the projects SA (sa-terraform-proj), whose per-leaf WIF principalSet
 	// bindings (foundation-proj-<leaf>, incl. shared) are provisioned by
@@ -903,7 +920,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		requireReviewer bool
 	}{
 		{"foundation-proj-development", false},
-		{"foundation-proj-nonproduction", true},
+		{"foundation-proj-nonproduction", false},
 		{"foundation-proj-shared", true},
 		{"foundation-proj-production", true},
 	}
