@@ -108,7 +108,6 @@ js_binary(
         ":node_modules/@storybook/addon-docs",
         ":node_modules/@storybook/react-vite",
         ":node_modules/@tailwindcss/vite",
-        ":node_modules/@vitejs/plugin-react",
         ":node_modules/react",
         ":node_modules/react-dom",
         ":node_modules/storybook",
