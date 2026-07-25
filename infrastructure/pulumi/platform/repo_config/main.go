@@ -263,10 +263,24 @@ func main() {
 					// secret-scan is diff-scoped, so BOTH use the
 					// run-then-noop-green shape: the job always runs and
 					// reports on every event including merge_group, which is
-					// what makes them safe to require. Neither carries a
-					// pull_request paths filter, so neither can leave a PR
-					// stuck unmergeable (asserted by the conformance check).
-					"dependency-review",
+					// what makes it safe to require. It carries no
+					// pull_request paths filter, so it cannot leave a PR stuck
+					// unmergeable (asserted by the conformance check).
+					//
+					// NOT YET HERE: dependency-review. It needs the GitHub
+					// Dependency graph, which is off for this repo -- the org
+					// sets dependency_graph_enabled_for_new_repositories=false
+					// and the SBOM endpoint 404s, so the action hard-errors
+					// with "Dependency review is not supported on this
+					// repository". The pinned provider (pulumi-github v6.14.0)
+					// exposes dependency-graph only on the ORGANIZATION
+					// resource, not per repository, so it cannot be turned on
+					// from this program. Enable the Dependency graph in repo
+					// settings (Settings -> Advanced Security), then add
+					// "dependency-review" here and re-add the job in
+					// supply-chain.yaml -- deliberately left OUT rather than
+					// shipped as a permanently-green no-op, which would be the
+					// false-assurance pattern this repo avoids.
 					"secret-scan",
 				}
 			}

@@ -26,16 +26,15 @@
 # (`secret_scanning_non_provider_patterns` is off, so a generic token or a
 # private key pasted into a file raised nothing). Neither BLOCKS a merge.
 #
-# Two jobs, both REQUIRED merge-queue checks (repo_config/main.go):
-#   dependency-review — refuses a PR that introduces a dependency with a known
-#                       vulnerability, before it reaches main.
-#   secret-scan       — gitleaks over the commits the change ADDS.
+# One REQUIRED merge-queue check (repo_config/main.go):
+#   secret-scan — gitleaks over the commits the change ADDS.
+# A dependency-review job is deferred on an unmet prerequisite; see below.
 #
 # NO workflow-level `paths:` filter, deliberately: a required check behind a
 # path filter never reports on PRs outside those paths and wedges them
 # "pending" forever. `//tools/conformance:check` asserts exactly this.
 #
-# Both jobs use the repo's run-then-noop-green shape so they ALWAYS report a
+# The job uses the repo's run-then-noop-green shape so it ALWAYS reports a
 # result on every event, including merge_group.
 
 name: Supply Chain
@@ -55,38 +54,25 @@ concurrency:
   group: supply-chain-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# DEFERRED: a `dependency-review` job belongs here, blocking any PR that adds a
+# dependency with a known advisory (the pre-merge counterpart to Dependabot,
+# which only opens a fix PR once the vulnerable version is already on main).
+#
+# It cannot run yet: actions/dependency-review-action needs the GitHub
+# Dependency graph, which is OFF for this repo -- the org sets
+# dependency_graph_enabled_for_new_repositories=false and
+# /dependency-graph/sbom returns 404, so the action hard-errors with
+# "Dependency review is not supported on this repository". pulumi-github v6.14.0
+# exposes dependency-graph on the ORGANIZATION resource only, never per
+# repository, so repo_config cannot enable it either.
+#
+# To finish the job: enable the Dependency graph in repo settings, then restore
+# the job here and add "dependency-review" to repo_config's required-check list.
+# It is left OUT rather than shipped behind a skip-when-unavailable guard on
+# purpose -- a check that always reports green while never running is exactly
+# the false assurance this repo's gates are designed to avoid.
+
 jobs:
-  dependency-review:
-    # Blocks a PR that ADDS a dependency carrying a known advisory. This is the
-    # pre-merge counterpart to Dependabot security updates, which only open a
-    # fix PR once the vulnerable version is already on main.
-    #
-    # The action is inherently pull_request-scoped: it diffs the dependency
-    # graph between the PR base and head, which only exists in a PR context. On
-    # push / merge_group / dispatch the job therefore runs and reports green
-    # without doing work -- required checks must always report, and the PR lane
-    # has already vetted the very commits the queue is merging.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Review dependency changes
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          # Start at the level that is unambiguously actionable. Raising this to
-          # `low` is a one-word change once the signal proves quiet.
-          fail-on-severity: high
-          # Licence review is intentionally NOT enabled here: //tools/license
-          # already owns first-party licensing, and third-party licence policy
-          # deserves its own decision rather than riding in on a security gate.
-          comment-summary-in-pr: on-failure
-
-      - name: Not a pull request — nothing to diff
-        if: github.event_name != 'pull_request'
-        run: echo "dependency-review only applies to pull_request events; reporting green."
-
   secret-scan:
     # gitleaks over the commits this change introduces. Diff-scoped on purpose:
     # the repo carries known historical findings (a rotated BuildBuddy key, an
