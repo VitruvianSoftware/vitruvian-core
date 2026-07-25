@@ -177,8 +177,31 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
 #
 # It is not an outage you wait out. Successes and failures interleaved two
 # seconds apart (09:19:48 fail, 09:19:50 pass, 09:19:52 pass), so deps.dev is
-# degraded per-request rather than down, and the failures are independent. Three
-# attempts therefore take a ~13% red rate to roughly 1-in-450.
+# degraded per-request rather than down.
+#
+# THE FAILURES ARE NOT INDEPENDENT, though, and the first cut of this retry
+# assumed they were. From "~13% per request, independent" it followed that three
+# attempts would land around 1-in-450, and that prediction was wrong by two
+# orders of magnitude: measured over the twelve Supply Chain runs that followed
+# on 2026-07-25, THREE still went red (~25%), each having burned all three
+# attempts inside ~20 seconds --
+#
+#     attempt 1/3 failed with a transient resolver error (exit 127); retrying in 5s
+#     attempt 2/3 failed with a transient resolver error (exit 127); retrying in 10s
+#     settled after 3 attempt(s)
+#
+# -- while other jobs minutes either side passed. Interleaving at two seconds
+# says the degradation is per-request; it does NOT say requests are independent,
+# and both observations fit a deps.dev that degrades in BURSTS lasting longer
+# than the retry window. Three attempts over ~20s therefore sample one burst
+# three times, which is close to one attempt.
+#
+# So the lever is the window, not the count: five attempts backing off 5/10/20/40
+# spans ~75s of sleep plus the scans themselves. That is a deliberate bet on
+# burst length (measured in tens of seconds, not minutes) rather than a derived
+# number -- if reds persist at this budget, widen the window before adding
+# attempts inside it, and do not re-derive a probability from an independence
+# assumption this failure has already falsified once.
 #
 # SCOPE IS THE SAFETY PROPERTY. Only a transport-level failure is retried:
 #   - rc=1 is a VERDICT (advisories found), never retried -- a second attempt
@@ -189,7 +212,7 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
 #     attempt rather than burning the budget three times over.
 # If every attempt fails the gate still fails closed -- retry narrows the window,
 # it never converts a failure into a pass.
-OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-3}"
+OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-5}"
 OSV_RETRY_DELAY="${OSV_RETRY_DELAY:-5}"
 TRANSIENT_RE='rpc error|unavailable|deadline exceeded|connection refused|no such host|i/o timeout|tls handshake|connection reset|temporary failure in name resolution|failed resolution'
 

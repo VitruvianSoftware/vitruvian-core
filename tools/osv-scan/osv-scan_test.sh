@@ -230,7 +230,7 @@ fake_scanner_seq "${bin}" "${st}" \
 run_under_test "${root}" "${bin}"
 check "persistent resolver failure still FAILS (never green)" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 calls="$(wc -l < "${st}/calls" | tr -d ' ')"
-check "...after exhausting the attempt budget (3)" "$([ "${calls}" = "3" ] && echo 0 || echo 1)"
+check "...after exhausting the attempt budget (5)" "$([ "${calls}" = "5" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
 # --- 10. a real FINDING is never retried away. -------------------------------
