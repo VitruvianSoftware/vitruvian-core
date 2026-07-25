@@ -131,9 +131,9 @@ npm run build --workspace=extension
 
 ## Key Files to Reference
 
-- [TabService](file:///Users/james/Workspace/gh/lab/tabula/extension/src/services/tabs.ts)
-- [WorkspaceService](file:///Users/james/Workspace/gh/lab/tabula/extension/src/services/workspace.ts)
-- [SyncService](file:///Users/james/Workspace/gh/lab/tabula/extension/src/services/sync.ts)
-- [useTabSync Hook](file:///Users/james/Workspace/gh/lab/tabula/extension/src/hooks/useTabSync.ts)
-- [Dashboard.tsx](file:///Users/james/Workspace/gh/lab/tabula/extension/src/dashboard/Dashboard.tsx)
-- [Sync Strategy Docs](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/sync-strategy.md)
+- [TabService](../../../extension/src/services/tabs.ts)
+- [WorkspaceService](../../../extension/src/services/workspace.ts)
+- [SyncService](../../../extension/src/services/sync.ts)
+- [useTabSync Hook](../../../extension/src/hooks/useTabSync.ts)
+- [Dashboard.tsx](../../../extension/src/dashboard/Dashboard.tsx)
+- [Sync Strategy Docs](../../../docs/architecture/sync-strategy.md)

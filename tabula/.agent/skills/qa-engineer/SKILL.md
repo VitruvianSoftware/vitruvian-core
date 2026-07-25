@@ -176,7 +176,7 @@ Critical paths that MUST work:
 
 ## Key Files to Reference
 
-- [Testing Guide](file:///Users/james/Workspace/gh/lab/tabula/docs/guides/testing.md)
-- [AGENTS.md](file:///Users/james/Workspace/gh/lab/tabula/AGENTS.md)
-- [Verified Journeys](file:///Users/james/Workspace/gh/lab/tabula/docs/product/verified_journeys.md)
-- [Commit Readiness Workflow](file:///Users/james/Workspace/gh/lab/tabula/.agent/workflows/commit-readiness.md)
+- [Testing Guide](../../../docs/guides/testing.md)
+- [AGENTS.md](../../../AGENTS.md)
+- [Verified Journeys](../../../docs/product/verified_journeys.md)
+- [Commit Readiness Workflow](../../workflows/commit-readiness.md)
