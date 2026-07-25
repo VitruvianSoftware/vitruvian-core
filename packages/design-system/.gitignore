@@ -1,0 +1,5 @@
+# Build output — `pnpm build` (tsc) and `pnpm build-storybook`. The Bazel
+# build writes to bazel-out/ instead, so these only appear when the pnpm
+# scripts are run directly.
+dist/
+dist-storybook/

@@ -50,6 +50,15 @@ npm_link_all_packages(name = "node_modules")
 # Stories are dev-only: they must not land in dist/ or in the published
 # package, so they are excluded from the library and type-checked by Storybook
 # itself rather than by this target.
+#
+# tsconfig.json deliberately uses module=esnext + moduleResolution=bundler
+# rather than nodenext, matching //mcp-slack (the repo's other "type":"module"
+# package). Under nodenext tsc decides ESM-vs-CJS by reading the nearest
+# package.json, which is not an input to this action's sandbox, so every file
+# is treated as CommonJS and every export fails verbatimModuleSyntax (TS1295).
+# esnext is unconditionally ESM, so the question never arises. Relative imports
+# still carry .js extensions: bundler resolution allows them, and the emitted
+# dist/ needs them to be loadable as real Node ESM.
 ts_project(
     name = "lib",
     srcs = glob(
