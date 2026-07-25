@@ -10,6 +10,10 @@ github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0 h1:xXriRacGt1/MF9wl5zP9rr0LRpN9Aiq3svsQXw9ScM8=
 github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0/go.mod h1:RgCzyP6SncRPWXx1/DiPGs4RLuJIZA1tnQ1YmWssR1g=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.4.0 h1:7WW1GF0tr6hSTwkJi9GFkdW0GDJ8h7H3ZiAj+7R5ceo=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.4.0/go.mod h1:mpisHgB6EEu/5p7ZQb/+uL8jzUgaIIjntjk7552kpIA=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.4.0 h1:qZr2RdqJXYksH9K18JYGkPxdsBDLt1I1SHhyUfC2J+0=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.4.0/go.mod h1:5lZ6bw7tLsZuIIJOkZuVoy+A4HyzYybEaW+GVTja2Lo=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
