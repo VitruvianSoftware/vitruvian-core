@@ -71,6 +71,11 @@ on:
       - "oauth-user-inspector/**"
       - "!oauth-user-inspector/infra/identity/**"
       - "infrastructure/pulumi/platform/zitadel-apps/**"
+      # The rollout sequencer this app's deploy actually executes
+      # (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`), so a
+      # change to the candidate -> smoke -> promote sequence is a real input to
+      # this deploy and belongs in the complete input set above.
+      - "tools/deploy/**"
       - ".github/workflows/oauth-user-inspector-deploy.yaml"
       - ".github/workflows/_deploy-cloud-run.yaml"
       - ".github/workflows/_zitadel-apps-apply.yaml"

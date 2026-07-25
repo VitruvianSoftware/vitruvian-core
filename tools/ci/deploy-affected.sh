@@ -107,8 +107,16 @@ fi
 # --- 3. global-impact guard (same set as affected-targets.sh). ----------------
 # A build-config change can affect any target in ways a graph diff may
 # misattribute; fail open.
+#
+# This allowlist MUST stay byte-identical to the one in affected-targets.sh
+# (`//tools/conformance:check` check_ci_gate_lists_match asserts it). NOTE that
+# `deploy/` is allowlisted here too, but this gate's TD universe is
+# DEPLOY_TARGETS (the image/zip artifacts) -- it does NOT graph-track
+# tools/deploy/cloud-run.sh. Callers that run a Cloud Run rollout therefore
+# carry `tools/deploy/` in EXTRA_PATH_REGEX (section 2 above, which is evaluated
+# BEFORE this guard) so a rollout-sequencer change still forces a deploy.
 if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
-   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|doctor/|format/|gitops/|license/|lint/|rotate-buildbuddy-key/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
+   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
   emit true "global-impact file changed"
 fi
 
