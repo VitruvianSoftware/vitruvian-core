@@ -21,18 +21,23 @@
 // Package main is the per-environment deploy/runtime identity stack for
 // oauth-user-inspector on the vitruviansoftware.dev foundation.
 //
-// Unlike the original personal-project bootstrap (which stood up its OWN Workload
-// Identity Pool `github-actions-dev-1`), this stack federates the SHARED
-// foundation-pool provisioned by gcp-bootstrap in prj-b-cicd. It creates the
-// per-env deploy + runtime service accounts inside the env's oss project
-// (prj-{env}-bu1-oss-floating), binds the deploy SA to the foundation-pool
-// scoped to the `oauth-user-inspector-<env>` GitHub Environment (the provider's
-// wif_attribute_condition already pins the repo, so environment scoping is the
-// per-env isolation layer — mirroring the foundation's own per-stage
-// attribute.environment principalSets), and grants least-privilege, per-app
-// IAM. The runtime SA's Secret Manager access is
-// conditioned to this app's SECRET_PREFIX so co-tenant OSS apps in the same oss
-// project cannot read each other's secrets.
+// This stack owns only what the APPLICATION may grant itself. It creates the
+// RUNTIME service account inside the env's oss project
+// (prj-{env}-bu1-oss-floating), with Secret Manager access conditioned to this
+// app's SECRET_PREFIX so co-tenant OSS apps in the same project cannot read
+// each other's secrets.
+//
+// The DEPLOY identity is deliberately NOT here. It is platform-issued by
+// stage-4 foundation/gcp-projects (modules/app_deploy_identity), one stage above
+// the workloads it deploys, so this app cannot widen its own deploy permissions
+// by editing its own repo — see
+// docs/engineering/core-vs-application-infrastructure.md §4.1. That covers the
+// account itself, its project roles (including the prefix-conditioned
+// secretmanager.admin) and the foundation-pool WIF binding. This stack merely
+// re-exports the resulting email for convenience.
+//
+// The Cloudflare-token accessors below stay app-side: they are per-secret grants
+// on this app's own token, which the app may make for itself.
 //
 // Runs as sa-terraform-proj (folder-scoped serviceAccountAdmin + iam from Phase 1).
 // Deploy: bazel run //oauth-user-inspector/infra/identity:up --stack <env>
@@ -53,21 +58,8 @@ const secretPrefix = "OAUTH_USER_INSPECTOR_"
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "oauth-user-inspector-deploy-identity")
-		projectID := cfg.Require("project") // the env's oss project id
-		bootstrapStack := cfg.Get("bootstrap_stack")
-		if bootstrapStack == "" {
-			bootstrapStack = "ipv1337/foundation-bootstrap/production"
-		}
+		projectID := cfg.Require("project")            // the env's oss project id
 		projectsStack := cfg.Require("projects_stack") // ipv1337/foundation-projects-bu1-<env>/production
-
-		// Shared foundation WIF pool (prj-b-cicd), from gcp-bootstrap.
-		bootstrap, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(bootstrapStack),
-		})
-		if err != nil {
-			return err
-		}
-		poolName := bootstrap.GetStringOutput(pulumi.String("wif_pool_name"))
 
 		// The env's oss project number (for the Secret Manager IAM condition).
 		projStack, err := pulumi.NewStackReference(ctx, "projects", &pulumi.StackReferenceArgs{
@@ -78,37 +70,6 @@ func main() {
 		}
 		projectNumber := projStack.GetStringOutput(pulumi.String("oss_floating_project_number"))
 
-		// Deploy SA — impersonated by CI to run `pulumi up` for the app stack.
-		//
-		// OWNERSHIP MOVED TO THE FOUNDATION (2026-07):
-		// infrastructure/pulumi/foundation/gcp-app-infra now issues this account
-		// and authors its grants, per the platform-issued deploy identity rule
-		// in docs/engineering/core-vs-application-infrastructure.md §4.1 — an
-		// app must not be able to widen its own deploy permissions by editing
-		// its own repo.
-		//
-		// RetainOnDelete is the HANDOFF, and it is load-bearing: this account is
-		// live and deploying right now. Removing the resource from this stack
-		// must DROP it from state, never destroy it in GCP — a destroy would
-		// take the WIF binding with it and break the pipeline for this
-		// environment. The foundation side creates it with
-		// CreateIgnoreAlreadyExists so it adopts the existing account rather
-		// than racing to make a second one.
-		//
-		// Removal sequence (after the foundation stack has applied and this
-		// env's deploy is verified green):
-		//   pulumi stack --show-name         # confirm the env
-		//   pulumi state delete <urn-of-deploy-sa>
-		// then delete this block. Until then it stays declared so a `pulumi up`
-		// here cannot orphan it.
-		deploySA, err := serviceaccount.NewAccount(ctx, "deploy-sa", &serviceaccount.AccountArgs{
-			Project:     pulumi.String(projectID),
-			AccountId:   pulumi.String("oauth-user-inspector-deploy"),
-			DisplayName: pulumi.String("oauth-user-inspector deploy (CI)"),
-		}, pulumi.RetainOnDelete(true))
-		if err != nil {
-			return err
-		}
 		// Runtime SA — the Cloud Run service identity.
 		runtimeSA, err := serviceaccount.NewAccount(ctx, "runtime-sa", &serviceaccount.AccountArgs{
 			Project:     pulumi.String(projectID),
@@ -116,83 +77,6 @@ func main() {
 			DisplayName: pulumi.String("oauth-user-inspector runtime"),
 		})
 		if err != nil {
-			return err
-		}
-
-		// Federate the deploy SA against the SHARED foundation-pool, scoped to
-		// this env's GitHub Environment (`oauth-user-inspector-<env>`, created by
-		// repo_config). The provider's wif_attribute_condition already pins
-		// assertion.repository to VitruvianSoftware/vitruvian-core, so the
-		// environment principalSet is the per-env isolation layer — the same
-		// pattern gcp-bootstrap uses for its per-stage foundation-* Environments.
-		// RetainOnDelete: see the handoff note on deploy-sa. This binding is
-		// migrating to stage-4 (gcp-projects app_deploy_identity), and
-		// serviceaccount.IAMMember is NON-AUTHORITATIVE — a delete REMOVES the
-		// member outright. Since stage-4 already declares the byte-identical
-		// binding, its create was an idempotent no-op add; a delete here would
-		// revoke WIF impersonation and instantly break this app's CI, and
-		// stage-4 would NOT re-add it (its state still claims ownership).
-		// Retain makes any accidental removal state-only. Removed via
-		// `pulumi state delete`, never `pulumi up`.
-		if _, err := serviceaccount.NewIAMMember(ctx, "deploy-wif-binding", &serviceaccount.IAMMemberArgs{
-			ServiceAccountId: deploySA.Name,
-			Role:             pulumi.String("roles/iam.workloadIdentityUser"),
-			Member: pulumi.Sprintf(
-				"principalSet://iam.googleapis.com/%s/attribute.environment/oauth-user-inspector-%s",
-				poolName, ctx.Stack(),
-			),
-		}, pulumi.RetainOnDelete(true)); err != nil {
-			return err
-		}
-
-		// Per-app least-privilege deploy IAM, scoped to the oss project.
-		// RetainOnDelete for the same reason as deploy-wif-binding above: these
-		// four are already dual-declared by stage-4, and projects.IAMMember is
-		// non-authoritative, so an `up`-driven delete here revokes the live
-		// grant rather than merely dropping ownership.
-		deployMember := pulumi.Sprintf("serviceAccount:%s", deploySA.Email)
-		for _, r := range []struct{ name, role string }{
-			{"deploy-role-run-admin", "roles/run.admin"},
-			{"deploy-role-sa-user", "roles/iam.serviceAccountUser"},
-			{"deploy-role-serviceusage", "roles/serviceusage.serviceUsageConsumer"},
-			{"deploy-role-logging-viewer", "roles/logging.viewer"},
-		} {
-			if _, err := projects.NewIAMMember(ctx, r.name, &projects.IAMMemberArgs{
-				Project: pulumi.String(projectID),
-				Role:    pulumi.String(r.role),
-				Member:  deployMember,
-			}, pulumi.RetainOnDelete(true)); err != nil {
-				return err
-			}
-		}
-
-		// Deploy SA: Secret Manager ADMIN conditioned to this app's prefix. The
-		// zitadel-apps stack (applied by the same oauth-user-inspector-<env> CI
-		// environment, i.e. as this deploy SA) syncs the minted OIDC client
-		// id/secret into the oss project's Secret Manager under the prefix
-		// (cred-sync-to-GCP-SM, spec §9). NOTE: secretmanager.secrets.CREATE is
-		// authorized against the PROJECT resource, which a secret-prefix
-		// condition cannot match — so the FIRST per-env apply (creating the two
-		// secrets) runs as sa-terraform-proj (folder-scoped secretmanager.admin
-		// from Phase 1); this grant covers everything after creation (version
-		// adds on rotation, metadata reads/updates, drift refresh) without giving
-		// the deploy SA reach into co-tenant apps' secrets.
-		//
-		// RetainOnDelete: this grant is NOT yet replicated in stage-4 (the
-		// stage-4 role list carries only the four PLAIN roles above — its
-		// "replicated EXACTLY" comment is inaccurate until the conditioned-role
-		// support lands). Losing it breaks the zitadel-apps credential sync, so
-		// it must never be deleted by an `up`; retain until stage-4 declares an
-		// equivalent conditioned grant and that grant is verified live.
-		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-admin", &projects.IAMMemberArgs{
-			Project: pulumi.String(projectID),
-			Role:    pulumi.String("roles/secretmanager.admin"),
-			Member:  deployMember,
-			Condition: &projects.IAMMemberConditionArgs{
-				Title:      pulumi.String("oauth-user-inspector-secrets-only"),
-				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
-			},
-		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
@@ -264,7 +148,9 @@ func main() {
 			}
 		}
 
-		ctx.Export("deployServiceAccount", deploySA.Email)
+		// The deploy SA is now issued by stage-4 gcp-projects (§4.1); re-export it
+		// from there so existing consumers of this stack keep working.
+		ctx.Export("deployServiceAccount", projStack.GetStringOutput(pulumi.String("oauth-user-inspector_deploy_service_account")))
 		ctx.Export("runtimeServiceAccount", runtimeSA.Email)
 		return nil
 	})
