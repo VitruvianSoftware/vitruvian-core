@@ -63,11 +63,22 @@ new_root() {
 # fake_scanner <bin> <sources> <rc> [mutate]
 # Emits JSON with <sources> distinct source paths, exits <rc>, and optionally
 # rewrites a tracked file to simulate the call-analysis side effect.
+#
+# It also writes to STDERR, because that is where the real scanner puts its
+# human-readable output once --output-file is in play -- which is what makes
+# swallowing that stream a diagnosability bug rather than a cosmetic one.
 fake_scanner() {
   bin="$1"; n="$2"; rc="$3"; mutate="${4:-}"
   mkdir -p "${bin}"
   cat > "${bin}/osv-scanner" <<EOF
 #!/usr/bin/env bash
+# The fatal line FIRST, then the ~26-line "unused ignores" roster the real
+# scanner appends after it. That ordering is the whole point: a plain
+# \`tail\` of this stream shows only the roster, which is how the first cut of
+# the crash diagnostic managed to print 20 lines of nothing useful.
+echo "SCANNER-STDERR-MARKER: rpc error: code = Unavailable desc = service unavailable" >&2
+echo "osv-scanner.toml has unused ignores:" >&2
+for i in \$(seq 1 26); do echo " - GO-2026-TRAILING-NOISE-\${i}" >&2; done
 out=""
 for a in "\$@"; do
   case "\$prev" in --output-file) out="\$a" ;; esac
@@ -118,6 +129,12 @@ rm -rf "${root}" "${bin}"
 root="$(new_root)"; bin="$(mktemp -d)"; fake_scanner "${bin}" 60 127
 out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
 check "scanner crash (127) -> non-zero, not green" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+# ...and says WHY. Failing closed is only half the job: this is a REQUIRED
+# merge-queue check, so a bare "exit 127" leaves whoever is blocked with nothing
+# to act on. The scanner's own words are captured either way -- surfacing them
+# costs nothing and is the difference between "re-run and hope" and "deps.dev is
+# down". Both observed red on main and on a Dependabot PR, 2026-07-25.
+case "${out}" in *SCANNER-STDERR-MARKER*) check "...and quotes the scanner's stderr" 0 ;; *) check "...and quotes the scanner's stderr" 1 ;; esac
 rm -rf "${root}" "${bin}"
 
 # --- 6. a scan that mutates the tree must fail. ------------------------------
