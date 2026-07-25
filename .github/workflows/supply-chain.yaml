@@ -54,25 +54,49 @@ concurrency:
   group: supply-chain-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# DEFERRED: a `dependency-review` job belongs here, blocking any PR that adds a
-# dependency with a known advisory (the pre-merge counterpart to Dependabot,
-# which only opens a fix PR once the vulnerable version is already on main).
-#
-# It cannot run yet: actions/dependency-review-action needs the GitHub
-# Dependency graph, which is OFF for this repo -- the org sets
-# dependency_graph_enabled_for_new_repositories=false and
-# /dependency-graph/sbom returns 404, so the action hard-errors with
-# "Dependency review is not supported on this repository". pulumi-github v6.14.0
-# exposes dependency-graph on the ORGANIZATION resource only, never per
-# repository, so repo_config cannot enable it either.
-#
-# To finish the job: enable the Dependency graph in repo settings, then restore
-# the job here and add "dependency-review" to repo_config's required-check list.
-# It is left OUT rather than shipped behind a skip-when-unavailable guard on
-# purpose -- a check that always reports green while never running is exactly
-# the false assurance this repo's gates are designed to avoid.
-
 jobs:
+  # Blocks a PR that introduces a dependency with a known advisory -- the
+  # pre-merge counterpart to Dependabot, which only opens a fix PR once the
+  # vulnerable version is already on main.
+  #
+  # This was deferred at first because the action needs the GitHub Dependency
+  # graph, which was OFF (the org sets
+  # dependency_graph_enabled_for_new_repositories=false, so
+  # /dependency-graph/sbom 404'd and the action hard-errored). It is now ON, via
+  # `bazel run //tools/github-security:enable-dependency-graph` -- an org code
+  # security configuration attached to this repo alone, since pulumi-github
+  # v6.14.0 exposes dependency-graph on the ORGANIZATION resource only and
+  # repo_config therefore cannot express it. Re-run that target if this job ever
+  # starts failing with "not supported on this repository".
+  #
+  # The action only does useful work on a pull_request (it diffs the dependency
+  # graph between base and head), but the JOB is unconditional so it always
+  # reports a result -- the run-then-noop-green shape every required check in
+  # this repo uses. A required check that is sometimes skipped leaves the merge
+  # queue pending forever.
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
+        with:
+          # Block on high+ severity. Advisories below that would make the gate
+          # noisy enough to be routinely bypassed, which is worse than not
+          # having it.
+          fail-on-severity: high
+          # Deny licences that would contaminate this MIT repo. Kept narrow on
+          # purpose: a broad denylist fails on transitive dev-only packages and
+          # trains people to ignore the gate.
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later
+
+      - name: Not a pull request — nothing to diff
+        if: github.event_name != 'pull_request'
+        run: echo "dependency-review only diffs on pull_request; reporting green."
+
   secret-scan:
     # gitleaks over the commits this change introduces. Diff-scoped on purpose:
     # the repo carries known historical findings (a rotated BuildBuddy key, an

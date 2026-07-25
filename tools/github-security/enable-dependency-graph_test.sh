@@ -86,9 +86,14 @@ rm -rf "${tmp}"
 # --- 4. posture: the configuration must widen NOTHING but the graph. ---------
 # Guards against a future edit flipping one of these to `enabled` and silently
 # taking ownership of a setting repo_config/Pulumi manages.
+# Exactly TWO settings may be 'enabled': dependency_graph (what we want) and
+# advanced_security (which the API demands as its gate -- a config enabling any
+# GHAS feature without it is rejected with HTTP 422). advanced_security turns on
+# no feature by itself while every real feature below stays not_set.
 enabled_count="$(grep -cE "^ *-f [a-z_]+='enabled'" "${UNDER_TEST}" || true)"
-check "exactly one setting is 'enabled'" "$([ "${enabled_count}" = "1" ] && echo 0 || echo 1)"
-grep -qE "^ *-f dependency_graph='enabled'" "${UNDER_TEST}"; check "...and it is dependency_graph" "$?"
+check "exactly two settings are 'enabled'" "$([ "${enabled_count}" = "2" ] && echo 0 || echo 1)"
+grep -qE "^ *-f dependency_graph='enabled'" "${UNDER_TEST}"; check "...dependency_graph is one" "$?"
+grep -qE "^ *-f advanced_security='enabled'" "${UNDER_TEST}"; check "...advanced_security is the other (API gate)" "$?"
 for f in dependabot_alerts dependabot_security_updates secret_scanning secret_scanning_push_protection code_scanning_default_setup private_vulnerability_reporting; do
   grep -qE "^ *-f ${f}='not_set'" "${UNDER_TEST}"; check "${f} left not_set" "$?"
 done

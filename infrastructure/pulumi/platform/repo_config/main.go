@@ -267,20 +267,34 @@ func main() {
 					// pull_request paths filter, so it cannot leave a PR stuck
 					// unmergeable (asserted by the conformance check).
 					//
-					// NOT YET HERE: dependency-review. It needs the GitHub
-					// Dependency graph, which is off for this repo -- the org
-					// sets dependency_graph_enabled_for_new_repositories=false
-					// and the SBOM endpoint 404s, so the action hard-errors
-					// with "Dependency review is not supported on this
-					// repository". The pinned provider (pulumi-github v6.14.0)
-					// exposes dependency-graph only on the ORGANIZATION
-					// resource, not per repository, so it cannot be turned on
-					// from this program. Enable the Dependency graph in repo
-					// settings (Settings -> Advanced Security), then add
-					// "dependency-review" here and re-add the job in
-					// supply-chain.yaml -- deliberately left OUT rather than
-					// shipped as a permanently-green no-op, which would be the
-					// false-assurance pattern this repo avoids.
+					// dependency-review (#1144) blocks a PR that introduces a
+					// dependency with a known advisory. It needs the GitHub
+					// Dependency graph, which was OFF and is not expressible in
+					// pulumi-github v6.14.0 (organization resource only, never per
+					// repository). It is now ON via an org code security
+					// configuration attached to this repo alone --
+					// `bazel run //tools/github-security:enable-dependency-graph`,
+					// which is idempotent, so re-run it if this check ever starts
+					// erroring with "not supported on this repository". The job is
+					// unconditional (only the action step is pull_request-scoped),
+					// so it always reports -- safe to require.
+					"dependency-review",
+					"go-test-infra",
+					// Supply-chain gates (supply-chain.yaml) -- the class of
+					// check this repo had NONE of. Dependabot only alerts AFTER
+					// a vulnerable dependency is already on main, and GitHub
+					// secret scanning covers known PROVIDER patterns only;
+					// neither BLOCKS a merge.
+					//
+					// dependency-review is inherently pull_request-scoped (it
+					// diffs the dependency graph between base and head) and
+					// secret-scan is diff-scoped, so BOTH use the
+					// run-then-noop-green shape: the job always runs and
+					// reports on every event including merge_group, which is
+					// what makes it safe to require. It carries no
+					// pull_request paths filter, so it cannot leave a PR stuck
+					// unmergeable (asserted by the conformance check).
+					//
 					"secret-scan",
 				}
 			}
