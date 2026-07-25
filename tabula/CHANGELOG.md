@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.22...tabula-v0.1.23) (2026-07-25)
+
+
+### Features
+
+* **devx:** dogfood devx.yaml, add local-dev index, fix agent-skill links ([#1154](https://github.com/VitruvianSoftware/vitruvian-core/issues/1154)) ([4e3d73d](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e3d73da5270f30e538db165917c8403428cad4c))
+
 ## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.21...tabula-v0.1.22) (2026-07-23)
 
 
