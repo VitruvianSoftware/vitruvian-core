@@ -40,6 +40,18 @@
 #                as the merge-base of origin/$BASE_REF and HEAD.
 #   BEFORE_REV   explicit before-revision (push/merge_group lanes). Used
 #                directly as the diff base when set.
+#   IGNORE_REGEX (optional) ERE matching paths that cannot affect the CALLING
+#                lane's work. Defaults to the docs/gitops/markdown set that
+#                suits the Bazel build lanes.
+#
+#                A caller MUST narrow this when the default set is not inert for
+#                it. license-check is the worked example: addlicense does NOT
+#                ignore gitops/ (gitops manifests carry MIT headers today) and
+#                //tools/license:check is a `bazel run` sh_binary with no
+#                sh_test, so `bazel test //...` -- and therefore the nightly
+#                periodic-full-sweep -- never covers it. Skipping license-check
+#                on a gitops-only diff would let an unlicensed gitops file dodge
+#                a REQUIRED check permanently, with no backstop to catch it.
 
 set -euo pipefail
 
@@ -88,17 +100,18 @@ echo "relevant-paths: changed files vs ${BEFORE_REV}:"
 echo "${CHANGED_FILES}" | sed 's/^/  /'
 
 # --- the decision. -----------------------------------------------------------
-# relevant=false ONLY when EVERY changed file is docs/gitops/markdown, i.e. it
-# matches `^(gitops/|docs/)` or ends in `.md`. We invert: count any file that is
-# NOT in that ignore set; if there are zero such files, the diff is docs-only.
+# relevant=false ONLY when EVERY changed file matches IGNORE_REGEX -- by default
+# `^(gitops/|docs/)` or ending in `.md`. We invert: count any file that is NOT in
+# that ignore set; if there are zero such files, the diff cannot affect this lane.
 #
 # grep -E -v -c prints the count of NON-matching lines. We do NOT pipe its exit
 # status (set -o pipefail + grep exit 1 on zero matches) into the script's
 # control flow: the count is what we branch on.
-NON_IGNORED="$(echo "${CHANGED_FILES}" | grep -E -v -c '^(gitops/|docs/)|\.md$' || true)"
+IGNORE_REGEX="${IGNORE_REGEX:-^(gitops/|docs/)|\.md$}"
+NON_IGNORED="$(echo "${CHANGED_FILES}" | grep -E -v -c "${IGNORE_REGEX}" || true)"
 
 if [ "${NON_IGNORED}" -eq 0 ]; then
-  emit false "every changed file is gitops/ docs/ or *.md -> skip heavy work"
+  emit false "every changed file matches '${IGNORE_REGEX}' -> skip heavy work"
 fi
 
-emit true "${NON_IGNORED} changed file(s) outside gitops/docs/*.md -> run"
+emit true "${NON_IGNORED} changed file(s) outside '${IGNORE_REGEX}' -> run"
