@@ -221,5 +221,27 @@ case "${rc}" in
    Fix by upgrading the dependency, or -- if it is genuinely not exploitable
    here -- add an ignoredVulns entry to osv-scanner.toml with a reason, and an
    expiry unless the advisory has no fix at all." ;;
-  *) die "osv-scanner failed to run (exit ${rc}); refusing to report green" ;;
+  *) # Every other exit code is a scanner FAILURE, and this gate is required, so
+     # it fails closed. Quote the scanner rather than just its exit code: with
+     # --output-file, osv-scanner's human-readable output goes to STDERR, so the
+     # whole reason lives in ${scan_err} and was otherwise discarded on this path
+     # -- leaving a red required check whose entire log was "exit 127". Observed
+     # three times on 2026-07-25 (main, and two PRs), each recoverable by nothing
+     # but a re-run.
+     #
+     # GREP, NOT `tail`. The first cut of this used tail -n 20 and printed the
+     # wrong 20 lines: osv-scanner appends an "osv-scanner.toml has unused
+     # ignores:" roster of ~26 advisory IDs AFTER everything else, so a plain
+     # tail is pure noise and buries the one line that matters. Measured on a
+     # real failure -- the fatal cause was above the cut. Falls back to the tail
+     # when nothing matches, so an unanticipated failure still says something.
+     excerpt="$(grep -inE 'error|fail|unavailable|unreachable|panic|fatal|timeout|refused' "${scan_err}" | tail -n 12)"
+     [ -n "${excerpt}" ] || excerpt="$(tail -n 12 "${scan_err}")"
+     die "osv-scanner failed to run (exit ${rc}); refusing to report green.
+   Matching lines from its output (stderr is where --output-file sends it):
+$(printf '%s\n' "${excerpt}" | sed 's/^/     /')
+   Nothing here naming a lockfile or advisory usually means the network: the
+   transitive resolution this scan keeps ON is served from deps.dev, so its
+   outage surfaces as \"rpc error: code = Unavailable\" and a re-run clears it."
+     ;;
 esac
