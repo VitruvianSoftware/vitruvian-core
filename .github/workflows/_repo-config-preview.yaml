@@ -60,15 +60,59 @@ jobs:
             - name: Install Bazel
               uses: ./.github/actions/setup-bazel
 
+            # Dependabot-authored PRs read the DEPENDABOT secret store, not the
+            # repository one, so `secrets.APP_PRIVATE_KEY` resolves to the empty
+            # string and create-github-app-token dies with "The 'private-key'
+            # input must be set to a non-empty string" before pulumi is ever
+            # reached. That put a red X on every dependency bump touching
+            # repo_config or pkg/secrets -- a failure about the RUNNER's
+            # credentials that says nothing about the bump.
+            #
+            # Same run-then-noop-green shape #1186 gave pulumi-preview.yaml for
+            # PULUMI_ACCESS_TOKEN, and keyed on the CREDENTIAL rather than on
+            # `github.actor == 'dependabot[bot]'` for the same reason: fork PRs
+            # and any future key rotation hit this identical wall, and an actor
+            # check would silently miss both. The secrets context is not usable
+            # in an `if:`, hence the detour through env + an output.
+            #
+            # NOTE this is the degrade, not the cure. Mirroring APP_PRIVATE_KEY
+            # into the Dependabot store is what would RESTORE preview coverage
+            # here; that exposes a GitHub App key to Dependabot-triggered runs
+            # and is a deliberate governance decision, left open on purpose.
+            - name: Detect GitHub App credential
+              id: creds
+              env:
+                  APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+              run: |
+                  set -euo pipefail
+                  if [ -n "${APP_PRIVATE_KEY}" ]; then
+                      echo "available=true" >> "${GITHUB_OUTPUT}"
+                  else
+                      echo "available=false" >> "${GITHUB_OUTPUT}"
+                  fi
+
             - name: Mint a GitHub App token for the Pulumi GitHub provider
               id: app-token
+              if: steps.creds.outputs.available == 'true'
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
                   app-id: ${{ vars.PULUMI_APP_ID }}
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+            # Says WHY the leg is green rather than leaving the reader to infer
+            # it from the digest's generic "preview was skipped" -- the coverage
+            # gap is real (a bump that breaks repo_config EVALUATION is not
+            # caught on this PR) and should be legible on the PR itself.
+            - name: Note skipped preview (no GitHub App credential)
+              if: steps.creds.outputs.available != 'true'
+              run: |
+                  set -euo pipefail
+                  printf '### repo_config\n\n_Pulumi preview skipped: `APP_PRIVATE_KEY` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
+                      >> "${GITHUB_STEP_SUMMARY}"
+
             - name: Pulumi preview (repo_config)
               id: pulumi
+              if: steps.creds.outputs.available == 'true'
               env:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   GITHUB_OWNER: ${{ github.repository_owner }}
