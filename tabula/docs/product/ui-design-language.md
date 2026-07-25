@@ -7,7 +7,7 @@ visual representation. It is intended to standardize communication regarding UI 
 
 The Dashboard is the primary interface for managing workspaces.
 
-![Dashboard Overview](./images/dashboard_overview_numbered.png)
+![Dashboard Overview](images/dashboard_overview_numbered.png)
 
 1.  **Sidebar**: The left-hand navigation column containing workspaces and groups.
 2.  **SidebarHeader**: Top-left area containing the App Logo, User Avatar, and settings trigger.
@@ -21,7 +21,7 @@ The Dashboard is the primary interface for managing workspaces.
 
 The Sidebar manages the hierarchy of spaces.
 
-![Sidebar Components](./images/sidebar_numbered.png)
+![Sidebar Components](images/sidebar_numbered.png)
 
 1.  **SpacesHeader**: The label "SPACES" and top-level action buttons (Add Space, Add Section).
 2.  **UngroupedList**: The container for workspaces that don't belong to a section (e.g., "Space
@@ -55,7 +55,7 @@ The Main Content area switches between different panels based on user selection.
 
 ### 3.1 Resources Panel (Home View)
 
-![Resources Panel](./images/resources_numbered.png)
+![Resources Panel](images/resources_numbered.png)
 
 1.  **TabNavigation**: The pill-shaped switcher at the top (Resources | Notes | Tasks).
 2.  **ResourcePanel**: The primary container for resource sections.
@@ -67,14 +67,14 @@ The Main Content area switches between different panels based on user selection.
 
 ### 3.2 Notes Panel
 
-![Notes Panel](./images/notes_numbered.png)
+![Notes Panel](images/notes_numbered.png)
 
 1.  **NotesPanel**: The container for all note items.
 2.  **NoteItem**: The individual note card (or form) containing title and content.
 
 ### 3.3 Tasks Panel
 
-![Tasks Panel](./images/tasks_numbered.png)
+![Tasks Panel](images/tasks_numbered.png)
 
 1.  **TasksPanel**: The container for task management.
 2.  **TaskInput**: The input field for adding new tasks.
@@ -87,7 +87,7 @@ Interactions often trigger overlays for focused actions.
 
 ### 4.1 Generic Modal
 
-![Rename Workspace Modal](./images/modal_numbered.png)
+![Rename Workspace Modal](images/modal_numbered.png)
 
 1.  **ModalHeader**: Displays the title (e.g., "Rename Workspace").
 2.  **ModalBody**: Contains the form content involved (e.g., Name input).

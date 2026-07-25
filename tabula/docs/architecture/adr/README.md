@@ -17,11 +17,11 @@ decision made along with its context and consequences. ADRs help teams understan
 
 | ADR                                        | Title                      | Status   | Date       |
 | ------------------------------------------ | -------------------------- | -------- | ---------- |
-| [001](./001-technology-stack-selection.md) | Technology Stack Selection | Accepted | 2025-12-07 |
-| [002](./002-database-orm-selection.md)     | Database and ORM Selection | Accepted | 2025-12-07 |
-| [003](./003-testing-strategy.md)           | Testing Strategy           | Accepted | 2025-12-07 |
-| [004](./004-tabcli-platform-tool.md)       | TabCLI Platform Tool       | Accepted | 2025-12-07 |
-| [005](./005-cli-idempotency.md)            | TabCLI Command Idempotency | Accepted | 2025-12-08 |
+| [001](001-technology-stack-selection.md) | Technology Stack Selection | Accepted | 2025-12-07 |
+| [002](002-database-orm-selection.md)     | Database and ORM Selection | Accepted | 2025-12-07 |
+| [003](003-testing-strategy.md)           | Testing Strategy           | Accepted | 2025-12-07 |
+| [004](004-tabcli-platform-tool.md)       | TabCLI Platform Tool       | Accepted | 2025-12-07 |
+| [005](005-cli-idempotency.md)            | TabCLI Command Idempotency | Accepted | 2025-12-08 |
 
 ## ADR Template
 

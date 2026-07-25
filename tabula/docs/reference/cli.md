@@ -450,7 +450,7 @@ maintainable stack that meets all current requirements.
 
 ## Contributing
 
-See [CONTRIBUTING.md](../../../tabula/CONTRIBUTING.md) for development guidelines.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development guidelines.
 
 ## License
 

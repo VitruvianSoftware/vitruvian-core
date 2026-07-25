@@ -87,7 +87,8 @@ vitruvian-core/
 ├── gitops/                       # ArgoCD app-of-apps for the dev-local k3s cluster
 │   └── argocd/{projects,platform,applications,root-applications.yaml}
 │
-├── docs/                         # docs/infrastructure/, docs/tabula/, + cross-cutting topic docs
+├── docs/                         # infra, concepts, guides, operations, engineering + cross-cutting
+│                                 #   (per-app docs live in each app dir, e.g. tabula/docs/)
 ├── .github/workflows/            # CI/CD (ci.yaml, per-app deploy, copybara, charts-publish, ...)
 ├── .nvmrc / BUILD / MODULE.bazel # repo-root pins and the //:tidy target
 └── AGENTS.md / README.md
@@ -113,7 +114,7 @@ There is **no single uniform "run this app locally" story yet** — each app typ
 | **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
-> - **`tabula` ships two contradictory local-dev narratives.** The root README documents the real Bazel+pnpm flow above. `docs/tabula/getting-started/*` and `tabula/CONTRIBUTING.md` still describe a **stale pre-monorepo flow** (npm workspaces, `docker-compose up -d`, Terraform, `tabcli dev start`, cloning `github.com/BlueCentre/tabula`, Node 18). **There is no `docker-compose.yml` in this repo, the build is Bazel+Pulumi, and Node is pinned to 22.** Follow the root README, not the `getting-started` docs.
+> - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`tabula/docs/`](tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `tabula/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
 > - **`mcp-slack` and `nexus-agent` are documented with bare `npm`** even though both are members of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
 > - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
@@ -384,7 +385,7 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
 ## 11. Where to get help / where docs live
 
 - **[`docs/README.md`](docs/README.md)** — **the documentation hub**: role-based quick starts ([app developer](docs/getting-started/app-developer.md), [platform engineer](docs/getting-started/platform-engineer.md), [operator](docs/getting-started/operator.md), [repo admin](docs/getting-started/repo-admin.md)), the [SDLC walkthrough](docs/concepts/sdlc.md), and the [Bazel targets catalog](docs/reference/bazel-targets.md).
-- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding), and `docs/tabula/`. Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
+- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding). Per-app docs live in each app's own directory (e.g. [`tabula/docs/`](tabula/docs/index.md)). Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
