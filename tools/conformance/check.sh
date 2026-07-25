@@ -1251,6 +1251,53 @@ check_ci_gate_lists_match() {
   OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
 }
 
+# The rollout sequencer (//tools/deploy:cloud-run.sh) is allowlisted OUT of the
+# global-impact guard shared by tools/ci/{affected-targets,deploy-affected}.sh,
+# so changing it no longer forces a full //... sweep. That is safe for the TEST
+# gate -- target-determinator tracks the tools/deploy/defs.bzl load edge and the
+# srcs=["//tools/deploy:cloud-run.sh"] edge onto each app's `:deploy` target.
+#
+# It is NOT automatically safe for the DEPLOY gate: that gate's TD universe is
+# DEPLOY_TARGETS (the image/zip artifacts), which do NOT depend on `:deploy`, so
+# nothing in it would notice a sequencer change. Every workflow that actually
+# runs a rollout must therefore name tools/deploy/ in its OWN trigger set --
+# EXTRA_PATH_REGEX for the graph-gated apps, a push `paths:` glob for the
+# path-gated ones -- or a candidate->smoke->promote change could merge and never
+# be deployed. This guard makes that coupling structural instead of a comment.
+check_deploy_sequencer_gate() {
+  _allow="$(grep -o "\^tools/([^']*)" "$ROOT/tools/ci/affected-targets.sh" 2>/dev/null | head -1)"
+  case "$_allow" in
+    *"|deploy/|"*) ;;
+    *)
+      emit "gate" "$GLYPH_OK" "$C_GREEN" "tools/deploy" "force-sweeps" "n/a" \
+        "tools/deploy is not allowlisted, so the global-impact guard still covers a sequencer change" ""
+      return 0 ;;
+  esac
+
+  _missing=""
+  for _wf in "$ROOT"/.github/workflows/*.yaml "$ROOT"/.github/workflows/*.yml; do
+    [ -f "$_wf" ] || continue
+    # Only the CALLERS of the reusable rollout workflow actually deploy.
+    grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$_wf" 2>/dev/null || continue
+    # Must appear in a real trigger (EXTRA_PATH_REGEX or a paths: glob) -- a
+    # passing mention in a comment must NOT satisfy this.
+    if ! grep -qE '^[[:space:]]*(EXTRA_PATH_REGEX:.*tools/deploy/|-[[:space:]]*"tools/deploy/)' "$_wf" 2>/dev/null; then
+      _missing="${_missing} $(basename "$_wf")"
+    fi
+  done
+
+  if [ -z "$_missing" ]; then
+    emit "gate" "$GLYPH_OK" "$C_GREEN" "_deploy-cloud-run.yaml callers" "trigger on tools/deploy/" "all callers" \
+      "every Cloud Run rollout workflow redeploys when the sequencer changes" ""
+    return 0
+  fi
+
+  emit "gate" "$GLYPH_FAIL" "$C_RED" "${_missing# }" "no tools/deploy/ trigger" "tools/deploy/" \
+    "tools/deploy/ is allowlisted out of the global-impact guard, so these rollout workflows would NOT redeploy when the candidate->smoke->promote sequencer changes" \
+    "add tools/deploy/ to the workflow's EXTRA_PATH_REGEX (graph-gated apps), or 'tools/deploy/**' to its push paths: (path-gated apps)"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
+}
+
 check_no_local_paths() {
   # Scope: committed text likely to be machine-generated. Docs legitimately
   # quote example paths, and this file names the pattern it greps for.
@@ -1553,6 +1600,7 @@ check_copybara_infra_exclude
 check_release_infra_exclude
 check_no_local_paths
 check_ci_gate_lists_match
+check_deploy_sequencer_gate
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \

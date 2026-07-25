@@ -171,8 +171,23 @@ fi
 # are intentionally left to the graph diff.
 # For `tools/`, we explicitly exclude administrative subdirectories that do not
 # alter the Bazel build graph (e.g. ci, copybara, scripts) to prevent unnecessary sweeps.
+#
+# The allowlist below MUST stay byte-identical to the one in deploy-affected.sh
+# (`//tools/conformance:check` check_ci_gate_lists_match asserts it), so the
+# deploy gate and the test gate can never disagree about what a change affects.
+#
+# `deploy/` is allowlisted even though it ships tools/deploy/defs.bzl: that .bzl
+# is loaded by exactly two packages (tabula/infra/app, oauth-user-inspector/
+# infra/app) and the generated sh_binary carries srcs=["//tools/deploy:
+# cloud-run.sh"], so BOTH edges are target-determinator-tracked and land on the
+# two dependent `:deploy` targets -- same class as the already-allowlisted
+# gitops/defs.bzl and lint/linters.bzl. The DEPLOY half of this pair does not
+# graph-track cloud-run.sh (its universe is DEPLOY_TARGETS, which holds the
+# image/zip artifacts, not `:deploy`), so tabula-deploy.yaml carries
+# `tools/deploy/` in EXTRA_PATH_REGEX to keep that gate firing -- narrowing the
+# TEST sweep here must never silently narrow the fail-open deploy gate.
 if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \
-   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|doctor/|format/|gitops/|license/|lint/|rotate-buildbuddy-key/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
+   echo "${CHANGED_FILES}" | grep -E '^tools/' | grep -E -v '^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|repin$)' >/dev/null 2>&1; then
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 

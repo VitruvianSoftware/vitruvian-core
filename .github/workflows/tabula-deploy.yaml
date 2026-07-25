@@ -124,7 +124,13 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
-          EXTRA_PATH_REGEX: "tabula/infra/app/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+          # `tools/deploy/` is a NON-GRAPH deploy input for this gate: the TD
+          # universe below is DEPLOY_TARGETS (image_push/chrome_zip), which does
+          # not depend on the rollout sequencer //tools/deploy:cloud-run.sh, and
+          # tools/deploy/ is allowlisted out of the global-impact guard in
+          # tools/ci/deploy-affected.sh. Listing it here keeps a change to the
+          # candidate -> smoke -> promote sequence forcing a real deploy.
+          EXTRA_PATH_REGEX: "tabula/infra/app/|tools/deploy/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   # BUILD ONCE into the shared bu2 Artifact Registry and capture the immutable
