@@ -167,16 +167,65 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
    ran the toolchain (put a logging shim ahead of \`go\` on PATH and re-run)."
 }
 
-# Capture the exit code rather than letting `set -e` abort, so the coverage
-# assertion below runs on BOTH outcomes -- a crash must never be mistaken for
-# "clean". Human-readable output goes to the console; JSON drives the assertion.
-set +e
-osv-scanner "${SCAN_ARGS[@]}" --all-packages \
-  --format json --output-file "${json}" . >/dev/null 2>"${scan_err}"
-rc=$?
-set -e
+# RETRY, because the one network call this gate makes is measurably unreliable.
+#
+# Transitive resolution (kept ON deliberately -- see "RULED OUT" above; it is
+# what surfaces the 8 PyPI advisories the unresolved pins miss) is served from
+# deps.dev over gRPC. On 2026-07-25, the gate's first day, that returned
+# "rpc error: code = Unavailable" for 13 of 102 runs -- a ~13% red rate on a
+# REQUIRED merge-queue check, every one of them cleared by nothing but a re-run.
+#
+# It is not an outage you wait out. Successes and failures interleaved two
+# seconds apart (09:19:48 fail, 09:19:50 pass, 09:19:52 pass), so deps.dev is
+# degraded per-request rather than down, and the failures are independent. Three
+# attempts therefore take a ~13% red rate to roughly 1-in-450.
+#
+# SCOPE IS THE SAFETY PROPERTY. Only a transport-level failure is retried:
+#   - rc=1 is a VERDICT (advisories found), never retried -- a second attempt
+#     must not be able to paper over a real finding.
+#   - rc=0 is a verdict too, and needs no retry.
+#   - any other rc is retried ONLY if the scanner's stderr names a network
+#     fault. A deterministic crash (bad flag, missing binary) fails on the first
+#     attempt rather than burning the budget three times over.
+# If every attempt fails the gate still fails closed -- retry narrows the window,
+# it never converts a failure into a pass.
+OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-3}"
+OSV_RETRY_DELAY="${OSV_RETRY_DELAY:-5}"
+TRANSIENT_RE='rpc error|unavailable|deadline exceeded|connection refused|no such host|i/o timeout|tls handshake|connection reset|temporary failure in name resolution|failed resolution'
 
-assert_tree_unchanged
+attempt=1
+delay="${OSV_RETRY_DELAY}"
+while :; do
+  # Truncate BOTH per attempt: a previous attempt's partial JSON must never be
+  # read as this attempt's coverage evidence.
+  : > "${json}"; : > "${scan_err}"
+
+  # Capture the exit code rather than letting `set -e` abort, so the coverage
+  # assertion below runs on BOTH outcomes -- a crash must never be mistaken for
+  # "clean". Human-readable output goes to the console; JSON drives the assertion.
+  set +e
+  osv-scanner "${SCAN_ARGS[@]}" --all-packages \
+    --format json --output-file "${json}" . >/dev/null 2>"${scan_err}"
+  rc=$?
+  set -e
+
+  # Asserted on EVERY attempt, not just the last: a scan that mutated the tree
+  # must be caught even if a later attempt would have succeeded.
+  assert_tree_unchanged
+
+  if [ "${rc}" -ne 0 ] && [ "${rc}" -ne 1 ] \
+     && [ "${attempt}" -lt "${OSV_MAX_ATTEMPTS}" ] \
+     && grep -qiE "${TRANSIENT_RE}" "${scan_err}"; then
+    info "attempt ${attempt}/${OSV_MAX_ATTEMPTS} failed with a transient resolver error (exit ${rc}); retrying in ${delay}s"
+    [ "${delay}" -gt 0 ] && sleep "${delay}"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+    continue
+  fi
+  break
+done
+
+[ "${attempt}" -eq 1 ] || info "settled after ${attempt} attempt(s)"
 
 # Coverage = sources ACTUALLY SCANNED, which --all-packages puts in `results`
 # whether or not they had findings. Counting distinct paths, because a source
