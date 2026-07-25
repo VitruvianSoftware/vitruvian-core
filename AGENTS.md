@@ -1,5 +1,22 @@
 # Agent guide — vitruvian-core
 
+> **This file is the single, vendor-neutral agent guide for this repo.** It follows the
+> [AGENTS.md](https://agents.md) convention, which Claude Code, Antigravity/Gemini, Copilot,
+> Cursor, opencode and others all read. There is deliberately **no `CLAUDE.md`,
+> `.cursorrules` or `copilot-instructions.md` at the root** — one file, so guidance cannot
+> drift per tool.
+>
+> Keep it that way when editing:
+> - **Write for any agent.** Don't assume a specific tool's commands, file layout or
+>   capabilities. Prefer the repo's own `bazel run …` entrypoints, which work everywhere.
+> - **Tool-specific setup belongs in a clearly-labelled section** (see the two "Claude Code
+>   cloud sessions" sections below) so agents on other tools know to skip it. Everything
+>   unlabelled applies to all.
+> - **Nested `AGENTS.md` files scope to their subtree** (`devx/`, `tabula/`,
+>   `oauth-user-inspector/`) — put per-component detail there, not here. Note that an
+>   `AGENTS.md` only applies to the directory it sits in and below, so one in a
+>   non-source directory silently never applies.
+
 ## Orient first: principles, SDLC, docs hub
 
 Before shaping any non-trivial change, read the
@@ -46,6 +63,32 @@ The mapping of infrastructure → GCP account is in
 - Watch loop: `ibazel run //<target>`.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (nexus-agent): `bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
+
+## Finishing work: PR, checks, land, clean up
+Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
+1. **Open a PR.** When the work is done, push and open one (`gh pr create`) unless an open,
+   related PR already covers it. Never merge locally. PR bodies are self-contained: what
+   changed, why, how it was verified.
+2. **Drive the checks green.** Watch them and fix what goes red — including flaky or
+   non-required checks. Never present a PR as ready while any check is red.
+3. **Land it.** Once approved, merge and keep watching until it actually lands; the merge
+   queue can still reject on the rebased result.
+4. **Clean up.** After it lands, delete the branch/worktree and return to the latest `main`.
+   **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
+   origin/main` is always false here — `main` is squash-only, so your branch's SHAs are
+   never ancestors of it. Check by PR number instead (`git log --grep "(#N)" origin/main`,
+   or `bazel run //tools/landed -- <pr#|branch|sha>`), or verify the content directly.
+
+## Rigor & validation
+- **Never assume configuration parity.** When touching monorepo-wide config (matrices,
+  package lists, `release-please-config.json`, workspaces), do not hand-identify the set.
+  Diff the physical directory structure against the config to prove 100% parity.
+- **Check sibling ecosystems.** A change for one language usually has a counterpart in
+  another (Go → TypeScript, and vice versa). Confirm before declaring the task done.
+- **Verify before claiming success.** Don't report a bug fixed until a test or script you
+  actually ran proves it — and prove the check fails against the broken state, or it is
+  not evidence. For infrastructure, assert the **live effect**, not a green apply log: a
+  provider reporting `updated` does not mean the setting took.
 
 ## Conventions & landmines
 - **Gazelle owns most `BUILD` files** — don't hand-edit generated targets; change the source and
