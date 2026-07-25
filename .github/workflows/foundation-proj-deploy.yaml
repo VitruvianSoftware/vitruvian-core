@@ -143,9 +143,17 @@ jobs:
           # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
           # pipeline does not abort here and we capture pulumi's real exit code.
           set +e -u -o pipefail
-          echo "::group::pulumi up --diff (${ENVIRONMENT} leaf / production stack)"
+          echo "::group::pulumi up --diff --refresh (${ENVIRONMENT} leaf / production stack)"
+          # --refresh makes this stage SELF-HEALING for non-authoritative IAM.
+          # gcp.projects/serviceaccount IAMMember are additive: create = add
+          # member, delete = REMOVE member. Several app deploy-identity grants
+          # are currently dual-declared here and in the app's own identity stack
+          # during the §4.1 migration, so if the app stack ever drops a member,
+          # this stack's state still claims to own it and would never re-add it
+          # — a permanent silent revocation that breaks the app's CI. Refreshing
+          # first reconciles state with reality so the member is restored.
           { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
+              && pulumi up --yes --diff --refresh --non-interactive; } \
             2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
           ec="${PIPESTATUS[0]}"
           echo "::endgroup::"

@@ -125,6 +125,15 @@ func main() {
 		// assertion.repository to VitruvianSoftware/vitruvian-core, so the
 		// environment principalSet is the per-env isolation layer — the same
 		// pattern gcp-bootstrap uses for its per-stage foundation-* Environments.
+		// RetainOnDelete: see the handoff note on deploy-sa. This binding is
+		// migrating to stage-4 (gcp-projects app_deploy_identity), and
+		// serviceaccount.IAMMember is NON-AUTHORITATIVE — a delete REMOVES the
+		// member outright. Since stage-4 already declares the byte-identical
+		// binding, its create was an idempotent no-op add; a delete here would
+		// revoke WIF impersonation and instantly break this app's CI, and
+		// stage-4 would NOT re-add it (its state still claims ownership).
+		// Retain makes any accidental removal state-only. Removed via
+		// `pulumi state delete`, never `pulumi up`.
 		if _, err := serviceaccount.NewIAMMember(ctx, "deploy-wif-binding", &serviceaccount.IAMMemberArgs{
 			ServiceAccountId: deploySA.Name,
 			Role:             pulumi.String("roles/iam.workloadIdentityUser"),
@@ -132,11 +141,15 @@ func main() {
 				"principalSet://iam.googleapis.com/%s/attribute.environment/oauth-user-inspector-%s",
 				poolName, ctx.Stack(),
 			),
-		}); err != nil {
+		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
 		// Per-app least-privilege deploy IAM, scoped to the oss project.
+		// RetainOnDelete for the same reason as deploy-wif-binding above: these
+		// four are already dual-declared by stage-4, and projects.IAMMember is
+		// non-authoritative, so an `up`-driven delete here revokes the live
+		// grant rather than merely dropping ownership.
 		deployMember := pulumi.Sprintf("serviceAccount:%s", deploySA.Email)
 		for _, r := range []struct{ name, role string }{
 			{"deploy-role-run-admin", "roles/run.admin"},
@@ -148,7 +161,7 @@ func main() {
 				Project: pulumi.String(projectID),
 				Role:    pulumi.String(r.role),
 				Member:  deployMember,
-			}); err != nil {
+			}, pulumi.RetainOnDelete(true)); err != nil {
 				return err
 			}
 		}
@@ -164,6 +177,13 @@ func main() {
 		// from Phase 1); this grant covers everything after creation (version
 		// adds on rotation, metadata reads/updates, drift refresh) without giving
 		// the deploy SA reach into co-tenant apps' secrets.
+		//
+		// RetainOnDelete: this grant is NOT yet replicated in stage-4 (the
+		// stage-4 role list carries only the four PLAIN roles above — its
+		// "replicated EXACTLY" comment is inaccurate until the conditioned-role
+		// support lands). Losing it breaks the zitadel-apps credential sync, so
+		// it must never be deleted by an `up`; retain until stage-4 declares an
+		// equivalent conditioned grant and that grant is verified live.
 		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-admin", &projects.IAMMemberArgs{
 			Project: pulumi.String(projectID),
 			Role:    pulumi.String("roles/secretmanager.admin"),
@@ -172,7 +192,7 @@ func main() {
 				Title:      pulumi.String("oauth-user-inspector-secrets-only"),
 				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
 			},
-		}); err != nil {
+		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
