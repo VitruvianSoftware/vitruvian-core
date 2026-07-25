@@ -1267,16 +1267,52 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	// NB: rotating the actual key is a separate BuildBuddy-console action
 	// (bazel run //tools/rotate-buildbuddy-key); this only routes WHERE the value
 	// comes from through the shared pkg/secrets helper (never git).
-	key := secrets.EnvOrConfigOptional(cfg, "BUILDBUDDY_API_KEY", "buildbuddyApiKey")
-	if key == nil {
-		return nil
+	//
+	// PULUMI_ACCESS_TOKEN is here for the same reason, learned the hard way.
+	// Dependabot PRs read the SEPARATE Dependabot store, so a repo secret of
+	// the same name is simply not visible to them: `secrets.PULUMI_ACCESS_TOKEN`
+	// resolves to the empty string with no warning, and pulumi-preview.yaml died
+	// with "PULUMI_ACCESS_TOKEN must be set for login during non-interactive CLI
+	// sessions" (exit 3) on #1164 -- a PR whose entire diff was a go.mod bump.
+	// That leg now degrades to noop-green when the credential is absent, so this
+	// is what actually RESTORES the preview coverage on dependency PRs rather
+	// than merely silencing the failure.
+	//
+	// The value is never in git: the repo-config apply workflow already exports
+	// PULUMI_ACCESS_TOKEN (it is how pulumi itself authenticates), so the env
+	// branch of EnvOrConfigOptional picks it up and mirrors it into the
+	// Dependabot store. A local run falls back to the gitignored
+	// `pulumi config set --secret pulumiAccessToken`, and when neither is set the
+	// secret is simply not managed -- the same optional shape as BuildBuddy, so
+	// auto-apply stays green either way.
+	//
+	// `bazel run //tools/ci-preflight` reports exactly this class of gap: any
+	// secret a pull_request-triggered workflow reads that the Dependabot store
+	// does not carry.
+	for _, s := range []struct {
+		resource string // pulumi resource name (stable; renaming forces replace)
+		env      string // CI env var / GitHub secret name
+		cfgKey   string // local `pulumi config set --secret <key>` fallback
+	}{
+		{"buildbuddy-api-key-dependabot", "BUILDBUDDY_API_KEY", "buildbuddyApiKey"},
+		{"pulumi-access-token-dependabot", "PULUMI_ACCESS_TOKEN", "pulumiAccessToken"},
+	} {
+		// Optional by design: a value that is not available in this context is
+		// skipped, never defaulted to empty. Writing an empty Dependabot secret
+		// would be worse than having none -- it looks configured and still fails.
+		key := secrets.EnvOrConfigOptional(cfg, s.env, s.cfgKey)
+		if key == nil {
+			continue
+		}
+		if _, err := github.NewDependabotSecret(ctx, s.resource, &github.DependabotSecretArgs{
+			Repository:     repo.Name,
+			SecretName:     pulumi.String(s.env),
+			PlaintextValue: key,
+		}); err != nil {
+			return err
+		}
 	}
-	_, err := github.NewDependabotSecret(ctx, "buildbuddy-api-key-dependabot", &github.DependabotSecretArgs{
-		Repository:     repo.Name,
-		SecretName:     pulumi.String("BUILDBUDDY_API_KEY"),
-		PlaintextValue: key,
-	})
-	return err
+	return nil
 }
 
 // dependabotLabels creates the issue labels that .github/dependabot.yml applies
