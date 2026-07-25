@@ -89,11 +89,30 @@ func main() {
 		projectNumber := projStack.GetStringOutput(pulumi.String("oss_floating_project_number"))
 
 		// Deploy SA — impersonated by CI to run `pulumi up` for the app stack.
+		//
+		// RetainOnDelete is load-bearing, and it is a SAFETY NET, not decoration.
+		// This account is the credential tabula's CI impersonates via WIF. A
+		// delete here is unrecoverable in practice: GCP soft-deletes the account,
+		// and recreating it under the same account id mints a NEW uniqueId — so
+		// every binding that referenced it (the foundation-pool principalSet, the
+		// Artifact Registry grants in tabula/infra/build, the GitHub Environment
+		// variable in repo_config) silently points at a dead principal. Because
+		// .github/workflows/tabula-identity-stack.yaml triggers on `push` to
+		// main for `tabula/infra/identity/**`, MERGING a removal-shaped edit IS
+		// applying it. Retain makes any such mistake state-only.
+		//
+		// This account is migrating to stage-4 (gcp-projects app_deploy_identity,
+		// the platform-issued pattern per core-vs-application-infrastructure.md
+		// §4.1), mirroring the oauth-user-inspector handoff. Removal sequence,
+		// only AFTER stage-4 declares it and that is verified live in GCP:
+		//   pulumi stack --show-urns          # enumerate explicitly
+		//   pulumi state delete <urn>         # state-only; never `pulumi up`
+		// then delete this block.
 		deploySA, err := serviceaccount.NewAccount(ctx, "deploy-sa", &serviceaccount.AccountArgs{
 			Project:     pulumi.String(projectID),
 			AccountId:   pulumi.String("tabula-deploy"),
 			DisplayName: pulumi.String("tabula deploy (CI)"),
-		})
+		}, pulumi.RetainOnDelete(true))
 		if err != nil {
 			return err
 		}
@@ -113,6 +132,10 @@ func main() {
 		// assertion.repository to VitruvianSoftware/vitruvian-core, so the
 		// environment principalSet is the per-env isolation layer — the same
 		// pattern gcp-bootstrap uses for its per-stage foundation-* Environments.
+		// RetainOnDelete: serviceaccount.IAMMember is NON-AUTHORITATIVE — a
+		// delete REMOVES the member outright, instantly breaking tabula's CI
+		// (this is the binding that lets GitHub Actions impersonate the deploy
+		// SA). Retain keeps any accidental removal state-only.
 		if _, err := serviceaccount.NewIAMMember(ctx, "deploy-wif-binding", &serviceaccount.IAMMemberArgs{
 			ServiceAccountId: deploySA.Name,
 			Role:             pulumi.String("roles/iam.workloadIdentityUser"),
@@ -120,11 +143,15 @@ func main() {
 				"principalSet://iam.googleapis.com/%s/attribute.environment/tabula-%s",
 				poolName, ctx.Stack(),
 			),
-		}); err != nil {
+		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
 		// Per-app least-privilege deploy IAM, scoped to the oss project.
+		// RetainOnDelete for the same reason as deploy-wif-binding: these grants
+		// are migrating to stage-4, and projects.IAMMember is non-authoritative,
+		// so an `up`-driven delete revokes the live grant rather than merely
+		// dropping ownership of it.
 		deployMember := pulumi.Sprintf("serviceAccount:%s", deploySA.Email)
 		for _, r := range []struct{ name, role string }{
 			{"deploy-role-run-admin", "roles/run.admin"},
@@ -136,7 +163,7 @@ func main() {
 				Project: pulumi.String(projectID),
 				Role:    pulumi.String(r.role),
 				Member:  deployMember,
-			}); err != nil {
+			}, pulumi.RetainOnDelete(true)); err != nil {
 				return err
 			}
 		}
@@ -160,7 +187,7 @@ func main() {
 				Title:      pulumi.String("tabula-secrets-only"),
 				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
 			},
-		}); err != nil {
+		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
@@ -178,7 +205,7 @@ func main() {
 				Title:      pulumi.String("tabula-secrets-only"),
 				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
 			},
-		}); err != nil {
+		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
