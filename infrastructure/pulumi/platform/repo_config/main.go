@@ -95,16 +95,34 @@ func main() {
 					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
 						Status: pulumi.String("enabled"),
 					},
-					// Provider patterns only match credentials GitHub can
-					// attribute to a known issuer (an AWS key, a Slack token,
-					// ...). A generic API token, a database password or a bare
-					// private key raised NOTHING until this was enabled -- the
-					// same class the secret-scan gate covers, but applied to
-					// pushes and to the existing tree rather than to a PR diff,
-					// so the two are complementary rather than redundant.
-					SecretScanningNonProviderPatterns: &github.RepositorySecurityAndAnalysisSecretScanningNonProviderPatternsArgs{
-						Status: pulumi.String("enabled"),
-					},
+					// NOT DECLARED: SecretScanningNonProviderPatterns.
+					//
+					// It was declared "enabled" here and NEVER took effect. Pulumi
+					// reported `~ Repository updated [diff: ~securityAndAnalysis]`
+					// on every apply while the live API kept returning
+					// "disabled" -- verified 2026-07-25 after the #1200 apply
+					// (run 30169006463, success). A silent no-op, and a perpetual
+					// spurious diff on an otherwise clean stack.
+					//
+					// The cause is not this program. Non-provider patterns is a
+					// GitHub Secret Protection (Advanced Security) feature, and
+					// the org's code security configuration "dependency-graph-only"
+					// (id 262482) pins it `disabled` with enforcement `enforced`.
+					// An enforced org configuration overrides the repo-level
+					// setting, so this write could never win. That configuration's
+					// own description says every setting other than the dependency
+					// graph is `not_set` "so repo_config/Pulumi stays the
+					// authority" -- this one is the exception to that intent.
+					//
+					// That is deliberate, not an oversight to fix: Advanced
+					// Security is billed per active committer, and this repo
+					// intentionally runs free alternatives instead -- gitleaks
+					// (the required `secret-scan` gate) for this exact class of
+					// generic token / bare private key, and osv-scanner in place
+					// of dependency-review. Re-adding the field would restore the
+					// phantom diff without turning anything on; the way to
+					// actually enable it is to change the org configuration and
+					// accept the GHAS bill.
 				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
