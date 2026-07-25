@@ -92,7 +92,8 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		if strings.HasPrefix(role, "roles/secretmanager.") {
 			return nil, fmt.Errorf(
 				"%q must be declared in ConditionalDeployRoles with a secret-prefix condition, not in DeployRoles: "+
-					"an unconditioned Secret Manager grant reaches every co-tenant app's secrets in this shared project", role)
+					"an unconditioned Secret Manager grant reaches every co-tenant app's secrets in this shared project", role,
+			)
 		}
 	}
 

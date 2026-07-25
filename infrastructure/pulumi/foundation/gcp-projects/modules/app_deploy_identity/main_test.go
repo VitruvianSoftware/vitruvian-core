@@ -84,7 +84,8 @@ func TestConditionedNamesDoNotCollideWithUnconditioned(t *testing.T) {
 func TestExpandConditionSubstitutesPlaceholders(t *testing.T) {
 	got, err := expandCondition(
 		`resource.name.startsWith("projects/${projectNumber}/secrets/OAUTH_USER_INSPECTOR_")`,
-		"1064807322707", "prj-d-bu1-oss-floating-648a")
+		"1064807322707", "prj-d-bu1-oss-floating-648a",
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
