@@ -2,7 +2,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": ".",
+    // Storybook's preview imports the stylesheet for its side effect; vite's
+    // client types declare the "*.css" ambient module that makes it typecheck.
+    // Scoped to this config so the published library never depends on them.
+    "types": ["vite/client"]
   },
   "include": ["src/**/*", ".storybook/**/*"],
   "exclude": ["node_modules", "dist"]

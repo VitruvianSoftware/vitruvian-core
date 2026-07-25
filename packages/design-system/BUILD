@@ -39,9 +39,10 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # Unlike the per-app packages, the design system is platform-level: every app
-# is meant to depend on it, so the inter-app boundary (#82) does not apply and
-# the default is public. The single //visibility:public literal is registered
-# in tools/conformance/public-targets.tsv.
+# is meant to depend on it, so the inter-app boundary (#82) does not apply --
+# //packages is outside the app firewall the conformance check patrols
+# (check_app_visibility scans the app roots only), so no allowlist row in
+# tools/conformance/public-targets.tsv is needed or accepted here.
 package(default_visibility = ["//visibility:public"])
 
 npm_link_all_packages(name = "node_modules")
