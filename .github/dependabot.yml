@@ -179,35 +179,41 @@ updates:
         update-types:
           - "minor"
           - "patch"
-  # ─── pulumi-library Go modules. Each component under pulumi/library/go is its
-  #     own go.mod (workspace member); a bump PR that breaks a component fails
-  #     CI and won't merge. ───
+  # ─── pulumi-library Go modules AND the go-foundation example stages that
+  #     consume them. Each is its own go.mod: the library components are
+  #     workspace members, each example stage is a Pulumi project resolving the
+  #     library through `replace` directives to local paths.
+  #
+  #     ONE entry, deliberately -- these were two separate entries until the
+  #     grpc 1.80.0 -> 1.82.1 sweep (#1164/#1166/#1175/#1179/#1180) showed why
+  #     that cannot work. An example carries its OWN pin of the library's
+  #     transitive graph, and Dependabot cannot see across a `replace` edge: it
+  #     tidies only the module it bumps. Split across two entries, the library
+  #     bump and the matching example bump are always separate PRs, so the
+  #     library PR lands (or is tested) with the examples still pinning the old
+  #     version -- which is exactly `go: updates to go.mod needed`, and exactly
+  #     what red-lined example-build three times in that one sweep.
+  #
+  #     Merged into a single entry, the shared `go-minor-patch` group spans both
+  #     directory sets, so a dependency common to a library and its examples
+  #     moves on BOTH sides in the same PR and the tree is never half-bumped.
+  #
+  #     This is a mitigation, NOT a guarantee, and must not be mistaken for one:
+  #     grouping can only co-bump a dependency that ALREADY appears in both
+  #     go.mods, and it does not group MAJOR bumps at all. A library bump that
+  #     introduces a brand-new transitive module still desyncs the examples.
+  #     `bazel run //tools/gomod:check` (wired into example-build) is the actual
+  #     backstop; this just makes it fire far less often. ───
   - package-ecosystem: "gomod"
     directories:
       - "/pulumi/library/go"
       - "/pulumi/library/go/pkg/*"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "go"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      go-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
-  # ─── pulumi go-foundation example stages. Each stage is its own go.mod (Pulumi
-  #     project resolving the in-tree library via replace directives). Keeps the
-  #     reference foundation's third-party deps (pulumi-gcp, sdk) current. ───
-  - package-ecosystem: "gomod"
-    directories:
       - "/pulumi/examples/go-foundation/*"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    # Raised from 5: this entry now covers both directory sets, so the ungrouped
+    # remainder (majors) comes from ~56 modules rather than ~29.
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "go"
