@@ -21,18 +21,19 @@
 // Package main is the per-environment deploy/runtime identity stack for
 // tabula on the vitruviansoftware.dev foundation.
 //
-// Unlike the original personal-project bootstrap (which stood up its OWN Workload
-// Identity Pool `github-actions-dev-1`), this stack federates the SHARED
-// foundation-pool provisioned by gcp-bootstrap in prj-b-cicd. It creates the
-// per-env deploy + runtime service accounts inside the env's oss project
-// (prj-{env}-bu2-oss-floating), binds the deploy SA to the foundation-pool
-// scoped to the `tabula-<env>` GitHub Environment (the provider's
-// wif_attribute_condition already pins the repo, so environment scoping is the
-// per-env isolation layer — mirroring the foundation's own per-stage
-// attribute.environment principalSets), and grants least-privilege, per-app
-// IAM. The runtime SA's Secret Manager access is
-// conditioned to this app's SECRET_PREFIX so co-tenant OSS apps in the same oss
-// project cannot read each other's secrets.
+// This stack owns only what the APPLICATION may grant itself: the RUNTIME
+// service account in the env's oss project (prj-{env}-bu2-oss-floating), its
+// prefix-conditioned Secret Manager access, and the per-secret grants for this
+// app's own secrets (including the deploy SA's read of TABULA_DATABASE_URL for
+// `prisma migrate deploy`, and the Cloudflare token accessors).
+//
+// The DEPLOY identity is deliberately NOT here. It is platform-issued by stage-4
+// foundation/gcp-projects (modules/app_deploy_identity), one stage above the
+// workloads it deploys, so this app cannot widen its own deploy permissions by
+// editing its own repo — see docs/engineering/core-vs-application-infrastructure.md
+// §4.1. That covers the account, its four project roles, both prefix-conditioned
+// Secret Manager grants, and the foundation-pool WIF binding. This stack reads
+// the resulting email to address the per-secret grants, and re-exports it.
 //
 // Runs as sa-terraform-proj (folder-scoped serviceAccountAdmin + iam from Phase 1).
 // Deploy: bazel run //tabula/infra/identity:up --stack <env>
@@ -63,21 +64,8 @@ var appSecrets = []string{
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-deploy-identity")
-		projectID := cfg.Require("project") // the env's oss project id
-		bootstrapStack := cfg.Get("bootstrap_stack")
-		if bootstrapStack == "" {
-			bootstrapStack = "ipv1337/foundation-bootstrap/production"
-		}
+		projectID := cfg.Require("project")            // the env's oss project id
 		projectsStack := cfg.Require("projects_stack") // ipv1337/foundation-projects-bu2-<env>/production
-
-		// Shared foundation WIF pool (prj-b-cicd), from gcp-bootstrap.
-		bootstrap, err := pulumi.NewStackReference(ctx, "bootstrap", &pulumi.StackReferenceArgs{
-			Name: pulumi.String(bootstrapStack),
-		})
-		if err != nil {
-			return err
-		}
-		poolName := bootstrap.GetStringOutput(pulumi.String("wif_pool_name"))
 
 		// The env's oss project number (for the Secret Manager IAM condition).
 		projStack, err := pulumi.NewStackReference(ctx, "projects", &pulumi.StackReferenceArgs{
@@ -88,34 +76,19 @@ func main() {
 		}
 		projectNumber := projStack.GetStringOutput(pulumi.String("oss_floating_project_number"))
 
-		// Deploy SA — impersonated by CI to run `pulumi up` for the app stack.
+		// The DEPLOY identity is platform-issued by stage-4 gcp-projects
+		// (modules/app_deploy_identity), one stage above the workload it deploys,
+		// so this app cannot widen its own deploy permissions by editing its own
+		// repo (core-vs-application-infrastructure.md §4.1). Stage-4 owns the
+		// account, its four project roles, BOTH prefix-conditioned Secret Manager
+		// grants, and the foundation-pool WIF binding.
 		//
-		// RetainOnDelete is load-bearing, and it is a SAFETY NET, not decoration.
-		// This account is the credential tabula's CI impersonates via WIF. A
-		// delete here is unrecoverable in practice: GCP soft-deletes the account,
-		// and recreating it under the same account id mints a NEW uniqueId — so
-		// every binding that referenced it (the foundation-pool principalSet, the
-		// Artifact Registry grants in tabula/infra/build, the GitHub Environment
-		// variable in repo_config) silently points at a dead principal. Because
-		// .github/workflows/tabula-identity-stack.yaml triggers on `push` to
-		// main for `tabula/infra/identity/**`, MERGING a removal-shaped edit IS
-		// applying it. Retain makes any such mistake state-only.
-		//
-		// This account is migrating to stage-4 (gcp-projects app_deploy_identity,
-		// the platform-issued pattern per core-vs-application-infrastructure.md
-		// §4.1), mirroring the oauth-user-inspector handoff. Removal sequence,
-		// only AFTER stage-4 declares it and that is verified live in GCP:
-		//   pulumi stack --show-urns          # enumerate explicitly
-		//   pulumi state delete <urn>         # state-only; never `pulumi up`
-		// then delete this block.
-		deploySA, err := serviceaccount.NewAccount(ctx, "deploy-sa", &serviceaccount.AccountArgs{
-			Project:     pulumi.String(projectID),
-			AccountId:   pulumi.String("tabula-deploy"),
-			DisplayName: pulumi.String("tabula deploy (CI)"),
-		}, pulumi.RetainOnDelete(true))
-		if err != nil {
-			return err
-		}
+		// Read here only to address the per-secret grants below, which stay
+		// app-side: those are grants on THIS app's own secrets, which the app may
+		// make for itself.
+		deployMember := pulumi.Sprintf("serviceAccount:%s",
+			projStack.GetStringOutput(pulumi.String("tabula_deploy_service_account")))
+
 		// Runtime SA — the Cloud Run service identity.
 		runtimeSA, err := serviceaccount.NewAccount(ctx, "runtime-sa", &serviceaccount.AccountArgs{
 			Project:     pulumi.String(projectID),
@@ -123,89 +96,6 @@ func main() {
 			DisplayName: pulumi.String("tabula runtime"),
 		})
 		if err != nil {
-			return err
-		}
-
-		// Federate the deploy SA against the SHARED foundation-pool, scoped to
-		// this env's GitHub Environment (`tabula-<env>`, created by
-		// repo_config). The provider's wif_attribute_condition already pins
-		// assertion.repository to VitruvianSoftware/vitruvian-core, so the
-		// environment principalSet is the per-env isolation layer — the same
-		// pattern gcp-bootstrap uses for its per-stage foundation-* Environments.
-		// RetainOnDelete: serviceaccount.IAMMember is NON-AUTHORITATIVE — a
-		// delete REMOVES the member outright, instantly breaking tabula's CI
-		// (this is the binding that lets GitHub Actions impersonate the deploy
-		// SA). Retain keeps any accidental removal state-only.
-		if _, err := serviceaccount.NewIAMMember(ctx, "deploy-wif-binding", &serviceaccount.IAMMemberArgs{
-			ServiceAccountId: deploySA.Name,
-			Role:             pulumi.String("roles/iam.workloadIdentityUser"),
-			Member: pulumi.Sprintf(
-				"principalSet://iam.googleapis.com/%s/attribute.environment/tabula-%s",
-				poolName, ctx.Stack(),
-			),
-		}, pulumi.RetainOnDelete(true)); err != nil {
-			return err
-		}
-
-		// Per-app least-privilege deploy IAM, scoped to the oss project.
-		// RetainOnDelete for the same reason as deploy-wif-binding: these grants
-		// are migrating to stage-4, and projects.IAMMember is non-authoritative,
-		// so an `up`-driven delete revokes the live grant rather than merely
-		// dropping ownership of it.
-		deployMember := pulumi.Sprintf("serviceAccount:%s", deploySA.Email)
-		for _, r := range []struct{ name, role string }{
-			{"deploy-role-run-admin", "roles/run.admin"},
-			{"deploy-role-sa-user", "roles/iam.serviceAccountUser"},
-			{"deploy-role-serviceusage", "roles/serviceusage.serviceUsageConsumer"},
-			{"deploy-role-logging-viewer", "roles/logging.viewer"},
-		} {
-			if _, err := projects.NewIAMMember(ctx, r.name, &projects.IAMMemberArgs{
-				Project: pulumi.String(projectID),
-				Role:    pulumi.String(r.role),
-				Member:  deployMember,
-			}, pulumi.RetainOnDelete(true)); err != nil {
-				return err
-			}
-		}
-
-		// Deploy SA: Secret Manager ADMIN conditioned to this app's prefix. The
-		// zitadel-apps stack (applied by the same tabula-<env> CI
-		// environment, i.e. as this deploy SA) syncs the minted OIDC client
-		// id/secret into the oss project's Secret Manager under the prefix
-		// (cred-sync-to-GCP-SM, spec §9). NOTE: secretmanager.secrets.CREATE is
-		// authorized against the PROJECT resource, which a secret-prefix
-		// condition cannot match — so the FIRST per-env apply (creating the two
-		// secrets) runs as sa-terraform-proj (folder-scoped secretmanager.admin
-		// from Phase 1); this grant covers everything after creation (version
-		// adds on rotation, metadata reads/updates, drift refresh) without giving
-		// the deploy SA reach into co-tenant apps' secrets.
-		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-admin", &projects.IAMMemberArgs{
-			Project: pulumi.String(projectID),
-			Role:    pulumi.String("roles/secretmanager.admin"),
-			Member:  deployMember,
-			Condition: &projects.IAMMemberConditionArgs{
-				Title:      pulumi.String("tabula-secrets-only"),
-				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
-			},
-		}, pulumi.RetainOnDelete(true)); err != nil {
-			return err
-		}
-
-		// Deploy SA: an EXPLICIT prefix-conditioned accessor alongside the admin
-		// grant above. The pipeline reads TABULA_DATABASE_URL as the deploy SA to
-		// run `prisma migrate deploy --phase expand` BEFORE any traffic shift, and
-		// the first cold deploy failed with PERMISSION_DENIED on
-		// secretmanager.versions.access despite the admin role — so the accessor
-		// is stated outright rather than relied upon transitively.
-		if _, err := projects.NewIAMMember(ctx, "deploy-role-secret-accessor", &projects.IAMMemberArgs{
-			Project: pulumi.String(projectID),
-			Role:    pulumi.String("roles/secretmanager.secretAccessor"),
-			Member:  deployMember,
-			Condition: &projects.IAMMemberConditionArgs{
-				Title:      pulumi.String("tabula-secrets-only"),
-				Expression: pulumi.Sprintf("resource.name.startsWith(\"projects/%s/secrets/%s\")", projectNumber, secretPrefix),
-			},
-		}, pulumi.RetainOnDelete(true)); err != nil {
 			return err
 		}
 
@@ -312,7 +202,8 @@ func main() {
 			}
 		}
 
-		ctx.Export("deployServiceAccount", deploySA.Email)
+		// Platform-issued in stage-4; re-exported so consumers keep working.
+		ctx.Export("deployServiceAccount", projStack.GetStringOutput(pulumi.String("tabula_deploy_service_account")))
 		ctx.Export("runtimeServiceAccount", runtimeSA.Email)
 		return nil
 	})
