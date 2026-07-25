@@ -40,30 +40,31 @@
 # Default: catch-all for the whole repository
 * @VitruvianSoftware/platform-team
 
+# Repo-root build and module configuration files
+# (leading "/" anchors these to the root only; nested per-app BUILD files
+#  remain owned by their app directory rule above)
+# ================================================
+/.bazelrc @VitruvianSoftware/platform-team
+/.bazelversion @VitruvianSoftware/platform-team
+/MODULE.bazel @VitruvianSoftware/platform-team
+/MODULE.bazel.lock @VitruvianSoftware/platform-team
+/BUILD @VitruvianSoftware/platform-team
+
+# Platform, build, and infrastructure paths
+# ==========================================
+/.github/ @VitruvianSoftware/platform-team
+/githooks/ @VitruvianSoftware/platform-team
+/tools/ @VitruvianSoftware/platform-team
+/infrastructure/ @VitruvianSoftware/platform-team
+/gitops/ @VitruvianSoftware/platform-team
+/pulumi/ @VitruvianSoftware/platform-team
+/packages/ @VitruvianSoftware/platform-team
+
 # Application directories (per-app teams)
 # =======================================
 /devx/ @VitruvianSoftware/devx-team
 /homelab/ @VitruvianSoftware/homelab-team
 /mcp-slack/ @VitruvianSoftware/mcp-slack-team
 /nexus-agent/ @VitruvianSoftware/nexus-agent-team
-/tabula/ @VitruvianSoftware/tabula-team
 /oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team
-
-# Platform, build, and infrastructure paths
-# ==========================================
-/tools/ @VitruvianSoftware/platform-team
-/infrastructure/ @VitruvianSoftware/platform-team
-/pulumi/ @VitruvianSoftware/platform-team
-/gitops/ @VitruvianSoftware/platform-team
-/githooks/ @VitruvianSoftware/platform-team
-/.github/ @VitruvianSoftware/platform-team
-
-# Repo-root build and module configuration files
-# (leading "/" anchors these to the root only; nested per-app BUILD files
-#  remain owned by their app directory rule above)
-# ================================================
-/MODULE.bazel @VitruvianSoftware/platform-team
-/MODULE.bazel.lock @VitruvianSoftware/platform-team
-/.bazelrc @VitruvianSoftware/platform-team
-/.bazelversion @VitruvianSoftware/platform-team
-/BUILD @VitruvianSoftware/platform-team
+/tabula/ @VitruvianSoftware/tabula-team
