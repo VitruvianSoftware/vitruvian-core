@@ -1,0 +1,67 @@
+# gitleaks configuration for vitruvian-core.
+#
+# The CI gate (tools/ci/secret-scan.sh) scans ONLY the commits a change adds,
+# never full history: this repo carries known historical findings -- most
+# notably a BuildBuddy key that was committed, then de-committed and ROTATED
+# (docs/repo-assessment.md §7.1 item C) -- so a full-history scan would be
+# permanently red and therefore permanently ignored. Diff scanning keeps the
+# gate meaningful: it can only ever fail on something the PR itself introduces.
+#
+# Everything allowlisted below is safe BY CONSTRUCTION, not by assertion. For a
+# one-off false positive that does not belong here, put a `gitleaks:allow`
+# comment on the offending line rather than widening these rules.
+
+[extend]
+useDefault = true
+
+# SealedSecrets are asymmetrically encrypted: the ciphertext in `encryptedData`
+# can only be decrypted by the sealed-secrets controller's private key, which
+# lives in the cluster and is never committed. Committing them is the entire
+# point of the GitOps closed loop, so their ciphertext must not read as a leak.
+[[allowlists]]
+description = "SealedSecret manifests contain ciphertext that is safe to commit"
+paths = ['''gitops/argocd/platform/sealed-secrets-manifests/.*\.sealedsecret\.yaml$''']
+
+# The committed example store holds placeholder values only; the real values
+# live in Bitwarden and are pulled by //tools/sync-env-secrets.
+[[allowlists]]
+description = "sync-env-secrets example store holds placeholders, not real values"
+paths = ['''tools/sync-env-secrets/secrets\.example/''']
+
+# A Chrome extension's manifest `key` is its PUBLIC identity key: it pins the
+# extension ID and is meant to ship inside the published bundle.
+[[allowlists]]
+description = "Chrome extension manifest key is a public identity key"
+paths = ['''tabula/extension/src/manifest\.json$''']
+
+# `cloudflare-token-secret-project` is a reusable-workflow input naming the GCP
+# project that HOLDS the token in Secret Manager. It is a project id, not a
+# credential. regexTarget = "line" because the value itself looks like an
+# ordinary identifier -- it is the KEY that proves it is not a secret.
+[[allowlists]]
+description = "cloudflare-token-secret-project names a GCP project, not a token"
+regexTarget = "line"
+regexes = ['''cloudflare-token-secret-project:''']
+
+# The `generic-api-key` heuristic fires on ordinary English in markdown -- e.g.
+# the words "Gateway API migration, Prometheus" in a docs table read as a
+# key/value pair -- and on obviously-fake fixtures in Go tests ("tskey-abc123").
+# Scoped with targetRules so ONLY that heuristic is relaxed here: every
+# provider-specific rule (cloudflare-api-key, private-key, aws-*, ...) stays
+# fully armed on docs and tests, so a real token pasted into a runbook is still
+# caught. `curl-auth-user` is relaxed on markdown for the same reason: a
+# documented `curl -u user:pass` example is not a credential.
+[[allowlists]]
+description = "generic-api-key/curl-auth-user are prose noise in docs and fixtures"
+targetRules = ["generic-api-key", "curl-auth-user"]
+paths = ['''\.md$''', '''_test\.go$''']
+
+# The token-less `pulumi preview` pattern feeds a deliberately fake, 40-char
+# Cloudflare token so the provider's length validation passes without a real
+# credential (oauth-user-inspector/infra/app/main.go, tabula/infra/app/main.go,
+# pulumi-preview.yaml, and the runbook that documents it). Allowlisted by its
+# EXACT literal rather than by path, so a genuine Cloudflare token appearing in
+# any of those same files is still caught.
+[[allowlists]]
+description = "the documented token-less-preview placeholder is not a credential"
+regexes = ['''preview-only-not-a-real-cloudflare-token''']

@@ -95,6 +95,16 @@ func main() {
 					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
 						Status: pulumi.String("enabled"),
 					},
+					// Provider patterns only match credentials GitHub can
+					// attribute to a known issuer (an AWS key, a Slack token,
+					// ...). A generic API token, a database password or a bare
+					// private key raised NOTHING until this was enabled -- the
+					// same class the secret-scan gate covers, but applied to
+					// pushes and to the existing tree rather than to a PR diff,
+					// so the two are complementary rather than redundant.
+					SecretScanningNonProviderPatterns: &github.RepositorySecurityAndAnalysisSecretScanningNonProviderPatternsArgs{
+						Status: pulumi.String("enabled"),
+					},
 				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
@@ -242,6 +252,22 @@ func main() {
 					// safe to require, and a no-op in seconds for the PRs that don't
 					// touch IaC.
 					"go-test-infra",
+					// Supply-chain gates (supply-chain.yaml) -- the class of
+					// check this repo had NONE of. Dependabot only alerts AFTER
+					// a vulnerable dependency is already on main, and GitHub
+					// secret scanning covers known PROVIDER patterns only;
+					// neither BLOCKS a merge.
+					//
+					// dependency-review is inherently pull_request-scoped (it
+					// diffs the dependency graph between base and head) and
+					// secret-scan is diff-scoped, so BOTH use the
+					// run-then-noop-green shape: the job always runs and
+					// reports on every event including merge_group, which is
+					// what makes them safe to require. Neither carries a
+					// pull_request paths filter, so neither can leave a PR
+					// stuck unmergeable (asserted by the conformance check).
+					"dependency-review",
+					"secret-scan",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
