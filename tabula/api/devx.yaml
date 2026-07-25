@@ -1,0 +1,69 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Local development topology for the Tabula API.
+#
+#   devx up     — provision Postgres + Redis, then run the API against them
+#   devx map    — validate/visualise this file (run from this directory)
+#
+# Bazel stays the build of record: the service command below is the same
+# `bazel run` target you would invoke by hand.
+
+name: tabula-api
+
+databases:
+  - engine: postgres
+    port: 5432
+  - engine: redis
+    port: 6379
+
+services:
+  - name: api
+    runtime: host
+    command: ["bazel", "run", "//tabula/api:api_bin"]
+    port: 8080
+    depends_on:
+      - name: postgres
+        condition: service_healthy
+      - name: redis
+        condition: service_healthy
+    healthcheck:
+      http: "http://localhost:8080/health"
+      interval: "2s"
+      # Generous: a cold `bazel run` may need to build the API first.
+      timeout: "180s"
+      retries: 3
+    # `devx up` injects ONLY this map plus PORT — it does not write or read a
+    # .env file. Everything else the API needs (JWT_SECRET, WORKOS_*, ...) is
+    # loaded by the app itself from the gitignored tabula/api/.env via dotenv,
+    # which does not override variables already set here.
+    env:
+      DATABASE_URL: "postgresql://devx:devx@localhost:5432/devx"
+      REDIS_URL: "redis://localhost:6379"
+
+# Local pre-flight checks. `lint` runs the repo hygiene entrypoint, which
+# REWRITES files (gazelle + formatters) rather than only reporting.
+pipeline:
+  test:
+    command: ["bazel", "test", "//tabula/api/..."]
+  lint:
+    command: ["bazel", "run", "//:tidy"]
+  build:
+    command: ["bazel", "build", "//tabula/api/..."]

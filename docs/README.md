@@ -68,6 +68,8 @@ Task-oriented recipes for day-to-day work.
 
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — **the developer SOP**: setup, per-app inner
   loops, build/test, secrets, deploy. The single most load-bearing doc in the repo.
+- [Local development](guides/local-development.md) — **one page per app**: how to run
+  it, test it, its backing services, `devx.yaml`, and local secrets.
 - [Onboard a new OSS app](guides/oss-app-onboarding-checklist.md) — the phase-by-phase
   checklist from empty directory to production.
 - [Speed up builds with caching](guides/build-cache.md) — local disk cache, shared

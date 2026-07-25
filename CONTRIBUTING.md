@@ -100,7 +100,7 @@ For the full per-app catalog and the category definitions (SaaS web service, CLI
 
 ## 3. Local development
 
-There is **no single uniform "run this app locally" story yet** — each app type has its own inner loop. The table below is the practical per-type recipe. Where an app's own README contradicts this, trust this SOP (several READMEs are stale; see the gap notes).
+Each app type has its own inner loop. The table below is the practical per-type recipe; the same information — plus backing services, `devx.yaml` status, and local secrets — is collected per app on one page in **[docs/guides/local-development.md](docs/guides/local-development.md)**. Where an app's own README contradicts this, trust this SOP (several READMEs are stale; see the gap notes).
 
 ### 3.1 Inner loop by app type
 
@@ -121,9 +121,11 @@ There is **no single uniform "run this app locally" story yet** — each app typ
 
 ### 3.2 Using devx / a local k8s cluster
 
-`devx` is the intended local-dev orchestrator: `devx vm init`, `devx up` (brings up ephemeral DBs/emulators with automatic `.env` injection), `devx shell`, and `devx scaffold {go-api,node-api,next-app,go-cli,python-api}` to stamp a new app skeleton.
+`devx` is the intended local-dev orchestrator: `devx vm init`, `devx up` (brings up the databases declared in `devx.yaml` and runs your services in dependency order), `devx shell`, and `devx scaffold {go-api,node-api,next-app,go-cli,python-api}` to stamp a new app skeleton.
 
-> **🎯 Target — dogfooding.** None of the six first-party apps currently ships a `devx.yaml`, so the repo does not yet dogfood its own tool. The target is for every backing-service app (starting with `tabula`'s API and `oauth-user-inspector`) to commit a `devx.yaml` and run its inner loop via `devx up` + the app's `pnpm dev`. Until that lands, use the per-type commands in 3.1.
+> **Careful — `devx up` does *not* do `.env` injection.** A `host` service gets only its own `env:` map plus `PORT`; it does not read or write a `.env` file. The app loads its own `.env` (e.g. `tabula/api` via `dotenv`, which does not override what devx already set). `.env`/vault injection happens in `devx shell`, `devx db seed`, and `devx test` — not `devx up`.
+
+**Dogfooding status.** `tabula/api` and `oauth-user-inspector` now ship a committed `devx.yaml` ([tabula/api](tabula/api/devx.yaml) declares Postgres + Redis and gates the API on both; [oauth-user-inspector](oauth-user-inspector/devx.yaml) declares its backend + Vite frontend and deliberately declares **no** database — it has none). The remaining four apps have no backing services, so the plain `bazel run`/`pnpm` loops in 3.1 remain the whole story. Validate any `devx.yaml` change with `devx map` from that file's directory — the parser ignores unknown keys silently.
 
 For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcontainer/` also ships a `kind-config.yaml`. Note: the **dev-local k3s homelab hosts platform infra only** (Zitadel, observability, CNPG, MinIO, etc.) reconciled by ArgoCD — first-party apps are **not** deployed there (the one wired path, `gitops/argocd/applications/tabula.yaml.disabled`, is disabled). See Section 9.
 
