@@ -789,12 +789,28 @@ check_merge_queue() {
   [ -d "$WORKFLOWS_DIR" ] || return 0
 
   # Required-check names: the quoted strings in the default `checks = []string{...}`.
+  #
+  # Comments are stripped FIRST. The list is heavily commented, and a naive
+  # scrape treats a double-quoted word inside a `//` comment as a required check
+  # name -- which then reports as MISSING and fails this guard with a phantom
+  # entry that exists nowhere in repo_config. (Writing `wedge a PR "pending"` in
+  # a comment there really did invent a required check called `pending`.)
+  # strip_comment is quote-aware so a `//` inside a string literal survives.
   required="$(awk '
+    function strip_comment(line,   i, inq, c) {
+      inq = 0
+      for (i = 1; i <= length(line); i++) {
+        c = substr(line, i, 1)
+        if (c == "\"") { inq = !inq; continue }
+        if (!inq && c == "/" && substr(line, i + 1, 1) == "/") return substr(line, 1, i - 1)
+      }
+      return line
+    }
     /checks = \[\]string\{/ { grab=1 }
     grab {
-      s=$0
+      s = strip_comment($0)
       while (match(s, /"[^"]*"/)) { print substr(s, RSTART+1, RLENGTH-2); s=substr(s, RSTART+RLENGTH) }
-      if (index($0,"}")>0) exit
+      if (index(s,"}")>0) exit
     }' "$REPO_CONFIG_MAIN")"
   [ -n "$required" ] || return 0   # no declared gate set -> nothing to assert
 

@@ -95,6 +95,16 @@ func main() {
 					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
 						Status: pulumi.String("enabled"),
 					},
+					// Provider patterns only match credentials GitHub can
+					// attribute to a known issuer (an AWS key, a Slack token,
+					// ...). A generic API token, a database password or a bare
+					// private key raised NOTHING until this was enabled -- the
+					// same class the secret-scan gate covers, but applied to
+					// pushes and to the existing tree rather than to a PR diff,
+					// so the two are complementary rather than redundant.
+					SecretScanningNonProviderPatterns: &github.RepositorySecurityAndAnalysisSecretScanningNonProviderPatternsArgs{
+						Status: pulumi.String("enabled"),
+					},
 				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
@@ -242,6 +252,36 @@ func main() {
 					// safe to require, and a no-op in seconds for the PRs that don't
 					// touch IaC.
 					"go-test-infra",
+					// Supply-chain gates (supply-chain.yaml) -- the class of
+					// check this repo had NONE of. Dependabot only alerts AFTER
+					// a vulnerable dependency is already on main, and GitHub
+					// secret scanning covers known PROVIDER patterns only;
+					// neither BLOCKS a merge.
+					//
+					// dependency-review is inherently pull_request-scoped (it
+					// diffs the dependency graph between base and head) and
+					// secret-scan is diff-scoped, so BOTH use the
+					// run-then-noop-green shape: the job always runs and
+					// reports on every event including merge_group, which is
+					// what makes it safe to require. It carries no
+					// pull_request paths filter, so it cannot leave a PR stuck
+					// unmergeable (asserted by the conformance check).
+					//
+					// NOT YET HERE: dependency-review. It needs the GitHub
+					// Dependency graph, which is off for this repo -- the org
+					// sets dependency_graph_enabled_for_new_repositories=false
+					// and the SBOM endpoint 404s, so the action hard-errors
+					// with "Dependency review is not supported on this
+					// repository". The pinned provider (pulumi-github v6.14.0)
+					// exposes dependency-graph only on the ORGANIZATION
+					// resource, not per repository, so it cannot be turned on
+					// from this program. Enable the Dependency graph in repo
+					// settings (Settings -> Advanced Security), then add
+					// "dependency-review" here and re-add the job in
+					// supply-chain.yaml -- deliberately left OUT rather than
+					// shipped as a permanently-green no-op, which would be the
+					// false-assurance pattern this repo avoids.
+					"secret-scan",
 				}
 			}
 			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
