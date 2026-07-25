@@ -36,6 +36,29 @@ runs:
       with:
         bazelisk-cache: true
         repository-cache: true
+        # repository-cache is Bazel's DOWNLOAD cache: it stores fetched archives
+        # keyed by sha256, so a warm run re-uses the tarball but still UNPACKS it
+        # into the (ephemeral) output_base every single job. That extraction is
+        # the residual cost RBE cannot touch -- --config=remote offloads action
+        # EXECUTION, but the toolchain repos are analysis-time inputs that must
+        # exist locally first, which is why every Bazel lane still paid a
+        # multi-minute loading phase no matter how warm the action cache was.
+        #
+        # external-cache persists the EXTRACTED external/ repositories (each over
+        # 10MB, each in its own cache entry, keyed on MODULE.bazel/WORKSPACE
+        # contents). The repos this reclaims are large and unavoidable:
+        # llvm-raw (~572MB, forced into every //... analysis by
+        # register_toolchains("@llvm_toolchain//:all")), the Go SDK, the two
+        # rules_python interpreters, rustfmt, and rules_android's maven set
+        # (~514MB, which cannot be dropped -- rules_jvm_external and
+        # rules_kotlin both require rules_android, so the direct pin only
+        # controls WHICH version resolves, never whether it is in the graph).
+        #
+        # Correctness: entries are keyed on the module files, so a dependency
+        # change invalidates them; a miss simply falls back to today's fetch +
+        # extract. Restores are branch-scoped with fallback to the base branch,
+        # so PR runs inherit main's warm caches.
+        external-cache: true
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
