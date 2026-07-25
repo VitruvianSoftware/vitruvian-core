@@ -28,7 +28,7 @@
 #
 # One REQUIRED merge-queue check (repo_config/main.go):
 #   secret-scan — gitleaks over the commits the change ADDS.
-# A dependency-review job is deferred on an unmet prerequisite; see below.
+#   osv-scan    — google/osv-scanner over the lockfiles.
 #
 # NO workflow-level `paths:` filter, deliberately: a required check behind a
 # path filter never reports on PRs outside those paths and wedges them
@@ -55,70 +55,48 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Blocks a PR that introduces a dependency with a known advisory -- the
-  # pre-merge counterpart to Dependabot, which only opens a fix PR once the
+  # Blocks a PR whose lockfiles contain a dependency with a known advisory --
+  # the pre-merge counterpart to Dependabot, which only opens a fix PR once the
   # vulnerable version is already on main.
   #
-  # This was deferred at first because the action needs the GitHub Dependency
-  # graph, which was OFF (the org sets
-  # dependency_graph_enabled_for_new_repositories=false, so
-  # /dependency-graph/sbom 404'd and the action hard-errored). It is now ON, via
-  # `bazel run //tools/github-security:enable-dependency-graph` -- an org code
-  # security configuration attached to this repo alone, since pulumi-github
-  # v6.14.0 exposes dependency-graph on the ORGANIZATION resource only and
-  # repo_config therefore cannot express it. Re-run that target if this job ever
-  # starts failing with "not supported on this repository".
+  # This replaced GitHub's `dependency-review`. That action reads GitHub's
+  # DEPENDENCY GRAPH, an Advanced Security feature: free on public repositories,
+  # BILLED PER ACTIVE COMMITTER on private ones. Verified against the API, the
+  # code security configuration enabling the graph cannot omit
+  # advanced_security (accepted values are only
+  # enabled|disabled|code_security|secret_protection), so as a REQUIRED check it
+  # could not survive this repo turning private without either an invoice or a
+  # wedged merge queue -- the action hard-errors the moment the graph is gone.
   #
-  # The action only does useful work on a pull_request (it diffs the dependency
-  # graph between base and head), but the JOB is unconditional so it always
-  # reports a result -- the run-then-noop-green shape every required check in
-  # this repo uses. A required check that is sometimes skipped leaves the merge
-  # queue pending forever.
-  # ⚠ BEFORE MAKING THIS REPOSITORY PRIVATE — READ THIS.
+  # osv-scanner reads the LOCKFILES directly against the public OSV database:
+  # free at any visibility, runnable locally (`bazel run //tools/osv-scan`,
+  # which dependency-review could never be), and it also covers Cargo and PyPI.
   #
-  # Dependency review is free on PUBLIC repositories. On a PRIVATE repository it
-  # requires GitHub Code Security (paid, per active committer). Flipping this
-  # repo to private without acting FIRST breaks merges outright, because
-  # dependency-review is a REQUIRED check (repo_config/main.go): the action
-  # starts hard-erroring, the required check goes red on every PR, and the merge
-  # queue blocks everything.
-  #
-  # Two supported paths, both to be taken BEFORE the visibility flip:
-  #   a) Keep the gate — buy GitHub Code Security, and set advanced_security to
-  #      `code_security` on the `dependency-graph-only` configuration
-  #      (org code-security configurations; //tools/github-security).
-  #   b) Drop the gate — remove "dependency-review" from the required-check list
-  #      in repo_config/main.go and delete this job. //tools/conformance:check
-  #      enforces that those two stay in sync, so a half-done removal fails CI
-  #      rather than wedging the queue.
-  #
-  # Note the companion billing hazard: the configuration that enables the
-  # dependency graph must set advanced_security=enabled (the API rejects a GHAS
-  # feature without it, and it cannot be `not_set`). That is free while this repo
-  # is public and BILLABLE once it is private. //tools/github-security's target
-  # refuses to run against a non-public repo without explicit confirmation.
-  dependency-review:
+  # The JOB is unconditional so it always reports on every event including
+  # merge_group -- the run-then-noop-green shape every required check here uses.
+  osv-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
-      - name: Review dependency changes
-        if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
-        with:
-          # Block on high+ severity. Advisories below that would make the gate
-          # noisy enough to be routinely bypassed, which is worse than not
-          # having it.
-          fail-on-severity: high
-          # Deny licences that would contaminate this MIT repo. Kept narrow on
-          # purpose: a broad denylist fails on transitive dev-only packages and
-          # trains people to ignore the gate.
-          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later
+      - name: Install osv-scanner (pinned + checksum-verified)
+        env:
+          OSV_SCANNER_VERSION: v2.4.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
+          # Keep the ORIGINAL filename so it matches its entry in SHA256SUMS.
+          curl -fsSL -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL -O "${base}/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 osv-scanner_linux_amd64 "${HOME}/.local/bin/osv-scanner"
+          rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-      - name: Not a pull request — nothing to diff
-        if: github.event_name != 'pull_request'
-        run: echo "dependency-review only diffs on pull_request; reporting green."
+      - name: Scan lockfiles for known advisories
+        run: bash tools/osv-scan/osv-scan.sh
 
   secret-scan:
     # gitleaks over the commits this change introduces. Diff-scoped on purpose:

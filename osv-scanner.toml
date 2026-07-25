@@ -1,0 +1,755 @@
+# osv-scanner baseline — pre-existing findings, accepted explicitly.
+#
+# The required `osv-scan` gate (and `bazel run //tools/osv-scan`) fails on any
+# advisory in this repo's dependencies. Everything listed here was ALREADY
+# PRESENT when the gate landed. Failing on them would have made a REQUIRED check
+# red on day one, and a permanently-red gate is one everybody learns to ignore
+# -- the same reasoning that makes tools/ci/secret-scan.sh diff-scoped over this
+# repo's known historical findings.
+#
+# This is a BASELINE, not an absolution. What it buys immediately is the point
+# of a pre-merge gate: any NEWLY introduced vulnerable dependency fails the
+# build. What it explicitly does not do is pretend the backlog is clean.
+#
+# Measured with osv-scanner v2.4.0 on 2026-07-25, `--recursive` from the PRIMARY
+# checkout: 104 sources, 143 distinct advisories (npm 79, Go 56, PyPI 8).
+# Generated from `--format json`, never from the human-readable table -- the
+# table paginates and reports aliases, and parsing it produced four different
+# wrong counts before this file was written correctly.
+#
+# TWO CLASSES OF ENTRY BELOW:
+#
+#  1. TIME-BOXED (ignoreUntil = 2026-10-23). Fixable today. When the date lapses
+#     the gate goes red and the call must be made again -- upgrade, or re-accept
+#     with a fresh reason. Do NOT bump these dates as routine maintenance; that
+#     converts a time-box into a permanent suppression, which is precisely what
+#     this format exists to prevent.
+#
+#  2. PERMANENT (no expiry). 2 advisories have NO fixed version in any
+#     range -- chiefly GO-2026-5932, which reports golang.org/x/crypto/openpgp as
+#     unmaintained and unsafe by design, and fires on 99 of 102 go.mod. An
+#     expiry date on an unfixable advisory would be a fiction: no future date
+#     makes it actionable. These are suppressed outright and must be revisited
+#     only if the dependency itself is dropped.
+#
+# KNOWN REMEDIATION, deliberately NOT bundled into the CI swap that introduced
+# this file: infrastructure/pulumi/go.mod and infrastructure/pulumi/pkg/secrets/
+# go.mod are stranded on golang.org/x/crypto 0.48.0 while the rest of the repo
+# runs 0.53/0.54, carrying a 15-advisory cluster incl. a CVSS 10.0. That is live
+# infra deployed through CI. The vulnerable surface is the SSH server/agent path
+# this repo does not run, so it is dependency hygiene rather than an exploit
+# path -- but it is the single most worthwhile follow-up here.
+
+[[IgnoredVulns]]
+id = "GHSA-23c5-xmqv-rm74"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm minimatch 3.0.8. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-23hp-3jrh-7fpw"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.13. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-2h4p-vjrc-8xpq"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI mako 1.3.9. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-2pr8-phx7-x9h3"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-35p6-xmwp-9g52"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm undici 6.25.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-389r-gv7p-r3rp"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-395f-4hp3-45gv"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm shell-quote 1.8.4. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-3jxr-9vmj-r5cp"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm brace-expansion 2.1.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-3ppc-4f35-3m26"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm minimatch 3.0.8. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-3v7f-55p6-f55p"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm picomatch 4.0.3. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-3xc5-wrhm-f963"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-45gg-vh54-h5m9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-45rx-2jwx-cxfr"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @opentelemetry/propagator-jaeger 1.30.1. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-4c8g-83qw-93j6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm fast-uri 3.1.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-4mph-v827-f877"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm locutus 2.0.39. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-4w7w-66w2-5vf9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm vite 5.4.21. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-52cp-r559-cp3m"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm js-yaml 3.14.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-52v5-jr5w-gjxr"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm sigstore 4.1.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-5375-pq7m-f5r2"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @grpc/grpc-js 1.14.3. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-5cgq-3rg8-m6cv"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-5cv4-jp36-h3mw"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-5qjj-4xww-7phc"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm valibot 1.2.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-65pc-fj4g-8rjx"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI idna 3.9.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-66ff-xgx4-vchm"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-67mh-4wv8-2f99"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm esbuild 0.21.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-685m-2w69-288q"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-6g55-p6wh-862q"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm postcss 8.4.31. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-75px-5xx7-5xc7"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-76mc-f452-cxcm"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-78mq-xcr3-xm33"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-7r86-cg39-jmmj"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm minimatch 3.0.8. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-88fw-hqm2-52qc"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-8988-4f7v-96qf"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @opentelemetry/core 1.30.1. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-89gr-r52h-f8rx"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-8x88-c5mf-7j5w"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.13. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-99f4-grh7-6pcq"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @grpc/grpc-js 1.14.3. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-9m57-25v3-79x9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-c2c7-rcm5-vvqj"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm picomatch 4.0.3. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-c2j3-45gr-mqc4"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-c96f-x56v-gq3h"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm find-my-way 9.6.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-cmwh-pvxp-8882"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-crhj-59gh-8x96"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-f23m-r3pf-42rh"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm lodash 4.17.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-f38q-mgvj-vph7"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-f5wc-c3c7-36mc"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-f88m-g3jw-g9cj"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm sharp 0.34.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-fp25-p6mj-qqg6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm locutus 2.0.39. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-frvp-7c67-39w9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @hono/node-server 1.19.14. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-fx2h-pf6j-xcff"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm vite 5.4.21. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-fx83-v9x8-x52w"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-g8m3-5g58-fq7m"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm undici 6.25.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-gvmj-g25r-r7wr"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-gvwx-54wh-qm9j"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.13. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-h67p-54hq-rp68"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm js-yaml 3.14.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-hpcv-96wg-7vj8"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-hrxh-6v49-42gf"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go google.golang.org/grpc 1.80.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-hvrm-45r6-mjfj"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-j3f2-48v5-ccww"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.6.4. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-j6c9-x7qj-28xf"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jc7w-c686-c4v9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/ulikunitz/xz 0.5.14. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jfc7-64v2-mr8c"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @sigstore/core 3.2.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jggg-4jg4-v7c6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jppx-rxg9-jmrx"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jvwf-75h9-cwgg"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-jxxr-4gwj-5jf2"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm brace-expansion 5.0.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-m3xc-h892-ggx6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-billy/v5 5.8.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-m7cr-m3pv-hgrp"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm brace-expansion 1.1.16. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-p88m-4jfj-68fv"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm undici 6.25.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-ph9p-34f9-6g65"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tmp 0.2.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-q4h4-gmj2-qvw2"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-q6x5-8v7m-xcrf"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @protobufjs/utf8 1.1.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-qpw4-5x99-6vjp"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-qw64-3x98-g7q2"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-billy/v5 5.8.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-qx2v-qp2m-jg93"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm postcss 8.4.31. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-r28c-9q8g-f849"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm postcss 8.5.15. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-r292-9mhp-454m"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.19. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-r47g-fvhr-h676"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-r5fr-rjxr-66jc"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm lodash 4.17.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-rm3j-f69w-wqmq"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-rp9w-3fw7-7cwq"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-rv63-4mwf-qqc2"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-v2hh-gcrm-f6hx"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm fast-uri 3.1.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-v2v4-37r5-5v8g"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm ip-address 10.1.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-v422-hmwv-36x6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm body-parser 2.2.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-v6wh-96g9-6wx3"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm vite 5.4.21. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-v92g-xgxw-vvmm"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI mako 1.3.9. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vc8f-x9pp-wf5p"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm locutus 2.0.39. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vgwf-h737-ff37"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vh9h-29pq-r5m8"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm locutus 2.0.39. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vmf3-w455-68vh"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.13. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vqfr-h8mv-ghfj"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI h11 0.9.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vxpw-j846-p89q"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm undici 6.25.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-vxr8-fq34-vvx9"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify 3.4.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm uuid 8.3.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-w5pp-99ch-qj29"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-w62v-xxxg-mg59"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-w879-237q-wc7r"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-w8wr-v893-vjvp"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm tar 7.5.13. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-wcpc-wj8m-hjx6"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm protobufjs 7.5.5. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-wgpf-jwqj-8h8p"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-wwfh-h76j-fc44"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-x4vx-rjvf-j5p4"
+reason = "PERMANENT: no fixed version exists in any range. npm dompurify 3.4.5. Not time-boxed because no future date makes it actionable; revisit only if the dependency is dropped."
+
+[[IgnoredVulns]]
+id = "GHSA-x527-x647-q7gg"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-xgjw-pm74-86q4"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm @sigstore/verify 3.1.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GHSA-xgm2-5f3f-mvvc"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm hono 4.12.23. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2025-3922"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/ulikunitz/xz 0.5.14. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-4918"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5005"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5006"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5013"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5014"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5015"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5016"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5017"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5018"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5019"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5020"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5021"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5023"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5024"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/sys 0.42.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5025"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5026"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5027"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5028"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5029"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5030"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.51.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5033"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/crypto 0.48.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5074"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5105"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5158"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go go.opentelemetry.io/otel 1.43.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5336"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5490"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-billy/v5 5.8.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5496"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5597"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-billy/v5 5.8.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5693"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go github.com/go-git/go-git/v5 5.17.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "PERMANENT: no fixed version exists in any range. Go golang.org/x/crypto 0.54.0. Not time-boxed because no future date makes it actionable; revisit only if the dependency is dropped."
+
+[[IgnoredVulns]]
+id = "GO-2026-5942"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/net 0.55.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "GO-2026-5970"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). Go golang.org/x/text 0.37.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-215"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI idna 3.9.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-2617"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI mako 1.3.9. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-348"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI h11 0.9.0. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
+[[IgnoredVulns]]
+id = "PYSEC-2026-88"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI mako 1.3.9. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+
