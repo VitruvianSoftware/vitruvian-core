@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.11.0...foundation-gcp-projects-v1.12.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** support IAM-conditioned deploy roles in app_deploy_identity ([#1148](https://github.com/VitruvianSoftware/vitruvian-core/issues/1148)) ([7a0e01f](https://github.com/VitruvianSoftware/vitruvian-core/commit/7a0e01fdbceae4c826370303731602d03e5ed9fb))
+
 ## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.10.0...foundation-gcp-projects-v1.11.0) (2026-07-24)
 
 
