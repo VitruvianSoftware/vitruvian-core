@@ -62,6 +62,7 @@ ts_project(
     declaration = True,
     declaration_map = True,
     out_dir = "dist",
+    resolve_json_module = True,
     root_dir = "src",
     source_map = True,
     transpiler = swc,
