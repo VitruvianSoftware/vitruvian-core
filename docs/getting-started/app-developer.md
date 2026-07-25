@@ -20,9 +20,10 @@ bazel test  //tabula/...       # scope to the app you're touching
 ```
 
 Exact prerequisites and per-app inner loops:
-[CONTRIBUTING §1–3](../../CONTRIBUTING.md#1-prerequisites--toolchain). If an app's own
-README contradicts CONTRIBUTING, **CONTRIBUTING wins** (some per-app docs are
-known-stale).
+[CONTRIBUTING §1–3](../../CONTRIBUTING.md#1-prerequisites--toolchain), with the
+per-app "how do I run this?" table on one page in
+[Local development](../guides/local-development.md). If an app's own README
+contradicts CONTRIBUTING, **CONTRIBUTING wins** (some per-app docs are known-stale).
 
 ## The loop you'll live in
 

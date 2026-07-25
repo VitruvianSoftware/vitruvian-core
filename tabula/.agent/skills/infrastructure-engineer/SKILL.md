@@ -143,13 +143,13 @@ Estimated cost at 10K users: ~$95-100/month
 ## Common Hazards
 
 1. **Neon Authentication Trap**: Database connection requires SSL and pooler URL format
-2. **Terraform State**: Always use remote state in Cloud Storage
+2. **Pulumi state**: managed in Pulumi Cloud; run stacks only via the `bazel run //tabula/infra/<stack>:*` wrappers, never ambient `pulumi`
 3. **Secret Manager Access**: Cloud Run service account needs `secretAccessor` role
-4. **Upstash**: No Terraform provider - configure manually via dashboard
+4. **Upstash & Neon**: provisioned as code in the `tabula/infra/data` Pulumi stack - do not create them by hand in a dashboard
 
 ## Key Files to Reference
 
-- [Infrastructure README](file:///Users/james/Workspace/gh/lab/tabula/infrastructure/README.md)
-- [Implementation Status](file:///Users/james/Workspace/gh/lab/tabula/infrastructure/IMPLEMENTATION_STATUS.md)
-- [Architecture Overview](file:///Users/james/Workspace/gh/lab/tabula/docs/architecture/overview.md)
-- [CLI Reference](file:///Users/james/Workspace/gh/lab/tabula/docs/reference/cli.md)
+- [Infrastructure reference](../../../docs/reference/infrastructure.md)
+- [Pulumi stacks](../../../infra)
+- [Architecture Overview](../../../docs/architecture/overview.md)
+- [CLI Reference](../../../docs/reference/cli.md)

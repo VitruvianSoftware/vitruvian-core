@@ -156,8 +156,8 @@ npm run dev --workspace=api
 
 ## Key Files to Reference
 
-- [App Configuration](file:///Users/james/Workspace/gh/lab/tabula/api/src/app.ts)
-- [Workspace Routes](file:///Users/james/Workspace/gh/lab/tabula/api/src/routes/workspace.ts)
-- [Backup Routes](file:///Users/james/Workspace/gh/lab/tabula/api/src/routes/backup.ts)
-- [Prisma Schema](file:///Users/james/Workspace/gh/lab/tabula/api/prisma/schema.prisma)
-- [API Documentation](file:///Users/james/Workspace/gh/lab/tabula/docs/reference/api.md)
+- [App Configuration](../../../api/src/app.ts)
+- [Workspace Routes](../../../api/src/routes/workspace.routes.ts)
+- [Backup Routes](../../../api/src/routes/backup.routes.ts)
+- [Prisma Schema](../../../api/prisma/schema.prisma)
+- [API Documentation](../../../docs/reference/api.md)

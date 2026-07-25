@@ -37,6 +37,7 @@ nav:
       - Deployment strategy: engineering/deployment-strategy.md
       - CI/CD approach: engineering/ci-cd-approach.md
   - Guides:
+      - Local development: guides/local-development.md
       - OSS app onboarding: guides/oss-app-onboarding-checklist.md
       - Build caching: guides/build-cache.md
       - Remote builds (RBE): guides/remote-build.md
