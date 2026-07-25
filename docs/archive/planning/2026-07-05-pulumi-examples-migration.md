@@ -72,7 +72,7 @@ they can't all be pnpm workspace members. Approach:
 Development has shifted to the monorepo (code is on `main`, edited there). The remaining
 public-facing plumbing — one-way **Copybara** mirror-out of the three subtrees + the **publish
 origin** — is captured as an execution-ready runbook in
-[`docs/copybara-pulumi-oneway-cutover.md`](../copybara-pulumi-oneway-cutover.md).
+[`docs/copybara-pulumi-oneway-cutover.md`](../copybara/copybara-pulumi-oneway-cutover.md).
 
 Landed in-repo with that runbook: a backward-compatible `copy.bara.sky` generalization
 (`subtree`≠`repo`, `export_only`, `export_transformations`) + the **library** export mirror

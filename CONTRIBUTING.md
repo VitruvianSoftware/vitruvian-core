@@ -383,7 +383,8 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
 
 ## 11. Where to get help / where docs live
 
-- **`docs/`** — `docs/infrastructure/` (the Pulumi/k8s estate: architecture, dev-local-cluster, resilience-catalog, user-guide) and `docs/tabula/`. Cross-cutting topics at `docs/` root: `sealed-secrets.md`, `key-rotation.md`, `build-cache.md`, `remote-build.md`, `copybara-*.md`. Design/plan notes in `docs/design/` and `docs/planning/`.
+- **[`docs/README.md`](docs/README.md)** — **the documentation hub**: role-based quick starts ([app developer](docs/getting-started/app-developer.md), [platform engineer](docs/getting-started/platform-engineer.md), [operator](docs/getting-started/operator.md), [repo admin](docs/getting-started/repo-admin.md)), the [SDLC walkthrough](docs/concepts/sdlc.md), and the [Bazel targets catalog](docs/reference/bazel-targets.md).
+- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding), and `docs/tabula/`. Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.

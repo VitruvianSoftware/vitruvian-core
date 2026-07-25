@@ -1,6 +1,6 @@
 # Foundation Port Gap Re-verification — 2026-07-24
 
-Re-verification of [`GAPREPORT.md`](./GAPREPORT.md) (the 236 confirmed
+Re-verification of [`GAPREPORT.md`](GAPREPORT.md) (the 236 confirmed
 `terraform-example-foundation` → Pulumi-port gaps) against **current code**, plus
 an audit of a dimension the original analysis never covered: **the live
 foundation's committed config *values*** (the class the `us-south1` secondary-region
@@ -23,7 +23,7 @@ same baseline the original report used.
   projects-SA `serviceUsageAdmin` grant, and the whole stage-4 fidelity batch
   (#877/#883/#889/#1097/#1100/#1118/#1122) account for much of the "fixed" column.
 
-> ⚠️ **Methodology lesson (see [`METHODOLOGY-BLINDSPOTS.md`](./METHODOLOGY-BLINDSPOTS.md)):**
+> ⚠️ **Methodology lesson (see [`METHODOLOGY-BLINDSPOTS.md`](METHODOLOGY-BLINDSPOTS.md)):**
 > a fidelity audit **must run against the deployed ref** (origin/main) with finder
 > agents forced to **absolute paths**. The first two re-run attempts read a checkout
 > 28 commits stale and manufactured already-fixed "critical" findings (the region
@@ -140,4 +140,4 @@ the config-value dimension; every new finding faced an adversarial refuter (defa
 
 **Follow-ups landed:** #1128 (region guard + SCC key). **Recommended next:** the
 open-finding clusters above, and the un-run audit dimensions in
-[`METHODOLOGY-BLINDSPOTS.md`](./METHODOLOGY-BLINDSPOTS.md).
+[`METHODOLOGY-BLINDSPOTS.md`](METHODOLOGY-BLINDSPOTS.md).

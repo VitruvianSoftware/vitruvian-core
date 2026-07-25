@@ -11,7 +11,7 @@ lesson; the "⚠️ Why" notes are the ones that bit us.
 - **Worked example / source of truth:** `oauth-user-inspector/infra/`,
   the foundation `gcp-projects` shared leaf's `app_build_spaces` config (the
   shared image registry is foundation-owned, not a per-app build stack), and
-  [`oauth-user-inspector/docs/OPERATIONS.md`](../oauth-user-inspector/docs/OPERATIONS.md).
+  [`oauth-user-inspector/docs/OPERATIONS.md`](../../oauth-user-inspector/docs/OPERATIONS.md).
 - **Design:** `docs/superpowers/specs/2026-07-10-oss-application-stage-design.md`.
 - **Reusable module:** `pulumi/examples/go-foundation/5-app-infra/modules/serverless_space` +
   the published `pkg/cloud_run` primitive.
@@ -42,7 +42,7 @@ uppercased secret prefix.
       `myapp.<zone>`). Or skip domains and serve on the `run.app` URL.
       > Full rules — which zone, why, the per-env hostname pattern, ownership
       > verification and the guardrails — in
-      > [`docs/engineering/domain-zone-conventions.md`](engineering/domain-zone-conventions.md).
+      > [`docs/engineering/domain-zone-conventions.md`](../engineering/domain-zone-conventions.md).
       > ⚠️ If the app ships a browser extension or any client with a **compiled-in**
       > API URL, stand the custom domain up and repoint the client BEFORE cutover.
       > Decommissioning tabula's old service while its extension still had the

@@ -1,7 +1,7 @@
 # Foundation Audit — Methodology Blind Spots ("what should have been compared")
 
-The original gap analysis ([`GAPREPORT.md`](./GAPREPORT.md)) and its
-[re-verification](./REVERIFICATION-2026-07-24.md) compared **example-port code vs
+The original gap analysis ([`GAPREPORT.md`](GAPREPORT.md)) and its
+[re-verification](REVERIFICATION-2026-07-24.md) compared **example-port code vs
 Terraform** — functional and structural fidelity. That surface is now triple-checked
 (example-vs-TF, library parity, stub sweeps) and is in reasonable shape.
 
@@ -99,7 +99,7 @@ enforced by the pipeline/StackReference, not just a comment.
 
 Declaration ≠ effect. The SCC case: live read `enable_scc_resources` while the yaml/example
 key is `enable_scc_resources_in_pulumi` → read as unset → feature silently no-ops (same
-failure mode as [Helm dropping unknown keys](../../..)). **Fixed for SCC in #1128**; class
+failure mode as [Helm dropping unknown keys](../../../..)). **Fixed for SCC in #1128**; class
 open. **Check:** diff the exact config-key STRINGS the code reads (`cfg.Get/Require`) against
 the keys present in each committed yaml — any yaml key never read (or read under a different
 name) is inert. For org policies/SCC/ACM, verify enforced *effect*, not just declaration.

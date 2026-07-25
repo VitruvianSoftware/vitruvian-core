@@ -8,7 +8,7 @@
 
 **Tech Stack:** `github.com/google/addlicense@v1.2.0`, GitHub Actions, Copybara bidi-sync.
 
-**Spec:** [`docs/planning/2026-05-26-consistent-license-checks-design.md`](2026-05-26-consistent-license-checks-design.md). **Sync runbook:** [`docs/copybara-sync.md`](../copybara-sync.md) §9.
+**Spec:** [`docs/planning/2026-05-26-consistent-license-checks-design.md`](2026-05-26-consistent-license-checks-design.md). **Sync runbook:** [`docs/copybara-sync.md`](../../admin/copybara-sync.md) §9.
 
 **Conventions:** run from repo root `/Users/james/Workspace/gh/application/vitruvian/vitruvian-core` unless noted. `addlicense` is invoked at `"$(go env GOPATH)/bin/addlicense"` (GOPATH/bin isn't on PATH locally or on CI runners). Commit with the bot identity for standalone-bound edits where the existing convention uses it; monorepo commits use the repo's default identity.
 

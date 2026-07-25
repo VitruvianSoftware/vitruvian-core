@@ -8,7 +8,7 @@
 
 **Tech Stack:** GitHub Actions + Dependabot v2, Bazel (bzlmod + gazelle `go_deps`), Pulumi (Go, pulumi-github v6), Copybara bidi-sync.
 
-**Spec:** [`docs/planning/2026-05-26-centralized-dependabot-design.md`](2026-05-26-centralized-dependabot-design.md). **Sync runbook:** [`docs/copybara-sync.md`](../copybara-sync.md).
+**Spec:** [`docs/planning/2026-05-26-centralized-dependabot-design.md`](2026-05-26-centralized-dependabot-design.md). **Sync runbook:** [`docs/copybara-sync.md`](../../admin/copybara-sync.md).
 
 **Conventions for this plan:** all paths are under `vitruvian-core/` unless noted. Run `gh`/`git` from the repo root. Pulumi commands run from `infrastructure/pulumi/` with `GOWORK=off` and `github:owner=VitruvianSoftware` already set (sync runbook §6). Never echo the App private key — use `pulumi config get … | pulumi config set --secret …` (stdin).
 

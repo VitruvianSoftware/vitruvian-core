@@ -20,7 +20,7 @@
 
 name: _deploy-cloud-run
 
-# Reusable blue-green Cloud Run deploy (#500, docs/repo-assessment.md §5.3),
+# Reusable blue-green Cloud Run deploy (#500, docs/archive/assessments/repo-assessment.md §5.3),
 # extracted verbatim from tabula's production pipeline (the reference
 # implementation): Bazel rules_oci image push -> optional Prisma migrations ->
 # Pulumi candidate at 0% traffic -> smoke the candidate's dedicated URL ->

@@ -332,11 +332,11 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** `gitops/argocd/platform/sealed-secrets-manifests/` holds ~13 critical SealedSecrets — including the **zitadel masterkey whose loss is total data loss** and `minio-root` — but there is no README/runbook beside them; rotation/backup logic lives only in Makefile targets referenced from commit history. (A top-level `docs/sealed-secrets.md` and `docs/key-rotation.md` exist, but the manifests dir itself is undocumented.)
+**Current state.** `gitops/argocd/platform/sealed-secrets-manifests/` holds ~13 critical SealedSecrets — including the **zitadel masterkey whose loss is total data loss** and `minio-root` — but there is no README/runbook beside them; rotation/backup logic lives only in Makefile targets referenced from commit history. (`docs/operations/sealed-secrets.md` and `docs/operations/key-rotation.md` exist, but the manifests dir itself is undocumented.)
 
 **Target.** A short README in `sealed-secrets-manifests/` documenting how to (re)seal, rotate, and back up each secret, linking the existing `sealed-secrets-verify`/`backup` make targets, so the GitOps secrets tier is self-documenting.
 
-**Recommended action.** Add the README; cross-link the existing `docs/sealed-secrets.md`.
+**Recommended action.** Add the README; cross-link the existing `docs/operations/sealed-secrets.md`.
 
 ### 3.21 No "new app" scaffold covering build+deploy+secrets+env (the meta-gap)
 

@@ -10,7 +10,7 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 > on one-way (the monorepo writes; the mirror is read-only), which removed the silent-divergence
 > failure mode this doc used to open with a warning about. `copy.bara.sky` keeps `is_one_way=False`
 > as a knob for a future component that genuinely needs writable-both-ways sync, but **no component
-> uses it**. The pilot history is in `docs/planning/2026-05-25-copybara-bidi-sync-{design,plan}.md`.
+> uses it**. The pilot history is in `docs/archive/planning/2026-05-25-copybara-bidi-sync-{design,plan}.md`.
 
 ---
 
@@ -243,7 +243,7 @@ What remains is the narrower case of someone pushing directly to a mirror (bypas
 That change is not in the monorepo, and the next export would overwrite it.
 
 **The export refuses rather than overwriting.** Each export runs the Go pre-check
-[`tools/copybara/conflict_precheck`](../tools/copybara/conflict_precheck)
+[`tools/copybara/conflict_precheck`](../../tools/copybara/conflict_precheck)
 (`bazel run //tools/copybara/conflict_precheck`) **before** Copybara. It exits 1 — red, with an
 error annotation — when the mirror holds a *genuine* un-synced change: a commit that does **not**
 carry `MONOREPO_REV_ID`, i.e. a real edit that did not come from the monorepo. A `--force` dispatch
@@ -436,12 +436,12 @@ to the standalones via the export. You manage every component's Dependabot confi
 
 ### Pipeline (a monorepo Go bump, end to end)
 1. A monorepo Dependabot **Go PR** opens (e.g. a `devx/go.mod` bump).
-2. [`dependabot-bazel-reconcile.yml`](../.github/workflows/dependabot-bazel-reconcile.yml) runs
+2. [`dependabot-bazel-reconcile.yml`](../../.github/workflows/dependabot-bazel-reconcile.yml) runs
    `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
    reconcile to a **no-op**.
 3. **CI** (`bazel build` / `bazel test`) runs on the PR.
-4. After CI succeeds, [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml)
+4. After CI succeeds, [`dependabot-auto-merge.yml`](../../.github/workflows/dependabot-auto-merge.yml)
    (triggered on **`workflow_run`** after `CI`) does a **direct merge** of **minor/patch** PRs **via
    the App token**, so the merge is **App-attributed**. Minor/patch is detected from the Dependabot
    **branch name** (our gomod/actions groups are `*-minor-patch`, so qualifying PRs land on
@@ -532,7 +532,7 @@ touched **before** committing. Headers fan out like any other content change.
 ---
 
 *Bidirectional pilot design + decision history (superseded — retained as the record of why one-way
-won): [`docs/planning/2026-05-25-copybara-bidi-sync-design.md`](planning/2026-05-25-copybara-bidi-sync-design.md)
-and [`…-plan.md`](planning/2026-05-25-copybara-bidi-sync-plan.md) (see its `## Outcome`).
-One-way cutovers: [`copybara-devx-oneway-cutover.md`](copybara-devx-oneway-cutover.md) ·
-[`copybara-pulumi-oneway-cutover.md`](copybara-pulumi-oneway-cutover.md).*
+won): [`docs/planning/2026-05-25-copybara-bidi-sync-design.md`](../archive/planning/2026-05-25-copybara-bidi-sync-design.md)
+and [`…-plan.md`](../archive/planning/2026-05-25-copybara-bidi-sync-plan.md) (see its `## Outcome`).
+One-way cutovers: [`copybara-devx-oneway-cutover.md`](../archive/copybara/copybara-devx-oneway-cutover.md) ·
+[`copybara-pulumi-oneway-cutover.md`](../archive/copybara/copybara-pulumi-oneway-cutover.md).*

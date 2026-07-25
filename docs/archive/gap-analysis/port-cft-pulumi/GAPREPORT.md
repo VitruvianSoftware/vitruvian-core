@@ -1,9 +1,9 @@
 # Pulumi Foundation Ports — Gap Report vs `terraform-example-foundation`
 
-> **⚠️ Re-verified 2026-07-24 — read [`REVERIFICATION-2026-07-24.md`](./REVERIFICATION-2026-07-24.md) first.**
+> **⚠️ Re-verified 2026-07-24 — read [`REVERIFICATION-2026-07-24.md`](REVERIFICATION-2026-07-24.md) first.**
 > 111 of these 236 gaps are now **fixed** (0 regressed); 79 still open, 41 partial. 21
 > **new** findings were confirmed, and 8 audit dimensions this report never covered are
-> catalogued in [`METHODOLOGY-BLINDSPOTS.md`](./METHODOLOGY-BLINDSPOTS.md) (the value/wiring
+> catalogued in [`METHODOLOGY-BLINDSPOTS.md`](METHODOLOGY-BLINDSPOTS.md) (the value/wiring
 > planes where the `us-south1` region drift lived). The list below is the original
 > baseline; per-gap current status is in the re-verification.
 

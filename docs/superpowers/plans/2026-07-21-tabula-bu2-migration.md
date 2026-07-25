@@ -6,7 +6,7 @@ vitruviansoftware.dev foundation with its **own** per-env projects in a **new bu
 unit 2**, and both personal projects are decommissioned.
 
 Reference: the oauth-user-inspector migration and
-[`docs/oss-app-onboarding-checklist.md`](../../oss-app-onboarding-checklist.md). That
+[`docs/oss-app-onboarding-checklist.md`](../../guides/oss-app-onboarding-checklist.md). That
 checklist assumes an app co-tenants bu1's shared `prj-{env}-bu1-oss-floating`; tabula
 gets dedicated bu2 projects instead, so Phases 2–5 are adapted below.
 

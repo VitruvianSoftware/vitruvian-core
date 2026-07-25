@@ -4,10 +4,10 @@
 >
 > **Revision 5 (consolidated final):** Reconciled against an independent full-repo analysis and a review pass. Every disputed claim was verified against the working tree (including an empirical test of the license gate); corrections and prioritization are baked in. Per-revision change-markers and the review audit-trail were removed for readability — the full history lives in git.
 >
-> **Related:** [CI/CD Terminology Reference](../.github/CI_DEFINITIONS.md)
+> **Related:** [CI/CD Terminology Reference](../../../.github/CI_DEFINITIONS.md)
 
 > [!NOTE]
-> **R6 status (2026-07-02): the P0 and P1 tiers of this roadmap are SHIPPED.** Beyond the §7.1 items (closed via #454–#462), the 2026-07-01 follow-up assessment's bottleneck list landed as: merge-queue/postsubmit **affected-target sharding + nightly full-sweep backstop** (#494), **aux-job path gating** (#495), **inter-app visibility firewalls** (#496), **worktree enforcement** (#508), **governance apply serialization + pipeline gates as code + zitadel import guard + advisory previews** (#509), **graph-gated deploys** (#510), **per-app metadata catalog + reusable `_deploy-cloud-run.yaml` + deploy de-race** (#511), and **flaky quarantine + culprit-finder** (#513). Sections below describing those as gaps/targets (§5.5–§5.7, parts of §7.1/Part II) are retained as design rationale; the *current* contributor-facing truth is [CONTRIBUTING.md](../CONTRIBUTING.md). Remaining open tier: P2 (#497 staging ladder, #503, #504, #506, #507).
+> **R6 status (2026-07-02): the P0 and P1 tiers of this roadmap are SHIPPED.** Beyond the §7.1 items (closed via #454–#462), the 2026-07-01 follow-up assessment's bottleneck list landed as: merge-queue/postsubmit **affected-target sharding + nightly full-sweep backstop** (#494), **aux-job path gating** (#495), **inter-app visibility firewalls** (#496), **worktree enforcement** (#508), **governance apply serialization + pipeline gates as code + zitadel import guard + advisory previews** (#509), **graph-gated deploys** (#510), **per-app metadata catalog + reusable `_deploy-cloud-run.yaml` + deploy de-race** (#511), and **flaky quarantine + culprit-finder** (#513). Sections below describing those as gaps/targets (§5.5–§5.7, parts of §7.1/Part II) are retained as design rationale; the *current* contributor-facing truth is [CONTRIBUTING.md](../../../CONTRIBUTING.md). Remaining open tier: P2 (#497 staging ladder, #503, #504, #506, #507).
 
 ---
 
@@ -27,7 +27,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | Code sync | Copybara (one-way export + PR-import for 5 components) |
 | Package managers | pnpm (JS), go.work (Go), uv (Python); Cargo (Rust) & Bundler (Ruby) toolchains are **wired but dormant** (no in-tree consumers) |
 | Dependency policy | One Version Rule per ecosystem |
-| Config management | Homelab cluster provisioned via [homelab CLI](../homelab) (Lima VZ + K3s) — **no Ansible** |
+| Config management | Homelab cluster provisioned via [homelab CLI](../../../homelab) (Lima VZ + K3s) — **no Ansible** |
 
 ---
 
@@ -70,12 +70,12 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 
 | App | Type | Language(s) | Ship Model | Deploy Target |
 |-----|------|-------------|------------|---------------|
-| [tabula](../tabula) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
-| [oauth-user-inspector](../oauth-user-inspector) | SaaS web app | TypeScript/React + Express | Continuous deploy | Cloud Run (blue-green — to be aligned) |
-| [devx](../devx) | CLI tool | Go | Bazel build → GoReleaser (distribution) | N/A (released) |
-| [homelab](../homelab) | CLI (k3s/Lima provisioner) | Go | Bazel build → GoReleaser (distribution) | N/A — *provisions* the cluster; not deployed to it |
-| [mcp-slack](../mcp-slack) | MCP server | TypeScript | npm publish | N/A (released) |
-| [nexus-agent](../nexus-agent) | macOS app + bot | Swift, Node.js | DMG via GitHub Releases + npm | N/A — released (local bot + macOS app); no hosted deploy |
+| [tabula](../../../tabula) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
+| [oauth-user-inspector](../../../oauth-user-inspector) | SaaS web app | TypeScript/React + Express | Continuous deploy | Cloud Run (blue-green — to be aligned) |
+| [devx](../../../devx) | CLI tool | Go | Bazel build → GoReleaser (distribution) | N/A (released) |
+| [homelab](../../../homelab) | CLI (k3s/Lima provisioner) | Go | Bazel build → GoReleaser (distribution) | N/A — *provisions* the cluster; not deployed to it |
+| [mcp-slack](../../../mcp-slack) | MCP server | TypeScript | npm publish | N/A (released) |
+| [nexus-agent](../../../nexus-agent) | macOS app + bot | Swift, Node.js | DMG via GitHub Releases + npm | N/A — released (local bot + macOS app); no hosted deploy |
 
 ---
 

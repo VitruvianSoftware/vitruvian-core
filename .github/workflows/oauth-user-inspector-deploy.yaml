@@ -61,7 +61,7 @@ on:
     # tools/conformance for exactly this reason), so it has no cross-package
     # Bazel dependencies a directory glob could under-trigger on. These globs
     # ARE its complete input set. Revisit if/when the app migrates to
-    # Bazel rules_oci (docs/repo-assessment.md §5.1) -- then it gates via
+    # Bazel rules_oci (docs/archive/assessments/repo-assessment.md §5.1) -- then it gates via
     # tools/ci/deploy-affected.sh like tabula.
     paths:
       # NOTE: "oauth-user-inspector/**" already covers the co-located app stack

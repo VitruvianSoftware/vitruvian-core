@@ -1,5 +1,13 @@
 # Tabula Documentation
 
+> ⚠️ **Partially stale — imported from the pre-monorepo standalone repo.** The
+> product/architecture material below is still useful, but anything describing
+> **setup, local dev, build, or deploy** (notably `getting-started/*` and
+> `reference/infrastructure.md`, which predates the Pulumi migration) is superseded
+> by the monorepo docs: follow the root
+> [CONTRIBUTING.md](../../CONTRIBUTING.md#3-local-development) and the
+> [docs hub](../README.md) instead. When in doubt, CONTRIBUTING wins.
+
 Welcome to the Tabula documentation. This directory contains comprehensive documentation about the
 Tabula browser tab management extension.
 

@@ -1,7 +1,7 @@
 # Consistent License Headers + Checks Across All Components — Design
 
 **Status:** approved design (2026-05-26), pending implementation plan.
-**Related:** [`docs/copybara-sync.md`](../copybara-sync.md) (sync runbook §9 — standalone-CI conventions).
+**Related:** [`docs/copybara-sync.md`](../../admin/copybara-sync.md) (sync runbook §9 — standalone-CI conventions).
 
 ## Goal
 
