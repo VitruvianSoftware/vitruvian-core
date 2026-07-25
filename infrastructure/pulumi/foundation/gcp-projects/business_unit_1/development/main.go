@@ -153,13 +153,18 @@ func main() {
 		if cfg.OSSFloatingProjectEnabled {
 			for _, app := range cfg.Apps {
 				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
-					App:                  app.Name,
-					Env:                  cfg.Env,
-					ProjectID:            projects.OSSFloatingProjectID,
-					DeployAccountID:      app.DeployAccountID,
-					DeployRoles:          app.DeployRoles,
-					WorkloadIdentityPool: refs.WIFPoolName,
-					GitHubEnvironment:    app.GitHubEnvironment(cfg.Env),
+					App:             app.Name,
+					Env:             cfg.Env,
+					ProjectID:       projects.OSSFloatingProjectID,
+					DeployAccountID: app.DeployAccountID,
+					DeployRoles:     app.DeployRoles,
+					// Resolves ${projectNumber} in the IAM condition below.
+					// Secret Manager conditions address secrets by project
+					// NUMBER, which differs per environment.
+					ProjectNumber:          projects.OSSFloatingProjectNumber,
+					ConditionalDeployRoles: app.ConditionalDeployRoles,
+					WorkloadIdentityPool:   refs.WIFPoolName,
+					GitHubEnvironment:      app.GitHubEnvironment(cfg.Env),
 				})
 				if err != nil {
 					return err

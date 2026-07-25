@@ -27,6 +27,7 @@ package main
 
 import (
 	"fmt"
+	"foundation-projects/modules/app_deploy_identity"
 	"strings"
 
 	project "github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory"
@@ -224,6 +225,13 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 			DeployAccountID: conf.Get(name + "_deploy_account_id"),
 			DeployRoles:     splitAppList(conf.Get(name + "_deploy_roles")),
 		}
+		if raw := conf.Get(name + "_deploy_conditional_roles"); raw != "" {
+			parsed, err := parseConditionalRoles(raw)
+			if err != nil {
+				panic(fmt.Sprintf("%s_deploy_conditional_roles: %v", name, err))
+			}
+			app.ConditionalDeployRoles = parsed
+		}
 		if len(app.DeployRoles) == 0 {
 			app.DeployRoles = defaultAppDeployRoles
 		}
@@ -370,6 +378,12 @@ type AppIdentityConfig struct {
 	Name            string
 	DeployAccountID string
 	DeployRoles     []string
+	// ConditionalDeployRoles are project roles granted with an IAM condition,
+	// e.g. Secret Manager scoped to the app's secret prefix. They are separate
+	// from DeployRoles because the condition is part of the binding's identity
+	// in GCP, and because granting such a role UNCONDITIONALLY would reach
+	// every co-tenant app's secrets in the shared project.
+	ConditionalDeployRoles []app_deploy_identity.ConditionalRole
 }
 
 // GitHubEnvironment is the per-env GitHub Environment permitted to impersonate
@@ -445,4 +459,41 @@ func appBuildReaderGrants(raw string) []AppBuildReaderGrant {
 		})
 	}
 	return out
+}
+
+// parseConditionalRoles parses the `<app>_deploy_conditional_roles` config into
+// IAM-conditioned role grants.
+//
+// Grammar: entries separated by ";", fields by "|":
+//
+//	<role>|<condition title>|<CEL expression>
+//
+// A ";" separator (not ",") because CEL legitimately contains commas, and only
+// the FIRST TWO "|" are separators so a CEL "a || b" survives intact. The
+// expression may use ${projectNumber} / ${projectId}, resolved by the module —
+// Secret Manager conditions must address secrets by project NUMBER, which
+// differs per environment and is only known as a stack output.
+//
+// Title and Expression are part of the binding's IDENTITY in GCP, so they must
+// reproduce the live binding exactly; a mismatch creates a SECOND binding
+// rather than adopting the existing one.
+func parseConditionalRoles(raw string) ([]app_deploy_identity.ConditionalRole, error) {
+	var out []app_deploy_identity.ConditionalRole
+	for _, entry := range strings.Split(raw, ";") {
+		if strings.TrimSpace(entry) == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, "|", 3)
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("entry %q: want <role>|<title>|<expression>", entry)
+		}
+		role := strings.TrimSpace(parts[0])
+		title := strings.TrimSpace(parts[1])
+		expr := strings.TrimSpace(parts[2])
+		if role == "" || title == "" || expr == "" {
+			return nil, fmt.Errorf("entry %q: role, title and expression are all required", entry)
+		}
+		out = append(out, app_deploy_identity.ConditionalRole{Role: role, Title: title, Expression: expr})
+	}
+	return out, nil
 }
