@@ -122,19 +122,59 @@ jobs:
               - 'infrastructure/pulumi/pkg/**'
               - '.github/workflows/pulumi-preview.yaml'
 
-      - name: Authenticate to GCP (WIF, keyless)
+      # Dependabot-authored PRs read the DEPENDABOT secret store, not the
+      # repository one, so `secrets.PULUMI_ACCESS_TOKEN` resolves to the empty
+      # string and `pulumi stack select` dies with "PULUMI_ACCESS_TOKEN must be
+      # set for login during non-interactive CLI sessions" (exit 3). That put a
+      # red X on every dependency bump touching a stack path -- a failure about
+      # the RUNNER's credentials that says nothing whatsoever about the bump.
+      # Degrade to a noop-green leg with an explicit reason instead, the same
+      # run-then-noop-green shape the required checks in this repo already use.
+      #
+      # Keyed on the CREDENTIAL, deliberately, not on `github.actor ==
+      # 'dependabot[bot]'`: fork PRs (already called out in the auth notes
+      # above) and any future token rotation hit this exact wall, and an actor
+      # check would silently miss both. The secrets context is not usable in an
+      # `if:`, hence the detour through env + an output.
+      - name: Detect Pulumi credential
+        id: creds
         if: steps.changes.outputs.stack == 'true'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PULUMI_ACCESS_TOKEN}" ]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Authenticate to GCP (WIF, keyless)
+        if: steps.changes.outputs.stack == 'true' && steps.creds.outputs.available == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
-        if: steps.changes.outputs.stack == 'true'
+        if: steps.changes.outputs.stack == 'true' && steps.creds.outputs.available == 'true'
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
+      # Says WHY the leg is green rather than leaving the reader to infer it
+      # from the digest's generic "preview was skipped for this stack" -- the
+      # coverage gap is real (a bump that breaks stack EVALUATION is not caught
+      # on this PR) and should be legible on the PR, not buried in the run log.
+      - name: Note skipped preview (no Pulumi credential)
+        if: steps.changes.outputs.stack == 'true' && steps.creds.outputs.available != 'true'
+        env:
+          LABEL: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          printf '### %s\n\n_Pulumi preview skipped: `PULUMI_ACCESS_TOKEN` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
+            "${LABEL}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
-        if: steps.changes.outputs.stack == 'true'
+        if: steps.changes.outputs.stack == 'true' && steps.creds.outputs.available == 'true'
         id: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
