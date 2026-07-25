@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.12.0...foundation-gcp-projects-v1.13.0) (2026-07-25)
+
+
+### Features
+
+* **gcp-projects:** declare oauth's conditioned secretmanager.admin in stage-4 ([#1153](https://github.com/VitruvianSoftware/vitruvian-core/issues/1153)) ([1710252](https://github.com/VitruvianSoftware/vitruvian-core/commit/1710252817e35ba803c648f4b377de2fd58893cf))
+
 ## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.11.0...foundation-gcp-projects-v1.12.0) (2026-07-25)
 
 
