@@ -370,6 +370,7 @@ ROWS_CAT_ADVISORY=""
 ROWS_VIS=""
 ROWS_MERGEQ=""
 ROWS_SWEEP=""
+ROWS_DEPREVIEW=""
 ROWS_IAC=""
 ROWS_META=""
 ROWS_COPYBARA=""
@@ -391,6 +392,7 @@ emit() {
     vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
+    dep-review)   ROWS_DEPREVIEW="${ROWS_DEPREVIEW}${_row}" ;;
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
     copybara)     ROWS_COPYBARA="${ROWS_COPYBARA}${_row}" ;;
@@ -784,6 +786,44 @@ EOF
 # (or job-id), with single-dimension matrices (inline `[a,b]` or block list)
 # expanded to "<base> (<value>)". POSIX awk only; single-dim matrices.
 # ---------------------------------------------------------------------------
+# --- dependency-review is public-repo-only (#1163) ----------------------------
+# Dependency review is free on PUBLIC repositories but requires GitHub Code
+# Security (PAID, per active committer) on private ones. It is a REQUIRED check,
+# so the day this repo turns private the action starts hard-erroring, the
+# required check goes red on every PR, and the merge queue blocks everything.
+#
+# The prerequisite has the same shape: the dependency graph is enabled by an org
+# code security configuration that MUST set advanced_security (the API rejects a
+# config enabling any GHAS feature without it, and it cannot be `not_set` --
+# only enabled|disabled|code_security|secret_protection). Free while public,
+# billable once private.
+#
+# So rather than trusting anyone to remember, this fails the moment the repo is
+# no longer public while dependency-review is still required, and says exactly
+# what to do. Offline/unauthenticated runs skip silently: this must never turn
+# CI red just because `gh` is unavailable.
+check_dependency_review_visibility() {
+  drv_rel="infrastructure/pulumi/platform/repo_config/main.go"
+  drv_go="$ROOT/$drv_rel"
+  [ -f "$drv_go" ] || return
+  grep -qE '^[[:space:]]*"dependency-review",' "$drv_go" || return   # not required -> nothing to guard
+
+  command -v gh >/dev/null 2>&1 || return
+  vis="$(gh api repos/VitruvianSoftware/vitruvian-core --jq .visibility 2>/dev/null || true)"
+  [ -n "$vis" ] || return                                            # offline / unauthenticated -> skip
+
+  if [ "$vis" = "public" ]; then
+    emit "dep-review" "$GLYPH_OK" "$C_GREEN" "$drv_rel" "public" "public" \
+      "dependency-review is required and the repo is public (free)" ""
+    return
+  fi
+
+  emit "dep-review" "$GLYPH_FAIL" "$C_RED" "$drv_rel" "$vis" "public" \
+    "dependency-review is a REQUIRED check but this repo is $vis: dependency review needs GitHub Code Security (paid) on non-public repos, so the action will hard-error and wedge the merge queue -- and the code security configuration enabling the dependency graph now bills per active committer" \
+    "either buy GitHub Code Security and set advanced_security=code_security on the dependency-graph-only configuration, OR remove \"dependency-review\" from the required-check list here and delete the job from .github/workflows/supply-chain.yaml"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+}
+
 check_merge_queue() {
   [ -f "$REPO_CONFIG_MAIN" ] || return 0
   [ -d "$WORKFLOWS_DIR" ] || return 0
@@ -1607,6 +1647,7 @@ check_app_visibility
 check_app_metadata
 check_merge_queue
 check_sweep_backstop
+check_dependency_review_visibility
 check_zitadel_import
 check_pulumi_project_names
 check_custom_domain_zone
@@ -1630,6 +1671,7 @@ print_group "App visibility firewall (#82: app-scoped defaults + public allowlis
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
+print_group "dependency-review is public-repo-only (paid on private → would wedge the queue)" "$ROWS_DEPREVIEW"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
 print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"
 print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)" "$ROWS_COPYBARA"
