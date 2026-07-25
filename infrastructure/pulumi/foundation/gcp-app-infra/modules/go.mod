@@ -8,6 +8,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.4.0
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi/sdk/v3 v3.253.0
+	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 )
 
 require (
