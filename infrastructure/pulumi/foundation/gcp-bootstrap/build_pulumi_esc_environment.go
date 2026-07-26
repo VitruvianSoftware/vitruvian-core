@@ -96,7 +96,8 @@ func deployPulumiESCEnvironments(ctx *pulumi.Context, cfg *Config, esc *PulumiES
           providerId: %s
           serviceAccount: %s
 `, projectNumber, cfg.PulumiESCPoolID, cfg.PulumiESCProviderID, serviceAccount)), nil
-			}).(pulumi.AssetOrArchiveOutput)
+			},
+		).(pulumi.AssetOrArchiveOutput)
 
 		key := strings.NewReplacer("/", "-", ".", "-").Replace(env)
 		if _, err := pulumiservice.NewEnvironment(ctx, fmt.Sprintf("pulumi-esc-env-%s", key),
