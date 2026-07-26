@@ -104,6 +104,12 @@ func main() {
 		}
 		exportPulumiESCOutputs(ctx, cfg, escOutputs)
 
+		// The Pulumi half of the same federation. Ordered after the GCP half
+		// because the environment definition quotes its outputs.
+		if err := deployPulumiESCEnvironments(ctx, cfg, escOutputs); err != nil {
+			return err
+		}
+
 		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas)
 		if err != nil {
 			return err

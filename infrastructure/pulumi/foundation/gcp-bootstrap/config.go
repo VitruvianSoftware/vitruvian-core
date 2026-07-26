@@ -99,12 +99,20 @@ type Config struct {
 	PulumiESCPoolID           string
 	PulumiESCProviderID       string
 	PulumiESCServiceAccountID string
-	GitHubRepoBootstrap       string
-	GitHubRepoOrg             string
-	GitHubRepoEnv             string
-	GitHubRepoNet             string
-	GitHubRepoProj            string
-	WIFAttributeCondition     string // Optional: override the default WIF attribute condition
+	// PulumiESCManageEnvironments makes the stack create the ESC environments it
+	// names, instead of leaving an operator to paste YAML into the Pulumi console.
+	// Defaults to TRUE: the environment definition has to quote the pool, provider
+	// and service account this stack just created, and hand-copying three
+	// generated identifiers is where the wiring gets silently wrong. Set
+	// `pulumi_esc_manage_environments` to "false" for an environment that already
+	// exists or is owned elsewhere -- the stack would otherwise fight its owner.
+	PulumiESCManageEnvironments bool
+	GitHubRepoBootstrap         string
+	GitHubRepoOrg               string
+	GitHubRepoEnv               string
+	GitHubRepoNet               string
+	GitHubRepoProj              string
+	WIFAttributeCondition       string // Optional: override the default WIF attribute condition
 
 	// BootstrapSAEmail, when set, is the full email of the PRE-EXISTING bootstrap
 	// service account CI authenticates as via WIF (e.g.
@@ -154,13 +162,16 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		PulumiESCPoolID:           defaultString(conf.Get("pulumi_esc_pool_id"), "pulumi-esc-pool"),
 		PulumiESCProviderID:       defaultString(conf.Get("pulumi_esc_provider_id"), "pulumi-esc-provider"),
 		PulumiESCServiceAccountID: defaultString(conf.Get("pulumi_esc_sa_id"), "sa-pulumi-esc"),
-		GitHubRepoBootstrap:       conf.Get("github_repo_bootstrap"),
-		GitHubRepoOrg:             conf.Get("github_repo_org"),
-		GitHubRepoEnv:             conf.Get("github_repo_env"),
-		GitHubRepoNet:             conf.Get("github_repo_net"),
-		GitHubRepoProj:            conf.Get("github_repo_proj"),
-		WIFAttributeCondition:     conf.Get("wif_attribute_condition"),
-		BootstrapSAEmail:          conf.Get("bootstrap_sa_email"),
+		// Defaults to true, so this is "not explicitly false" rather than the
+		// `== "true"` used by the opt-IN flags above.
+		PulumiESCManageEnvironments: conf.Get("pulumi_esc_manage_environments") != "false",
+		GitHubRepoBootstrap:         conf.Get("github_repo_bootstrap"),
+		GitHubRepoOrg:               conf.Get("github_repo_org"),
+		GitHubRepoEnv:               conf.Get("github_repo_env"),
+		GitHubRepoNet:               conf.Get("github_repo_net"),
+		GitHubRepoProj:              conf.Get("github_repo_proj"),
+		WIFAttributeCondition:       conf.Get("wif_attribute_condition"),
+		BootstrapSAEmail:            conf.Get("bootstrap_sa_email"),
 	}
 
 	c.OrgPolicyAdminRole = conf.Get("org_policy_admin_role") == "true"
