@@ -1,5 +1,22 @@
 # Agent guide — vitruvian-core
 
+> **This file is the single, vendor-neutral agent guide for this repo.** It follows the
+> [AGENTS.md](https://agents.md) convention, which Claude Code, Antigravity/Gemini, Copilot,
+> Cursor, opencode and others all read. There is deliberately **no `CLAUDE.md`,
+> `.cursorrules` or `copilot-instructions.md` at the root** — one file, so guidance cannot
+> drift per tool.
+>
+> Keep it that way when editing:
+> - **Write for any agent.** Don't assume a specific tool's commands, file layout or
+>   capabilities. Prefer the repo's own `bazel run …` entrypoints, which work everywhere.
+> - **No tool-specific instructions in this file.** If setup only applies to one vendor,
+>   it goes in `docs/` and is linked from here (as the homelab access section does) —
+>   everything in this guide should be actionable by every agent that reads it.
+> - **Nested `AGENTS.md` files scope to their subtree** (`devx/`, `tabula/`,
+>   `oauth-user-inspector/`) — put per-component detail there, not here. Note that an
+>   `AGENTS.md` only applies to the directory it sits in and below, so one in a
+>   non-source directory silently never applies.
+
 ## Orient first: principles, SDLC, docs hub
 
 Before shaping any non-trivial change, read the
@@ -47,6 +64,32 @@ The mapping of infrastructure → GCP account is in
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
 - macOS app (nexus-agent): `bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
 
+## Finishing work: PR, checks, land, clean up
+Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
+1. **Open a PR.** When the work is done, push and open one (`gh pr create`) unless an open,
+   related PR already covers it. Never merge locally. PR bodies are self-contained: what
+   changed, why, how it was verified.
+2. **Drive the checks green.** Watch them and fix what goes red — including flaky or
+   non-required checks. Never present a PR as ready while any check is red.
+3. **Land it.** Once approved, merge and keep watching until it actually lands; the merge
+   queue can still reject on the rebased result.
+4. **Clean up.** After it lands, delete the branch/worktree and return to the latest `main`.
+   **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
+   origin/main` is always false here — `main` is squash-only, so your branch's SHAs are
+   never ancestors of it. Check by PR number instead (`git log --grep "(#N)" origin/main`,
+   or `bazel run //tools/landed -- <pr#|branch|sha>`), or verify the content directly.
+
+## Rigor & validation
+- **Never assume configuration parity.** When touching monorepo-wide config (matrices,
+  package lists, `release-please-config.json`, workspaces), do not hand-identify the set.
+  Diff the physical directory structure against the config to prove 100% parity.
+- **Check sibling ecosystems.** A change for one language usually has a counterpart in
+  another (Go → TypeScript, and vice versa). Confirm before declaring the task done.
+- **Verify before claiming success.** Don't report a bug fixed until a test or script you
+  actually ran proves it — and prove the check fails against the broken state, or it is
+  not evidence. For infrastructure, assert the **live effect**, not a green apply log: a
+  provider reporting `updated` does not mean the setting took.
+
 ## Conventions & landmines
 - **Gazelle owns most `BUILD` files** — don't hand-edit generated targets; change the source and
   re-run gazelle.
@@ -63,71 +106,20 @@ The mapping of infrastructure → GCP account is in
 - **Build cache:** both a local `--disk_cache` (opt-in; see `user.bazelrc.example`) and remote
   RBE via `--config=remote` (BuildBuddy, needs a key) are available — no vendor is forced.
 
-## Homelab Kubernetes access (Claude Code cloud sessions)
-Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
-Two `SessionStart` hooks wire this up automatically (registered in
-`.claude/settings.json`):
-- `.claude/tailscale-up.sh` — joins the tailnet (userspace networking; exposes a
-  SOCKS5 proxy on `localhost:1055`, since the sandbox has no TUN device).
-- `.claude/kube-setup.sh` — installs `kubectl` and writes `~/.kube/config`
-  (context `lab`) pointed at `https://k8s-api.lab.ipv1337.dev:6443`, dialing the
-  apiserver through that SOCKS5 proxy.
+## Homelab access (tool-specific)
+Driving the homelab k3s cluster or SSH-ing to its nodes from a *cloud* agent session needs
+transport onto the tailnet, and that wiring is specific to whichever tool you run. The
+Claude Code setup (SessionStart hooks, SOCKS5 proxy, key install) is documented separately
+in [`docs/admin/claude-code-cloud-sessions.md`](docs/admin/claude-code-cloud-sessions.md)
+so it does not leak into this vendor-neutral guide.
 
-Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
-
-**Prerequisites (set once, outside this repo):**
-- Env vars on the cloud environment: `TS_AUTHKEY` (reusable, pre-authorized for
-  `tag:claude-cloud`) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
-  token — `kubectl -n claude-code get secret claude-code-token -o
-  jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which
-  expires).
-- Tailnet policy: `tag:claude-cloud` must have an ACL grant to the control-plane
-  nodes on `6443`, or the node joins able to *see* the netmap but not *touch* it
-  (every TCP connection is silently dropped).
-
-**Troubleshooting:**
-- `unsupported scheme "socks5h"` → kubeconfig must use `proxy-url: socks5://`
-  (kubectl/client-go reject `socks5h`; only `curl` accepts it).
-- `Unauthorized` (401) → `LAB_SA_TOKEN` is wrong/expired; transport is fine.
-- `i/o timeout` / connection refused to `100.x` → tailnet ACL is not granting
-  `tag:claude-cloud`, or `tailscaled`/the SOCKS5 proxy isn't running.
-- The cluster API is the HA name `k8s-api.lab.ipv1337.dev` (Cloudflare A record →
-  the 3 control-plane tailnet IPs); the apiserver serving cert carries it as a
-  `tls-san`, so TLS validates against whichever control plane answers.
-
-## Homelab SSH access (Claude Code cloud sessions)
-A cloud session has **passwordless SSH into every homelab node** — use it to
-configure or troubleshoot a node directly when needed. Auth is a dedicated agent
-**key**, NOT Tailscale SSH: Tailscale SSH is *not* enabled on these hosts, so
-`tailscale ssh` falls back to regular ssh and fails on host keys — use the key
-path below.
-
-Wiring (automatic via the merged `SessionStart` hooks):
-- `kube-setup.sh` installs the private key from the `CLAUDE_SSH_KEY` env var into
-  `~/.ssh/id_ed25519` each session, regenerates `id_ed25519.pub` from it, and writes
-  `~/.ssh/config` (`StrictHostKeyChecking accept-new`, `GSSAPIAuthentication no`).
-  It also installs `openssh-client`.
-- The matching public key is in `~/.ssh/authorized_keys` for user **`james`** on each host.
-
-Userspace networking means there's no kernel route to `100.x`, so ssh must dial
-through the SOCKS5 proxy `tailscale-up.sh` exposes on `localhost:1055` (needs
-`netcat-openbsd`):
-
-```bash
-ssh -o ProxyCommand='nc -X 5 -x localhost:1055 %h %p' james@<tailnet-ip> '<cmd>'
-```
-
-Nodes (k3s cluster; run `tailscale status` for live IPs): `fedora` control-plane,
-`nuc9i5` + `nuc9i9` workers, and the macOS nodes (`james-macbook-pro`, …).
-
-If it breaks (the hooks normally prevent these):
-- `Permission denied (publickey)` with a correct private key → a stale `.pub` is
-  advertising the wrong key: `ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub`.
-- `Connection closed` over the proxy → ssh tried GSSAPI first; add
-  `-o GSSAPIAuthentication=no -o PreferredAuthentications=publickey`.
-- missing tools → `apt-get install -y openssh-client netcat-openbsd`.
-
-Rotate by regenerating the pair and updating `CLAUDE_SSH_KEY` + each `authorized_keys`.
+What generalises, whatever tool you are on:
+- The cluster API is the HA name `https://k8s-api.lab.ipv1337.dev:6443` (a Cloudflare A
+  record to the three control-plane tailnet IPs; the serving cert carries it as a
+  `tls-san`, so TLS validates whichever control plane answers).
+- Node access is by SSH **key**, as user `james`. Tailscale SSH is *not* enabled on these
+  hosts.
+- Local (non-cloud) sessions with tailnet access already need none of the proxy plumbing.
 
 ## Copybara (component sync)
 The monorepo is the **single source of truth**; each standalone repo is a read-only mirror.

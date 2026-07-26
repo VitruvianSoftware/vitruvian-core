@@ -115,16 +115,31 @@ done
 # no gaps at all. It passed locally and failed in the RBE container, which is the
 # worst possible failure mode for a checker: a false ALL-CLEAR.
 #
-# Alternation instead of `(_target)?`, and literal two spaces instead of `{2}`:
-# both are bulletproof across grep implementations. Two spaces (not "any
-# indent") is deliberate -- it pins the key to the top-level `on:` mapping, so a
-# `pull_request` mentioned deeper in the file cannot be mistaken for a trigger.
+# Alternation instead of `(_target)?`: bulletproof across grep implementations.
+#
+# ANY INDENT, NOT TWO SPACES -- and that is the same bug a second time, so it is
+# worth naming precisely. The fix above traded an awk interval for a literal two
+# spaces, on the reasoning that pinning the column pins the key to the top-level
+# `on:` mapping. It does not: it pins it to a two-space HOUSE STYLE. Four of this
+# repo's twenty PR-triggered workflows indent with four spaces
+# (_repo-config-preview.yaml, copybara-config-smoketest.yaml,
+# copybara-import-pr-close.yaml, dependabot-bazel-reconcile.yml), so all four
+# read as not-PR-triggered and the secrets they need went unchecked -- which is
+# how `APP_PRIVATE_KEY` reached a Dependabot PR unmirrored and killed the
+# repo_config preview with "The 'private-key' input must be set to a non-empty
+# string". A false ALL-CLEAR again, from the same checker, for the same reason:
+# an assumption about incidental formatting baked into a matcher.
+#
+# The `sed` range is what actually pins scope -- it already stops at the next
+# top-level key, so nothing outside the `on:` block can match and the indent
+# width was never load-bearing. Requiring only "indented at all" keeps the
+# top-level pin and drops the house-style assumption.
 pr_triggered() { # pr_triggered <workflow-file> -> exit 0 if PR-triggered
   # Flow style: `on: [pull_request, push]`
   grep -qE '^on:[[:space:]]*\[.*pull_request' "$1" && return 0
   # Block style: the `on:` mapping, up to the next top-level key.
   sed -n '/^on:[[:space:]]*$/,/^[^[:space:]#]/p' "$1" |
-    grep -qE '^  pull_request:|^  pull_request_target:'
+    grep -qE '^[[:space:]]+pull_request:|^[[:space:]]+pull_request_target:'
 }
 
 refs_in() { # refs_in <kind: secrets|vars> <file...>
