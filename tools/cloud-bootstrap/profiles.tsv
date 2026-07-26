@@ -1,0 +1,61 @@
+# Claude Code cloud-session profiles — what a session of each kind gets.
+#
+# WHY: a cloud session starts as a bare Ubuntu sandbox with none of this repo's CLI
+# tooling and none of its credentials. //tools/cloud-bootstrap reads THIS file, keyed on
+# the $VITRUVIAN_PROFILE environment variable set on the cloud environment, to decide
+# two things: which CLIs to install, and which identity + secrets the session may hold.
+#
+# The profile is the BLAST-RADIUS BOUNDARY. Each row names one service account and the
+# exact secret list that account may materialise; a session running `core` cannot reach
+# a Pulumi token or a cluster credential even if one exists, because its row does not
+# list them and its SA has no IAM to read them. Add capability by adding a row, never by
+# widening an existing one.
+#
+# WANT ONE KEY THAT UNLOCKS EVERYTHING? That is the `all` row, and it is the default.
+# One service account, one $VITRUVIAN_CLOUD_KEY, every credential the agent needs. The
+# narrower rows exist for when you deliberately want a session that CANNOT reach
+# production -- reviewing third-party code, or anything that ingests untrusted input --
+# not because the everyday case is supposed to be complicated.
+#
+# SEVERAL PROFILES MAY ALSO BE COMBINED (VITRUVIAN_PROFILE=core,homelab), but prefer a
+# single row that lists what you need: combining is the escape hatch for holding two
+# EXISTING boundaries at once without defining a third, and it costs three rules that a
+# single row does not. It does NOT merge privileges into one identity -- each profile
+# keeps its own service account and reads only its own secrets -- so each needs its own
+# key in $VITRUVIAN_CLOUD_KEY_<PROFILE> (the shared $VITRUVIAN_CLOUD_KEY can satisfy only
+# one, and identity pinning refuses the rest rather than using the wrong account); the
+# FIRST listed profile with an identity becomes the session's ambient GCP identity -- what
+# pulumi, gsutil and a bare gcloud use; and two rows mapping the SAME env var to DIFFERENT
+# secrets is refused, since which credential the session holds must not depend on row
+# order. None of that applies when you use one row.
+#
+# NO SECRET VALUES LIVE HERE. This file names secrets; the values are in the declared
+# project's Secret Manager (seed with //tools/gcp-secrets). The only credential on the
+# cloud environment itself is $VITRUVIAN_CLOUD_KEY — the profile's SA key, which can do
+# nothing but read that profile's secrets.
+#
+# FORMAT: columns separated by any whitespace (awk default), aligned with spaces for
+# readability (the .tsv extension is nominal — same convention as
+# infrastructure/gcp-identities.tsv). Consumers MUST skip `#` comment and blank lines.
+# Columns:
+#   profile     value of $VITRUVIAN_PROFILE that selects this row (the resolver key)
+#   tools       comma-separated CLI keys to install; '-' for none. Known keys:
+#               bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  (gcloud is added
+#               automatically whenever sa_account is set, since reading the secrets
+#               needs it). Combined profiles install the UNION.
+#   sa_account  service account this profile authenticates as. The bootstrap REFUSES to
+#               proceed if $VITRUVIAN_CLOUD_KEY belongs to a different account, so a
+#               mis-pasted key cannot silently escalate a session. '-' = no GCP identity.
+#   sa_project  GCP project holding this profile's secrets (also CLOUDSDK_CORE_PROJECT);
+#               '-' if the profile has no secrets
+#   secrets     comma-separated ENV_VAR=secret-name pairs to materialise into the
+#               session; '-' for none. An ENV_VAR already set on the environment WINS
+#               and is left untouched (that is the no-GCP fallback path).
+#   purpose     free text; may contain spaces; MUST be the last column
+#
+# profile  tools                          sa_account                                                              sa_project                     secrets                                                                                                        purpose
+all        bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  claude-cloud-all@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com    prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token  DEFAULT. Everything, one service account, one key. Use this unless you specifically want a narrower session.
+core       bazel,direnv,gh                claude-cloud-core@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY                                   Default. Build, test, review and open PRs in the monorepo. No infrastructure credentials.
+infra      bazel,direnv,gh,gcloud,pulumi  claude-cloud-infra@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token  core + Pulumi/GCP infrastructure work (preview/up against the foundation and app stacks).
+homelab    bazel,direnv,gh,kubectl,tailscale        claude-cloud-lab@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com   prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token          core + tailnet transport, k3s cluster admin and node SSH (feeds tailscale-up.sh / kube-setup.sh).
+readonly   bazel,direnv                   -                                                                        -                              -                                                                                                              Tooling only, zero credentials. Use for untrusted input, reviews of third-party code, or a spike.

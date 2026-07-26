@@ -27,8 +27,10 @@
 #
 # Why a SessionStart hook and not the cloud "Setup script": the cloud
 # environment cache snapshots files, not running processes, so a daemon started
-# in the Setup script would not be running on cached/resumed sessions. The Setup
-# script only installs the binary; this hook (re)starts the daemon each session.
+# in the Setup script would not be running on cached/resumed sessions. The
+# BINARY is installed by //tools/cloud-bootstrap (the hook that runs before this
+# one) for any profile whose `tools` column lists tailscale; this hook (re)starts
+# the daemon each session.
 #
 # Why userspace networking: the sandbox has no TUN device and all egress is
 # forced through an HTTP/HTTPS proxy, so raw WireGuard cannot leave. tailscaled
@@ -41,8 +43,19 @@ set -uo pipefail
 # Cloud sessions only — no-op on a local checkout.
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
+# Pick up anything //tools/cloud-bootstrap resolved for this session's profile.
+# Hooks are separate processes, so a TS_AUTHKEY it fetched from Secret Manager is
+# NOT in this one's environment — without this, the `homelab` profile's whole
+# point (rotate the auth key in one place, no cloud-environment edit) would not
+# reach tailscaled. A TS_AUTHKEY set directly on the environment still works
+# unchanged; cloud-bootstrap leaves those alone.
+_session_env="$HOME/.config/vitruvian-core/cloud/session.env"
+# shellcheck disable=SC1090 # path is fixed; the file is 0600 and machine-written
+[ -f "$_session_env" ] && . "$_session_env"
+
 if ! command -v tailscale >/dev/null 2>&1; then
-	echo "tailscale-up: binary missing — add the install line to the cloud env Setup script" >&2
+	echo "tailscale-up: binary missing — this session's \$VITRUVIAN_PROFILE does not list" >&2
+	echo "  tailscale (see tools/cloud-bootstrap/profiles.tsv); add it, or use a profile that does" >&2
 	exit 0
 fi
 
