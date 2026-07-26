@@ -95,11 +95,22 @@ or revoke the agent SSH key and cloud sessions lose GCP immediately.
 credentials always win, so a laptop and CI take the same code path and never
 touch the network.
 
-**Prerequisite (once):** install the Google Cloud SDK on an **always-on** node and
-run `gcloud auth login <account>` there, where `<account>` is what
-`infrastructure/gcp-identities.tsv` pins for the work in question. Default broker
-is `fedora`; override with `VITRUVIAN_GCP_BROKER`. A laptop works but GCP breaks
-whenever it sleeps.
+**Prerequisite (once per node):** install the Google Cloud SDK and run
+`gcloud auth login <account>`, where `<account>` is what
+`infrastructure/gcp-identities.tsv` pins for the work in question. Brokers are a
+LIST tried in order (`VITRUVIAN_GCP_BROKERS`, default
+`fedora,nuc9i5,nuc9i9,james-macbook-pro`), always-on nodes first, with the winner
+cached; set up more than one so a sleeping laptop is not a single point of
+failure.
+
+**Workspace accounts additionally need session control widened.** Measured on the
+real homelab: `james.nguyen@gmail.com` mints fine, `james@vitruviansoftware.dev`
+fails with *"Reauthentication failed. cannot prompt during non-interactive
+execution"*. Google Workspace forces a periodic **interactive** re-login that SSH
+cannot satisfy, and no node-side change fixes it — re-running `gcloud auth login`
+only buys until the next window closes. Widen **Admin console → Security → Access
+and data control → Google Cloud session control** for the brokered accounts. The
+failure names itself (`REAUTH REQUIRED`) when it happens.
 
 ## Kubernetes access
 Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.

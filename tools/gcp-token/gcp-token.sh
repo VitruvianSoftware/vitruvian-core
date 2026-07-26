@@ -58,13 +58,21 @@
 # command works everywhere and CI/laptop/cloud share one code path.
 set -uo pipefail
 
-# The homelab node that holds the credentials. Needs the Google Cloud SDK
-# installed and `gcloud auth login <account>` run ONCE; the resulting refresh
-# token then lives only there. Prefer an always-on node over a laptop, or GCP
-# work fails whenever the laptop sleeps. Override per invocation for a different
-# broker (or to test against one).
-BROKER_HOST="${VITRUVIAN_GCP_BROKER:-fedora}"
+# Homelab nodes that may hold credentials, tried IN ORDER until one mints. A
+# list rather than a single host because any given node may be asleep, may not
+# have the SDK, or may not be logged into the account being asked for -- and
+# which node that is changes over time. Always-on nodes first, laptops last, so
+# the fast path does not depend on someone's lid being open.
+#
+# Each node needs the Google Cloud SDK and `gcloud auth login <account>` run
+# ONCE; the resulting refresh token then lives only there.
+BROKER_HOSTS="${VITRUVIAN_GCP_BROKERS:-${VITRUVIAN_GCP_BROKER:-fedora,nuc9i5,nuc9i9,james-macbook-pro}}"
 BROKER_USER="${VITRUVIAN_GCP_BROKER_USER:-james}"
+
+# The node that last worked, tried FIRST next time. Without this every mint pays
+# the full walk down the list (a failed SSH per node that lacks gcloud or the
+# account), which is pure latency on the common path.
+BROKER_CACHE="${VITRUVIAN_GCP_BROKER_CACHE:-$HOME/.config/vitruvian-core/cloud/gcp-broker}"
 
 # Test seams; real runs get the defaults.
 SSH_BIN="${SSH_BIN:-ssh}"
@@ -121,7 +129,7 @@ fi
 
 # --- 2. mint over the tailnet -------------------------------------------------
 command -v "$SSH_BIN" >/dev/null 2>&1 ||
-	die "no local credentials for $ACCOUNT and ssh is not installed to reach $BROKER_HOST"
+	die "no local credentials for $ACCOUNT and ssh is not installed to reach a broker"
 
 # Userspace networking (what tailscale-up.sh configures in a cloud sandbox) has
 # no kernel route to 100.x, so ssh must dial through the SOCKS5 proxy. A machine
@@ -139,23 +147,80 @@ if command -v nc >/dev/null 2>&1 && nc -z localhost "$SOCKS_PORT" >/dev/null 2>&
 fi
 
 _err="$(mktemp)"
-trap 'rm -f "$_err"' EXIT
+_report="$(mktemp)"
+trap 'rm -f "$_err" "$_report"' EXIT
 
-# `--account` is passed to the REMOTE gcloud so the broker cannot hand back a
-# different identity than the one asked for. The token comes back on stdout and
-# is never echoed here.
-_tok="$(timeout 45 "$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${BROKER_HOST}" \
-	"gcloud auth print-access-token --account=${ACCOUNT}" 2>"$_err" | tr -d '\r\n')"
+# try_broker <host> — echo the token on success, or record why it failed.
+#
+# `--account` goes to the REMOTE gcloud so a broker cannot be asked for one
+# identity and hand back another. The token is never echoed here.
+try_broker() {
+	local host="$1" tok
+	: >"$_err"
+	tok="$(timeout 45 "$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${host}" \
+		"gcloud auth print-access-token --account=${ACCOUNT}" 2>"$_err" | tr -d '\r\n')"
+	if is_token "$tok"; then
+		printf '%s' "$tok"
+		return 0
+	fi
+	# Classify the failure. These want completely different fixes, so collapsing
+	# them into "broker unreachable" would send someone to the wrong place —
+	# REAUTH in particular is not fixed on the node at all.
+	local why
+	if grep -qi 'Reauthentication failed\|reauth' "$_err" 2>/dev/null; then
+		why="REAUTH REQUIRED — this account needs an interactive re-login that ssh cannot give it"
+	elif grep -qi 'command not found\|No such file' "$_err" 2>/dev/null; then
+		why="no gcloud installed"
+	elif grep -qi 'not have any valid credentials\|no credentialed account\|is not a valid account\|Could not find\|not a valid account' "$_err" 2>/dev/null; then
+		why="gcloud present but not logged in as $ACCOUNT"
+	elif grep -qi 'Connection refused\|timed out\|unreachable\|Host key\|Permission denied' "$_err" 2>/dev/null; then
+		why="unreachable over the tailnet"
+	elif [ -n "$tok" ]; then
+		why="returned something too short to be a token (${#tok} chars)"
+	else
+		why="$(head -1 "$_err" 2>/dev/null || echo 'no output')"
+	fi
+	printf '  %-22s %s\n' "$host" "$why" >>"$_report"
+	return 1
+}
+
+# Cached winner first, then the declared order (skipping the cached one).
+_ordered=""
+if [ -r "$BROKER_CACHE" ]; then
+	_cached="$(tr -d '[:space:]' <"$BROKER_CACHE" 2>/dev/null)"
+	case ",$BROKER_HOSTS," in
+	*",$_cached,"*) _ordered="$_cached" ;;
+	esac
+fi
+for _h in $(printf '%s' "$BROKER_HOSTS" | tr ',' ' '); do
+	[ "$_h" = "${_cached:-}" ] && continue
+	_ordered="${_ordered:+$_ordered }$_h"
+done
+
+_tok=""
+for _h in $_ordered; do
+	if _tok="$(try_broker "$_h")"; then
+		# Remember the winner. Best-effort: a read-only HOME must not turn a
+		# successful mint into a failure.
+		(umask 077; mkdir -p "$(dirname "$BROKER_CACHE")" 2>/dev/null &&
+			printf '%s\n' "$_h" >"$BROKER_CACHE" 2>/dev/null) || true
+		break
+	fi
+	_tok=""
+done
 
 if [ -z "$_tok" ]; then
-	echo "gcp-token: could not mint a token for $ACCOUNT via ${BROKER_USER}@${BROKER_HOST}" >&2
-	sed 's/^/  /' "$_err" >&2
-	echo "  Checklist:" >&2
-	echo "    · is the tailnet up?            tailscale status" >&2
-	echo "    · does the broker have gcloud?  ssh ${BROKER_USER}@${BROKER_HOST} 'gcloud version'" >&2
-	echo "    · is it logged in?              ssh ${BROKER_USER}@${BROKER_HOST} 'gcloud auth list'" >&2
-	echo "    · if not:                       gcloud auth login ${ACCOUNT}   (once, on the broker)" >&2
-	echo "    · different broker?             VITRUVIAN_GCP_BROKER=<host>" >&2
+	echo "gcp-token: no broker could mint a token for $ACCOUNT" >&2
+	cat "$_report" >&2
+	echo "  Fixes, by cause:" >&2
+	echo "    · REAUTH REQUIRED  → Workspace forces periodic interactive re-login for this" >&2
+	echo "                         account. Either run 'gcloud auth login $ACCOUNT' on that" >&2
+	echo "                         node again, or lengthen Admin console → Security → Google" >&2
+	echo "                         Cloud session control. No node-side change fixes it." >&2
+	echo "    · no gcloud        → install the SDK on that node" >&2
+	echo "    · not logged in    → gcloud auth login $ACCOUNT   (once, on that node)" >&2
+	echo "    · unreachable      → tailscale status" >&2
+	echo "    · other brokers    → VITRUVIAN_GCP_BROKERS=host1,host2" >&2
 	exit 1
 fi
 

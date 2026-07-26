@@ -54,19 +54,49 @@ An access token lives about an hour; a Claude session outlives that comfortably.
 A token fetched by the `SessionStart` hook would be stale exactly when it
 mattered, so callers ask for one when they need one.
 
-## Setting up the broker
+## Brokers: a list, tried in order
 
-One node, once:
+`VITRUVIAN_GCP_BROKERS` (default `fedora,nuc9i5,nuc9i9,james-macbook-pro`) is
+walked until one node mints. A single host is not enough in practice — any given
+box may be asleep, lack the SDK, or not be logged into the account being asked
+for, and which node that is changes over time. Always-on nodes come first so the
+fast path doesn't depend on a laptop lid.
+
+The winning node is cached (`~/.config/vitruvian-core/cloud/gcp-broker`) and tried
+first next time: on the real homelab that took a cold mint from ~9s to ~2.4s. A
+cached host no longer in the list is ignored.
+
+Set a node up once:
 
 ```sh
-# on an always-on homelab node
 curl https://sdk.cloud.google.com | bash
-gcloud auth login james@vitruviansoftware.dev
+gcloud auth login <account>
 ```
 
-**Prefer an always-on node over a laptop** — GCP work fails whenever the laptop
-sleeps. The default broker is `fedora`; override with `VITRUVIAN_GCP_BROKER`
-(and `VITRUVIAN_GCP_BROKER_USER`, default `james`).
+`<account>` must be what
+[`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)
+pins for the work you want — the wrapper asks for that account by name, so a
+broker logged into a different one fails loudly rather than quietly handing back
+the wrong identity.
+
+## ⚠️ Workspace accounts need session control widened
+
+**Measured on the real homelab:** `james.nguyen@gmail.com` mints fine, while
+`james@vitruviansoftware.dev` fails with
+
+```
+Reauthentication failed. cannot prompt during non-interactive execution.
+```
+
+Google Workspace enforces **Google Cloud session control** — a periodic
+*interactive* re-login — on managed accounts. SSH cannot satisfy it, so no
+node-side change fixes this: re-running `gcloud auth login` on the broker only
+buys until the next window closes.
+
+The durable fix is **Admin console → Security → Access and data control → Google
+Cloud session control**, set to a long window or "never expires" for the accounts
+brokered here. Until then, Workspace-account GCP work from a cloud session will
+lapse periodically, and the failure names itself (`REAUTH REQUIRED`).
 
 The account you log in as must be the one
 [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)
@@ -76,11 +106,20 @@ handing back a different identity.
 
 ## Failure
 
-Fatal and actionable. An unreachable broker, a broker without gcloud, or one not
-logged into the requested account prints the checklist (tailnet up? gcloud
-installed? logged in? different broker?) rather than a bare non-zero exit. A
-reply too short to be an access token is also refused, so a truncated read or an
-error string can never be exported as a credential that 401s later.
+Fatal, and it names the cause **per node** — the four failure modes want
+completely different fixes, so collapsing them into "broker unreachable" would
+send you to the wrong place:
+
+```
+gcp-token: no broker could mint a token for james@vitruviansoftware.dev
+  fedora                 no gcloud installed
+  nuc9i5                 gcloud present but not logged in as james@vitruviansoftware.dev
+  nuc9i9                 no gcloud installed
+  james-macbook-pro      REAUTH REQUIRED — this account needs an interactive re-login…
+```
+
+A reply too short to be an access token is also refused, so a truncated read or
+an error string can never be exported as a credential that 401s later.
 
 ## Tests
 

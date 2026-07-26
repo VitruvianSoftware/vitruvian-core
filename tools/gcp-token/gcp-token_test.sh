@@ -93,12 +93,34 @@ FAKE
 	chmod +x "$work/ssh"
 }
 
+# Host-aware fake ssh, for failover: each node fails in a DIFFERENT real way and
+# only `good` mints. The failure strings are copied verbatim from what the real
+# homelab nodes returned, so the classifier is tested against reality.
+make_ssh_fleet() {
+	cat >"$work/ssh" <<FAKE
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$work/ssh.argv"
+target=""
+for a in "\$@"; do case "\$a" in james@*) target="\${a#james@}" ;; esac; done
+case "\$target" in
+  nogcloud) echo "bash: line 1: gcloud: command not found" >&2; exit 127 ;;
+  nologin)  echo "ERROR: (gcloud.auth.print-access-token) Your current active account [x] does not have any valid credentials" >&2; exit 1 ;;
+  reauth)   echo "ERROR: (gcloud.auth.print-access-token) There was a problem refreshing your current auth tokens: Reauthentication failed. cannot prompt during non-interactive execution." >&2; exit 1 ;;
+  down)     echo "ssh: connect to host: Connection timed out" >&2; exit 255 ;;
+  good)     echo "$BROKER_TOKEN"; exit 0 ;;
+  *)        echo "ssh: unknown host" >&2; exit 255 ;;
+esac
+FAKE
+	chmod +x "$work/ssh"
+}
+
 run() { # run <account> [extra env…]  → stdout; stderr captured to a file
 	local acct="$1"
 	shift
 	: >"$work/gcloud.argv"
 	: >"$work/ssh.argv"
 	env GCLOUD_BIN="$work/gcloud" SSH_BIN="$work/ssh" VITRUVIAN_GCP_BROKER=testbroker \
+		VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
 		"$@" bash "$SCRIPT" "$acct" 2>"$work/stderr"
 }
 
@@ -168,6 +190,53 @@ out="$(run "$ACCOUNT" "CLOUDSDK_AUTH_ACCESS_TOKEN=$real")"
 	fail "a valid ambient token was discarded"
 [ ! -s "$work/ssh.argv" ] && pass "…without touching the tailnet" ||
 	fail "the broker was consulted despite valid local credentials"
+
+# ---------------------------------------------------------------------------
+echo "gcp-token: broker failover"
+# ---------------------------------------------------------------------------
+# One node is never enough: any given box may be asleep, lack the SDK, or not be
+# logged into the account asked for — which is exactly what the real homelab
+# returned when this was first tried. Walk the list until one mints.
+make_gcloud none
+make_ssh_fleet
+rm -f "$work/broker-cache"
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,nologin,reauth,good)"
+[ "$out" = "$BROKER_TOKEN" ] && pass "walks past every broken node and mints from the good one" ||
+	fail "failover did not reach the working broker"
+
+ssh_argv="$(cat "$work/ssh.argv")"
+for h in nogcloud nologin reauth good; do
+	assert_contains "…$h was tried" "$ssh_argv" "james@$h"
+done
+
+# Each failure mode wants a DIFFERENT fix, so collapsing them into "unreachable"
+# would send someone to the wrong place. REAUTH especially: no node-side change
+# fixes it.
+rm -f "$work/broker-cache"
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,nologin,reauth,down)" || true
+err="$(cat "$work/stderr")"
+assert_contains "a node without the SDK is named as such" "$err" "no gcloud installed"
+assert_contains "a node not logged in is named as such" "$err" "not logged in"
+assert_contains "a reauth-blocked node is called out specifically" "$err" "REAUTH REQUIRED"
+assert_contains "an unreachable node is named as such" "$err" "unreachable over the tailnet"
+assert_contains "…and reauth's fix is the Workspace setting, not the node" "$err" "session control"
+
+# The winning broker is remembered, so the common path stops paying for the walk.
+rm -f "$work/broker-cache"
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,good)"
+[ "$(tr -d '[:space:]' <"$work/broker-cache" 2>/dev/null)" = "good" ] &&
+	pass "the winning broker is cached" || fail "no broker was cached after a successful mint"
+
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,good)"
+first="$(head -1 "$work/ssh.argv" | tr ' ' '\n' | grep '^james@' | head -1)"
+[ "$first" = "james@good" ] && pass "…and tried FIRST on the next call" ||
+	fail "the cached broker was not tried first (got ${first:-none})"
+
+# A cached host that is no longer in the list must not resurrect it.
+printf 'ghost\n' >"$work/broker-cache"
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,good)"
+assert_not_contains "a stale cached broker outside the list is ignored" "$(cat "$work/ssh.argv")" "james@ghost"
+[ "$out" = "$BROKER_TOKEN" ] && pass "…and the list still mints" || fail "a stale cache broke the mint"
 
 # ---------------------------------------------------------------------------
 echo "gcp-token: refusals"
