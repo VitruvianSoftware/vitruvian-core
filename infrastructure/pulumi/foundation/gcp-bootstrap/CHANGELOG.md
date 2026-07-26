@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.10.1...foundation-gcp-bootstrap-v0.10.2) (2026-07-26)
+
+
+### Bug Fixes
+
+* **foundation:** let the bootstrap SA write the org policy this stage declares ([#1251](https://github.com/VitruvianSoftware/vitruvian-core/issues/1251)) ([4d92a36](https://github.com/VitruvianSoftware/vitruvian-core/commit/4d92a36ec6bf02b8961ad70849d74a135e1f4950))
+
 ## [0.10.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.10.0...foundation-gcp-bootstrap-v0.10.1) (2026-07-26)
 
 
