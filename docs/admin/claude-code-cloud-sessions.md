@@ -41,15 +41,32 @@ production, e.g. one reviewing third-party code. Profiles can also be combined
 identity separate and therefore needs a key each, which is only worth it to hold
 two existing boundaries at once.
 
-**No Setup script is needed.** `tailscale` is installed by the bootstrap for any
-profile that lists it, so the cloud environment's *Setup script* field can be
-left empty — the whole configuration is the two variables above.
+The *Setup script* field should run the bootstrap's **install** phase, so the
+tools are baked into the cached environment image rather than re-downloaded each
+session (`tailscale` included — it is a profile decision now, not a hard-coded
+install line):
 
-Verify from inside a session:
+```bash
+#!/bin/bash
+S=/home/user/vitruvian-core/tools/cloud-bootstrap/cloud-bootstrap.sh
+[ -x "$S" ] && exec "$S" install --force
+echo "cloud-bootstrap: repo not cloned yet — the SessionStart hook will install instead"
+```
+
+`--force` is required: `CLAUDE_CODE_REMOTE` is not set that early, so without it
+the script silently no-ops. Credentials are deliberately *not* done here — the
+`SessionStart` hook establishes those per session, so no token is baked into a
+cached image.
+
+Verify from inside a session — you cannot shell into a cloud session, so ask the
+agent to run this and report back:
 
 ```sh
 bazel run //tools/cloud-bootstrap:whoami     # tools, identity, credentials (no values)
 ```
+
+It prints each credential by name and byte length, never its value, which is
+enough to tell a real token from the sandbox's short placeholders.
 
 The full rationale — why token-based, why one credential, why not keyless, where
 things land on disk — is in the
