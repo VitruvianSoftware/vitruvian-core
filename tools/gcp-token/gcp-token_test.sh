@@ -119,8 +119,19 @@ run() { # run <account> [extra env…]  → stdout; stderr captured to a file
 	shift
 	: >"$work/gcloud.argv"
 	: >"$work/ssh.argv"
+	# Neutralise every variable the script reads BEFORE "$@", so a caller can still
+	# override any of them and the ambient environment can override none.
+	#
+	# This suite calls itself hermetic; it was not. A cloud session with
+	# VITRUVIAN_ESC_ENV set on the environment -- which is the documented way to
+	# turn ESC on -- leaked it into the cases that assert ESC is NOT used, and the
+	# leak cascaded: once ESC answered, every broker-failure case got a token and
+	# "the mint fails" assertions passed a token instead. Six failures, one cause,
+	# none of them reproducible on a laptop without that variable set.
 	env GCLOUD_BIN="$work/gcloud" SSH_BIN="$work/ssh" VITRUVIAN_GCP_BROKER=testbroker \
 		PULUMI_BIN="$work/pulumi" VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
+		VITRUVIAN_ESC_ENV= VITRUVIAN_ESC_PATH= VITRUVIAN_GCP_BROKERS= \
+		CLOUDSDK_AUTH_ACCESS_TOKEN= GOOGLE_OAUTH_ACCESS_TOKEN= \
 		"$@" bash "$SCRIPT" "$acct" 2>"$work/stderr"
 }
 
@@ -318,6 +329,40 @@ assert_contains "a metacharacter account is refused" "$(cat "$work/stderr")" "in
 
 out="$(run 'not-an-email')" || true
 assert_contains "a non-email account is refused" "$(cat "$work/stderr")" "invalid account"
+
+# REGRESSION: the validator's character class must ACCEPT ordinary addresses.
+# It once did not. The class ended `%+-@`, a collation RANGE from '+' to '@'
+# rather than three literals; under the C locale that range contains '@' so
+# Linux CI passed, while macOS's UTF-8 collation orders punctuation differently
+# and '@' fell outside it -- rejecting every real address on a Mac with
+# "invalid account 'james@vitruviansoftware.dev'". Green tests are the reason it
+# shipped, so these assert the ACCEPT side, which nothing did before.
+make_gcloud ok
+for good in \
+	'james@vitruviansoftware.dev' \
+	'james.nguyen@gmail.com' \
+	'sa-claude-cloud@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com' \
+	'user+tag@example.co.uk'; do
+	out="$(run "$good" 2>/dev/null)" || true
+	assert_not_contains "a valid address is accepted: $good" "$(cat "$work/stderr")" "invalid account"
+done
+
+# The same bug in its general form. Scoped to NEGATED classes ([!…]/[^…]), which
+# is where this script does its validation -- a broad sweep matches `${1:-}` and
+# every `[ -n … ]` test and is pure noise. A '-' between two non-alphanumerics is
+# a punctuation range; a trailing '-' is the literal, which is what we want.
+if LC_ALL=C grep -nE '\[[!^][^]]*[^]a-zA-Z0-9-]-[^]a-zA-Z0-9]' "$SCRIPT" >"$work/badranges" 2>/dev/null &&
+	[ -s "$work/badranges" ]; then
+	fail "a collation-dependent punctuation range remains: $(cat "$work/badranges")"
+else
+	pass "no negated class relies on a punctuation range"
+fi
+
+# The diagnostic must name the offending byte -- an address that looks perfect
+# in a terminal but carries a stray tab is the case that wastes an afternoon.
+out="$(run "$(printf 'james@x.dev\t')")" || true
+assert_contains "an invisible bad byte is named, not just quoted" \
+	"$(cat "$work/stderr")" "disallowed character"
 
 make_ssh junk
 out="$(run "$ACCOUNT")"
