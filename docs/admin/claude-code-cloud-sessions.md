@@ -77,6 +77,30 @@ things land on disk — is in the
 > cloud-bootstrap leaves it alone. Moving them into the `homelab` profile's Secret
 > Manager entries is the upgrade, not a requirement.
 
+## GCP access
+
+A cloud session can run `bazel run //infrastructure/pulumi/<project>:{preview,up}`
+and ad-hoc `gcloud` — with **no GCP credential on the cloud environment at all**.
+
+It cannot have one: `iam.disableServiceAccountKeyCreation` is enforced org-wide
+(`gcp-org/envs/shared/org_policy.go`, "prevent SA key sprawl"), so there is no
+service-account key to hand a sandbox. Instead
+[`//tools/gcp-token`](../../tools/gcp-token/README.md) mints a short-lived token
+**over the tailnet** from a homelab node that is already `gcloud auth login`-ed.
+The refresh token never leaves that node; the session holds a ~1h access token.
+Tailnet membership is the authentication factor — drop the node from the tailnet
+or revoke the agent SSH key and cloud sessions lose GCP immediately.
+
+`//tools/pulumi` calls it automatically, so the wrappers work unchanged. Local
+credentials always win, so a laptop and CI take the same code path and never
+touch the network.
+
+**Prerequisite (once):** install the Google Cloud SDK on an **always-on** node and
+run `gcloud auth login <account>` there, where `<account>` is what
+`infrastructure/gcp-identities.tsv` pins for the work in question. Default broker
+is `fedora`; override with `VITRUVIAN_GCP_BROKER`. A laptop works but GCP breaks
+whenever it sleeps.
+
 ## Kubernetes access
 Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
 Two `SessionStart` hooks wire this up automatically (registered in

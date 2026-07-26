@@ -66,9 +66,22 @@ elif [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
       echo "    https://cloud.google.com/sdk/docs/install" >&2
       exit 1
     fi
-    if ! _gcp_token="$(gcloud auth print-access-token --account="$_gcp_account" 2>/dev/null)"; then
+    # //tools/gcp-token resolves the token the same way everywhere: local gcloud
+    # first, then — when this machine has no credentials of its own, i.e. a Claude
+    # Code cloud session — minted over the tailnet from a homelab node that does.
+    # That is what lets a cloud session run this wrapper at all: the org enforces
+    # iam.disableServiceAccountKeyCreation, so there is no key to hand a sandbox,
+    # and the session holds only a ~1h token instead. See tools/gcp-token/README.md.
+    _minter="${BUILD_WORKSPACE_DIRECTORY}/tools/gcp-token/gcp-token.sh"
+    if [ -x "$_minter" ]; then
+      _gcp_token="$(bash "$_minter" "$_gcp_account")" || _gcp_token=""
+    else
+      _gcp_token="$(gcloud auth print-access-token --account="$_gcp_account" 2>/dev/null)" || _gcp_token=""
+    fi
+    if [ -z "$_gcp_token" ]; then
       echo "ERROR: $PROJECT_DIR is pinned to GCP identity '$_gcp_account'" >&2
-      echo "(infrastructure/gcp-identities.tsv) but no valid credentials were found." >&2
+      echo "(infrastructure/gcp-identities.tsv) but no valid credentials were found," >&2
+      echo "locally or via the tailnet broker (see the checklist above)." >&2
       echo "Log in with:  gcloud auth login $_gcp_account" >&2
       exit 1
     fi

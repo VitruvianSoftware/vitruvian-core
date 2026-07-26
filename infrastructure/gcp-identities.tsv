@@ -20,6 +20,11 @@
 #
 # AD-HOC GCP WORK: look up the account here, then:
 #   export GOOGLE_OAUTH_ACCESS_TOKEN=$(gcloud auth print-access-token --account=<account>)
+# From a machine with no gcloud credentials of its own (a Claude Code cloud session:
+# no key is possible there, since the org enforces iam.disableServiceAccountKeyCreation),
+# use the wrapper instead -- it prefers local gcloud and otherwise mints the token over
+# the tailnet from a homelab node that IS logged in:
+#   export GOOGLE_OAUTH_ACCESS_TOKEN=$(bazel run -q //tools/gcp-token -- <account>)
 #
 # infra_dir                                   account                              gcp_project                 purpose
 infrastructure/pulumi/accounts/personal                         james.nguyen@gmail.com  personal-llc                Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
