@@ -116,7 +116,7 @@ func main() {
 
 		// The Pulumi half of the same federation. Ordered after the GCP half
 		// because the environment definition quotes its outputs.
-		if err := deployPulumiESCEnvironments(ctx, cfg, escOutputs); err != nil {
+		if err := deployPulumiESCEnvironments(ctx, cfg, cicd, escOutputs); err != nil {
 			return err
 		}
 
