@@ -36,6 +36,8 @@ mindmap
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
 | `//<app>:doctor` | Same check scoped to one app's exact requirements (`//tabula:doctor`, `//devx:doctor`, …) |
+| `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
+| `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
 | `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch>`. Branch work in the primary checkout is blocked — this is the sanctioned path |
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
 | `//:gazelle` | Regenerate `BUILD` files after adding/moving code |
@@ -48,6 +50,8 @@ mindmap
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
 | `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
+| `//tools/gomod:check` | The `replace`-coupled Go modules (`pulumi/library/go` ↔ `pulumi/examples/go-foundation`) are in sync. Read-only. Gate: a step in `example-build`. Fix with `//tools/gomod:tidy` |
 | `aspect lint //...` | rules_lint linters (eslint, golangci via nogo, ruff, …) |
 
 ## Infrastructure — Pulumi
