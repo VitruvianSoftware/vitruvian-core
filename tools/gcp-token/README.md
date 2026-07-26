@@ -54,33 +54,89 @@ An access token lives about an hour; a Claude session outlives that comfortably.
 A token fetched by the `SessionStart` hook would be stale exactly when it
 mattered, so callers ask for one when they need one.
 
-## Setting up the broker
+## Brokers: a list, tried in order
 
-One node, once:
+`VITRUVIAN_GCP_BROKERS` is walked until one node mints. A single host is not
+enough in practice — any given box may be asleep, lack the SDK, not be logged
+into the account, or have had its Workspace login lapse — and which node that is
+changes constantly. Always-on nodes come first so the fast path doesn't depend on
+a laptop lid; laptops follow, because today they're the ones actually logged in.
+
+**Finding gcloud on the broker is not just `command -v`.** A non-interactive ssh
+session gets a bare PATH and does not source the user's shell profile, so a
+perfectly good node looks like it has no SDK. Measured on `james-mbp16`: gcloud
+sits at `/opt/homebrew/bin/gcloud` while non-interactive ssh sees only nix paths
+and the system dirs. The remote command therefore resolves in three widening
+steps — PATH, then the user's **login shell**, then known install locations.
+
+The winning node is cached (`~/.config/vitruvian-core/cloud/gcp-broker`) and tried
+first next time. A cached host no longer in the list is ignored.
+
+**A node can have a working gcloud on `PATH` and a broken one in its login
+shell.** On `nuc9i5`, `bash -lc gcloud` resolves a Python 2.7 and refuses to
+start — *"You are running gcloud with Python 2.7, which is no longer
+supported"* — while `/usr/bin/python3` (3.14.5) sits right there and the
+non-interactive `PATH` lookup works fine. The three-step resolution tries `PATH`
+first, so that node is unaffected, but a node whose gcloud is *only* reachable
+via the login shell would fail confusingly. Fix it on the node
+(`export CLOUDSDK_PYTHON=/usr/bin/python3` in the profile, or reinstall the SDK)
+rather than in this script.
+
+Set a node up once:
 
 ```sh
-# on an always-on homelab node
 curl https://sdk.cloud.google.com | bash
-gcloud auth login james@vitruviansoftware.dev
+gcloud auth login <account>
 ```
 
-**Prefer an always-on node over a laptop** — GCP work fails whenever the laptop
-sleeps. The default broker is `fedora`; override with `VITRUVIAN_GCP_BROKER`
-(and `VITRUVIAN_GCP_BROKER_USER`, default `james`).
-
-The account you log in as must be the one
+`<account>` must be what
 [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)
-pins for the work you want to do — the wrapper asks for that account by name, and
-a broker that isn't logged into it fails with a checklist rather than quietly
-handing back a different identity.
+pins for the work you want — the wrapper asks for that account by name, so a
+broker logged into a different one fails loudly rather than quietly handing back
+the wrong identity.
+
+## Workspace logins lapse per node — which is why the list matters
+
+Google Workspace enforces **Google Cloud session control**: a managed account's
+gcloud login expires periodically and wants an *interactive* re-login that SSH
+cannot give it. Measured on the real fleet, for the same account at the same
+moment:
+
+```
+james-macbook-pro   REAUTH LAPSED — this node's login for the account has expired
+james-mbp16         MINTS (258 bytes)
+```
+
+This is a **per-node session**, not a property of the account. A node someone has
+logged into recently mints fine; walking the list routes around the lapsed one
+automatically. That is what turns broker failover from a nice-to-have into the
+thing that makes this reliable.
+
+Two ways to keep it healthy, neither urgent:
+
+- `gcloud auth login <account>` on a node whose session lapsed, whenever
+  convenient — normal use of any of these machines does this anyway.
+- Widen **Admin console → Security → Access and data control → Google Cloud
+  session control** to make lapses rarer.
+
+The failure names itself (`REAUTH LAPSED`) and says another node may still work.
 
 ## Failure
 
-Fatal and actionable. An unreachable broker, a broker without gcloud, or one not
-logged into the requested account prints the checklist (tailnet up? gcloud
-installed? logged in? different broker?) rather than a bare non-zero exit. A
-reply too short to be an access token is also refused, so a truncated read or an
-error string can never be exported as a credential that 401s later.
+Fatal, and it names the cause **per node** — the four failure modes want
+completely different fixes, so collapsing them into "broker unreachable" would
+send you to the wrong place:
+
+```
+gcp-token: no broker could mint a token for james@vitruviansoftware.dev
+  fedora                 no gcloud installed
+  nuc9i5                 gcloud present but not logged in as james@vitruviansoftware.dev
+  nuc9i9                 no gcloud installed
+  james-macbook-pro      REAUTH LAPSED — this node's login for the account has expired…
+```
+
+A reply too short to be an access token is also refused, so a truncated read or
+an error string can never be exported as a credential that 401s later.
 
 ## Tests
 

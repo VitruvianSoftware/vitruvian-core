@@ -95,11 +95,22 @@ or revoke the agent SSH key and cloud sessions lose GCP immediately.
 credentials always win, so a laptop and CI take the same code path and never
 touch the network.
 
-**Prerequisite (once):** install the Google Cloud SDK on an **always-on** node and
-run `gcloud auth login <account>` there, where `<account>` is what
-`infrastructure/gcp-identities.tsv` pins for the work in question. Default broker
-is `fedora`; override with `VITRUVIAN_GCP_BROKER`. A laptop works but GCP breaks
-whenever it sleeps.
+**Prerequisite (once per node):** install the Google Cloud SDK and run
+`gcloud auth login <account>`, where `<account>` is what
+`infrastructure/gcp-identities.tsv` pins for the work in question. Brokers are a
+LIST tried in order (`VITRUVIAN_GCP_BROKERS`, default
+always-on nodes first, then laptops), with the winner cached; set up more than
+one so a sleeping or lapsed node is not a single point of failure.
+
+**Workspace logins lapse per node.** Google Cloud session control expires a
+managed account's gcloud login periodically and wants an interactive re-login ssh
+cannot give it. This is per NODE, not per account: measured on the real fleet at
+the same moment, `james-macbook-pro` had lapsed for
+`james@vitruviansoftware.dev` while `james-mbp16` minted it fine. Failover routes
+around the lapsed node automatically — which is the main reason brokers are a
+list. Re-login on a lapsed node whenever convenient, or widen **Admin console →
+Security → Access and data control → Google Cloud session control** to make it
+rarer. The failure names itself (`REAUTH LAPSED`).
 
 ## Kubernetes access
 Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
