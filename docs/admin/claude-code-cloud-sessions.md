@@ -19,7 +19,7 @@ Two variables on the cloud environment drive it:
 
 | variable | what it is |
 | --- | --- |
-| `VITRUVIAN_PROFILE` | which profile(s) this environment is (`core`, `infra`, `homelab`, `readonly`) — comma-separate to combine, e.g. `core,homelab` |
+| `VITRUVIAN_PROFILE` | which profile this environment is. **Use `all`** unless you specifically want a narrower session (`core`, `infra`, `homelab`, `readonly`) |
 | `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key — the **only** credential on the environment |
 
 The profile is the blast-radius boundary. Its row in
@@ -33,11 +33,13 @@ GitHub PAT, Pulumi token, Tailscale auth key or cluster token rotates **without
 editing the cloud environment at all**. The key's `client_email` must match the
 account its profile declares — a mismatched key is refused and fails closed.
 
-Combining profiles unions their tools and secrets **without** merging privileges:
-each keeps its own service account and reads only its own secrets, so it needs
-its own `VITRUVIAN_CLOUD_KEY_<PROFILE>`. The first listed profile with an
-identity becomes the session's ambient GCP identity (what `pulumi` and a bare
-`gcloud` use), so order the list accordingly.
+`all` is one service account holding every credential the agent needs — that is
+the everyday configuration, and it is just the two variables above. The narrower
+rows exist for when you deliberately want a session that *cannot* reach
+production, e.g. one reviewing third-party code. Profiles can also be combined
+(`core,homelab`), but prefer a single row: combining keeps each profile's
+identity separate and therefore needs a key each, which is only worth it to hold
+two existing boundaries at once.
 
 **No Setup script is needed.** `tailscale` is installed by the bootstrap for any
 profile that lists it, so the cloud environment's *Setup script* field can be

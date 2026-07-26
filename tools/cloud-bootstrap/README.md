@@ -25,39 +25,18 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 
 | variable | what it is |
 | --- | --- |
-| `VITRUVIAN_PROFILE` | which profile(s) this environment is. Selects one or more rows of [`profiles.tsv`](profiles.tsv). |
+| `VITRUVIAN_PROFILE` | which profile this environment is. Selects a row of [`profiles.tsv`](profiles.tsv). Start with `all`. |
 | `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key (raw JSON or base64). The **only** credential on the environment. |
 
-Per-profile keys (`VITRUVIAN_CLOUD_KEY_INFRA`, …) are honored first, so one
-environment can hold several and `VITRUVIAN_PROFILE` switches identity with it.
+That is the whole configuration:
 
-## Combining profiles
+```
+VITRUVIAN_PROFILE=all
+VITRUVIAN_CLOUD_KEY=<base64 of one service-account key>
+```
 
-`VITRUVIAN_PROFILE=core,homelab` unions their tools and their secrets.
-
-This does **not** merge privileges into one identity. Each profile keeps its own
-service account and reads only its own secrets — every `gcloud secrets versions
-access` carries that profile's `--account` and `--project` — so the boundary
-above still holds; the session simply holds two identities rather than one
-broader one. That is why combining is safe, and it is the first thing the test
-pins.
-
-Consequences worth knowing:
-
-- **Each profile needs its own key**, in `VITRUVIAN_CLOUD_KEY_<PROFILE>`. The
-  shared `VITRUVIAN_CLOUD_KEY` can only satisfy one of them; identity pinning
-  refuses the rest rather than authenticating them as the wrong account.
-- **The first listed profile with an identity is the primary** — the one that
-  becomes ambient for `pulumi`, `gsutil` and a bare `gcloud`
-  (`GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_CORE_PROJECT`). Order the list
-  accordingly: `infra,homelab` if you want to run Pulumi. `:whoami` marks it
-  `[primary]`.
-- **Two profiles mapping the same env var to different secrets is refused.**
-  Which credential the session ends up holding must not depend on manifest row
-  order. Identical mappings (every profile wants the same `GH_TOKEN`) are a
-  harmless overlap and resolve once.
-- A repeated name is deduped; **one unknown name refuses the whole list**, so
-  there is no partial bootstrap.
+One key unlocks every credential the agent needs. Nothing else to set, no
+ordering to think about, and the *Setup script* field can be left empty.
 
 ## The profile is the blast-radius boundary
 
@@ -66,14 +45,48 @@ installed and which secrets a session may hold:
 
 | profile | gets | for |
 | --- | --- | --- |
+| **`all`** | **everything, one service account, one key** | **the default — use this unless you want a narrower session** |
 | `core` | bazel, direnv, gh + a GitHub token and a BuildBuddy key | build, test, review, open PRs |
 | `infra` | core + gcloud, pulumi + a Pulumi token | Pulumi/GCP infrastructure work |
 | `homelab` | core + kubectl, tailscale + the Tailscale auth key and cluster token | tailnet, k3s, node SSH |
 | `readonly` | bazel, direnv. **Nothing else.** | untrusted input, third-party code review, a spike |
 
-A `core` session cannot obtain a Pulumi token even if one exists: its row does
-not name it, and its service account has no IAM to read it. **Add capability by
-adding a row, never by widening one.**
+The narrow rows are **not** the everyday path. They exist for when you
+deliberately want a session that *cannot* reach production — reviewing
+third-party code, or any session that ingests untrusted input (issue text, PR
+comments, a fetched page), where a prompt injection reaching a deploy credential
+is the thing you are buying insurance against. `readonly` is the sharpest version
+of that: tooling, zero credentials.
+
+If you never want that insurance, `all` is a complete and coherent answer and the
+rest of this file is optional reading. **Add capability by adding a row, never by
+widening one** still holds — it is just that `all` is already the widest row.
+
+## Combining profiles (advanced; usually unnecessary)
+
+`VITRUVIAN_PROFILE=core,homelab` unions their tools and their secrets. **Prefer a
+single row that lists what you need** — combining is the escape hatch for holding
+two *existing* boundaries at once without defining a third, and it costs three
+rules a single row does not.
+
+It does **not** merge privileges into one identity. Each profile keeps its own
+service account and reads only its own secrets — every `gcloud secrets versions
+access` carries that profile's `--account` and `--project`. That is why combining
+is safe, and it is the first thing the test pins. The price:
+
+- **Each profile needs its own key**, in `VITRUVIAN_CLOUD_KEY_<PROFILE>`. The
+  shared `VITRUVIAN_CLOUD_KEY` can only satisfy one of them; identity pinning
+  refuses the rest rather than authenticating them as the wrong account.
+- **The first listed profile with an identity is the primary** — the one that
+  becomes ambient for `pulumi`, `gsutil` and a bare `gcloud`
+  (`GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_CORE_PROJECT`). `:whoami` marks it
+  `[primary]`.
+- **Two profiles mapping the same env var to different secrets is refused.**
+  Which credential the session ends up holding must not depend on manifest row
+  order. Identical mappings resolve once.
+
+A repeated name is deduped; **one unknown name refuses the whole list**, so there
+is no partial bootstrap. None of this applies when you use one row.
 
 ## Why one credential and not one per tool
 
@@ -128,18 +141,17 @@ provider and no caller moves.
 ## Setting up a profile
 
 1. **Create the service account** and grant it `secretmanager.secretAccessor` on
-   *only* that profile's secrets. Declare it in the app's Pulumi stack — the IAM
+   that profile's secrets — for `all`, that is simply all of them. Declare it in the app's Pulumi stack — the IAM
    half of a secret is code (principles §2.3).
 2. **Seed the secret values** (the half that cannot be committed, §2.4):
    ```sh
    bazel run //tools/gcp-secrets:seed -- tabula/infra/build claude-cloud-core-github-token
    ```
 3. **Add the row** to `profiles.tsv`.
-4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` (or a
-   comma-separated list) and `VITRUVIAN_CLOUD_KEY=<the key>` — one
-   `VITRUVIAN_CLOUD_KEY_<PROFILE>` per profile if you combine several. The key is
-   multiline JSON and the box is `.env` format, so base64 it onto one line:
-   `base64 -w0 key.json`.
+4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` and
+   `VITRUVIAN_CLOUD_KEY=<the key>`. The key is multiline JSON and the box is
+   `.env` format, so base64 it onto one line: `base64 -w0 key.json`. (Only if you
+   combine profiles do you need one `VITRUVIAN_CLOUD_KEY_<PROFILE>` each.)
 5. **Verify** from a session: `bazel run //tools/cloud-bootstrap:whoami`.
 
 ## What it installs, and what it deliberately does not
