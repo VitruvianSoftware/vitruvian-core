@@ -56,11 +56,18 @@ mattered, so callers ask for one when they need one.
 
 ## Brokers: a list, tried in order
 
-`VITRUVIAN_GCP_BROKERS` (default `fedora,nuc9i5,nuc9i9,james-macbook-pro`) is
-walked until one node mints. A single host is not enough in practice — any given
-box may be asleep, lack the SDK, or not be logged into the account being asked
-for, and which node that is changes over time. Always-on nodes come first so the
-fast path doesn't depend on a laptop lid.
+`VITRUVIAN_GCP_BROKERS` is walked until one node mints. A single host is not
+enough in practice — any given box may be asleep, lack the SDK, not be logged
+into the account, or have had its Workspace login lapse — and which node that is
+changes constantly. Always-on nodes come first so the fast path doesn't depend on
+a laptop lid; laptops follow, because today they're the ones actually logged in.
+
+**Finding gcloud on the broker is not just `command -v`.** A non-interactive ssh
+session gets a bare PATH and does not source the user's shell profile, so a
+perfectly good node looks like it has no SDK. Measured on `james-mbp16`: gcloud
+sits at `/opt/homebrew/bin/gcloud` while non-interactive ssh sees only nix paths
+and the system dirs. The remote command therefore resolves in three widening
+steps — PATH, then the user's **login shell**, then known install locations.
 
 The winning node is cached (`~/.config/vitruvian-core/cloud/gcp-broker`) and tried
 first next time: on the real homelab that took a cold mint from ~9s to ~2.4s. A
@@ -79,24 +86,31 @@ pins for the work you want — the wrapper asks for that account by name, so a
 broker logged into a different one fails loudly rather than quietly handing back
 the wrong identity.
 
-## ⚠️ Workspace accounts need session control widened
+## Workspace logins lapse per node — which is why the list matters
 
-**Measured on the real homelab:** `james.nguyen@gmail.com` mints fine, while
-`james@vitruviansoftware.dev` fails with
+Google Workspace enforces **Google Cloud session control**: a managed account's
+gcloud login expires periodically and wants an *interactive* re-login that SSH
+cannot give it. Measured on the real fleet, for the same account at the same
+moment:
 
 ```
-Reauthentication failed. cannot prompt during non-interactive execution.
+james-macbook-pro   REAUTH LAPSED — this node's login for the account has expired
+james-mbp16         MINTS (258 bytes)
 ```
 
-Google Workspace enforces **Google Cloud session control** — a periodic
-*interactive* re-login — on managed accounts. SSH cannot satisfy it, so no
-node-side change fixes this: re-running `gcloud auth login` on the broker only
-buys until the next window closes.
+This is a **per-node session**, not a property of the account. A node someone has
+logged into recently mints fine; walking the list routes around the lapsed one
+automatically. That is what turns broker failover from a nice-to-have into the
+thing that makes this reliable.
 
-The durable fix is **Admin console → Security → Access and data control → Google
-Cloud session control**, set to a long window or "never expires" for the accounts
-brokered here. Until then, Workspace-account GCP work from a cloud session will
-lapse periodically, and the failure names itself (`REAUTH REQUIRED`).
+Two ways to keep it healthy, neither urgent:
+
+- `gcloud auth login <account>` on a node whose session lapsed, whenever
+  convenient — normal use of any of these machines does this anyway.
+- Widen **Admin console → Security → Access and data control → Google Cloud
+  session control** to make lapses rarer.
+
+The failure names itself (`REAUTH LAPSED`) and says another node may still work.
 
 The account you log in as must be the one
 [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)

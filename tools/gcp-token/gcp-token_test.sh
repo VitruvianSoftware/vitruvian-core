@@ -103,7 +103,7 @@ printf '%s\n' "\$*" >>"$work/ssh.argv"
 target=""
 for a in "\$@"; do case "\$a" in james@*) target="\${a#james@}" ;; esac; done
 case "\$target" in
-  nogcloud) echo "bash: line 1: gcloud: command not found" >&2; exit 127 ;;
+  nogcloud) echo "gcloud: command not found" >&2; exit 127 ;;
   nologin)  echo "ERROR: (gcloud.auth.print-access-token) Your current active account [x] does not have any valid credentials" >&2; exit 1 ;;
   reauth)   echo "ERROR: (gcloud.auth.print-access-token) There was a problem refreshing your current auth tokens: Reauthentication failed. cannot prompt during non-interactive execution." >&2; exit 1 ;;
   down)     echo "ssh: connect to host: Connection timed out" >&2; exit 255 ;;
@@ -217,9 +217,10 @@ out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,nologin,reauth,down)" || tr
 err="$(cat "$work/stderr")"
 assert_contains "a node without the SDK is named as such" "$err" "no gcloud installed"
 assert_contains "a node not logged in is named as such" "$err" "not logged in"
-assert_contains "a reauth-blocked node is called out specifically" "$err" "REAUTH REQUIRED"
+assert_contains "a lapsed-login node is called out specifically" "$err" "REAUTH LAPSED"
 assert_contains "an unreachable node is named as such" "$err" "unreachable over the tailnet"
-assert_contains "…and reauth's fix is the Workspace setting, not the node" "$err" "session control"
+assert_contains "…said to be the NODE's session, not the account" "$err" "another node may still mint"
+assert_contains "…with the Workspace setting offered to make it recur less" "$err" "session control"
 
 # The winning broker is remembered, so the common path stops paying for the walk.
 rm -f "$work/broker-cache"
@@ -237,6 +238,17 @@ printf 'ghost\n' >"$work/broker-cache"
 out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=nogcloud,good)"
 assert_not_contains "a stale cached broker outside the list is ignored" "$(cat "$work/ssh.argv")" "james@ghost"
 [ "$out" = "$BROKER_TOKEN" ] && pass "…and the list still mints" || fail "a stale cache broke the mint"
+
+# The remote command must not assume gcloud is on the non-interactive PATH.
+# Measured on james-mbp16: gcloud lives at /opt/homebrew/bin/gcloud while a
+# non-interactive ssh sees only nix paths + the system dirs, so the node was
+# reported "no gcloud installed" while an interactive login found it at once.
+rm -f "$work/broker-cache"
+out="$(run "$ACCOUNT" VITRUVIAN_GCP_BROKERS=good)"
+remote="$(cat "$work/ssh.argv")"
+assert_contains "the remote lookup falls back to a LOGIN shell" "$remote" "-lc"
+assert_contains "…and to known install locations" "$remote" "/opt/homebrew/bin/gcloud"
+assert_contains "…including a self-installed SDK under \$HOME" "$remote" "google-cloud-sdk/bin/gcloud"
 
 # ---------------------------------------------------------------------------
 echo "gcp-token: refusals"

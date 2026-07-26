@@ -58,15 +58,18 @@
 # command works everywhere and CI/laptop/cloud share one code path.
 set -uo pipefail
 
-# Homelab nodes that may hold credentials, tried IN ORDER until one mints. A
-# list rather than a single host because any given node may be asleep, may not
-# have the SDK, or may not be logged into the account being asked for -- and
-# which node that is changes over time. Always-on nodes first, laptops last, so
-# the fast path does not depend on someone's lid being open.
+# Homelab nodes that may hold credentials, tried IN ORDER until one mints. A list
+# rather than a single host, because which node can mint changes constantly: one
+# may be asleep, one may lack the SDK, one may not be logged into the account,
+# and a Workspace login LAPSES per node on Google Cloud session control. Measured
+# on the real fleet, james-macbook-pro had lapsed while james-mbp16 minted the
+# same account fine -- so walking the list is what makes this reliable rather
+# than a nice-to-have. Always-on nodes first so the fast path does not depend on
+# a laptop lid, laptops after because today they are the ones actually logged in.
 #
 # Each node needs the Google Cloud SDK and `gcloud auth login <account>` run
 # ONCE; the resulting refresh token then lives only there.
-BROKER_HOSTS="${VITRUVIAN_GCP_BROKERS:-${VITRUVIAN_GCP_BROKER:-fedora,nuc9i5,nuc9i9,james-macbook-pro}}"
+BROKER_HOSTS="${VITRUVIAN_GCP_BROKERS:-${VITRUVIAN_GCP_BROKER:-fedora,nuc9i5,nuc9i9,james-mbp16,james-macbook-pro,james-mbp,james-mbp32}}"
 BROKER_USER="${VITRUVIAN_GCP_BROKER_USER:-james}"
 
 # The node that last worked, tried FIRST next time. Without this every mint pays
@@ -150,6 +153,35 @@ _err="$(mktemp)"
 _report="$(mktemp)"
 trap 'rm -f "$_err" "$_report"' EXIT
 
+# remote_cmd — the command run ON the broker.
+#
+# It does NOT just say `gcloud`: a non-interactive ssh session gets a bare PATH
+# and does not source the user's shell profile, so a perfectly good broker looks
+# like it has no SDK. Measured on james-mbp16, whose gcloud lives at
+# /opt/homebrew/bin/gcloud while non-interactive ssh sees only nix paths,
+# /usr/local/bin and the system dirs — the node was reported "no gcloud
+# installed" while an interactive login found it immediately.
+#
+# So resolve in three widening steps: PATH (fast, and what Linux nodes hit),
+# then the user's LOGIN shell (picks up whatever they actually configured —
+# Homebrew, nix, asdf), then the known install locations. The literal
+# "command not found" is preserved for the classifier when all three miss.
+remote_cmd() {
+	cat <<REMOTE
+G="\$(command -v gcloud 2>/dev/null)"
+[ -n "\$G" ] || G="\$("\${SHELL:-/bin/sh}" -lc 'command -v gcloud' 2>/dev/null)"
+if [ -z "\$G" ]; then
+  for p in "\$HOME/google-cloud-sdk/bin/gcloud" /opt/homebrew/bin/gcloud \
+           /opt/homebrew/share/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud \
+           /usr/local/share/google-cloud-sdk/bin/gcloud /snap/bin/gcloud; do
+    [ -x "\$p" ] && G="\$p" && break
+  done
+fi
+[ -n "\$G" ] || { echo "gcloud: command not found" >&2; exit 127; }
+exec "\$G" auth print-access-token --account=${ACCOUNT}
+REMOTE
+}
+
 # try_broker <host> — echo the token on success, or record why it failed.
 #
 # `--account` goes to the REMOTE gcloud so a broker cannot be asked for one
@@ -158,7 +190,7 @@ try_broker() {
 	local host="$1" tok
 	: >"$_err"
 	tok="$(timeout 45 "$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${host}" \
-		"gcloud auth print-access-token --account=${ACCOUNT}" 2>"$_err" | tr -d '\r\n')"
+		"$(remote_cmd)" 2>"$_err" | tr -d '\r\n')"
 	if is_token "$tok"; then
 		printf '%s' "$tok"
 		return 0
@@ -168,7 +200,7 @@ try_broker() {
 	# REAUTH in particular is not fixed on the node at all.
 	local why
 	if grep -qi 'Reauthentication failed\|reauth' "$_err" 2>/dev/null; then
-		why="REAUTH REQUIRED — this account needs an interactive re-login that ssh cannot give it"
+		why="REAUTH LAPSED — this node's login for the account has expired (another node may still mint)"
 	elif grep -qi 'command not found\|No such file' "$_err" 2>/dev/null; then
 		why="no gcloud installed"
 	elif grep -qi 'not have any valid credentials\|no credentialed account\|is not a valid account\|Could not find\|not a valid account' "$_err" 2>/dev/null; then
@@ -213,10 +245,11 @@ if [ -z "$_tok" ]; then
 	echo "gcp-token: no broker could mint a token for $ACCOUNT" >&2
 	cat "$_report" >&2
 	echo "  Fixes, by cause:" >&2
-	echo "    · REAUTH REQUIRED  → Workspace forces periodic interactive re-login for this" >&2
-	echo "                         account. Either run 'gcloud auth login $ACCOUNT' on that" >&2
-	echo "                         node again, or lengthen Admin console → Security → Google" >&2
-	echo "                         Cloud session control. No node-side change fixes it." >&2
+	echo "    · REAUTH LAPSED    → that NODE's session expired, not the account. Any node with" >&2
+	echo "                         a fresh login still mints, which is why brokers are a list —" >&2
+	echo "                         every one above was already tried. Re-login there with" >&2
+	echo "                         'gcloud auth login $ACCOUNT', or widen Admin console →" >&2
+	echo "                         Security → Google Cloud session control to make it recur less." >&2
 	echo "    · no gcloud        → install the SDK on that node" >&2
 	echo "    · not logged in    → gcloud auth login $ACCOUNT   (once, on that node)" >&2
 	echo "    · unreachable      → tailscale status" >&2
