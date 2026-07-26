@@ -25,6 +25,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -85,13 +87,24 @@ type Config struct {
 
 	// GitHub Actions CI/CD — default CI/CD provider.
 	// Set github_owner to enable Workload Identity Federation.
-	GitHubOwner           string
-	GitHubRepoBootstrap   string
-	GitHubRepoOrg         string
-	GitHubRepoEnv         string
-	GitHubRepoNet         string
-	GitHubRepoProj        string
-	WIFAttributeCondition string // Optional: override the default WIF attribute condition
+	GitHubOwner string
+
+	// --- Pulumi ESC OIDC (see build_pulumi_esc.go) --------------------------
+	// PulumiESCOrg gates the whole feature: unset, nothing is provisioned and
+	// //tools/gcp-token's tailnet broker remains the only path to GCP from an
+	// agent session.
+	PulumiESCOrg              string
+	PulumiESCEnvironments     []string
+	PulumiESCRoles            []string
+	PulumiESCPoolID           string
+	PulumiESCProviderID       string
+	PulumiESCServiceAccountID string
+	GitHubRepoBootstrap       string
+	GitHubRepoOrg             string
+	GitHubRepoEnv             string
+	GitHubRepoNet             string
+	GitHubRepoProj            string
+	WIFAttributeCondition     string // Optional: override the default WIF attribute condition
 
 	// BootstrapSAEmail, when set, is the full email of the PRE-EXISTING bootstrap
 	// service account CI authenticates as via WIF (e.g.
@@ -133,14 +146,21 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		GCPGlobalSecretsAdmin: conf.Get("gcp_global_secrets_admin"),
 		GCPKMSAdmin:           conf.Get("gcp_kms_admin"),
 		// GitHub Actions CI/CD
-		GitHubOwner:           conf.Get("github_owner"),
-		GitHubRepoBootstrap:   conf.Get("github_repo_bootstrap"),
-		GitHubRepoOrg:         conf.Get("github_repo_org"),
-		GitHubRepoEnv:         conf.Get("github_repo_env"),
-		GitHubRepoNet:         conf.Get("github_repo_net"),
-		GitHubRepoProj:        conf.Get("github_repo_proj"),
-		WIFAttributeCondition: conf.Get("wif_attribute_condition"),
-		BootstrapSAEmail:      conf.Get("bootstrap_sa_email"),
+		GitHubOwner: conf.Get("github_owner"),
+
+		PulumiESCOrg:              conf.Get("pulumi_esc_org"),
+		PulumiESCEnvironments:     csvConfig(conf.Get("pulumi_esc_environments")),
+		PulumiESCRoles:            csvConfig(conf.Get("pulumi_esc_roles")),
+		PulumiESCPoolID:           defaultString(conf.Get("pulumi_esc_pool_id"), "pulumi-esc-pool"),
+		PulumiESCProviderID:       defaultString(conf.Get("pulumi_esc_provider_id"), "pulumi-esc-provider"),
+		PulumiESCServiceAccountID: defaultString(conf.Get("pulumi_esc_sa_id"), "sa-pulumi-esc"),
+		GitHubRepoBootstrap:       conf.Get("github_repo_bootstrap"),
+		GitHubRepoOrg:             conf.Get("github_repo_org"),
+		GitHubRepoEnv:             conf.Get("github_repo_env"),
+		GitHubRepoNet:             conf.Get("github_repo_net"),
+		GitHubRepoProj:            conf.Get("github_repo_proj"),
+		WIFAttributeCondition:     conf.Get("wif_attribute_condition"),
+		BootstrapSAEmail:          conf.Get("bootstrap_sa_email"),
 	}
 
 	c.OrgPolicyAdminRole = conf.Get("org_policy_admin_role") == "true"
@@ -205,4 +225,27 @@ func loadConfig(ctx *pulumi.Context) *Config {
 	}
 
 	return c
+}
+
+// csvConfig splits a comma-separated config value, trimming blanks. An unset or
+// all-whitespace value yields nil rather than []string{""}, so callers can test
+// emptiness with len() and never bind an empty subject by accident.
+func csvConfig(v string) []string {
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// defaultString returns v, or def when v is empty. Resource IDs get defaults so
+// the common case needs no config, while an operator can still rename to fit an
+// existing naming convention.
+func defaultString(v, def string) string {
+	if strings.TrimSpace(v) == "" {
+		return def
+	}
+	return v
 }

@@ -99,3 +99,17 @@ func exportOutputs(
 		ctx.Export("wif_provider_name", buildOutputs.WIFProviderName)
 	}
 }
+
+// exportPulumiESCOutputs publishes what an operator needs to finish the wiring
+// on the Pulumi side. The ESC environment definition references the provider by
+// its full resource name, which is only knowable after this stack applies -- so
+// exporting it is the difference between a documented two-step and a scavenger
+// hunt through the console. No-op when the feature is not configured.
+func exportPulumiESCOutputs(ctx *pulumi.Context, cfg *Config, out *PulumiESCOutputs) {
+	if cfg.PulumiESCOrg == "" || out == nil {
+		return
+	}
+	ctx.Export("pulumi_esc_wif_pool_name", out.WIFPoolName)
+	ctx.Export("pulumi_esc_wif_provider_name", out.WIFProviderName)
+	ctx.Export("pulumi_esc_service_account", out.ServiceAccount)
+}

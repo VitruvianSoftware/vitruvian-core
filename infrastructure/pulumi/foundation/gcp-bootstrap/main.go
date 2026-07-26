@@ -94,6 +94,16 @@ func main() {
 
 		// 5b. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by
 		// default, see build_github.go)
+		// Pulumi ESC federation: lets an agent session obtain GCP credentials with
+		// no key anywhere, since the org forbids SA keys. Gated on pulumi_esc_org;
+		// unset, this is a no-op and //tools/gcp-token's tailnet broker stays the
+		// only path. See build_pulumi_esc.go.
+		escOutputs, err := deployPulumiESCOIDC(ctx, cfg, cicd)
+		if err != nil {
+			return err
+		}
+		exportPulumiESCOutputs(ctx, cfg, escOutputs)
+
 		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas)
 		if err != nil {
 			return err

@@ -70,7 +70,12 @@ Pulumi is unreachable.
 
 1. **Local `gcloud`.** On a laptop or in CI that already has credentials, this is
    just `gcloud auth print-access-token` and the network is never touched.
-2. **The tailnet broker.** Only when step 1 comes up empty.
+2. **Pulumi ESC**, when `VITRUVIAN_ESC_ENV` is set — keyless *and* with no
+   homelab dependency. Ahead of the broker because a cloud service beats a
+   machine in someone's house; behind local credentials because a logged-in
+   laptop should not phone anything. Falls through on any failure rather than
+   being fatal, which is what makes "ESC primary, homelab backup" real.
+3. **The tailnet broker.** When the first two come up empty.
 
 That ordering is what lets `//tools/pulumi` call this unconditionally: laptop, CI
 and cloud session share one code path, and auth is chosen at the edge.
