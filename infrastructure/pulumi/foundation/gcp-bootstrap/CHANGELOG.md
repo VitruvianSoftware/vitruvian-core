@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.9.0...foundation-gcp-bootstrap-v0.10.0) (2026-07-26)
+
+
+### Features
+
+* **foundation:** create the Pulumi ESC environment in code, and harden the account check ([#1245](https://github.com/VitruvianSoftware/vitruvian-core/issues/1245)) ([ba59a8b](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba59a8b0761d86fd6c67a354b43a8aa79d37b267))
+
 ## [0.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.2...foundation-gcp-bootstrap-v0.9.0) (2026-07-26)
 
 
