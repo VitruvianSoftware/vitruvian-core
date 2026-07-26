@@ -116,6 +116,22 @@ updates:
           - "@types/jest"
           - "ts-jest"
           - "babel-jest"
+      # Storybook refuses to run when its packages disagree on version -- the
+      # core does a version check across every @storybook/* it loads and hard
+      # errors. So the family cannot be bumped one package at a time, and
+      # ungrouped is exactly what it got: the 9.1.20 -> 10.5.4 major arrived as
+      # four separate PRs (storybook #1215, react-vite #1214, addon-a11y #1216,
+      # addon-docs #1218). Each regenerated pnpm-lock.yaml from a different base,
+      # so all four conflicted with each other and with every other npm PR that
+      # touched the lock -- none of them could be merged, and merging any one
+      # would have left the tree on a mix of 9 and 10.
+      # Grouped across ALL update-types for the same reason as `jest` above: a
+      # storybook major is a deliberate migration, and it should arrive as ONE
+      # PR carrying ONE internally consistent lockfile.
+      storybook:
+        patterns:
+          - "storybook"
+          - "@storybook/*"
       npm-minor-patch:
         update-types:
           - "minor"

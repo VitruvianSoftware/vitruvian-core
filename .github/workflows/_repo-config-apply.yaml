@@ -87,6 +87,12 @@ jobs:
                   # Injected (never committed) so repo_config can set the Dependabot
                   # BUILDBUDDY_API_KEY secret without a secure: value in git (#456).
                   BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+                  # Same pattern: repo_config mirrors this into the Dependabot store
+                  # so the preview leg can mint its App token on Dependabot PRs. The
+                  # App token minted above is NOT a substitute -- that is a derived,
+                  # hour-lived installation token; the Dependabot secret needs the
+                  # key itself, which only this secret carries.
+                  APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
               run: |
                   # +e to capture pulumi's real exit code for the digest below.
                   set +e -u -o pipefail

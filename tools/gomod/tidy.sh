@@ -91,9 +91,30 @@ GLYPH_FAIL="✗"
 # the ones that can silently desync. A repo-wide sweep would also drag in ~30
 # independent app modules whose tidiness nothing here can affect, and pay their
 # module-download cost on every run of a presubmit gate.
+#
+# A root is a SUBTREE (every go.mod under it) unless it ends in `/go.mod`, which
+# names exactly one module. The exact form exists because the second coupled
+# cluster is not subtree-shaped: `infrastructure/pulumi/pkg/secrets` is consumed
+# through a local `replace` by exactly two modules -- the infra root module and
+# platform/repo_config -- while the other 33 go.mods under infrastructure/pulumi
+# form a SEPARATE cluster around `foundation/modules`. Taking
+# `infrastructure/pulumi` as a subtree root would sweep all 35, including six
+# gcp-app-infra modules that are already out of tidy on main today (their tidy
+# would DROP `foundation-app-infra/modules` from require, which is a real
+# question about what those stacks depend on and wants its own change, not a
+# drive-by inside a Dependabot fix). Naming the two modules keeps this gate
+# green on main while closing the hole that let the bump through.
+#
+# The hole was not hypothetical: Dependabot bumped grpc in pkg/secrets/go.mod
+# alone (PR #1194 and siblings), both consumers desynced, and `go-test-infra`
+# died with the same "go: updates to go.mod needed; to update it: go mod tidy"
+# this tool was built to pre-empt -- while `bazel run //tools/gomod:check`
+# reported every module tidy, because it was not looking at these two.
 DEFAULT_ROOTS=(
   "pulumi/library/go"
   "pulumi/examples/go-foundation"
+  "infrastructure/pulumi/go.mod"                # replaces ./pkg/secrets
+  "infrastructure/pulumi/platform/repo_config"  # replaces ../../pkg/secrets
 )
 
 MODE="fix"
@@ -128,14 +149,30 @@ command -v go >/dev/null 2>&1 || {
 # clean tree, and must never be allowed to report green.
 mods=()
 for root in "${ROOTS[@]}"; do
-  [ -d "$root" ] || {
-    printf '%s%s gomod%s — root does not exist: %s\n' \
-      "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$root" >&2
-    exit 1
-  }
-  while IFS= read -r mod; do
-    mods+=("$(dirname "$mod")")
-  done < <(find "$root" -name go.mod -not -path '*/vendor/*' | sort)
+  # `<dir>/go.mod` names one module exactly; anything else is a subtree. Both
+  # forms fail loudly when they match nothing -- a root that has been renamed
+  # out from under this list must not silently shrink the covered set, which is
+  # the same false-green this tool exists to prevent.
+  case "$root" in
+    */go.mod)
+      [ -f "$root" ] || {
+        printf '%s%s gomod%s — module does not exist: %s\n' \
+          "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$root" >&2
+        exit 1
+      }
+      mods+=("$(dirname "$root")")
+      ;;
+    *)
+      [ -d "$root" ] || {
+        printf '%s%s gomod%s — root does not exist: %s\n' \
+          "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$root" >&2
+        exit 1
+      }
+      while IFS= read -r mod; do
+        mods+=("$(dirname "$mod")")
+      done < <(find "$root" -name go.mod -not -path '*/vendor/*' | sort)
+      ;;
+  esac
 done
 
 if [ ${#mods[@]} -eq 0 ]; then
