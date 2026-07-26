@@ -118,6 +118,13 @@ MIN_SOURCES=50
 info() { printf '\033[36m→\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+# Degraded coverage is a WARNING, not a pass and not a failure. On Actions it is
+# also emitted as a workflow annotation, so a green check whose PyPI coverage was
+# reduced says so on the PR itself rather than only in a collapsed job log.
+warn() {
+  printf '\033[33m!\033[0m %s\n' "$*" >&2
+  [ -n "${GITHUB_ACTIONS:-}" ] && printf '::warning title=osv-scan coverage degraded::%s\n' "$1" || true
+}
 
 command -v osv-scanner >/dev/null 2>&1 ||
   die "osv-scanner not on PATH.
@@ -177,8 +184,36 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
 #
 # It is not an outage you wait out. Successes and failures interleaved two
 # seconds apart (09:19:48 fail, 09:19:50 pass, 09:19:52 pass), so deps.dev is
-# degraded per-request rather than down, and the failures are independent. Three
-# attempts therefore take a ~13% red rate to roughly 1-in-450.
+# degraded per-request rather than down.
+#
+# THE FAILURES ARE NOT INDEPENDENT, though, and the first cut of this retry
+# assumed they were. From "~13% per request, independent" it followed that three
+# attempts would land around 1-in-450, and that prediction was wrong by two
+# orders of magnitude: measured over the twelve Supply Chain runs that followed
+# on 2026-07-25, THREE still went red (~25%), each having burned all three
+# attempts inside ~20 seconds --
+#
+#     attempt 1/3 failed with a transient resolver error (exit 127); retrying in 5s
+#     attempt 2/3 failed with a transient resolver error (exit 127); retrying in 10s
+#     settled after 3 attempt(s)
+#
+# -- while other jobs minutes either side passed. Interleaving at two seconds
+# says the degradation is per-request; it does NOT say requests are independent,
+# and both observations fit a deps.dev that degrades in BURSTS lasting longer
+# than the retry window. Three attempts over ~20s therefore sample one burst
+# three times, which is close to one attempt.
+#
+# So the lever is the window, not the count: five attempts backing off 5/10/20/40
+# spans ~75s of sleep plus the scans themselves. That is a deliberate bet on
+# burst length (measured in tens of seconds, not minutes) rather than a derived
+# number.
+#
+# THAT BET LOST, and the next reader should not place it a third time. At the
+# 5/10/20/40 budget a scan still burned all five attempts across ~85s and went
+# red (#1226, 2026-07-25 22:54). Widening again is the wrong move: see the
+# RESOLUTION-FREE FALLBACK below for why the failure is one file's RPC rather
+# than a burst to be waited out. Retry is now only the FIRST line -- it still
+# absorbs the short blips cheaply, and the fallback catches what it cannot.
 #
 # SCOPE IS THE SAFETY PROPERTY. Only a transport-level failure is retried:
 #   - rc=1 is a VERDICT (advisories found), never retried -- a second attempt
@@ -189,7 +224,7 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
 #     attempt rather than burning the budget three times over.
 # If every attempt fails the gate still fails closed -- retry narrows the window,
 # it never converts a failure into a pass.
-OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-3}"
+OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-5}"
 OSV_RETRY_DELAY="${OSV_RETRY_DELAY:-5}"
 TRANSIENT_RE='rpc error|unavailable|deadline exceeded|connection refused|no such host|i/o timeout|tls handshake|connection reset|temporary failure in name resolution|failed resolution'
 
@@ -227,6 +262,59 @@ done
 
 [ "${attempt}" -eq 1 ] || info "settled after ${attempt} attempt(s)"
 
+# RESOLUTION-FREE FALLBACK — because widening the retry window has now failed
+# twice, and the reason is structural rather than probabilistic.
+#
+# What the retry budget was built on: "deps.dev degrades in BURSTS lasting
+# longer than the retry window, so widen the window." That was measured from
+# exit codes alone. Once the failure path started QUOTING the scanner (the
+# `*)` arm below), the actual error named a single file every time:
+#
+#     failed resolution for .../devx/internal/scaffold/templates/python-api/
+#       requirements.txt: rpc error: code = Unavailable desc = service unavailable
+#
+# That file is the ONLY unpinned dependency manifest in the repo -- verified:
+# one requirements.txt tracked in git, no Pipfile/poetry.lock, and the root
+# pyproject.toml carries no runtime pins. Every other manifest here is a
+# LOCKFILE (go.sum, pnpm-lock.yaml), which osv-scanner resolves locally with
+# zero RPCs. So exactly one file drives the repo down the deps.dev
+# `transitivedependency/requirements` path, and that RPC is the only network
+# dependency the whole gate has.
+#
+# The defect is therefore not the retry budget. It is that a REQUIRED,
+# merge-blocking check takes a third-party service's availability as an input:
+# when deps.dev sheds load, every open dependency PR reddens on a file none of
+# them touch. No retry window fixes that, because the window can always be
+# shorter than the outage.
+#
+# --no-resolve is still NOT the default (see "RULED OUT" above -- it trades the
+# 8 resolved PyPI advisories for 2 unresolved ones, and the resolved set is the
+# baseline). It is used only here, on the path where the resolved scan could not
+# be obtained at all, so the choice is not "resolved vs unresolved" but
+# "unresolved vs no verdict whatsoever".
+#
+# FAILS OPEN ON AVAILABILITY, CLOSED ON VERDICTS. The fallback still runs the
+# full recursive scan and still dies on rc=1, so a real advisory reachable
+# without the network blocks the merge exactly as before. Only the transitive
+# PyPI coverage is degraded, and the run says so loudly rather than reporting an
+# unqualified green -- the same run-then-annotate shape pulumi-preview.yaml and
+# _repo-config-preview.yaml use when a credential is absent.
+degraded=0
+if [ "${rc}" -ne 0 ] && [ "${rc}" -ne 1 ] && grep -qiE "${TRANSIENT_RE}" "${scan_err}"; then
+  degraded=1
+  SCAN_ARGS+=(--no-resolve)
+  info "transitive resolution unavailable after ${attempt} attempt(s); re-scanning with --no-resolve"
+  : > "${json}"; : > "${scan_err}"
+  set +e
+  osv-scanner "${SCAN_ARGS[@]}" --all-packages \
+    --format json --output-file "${json}" . >/dev/null 2>"${scan_err}"
+  rc=$?
+  set -e
+  # Same promise as the primary path: the fallback must not mutate the tree
+  # either. It runs with the same GOWORK=off and --no-call-analysis flags.
+  assert_tree_unchanged
+fi
+
 # Coverage = sources ACTUALLY SCANNED, which --all-packages puts in `results`
 # whether or not they had findings. Counting distinct paths, because a source
 # can legitimately appear more than once.
@@ -260,7 +348,11 @@ if [ "${sources}" -lt "${MIN_SOURCES}" ]; then
 fi
 
 case "${rc}" in
-  0) ok "no unaccepted advisories across ${sources} scanned sources" ;;
+  0) if [ "${degraded}" -eq 1 ]; then
+       warn "no unaccepted advisories across ${sources} scanned sources, but transitive PyPI resolution was UNAVAILABLE (deps.dev) and this run scanned with --no-resolve. Advisories that only surface once requirements.txt is resolved were NOT checked. Lockfile coverage (Go, npm, Cargo) is unaffected and complete."
+     else
+       ok "no unaccepted advisories across ${sources} scanned sources"
+     fi ;;
   1) # Re-run without --format so the findings are visible in the log. Same args,
      # same GOWORK=off, and re-asserted -- the failure path must leave the tree
      # as clean as the success path does.
@@ -289,8 +381,11 @@ case "${rc}" in
      die "osv-scanner failed to run (exit ${rc}); refusing to report green.
    Matching lines from its output (stderr is where --output-file sends it):
 $(printf '%s\n' "${excerpt}" | sed 's/^/     /')
-   Nothing here naming a lockfile or advisory usually means the network: the
-   transitive resolution this scan keeps ON is served from deps.dev, so its
-   outage surfaces as \"rpc error: code = Unavailable\" and a re-run clears it."
+   Reaching this arm now means one of two things, and they want opposite fixes:
+   either the failure is DETERMINISTIC (stderr named no network fault, so the
+   retry and the --no-resolve fallback were both skipped -- suspect a bad flag,
+   a missing binary, or an osv-scanner upgrade), or the resolution-free fallback
+   ITSELF failed, which rules the network out as the sole cause. Do not re-run
+   hoping it clears: deps.dev being down no longer reaches this path."
      ;;
 esac

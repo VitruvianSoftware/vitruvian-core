@@ -20,10 +20,12 @@
 
 name: Dependabot Bazel reconcile
 
-# When Dependabot bumps a component go.mod in the monorepo, regenerate the gazelle
-# BUILD files + MODULE.bazel use_repo (bazel mod tidy) so the Bazel build stays
-# consistent, and commit the result to the PR branch. No-op for version-only bumps
-# (versions re-resolve via go_deps; BUILD/use_repo only change when the dep SET does).
+# When Dependabot bumps a component go.mod in the monorepo, re-tidy the in-tree
+# modules that consume it through a local `replace` (Dependabot cannot see across
+# that edge), regenerate the gazelle BUILD files + MODULE.bazel use_repo (bazel
+# mod tidy) so the Bazel build stays consistent, and commit the result to the PR
+# branch. No-op for version-only bumps (versions re-resolve via go_deps;
+# BUILD/use_repo only change when the dep SET does).
 # For npm bumps, regenerate pnpm-lock.yaml with the hermetic @pnpm//:pnpm so the
 # lock always matches the manifests in OUR canonical form -- tidy-check's
 # lockfile-sync guard requires exactly this, and Dependabot's own lock output
@@ -66,6 +68,18 @@ jobs:
                 token: ${{ steps.app-token.outputs.token }}
             - name: Set up Bazel
               uses: ./.github/actions/setup-bazel
+            # FIRST, before gazelle: Dependabot bumps ONE module's go.mod and
+            # cannot see across a local `replace` edge, so every in-tree consumer
+            # of that module is left pinning the old transitive graph and dies
+            # with "go: updates to go.mod needed; to update it: go mod tidy"
+            # (go-test-infra on #1194 and siblings; example-build on
+            # #1166/#1175/#1179). Running the repo's own tidy tool on the PR
+            # branch IS the whole fix, and it has to come before `bazel mod tidy`
+            # and gazelle because those regenerate use_repo/BUILD files FROM the
+            # go.mod set this step settles.
+            - name: Reconcile Go module pins across `replace` edges
+              run: |
+                bazel run //tools/gomod:tidy
             - name: Reconcile (bazel mod tidy + gazelle)
               run: |
                 bazel mod tidy
@@ -91,5 +105,5 @@ jobs:
                 git config user.name "VitruvianSoftware Sync"
                 git config user.email "sync@vitruviansoftware.com"
                 git add -A
-                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy + pnpm lock + //:tidy)"
+                git commit -m "chore(deps): reconcile (go mod tidy + gazelle + mod tidy + pnpm lock + //:tidy)"
                 git push origin "HEAD:${HEAD_REF}"
