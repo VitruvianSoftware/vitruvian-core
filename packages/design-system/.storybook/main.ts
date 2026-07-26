@@ -19,9 +19,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { StorybookConfig } from "@storybook/react-vite";
 import tailwindcss from "@tailwindcss/vite";
+
+// Storybook 9 transpiled this config to CJS before loading it, so a bare
+// `require.resolve` worked. Storybook 10 loads it as real ESM -- and this
+// package is `"type": "module"` -- where `require` is not defined at all.
+// createRequire rebuilds it against THIS file's URL, which is also what we
+// want for resolution: relative to the config, not to the loader.
+const require = createRequire(import.meta.url);
 
 // The repo sets hoist=false in .npmrc (rules_js needs pnpm's on-disk layout to
 // match what Bazel lays out), so the `storybook` CLI -- which lives in the
