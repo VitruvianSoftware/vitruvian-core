@@ -1,4 +1,8 @@
-# GEMINI.md
+# oauth-user-inspector — agent guide
+
+> Scoped to `oauth-user-inspector/`. Repo-wide rules live in the root
+> [`AGENTS.md`](../AGENTS.md); the developer SOP is [`CONTRIBUTING.md`](../CONTRIBUTING.md),
+> which wins on any conflict.
 
 ## Project Overview
 
@@ -7,6 +11,27 @@ This is a full-stack web application designed to inspect OAuth user information 
 The frontend is a React application built with Vite and styled with Tailwind CSS. It allows users to authenticate using OAuth or a Personal Access Token (PAT). The backend is an Express server written in TypeScript that handles the server-side part of the OAuth flow, and now lives entirely under `server/`.
 
 The deployed instances run on Google Cloud Run, one per environment, shipped through CI/CD (build once, promote the same image digest through development → nonproduction → production). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the pipeline, identity, secrets, and runbooks. This file is a quick orientation for coding agents.
+
+## Repository Structure
+
+```
+.
+├─ frontend/          # React + Vite + Tailwind: App.tsx, components/, utils/,
+│                     #   types.ts, fieldDocs.ts, and its own vite/ts/tailwind configs
+├─ server/            # Express backend (TypeScript): server.ts, apiEndpoints.server.ts,
+│                     #   logger.ts, rateLimit.ts, safeFetch.ts, securityHeaders.ts,
+│                     #   oauth-error-guide.ts, types/, __tests__/, tsconfig.server.json
+├─ infra/             # Pulumi: per-env Cloud Run app + deploy/runtime identity
+├─ deploy/            # Deployment manifests / helpers
+├─ docs/              # ARCHITECTURE.md, OPERATIONS.md (design + runbooks)
+├─ scripts/           # Helper scripts — see the deployment warning below
+├─ dist/              # Built frontend (vite)      — generated
+├─ dist-server/       # Compiled backend (tsc)     — generated
+└─ Dockerfile         # Container build (copies server/ wholesale)
+```
+
+Deliberately coarse: file-level trees here have gone stale before. For anything finer,
+read the directory.
 
 ## Building and Running
 
@@ -57,6 +82,11 @@ Outbound HTTP is mocked with a pure-CommonJS fetch mock (`server/__tests__/fetch
 ### Deployment
 
 The deployed instances run on **Cloud Run**, one per environment, shipped through CI/CD — build once, promote the same image digest through development → nonproduction → production. Do **not** deploy from a workstation. Full pipeline and runbooks: [`docs/OPERATIONS.md`](docs/OPERATIONS.md). The `Dockerfile` copies `server/` rather than individual backend files.
+
+> ⚠️ **`scripts/deploy.sh` (`pnpm run deploy`) is legacy and is NOT how the live instances
+> are deployed.** It pushes via Google Cloud Build to a single project, bypassing the
+> promotion ladder and the per-environment identities. Running it will not produce the
+> deployed state and may diverge from it.
 
 ## Notes for Agents/Copilots
 
