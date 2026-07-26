@@ -127,11 +127,16 @@ describe("GhostOverlay", () => {
     expect(screen.getByTestId("icon-dns")).toBeInTheDocument();
   });
 
+  // The favicon is decorative: GhostOverlay renders it with alt="", because the
+  // name and URL sit right next to it as text. An <img> with an empty alt maps
+  // to role "presentation", not "img" -- these queries said "img" only because
+  // @testing-library/dom@9 got that mapping wrong. Asking for "presentation"
+  // keeps the assertion honest: it fails if the favicon stops being decorative.
   it("renders Resource ghost", () => {
     render(<GhostOverlay {...defaultProps} activeId="res-1" />);
     expect(screen.getByText("Example Resource")).toBeInTheDocument();
     expect(screen.getByText("https://resource.com")).toBeInTheDocument();
-    const img = screen.getByRole("img");
+    const img = screen.getByRole("presentation");
     expect(img).toHaveAttribute("src", "https://resource.com/favicon.ico");
   });
 
@@ -139,7 +144,7 @@ describe("GhostOverlay", () => {
     render(<GhostOverlay {...defaultProps} activeId="tab-1" />);
     expect(screen.getByText("Example Tab")).toBeInTheDocument();
     expect(screen.getByText("https://example.com")).toBeInTheDocument();
-    const img = screen.getByRole("img");
+    const img = screen.getByRole("presentation");
     expect(img).toHaveAttribute("src", "https://example.com/favicon.ico");
   });
 
