@@ -70,7 +70,7 @@ const githubIssuerURI = "https://token.actions.githubusercontent.com"
 // Returns (nil, nil) when there is nothing to allow, or when deploying at the
 // org root -- there we do not touch org policy at all, and it must be managed
 // out of band.
-func deployWIFIssuerPolicy(ctx *pulumi.Context, cfg *Config) (*orgpolicy.Policy, error) {
+func deployWIFIssuerPolicy(ctx *pulumi.Context, cfg *Config, policyAdminGate pulumi.Resource) (*orgpolicy.Policy, error) {
 	if cfg.ParentType != "folder" {
 		return nil, nil
 	}
@@ -93,6 +93,18 @@ func deployWIFIssuerPolicy(ctx *pulumi.Context, cfg *Config) (*orgpolicy.Policy,
 	// policy, and for the window between those two operations the folder would
 	// deny ALL issuers -- taking the foundation's GitHub Actions WIF down to
 	// rename a string. The URN is an identity, not a description.
+	// CI runs AS the bootstrap SA, and the role that lets it write this policy is
+	// granted by THIS stage (sa.go, orgRoles["bootstrap"]). Without the explicit
+	// edge Pulumi is free to attempt the policy before the grant lands, and the
+	// failure looks like a missing permission rather than a race:
+	//
+	//	Error 403: Permission 'orgpolicy.policies.update' denied on
+	//	folders/<parent>/policies/iam.workloadIdentityPoolProviders
+	var opts []pulumi.ResourceOption
+	if policyAdminGate != nil {
+		opts = append(opts, pulumi.DependsOn([]pulumi.Resource{policyAdminGate}))
+	}
+
 	policy, err := orgpolicy.NewPolicy(ctx, "wif-github-issuer-allow", &orgpolicy.PolicyArgs{
 		Name:   pulumi.Sprintf("folders/%s/policies/iam.workloadIdentityPoolProviders", cfg.ParentID),
 		Parent: pulumi.Sprintf("folders/%s", cfg.ParentID),
@@ -105,7 +117,7 @@ func deployWIFIssuerPolicy(ctx *pulumi.Context, cfg *Config) (*orgpolicy.Policy,
 				},
 			},
 		},
-	})
+	}, opts...)
 	if err != nil {
 		return nil, err
 	}

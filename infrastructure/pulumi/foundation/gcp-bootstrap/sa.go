@@ -47,6 +47,23 @@ type metadataGrant struct {
 	RoleAdminBinding pulumi.Resource
 }
 
+// bootstrapGates carries bindings created inside deployIAM that LATER resources
+// must be ordered behind. Pulumi orders by dependency, not by the order calls
+// appear in main.go, so a resource that needs a role this stage grants ITSELF
+// has to say so explicitly or the two race.
+//
+// Collected via a pointer rather than a return value purely to keep the diff
+// honest: deployIAM has ~25 `return nil, err` sites, and widening its signature
+// would touch every one of them to thread a single resource.
+type bootstrapGates struct {
+	// PolicyAdminBinding is the bootstrap SA's roles/orgpolicy.policyAdmin
+	// binding. build_wif_issuer_policy.go's org policy must wait for it: CI runs
+	// AS that SA, so without the edge the policy update can be attempted before
+	// the grant exists and fails with a 403 that looks like a missing permission
+	// rather than a race.
+	PolicyAdminBinding pulumi.Resource
+}
+
 // newProjectMetadataRole is the single source of truth for the tight custom org
 // role (projects.get + projects.update). Both the deterministic and legacy paths
 // call it, so the role's URN and inputs are byte-identical between them.
@@ -135,7 +152,7 @@ func authorizeProjectMetadataUpdates(ctx *pulumi.Context, cfg *Config, groupReso
 // deployIAM creates the granular service accounts and assigns least-privilege
 // IAM roles at every scope (org, parent, seed project, CI/CD project, billing).
 // This directly mirrors the Terraform foundation's sa.tf.
-func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource, grant *metadataGrant) (map[string]*serviceaccount.Account, error) {
+func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDProject, groupResources []pulumi.Resource, grant *metadataGrant, gates *bootstrapGates) (map[string]*serviceaccount.Account, error) {
 	dependsOnGroups := pulumi.DependsOn(groupResources)
 	// ========================================================================
 	// 1. Create Granular Service Accounts
@@ -204,6 +221,24 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			// permits granting any org role — so it's explicit, not an escalation.
 			// Also subsumes iam.roles.get (refresh-on-read).
 			"roles/iam.organizationRoleAdmin",
+			// This stage DECLARES an org policy — the folder-scoped WIF issuer
+			// allowlist in build_wif_issuer_policy.go, without which no external
+			// OIDC provider (GitHub Actions, Pulumi ESC) can be created at all.
+			// Until now it declared that policy while its own deploy identity
+			// lacked orgpolicy.policies.update, so CI could never converge the
+			// stage: the first apply that actually CHANGED the allowlist died with
+			//
+			//	Error 403: Permission 'orgpolicy.policies.update' denied on
+			//	folders/<parent>/policies/iam.workloadIdentityPoolProviders
+			//
+			// and it had only ever worked because a human applied it from a laptop.
+			// orgpolicy.policyAdmin otherwise belongs to the "org" SA below, which
+			// owns org policy generally — this is the narrow exception for the one
+			// policy the bootstrap stage owns, granted for the same reason and by
+			// the same mechanism as organizationRoleAdmin above: this SA's
+			// organizationAdmin can already grant it, so the standing binding makes
+			// an existing capability explicit rather than adding one.
+			"roles/orgpolicy.policyAdmin",
 		),
 		"org": withCommon(
 			"roles/orgpolicy.policyAdmin",
@@ -275,6 +310,10 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			}
 			if key == "bootstrap" && role == "roles/iam.organizationRoleAdmin" {
 				bootstrapRoleAdminBinding = binding
+			}
+			// Same idea for the org policy this stage declares — see bootstrapGates.
+			if gates != nil && key == "bootstrap" && role == "roles/orgpolicy.policyAdmin" {
+				gates.PolicyAdminBinding = binding
 			}
 		}
 	}

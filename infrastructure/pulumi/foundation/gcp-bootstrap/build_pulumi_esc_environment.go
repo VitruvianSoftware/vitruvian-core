@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-pulumiservice/sdk/go/pulumiservice"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -51,9 +52,18 @@ import (
 // exactly the subjects this stack has already told GCP to trust. Set
 // `pulumi_esc_manage_environments=false` to hand an existing, externally-owned
 // environment back to its owner.
-func deployPulumiESCEnvironments(ctx *pulumi.Context, cfg *Config, esc *PulumiESCOutputs) error {
+func deployPulumiESCEnvironments(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, esc *PulumiESCOutputs) error {
 	if cfg.PulumiESCOrg == "" || !cfg.PulumiESCManageEnvironments || esc == nil {
 		return nil
+	}
+
+	// Ordering is no longer implied by the YAML (it no longer reads the pool's
+	// name), so state it. An environment whose provider does not exist yet is
+	// inert rather than broken, but "created after the thing it names" is the
+	// property a reader expects and it costs one line.
+	var escDeps []pulumi.Resource
+	if esc.Provider != nil {
+		escDeps = append(escDeps, esc.Provider)
 	}
 
 	for _, env := range cfg.PulumiESCEnvironments {
@@ -69,22 +79,31 @@ func deployPulumiESCEnvironments(ctx *pulumi.Context, cfg *Config, esc *PulumiES
 				"name would bind one thing and create another", env)
 		}
 
-		// The gcp-login `project` field wants the project NUMBER, not the id, and
-		// the number is already embedded in the pool's resource name
-		// (projects/<number>/locations/global/workloadIdentityPools/<id>). Taking
-		// it from there rather than looking the project up again keeps the YAML
-		// consistent with the pool it refers to by construction.
-		yaml := pulumi.All(esc.WIFPoolName, esc.ServiceAccount).ApplyT(
-			func(args []interface{}) (pulumi.AssetOrArchive, error) {
-				poolName, _ := args[0].(string)
-				serviceAccount, _ := args[1].(string)
+		// The gcp-login `project` field wants the project NUMBER, not the id.
+		//
+		// It is ALSO embedded in the pool's resource name
+		// (projects/<number>/locations/global/workloadIdentityPools/<id>), and
+		// parsing it out of there looked tidier -- one fewer API call, and the
+		// number provably matched the pool. It was wrong: it coupled this YAML to a
+		// resource that does not exist in every run. A `pulumi up --target` that
+		// excludes the pool hands its outputs back as EMPTY rather than unknown, so
+		// the parse failed and took the whole program down at marshal time:
+		//
+		//	error: an unhandled error occurred: program failed:
+		//	awaiting input property "yaml": cannot read the project number from
+		//	workload identity pool name "" (expected projects/<number>/...)
+		//
+		// That turned a targeted apply of ONE unrelated resource into a hard
+		// failure. Looking the number up from the project id instead depends only
+		// on config, so it resolves in every run -- targeted, partial or full.
+		projectNumber := organizations.LookupProjectOutput(ctx, organizations.LookupProjectOutputArgs{
+			ProjectId: cicd.ProjectID.ToStringPtrOutput(),
+		}).Number()
 
-				parts := strings.Split(poolName, "/")
-				if len(parts) < 2 || parts[0] != "projects" || parts[1] == "" {
-					return nil, fmt.Errorf("cannot read the project number from workload identity "+
-						"pool name %q (expected projects/<number>/...)", poolName)
-				}
-				projectNumber := parts[1]
+		yaml := pulumi.All(projectNumber, esc.ServiceAccount).ApplyT(
+			func(args []interface{}) (pulumi.AssetOrArchive, error) {
+				projectNumber, _ := args[0].(string)
+				serviceAccount, _ := args[1].(string)
 
 				return pulumi.NewStringAsset(fmt.Sprintf(`values:
   gcp:
@@ -106,7 +125,7 @@ func deployPulumiESCEnvironments(ctx *pulumi.Context, cfg *Config, esc *PulumiES
 				Project:      pulumi.String(project),
 				Name:         pulumi.String(name),
 				Yaml:         yaml,
-			}); err != nil {
+			}, pulumi.DependsOn(escDeps)); err != nil {
 			return fmt.Errorf("creating Pulumi ESC environment %q: %w", env, err)
 		}
 	}

@@ -40,6 +40,9 @@ type PulumiESCOutputs struct {
 	WIFPoolName     pulumi.StringOutput
 	WIFProviderName pulumi.StringOutput
 	ServiceAccount  pulumi.StringOutput
+	// Provider is the OIDC provider resource itself, so the Pulumi-side
+	// environment can be ordered behind the GCP half it describes.
+	Provider pulumi.Resource
 }
 
 // deployPulumiESCOIDC lets Pulumi ESC mint short-lived GCP credentials, so a
@@ -195,5 +198,6 @@ func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, is
 	outputs.WIFPoolName = pool.Name
 	outputs.WIFProviderName = provider.Name
 	outputs.ServiceAccount = sa.Email
+	outputs.Provider = provider
 	return outputs, nil
 }
