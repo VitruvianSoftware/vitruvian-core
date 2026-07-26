@@ -40,13 +40,22 @@ bazel_env(
     toolchains = {
         "jdk": "@rules_java//toolchains:current_host_java_runtime",
         "python": "@rules_python//python:current_py_toolchain",
-        "uv": "@multitool//tools/uv:uv",
+        # NB: uv is deliberately NOT here. `toolchains` entries become a
+        # genrule's `toolchains` attribute, which demands TemplateVariableInfo
+        # or ToolchainTypeInfo; `@multitool//tools/uv:uv` is a plain `tool`
+        # rule and provides neither, so listing it made
+        # //tools:bazel_env.helper_genrule.uv fail analysis. That target is
+        # `manual`-tagged, so `bazel build //...` never saw it -- but
+        # target-determinator's `cquery deps(//...)` does, which killed the
+        # affected-targets fast path on every CI run (full //... sweep instead).
+        # uv is still on $PATH: MULTITOOL_TOOLS below already maps it.
+        # prettier moved to `tools` for the same reason -- it is a js_binary.
         "nodejs": "@nodejs_toolchains//:resolved_toolchain",
-        "prettier": "//tools/format:prettier",
     },
     tools = {
         # Mapping from tool binary name ($PATH entry) to Bazel label
         "buildifier": "@buildifier_prebuilt//:buildifier",
+        "prettier": "//tools/format:prettier",
         "format": "//tools/format:format",
         "cargo": "@rules_rust//tools/upstream_wrapper:cargo",
         "copier": ":copier",
