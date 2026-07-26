@@ -185,6 +185,34 @@ out="$(run "${tmp}" "${bin}")"
 ! grep -q "empty on Dependabot PRs" <<<"${out}"
 check "a nested pull_request reference is not a trigger" "$?"
 
+# --- 3e. indentation width is not a trigger signal. --------------------------
+# The companion to 3d, and the regression that matters more: 3d proves we do not
+# over-match, this proves we do not UNDER-match. A four-space `on:` block is the
+# house style in four of this repo's workflows, and a matcher pinned to two
+# spaces read every one of them as not-PR-triggered -- so their secrets were
+# never checked against the Dependabot store and APP_PRIVATE_KEY shipped
+# unmirrored. Under-matching in a checker is a false all-clear, which is strictly
+# worse than a false finding: nobody goes looking for what it did not say.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+mkdir -p "${tmp}/.github/workflows"
+cat > "${tmp}/.github/workflows/four-space.yaml" <<'EOF'
+name: Four Space
+on:
+    pull_request:
+        branches: [main]
+jobs:
+    a:
+        runs-on: ubuntu-latest
+        steps:
+            - env:
+                  T: ${{ secrets.PR_SECRET }}
+              run: echo hi
+EOF
+make_fake_gh "${bin}" "" "PR_SECRET"
+out="$(run "${tmp}" "${bin}")"
+grep -q "empty on Dependabot PRs" <<<"${out}"
+check "a four-space-indented pull_request trigger is detected" "$?"
+
 # --- 4. present in the Dependabot store -> no finding. -----------------------
 tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_repo "${tmp}"; make_fake_gh "${bin}" "PR_SECRET"
