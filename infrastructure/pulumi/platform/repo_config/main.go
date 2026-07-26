@@ -95,16 +95,34 @@ func main() {
 					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
 						Status: pulumi.String("enabled"),
 					},
-					// Provider patterns only match credentials GitHub can
-					// attribute to a known issuer (an AWS key, a Slack token,
-					// ...). A generic API token, a database password or a bare
-					// private key raised NOTHING until this was enabled -- the
-					// same class the secret-scan gate covers, but applied to
-					// pushes and to the existing tree rather than to a PR diff,
-					// so the two are complementary rather than redundant.
-					SecretScanningNonProviderPatterns: &github.RepositorySecurityAndAnalysisSecretScanningNonProviderPatternsArgs{
-						Status: pulumi.String("enabled"),
-					},
+					// NOT DECLARED: SecretScanningNonProviderPatterns.
+					//
+					// It was declared "enabled" here and NEVER took effect. Pulumi
+					// reported `~ Repository updated [diff: ~securityAndAnalysis]`
+					// on every apply while the live API kept returning
+					// "disabled" -- verified 2026-07-25 after the #1200 apply
+					// (run 30169006463, success). A silent no-op, and a perpetual
+					// spurious diff on an otherwise clean stack.
+					//
+					// The cause is not this program. Non-provider patterns is a
+					// GitHub Secret Protection (Advanced Security) feature, and
+					// the org's code security configuration "dependency-graph-only"
+					// (id 262482) pins it `disabled` with enforcement `enforced`.
+					// An enforced org configuration overrides the repo-level
+					// setting, so this write could never win. That configuration's
+					// own description says every setting other than the dependency
+					// graph is `not_set` "so repo_config/Pulumi stays the
+					// authority" -- this one is the exception to that intent.
+					//
+					// That is deliberate, not an oversight to fix: Advanced
+					// Security is billed per active committer, and this repo
+					// intentionally runs free alternatives instead -- gitleaks
+					// (the required `secret-scan` gate) for this exact class of
+					// generic token / bare private key, and osv-scanner in place
+					// of dependency-review. Re-adding the field would restore the
+					// phantom diff without turning anything on; the way to
+					// actually enable it is to change the org configuration and
+					// accept the GHAS bill.
 				},
 			},
 			pulumi.Import(pulumi.ID(repoName)),
@@ -1303,9 +1321,28 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	// secret is simply not managed -- the same optional shape as BuildBuddy, so
 	// auto-apply stays green either way.
 	//
+	// APP_PRIVATE_KEY is the same story one layer earlier. _repo-config-preview
+	// mints a GitHub App token for the Pulumi GitHub provider from it, so on a
+	// Dependabot PR create-github-app-token failed with "The 'private-key' input
+	// must be set to a non-empty string" before pulumi ran at all (#1210). That
+	// leg now degrades to noop-green when the key is absent, and -- as with
+	// PULUMI_ACCESS_TOKEN above -- mirroring it here is what RESTORES the preview
+	// rather than merely silencing it.
+	//
+	// This one is a deliberate trust decision, not a mechanical fix: it puts a
+	// GitHub App private key where Dependabot-triggered runs can read it. Taken
+	// knowingly, on two grounds. The App is the narrowly-scoped Pulumi provider
+	// App (PULUMI_APP_ID), not a broadly-privileged one; and a sibling App key,
+	// SYNC_APP_PRIVATE_KEY, is already in this store (pkg/copybara_sync) for the
+	// reconcile automation, so the boundary this crosses was crossed already.
+	// Revoking it means rotating the App key, not deleting this line -- if that
+	// tradeoff is ever re-litigated, the preview degrade still stands on its own
+	// and dropping this entry is safe.
+	//
 	// `bazel run //tools/ci-preflight` reports exactly this class of gap: any
 	// secret a pull_request-triggered workflow reads that the Dependabot store
-	// does not carry.
+	// does not carry. It queries the live API, so it turns clean only after this
+	// program applies -- not merely because the entry exists here.
 	for _, s := range []struct {
 		resource string // pulumi resource name (stable; renaming forces replace)
 		env      string // CI env var / GitHub secret name
@@ -1313,6 +1350,7 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	}{
 		{"buildbuddy-api-key-dependabot", "BUILDBUDDY_API_KEY", "buildbuddyApiKey"},
 		{"pulumi-access-token-dependabot", "PULUMI_ACCESS_TOKEN", "pulumiAccessToken"},
+		{"app-private-key-dependabot", "APP_PRIVATE_KEY", "appPrivateKey"},
 	} {
 		// Optional by design: a value that is not available in this context is
 		// skipped, never defaulted to empty. Writing an empty Dependabot secret

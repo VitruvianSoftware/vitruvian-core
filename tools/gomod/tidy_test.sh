@@ -130,6 +130,36 @@ PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
 [ "$?" -ne 0 ]
 check "missing root is a failure" "$?"
 
+# --- 5b. an exact `<dir>/go.mod` root names ONE module, not a subtree. --------
+# The infra cluster is not subtree-shaped: two modules under
+# infrastructure/pulumi consume pkg/secrets through a `replace`, while the other
+# 33 go.mods there belong to a different cluster (six of them already untidy on
+# main). Sweeping the subtree would red-line main; naming the module covers the
+# coupled pair and nothing else. So the exact form must NOT recurse.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_fake_go "${bin}" 0
+mkdir -p "${tmp}/src/nested"
+printf 'module example.com/top\n\ngo 1.26.2\n' > "${tmp}/src/go.mod"
+printf 'module example.com/nested\n\ngo 1.26.2\n' > "${tmp}/src/nested/go.mod"
+out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src/go.mod 2>&1)"
+case "${out}" in *"1 module(s)"*) check "exact <dir>/go.mod root covers exactly one module" 0 ;;
+  *) check "exact <dir>/go.mod root covers exactly one module" 1 ;; esac
+
+# ...and the subtree form still recurses, so the two are genuinely distinct.
+out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src 2>&1)"
+case "${out}" in *"2 module(s)"*) check "...while the subtree form still recurses" 0 ;;
+  *) check "...while the subtree form still recurses" 1 ;; esac
+
+# A named module that does not exist is fatal for the same reason a missing root
+# is: silently covering less than the list claims is the false-green this gate
+# exists to prevent.
+PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src/nope/go.mod >/dev/null 2>&1
+[ "$?" -ne 0 ]
+check "a named module that does not exist is a failure" "$?"
+
 # --- 6. fix mode DOES write. -------------------------------------------------
 tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 0
