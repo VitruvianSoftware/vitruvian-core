@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-router-v0.4.0...go-cloud-router-v0.4.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **ci:** unblock the grpc 1.82.1 Dependabot batch (example tidy + credential-less preview) ([#1186](https://github.com/VitruvianSoftware/vitruvian-core/issues/1186)) ([190e958](https://github.com/VitruvianSoftware/vitruvian-core/commit/190e958c8f74f7edd90977e6eeb5bff8123c67e0))
+
 ## [0.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-cloud-router-v0.3.0...go-cloud-router-v0.4.0) (2026-07-10)
 
 
