@@ -72,15 +72,24 @@ steps — PATH, then the user's **login shell**, then known install locations.
 The winning node is cached (`~/.config/vitruvian-core/cloud/gcp-broker`) and tried
 first next time. A cached host no longer in the list is ignored.
 
-**A node can have a working gcloud on `PATH` and a broken one in its login
-shell.** On `nuc9i5`, `bash -lc gcloud` resolves a Python 2.7 and refuses to
-start — *"You are running gcloud with Python 2.7, which is no longer
-supported"* — while `/usr/bin/python3` (3.14.5) sits right there and the
-non-interactive `PATH` lookup works fine. The three-step resolution tries `PATH`
-first, so that node is unaffected, but a node whose gcloud is *only* reachable
-via the login shell would fail confusingly. Fix it on the node
-(`export CLOUDSDK_PYTHON=/usr/bin/python3` in the profile, or reinstall the SDK)
-rather than in this script.
+**A long-lived tmux/screen session can serve a stale environment.** Setting
+`nuc9i5` up, gcloud failed there with *"You are running gcloud with Python 2.7,
+which is no longer supported"* — while a plain `ssh` and a login shell both ran
+it fine. The cause was not the shell: a tmux server running since the previous
+month had `CLOUDSDK_PYTHON=/bin/python2` in its environment, and tmux gives every
+new window the **server's** environment rather than the client's, so the stale
+value outlived the shell that set it. It appears in no profile file, and a fresh
+tmux server was clean.
+
+This never affects the broker, which uses plain non-interactive `ssh`. It is
+recorded because the obvious fix — pinning `CLOUDSDK_PYTHON` in the profile —
+would be a permanent workaround for transient state, and would hide the next
+occurrence. The surgical fix, which does not disturb anything running in the
+session:
+
+```sh
+tmux set-environment -g -u CLOUDSDK_PYTHON
+```
 
 Set a node up once:
 
