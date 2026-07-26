@@ -92,13 +92,20 @@ func main() {
 			return err
 		}
 
-		// 5b. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by
-		// default, see build_github.go)
-		// Pulumi ESC federation: lets an agent session obtain GCP credentials with
-		// no key anywhere, since the org forbids SA keys. Gated on pulumi_esc_org;
-		// unset, this is a no-op and //tools/gcp-token's tailnet broker stays the
-		// only path. See build_pulumi_esc.go.
-		escOutputs, err := deployPulumiESCOIDC(ctx, cfg, cicd)
+		// 5b. The folder-scoped allowlist of external OIDC issuers. Built once, as
+		// the union of every federation below, because it is a SINGLE GCP resource
+		// -- and created FIRST, because a provider naming an issuer that is not yet
+		// allowed is refused outright. See build_wif_issuer_policy.go.
+		issuerPolicy, err := deployWIFIssuerPolicy(ctx, cfg)
+		if err != nil {
+			return err
+		}
+
+		// 5c. Pulumi ESC federation: lets an agent session obtain GCP credentials
+		// with no key anywhere, since the org forbids SA keys. Gated on
+		// pulumi_esc_org; unset, this is a no-op and //tools/gcp-token's tailnet
+		// broker stays the only path. See build_pulumi_esc.go.
+		escOutputs, err := deployPulumiESCOIDC(ctx, cfg, cicd, issuerPolicy)
 		if err != nil {
 			return err
 		}
@@ -110,7 +117,9 @@ func main() {
 			return err
 		}
 
-		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas)
+		// 5d. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by default,
+		// see build_github.go)
+		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, issuerPolicy)
 		if err != nil {
 			return err
 		}

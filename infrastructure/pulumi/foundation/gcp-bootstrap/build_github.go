@@ -56,7 +56,7 @@ type CICDBuildOutputs struct {
 // here — that is published as GitHub Environment config by the existing
 // infrastructure/pulumi/platform/repo_config project, keeping a single GitOps
 // owner for GitHub settings and avoiding an admin:org token in this stack.
-func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, cicd *CICDProject, sas map[string]*serviceaccount.Account) (*CICDBuildOutputs, error) {
+func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, cicd *CICDProject, sas map[string]*serviceaccount.Account, issuerPolicy *orgpolicy.Policy) (*CICDBuildOutputs, error) {
 	outputs := &CICDBuildOutputs{}
 
 	// If github_owner is not set, skip WIF provisioning.
@@ -185,34 +185,15 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 
 	// ========================================================================
 	// WIF issuer org-policy exception (folder-scoped)
-	// An org may deny all external WIF issuers via
-	// constraints/iam.workloadIdentityPoolProviders (denyAll) — a CFT security
-	// default. Creating a GitHub Actions provider then fails a precondition check.
-	// When deploying under a parent folder, set a FOLDER-scoped policy that allows
-	// ONLY GitHub's issuer for this foundation, leaving the org-wide posture (and
-	// any co-tenant foundation) intact. The WIF provider depends on this policy.
-	// (At the org root we don't touch org policy; manage it out of band.)
+	// constraints/iam.workloadIdentityPoolProviders denies all external issuers
+	// by default (a CFT security default), so GitHub's issuer has to be allowed
+	// before this provider can be created. That allowlist is now built ONCE, as
+	// the union of every issuer this stack federates, by deployWIFIssuerPolicy --
+	// it is a single GCP resource, so a second policy here would fight it rather
+	// than add to it. See build_wif_issuer_policy.go.
 	// ========================================================================
 	var wifDeps []pulumi.Resource
-	if cfg.ParentType == "folder" {
-		issuerPolicy, err := orgpolicy.NewPolicy(ctx, "wif-github-issuer-allow", &orgpolicy.PolicyArgs{
-			Name:   pulumi.Sprintf("folders/%s/policies/iam.workloadIdentityPoolProviders", cfg.ParentID),
-			Parent: pulumi.Sprintf("folders/%s", cfg.ParentID),
-			Spec: &orgpolicy.PolicySpecArgs{
-				Rules: orgpolicy.PolicySpecRuleArray{
-					&orgpolicy.PolicySpecRuleArgs{
-						Values: &orgpolicy.PolicySpecRuleValuesArgs{
-							AllowedValues: pulumi.StringArray{
-								pulumi.String("https://token.actions.githubusercontent.com"),
-							},
-						},
-					},
-				},
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
+	if issuerPolicy != nil {
 		wifDeps = append(wifDeps, issuerPolicy)
 	}
 

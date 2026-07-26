@@ -59,3 +59,19 @@ config:
   foundation-bootstrap:github_repo_env: "vitruvian-core"
   foundation-bootstrap:github_repo_net: "vitruvian-core"
   foundation-bootstrap:github_repo_proj: "vitruvian-core"
+  # --- Pulumi ESC federation (see docs-pulumi-esc.md) ---
+  # These MUST live here, not only in a local `pulumi config set`. CI auto-applies
+  # main, so config that exists only on a laptop makes the gate look SHUT to CI:
+  # the program declares no ESC resources, and Pulumi deletes the ones a local
+  # apply created, as orphans. That is not hypothetical -- stack update v81
+  # created six ESC resources from a laptop and v82, CI on the very next merge,
+  # removed all six (+0-6~0). Config-as-code is what keeps the two agreeing.
+  foundation-bootstrap:pulumi_esc_org: "ipv1337"
+  # The project/env half MUST equal the $VITRUVIAN_ESC_ENV a session is pointed
+  # at, minus the org: it is the string the workload-identity subject is built
+  # from, so a mismatch binds one environment and authenticates as another.
+  foundation-bootstrap:pulumi_esc_environments: "vitruvian-core/cloud-session"
+  # The service account is inert without this. secretAccessor alone replaces the
+  # Secret Manager half of //tools/cloud-bootstrap; widen deliberately, not by
+  # default.
+  foundation-bootstrap:pulumi_esc_roles: "roles/secretmanager.secretAccessor"

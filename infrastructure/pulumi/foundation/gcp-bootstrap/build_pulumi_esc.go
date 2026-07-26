@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/iam"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/orgpolicy"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -79,7 +80,7 @@ type PulumiESCOutputs struct {
 //
 // Gated on `pulumi_esc_org`: unset, this provisions nothing and the tailnet
 // broker remains the only path.
-func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject) (*PulumiESCOutputs, error) {
+func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, issuerPolicy *orgpolicy.Policy) (*PulumiESCOutputs, error) {
 	outputs := &PulumiESCOutputs{}
 	if cfg.PulumiESCOrg == "" {
 		return outputs, nil
@@ -127,6 +128,13 @@ func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject) (*
 	// token minted for anyone else, but asserting the audience again in CEL means
 	// a future edit that widens the audience list does not silently widen who can
 	// exchange -- the two have to be widened together, deliberately.
+	// The issuer allowlist must exist BEFORE the provider names that issuer, or
+	// GCP refuses the create with "Org Policy violated for value". See
+	// build_wif_issuer_policy.go.
+	var providerDeps []pulumi.Resource
+	if issuerPolicy != nil {
+		providerDeps = append(providerDeps, issuerPolicy)
+	}
 	provider, err := iam.NewWorkloadIdentityPoolProvider(ctx, "pulumi-esc-provider", &iam.WorkloadIdentityPoolProviderArgs{
 		Project:                        cicd.ProjectID,
 		WorkloadIdentityPoolId:         pool.WorkloadIdentityPoolId,
@@ -141,7 +149,7 @@ func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject) (*
 			IssuerUri:        pulumi.String(pulumiESCIssuerURI),
 			AllowedAudiences: pulumi.StringArray{pulumi.String(audience)},
 		},
-	})
+	}, pulumi.DependsOn(providerDeps))
 	if err != nil {
 		return nil, fmt.Errorf("creating the Pulumi ESC OIDC provider: %w", err)
 	}
