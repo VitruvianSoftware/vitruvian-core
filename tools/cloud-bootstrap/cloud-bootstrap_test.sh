@@ -79,6 +79,7 @@ pinned     gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret,O
 second     kubectl sa-second@x.iam.gserviceaccount.com  proj-b  EXTRA=extra-secret                 Second profile with its own identity.
 clashing   gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=different-secret               Maps TOK to a different secret than `pinned`.
 nocreds    gh      -                   -           -                                    No credentials at all.
+onlytok    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret                     Claims TOK and nothing else.
 TSV
 
 SA_KEY_GOOD='{"type":"service_account","client_email":"sa-pinned@x.iam.gserviceaccount.com","private_key":"KEYBYTES"}'
@@ -268,6 +269,57 @@ fi
 real_token="ya29.$(printf 'a%.0s' $(seq 1 80))"
 out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=pinned "CLOUDSDK_AUTH_ACCESS_TOKEN=$real_token")"
 assert_not_contains "a real ambient token is left alone" "$out" "cleared a placeholder"
+
+# ---------------------------------------------------------------------------
+echo "cloud-bootstrap: the profile boundary actually withholds"
+# ---------------------------------------------------------------------------
+# The bootstrap only ever ADDS credentials, so while they come from the
+# environment rather than Secret Manager a narrow profile was decorative: a
+# `readonly` session -- the one whose entire purpose is to be unable to reach
+# production -- still read every token straight out of the environment while
+# :whoami reported "creds – none". Anything the manifest calls a credential and
+# no active profile claims must be blanked.
+make_gcloud ok
+
+# effective_value <VAR> <ambient> — what a Bash tool call in the session really
+# sees: the harness sets the env var, the shell sources session.env, and whatever
+# survives is what the agent can use. A KEPT credential is never written to
+# session.env (it was already correct in the environment), so checking that file
+# alone would wrongly read as "scrubbed".
+effective_value() {
+	env "$1=$2" bash -c '. "$0" 2>/dev/null; printf "%s" "${!1}"' \
+		"$work/state/session.env" "$1"
+}
+
+BIG_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+BIG_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+BIG_C="cccccccccccccccccccccccccccccccccccccccc"
+
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=nocreds \
+	TOK="$BIG_A" OTHER="$BIG_B" EXTRA="$BIG_C")"
+for v in TOK OTHER EXTRA; do
+	if [ -z "$(effective_value "$v" "$BIG_A")" ]; then
+		pass "a no-credential profile blanks $v"
+	else
+		fail "$v survived into a no-credential session"
+	fi
+done
+assert_contains "…and says so out loud" "$out" "CLEARED"
+
+# A profile keeps what it declares and loses only the rest.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok \
+	TOK="$BIG_A" OTHER="$BIG_B" EXTRA="$BIG_C")"
+[ -n "$(effective_value TOK "$BIG_A")" ] && pass "a declared credential is kept" ||
+	fail "the profile's own credential was scrubbed"
+[ -z "$(effective_value OTHER "$BIG_B")" ] && pass "…while an undeclared one is cleared" ||
+	fail "OTHER survived a profile that does not declare it"
+[ -z "$(effective_value EXTRA "$BIG_C")" ] && pass "…including one only another profile declares" ||
+	fail "EXTRA survived a profile that does not declare it"
+
+# Only what the MANIFEST calls a credential is touched — guessing at other
+# variables would be scope this tool has no basis for.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=nocreds SOME_UNRELATED_VAR="$BIG_C")"
+assert_not_contains "a var no row names is left alone" "$out" "SOME_UNRELATED_VAR"
 
 # ---------------------------------------------------------------------------
 echo "cloud-bootstrap: multiple profiles"

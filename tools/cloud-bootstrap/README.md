@@ -96,6 +96,29 @@ comments, a fetched page), where a prompt injection reaching a deploy credential
 is the thing you are buying insurance against. `readonly` is the sharpest version
 of that: tooling, zero credentials.
 
+### The boundary withholds, not just abstains
+
+A narrow profile does not merely decline to *add* credentials — it **blanks** any
+credential the manifest names that no active profile claims. Without that the
+boundary was decorative whenever credentials come from the environment rather
+than Secret Manager: a `readonly` session still read every token straight out of
+the environment while `:whoami` reported *"creds – none"*.
+
+```
+$ VITRUVIAN_PROFILE=readonly …
+  GH_TOKEN: CLEARED — no active profile declares it
+  PULUMI_ACCESS_TOKEN: CLEARED — no active profile declares it
+  …
+  scrubbed 6 credential(s) this profile is not entitled to
+```
+
+**Scope, stated honestly.** This blanks the variables for shells that source
+`session.env` — every Bash tool call the agent makes, which is the surface that
+matters — but it cannot unset them from the harness's own process environment.
+And it only covers credentials **the manifest names**, because guessing at other
+variables is scope this tool has no basis for. A narrow profile is a smaller
+blast radius, **not a sandbox**.
+
 If you never want that insurance, `all` is a complete and coherent answer and the
 rest of this file is optional reading. **Add capability by adding a row, never by
 widening one** still holds — it is just that `all` is already the widest row.
