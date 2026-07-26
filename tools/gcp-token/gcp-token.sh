@@ -181,10 +181,18 @@ fi
 # "ESC primary, homelab backup" true rather than aspirational.
 if [ -n "${VITRUVIAN_ESC_ENV:-}" ] && command -v "$PULUMI_BIN" >/dev/null 2>&1; then
 	_esc_err="$(mktemp)"
-	# `--value string` yields the bare token: no jq, no JSON parsing, nothing to
+	# `env OPEN`, not `env get`. The distinction is the whole ballgame here and it
+	# fails silently the wrong way round: `env get` reads the environment's stored
+	# DEFINITION, and gcp.login.accessToken does not appear there -- it is produced
+	# by `fn::open::gcp-login` performing the OIDC exchange when the environment is
+	# opened. So `env get` exits 0 and prints an empty string, which looked exactly
+	# like "ESC is not configured" and sent every call to the tailnet broker while
+	# a working federation sat unused.
+	#
+	# `--format string` yields the bare token: no jq, no JSON parsing, nothing to
 	# get wrong quoting back out.
-	if _tok="$("$PULUMI_BIN" env get "$VITRUVIAN_ESC_ENV" "${VITRUVIAN_ESC_PATH:-gcp.login.accessToken}" \
-		--value string --show-secrets 2>"$_esc_err" | tr -d '\r\n')" && is_token "$_tok"; then
+	if _tok="$("$PULUMI_BIN" env open "$VITRUVIAN_ESC_ENV" "${VITRUVIAN_ESC_PATH:-gcp.login.accessToken}" \
+		--format string 2>"$_esc_err" | tr -d '\r\n')" && is_token "$_tok"; then
 		rm -f "$_esc_err"
 		printf '%s' "$_tok"
 		exit 0
