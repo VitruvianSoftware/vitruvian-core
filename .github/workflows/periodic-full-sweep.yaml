@@ -82,6 +82,22 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      # `bazel build //...` SKIPS `manual`-tagged targets; the cquery that
+      # target-determinator runs (`deps(//...)`) does NOT. So a manual target
+      # that fails ANALYSIS is invisible to every build lane while silently
+      # killing the affected-targets fast path -- every run then degrades to a
+      # full //... sweep. That is exactly how the misplaced
+      # `bazel_env(toolchains = ...)` entries hid: the helper genrules they
+      # generate (//tools:bazel_env.helper_genrule.{uv,prettier}) are manual, so
+      # //... never analysed them, and CI shipped green for as long as it took
+      # someone to read a degraded-fallback warning.
+      #
+      # //tools:all covers those manual targets and costs seconds. Widen this to
+      # the full `deps(//...)` universe TD actually queries once the remaining
+      # blocker (//nexus-agent/macos — see the issue linked from #200) is fixed.
+      - name: Analysis guard (manual-tagged //tools targets)
+        run: bazel cquery --config=remote --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" '//tools:all' >/dev/null
+
       - name: Build (full //...)
         run: bazel build --config=remote --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" //...
 
