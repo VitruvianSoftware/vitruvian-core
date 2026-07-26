@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.2...foundation-gcp-bootstrap-v0.9.0) (2026-07-26)
+
+
+### Features
+
+* keyless GCP via Pulumi ESC federation, and BUILDBUDDY_API_KEY as environment-only ([#1242](https://github.com/VitruvianSoftware/vitruvian-core/issues/1242)) ([440cbfb](https://github.com/VitruvianSoftware/vitruvian-core/commit/440cbfbf6442544a0ecb2ccd5456fc23cf74bc2f))
+
 ## [0.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.8.1...foundation-gcp-bootstrap-v0.8.2) (2026-07-24)
 
 
