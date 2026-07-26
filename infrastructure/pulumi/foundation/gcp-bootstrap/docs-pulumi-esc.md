@@ -35,6 +35,7 @@ Audience: "gcp:<org>"
 | `pulumi_esc_org` | **Gates everything.** Unset → nothing is provisioned. |
 | `pulumi_esc_environments` | Comma-separated `project/env` names allowed to impersonate. Required when the org is set. |
 | `pulumi_esc_roles` | Comma-separated project roles for the SA. **Empty by default.** |
+| `pulumi_esc_manage_environments` | Create the ESC environments too. **Default true**; set `false` to leave an externally-owned environment alone. |
 | `pulumi_esc_pool_id` / `_provider_id` / `_sa_id` | Optional name overrides. |
 
 ```sh
@@ -61,26 +62,38 @@ each subject means adding one is a diff.
 
 ## After applying
 
-The stack exports `pulumi_esc_wif_pool_name`, `pulumi_esc_wif_provider_name` and
-`pulumi_esc_service_account`. Use them in the ESC environment definition:
+**Both halves are created by the apply — there is nothing to paste.** The stack
+builds the GCP side (pool, provider, service account, bindings) *and* the Pulumi
+side: one ESC environment per name in `pulumi_esc_environments`, with the
+`fn::open::gcp-login` block already filled in.
 
-```yaml
-values:
-  gcp:
-    login:
-      fn::open::gcp-login:
-        project: <project number>
-        oidc:
-          workloadPoolId: pulumi-esc-pool
-          providerId: pulumi-esc-provider
-          serviceAccount: <pulumi_esc_service_account>
+That is deliberate. Federation only works when the two halves agree, and they
+live in different systems; the environment definition has to quote the project
+NUMBER, the pool id and the service-account email that this stack generates.
+Hand-copying three generated identifiers into a web form is where the wiring
+goes silently wrong, and a mistake surfaces as an opaque 400 at exchange time
+that does not say which half is wrong. Taking them from the resources means they
+cannot disagree.
+
+Set `pulumi_esc_manage_environments` to `false` for an environment that already
+exists or is owned elsewhere — otherwise the stack and its owner fight over it.
+
+The stack still exports `pulumi_esc_wif_pool_name`,
+`pulumi_esc_wif_provider_name` and `pulumi_esc_service_account` for inspection.
+
+Verify the environment resolves, then point sessions at it:
+
+```sh
+pulumi env open <org>/<project>/<env>     # a JSON blob with a token = live
 ```
 
-Then point sessions at it:
+```
+VITRUVIAN_ESC_ENV=<org>/<project>/<env>
+```
 
-```
-VITRUVIAN_ESC_ENV=<project>/<env>
-```
+The `<project>/<env>` part MUST match the `pulumi_esc_environments` entry — that
+string is what the workload-identity subject is built from, so a mismatch binds
+one environment and uses another.
 
 `//tools/gcp-token` tries local credentials, then ESC, then the tailnet broker —
 so ESC becomes primary and the homelab stays as the backup for when Pulumi is

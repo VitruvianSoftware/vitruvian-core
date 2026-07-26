@@ -116,27 +116,35 @@ ACCOUNT="${1:-}"
 # ASCII ordering every practical collation preserves), and every punctuation
 # character is spelled as a literal member, with '-' LAST so it cannot re-form a
 # range with whatever precedes it.
-is_valid_account() { # is_valid_account <account>
-	local LC_ALL=C
-	case "$1" in
-	"" | *[!a-zA-Z0-9._%@+-]*) return 1 ;;
-	esac
-	# A local part, an '@', and a dotted domain. Cheap, and all that is needed:
-	# the character class above already did the security-relevant work.
-	case "$1" in
-	*?@?*.?*) return 0 ;;
-	esac
-	return 1
+# The membership test itself runs in `tr`, in a CHILD PROCESS with LC_ALL=C in
+# its environment, rather than as a bash pattern. The first fix for the range bug
+# was a bash `case` under `local LC_ALL=C`, which assumes bash applies a function
+# -local locale assignment to pattern matching -- true in bash 5, not something to
+# bet on in the bash 3.2 that ships as /bin/bash on macOS, which is the exact
+# platform this bug appeared on. `LC_ALL=C tr` has no such ambiguity: the child
+# gets the C locale or the command fails outright.
+#
+# The leftover characters ARE the diagnostic, so the check and the error message
+# cannot drift apart -- whatever `tr` did not delete is what is disallowed.
+disallowed_chars() { # disallowed_chars <account> → the characters that are not allowed
+	printf '%s' "$1" | LC_ALL=C tr -d 'a-zA-Z0-9._%@+-'
 }
 
-if ! is_valid_account "$ACCOUNT"; then
-	# Name the offending byte rather than just the string. An address that looks
-	# perfect in a terminal but carries a stray tab, CR or non-breaking space is
-	# exactly the case where "invalid account '<looks fine>'" wastes an afternoon.
-	bad="$(printf '%s' "$ACCOUNT" | LC_ALL=C tr -d 'a-zA-Z0-9._%@+-' | od -An -c | tr -s ' ' | sed 's/^ //;s/ $//')"
-	[ -n "$bad" ] && bad=" (disallowed character(s): $bad)"
-	die "invalid account '$ACCOUNT' (expected an email address)$bad"
+bad="$(disallowed_chars "$ACCOUNT")"
+if [ -n "$bad" ]; then
+	# Name the offending byte rather than just echoing the string. An address that
+	# looks perfect in a terminal but carries a stray tab, CR or non-breaking space
+	# is exactly the case where "invalid account '<looks fine>'" wastes an afternoon.
+	die "invalid account '$ACCOUNT' (expected an email address)" \
+		"(disallowed character(s): $(printf '%s' "$bad" | od -An -c | tr -s ' ' | sed 's/^ //;s/ $//'))"
 fi
+# A local part, an '@', and a dotted domain. Cheap, and all that is needed: the
+# character check above already did the security-relevant work. Plain globs, no
+# bracket expressions, so there is no collation involved at all.
+case "$ACCOUNT" in
+*?@?*.?*) ;;
+*) die "invalid account '$ACCOUNT' (expected an email address)" ;;
+esac
 
 # --- 1. local credentials, if this machine has them --------------------------
 # Silent on success: stdout is the token and nothing else, so the usual

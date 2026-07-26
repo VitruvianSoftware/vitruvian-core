@@ -11,6 +11,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260718212957-b0aa3a454016
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.33.0
+	github.com/pulumi/pulumi-pulumiservice/sdk v1.3.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.1
 	github.com/pulumi/pulumi/sdk/v3 v3.254.0
 	github.com/pulumiverse/pulumi-time/sdk v0.1.0
