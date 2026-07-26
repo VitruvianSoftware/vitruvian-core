@@ -11,7 +11,16 @@ bazel run //tools/cloud-bootstrap:profiles   # list the declared profiles
 ```
 
 It normally runs by itself, as the first `SessionStart` hook in
-`.claude/settings.json`, ahead of `tailscale-up.sh` and `kube-setup.sh`.
+`.claude/settings.json`, ahead of `tailscale-up.sh` and `kube-setup.sh` — nobody
+types anything to bootstrap a session.
+
+`:whoami` is how you check a *cloud* session from the outside: you cannot shell
+into one, so ask the agent to run it and report back. If bazel is unavailable for
+any reason, the script is directly runnable and takes the same subcommands:
+
+```sh
+tools/cloud-bootstrap/cloud-bootstrap.sh whoami
+```
 
 ## The problem
 
@@ -35,8 +44,37 @@ VITRUVIAN_PROFILE=all
 VITRUVIAN_CLOUD_KEY=<base64 of one service-account key>
 ```
 
-One key unlocks every credential the agent needs. Nothing else to set, no
-ordering to think about, and the *Setup script* field can be left empty.
+One key unlocks every credential the agent needs — nothing else to set, and no
+ordering to think about.
+
+### The Setup script field
+
+Put the **install** phase there:
+
+```bash
+#!/bin/bash
+S=/home/user/vitruvian-core/tools/cloud-bootstrap/cloud-bootstrap.sh
+[ -x "$S" ] && exec "$S" install --force
+echo "cloud-bootstrap: repo not cloned yet — the SessionStart hook will install instead"
+```
+
+The `SessionStart` hook alone is functionally sufficient — it runs `up` (install
+*and* auth) at every session start with nobody typing anything. But the Setup
+script is the field whose filesystem effects the cloud environment **caches**, so
+putting the install there bakes ~250 MB of gcloud + pulumi + tailscale into the
+environment image instead of risking a re-download every session. The hook then
+re-verifies idempotently, which costs a few `command -v` calls.
+
+Two things that are easy to get wrong:
+
+- **`--force` is required.** `CLAUDE_CODE_REMOTE` is not set that early, so
+  without it the script hits its cloud-session guard and silently no-ops — an
+  empty cache with no error to explain why.
+- **It degrades safely.** If the repo is not cloned yet when the Setup script
+  runs, it prints one line and exits 0; the hook does the install instead.
+
+Credentials stay in the hook deliberately — you do not want tokens baked into a
+cached image.
 
 ## The profile is the blast-radius boundary
 
