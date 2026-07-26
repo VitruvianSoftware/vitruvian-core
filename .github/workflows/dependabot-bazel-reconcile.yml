@@ -20,18 +20,20 @@
 
 name: Dependabot Bazel reconcile
 
-# When Dependabot bumps a component go.mod in the monorepo, regenerate the gazelle
-# BUILD files + MODULE.bazel use_repo (bazel mod tidy) so the Bazel build stays
-# consistent, and commit the result to the PR branch. No-op for version-only bumps
-# (versions re-resolve via go_deps; BUILD/use_repo only change when the dep SET does).
+# When Dependabot bumps a component go.mod in the monorepo, re-tidy the in-tree
+# modules that consume it through a local `replace` (Dependabot cannot see across
+# that edge), regenerate the gazelle BUILD files + MODULE.bazel use_repo (bazel
+# mod tidy) so the Bazel build stays consistent, and commit the result to the PR
+# branch. No-op for version-only bumps (versions re-resolve via go_deps;
+# BUILD/use_repo only change when the dep SET does).
 # For npm bumps, regenerate pnpm-lock.yaml with the hermetic @pnpm//:pnpm so the
 # lock always matches the manifests in OUR canonical form -- tidy-check's
 # lockfile-sync guard requires exactly this, and Dependabot's own lock output
 # (when it produces one at all) is not guaranteed to match it byte-for-byte.
 # Pushes via the GitHub App token: Dependabot-triggered runs only see Dependabot
 # secrets, and an App-token push re-triggers CI on the reconciled commit. No push
-# loop: the re-triggered run's actor is the App (not dependabot[bot]) and the
-# reconcile is a fixpoint (second run produces no diff).
+# loop: the re-triggered run's actor is the App (excluded by the job `if` below)
+# and the reconcile is a fixpoint (second run produces no diff).
 on:
     pull_request:
         branches: [main]
@@ -50,7 +52,33 @@ concurrency:
 
 jobs:
     reconcile:
-        if: github.actor == 'dependabot[bot]'
+        # Keyed on who AUTHORED the PR, not on who triggered this run.
+        #
+        # `github.actor == 'dependabot[bot]'` only holds while Dependabot itself
+        # is the last pusher, so it silently skipped whenever a maintainer moved
+        # the branch -- clicking "Update branch", or the equivalent API call, on
+        # a Dependabot PR fires `synchronize` with the MAINTAINER as actor. The
+        # reconcile that the PR needs is a property of the BRANCH (a bump made
+        # across a local `replace` edge), not of whoever last touched it, so the
+        # old key made the fix unreachable exactly when a stale Dependabot PR was
+        # being brought current. That is not hypothetical: it is why 14 open
+        # go.mod PRs sat red on `go: updates to go.mod needed` with no way to
+        # reconcile them short of Dependabot re-pushing on its own schedule.
+        #
+        # The second clause keeps the no-push-loop guarantee the header claims.
+        # It used to come free: the App's push made the actor not-Dependabot, so
+        # the job skipped. Under an author-keyed `if` the App's own push still
+        # matches (the PR author never changes), so the run that reconciles would
+        # re-trigger itself. Idempotence alone would terminate it -- the second
+        # run finds no diff and exits without pushing -- but that is one bounded
+        # no-op run per push, and an infinite loop the day any tool in the chain
+        # stops being a fixpoint. So the App is excluded explicitly rather than
+        # incidentally: run for Dependabot, run for a human, never for a bot that
+        # is not Dependabot. Matching on the `[bot]` suffix rather than the App's
+        # login keeps this correct across an App rename.
+        if: >-
+            github.event.pull_request.user.login == 'dependabot[bot]'
+            && (github.actor == 'dependabot[bot]' || !endsWith(github.actor, '[bot]'))
         runs-on: ubuntu-latest
         timeout-minutes: 45
         steps:
@@ -66,6 +94,18 @@ jobs:
                 token: ${{ steps.app-token.outputs.token }}
             - name: Set up Bazel
               uses: ./.github/actions/setup-bazel
+            # FIRST, before gazelle: Dependabot bumps ONE module's go.mod and
+            # cannot see across a local `replace` edge, so every in-tree consumer
+            # of that module is left pinning the old transitive graph and dies
+            # with "go: updates to go.mod needed; to update it: go mod tidy"
+            # (go-test-infra on #1194 and siblings; example-build on
+            # #1166/#1175/#1179). Running the repo's own tidy tool on the PR
+            # branch IS the whole fix, and it has to come before `bazel mod tidy`
+            # and gazelle because those regenerate use_repo/BUILD files FROM the
+            # go.mod set this step settles.
+            - name: Reconcile Go module pins across `replace` edges
+              run: |
+                bazel run //tools/gomod:tidy
             - name: Reconcile (bazel mod tidy + gazelle)
               run: |
                 bazel mod tidy
@@ -91,5 +131,5 @@ jobs:
                 git config user.name "VitruvianSoftware Sync"
                 git config user.email "sync@vitruviansoftware.com"
                 git add -A
-                git commit -m "chore(deps): bazel reconcile (gazelle + mod tidy + pnpm lock + //:tidy)"
+                git commit -m "chore(deps): reconcile (go mod tidy + gazelle + mod tidy + pnpm lock + //:tidy)"
                 git push origin "HEAD:${HEAD_REF}"
