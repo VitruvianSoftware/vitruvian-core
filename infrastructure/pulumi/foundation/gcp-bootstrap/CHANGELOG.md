@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.10.0...foundation-gcp-bootstrap-v0.10.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **foundation:** allow the Pulumi issuer in the WIF org policy, and build that allowlist once ([#1247](https://github.com/VitruvianSoftware/vitruvian-core/issues/1247)) ([b396a73](https://github.com/VitruvianSoftware/vitruvian-core/commit/b396a7332ac8b3f15f1e196e643be265acf341aa))
+
 ## [0.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.9.0...foundation-gcp-bootstrap-v0.10.0) (2026-07-26)
 
 
