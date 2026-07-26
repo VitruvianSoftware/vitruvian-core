@@ -65,16 +65,20 @@ regexes = ['''cloudflare-token-secret-project:''']
 
 # The `generic-api-key` heuristic fires on ordinary English in markdown -- e.g.
 # the words "Gateway API migration, Prometheus" in a docs table read as a
-# key/value pair -- and on obviously-fake fixtures in Go tests ("tskey-abc123").
+# key/value pair -- and on obviously-fake fixtures in tests ("tskey-abc123", or
+# a "VAR=some-secret-name" row in //tools/cloud-bootstrap's fixture manifest).
+# The hermetic shell tests are the same class as the Go ones: they drive real
+# scripts against fake CLIs, so a plausible-looking credential IS the fixture.
 # Scoped with targetRules so ONLY that heuristic is relaxed here: every
 # provider-specific rule (cloudflare-api-key, private-key, aws-*, ...) stays
-# fully armed on docs and tests, so a real token pasted into a runbook is still
-# caught. `curl-auth-user` is relaxed on markdown for the same reason: a
-# documented `curl -u user:pass` example is not a credential.
+# fully armed on docs and tests, so a real token pasted into a runbook -- or into
+# one of these test files -- is still caught. `curl-auth-user` is relaxed on
+# markdown for the same reason: a documented `curl -u user:pass` example is not
+# a credential.
 [[allowlists]]
-description = "generic-api-key/curl-auth-user are prose noise in docs and fixtures"
+description = "generic-api-key/curl-auth-user are prose noise in docs and test fixtures"
 targetRules = ["generic-api-key", "curl-auth-user"]
-paths = ['''\.md$''', '''_test\.go$''']
+paths = ['''\.md$''', '''_test\.go$''', '''_test\.sh$''']
 
 # The token-less `pulumi preview` pattern feeds a deliberately fake, 40-char
 # Cloudflare token so the provider's length validation passes without a real
