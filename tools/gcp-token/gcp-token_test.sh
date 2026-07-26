@@ -270,10 +270,21 @@ echo "gcp-token: Pulumi ESC source"
 # makes "ESC primary, homelab backup" real instead of aspirational.
 ESC_TOKEN="ya29.esc-$(printf 'E%.0s' $(seq 1 60))"
 make_pulumi() { # make_pulumi <ok|broken>
+	# Subcommand-aware ON PURPOSE, mirroring real `pulumi` behaviour: only
+	# `env open` performs the fn::open::gcp-login exchange and yields a token.
+	# `env get` reads the stored DEFINITION, where accessToken does not exist, so
+	# it exits 0 printing NOTHING.
+	#
+	# The first version of this fake echoed the token for any subcommand. That is
+	# why the suite passed while the real integration called `env get` and got an
+	# empty string on every single invocation -- silently falling back to the
+	# tailnet broker with a working federation sitting unused. A fake that accepts
+	# calls the real tool rejects does not test the integration, it tests itself.
 	cat >"$work/pulumi" <<FAKE
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$work/pulumi.argv"
-[ "$1" = ok ] && { echo "$ESC_TOKEN"; exit 0; }
+[ "\$1" = env ] && [ "\$2" = get ] && exit 0   # definition read: empty, like the real thing
+[ "$1" = ok ] && [ "\$2" = open ] && { echo "$ESC_TOKEN"; exit 0; }
 echo "error: could not open environment" >&2
 exit 1
 FAKE
@@ -289,7 +300,14 @@ out="$(run "$ACCOUNT" VITRUVIAN_ESC_ENV=proj/env)"
 [ ! -s "$work/ssh.argv" ] && pass "…and the tailnet is not touched" ||
 	fail "the broker ran despite ESC succeeding"
 assert_contains "…asked for the configured environment" "$(cat "$work/pulumi.argv")" "proj/env"
-assert_contains "…as a bare string, so no JSON parsing is needed" "$(cat "$work/pulumi.argv")" "--value string"
+assert_contains "…as a bare string, so no JSON parsing is needed" "$(cat "$work/pulumi.argv")" "--format string"
+# REGRESSION: it must be `env open`, never `env get`. `env get` reads the stored
+# definition, where fn::open::gcp-login's accessToken does not exist, and exits 0
+# printing nothing — indistinguishable from "ESC not configured".
+assert_contains "…via `env open`, which performs the OIDC exchange" \
+	"$(cat "$work/pulumi.argv")" "env open"
+assert_not_contains "…never via \`env get\`, which reads the definition and returns empty" \
+	"$(cat "$work/pulumi.argv")" "env get"
 
 # Local credentials still win over ESC.
 make_gcloud have
