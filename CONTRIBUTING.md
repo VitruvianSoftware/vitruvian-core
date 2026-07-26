@@ -163,6 +163,53 @@ The default branch is **`main`**.
 
 PR bodies should be self-contained (what changed, why, how verified). Auto-delete of merged head branches is also managed by `repo_config`.
 
+### 4.1 `main` is squash-only — so your branch's commit SHAs never reach it
+
+The merge queue **squashes**. `repo_config` pins `AllowedMergeMethods: ["squash"]`, so
+merging rewrites your branch's commits into **one new commit with a new SHA**, parented
+on `main`. Your original SHAs are not ancestors of `main` and never will be.
+
+**This is working as intended, not a problem to fix.** A linear, one-commit-per-change
+history is the point. (Rebase-merge would not preserve the SHAs either; only a true merge
+commit does, which is exactly the history the squash-only rule exists to avoid.)
+
+The trap is that the obvious way to check "did my work land?" silently gives the **wrong
+answer**:
+
+```bash
+# ❌ WRONG — reports every merged PR as missing from main.
+git merge-base --is-ancestor <your-branch-sha> origin/main
+```
+
+That is a **false negative on the dangerous side**: it says "not merged" about work that
+*is* merged, which can talk you (or an agent) into re-doing landed work — or into thinking
+you are about to delete unmerged work when the branch is safe to delete. It bit exactly
+that way on #1200/#1204/#1205.
+
+**A branch SHA is not a durable identity across a squash. The PR number is.** Use:
+
+```bash
+bazel run //tools/landed -- 1205                 # a PR number
+bazel run //tools/landed -- claude/my-branch     # a branch (even if auto-deleted)
+bazel run //tools/landed -- da6612ad             # a local commit
+```
+
+It resolves whatever you give it to the PR, asks GitHub for the **squashed** commit, and
+verifies *that* against your `origin/main` — so a stale fetch or a different base branch
+still reports honestly instead of trusting GitHub's "MERGED" badge.
+
+Without Bazel to hand, either of these also works, because GitHub appends `(#N)` to every
+squash title:
+
+```bash
+git log --grep "(#1205)" origin/main
+gh pr view 1205 --json state,mergeCommit    # then --is-ancestor that oid
+```
+
+For infrastructure changes, prefer verifying the **content or live effect** over any SHA
+at all (`git show origin/main:<path> | grep …`, or query the live API). A green apply log
+is not proof the change took effect — see `docs/engineering/deployment-strategy.md`.
+
 **The whole loop at a glance:**
 
 ```mermaid

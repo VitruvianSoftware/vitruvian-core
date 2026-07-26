@@ -91,6 +91,15 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
   provider reporting `updated` does not mean the setting took.
 
 ## Conventions & landmines
+- **`main` is squash-only, so branch SHAs NEVER become ancestors of `main`.** Do not verify
+  "did it land?" with `git merge-base --is-ancestor <branch-sha> origin/main` — it returns
+  false for *every* merged PR. That is a false negative on the dangerous side: it claims
+  landed work is missing, which can lead you to redo it, or to hesitate over deleting a
+  branch that is perfectly safe to delete. **Before cleaning up worktrees/branches, or
+  claiming anything is in `main`, use `bazel run //tools/landed -- <pr#|branch|sha>`**,
+  which resolves to the *squashed* commit and checks that. Fallbacks: `git log --grep
+  "(#N)" origin/main` (GitHub appends `(#N)` to squash titles), or verify the content
+  directly with `git show origin/main:<path>`. See CONTRIBUTING.md §4.1.
 - **Gazelle owns most `BUILD` files** — don't hand-edit generated targets; change the source and
   re-run gazelle.
 - **One Version Rule** — one resolved version per dependency per ecosystem. To deliberately
