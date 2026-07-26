@@ -540,6 +540,22 @@ jobs:
           (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         with:
           go-version-file: go.mod
+      # Runs BEFORE the build, because it is the same failure with a usable
+      # error message. The examples `replace` the library with a local path but
+      # pin their own copy of its transitive graph, and Dependabot tidies only
+      # the module it bumps -- so a library bump desyncs them and `go build`
+      # reports the contextless "go: updates to go.mod needed; to update it: go
+      # mod tidy", naming no module, no dependency and no PR. (#1166/#1175/#1179
+      # each burned a diagnosis on that.) This names the module, prints the
+      # diff, and gives the command that fixes it. Read-only: `go mod tidy
+      # -diff` never writes, so this cannot dirty the tree it is checking.
+      - name: Assert example/library module pins are in sync
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
+          (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
+        run: bash tools/gomod/tidy.sh --check
+
       - name: go build (every example module)
         if: >-
           github.event_name == 'push' ||
