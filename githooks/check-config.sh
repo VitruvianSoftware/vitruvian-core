@@ -58,12 +58,23 @@ fi
 #   * CI                          ($CI / $GITHUB_ACTIONS) — runners check out
 #                                 branches/merge refs in a fresh clone; there
 #                                 is no shared-HEAD hazard.
+#   * Claude Code CLOUD sessions  ($CLAUDE_CODE_REMOTE) — same reasoning as CI,
+#                                 and verified: each cloud session gets its OWN
+#                                 container and its own clone, so nothing is
+#                                 shared to stomp. Without this the guard fires
+#                                 on every cloud session that makes a branch --
+#                                 i.e. all of them -- and the agent must detour
+#                                 through //tools/worktree before it can build
+#                                 or test, moving the primary checkout and
+#                                 leaving worktrees behind for a hazard that
+#                                 does not exist there.
 #   * VITRUVIAN_ALLOW_PRIMARY_BRANCH=1  explicit break-glass for a human who
 #                                 knows the checkout is not shared right now.
 #
 # Detached HEAD in the primary checkout is treated as non-main (same hazard).
 if [ "${inside_work_tree}" = "true" ] \
 	&& [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ] \
+	&& [ "${CLAUDE_CODE_REMOTE:-}" != "true" ] \
 	&& [ "${VITRUVIAN_ALLOW_PRIMARY_BRANCH:-0}" != "1" ]; then
 	git_dir=$(git rev-parse --git-dir 2>/dev/null)
 	git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null)

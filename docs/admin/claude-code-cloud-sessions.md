@@ -36,7 +36,9 @@ account its profile declares — a mismatched key is refused and fails closed.
 `all` is one service account holding every credential the agent needs — that is
 the everyday configuration, and it is just the two variables above. The narrower
 rows exist for when you deliberately want a session that *cannot* reach
-production, e.g. one reviewing third-party code. Profiles can also be combined
+production, e.g. one reviewing third-party code; such a session **blanks** every
+manifest-named credential it does not claim, rather than merely declining to add
+one (a smaller blast radius, not a sandbox). Profiles can also be combined
 (`core,homelab`), but prefer a single row: combining keeps each profile's
 identity separate and therefore needs a key each, which is only worth it to hold
 two existing boundaries at once.

@@ -678,6 +678,52 @@ materialise_secrets() { # materialise_secrets <profile>
 	return "$missing"
 }
 
+# known_credential_vars — every env var named in ANY row's secrets column.
+#
+# The manifest defines what counts as a credential, so this stays correct as
+# rows are added and never needs a hardcoded list to drift.
+known_credential_vars() {
+	awk '
+    $1 ~ /^#/ { next }
+    NF == 0   { next }
+    {
+      n = split($5, pairs, ",")
+      for (i = 1; i <= n; i++) {
+        split(pairs[i], kv, "=")
+        if (kv[1] != "" && kv[1] != "-") print kv[1]
+      }
+    }
+  ' "$PROFILES_FILE" | sort -u
+}
+
+# scrub_undeclared — blank every manifest-declared credential the active
+# profile(s) did NOT claim.
+#
+# WITHOUT THIS THE PROFILE BOUNDARY IS DECORATIVE whenever credentials come from
+# the environment rather than Secret Manager. The bootstrap only ever ADDS, so a
+# `readonly` session -- whose entire purpose is to be the one that CANNOT reach
+# production -- would still read a Pulumi token or a cluster credential straight
+# out of the environment while :whoami cheerfully reported "creds – none".
+#
+# Scope, honestly: this blanks the vars for shells that source session.env, which
+# is every Bash tool call the agent makes -- the surface that matters. It cannot
+# unset them from the harness's own process environment. And it only covers
+# credentials THE MANIFEST NAMES; a narrow profile is a smaller blast radius, not
+# a sandbox.
+scrub_undeclared() {
+	local var cleared=0
+	for var in $(known_credential_vars); do
+		case "$CLAIMED" in
+		*" $var="*) continue ;; # an active profile claimed it
+		esac
+		[ -n "${!var:-}" ] || continue
+		env_set "$var" ""
+		note "$var: CLEARED — no active profile declares it"
+		cleared=$((cleared + 1))
+	done
+	[ "$cleared" -eq 0 ] || note "scrubbed $cleared credential(s) this profile is not entitled to"
+}
+
 # --- report -------------------------------------------------------------------
 
 report() {
@@ -846,6 +892,9 @@ establish_credentials() {
 		authenticate "$_p" || true
 		materialise_secrets "$_p" || true
 	done
+	# AFTER every profile has claimed what it is entitled to, so the scrub can
+	# tell "nobody declared this" from "not reached yet".
+	scrub_undeclared
 	wire_session_env
 }
 
