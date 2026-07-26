@@ -35,9 +35,36 @@ node that is already logged in can mint a token on demand:
   tailnet, or revoke the agent's SSH key, and cloud sessions lose GCP at once.
 
 Compare the alternatives: an SA key is blocked by policy; a user refresh token in
-the environment is *your whole identity* sitting in a sandbox; Pulumi ESC is the
-better long-term answer but needs a WIF pool, an OIDC provider and a foundation
-change. This needs a node you already run.
+the environment is *your whole identity* sitting in a sandbox. This needs a node
+you already run.
+
+## Pulumi ESC — measured, and what it would take
+
+ESC would remove the homelab dependency entirely: the credential would come from
+Pulumi's servers rather than a machine at home, so nothing local needs to be
+awake. **Its half already works** — probed against the live account, ESC accepted
+a `fn::open::gcp-login` definition and attempted a real OIDC exchange with Google,
+failing *only* because the trust relationship does not exist yet:
+
+```
+Diags: exchanging token: could not authenticate with GCP.
+Subject:  "pulumi:environments:org:ipv1337:env:<project>/<env>"
+Audience: "gcp:ipv1337"
+status 400: invalid_target … the pool or provider is disabled or deleted or
+                              because it doesn't exist
+```
+
+So the missing piece is entirely on the GCP side, and that error names it: a
+workload identity pool + OIDC provider trusting Pulumi's issuer with audience
+`gcp:ipv1337`, an attribute mapping on that subject, and a service account the
+federated principal may impersonate. That is a foundation change
+(`infrastructure/pulumi/foundation/`) touching org-level IAM — reviewed and
+applied deliberately, not incidentally.
+
+Nothing here is wasted when that lands: every caller already takes its credential
+through `GOOGLE_OAUTH_ACCESS_TOKEN`, so ESC becomes another source in the
+resolution order above and the tailnet broker stays as the fallback for when
+Pulumi is unreachable.
 
 ## Resolution order
 

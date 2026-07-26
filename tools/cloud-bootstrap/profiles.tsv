@@ -51,11 +51,19 @@
 #   secrets     comma-separated ENV_VAR=secret-name pairs to materialise into the
 #               session; '-' for none. An ENV_VAR already set on the environment WINS
 #               and is left untouched (that is the no-GCP fallback path).
+#               ENV_VAR=- means ENVIRONMENT-ONLY: the profile is entitled to it, but
+#               its value is not in Secret Manager and never will be, so no read is
+#               attempted. Use it for credentials another system owns -- e.g.
+#               BUILDBUDDY_API_KEY, a GitHub Actions/Dependabot secret managed by
+#               //infrastructure/pulumi/platform/repo_config and injected from the
+#               pipeline. Declaring it keeps it inside the blast-radius boundary
+#               (a profile that omits it still gets it scrubbed) without inventing a
+#               Secret Manager address that would fail the day SM is wired up.
 #   purpose     free text; may contain spaces; MUST be the last column
 #
 # profile  tools                          sa_account                                                              sa_project                     secrets                                                                                                        purpose
-all        bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  claude-cloud-all@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com    prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  DEFAULT. Everything, one service account, one key. Use this unless you specifically want a narrower session.
-core       bazel,direnv,gh                claude-cloud-core@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY                                   Default. Build, test, review and open PRs in the monorepo. No infrastructure credentials.
-infra      bazel,direnv,gh,gcloud,pulumi  claude-cloud-infra@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token  core + Pulumi/GCP infrastructure work (preview/up against the foundation and app stacks).
+all        bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  claude-cloud-all@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com    prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  DEFAULT. Everything, one service account, one key. Use this unless you specifically want a narrower session.
+core       bazel,direnv,gh                claude-cloud-core@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-                                   Default. Build, test, review and open PRs in the monorepo. No infrastructure credentials.
+infra      bazel,direnv,gh,gcloud,pulumi  claude-cloud-infra@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token  core + Pulumi/GCP infrastructure work (preview/up against the foundation and app stacks).
 homelab    bazel,direnv,gh,kubectl,tailscale        claude-cloud-lab@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com   prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  core + tailnet transport, k3s cluster admin and node SSH (feeds tailscale-up.sh / kube-setup.sh).
 readonly   bazel,direnv                   -                                                                        -                              -                                                                                                              Tooling only, zero credentials. Use for untrusted input, reviews of third-party code, or a spike.
