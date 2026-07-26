@@ -102,15 +102,41 @@ ACCOUNT="${1:-}"
 # The account is interpolated into a REMOTE command line, so constrain it to
 # what a Google account can actually be before it ever reaches ssh. This is the
 # only caller-controlled value in that string.
-case "$ACCOUNT" in
-*[!a-zA-Z0-9._%+-@]* | *' '* | "")
-	die "invalid account '$ACCOUNT' (expected an email address)"
-	;;
-esac
-case "$ACCOUNT" in
-*@*.*) ;;
-*) die "invalid account '$ACCOUNT' (expected an email address)" ;;
-esac
+#
+# LC_ALL=C is load-bearing, not tidiness. A bracket RANGE is resolved in the
+# CURRENT COLLATION, and macOS's UTF-8 collation does not order punctuation the
+# way ASCII does. The first spelling of this class ended `%+-@`, which is a range
+# from '+' to '@' -- on glibc under the C locale that range happens to contain
+# '@', so every hermetic test and every CI run passed, while on a Mac it did not,
+# and the validator rejected literally every real address:
+#
+#	gcp-token: invalid account 'james@vitruviansoftware.dev' (expected an email address)
+#
+# Two rules keep that from recurring: ranges cover only letters and digits (whose
+# ASCII ordering every practical collation preserves), and every punctuation
+# character is spelled as a literal member, with '-' LAST so it cannot re-form a
+# range with whatever precedes it.
+is_valid_account() { # is_valid_account <account>
+	local LC_ALL=C
+	case "$1" in
+	"" | *[!a-zA-Z0-9._%@+-]*) return 1 ;;
+	esac
+	# A local part, an '@', and a dotted domain. Cheap, and all that is needed:
+	# the character class above already did the security-relevant work.
+	case "$1" in
+	*?@?*.?*) return 0 ;;
+	esac
+	return 1
+}
+
+if ! is_valid_account "$ACCOUNT"; then
+	# Name the offending byte rather than just the string. An address that looks
+	# perfect in a terminal but carries a stray tab, CR or non-breaking space is
+	# exactly the case where "invalid account '<looks fine>'" wastes an afternoon.
+	bad="$(printf '%s' "$ACCOUNT" | LC_ALL=C tr -d 'a-zA-Z0-9._%@+-' | od -An -c | tr -s ' ' | sed 's/^ //;s/ $//')"
+	[ -n "$bad" ] && bad=" (disallowed character(s): $bad)"
+	die "invalid account '$ACCOUNT' (expected an email address)$bad"
+fi
 
 # --- 1. local credentials, if this machine has them --------------------------
 # Silent on success: stdout is the token and nothing else, so the usual
