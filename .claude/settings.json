@@ -5,6 +5,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/tools/cloud-bootstrap/cloud-bootstrap.sh"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/tailscale-up.sh"
           },
           {

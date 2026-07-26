@@ -41,6 +41,16 @@ set -uo pipefail
 # Cloud sessions only — no-op on a local checkout.
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
+# Pick up anything //tools/cloud-bootstrap resolved for this session's profile.
+# Hooks are separate processes, so a TS_AUTHKEY it fetched from Secret Manager is
+# NOT in this one's environment — without this, the `homelab` profile's whole
+# point (rotate the auth key in one place, no cloud-environment edit) would not
+# reach tailscaled. A TS_AUTHKEY set directly on the environment still works
+# unchanged; cloud-bootstrap leaves those alone.
+_session_env="$HOME/.config/vitruvian-core/cloud/session.env"
+# shellcheck disable=SC1090 # path is fixed; the file is 0600 and machine-written
+[ -f "$_session_env" ] && . "$_session_env"
+
 if ! command -v tailscale >/dev/null 2>&1; then
 	echo "tailscale-up: binary missing — add the install line to the cloud env Setup script" >&2
 	exit 0

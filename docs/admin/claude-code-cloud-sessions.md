@@ -9,6 +9,45 @@ If you are running a different tool, none of this applies — you need your own 
 to the tailnet, and the facts that generalise are: the cluster API is the HA name
 `k8s-api.lab.ipv1337.dev:6443`, and node access is by SSH key as user `james`.
 
+## Tooling and credentials: the profile
+
+A cloud session boots a bare Ubuntu box — `git`, `go`, `node`, `docker`, and none
+of this repo's CLI tooling or credentials. The first `SessionStart` hook,
+[`//tools/cloud-bootstrap`](../../tools/cloud-bootstrap/README.md), fixes both.
+
+Two variables on the cloud environment drive it:
+
+| variable | what it is |
+| --- | --- |
+| `VITRUVIAN_PROFILE` | which profile this environment is (`core`, `infra`, `homelab`, `readonly`) |
+| `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key — the **only** credential on the environment |
+
+The profile is the blast-radius boundary. Its row in
+[`tools/cloud-bootstrap/profiles.tsv`](../../tools/cloud-bootstrap/profiles.tsv)
+decides which CLIs are installed and which secrets the session may hold; a `core`
+session cannot obtain a Pulumi token or a cluster credential, because its row does
+not name them and its service account has no IAM to read them.
+
+Everything beyond that one key comes from Secret Manager at session start, so a
+GitHub PAT, Pulumi token, Tailscale auth key or cluster token rotates **without
+editing the cloud environment at all**. The key's `client_email` must match the
+account its profile declares — a mismatched key is refused and fails closed.
+
+Verify from inside a session:
+
+```sh
+bazel run //tools/cloud-bootstrap:whoami     # tools, identity, credentials (no values)
+```
+
+The full rationale — why token-based, why one credential, why not keyless, where
+things land on disk — is in the
+[tool's README](../../tools/cloud-bootstrap/README.md).
+
+> The `TS_AUTHKEY` and `LAB_SA_TOKEN` variables described below still work exactly
+> as they always have: a value already set on the environment wins, and
+> cloud-bootstrap leaves it alone. Moving them into the `homelab` profile's Secret
+> Manager entries is the upgrade, not a requirement.
+
 ## Kubernetes access
 Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
 Two `SessionStart` hooks wire this up automatically (registered in

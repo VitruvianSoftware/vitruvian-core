@@ -47,6 +47,14 @@ set -uo pipefail
 # Cloud sessions only — no-op on a local checkout.
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
+# Pick up anything //tools/cloud-bootstrap resolved for this session's profile.
+# Hooks are separate processes, so a LAB_SA_TOKEN it fetched from Secret Manager
+# is NOT in this one's environment. A LAB_SA_TOKEN set directly on the cloud
+# environment still works unchanged; cloud-bootstrap leaves those alone.
+_session_env="$HOME/.config/vitruvian-core/cloud/session.env"
+# shellcheck disable=SC1090 # path is fixed; the file is 0600 and machine-written
+[ -f "$_session_env" ] && . "$_session_env"
+
 # Use sudo for privileged moves only when not already root.
 priv=()
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
