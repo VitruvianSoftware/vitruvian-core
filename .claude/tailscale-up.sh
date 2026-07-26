@@ -27,8 +27,10 @@
 #
 # Why a SessionStart hook and not the cloud "Setup script": the cloud
 # environment cache snapshots files, not running processes, so a daemon started
-# in the Setup script would not be running on cached/resumed sessions. The Setup
-# script only installs the binary; this hook (re)starts the daemon each session.
+# in the Setup script would not be running on cached/resumed sessions. The
+# BINARY is installed by //tools/cloud-bootstrap (the hook that runs before this
+# one) for any profile whose `tools` column lists tailscale; this hook (re)starts
+# the daemon each session.
 #
 # Why userspace networking: the sandbox has no TUN device and all egress is
 # forced through an HTTP/HTTPS proxy, so raw WireGuard cannot leave. tailscaled
@@ -52,7 +54,8 @@ _session_env="$HOME/.config/vitruvian-core/cloud/session.env"
 [ -f "$_session_env" ] && . "$_session_env"
 
 if ! command -v tailscale >/dev/null 2>&1; then
-	echo "tailscale-up: binary missing — add the install line to the cloud env Setup script" >&2
+	echo "tailscale-up: binary missing — this session's \$VITRUVIAN_PROFILE does not list" >&2
+	echo "  tailscale (see tools/cloud-bootstrap/profiles.tsv); add it, or use a profile that does" >&2
 	exit 0
 fi
 

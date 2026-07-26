@@ -11,6 +11,17 @@
 # list them and its SA has no IAM to read them. Add capability by adding a row, never by
 # widening an existing one.
 #
+# SEVERAL PROFILES MAY BE COMBINED: VITRUVIAN_PROFILE=core,homelab unions their tools
+# and their secrets. This does NOT merge privileges into one identity -- each profile
+# keeps its own service account and reads only its own secrets, so the boundary above
+# still holds; the session simply holds two identities. Each therefore needs its own key
+# in $VITRUVIAN_CLOUD_KEY_<PROFILE> (the shared $VITRUVIAN_CLOUD_KEY can satisfy only
+# one, and identity pinning refuses the rest rather than using the wrong account). The
+# FIRST listed profile with an identity becomes the session's ambient GCP identity --
+# what pulumi, gsutil and a bare gcloud use -- so order the list accordingly. Two rows
+# mapping the SAME env var to DIFFERENT secrets is refused, since which credential the
+# session ends up holding must not depend on manifest row order.
+#
 # NO SECRET VALUES LIVE HERE. This file names secrets; the values are in the declared
 # project's Secret Manager (seed with //tools/gcp-secrets). The only credential on the
 # cloud environment itself is $VITRUVIAN_CLOUD_KEY — the profile's SA key, which can do
@@ -22,8 +33,9 @@
 # Columns:
 #   profile     value of $VITRUVIAN_PROFILE that selects this row (the resolver key)
 #   tools       comma-separated CLI keys to install; '-' for none. Known keys:
-#               bazel,direnv,gh,gcloud,pulumi,kubectl  (gcloud is added automatically
-#               whenever sa_account is set, since reading the secrets needs it)
+#               bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  (gcloud is added
+#               automatically whenever sa_account is set, since reading the secrets
+#               needs it). Combined profiles install the UNION.
 #   sa_account  service account this profile authenticates as. The bootstrap REFUSES to
 #               proceed if $VITRUVIAN_CLOUD_KEY belongs to a different account, so a
 #               mis-pasted key cannot silently escalate a session. '-' = no GCP identity.
@@ -37,5 +49,5 @@
 # profile  tools                          sa_account                                                              sa_project                     secrets                                                                                                        purpose
 core       bazel,direnv,gh                claude-cloud-core@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY                                   Default. Build, test, review and open PRs in the monorepo. No infrastructure credentials.
 infra      bazel,direnv,gh,gcloud,pulumi  claude-cloud-infra@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=BUILDBUDDY_API_KEY,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token  core + Pulumi/GCP infrastructure work (preview/up against the foundation and app stacks).
-homelab    bazel,direnv,gh,kubectl        claude-cloud-lab@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com   prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token          core + tailnet transport, k3s cluster admin and node SSH (feeds tailscale-up.sh / kube-setup.sh).
+homelab    bazel,direnv,gh,kubectl,tailscale        claude-cloud-lab@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com   prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token          core + tailnet transport, k3s cluster admin and node SSH (feeds tailscale-up.sh / kube-setup.sh).
 readonly   bazel,direnv                   -                                                                        -                              -                                                                                                              Tooling only, zero credentials. Use for untrusted input, reviews of third-party code, or a spike.

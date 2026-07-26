@@ -109,6 +109,7 @@ set -uo pipefail
 GH_VERSION="${GH_VERSION:-2.96.0}"
 GCLOUD_VERSION="${GCLOUD_VERSION:-577.0.0}"
 PULUMI_VERSION="${PULUMI_VERSION:-3.254.0}"
+TAILSCALE_VERSION="${TAILSCALE_VERSION:-1.98.9}"
 KUBECTL_VERSION="${KUBECTL_VERSION:-}" # empty = resolve dl.k8s.io/release/stable.txt
 
 # A credential shorter than this is a PLACEHOLDER, not a secret.
@@ -131,7 +132,6 @@ STATE_DIR="${CLOUD_BOOTSTRAP_STATE_DIR:-$HOME/.config/vitruvian-core/cloud}"
 BASHRC="${CLOUD_BOOTSTRAP_BASHRC:-$HOME/.bashrc}"
 
 SESSION_ENV_FILE="$STATE_DIR/session.env"
-SA_KEY_FILE="$STATE_DIR/sa-key.json"
 
 MARK_BEGIN="# >>> vitruvian-core cloud session (managed by tools/cloud-bootstrap) — do not edit by hand"
 MARK_END="# <<< vitruvian-core cloud session (managed by tools/cloud-bootstrap)"
@@ -171,14 +171,14 @@ while [ "$#" -gt 0 ]; do
 Usage: bazel run //tools/cloud-bootstrap[:<subcommand>] -- [flags]
 
 Subcommands (the sh_binary target bakes one in as $1):
-  up         install the profile's CLIs and establish its credentials (default)
+  up         install the profiles' CLIs and establish their credentials (default)
   install    CLIs only
   auth       credentials only
-  whoami     report what this session has; non-zero if the profile is unsatisfied
+  whoami     report what this session has; non-zero if a profile is unsatisfied
   profiles   list the profiles declared in profiles.tsv
 
 Flags:
-  --profile <name>  override $VITRUVIAN_PROFILE for this run
+  --profile <list>  override $VITRUVIAN_PROFILE for this run (comma-separated)
   --force           run against a local checkout (normally cloud sessions only)
 USAGE
 		exit 0
@@ -189,6 +189,25 @@ USAGE
 		;;
 	esac
 done
+
+# load_profile <name> — set the P_* globals from the manifest row, or return 1.
+# Globals rather than a return value because a row has five fields and bash 3.2
+# (which doctor.sh targets, so the repo's shell floor) has no associative arrays.
+load_profile() {
+	IFS=$'\t' read -r P_TOOLS P_SA_ACCOUNT P_SA_PROJECT P_SECRETS P_PURPOSE \
+		< <(resolve_profile "$PROFILES_FILE" "$1") || true
+	[ -n "${P_TOOLS:-}" ] || return 1
+	# Reading this profile's secrets needs gcloud, whatever its tools column says.
+	# Matched as a whole comma-delimited field (not a substring) so a future
+	# "gcloud-lite" key could not satisfy the check by accident.
+	if [ "$P_SA_ACCOUNT" != "-" ]; then
+		case ",$P_TOOLS," in
+		*,gcloud,*) ;;
+		*) P_TOOLS="$P_TOOLS,gcloud" ;;
+		esac
+	fi
+	return 0
+}
 
 # resolve_profile <file> <name> — emit the row's fields, tab-separated, or nothing.
 # Comment/blank/placeholder rows are skipped, exactly like resolve_identity.sh.
@@ -306,6 +325,26 @@ install_pulumi() {
 	command -v pulumi >/dev/null 2>&1
 }
 
+install_tailscale() {
+	# Both binaries or nothing: tailscale-up.sh runs `tailscaled` (the daemon) and
+	# then `tailscale` (the client), so a half-install is worse than none.
+	command -v tailscale >/dev/null 2>&1 && command -v tailscaled >/dev/null 2>&1 && return 0
+	local a tmp dir
+	case "$(uname -m)" in aarch64 | arm64) a=arm64 ;; *) a=amd64 ;; esac
+	tmp="${TMPDIR:-/tmp}/tailscale.$$.tgz"
+	dir="${TMPDIR:-/tmp}/tailscale.$$.d"
+	# The pinned static tarball, not `curl https://tailscale.com/install.sh | sh`:
+	# the install script detects the distro and shells out to apt, which drags in a
+	# repo + keyring this sandbox does not need and cannot cache as cleanly. The
+	# tarball is the same artifact, pinned, and it is the only form that also works
+	# on a non-Debian base.
+	fetch_to "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${a}.tgz" "$tmp" || return 1
+	mkdir -p "$dir" && tar -xzf "$tmp" -C "$dir" --strip-components=1 || return 1
+	"${priv[@]}" install -m 0755 "$dir/tailscale" "$INSTALL_DIR/tailscale" || return 1
+	"${priv[@]}" install -m 0755 "$dir/tailscaled" "$INSTALL_DIR/tailscaled" || return 1
+	rm -rf "$tmp" "$dir"
+}
+
 install_kubectl() {
 	# kube-setup.sh already installs kubectl for the homelab path; this is here so
 	# a profile that wants kubectl without the tailnet hooks still gets it.
@@ -333,6 +372,7 @@ install_tools() { # install_tools <comma-list>
 		gcloud) install_gcloud || rc=$? ;;
 		pulumi) install_pulumi || rc=$? ;;
 		kubectl) install_kubectl || rc=$? ;;
+		tailscale) install_tailscale || rc=$? ;;
 		*)
 			warn "unknown tool key '$key' in profiles.tsv — ignoring"
 			continue
@@ -445,7 +485,7 @@ key_client_email() {
 gcloud_secret() {
 	local name="$1" out rc err
 	err="$(mktemp)"
-	out="$("$GCLOUD_BIN" --account="$SA_ACCOUNT" --project="$SA_PROJECT" \
+	out="$("$GCLOUD_BIN" --account="$P_SA_ACCOUNT" --project="$P_SA_PROJECT" \
 		secrets versions access latest --secret="$name" 2>"$err")" && rc=0 || rc=$?
 	if [ "$rc" -ne 0 ] || grep -q '^ERROR:' "$err" 2>/dev/null || [ -z "$out" ]; then
 		sed 's/^/    /' "$err" >&2
@@ -464,12 +504,23 @@ gcloud_secret() {
 # mode of the tool we just refused to trust.
 AUTH_STATE="none"
 
-authenticate() {
+# PRIMARY_ACCOUNT is the identity that becomes AMBIENT for the session --
+# GOOGLE_APPLICATION_CREDENTIALS, CLOUDSDK_CORE_PROJECT, and therefore what
+# `pulumi`, `gsutil` and a bare `gcloud` use. With several profiles active only
+# one can hold that slot, so the rule is deliberate and dumb: THE FIRST LISTED
+# PROFILE THAT HAS AN IDENTITY WINS. Every other profile's account is still
+# activated in gcloud and still reads its OWN secrets via an explicit --account,
+# so the blast-radius boundary is unchanged -- it is only the default that is
+# first-listed. Order the list to put the identity you want ambient first.
+PRIMARY_ACCOUNT=""
+
+authenticate() { # authenticate <profile>
+	local profile="$1"
 	scrub_placeholder_creds
 
-	if [ "$SA_ACCOUNT" = "-" ]; then
+	if [ "$P_SA_ACCOUNT" = "-" ]; then
 		AUTH_STATE="none"
-		note "profile '$PROFILE' declares no GCP identity — no credentials established"
+		note "profile '$profile' declares no GCP identity — no credentials established"
 		return 0
 	fi
 
@@ -478,15 +529,19 @@ authenticate() {
 	# Indirect expansion, not eval: $PROFILE reaches here from an environment
 	# variable, and building a variable NAME from it is fine while building shell
 	# CODE from it would not be.
-	local upper varname key
-	upper="$(printf '%s' "$PROFILE" | tr '[:lower:]-' '[:upper:]_')"
+	local upper varname key sa_key_file
+	upper="$(printf '%s' "$profile" | tr '[:lower:]-' '[:upper:]_')"
 	varname="VITRUVIAN_CLOUD_KEY_${upper}"
 	key="${!varname:-${VITRUVIAN_CLOUD_KEY:-}}"
+	# One file per profile: several identities can be active at once, and the
+	# primary's path is what GOOGLE_APPLICATION_CREDENTIALS points at for the whole
+	# session, so they must not overwrite each other.
+	sa_key_file="$STATE_DIR/sa-key-${profile}.json"
 
 	if [ -z "$key" ]; then
 		AUTH_STATE="failed"
-		warn "VITRUVIAN_CLOUD_KEY is not set — profile '$PROFILE' gets no GCP identity."
-		note "add the '$SA_ACCOUNT' service-account key to the cloud environment,"
+		warn "no key for profile '$profile' (\$$varname or \$VITRUVIAN_CLOUD_KEY) — no GCP identity."
+		note "add the '$P_SA_ACCOUNT' service-account key to the cloud environment,"
 		note "or set the individual tokens directly (they are honored if already present)."
 		return 0
 	fi
@@ -500,60 +555,89 @@ authenticate() {
 	mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 	(
 		umask 077
-		decode_key "$key" >"$SA_KEY_FILE"
+		decode_key "$key" >"$sa_key_file"
 	)
-	chmod 600 "$SA_KEY_FILE"
+	chmod 600 "$sa_key_file"
 
 	# IDENTITY PINNING. Assert the key is the account this profile declares before
 	# activating it. A key for a DIFFERENT service account is refused rather than
 	# used: that is the difference between "the env var was mis-pasted" and "this
 	# session silently ran with a broader identity than its label claims".
 	local client_email
-	client_email="$(key_client_email <"$SA_KEY_FILE")"
+	client_email="$(key_client_email <"$sa_key_file")"
 	if [ -z "$client_email" ]; then
 		AUTH_STATE="failed"
-		warn "VITRUVIAN_CLOUD_KEY is not a valid service-account key JSON"
+		warn "the key for profile '$profile' is not a valid service-account key JSON"
 		note "give it as raw JSON or single-line base64, and check it was not truncated"
-		rm -f "$SA_KEY_FILE"
+		rm -f "$sa_key_file"
 		return 1
 	fi
-	if [ "$client_email" != "$SA_ACCOUNT" ]; then
+	if [ "$client_email" != "$P_SA_ACCOUNT" ]; then
 		AUTH_STATE="failed"
-		warn "REFUSING to authenticate: profile '$PROFILE' declares $SA_ACCOUNT"
-		note "but VITRUVIAN_CLOUD_KEY belongs to $client_email."
-		note "Fix the key or the \$VITRUVIAN_PROFILE on this cloud environment — a key"
-		note "for a different account is never used just because it was the one present."
-		rm -f "$SA_KEY_FILE"
+		warn "REFUSING to authenticate: profile '$profile' declares $P_SA_ACCOUNT"
+		note "but \$$varname resolved to a key belonging to $client_email."
+		note "With several profiles active each needs its OWN key in \$VITRUVIAN_CLOUD_KEY_<PROFILE>;"
+		note "the shared \$VITRUVIAN_CLOUD_KEY can only satisfy one of them."
+		rm -f "$sa_key_file"
 		return 1
 	fi
 
-	if ! "$GCLOUD_BIN" auth activate-service-account --key-file="$SA_KEY_FILE" --quiet >/dev/null 2>&1; then
+	if ! "$GCLOUD_BIN" auth activate-service-account --key-file="$sa_key_file" --quiet >/dev/null 2>&1; then
 		AUTH_STATE="failed"
-		warn "gcloud could not activate $SA_ACCOUNT (key rejected or revoked)"
+		warn "gcloud could not activate $P_SA_ACCOUNT (key rejected or revoked)"
 		return 1
 	fi
 	AUTH_STATE="ok"
-	"$GCLOUD_BIN" config set project "$SA_PROJECT" --quiet >/dev/null 2>&1
 
 	# GOOGLE_APPLICATION_CREDENTIALS, not a minted access token: an access token
 	# expires in an hour and a Claude session outlives that. Pointing at the key
 	# file lets every Google client refresh on its own — and it is exactly the
 	# "ambient credentials present" case tools/pulumi/pulumi_cmd.sh already
 	# documents and honors, so `bazel run //…:preview` works unchanged.
-	env_set GOOGLE_APPLICATION_CREDENTIALS "$SA_KEY_FILE"
-	env_set CLOUDSDK_CORE_PROJECT "$SA_PROJECT"
-	env_set GOOGLE_CLOUD_PROJECT "$SA_PROJECT"
-	note "identity: $SA_ACCOUNT (project $SA_PROJECT)"
+	if [ -z "$PRIMARY_ACCOUNT" ]; then
+		PRIMARY_ACCOUNT="$P_SA_ACCOUNT"
+		"$GCLOUD_BIN" config set project "$P_SA_PROJECT" --quiet >/dev/null 2>&1
+		env_set GOOGLE_APPLICATION_CREDENTIALS "$sa_key_file"
+		env_set CLOUDSDK_CORE_PROJECT "$P_SA_PROJECT"
+		env_set GOOGLE_CLOUD_PROJECT "$P_SA_PROJECT"
+		note "identity: $P_SA_ACCOUNT (project $P_SA_PROJECT) — PRIMARY, ambient for pulumi/gcloud"
+	else
+		note "identity: $P_SA_ACCOUNT (project $P_SA_PROJECT) — reads its own secrets only"
+	fi
 	return 0
 }
 
-materialise_secrets() { # materialise_secrets <comma-list of VAR=secret>
-	local pair var name val ambient missing=0
-	[ "$1" = "-" ] && return 0
-	for pair in $(printf '%s' "$1" | tr ',' ' '); do
+# CLAIMED records every VAR=secret pair already materialised, as " VAR=name ...".
+# With several profiles active, two rows can name the same env var. Identical
+# mappings are a harmless overlap (every profile wants the same GH_TOKEN);
+# DIFFERING ones are a misconfiguration where "which token did this session
+# actually get?" would depend on manifest row order, so they are refused. A flat
+# string, not an associative array, to stay bash 3.2-safe.
+CLAIMED=""
+
+materialise_secrets() { # materialise_secrets <profile>
+	local profile="$1" pair var name val ambient claimed_as missing=0
+	[ "$P_SECRETS" = "-" ] && return 0
+	for pair in $(printf '%s' "$P_SECRETS" | tr ',' ' '); do
 		var="${pair%%=*}"
 		name="${pair#*=}"
 		[ -n "$var" ] && [ -n "$name" ] || continue
+
+		# Already claimed by an earlier profile in the list?
+		case "$CLAIMED" in
+		*" $var="*)
+			claimed_as="${CLAIMED##*" $var="}"
+			claimed_as="${claimed_as%% *}"
+			if [ "$claimed_as" = "$name" ]; then
+				continue # same mapping, already done
+			fi
+			warn "REFUSING $var for profile '$profile': an earlier profile already mapped it"
+			note "to secret '$claimed_as', this one says '$name'. Which credential the"
+			note "session holds must not depend on manifest row order — fix the manifest."
+			missing=$((missing + 1))
+			continue
+			;;
+		esac
 
 		# An env var already set on the cloud environment WINS. That keeps the
 		# existing TS_AUTHKEY / LAB_SA_TOKEN wiring working untouched, and is the
@@ -564,6 +648,7 @@ materialise_secrets() { # materialise_secrets <comma-list of VAR=secret>
 		# session to a token that can never work while suppressing the real fetch.
 		ambient="${!var:-}"
 		if is_credential "$ambient"; then
+			CLAIMED="$CLAIMED $var=$name"
 			note "$var: already set on the environment (left untouched)"
 			continue
 		fi
@@ -581,9 +666,10 @@ materialise_secrets() { # materialise_secrets <comma-list of VAR=secret>
 		fi
 		if val="$(gcloud_secret "$name")"; then
 			env_set "$var" "$val"
-			note "$var: from $name"
+			CLAIMED="$CLAIMED $var=$name"
+			note "$var: from $name (as $P_SA_ACCOUNT)"
 		else
-			note "$var: could not read $name from $SA_PROJECT as $SA_ACCOUNT"
+			note "$var: could not read $name from $P_SA_PROJECT as $P_SA_ACCOUNT"
 			note "  → seed it: bazel run //tools/gcp-secrets:seed -- <infra-dir> $name"
 			missing=$((missing + 1))
 		fi
@@ -595,58 +681,67 @@ materialise_secrets() { # materialise_secrets <comma-list of VAR=secret>
 # --- report -------------------------------------------------------------------
 
 report() {
-	local rc=0 key bin ver pair var
-	printf '\nvitruvian-core cloud session — profile %s\n' "${PROFILE:-<unset>}"
-	printf '  %s\n\n' "$PURPOSE"
+	local rc=0 key bin ver pair var val profile
+
+	printf '\nvitruvian-core cloud session — profile(s): %s\n\n' "${PROFILE_LIST:-<unset>}"
 
 	printf 'tools\n'
-	for key in $(printf '%s' "$TOOLS" | tr ',' ' '); do
+	for key in $(printf '%s' "$TOOLS_ALL" | tr ',' ' '); do
 		[ "$key" = "-" ] && continue
 		bin="$key"
 		if command -v "$bin" >/dev/null 2>&1; then
 			ver="$("$bin" --version 2>/dev/null | head -1)"
-			printf '  ✓ %-9s %s\n' "$bin" "${ver:-installed}"
+			printf '  ✓ %-10s %s\n' "$bin" "${ver:-installed}"
 		else
-			printf '  ✗ %-9s not installed\n' "$bin"
+			printf '  ✗ %-10s not installed\n' "$bin"
 			rc=1
 		fi
 	done
 
-	printf '\nidentity\n'
-	if [ "$SA_ACCOUNT" = "-" ]; then
-		printf '  – none (profile holds no credentials by design)\n'
-	elif command -v "$GCLOUD_BIN" >/dev/null 2>&1 &&
-		"$GCLOUD_BIN" auth list --filter="status:ACTIVE account:$SA_ACCOUNT" \
-			--format="value(account)" 2>/dev/null | grep -q .; then
-		printf '  ✓ %s (project %s)\n' "$SA_ACCOUNT" "$SA_PROJECT"
-	else
-		printf '  ✗ %s — not authenticated\n' "$SA_ACCOUNT"
-		rc=1
-	fi
+	# Per profile, because that is the boundary being reported on: which identity
+	# holds which credentials. A merged list would hide exactly the thing the
+	# profile split exists to make visible.
+	for profile in $PROFILE_LIST; do
+		load_profile "$profile" || continue
+		printf '\n%s — %s\n' "$profile" "$P_PURPOSE"
 
-	printf '\ncredentials (values never shown)\n'
-	if [ "$SECRETS" = "-" ]; then
-		printf '  – none\n'
-	else
-		local val
-		for pair in $(printf '%s' "$SECRETS" | tr ',' ' '); do
-			var="${pair%%=*}"
-			val="${!var:-}"
-			if is_credential "$val"; then
-				# The LENGTH is the useful signal — it distinguishes a real token from
-				# a truncated paste — and it leaks nothing.
-				printf '  ✓ %-22s set (%d bytes)\n' "$var" "${#val}"
-			elif [ -n "$val" ]; then
-				printf '  ✗ %-22s placeholder only (%d bytes; secret %s never resolved)\n' \
-					"$var" "${#val}" "${pair#*=}"
-				rc=1
+		if [ "$P_SA_ACCOUNT" = "-" ]; then
+			printf '  identity   – none (holds no credentials by design)\n'
+		elif command -v "$GCLOUD_BIN" >/dev/null 2>&1 &&
+			"$GCLOUD_BIN" auth list --filter="status:ACTIVE account:$P_SA_ACCOUNT" \
+				--format="value(account)" 2>/dev/null | grep -q .; then
+			if [ "$P_SA_ACCOUNT" = "${PRIMARY_ACCOUNT:-}" ]; then
+				printf '  identity   ✓ %s (project %s) [primary]\n' "$P_SA_ACCOUNT" "$P_SA_PROJECT"
 			else
-				printf '  ✗ %-22s missing (secret %s)\n' "$var" "${pair#*=}"
-				rc=1
+				printf '  identity   ✓ %s (project %s)\n' "$P_SA_ACCOUNT" "$P_SA_PROJECT"
 			fi
-			unset val
-		done
-	fi
+		else
+			printf '  identity   ✗ %s — not authenticated\n' "$P_SA_ACCOUNT"
+			rc=1
+		fi
+
+		if [ "$P_SECRETS" = "-" ]; then
+			printf '  creds      – none\n'
+		else
+			for pair in $(printf '%s' "$P_SECRETS" | tr ',' ' '); do
+				var="${pair%%=*}"
+				val="${!var:-}"
+				if is_credential "$val"; then
+					# The LENGTH is the useful signal — it distinguishes a real token from
+					# a truncated paste — and it leaks nothing.
+					printf '  creds      ✓ %-22s set (%d bytes)\n' "$var" "${#val}"
+				elif [ -n "$val" ]; then
+					printf '  creds      ✗ %-22s placeholder only (%d bytes; %s never resolved)\n' \
+						"$var" "${#val}" "${pair#*=}"
+					rc=1
+				else
+					printf '  creds      ✗ %-22s missing (secret %s)\n' "$var" "${pair#*=}"
+					rc=1
+				fi
+				unset val
+			done
+		fi
+	done
 	printf '\n'
 	return "$rc"
 }
@@ -659,7 +754,8 @@ profiles)
 		warn "profile manifest not found: $PROFILES_FILE"
 		exit 1
 	}
-	printf 'Set VITRUVIAN_PROFILE on the cloud environment to one of:\n\n'
+	printf 'Set VITRUVIAN_PROFILE on the cloud environment to one, or several\n'
+	printf 'comma-separated (e.g. VITRUVIAN_PROFILE=core,homelab):\n\n'
 	list_profiles "$PROFILES_FILE"
 	exit 0
 	;;
@@ -684,66 +780,100 @@ fi
 	exit 0
 }
 
-PROFILE="${PROFILE_OVERRIDE:-${VITRUVIAN_PROFILE:-${CLAUDE_PROFILE:-}}}"
-if [ -z "$PROFILE" ]; then
+PROFILE_RAW="${PROFILE_OVERRIDE:-${VITRUVIAN_PROFILE:-${CLAUDE_PROFILE:-}}}"
+if [ -z "$PROFILE_RAW" ]; then
 	warn "VITRUVIAN_PROFILE is not set on this cloud environment — nothing bootstrapped."
 	note "There is deliberately no default: a session's capability is a choice, not a"
-	note "fallback. Set it to one of:"
+	note "fallback. Set it to one or more (comma-separated) of:"
 	list_profiles "$PROFILES_FILE" >&2
 	exit 0
 fi
 
-# The profile name is used to build variable names and is echoed into messages,
-# so constrain it to what a profile name can actually be. A row can only be
-# SELECTED by an exact match anyway; this rejects the input before it is used for
-# anything, rather than relying on the manifest to be the only source of truth.
-case "$PROFILE" in
-*[!a-zA-Z0-9_-]* | "")
-	warn "invalid profile name '$PROFILE' (letters, digits, '-' and '_' only)"
-	exit 0
-	;;
-esac
-
-IFS=$'\t' read -r TOOLS SA_ACCOUNT SA_PROJECT SECRETS PURPOSE < <(resolve_profile "$PROFILES_FILE" "$PROFILE") || true
-if [ -z "${TOOLS:-}" ]; then
-	warn "'$PROFILE' is not a known profile. Known profiles:"
-	list_profiles "$PROFILES_FILE" >&2
-	exit 0
-fi
-
-# Reading the profile's secrets needs gcloud, whatever the tools column says.
-# Matched as a whole comma-delimited field (not a substring) so a future
-# "gcloud-lite" key could not satisfy the check by accident.
-if [ "$SA_ACCOUNT" != "-" ]; then
-	case ",$TOOLS," in
-	*,gcloud,*) ;;
-	*) TOOLS="$TOOLS,gcloud" ;;
+# Several profiles may be combined: VITRUVIAN_PROFILE=core,homelab unions their
+# tools and their secrets. Each keeps its OWN service account and reads only its
+# OWN secrets, so combining does not merge privileges into one identity — it just
+# gives the session two of them. The FIRST listed profile with an identity is the
+# primary (see PRIMARY_ACCOUNT), so order the list accordingly.
+#
+# Deduped preserving order, and validated per name: a name reaches variable
+# construction and messages, so it is constrained at the door rather than trusted
+# because the manifest is "the only source of truth".
+PROFILE_LIST=""
+for _p in $(printf '%s' "$PROFILE_RAW" | tr ',' ' '); do
+	case "$_p" in
+	*[!a-zA-Z0-9_-]* | "")
+		warn "invalid profile name '$_p' (letters, digits, '-' and '_' only)"
+		exit 0
+		;;
 	esac
+	case " $PROFILE_LIST " in
+	*" $_p "*) continue ;; # already listed
+	esac
+	if ! load_profile "$_p"; then
+		warn "'$_p' is not a known profile. Known profiles:"
+		list_profiles "$PROFILES_FILE" >&2
+		exit 0
+	fi
+	PROFILE_LIST="${PROFILE_LIST:+$PROFILE_LIST }$_p"
+done
+
+if [ -z "$PROFILE_LIST" ]; then
+	warn "no usable profile in '$PROFILE_RAW' — nothing bootstrapped."
+	exit 0
 fi
+
+# Union of every listed profile's tools, for a single install pass.
+TOOLS_ALL=""
+for _p in $PROFILE_LIST; do
+	load_profile "$_p" || continue
+	for _t in $(printf '%s' "$P_TOOLS" | tr ',' ' '); do
+		[ "$_t" = "-" ] && continue
+		case ",$TOOLS_ALL," in
+		*",$_t,"*) continue ;;
+		esac
+		TOOLS_ALL="${TOOLS_ALL:+$TOOLS_ALL,}$_t"
+	done
+done
+[ -n "$TOOLS_ALL" ] || TOOLS_ALL="-"
+
+# establish_credentials — authenticate and materialise EVERY listed profile, each
+# with its own identity. Ordered by PROFILE_LIST so the primary and any secret
+# conflict resolve predictably.
+establish_credentials() {
+	local _p
+	for _p in $PROFILE_LIST; do
+		load_profile "$_p" || continue
+		authenticate "$_p" || true
+		materialise_secrets "$_p" || true
+	done
+	wire_session_env
+}
 
 case "$SUBCOMMAND" in
 install)
-	install_tools "$TOOLS"
+	install_tools "$TOOLS_ALL"
 	exit 0
 	;;
 auth)
-	authenticate || true
-	materialise_secrets "$SECRETS" || true
-	wire_session_env
+	establish_credentials
 	exit 0
 	;;
 whoami)
 	# Re-apply the session env so a report is about the session, not this shell.
 	[ -f "$SESSION_ENV_FILE" ] && . "$SESSION_ENV_FILE"
+	# `whoami` does not authenticate, so recover which identity ended up ambient
+	# from gcloud itself rather than leaving the [primary] marker blank.
+	if command -v "$GCLOUD_BIN" >/dev/null 2>&1; then
+		PRIMARY_ACCOUNT="$("$GCLOUD_BIN" config get-value account 2>/dev/null)"
+		[ "$PRIMARY_ACCOUNT" = "(unset)" ] && PRIMARY_ACCOUNT=""
+	fi
 	report
 	exit $?
 	;;
 up)
-	warn "bootstrapping profile '$PROFILE'"
-	install_tools "$TOOLS"
-	authenticate || true
-	materialise_secrets "$SECRETS" || true
-	wire_session_env
+	warn "bootstrapping profile(s): $PROFILE_LIST"
+	install_tools "$TOOLS_ALL"
+	establish_credentials
 	report || true
 	# Best-effort: never block the session. `whoami` is the gate.
 	exit 0

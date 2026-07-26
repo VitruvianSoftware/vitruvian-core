@@ -19,7 +19,7 @@ Two variables on the cloud environment drive it:
 
 | variable | what it is |
 | --- | --- |
-| `VITRUVIAN_PROFILE` | which profile this environment is (`core`, `infra`, `homelab`, `readonly`) |
+| `VITRUVIAN_PROFILE` | which profile(s) this environment is (`core`, `infra`, `homelab`, `readonly`) — comma-separate to combine, e.g. `core,homelab` |
 | `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key — the **only** credential on the environment |
 
 The profile is the blast-radius boundary. Its row in
@@ -32,6 +32,16 @@ Everything beyond that one key comes from Secret Manager at session start, so a
 GitHub PAT, Pulumi token, Tailscale auth key or cluster token rotates **without
 editing the cloud environment at all**. The key's `client_email` must match the
 account its profile declares — a mismatched key is refused and fails closed.
+
+Combining profiles unions their tools and secrets **without** merging privileges:
+each keeps its own service account and reads only its own secrets, so it needs
+its own `VITRUVIAN_CLOUD_KEY_<PROFILE>`. The first listed profile with an
+identity becomes the session's ambient GCP identity (what `pulumi` and a bare
+`gcloud` use), so order the list accordingly.
+
+**No Setup script is needed.** `tailscale` is installed by the bootstrap for any
+profile that lists it, so the cloud environment's *Setup script* field can be
+left empty — the whole configuration is the two variables above.
 
 Verify from inside a session:
 
@@ -53,7 +63,9 @@ Cloud sessions can drive the homelab k3s cluster with `kubectl` over Tailscale.
 Two `SessionStart` hooks wire this up automatically (registered in
 `.claude/settings.json`):
 - `.claude/tailscale-up.sh` — joins the tailnet (userspace networking; exposes a
-  SOCKS5 proxy on `localhost:1055`, since the sandbox has no TUN device).
+  SOCKS5 proxy on `localhost:1055`, since the sandbox has no TUN device). The
+  binary itself comes from `//tools/cloud-bootstrap`; this hook only (re)starts
+  the daemon, which the environment cache cannot snapshot.
 - `.claude/kube-setup.sh` — installs `kubectl` and writes `~/.kube/config`
   (context `lab`) pointed at `https://k8s-api.lab.ipv1337.dev:6443`, dialing the
   apiserver through that SOCKS5 proxy.
@@ -61,7 +73,9 @@ Two `SessionStart` hooks wire this up automatically (registered in
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 
 **Prerequisites (set once, outside this repo):**
-- Env vars on the cloud environment: `TS_AUTHKEY` (reusable, pre-authorized for
+- Env vars on the cloud environment (or, better, the `homelab` profile's Secret
+  Manager entries — same values, rotated without touching the environment):
+  `TS_AUTHKEY` (reusable, pre-authorized for
   `tag:claude-cloud`) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
   token — `kubectl -n claude-code get secret claude-code-token -o
   jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which

@@ -25,11 +25,39 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 
 | variable | what it is |
 | --- | --- |
-| `VITRUVIAN_PROFILE` | which profile this environment is. Selects one row of [`profiles.tsv`](profiles.tsv). |
+| `VITRUVIAN_PROFILE` | which profile(s) this environment is. Selects one or more rows of [`profiles.tsv`](profiles.tsv). |
 | `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key (raw JSON or base64). The **only** credential on the environment. |
 
 Per-profile keys (`VITRUVIAN_CLOUD_KEY_INFRA`, …) are honored first, so one
 environment can hold several and `VITRUVIAN_PROFILE` switches identity with it.
+
+## Combining profiles
+
+`VITRUVIAN_PROFILE=core,homelab` unions their tools and their secrets.
+
+This does **not** merge privileges into one identity. Each profile keeps its own
+service account and reads only its own secrets — every `gcloud secrets versions
+access` carries that profile's `--account` and `--project` — so the boundary
+above still holds; the session simply holds two identities rather than one
+broader one. That is why combining is safe, and it is the first thing the test
+pins.
+
+Consequences worth knowing:
+
+- **Each profile needs its own key**, in `VITRUVIAN_CLOUD_KEY_<PROFILE>`. The
+  shared `VITRUVIAN_CLOUD_KEY` can only satisfy one of them; identity pinning
+  refuses the rest rather than authenticating them as the wrong account.
+- **The first listed profile with an identity is the primary** — the one that
+  becomes ambient for `pulumi`, `gsutil` and a bare `gcloud`
+  (`GOOGLE_APPLICATION_CREDENTIALS`, `CLOUDSDK_CORE_PROJECT`). Order the list
+  accordingly: `infra,homelab` if you want to run Pulumi. `:whoami` marks it
+  `[primary]`.
+- **Two profiles mapping the same env var to different secrets is refused.**
+  Which credential the session ends up holding must not depend on manifest row
+  order. Identical mappings (every profile wants the same `GH_TOKEN`) are a
+  harmless overlap and resolve once.
+- A repeated name is deduped; **one unknown name refuses the whole list**, so
+  there is no partial bootstrap.
 
 ## The profile is the blast-radius boundary
 
@@ -40,7 +68,7 @@ installed and which secrets a session may hold:
 | --- | --- | --- |
 | `core` | bazel, direnv, gh + a GitHub token and a BuildBuddy key | build, test, review, open PRs |
 | `infra` | core + gcloud, pulumi + a Pulumi token | Pulumi/GCP infrastructure work |
-| `homelab` | core + kubectl + the Tailscale auth key and cluster token | tailnet, k3s, node SSH |
+| `homelab` | core + kubectl, tailscale + the Tailscale auth key and cluster token | tailnet, k3s, node SSH |
 | `readonly` | bazel, direnv. **Nothing else.** | untrusted input, third-party code review, a spike |
 
 A `core` session cannot obtain a Pulumi token even if one exists: its row does
@@ -107,14 +135,28 @@ provider and no caller moves.
    bazel run //tools/gcp-secrets:seed -- tabula/infra/build claude-cloud-core-github-token
    ```
 3. **Add the row** to `profiles.tsv`.
-4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` and
-   `VITRUVIAN_CLOUD_KEY=<the key>`.
+4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` (or a
+   comma-separated list) and `VITRUVIAN_CLOUD_KEY=<the key>` — one
+   `VITRUVIAN_CLOUD_KEY_<PROFILE>` per profile if you combine several. The key is
+   multiline JSON and the box is `.env` format, so base64 it onto one line:
+   `base64 -w0 key.json`.
 5. **Verify** from a session: `bazel run //tools/cloud-bootstrap:whoami`.
 
 ## What it installs, and what it deliberately does not
 
 Only what has to exist **before `bazel run` works**: `bazelisk` (as both
-`bazelisk` and `bazel`), `direnv`, `gh`, `gcloud`, `pulumi`, `kubectl`.
+`bazelisk` and `bazel`), `direnv`, `gh`, `gcloud`, `pulumi`, `kubectl`, and
+`tailscale` + `tailscaled`.
+
+Tailscale is installed here rather than from the cloud environment's *Setup
+script* so it is a profile decision like everything else — only `homelab` pays
+for it, instead of every environment installing it unconditionally. It comes
+from the pinned static tarball rather than `curl https://tailscale.com/install.sh
+| sh`, which detects the distro and shells out to apt: same artifact, pinned, and
+it does not drag in a repo and keyring the sandbox does not need. Both binaries
+install together — `tailscale-up.sh` runs the daemon *and* the client, so a
+half-install is worse than none. That hook still starts the daemon each session,
+because the environment cache snapshots files, not running processes.
 
 Everything else is already the repo's job and is not duplicated here —
 `//tools:bazel_env` exports buildifier, gazelle, aspect, addlicense, format and
@@ -136,10 +178,14 @@ Nothing is written inside the workspace — a stray `git add -A` must not be abl
 to stage a credential, and the secret-scan gate would (rightly) fail the push.
 
 ```
-~/.config/vitruvian-core/cloud/sa-key.json   0600   the decoded service-account key
-~/.config/vitruvian-core/cloud/session.env   0600   the resolved credentials
-~/.bashrc                                           sources the above (marker-delimited)
+~/.config/vitruvian-core/cloud/sa-key-<profile>.json   0600   the decoded key, one per profile
+~/.config/vitruvian-core/cloud/session.env             0600   the resolved credentials
+~/.bashrc                                                     sources the above (marker-delimited)
 ```
+
+One key file per profile, because several identities can be active at once and
+the primary's path is what `GOOGLE_APPLICATION_CREDENTIALS` points at for the
+whole session.
 
 `GOOGLE_APPLICATION_CREDENTIALS` points at the key file rather than exporting a
 minted access token: a token expires in an hour and a Claude session outlives
@@ -165,8 +211,8 @@ reported by name and byte length, which is enough to tell a real token from a
 truncated paste.
 
 An unset or unknown `VITRUVIAN_PROFILE` bootstraps **nothing** and lists the
-valid names. There is deliberately no default: a session's capability is a
-choice, not a fallback.
+valid names — as does a list containing one bad name. There is deliberately no
+default: a session's capability is a choice, not a fallback.
 
 ## Tests
 
@@ -180,6 +226,12 @@ output and landing only in a 0600 file outside the workspace; gcloud's
 exit-0-with-`ERROR:` auth failure still fatal; a real ambient value winning and a
 placeholder losing; and the ambient-token scrub that keeps the Pulumi wrapper's
 identity pin working.
+
+For combined profiles it additionally pins the property that makes combining
+safe: each profile's secret is read as **its own** service account, with its own
+project, and one profile's SA is never used to read another's secret. Plus
+primary selection by list order, conflicting-mapping refusal, dedup, and
+all-or-nothing on an unknown name.
 
 The installers are not covered — they are network downloads whose only
 interesting property is whether `curl` worked.
