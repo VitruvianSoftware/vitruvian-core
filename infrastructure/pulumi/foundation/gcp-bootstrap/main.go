@@ -87,7 +87,10 @@ func main() {
 
 		// 5. Deploy IAM: granular service accounts with least-privilege
 		// bindings (see sa.go)
-		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources, grant)
+		// gates collects bindings created inside deployIAM that later resources must
+		// be ordered behind — see bootstrapGates in sa.go.
+		gates := &bootstrapGates{}
+		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources, grant, gates)
 		if err != nil {
 			return err
 		}
@@ -96,7 +99,7 @@ func main() {
 		// the union of every federation below, because it is a SINGLE GCP resource
 		// -- and created FIRST, because a provider naming an issuer that is not yet
 		// allowed is refused outright. See build_wif_issuer_policy.go.
-		issuerPolicy, err := deployWIFIssuerPolicy(ctx, cfg)
+		issuerPolicy, err := deployWIFIssuerPolicy(ctx, cfg, gates.PolicyAdminBinding)
 		if err != nil {
 			return err
 		}
