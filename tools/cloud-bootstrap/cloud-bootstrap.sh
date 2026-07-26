@@ -656,6 +656,19 @@ materialise_secrets() { # materialise_secrets <profile>
 			note "$var: ignoring a placeholder value (${#ambient} chars — too short to be a real credential)"
 		fi
 		unset ambient
+		# ENVIRONMENT-ONLY credential (secret name "-"). Some credentials are not in
+		# Secret Manager and never will be: BUILDBUDDY_API_KEY is a GitHub
+		# Actions/Dependabot secret owned by //infrastructure/pulumi/platform/repo_config
+		# and injected from the pipeline. Naming a Secret Manager entry for it would
+		# be a wrong address that fails the day Secret Manager is actually wired up.
+		# Declaring it with "-" keeps it INSIDE the profile boundary — a profile that
+		# does not list it still gets it scrubbed — while never attempting a read.
+		if [ "$name" = "-" ]; then
+			note "$var: environment-only (not in Secret Manager by design)"
+			missing=$((missing + 1))
+			continue
+		fi
+
 		# FAIL CLOSED. Anything other than an established identity means no read is
 		# attempted at all — a refused or broken credential must not be handed to
 		# gcloud "to see what happens".

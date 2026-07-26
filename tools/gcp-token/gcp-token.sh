@@ -79,6 +79,7 @@ BROKER_CACHE="${VITRUVIAN_GCP_BROKER_CACHE:-$HOME/.config/vitruvian-core/cloud/g
 
 # Test seams; real runs get the defaults.
 SSH_BIN="${SSH_BIN:-ssh}"
+PULUMI_BIN="${PULUMI_BIN:-pulumi}"
 GCLOUD_BIN="${GCLOUD_BIN:-gcloud}"
 SOCKS_PORT="${VITRUVIAN_SOCKS_PORT:-1055}"
 
@@ -128,6 +129,35 @@ if command -v "$GCLOUD_BIN" >/dev/null 2>&1; then
 			exit 0
 		fi
 	fi
+fi
+
+# --- 1.5 Pulumi ESC, when configured ------------------------------------------
+# Keyless and with no homelab dependency: Pulumi Cloud presents an OIDC token,
+# GCP exchanges it for a short-lived access token, and nothing local need be
+# awake. Requires the trust relationship built by
+# //infrastructure/pulumi/foundation/gcp-bootstrap (build_pulumi_esc.go) plus an
+# ESC environment using fn::open::gcp-login.
+#
+# Tried BEFORE the tailnet broker and AFTER local credentials: a laptop that is
+# already logged in should still not touch the network, but when this machine has
+# nothing, a cloud service beats a machine in someone's house.
+#
+# Best-effort by design -- if ESC is unreachable, misconfigured, or simply not set
+# up yet, fall through to the broker rather than failing. That is what makes
+# "ESC primary, homelab backup" true rather than aspirational.
+if [ -n "${VITRUVIAN_ESC_ENV:-}" ] && command -v "$PULUMI_BIN" >/dev/null 2>&1; then
+	_esc_err="$(mktemp)"
+	# `--value string` yields the bare token: no jq, no JSON parsing, nothing to
+	# get wrong quoting back out.
+	if _tok="$("$PULUMI_BIN" env get "$VITRUVIAN_ESC_ENV" "${VITRUVIAN_ESC_PATH:-gcp.login.accessToken}" \
+		--value string --show-secrets 2>"$_esc_err" | tr -d '\r\n')" && is_token "$_tok"; then
+		rm -f "$_esc_err"
+		printf '%s' "$_tok"
+		exit 0
+	fi
+	echo "gcp-token: Pulumi ESC ($VITRUVIAN_ESC_ENV) did not yield a token; falling back to the tailnet broker" >&2
+	sed 's/^/  /' "$_esc_err" >&2
+	rm -f "$_esc_err"
 fi
 
 # --- 2. mint over the tailnet -------------------------------------------------

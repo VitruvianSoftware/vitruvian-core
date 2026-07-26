@@ -80,6 +80,7 @@ second     kubectl sa-second@x.iam.gserviceaccount.com  proj-b  EXTRA=extra-secr
 clashing   gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=different-secret               Maps TOK to a different secret than `pinned`.
 nocreds    gh      -                   -           -                                    No credentials at all.
 onlytok    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret                     Claims TOK and nothing else.
+envonly    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret,ENVCRED=-           Declares an environment-only credential.
 TSV
 
 SA_KEY_GOOD='{"type":"service_account","client_email":"sa-pinned@x.iam.gserviceaccount.com","private_key":"KEYBYTES"}'
@@ -320,6 +321,30 @@ out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok \
 # variables would be scope this tool has no basis for.
 out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=nocreds SOME_UNRELATED_VAR="$BIG_C")"
 assert_not_contains "a var no row names is left alone" "$out" "SOME_UNRELATED_VAR"
+
+# ---------------------------------------------------------------------------
+echo "cloud-bootstrap: environment-only credentials"
+# ---------------------------------------------------------------------------
+# Some credentials are not in Secret Manager and never will be --
+# BUILDBUDDY_API_KEY is a GitHub Actions/Dependabot secret owned by repo_config
+# and injected from the pipeline. Naming a Secret Manager entry for one would be
+# a wrong address that fails the day SM is wired up; "-" declares entitlement
+# WITHOUT a read, so it stays inside the boundary either way.
+make_gcloud ok
+BIG_D="dddddddddddddddddddddddddddddddddddddddd"
+
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=envonly ENVCRED="$BIG_D")"
+assert_not_contains "no Secret Manager read is attempted for it" \
+	"$(grep 'secrets versions access' "$work/gcloud.argv" || true)" "--secret=-"
+[ -n "$(effective_value ENVCRED "$BIG_D")" ] &&
+	pass "a declaring profile keeps the environment's value" ||
+	fail "an environment-only credential was scrubbed from its own profile"
+
+# The point of declaring it: a profile that does NOT list it still scrubs it.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok ENVCRED="$BIG_D")"
+[ -z "$(effective_value ENVCRED "$BIG_D")" ] &&
+	pass "…and a profile that omits it still gets it scrubbed" ||
+	fail "an environment-only credential escaped the boundary"
 
 # ---------------------------------------------------------------------------
 echo "cloud-bootstrap: multiple profiles"

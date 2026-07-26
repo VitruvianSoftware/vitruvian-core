@@ -120,7 +120,7 @@ run() { # run <account> [extra env…]  → stdout; stderr captured to a file
 	: >"$work/gcloud.argv"
 	: >"$work/ssh.argv"
 	env GCLOUD_BIN="$work/gcloud" SSH_BIN="$work/ssh" VITRUVIAN_GCP_BROKER=testbroker \
-		VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
+		PULUMI_BIN="$work/pulumi" VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
 		"$@" bash "$SCRIPT" "$acct" 2>"$work/stderr"
 }
 
@@ -249,6 +249,60 @@ remote="$(cat "$work/ssh.argv")"
 assert_contains "the remote lookup falls back to a LOGIN shell" "$remote" "-lc"
 assert_contains "…and to known install locations" "$remote" "/opt/homebrew/bin/gcloud"
 assert_contains "…including a self-installed SDK under \$HOME" "$remote" "google-cloud-sdk/bin/gcloud"
+
+# ---------------------------------------------------------------------------
+echo "gcp-token: Pulumi ESC source"
+# ---------------------------------------------------------------------------
+# ESC is keyless AND has no homelab dependency, so it goes ahead of the broker --
+# but it must stay BEHIND local credentials (a logged-in laptop should not phone
+# a cloud service), and it must FALL THROUGH rather than fail, which is what
+# makes "ESC primary, homelab backup" real instead of aspirational.
+ESC_TOKEN="ya29.esc-$(printf 'E%.0s' $(seq 1 60))"
+make_pulumi() { # make_pulumi <ok|broken>
+	cat >"$work/pulumi" <<FAKE
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$work/pulumi.argv"
+[ "$1" = ok ] && { echo "$ESC_TOKEN"; exit 0; }
+echo "error: could not open environment" >&2
+exit 1
+FAKE
+	chmod +x "$work/pulumi"
+}
+
+make_gcloud none
+make_ssh ok
+make_pulumi ok
+: >"$work/pulumi.argv"
+out="$(run "$ACCOUNT" VITRUVIAN_ESC_ENV=proj/env)"
+[ "$out" = "$ESC_TOKEN" ] && pass "ESC mints when configured" || fail "ESC did not provide the token"
+[ ! -s "$work/ssh.argv" ] && pass "…and the tailnet is not touched" ||
+	fail "the broker ran despite ESC succeeding"
+assert_contains "…asked for the configured environment" "$(cat "$work/pulumi.argv")" "proj/env"
+assert_contains "…as a bare string, so no JSON parsing is needed" "$(cat "$work/pulumi.argv")" "--value string"
+
+# Local credentials still win over ESC.
+make_gcloud have
+: >"$work/pulumi.argv"
+out="$(run "$ACCOUNT" VITRUVIAN_ESC_ENV=proj/env)"
+[ "$out" = "$LOCAL_TOKEN" ] && pass "local credentials still beat ESC" ||
+	fail "ESC overrode working local credentials"
+[ ! -s "$work/pulumi.argv" ] && pass "…without invoking pulumi at all" ||
+	fail "pulumi ran despite working local credentials"
+
+# A broken ESC must degrade to the broker, not fail the whole mint.
+make_gcloud none
+make_pulumi broken
+out="$(run "$ACCOUNT" VITRUVIAN_ESC_ENV=proj/env)"
+[ "$out" = "$BROKER_TOKEN" ] && pass "a broken ESC falls through to the broker" ||
+	fail "a broken ESC was fatal instead of falling back"
+assert_contains "…and says why" "$(cat "$work/stderr")" "falling back to the tailnet broker"
+
+# Unconfigured ESC is simply skipped.
+make_pulumi ok
+: >"$work/pulumi.argv"
+out="$(run "$ACCOUNT")"
+[ ! -s "$work/pulumi.argv" ] && pass "ESC is skipped when VITRUVIAN_ESC_ENV is unset" ||
+	fail "pulumi ran without ESC being configured"
 
 # ---------------------------------------------------------------------------
 echo "gcp-token: refusals"
