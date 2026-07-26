@@ -70,8 +70,17 @@ and the system dirs. The remote command therefore resolves in three widening
 steps — PATH, then the user's **login shell**, then known install locations.
 
 The winning node is cached (`~/.config/vitruvian-core/cloud/gcp-broker`) and tried
-first next time: on the real homelab that took a cold mint from ~9s to ~2.4s. A
-cached host no longer in the list is ignored.
+first next time. A cached host no longer in the list is ignored.
+
+**A node can have a working gcloud on `PATH` and a broken one in its login
+shell.** On `nuc9i5`, `bash -lc gcloud` resolves a Python 2.7 and refuses to
+start — *"You are running gcloud with Python 2.7, which is no longer
+supported"* — while `/usr/bin/python3` (3.14.5) sits right there and the
+non-interactive `PATH` lookup works fine. The three-step resolution tries `PATH`
+first, so that node is unaffected, but a node whose gcloud is *only* reachable
+via the login shell would fail confusingly. Fix it on the node
+(`export CLOUDSDK_PYTHON=/usr/bin/python3` in the profile, or reinstall the SDK)
+rather than in this script.
 
 Set a node up once:
 
@@ -112,12 +121,6 @@ Two ways to keep it healthy, neither urgent:
 
 The failure names itself (`REAUTH LAPSED`) and says another node may still work.
 
-The account you log in as must be the one
-[`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv)
-pins for the work you want to do — the wrapper asks for that account by name, and
-a broker that isn't logged into it fails with a checklist rather than quietly
-handing back a different identity.
-
 ## Failure
 
 Fatal, and it names the cause **per node** — the four failure modes want
@@ -129,7 +132,7 @@ gcp-token: no broker could mint a token for james@vitruviansoftware.dev
   fedora                 no gcloud installed
   nuc9i5                 gcloud present but not logged in as james@vitruviansoftware.dev
   nuc9i9                 no gcloud installed
-  james-macbook-pro      REAUTH REQUIRED — this account needs an interactive re-login…
+  james-macbook-pro      REAUTH LAPSED — this node's login for the account has expired…
 ```
 
 A reply too short to be an access token is also refused, so a truncated read or
