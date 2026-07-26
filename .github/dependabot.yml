@@ -36,6 +36,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      go-security-minor-patch:
+        applies-to: "security-updates"
+        update-types:
+          - "minor"
+          - "patch"
   - package-ecosystem: "gomod"
     directory: "/homelab"
     schedule:
@@ -48,6 +53,11 @@ updates:
       prefix: "chore(deps)"
     groups:
       go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      go-security-minor-patch:
+        applies-to: "security-updates"
         update-types:
           - "minor"
           - "patch"
@@ -64,6 +74,11 @@ updates:
       prefix: "chore(ci)"
     groups:
       actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      actions-security-minor-patch:
+        applies-to: "security-updates"
         update-types:
           - "minor"
           - "patch"
@@ -99,6 +114,13 @@ updates:
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+      react-security:
+        applies-to: "security-updates"
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       # The jest runner family must move as a set: a solo jest-cli major
       # against an older jest core dies at runtime (dependabot #564), and a
       # jest-environment-jsdom major drags a jsdom major that breaks DOM tests
@@ -109,6 +131,15 @@ updates:
       # ts-first moduleFileExtensions in each tabula jest.config.js (compiled
       # .js siblings in the Bazel bin tree) — already in place.
       jest:
+        patterns:
+          - "jest"
+          - "jest-cli"
+          - "jest-environment-jsdom"
+          - "@types/jest"
+          - "ts-jest"
+          - "babel-jest"
+      jest-security:
+        applies-to: "security-updates"
         patterns:
           - "jest"
           - "jest-cli"
@@ -132,7 +163,17 @@ updates:
         patterns:
           - "storybook"
           - "@storybook/*"
+      storybook-security:
+        applies-to: "security-updates"
+        patterns:
+          - "storybook"
+          - "@storybook/*"
       npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      npm-security-minor-patch:
+        applies-to: "security-updates"
         update-types:
           - "minor"
           - "patch"
@@ -172,19 +213,22 @@ updates:
   #     CI and won't merge. ───
   - package-ecosystem: "gomod"
     directories:
-      - "/infrastructure/pulumi/platform/dev-local"
-      - "/infrastructure/pulumi/accounts/personal"
+      # Recursive glob, not the previous hand-maintained list of 7: that list had
+      # drifted to cover 7 of the 33 go.mods under this tree, leaving
+      # pkg/secrets and 26 foundation stacks unscanned entirely. A single `**`
+      # cannot drift. NB `*` does NOT cross `/` -- a single-star glob here would
+      # match only the immediate children and miss every nested stack.
+      - "/infrastructure/pulumi/**"
+      # Outside the pulumi tree, so still enumerated.
       - "/oauth-user-inspector/infra/app"
       - "/oauth-user-inspector/infra/identity"
-      - "/infrastructure/pulumi/foundation/gcp-bootstrap"
-      - "/infrastructure/pulumi/foundation/gcp-org"
-      - "/infrastructure/pulumi/foundation/org-folders"
-      - "/infrastructure/pulumi/platform/repo_config"
       - "/tabula/infra/app"
-      - "/infrastructure/pulumi/platform/zitadel-apps"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    # Raised from 5 alongside the `**` above: this entry went from 7 hand-listed
+    # modules to ~33, and the old limit would starve the tail of the tree the
+    # recursive glob just made visible.
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "go"
@@ -192,6 +236,11 @@ updates:
       prefix: "chore(deps)"
     groups:
       go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      go-security-minor-patch:
+        applies-to: "security-updates"
         update-types:
           - "minor"
           - "patch"
@@ -224,7 +273,7 @@ updates:
     directories:
       - "/pulumi/library/go"
       - "/pulumi/library/go/pkg/*"
-      - "/pulumi/examples/go-foundation/*"
+      - "/pulumi/examples/go-foundation/**"
     schedule:
       interval: "weekly"
     # Raised from 5: this entry now covers both directory sets, so the ungrouped
@@ -237,6 +286,11 @@ updates:
       prefix: "chore(deps)"
     groups:
       go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      go-security-minor-patch:
+        applies-to: "security-updates"
         update-types:
           - "minor"
           - "patch"
