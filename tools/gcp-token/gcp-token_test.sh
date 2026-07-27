@@ -301,6 +301,14 @@ out="$(run "$ACCOUNT" VITRUVIAN_ESC_ENV=proj/env)"
 	fail "the broker ran despite ESC succeeding"
 assert_contains "…asked for the configured environment" "$(cat "$work/pulumi.argv")" "proj/env"
 assert_contains "…as a bare string, so no JSON parsing is needed" "$(cat "$work/pulumi.argv")" "--format string"
+# The ESC identity is NOT the requested account -- an ESC environment is wired to
+# one service account and returns it regardless of who was asked for. Callers
+# (notably //tools/pulumi, which announces a gcp-identities.tsv pin) would
+# otherwise run as a principal nobody named. Say so, and keep stdout pure token.
+assert_contains "…and the identity substitution is stated on stderr" \
+	"$(cat "$work/stderr")" "NOT the requested"
+[ "$out" = "$ESC_TOKEN" ] && pass "…while stdout stays exactly the token" ||
+	fail "the notice leaked into stdout"
 # REGRESSION: it must be `env open`, never `env get`. `env get` reads the stored
 # definition, where fn::open::gcp-login's accessToken does not exist, and exits 0
 # printing nothing — indistinguishable from "ESC not configured".

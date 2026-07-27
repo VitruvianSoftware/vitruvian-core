@@ -93,9 +93,26 @@ type Config struct {
 	// PulumiESCOrg gates the whole feature: unset, nothing is provisioned and
 	// //tools/gcp-token's tailnet broker remains the only path to GCP from an
 	// agent session.
-	PulumiESCOrg              string
-	PulumiESCEnvironments     []string
-	PulumiESCRoles            []string
+	PulumiESCOrg          string
+	PulumiESCEnvironments []string
+	PulumiESCRoles        []string
+	// PulumiESCOrgRoles are ORGANIZATION-level roles for the ESC service account.
+	// PulumiESCRoles above is project-scoped (prj-b-cicd-e096) and cannot express
+	// what running a foundation stack needs, which is org- and folder-level.
+	//
+	// Empty by default, and widening it is a deliberate act -- but note what the
+	// alternative already grants. //tools/gcp-token's tailnet broker mints a token
+	// for james@vitruviansoftware.dev, an org admin, so agent sessions have held
+	// org-admin GCP for as long as the broker has worked. Granting this identity a
+	// comparable set is parity with the door already open, through a better trust
+	// root: no long-lived refresh token on a laptop, no dependency on a machine at
+	// home, and revocation by disabling one OIDC provider or one ESC environment
+	// rather than chasing a key.
+	//
+	// A credential too narrow to do the work is not safer in practice -- it just
+	// means an agent stops on a permission error and a human finishes the job by
+	// hand with broader rights.
+	PulumiESCOrgRoles         []string
 	PulumiESCPoolID           string
 	PulumiESCProviderID       string
 	PulumiESCServiceAccountID string
@@ -159,6 +176,7 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		PulumiESCOrg:              conf.Get("pulumi_esc_org"),
 		PulumiESCEnvironments:     csvConfig(conf.Get("pulumi_esc_environments")),
 		PulumiESCRoles:            csvConfig(conf.Get("pulumi_esc_roles")),
+		PulumiESCOrgRoles:         csvConfig(conf.Get("pulumi_esc_org_roles")),
 		PulumiESCPoolID:           defaultString(conf.Get("pulumi_esc_pool_id"), "pulumi-esc-pool"),
 		PulumiESCProviderID:       defaultString(conf.Get("pulumi_esc_provider_id"), "pulumi-esc-provider"),
 		PulumiESCServiceAccountID: defaultString(conf.Get("pulumi_esc_sa_id"), "sa-pulumi-esc"),
