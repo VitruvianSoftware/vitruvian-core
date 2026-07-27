@@ -432,4 +432,12 @@ jobs:
           if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then args+=(--custom-smoke-script "$CUSTOM_SMOKE_SCRIPT"); fi
           if [ -n "$CUSTOM_SMOKE_SCRIPT_FILE" ]; then args+=(--custom-smoke-script-file "$CUSTOM_SMOKE_SCRIPT_FILE"); fi
           if [ -n "$REFRESH_FLAG" ]; then args+=(--refresh); fi
-          bazel run //tools/deploy:cloud-run -- "${args[@]}"
+          # --config=remotecache + the BuildBuddy header, matching the three
+          # sibling bazel steps in this job (image push :282, migrate build :315,
+          # migrate run :337). This step was the only one invoking bazel bare, so
+          # it ran cold against an empty local cache on every deploy and re-built
+          # //tools/deploy:cloud-run's dependencies from scratch -- on the deploy
+          # critical path, in every environment, for both apps. BUILDBUDDY_API_KEY
+          # is job-level env (:215), already in scope here.
+          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tools/deploy:cloud-run -- "${args[@]}"
