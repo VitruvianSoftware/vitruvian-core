@@ -62,6 +62,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # For the goTemplate render simulation in tools/gitops/appset_render. It
+      # uses only the standard library (text/template), so no module download
+      # happens here -- but the toolchain must be pinned rather than inherited
+      # from whatever the runner image ships, or the gate's fidelity to the
+      # ApplicationSet controller drifts with the image.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Install kubeconform (pinned + checksum-verified)
         env:
           KUBECONFORM_VERSION: v0.6.7
