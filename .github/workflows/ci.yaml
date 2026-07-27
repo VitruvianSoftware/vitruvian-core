@@ -92,38 +92,6 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      # target-determinator keeps its own results cache, but that cache lives on
-      # the runner and so dies with it. TD answers by running `cquery deps(...)`
-      # over the ~9k-target TD_UNIVERSE and caching the result per revision, and
-      # without this step the SAME revision is re-analysed on EVERY run. Measured
-      # 2026-07-27: key ce1247fa... was computed and thrown away by both run
-      # 30247535774 and run 30272338661, six hours apart, at ~410s each. TD had
-      # grown to 94% of this job -- 501s of 533s -- and on a workflow-only diff
-      # it spent 441s to conclude there was nothing to build (#1262).
-      #
-      # SAFETY -- this CANNOT cause under-selection, which is the only thing that
-      # would matter for a merge-queue gate. TD's cache key is a SHA256 over the
-      # TD binary hash, the Bazel release, the git TREE sha, the target pattern,
-      # and the cache-affecting Context fields (target-determinator
-      # pkg/cache.go:59-98). So a TD version bump, a .bazelversion bump, any
-      # content change, or a TD_UNIVERSE edit all yield a DIFFERENT key. A stale
-      # entry is never consulted, only ignored: the failure mode is a cache miss
-      # (slow), never a wrong affected set. Nothing here weakens the //... floor
-      # -- every error path in affected-targets.sh still falls back to a sweep.
-      #
-      # Rolling key: the exact key carries github.sha so it never hits; the
-      # restore-keys prefix pulls the most recent entry and the post step saves a
-      # fresh one. PR branches can read caches saved on the default branch, and
-      # we push to main after every merge, so main's runs populate the merge-base
-      # entry that subsequent PRs need.
-      - name: Restore target-determinator results cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/target-determinator/results
-          key: td-results-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            td-results-${{ runner.os }}-
-
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
       # `build-test` is a REQUIRED status check behind the merge queue, so it
       # must ALWAYS report a result -- a naive `paths-ignore` would make it never
@@ -191,33 +159,6 @@ jobs:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
         run: bash tools/ci/affected-targets.sh
-
-      # BOUND THE CACHE. TD writes 2 entries per run (before-rev + after-rev) and
-      # the restore-then-save cycle is ADDITIVE -- restore N, add 2, save N+2 --
-      # so without a prune this directory grows without limit. That is not merely
-      # untidy: the repo shares a 10GB GitHub cache budget, and an unbounded TD
-      # cache would eventually evict the bazelisk and repository caches that
-      # setup-bazel depends on, which would be a net LOSS. Keep the 40 newest
-      # entries (~20 runs); older ones are revisions no live PR is branched from.
-      # tar preserves mtimes, so age survives the restore.
-      #
-      # always(): the prune must still run when the build above failed, or a red
-      # run would save an unpruned directory. Never fails the job -- this is
-      # housekeeping, and `build-test` is a required check.
-      - name: Prune stale target-determinator cache entries
-        if: always()
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          d="${HOME}/.cache/target-determinator/results"
-          if [ ! -d "${d}" ]; then
-            echo "no TD results cache to prune"
-            exit 0
-          fi
-          echo "before: $(find "${d}" -type f | wc -l) entries, $(du -sh "${d}" | cut -f1)"
-          find "${d}" -type f -printf '%T@ %p\n' \
-            | sort -rn | tail -n +41 | cut -d' ' -f2- | xargs -r rm -f
-          echo "after:  $(find "${d}" -type f | wc -l) entries, $(du -sh "${d}" | cut -f1)"
 
   # macOS build, split so a premium macOS runner is claimed ONLY when a macOS-
   # relevant path actually changed (#821). Previously the whole build-macos job
