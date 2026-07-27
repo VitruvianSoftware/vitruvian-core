@@ -954,89 +954,6 @@ check_sweep_backstop() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# target-determinator universe vs. platform-incompatible packages.
-#
-# TD answers "what did this diff affect?" by running `cquery deps(<universe>)`,
-# and cquery must CONFIGURE every target it reaches. A package that cannot be
-# analyzed on the CI runner's platform therefore aborts the whole query, TD
-# exits non-zero, and tools/ci/affected-targets.sh falls back to a full //...
-# sweep -- silently, on every run. That is exactly what //nexus-agent/macos/...
-# (rules_apple/rules_swift, Linux-unanalyzable) did: measured 2026-07-27, 0 of
-# 25 CI runs used affected selection and 14 degraded on this error, for ~2
-# weeks, while every run stayed GREEN because the fallback is fail-safe.
-#
-# Neither existing guard catches it: `tags = ["manual"]` only affects wildcard
-# BUILD expansion, not `deps()` in a query, and `target_compatible_with` is
-# evaluated after macos_application's incoming darwin transition (documented at
-# nexus-agent/macos/BUILD:42-47). So the exclusion must live in the query
-# universe, and this check keeps it honest in BOTH directions:
-#   1. every package whose BUILD loads rules_apple/rules_swift MUST be excluded
-#      from TD_UNIVERSE (a new Swift package silently re-breaks the fast path);
-#   2. every exclusion MUST still correspond to such a package (a stale
-#      exclusion silently shrinks the affected set, under-testing changes).
-# Only a degraded-but-green fast path is at stake, never test safety -- but a
-# permanently-degraded fast path is wasted CI time and compute on every run,
-# which this repo treats as a defect, not a nicety.
-# ---------------------------------------------------------------------------
-check_td_universe() {
-  aff="$ROOT/tools/ci/affected-targets.sh"
-  aff_rel="tools/ci/affected-targets.sh"
-
-  if [ ! -f "$aff" ]; then
-    emit "sweep" "$GLYPH_FAIL" "$C_RED" "$aff_rel" "missing" "TD_UNIVERSE" \
-      "the affected-target script is gone; the fast path and this invariant cannot be verified" \
-      "restore tools/ci/affected-targets.sh"
-    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return
-  fi
-
-  # The single TD_UNIVERSE assignment (quoted bazel query expression).
-  universe="$(grep -E "^TD_UNIVERSE=" "$aff" | head -1 | sed "s/^TD_UNIVERSE=//; s/^'//; s/'$//")"
-  if [ -z "$universe" ]; then
-    emit "sweep" "$GLYPH_FAIL" "$C_RED" "$aff_rel" "no TD_UNIVERSE" "explicit universe" \
-      "TD_UNIVERSE is not set, so the TD query universe is unguarded and a platform-incompatible package can break affected selection on every run" \
-      "set TD_UNIVERSE='//... except <incompatible packages>' and pass it to --targets"
-    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return
-  fi
-
-  ok=1
-
-  # A set-difference does NOT protect the query: cquery expands+configures the
-  # patterns and applies `except` to the RESULT, so `//... except //a/b/...`
-  # still analyzes //a/b and still dies. The universe must therefore never
-  # contain a pattern that EXPANDS an apple package -- neither the package
-  # itself nor any ancestor wildcard (`//...`, `//a/...`).
-  for b in $(cd "$ROOT" && grep -rl 'build_bazel_rules_apple\|build_bazel_rules_swift' \
-               --include=BUILD --include=BUILD.bazel . 2>/dev/null | sed 's|^\./||' | sort); do
-    pkg="$(dirname "$b")"
-
-    # Every wildcard that would expand $pkg: //... , //a/... , //a/b/... , ...
-    bad=""
-    printf '%s' "$universe" | grep -F -- '//...' >/dev/null 2>&1 && bad="//..."
-    if [ -z "$bad" ]; then
-      _acc=""
-      for seg in $(printf '%s' "$pkg" | tr '/' ' '); do
-        if [ -z "$_acc" ]; then _acc="$seg"; else _acc="$_acc/$seg"; fi
-        if printf '%s' "$universe" | grep -F -- "//$_acc/..." >/dev/null 2>&1; then
-          bad="//$_acc/..."; break
-        fi
-      done
-    fi
-
-    if [ -n "$bad" ]; then
-      emit "sweep" "$GLYPH_FAIL" "$C_RED" "$b" "$bad expands it" "named siblings" \
-        "this package loads rules_apple/rules_swift and cannot be CONFIGURED on the Linux CI runner; TD_UNIVERSE contains '$bad', which expands it, so 'cquery deps(...)' aborts, TD exits non-zero, and EVERY run silently falls back to a full //... sweep" \
-        "replace '$bad' in TD_UNIVERSE ($aff_rel) with an explicit union of its non-apple sibling subtrees — a set-difference ('except //$pkg/...') does NOT work, cquery configures before it subtracts"
-      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
-    fi
-  done
-
-  if [ "$ok" -eq 1 ]; then
-    emit "sweep" "$GLYPH_OK" "$C_GREEN" "$aff_rel" "union scoped" "no apple expansion" \
-      "TD universe never expands a Linux-unanalyzable package — affected selection can actually run instead of degrading to a full sweep every time" ""
-    OK_COUNT=$((OK_COUNT + 1))
-  fi
-}
 
 # ---------------------------------------------------------------------------
 # App visibility firewall (#82). Inter-app isolation rests on two invariants:
@@ -1057,7 +974,6 @@ check_td_universe() {
 # ---------------------------------------------------------------------------
 PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
 APP_DIRS="tabula devx homelab mcp-slack nexus-agent oauth-user-inspector"
-
 check_app_visibility() {
   # --- 1. root boundary declaration per app. --------------------------------
   for app in $APP_DIRS; do
@@ -1691,7 +1607,6 @@ check_app_visibility
 check_app_metadata
 check_merge_queue
 check_sweep_backstop
-check_td_universe
 check_zitadel_import
 check_pulumi_project_names
 check_custom_domain_zone

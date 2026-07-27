@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.3...go-bootstrap-v2.1.4) (2026-07-27)
+
+
+### Bug Fixes
+
+* **deps:** bump klauspost/compress to v1.18.7 (GO-2026-5841) — unwedges the merge queue ([#1268](https://github.com/VitruvianSoftware/vitruvian-core/issues/1268)) ([338f365](https://github.com/VitruvianSoftware/vitruvian-core/commit/338f365b0f84b328c0bf880ca0ebb4595590b8bd))
+
 ## [2.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-bootstrap-v2.1.2...go-bootstrap-v2.1.3) (2026-07-18)
 
 
