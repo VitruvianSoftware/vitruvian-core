@@ -194,6 +194,22 @@ if [ -n "${VITRUVIAN_ESC_ENV:-}" ] && command -v "$PULUMI_BIN" >/dev/null 2>&1; 
 	if _tok="$("$PULUMI_BIN" env open "$VITRUVIAN_ESC_ENV" "${VITRUVIAN_ESC_PATH:-gcp.login.accessToken}" \
 		--format string 2>"$_esc_err" | tr -d '\r\n')" && is_token "$_tok"; then
 		rm -f "$_esc_err"
+		# SAY WHOSE TOKEN THIS IS. Every other path here honours the requested
+		# account -- local gcloud passes --account, the broker passes --account --
+		# but ESC cannot: an ESC environment is wired to exactly one service
+		# account, and it hands back that identity no matter who was asked for.
+		#
+		# Callers rely on the answer matching the request. //tools/pulumi resolves
+		# an account from infrastructure/gcp-identities.tsv, announces "pinned to
+		# <account>", and then runs as whatever this returns. While the ESC identity
+		# could do nothing, the mismatch announced itself as a permission error.
+		# Once it can run foundation stacks, the run SUCCEEDS as the wrong principal
+		# and Cloud Audit Logs record an actor the wrapper never named.
+		#
+		# One line on stderr is the cheap fix: stdout stays exactly the token, and
+		# the substitution is visible instead of silent.
+		echo "gcp-token: token minted by Pulumi ESC ($VITRUVIAN_ESC_ENV) — the identity is that" >&2
+		echo "  environment's service account, NOT the requested '$ACCOUNT'." >&2
 		printf '%s' "$_tok"
 		exit 0
 	fi
