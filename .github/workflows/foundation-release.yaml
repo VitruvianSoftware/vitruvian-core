@@ -69,6 +69,15 @@ jobs:
   # Only the intra-phase `deploy-*` jobs should be chained sequentially.
 
   release-gcp-org:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-gcp-org
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -90,6 +99,15 @@ jobs:
           target-branch: main
 
   release-org-folders:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-org-folders
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -111,6 +129,15 @@ jobs:
           target-branch: main
 
   release-gcp-bootstrap:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-gcp-bootstrap
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -368,6 +395,15 @@ jobs:
   # the reusable workflow maps the environment name onto the leaf dir.
 
   release-gcp-environments:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-gcp-environments
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -423,6 +459,15 @@ jobs:
   # the production spoke (hub changes land before the prod spoke consumes them).
 
   release-gcp-networks:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-gcp-networks
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -488,6 +533,15 @@ jobs:
   # nonproduction's soak and its own approval gate, ahead of production.
 
   release-gcp-projects:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in this file.
+    concurrency:
+      group: foundation-release-gcp-projects
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
