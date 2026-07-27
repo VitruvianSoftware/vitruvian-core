@@ -297,6 +297,74 @@ run_under_test "${root}" "${bin}"
 check "an advisory found by the fallback still FAILS the gate" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
+# --- 4. Diff-scoped blocking. -------------------------------------------------
+# rc=1 means advisories EXIST. Whether they block depends on whether this change
+# could have introduced them. Guards the 2026-07-27 wedge: GO-2026-5841 was
+# published against a dep already in main, turning every open PR red at once and
+# stopping the merge queue for changes that touched no dependency at all.
+# The scan output is printed either way -- only the exit code differs.
+
+# 4a. Advisories + no manifest touched -> report, do not block.
+root="$(new_root)"; bin="$(mktemp -d)"
+base="$(git -C "${root}" rev-parse HEAD)"
+echo doc > "${root}/README.md"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm docs >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + NO dependency manifest changed -> does NOT block" \
+  "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+check "  ...and names them PRE-EXISTING" \
+  "$(printf '%s' "${out}" | grep -qi 'PRE-EXISTING' && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
+# 4b. Same advisories, but a go.mod moved -> blocks (could have introduced them).
+root="$(new_root)"; bin="$(mktemp -d)"
+base="$(git -C "${root}" rev-parse HEAD)"
+printf 'module x\n' > "${root}/go.mod"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm deps >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + go.mod changed -> BLOCKS" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
+# 4c. osv-scanner.toml is a manifest for this purpose: dropping an ignore
+#     legitimately changes the verdict, so it must still block.
+root="$(new_root)"; bin="$(mktemp -d)"
+base="$(git -C "${root}" rev-parse HEAD)"
+printf '# ignores\n' > "${root}/osv-scanner.toml"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm ignores >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + osv-scanner.toml changed -> BLOCKS" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
+# 4d. FAIL CLOSED with no diff base (the nightly schedule / dispatch path):
+#     the whole point of the nightly run is to block on the full advisory set.
+root="$(new_root)"; bin="$(mktemp -d)"
+echo doc > "${root}/README.md"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm docs >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + NO diff base (schedule) -> fails CLOSED, blocks" \
+  "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
+# 4e. An unreadable base must not silently downgrade to "unchanged".
+root="$(new_root)"; bin="$(mktemp -d)"
+echo doc > "${root}/README.md"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm docs >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" \
+      BASE_REV="0000000000000000000000000000000000000000" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + unreadable base -> fails CLOSED, blocks" \
+  "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1
