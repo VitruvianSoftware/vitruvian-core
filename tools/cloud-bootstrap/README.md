@@ -312,6 +312,14 @@ warnings and builds locally, and because the BES upload is async the giveaway
 cannot catch it — a 20-byte key passes `is_credential` and can still be rejected
 — so `whoami` reports the cache as *configured*, not *working*.
 
+Success is **verified, not assumed**: a zero exit is not evidence the block
+landed. The configurator touches `user.bazelrc` before writing it, so dying
+partway leaves an *empty* file — worse than no file, because `bazel` reads it
+happily, the cache stays off for the whole session, and nothing retries now that
+a file exists. The block is grepped for afterwards, and a zero-byte leftover is
+removed so the next session starts clean. Only ever a zero-byte one: anything
+with content is a developer's own config.
+
 ## Failure behavior
 
 `up` / `install` / `auth` are **best-effort and always exit 0** — a bootstrap
