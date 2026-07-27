@@ -86,7 +86,10 @@ sh_binary(
 # never reach stdout/stderr and land only in a 0600 file outside the workspace;
 # gcloud's exit-0-with-ERROR auth failure is still a failure; an env var already
 # set on the environment wins; and a placeholder ambient GCP token is cleared so
-# the //tools/pulumi wrapper still applies its gcp-identities.tsv pin.
+# the //tools/pulumi wrapper still applies its gcp-identities.tsv pin. For the
+# build cache it pins the same two classes: the BuildBuddy key never reaching
+# argv, and a profile that does not declare it never getting the cache
+# configured -- plus the guards against a config that only looks enabled.
 sh_test(
     name = "cloud_bootstrap_test",
     size = "small",

@@ -152,6 +152,11 @@ else
 	WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fi
 PROFILES_FILE="${CLOUD_BOOTSTRAP_PROFILES:-$WS/tools/cloud-bootstrap/profiles.tsv}"
+# The build-cache configurator (see configure_build_cache). A path, not a `bazel
+# run` target: this runs inside a SessionStart hook, where starting a Bazel
+# server to configure Bazel would cost ~25s and nest an invocation inside the
+# one the agent is about to make.
+CACHE_SETUP="${CLOUD_BOOTSTRAP_CACHE_SETUP:-$WS/tools/remote/setup.sh}"
 
 SUBCOMMAND="${1:-up}"
 shift 2>/dev/null || true
@@ -737,6 +742,69 @@ scrub_undeclared() {
 	[ "$cleared" -eq 0 ] || note "scrubbed $cleared credential(s) this profile is not entitled to"
 }
 
+# --- build cache --------------------------------------------------------------
+
+# configure_build_cache — make a plain `bazel` in this session read and write the
+# shared BuildBuddy cache.
+#
+# WHY THIS IS NOT COSMETIC: the config that enables the cache lives in
+# user.bazelrc, which is git-ignored — so a freshly cloned sandbox has NO cache
+# configuration at all. The session then cold-builds a large polyglot repo on a
+# 4-core box while holding a perfectly good BUILDBUDDY_API_KEY it never uses. A
+# developer gets this from `bazel run //tools/remote:setup`; a cloud session has
+# nobody to run it, which is precisely why it belongs here.
+#
+# DELEGATES to that same script rather than writing the block itself, so there is
+# ONE definition of what the block contains and one place that keeps user.bazelrc
+# out of git. (That script also guards the committed tools/remote.bazelrc, so
+# this does not dirty the working tree.)
+#
+# THE KEY TRAVELS IN THE ENVIRONMENT, NEVER AS `--key`: argv is world-readable
+# through `ps`. Same reflex as the service-account key, which travels as
+# --key-file for the same reason.
+#
+# CACHE ONLY — never --config=remote. Full RBE sets
+# --remote_download_outputs=minimal and cannot run macOS targets, so making it
+# the default would break `bazel run` of local tools (this script's own targets
+# included) and every lane that consumes bazel-bin directly. RBE stays an
+# explicit opt-in, exactly as it is on a laptop.
+#
+# CALLED FROM `auth`, NEVER FROM `install`. The block written to user.bazelrc
+# contains the API key, and `install` is the phase the cloud environment's Setup
+# script bakes into a cached image — writing it there would bake a credential
+# into a snapshot, the one thing that phase must never do.
+configure_build_cache() {
+	# Entitlement first: CLAIMED means an ACTIVE profile declared this var and it
+	# resolved to a real credential. A profile that does not name it has already
+	# had it scrubbed, and must not get cache write access by the back door.
+	case "$CLAIMED" in
+	*" BUILDBUDDY_API_KEY="*) ;;
+	*) return 0 ;;
+	esac
+	# Re-checked rather than trusted: the sandbox pre-sets several credential
+	# names to short placeholders, and configuring a cache with one would produce
+	# a config that looks enabled and authenticates against nothing.
+	is_credential "${BUILDBUDDY_API_KEY:-}" || return 0
+	case ",$TOOLS_ALL," in
+	*,bazel,*) ;;
+	*) return 0 ;; # nothing in this session would read user.bazelrc
+	esac
+	if [ ! -x "$CACHE_SETUP" ]; then
+		note "build cache: $CACHE_SETUP is not executable — skipped, builds stay local"
+		return 0
+	fi
+	# BUILD_WORKSPACE_DIRECTORY pins where user.bazelrc lands: the configurator
+	# otherwise falls back to `git rev-parse` and then to $PWD, and a hook's cwd is
+	# not guaranteed to be the workspace.
+	if BUILD_WORKSPACE_DIRECTORY="$WS" \
+		BUILDBUDDY_API_KEY="$BUILDBUDDY_API_KEY" \
+		"$CACHE_SETUP" --cache buildbuddy --no-ci --yes >/dev/null 2>&1; then
+		note "build cache: BuildBuddy is now the default for plain bazel (cache only; RBE stays --config=remote)"
+	else
+		note "build cache: could not configure — builds stay local"
+	fi
+}
+
 # --- report -------------------------------------------------------------------
 
 report() {
@@ -756,6 +824,33 @@ report() {
 			rc=1
 		fi
 	done
+
+	# Reported on the BEHAVIOUR (is a plain `bazel` pointed at the shared cache?)
+	# rather than on the marker comment, which belongs to another script and can
+	# be renamed without changing what the session actually does.
+	#
+	# SAYS "configured", NOT "working", AND THAT IS THE HONEST CLAIM: the key's
+	# validity cannot be established without a network round trip, and a wrong one
+	# fails SILENTLY -- Bazel treats remote-cache auth errors as warnings and
+	# builds locally, so a session degrades to cold builds while looking fine.
+	# Worse, the BES upload is async, so the giveaway
+	# (`UNAUTHENTICATED: Invalid API key`) surfaces on the NEXT invocation, not the
+	# one that failed. Length alone cannot catch it: a 20-byte key passes
+	# is_credential and can still be rejected. If builds are slow, check the
+	# warnings before trusting this line.
+	#
+	# Deliberately does NOT set rc: `whoami` is the gate for "this profile got the
+	# tools and credentials it declares", and a cold cache is a slow session, not
+	# an unsatisfied profile.
+	case ",$TOOLS_ALL," in
+	*,bazel,*)
+		if grep -qs -- '--config=remotecache' "$WS/user.bazelrc"; then
+			printf '  ✓ %-10s BuildBuddy configured for plain bazel (cache only)\n' "cache"
+		else
+			printf '  – %-10s not configured — every build is cold and local\n' "cache"
+		fi
+		;;
+	esac
 
 	# Per profile, because that is the boundary being reported on: which identity
 	# holds which credentials. A merged list would hide exactly the thing the
@@ -909,6 +1004,10 @@ establish_credentials() {
 	# tell "nobody declared this" from "not reached yet".
 	scrub_undeclared
 	wire_session_env
+	# AFTER wire_session_env, which sources session.env into this process — that
+	# is what puts a Secret-Manager-sourced BUILDBUDDY_API_KEY in scope here (one
+	# taken from the environment is already in scope).
+	configure_build_cache
 }
 
 case "$SUBCOMMAND" in
