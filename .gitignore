@@ -30,6 +30,17 @@ scratchpad/
 /job.txt
 /bootstrap_log.txt
 
+# target-determinator affected-set output, written to the repo root by
+# tools/ci/{affected-targets,deploy-affected}.sh. These MUST be ignored: TD
+# runs with --enforce-clean=allow-ignored (its default), which tolerates
+# IGNORED untracked files but treats any other untracked file as an unclean
+# working copy -- and an unclean copy makes TD log "Skipping cache: working
+# copy is unclean" and discard its results cache on EVERY run. Because the
+# shell creates the file via `> affected.txt` BEFORE TD inspects the tree,
+# leaving these untracked silently disabled TD's cache for both callers.
+/affected.txt
+/deploy-affected.txt
+
 # Kubeconfigs carry a client private key. devx/k3s.yaml was committed once
 # (May 2026, a local 127.0.0.1 k3s dev cluster) and later removed, but it is
 # still in this public repo's history -- see the secret-scan gate. Ignore the
