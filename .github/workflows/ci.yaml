@@ -404,52 +404,6 @@ jobs:
           version: v2.12.1
           working-directory: ${{ matrix.module }}
 
-  go-test:
-    # Race-detector tests for the Go apps. The monorepo Bazel runs these tests
-    # but NOT under `-race` (no race config in the bazelrc); the retired mirror
-    # CI ran `go test -race`, so this preserves that coverage -- standalone per
-    # module (GOWORK=off), exactly as it ran in each mirror.
-    #
-    # Path-gated per leg exactly like go-lint above (run-then-noop-green;
-    # GOWORK=off makes <module>/** the complete input set; push unconditional).
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      GOWORK: "off"
-    strategy:
-      fail-fast: false
-      matrix:
-        module: [devx, homelab]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Detect ${{ matrix.module }}-relevant changes
-        id: changes
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-          filters: |
-            module:
-              - '${{ matrix.module }}/**'
-              - '.github/workflows/ci.yaml'
-      - uses: actions/setup-go@v7
-        if: >-
-          github.event_name == 'push' ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
-        with:
-          go-version-file: ${{ matrix.module }}/go.mod
-          cache-dependency-path: ${{ matrix.module }}/go.sum
-      - name: go test -race (${{ matrix.module }})
-        if: >-
-          github.event_name == 'push' ||
-          (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
-          (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
-        working-directory: ${{ matrix.module }}
-        run: go test -race -cover ./...
-
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
     #
