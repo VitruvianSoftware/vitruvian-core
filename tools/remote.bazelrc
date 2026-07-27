@@ -26,6 +26,31 @@ common:remote --remote_default_exec_properties=container-image=docker://gcr.io/f
 # schema-engine binary) or need host-local test execution (Playwright/Chromium),
 # where full RBE would break them. Remote-cache I/O errors fall back to local
 # execution; BES upload is fully async so it never blocks or fails the build.
+# CI variant of :remotecache. Identical, PLUS uploading the results of locally
+# executed actions so the shared cache actually gets populated.
+#
+# WHY IT IS SEPARATE FROM :remotecache. tools/preset.bazelrc:138 sets
+# `common --noremote_upload_local_results` always-on, deliberately: it stops a
+# DEVELOPER's local build from poisoning the shared cache. preset.bazelrc:142
+# flips it back under `--config=ci` -- but nothing ever passes `--config=ci`
+# (#1267), so the flip never happened on CI either. Net effect: the six
+# :remotecache lanes execute LOCALLY (cache-only, no remote executor) and were
+# only ever able to READ a cache that nothing populated. :remotecache stays
+# upload-free so it remains safe as a local-developer default (#506).
+#
+# WHY NOT JUST ADD `--config=ci` TO THOSE LANES. Measured 2026-07-27: :ci also
+# carries `--remote_download_outputs=minimal` (preset.bazelrc:122), and on a
+# CACHE HIT that does not materialise top-level outputs. Same target, same disk
+# cache: a normal build produced tabula-extension-chrome.zip (322k); the same
+# build with `minimal` reported "Build completed successfully" with 497 cache
+# hits and NO zip on disk. The artifact lanes (`chrome_zip` -> `gh release
+# upload`, the image push, the migrate binary) would have published nothing off
+# a green build. So this profile takes the upload flag and NOT the download
+# semantics. Adopting the rest of :ci needs `--remote_download_outputs=toplevel`
+# alongside it on any lane that consumes a built artifact.
+common:remotecache-ci --config=remotecache
+common:remotecache-ci --remote_upload_local_results
+
 common:remotecache --remote_cache=grpcs://remote.buildbuddy.io
 common:remotecache --bes_backend=grpcs://remote.buildbuddy.io
 common:remotecache --bes_results_url=https://app.buildbuddy.io/invocation/

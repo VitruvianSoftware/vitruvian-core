@@ -96,11 +96,11 @@ jobs:
               run: |
                   # +e to capture pulumi's real exit code for the digest below.
                   set +e -u -o pipefail
-                  # --config=remotecache: BUILDBUDDY_API_KEY is already in this
+                  # --config=remotecache-ci: BUILDBUDDY_API_KEY is already in this
                   # step's env (:89) but was never passed to bazel, so the apply
                   # rebuilt the Pulumi program cold every run. Cache-only (no
                   # remote execution) and semantically inert for the apply itself.
-                  bazel run --config=remotecache \
+                  bazel run --config=remotecache-ci \
                       --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
                       //infrastructure/pulumi/platform/repo_config:up -- --stack dev --yes \
                       2>&1 | tee /tmp/apply-raw.txt

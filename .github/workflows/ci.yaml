@@ -230,7 +230,7 @@ jobs:
     env:
       # The premium macOS runner was the one Bazel lane with NO action cache at
       # all (setup-bazel gives only bazelisk + repository caches, which are
-      # DOWNLOAD caches). --config=remotecache adds the BuildBuddy remote action
+      # DOWNLOAD caches). --config=remotecache-ci adds the BuildBuddy remote action
       # cache and async BES but sets NO --remote_executor, so execution stays
       # LOCAL -- mandatory here, since the Apple toolchain cannot run on the
       # Linux RBE workers, and outputs stay materialised for the objc link and
@@ -257,7 +257,7 @@ jobs:
         run: |
           cache=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache=(--config=remotecache "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           else
             echo "::notice::no BuildBuddy key (fork PR?) -- building without the remote cache."
           fi
