@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-project-factory-v1.0.1...go-project-factory-v1.0.2) (2026-07-27)
+
+
+### Bug Fixes
+
+* **ci:** unblock the grpc 1.82.1 Dependabot batch (example tidy + credential-less preview) ([#1186](https://github.com/VitruvianSoftware/vitruvian-core/issues/1186)) ([190e958](https://github.com/VitruvianSoftware/vitruvian-core/commit/190e958c8f74f7edd90977e6eeb5bff8123c67e0))
+* **deps:** bump klauspost/compress to v1.18.7 (GO-2026-5841) — unwedges the merge queue ([#1268](https://github.com/VitruvianSoftware/vitruvian-core/issues/1268)) ([338f365](https://github.com/VitruvianSoftware/vitruvian-core/commit/338f365b0f84b328c0bf880ca0ebb4595590b8bd))
+* **gcp-projects:** address upstream-fidelity findings from the 4-projects review ([#889](https://github.com/VitruvianSoftware/vitruvian-core/issues/889)) ([2ca876a](https://github.com/VitruvianSoftware/vitruvian-core/commit/2ca876a4dc7df2206608acef3a356fab0bc71e54))
+* **library:** race-free cold apply for the bootstrap chain (project_factory + bootstrap) ([#908](https://github.com/VitruvianSoftware/vitruvian-core/issues/908)) ([ca2c814](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca2c8148864aaf20141029c8a8996340e92358c0))
+
 ## [1.0.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/v1.0.2...v1.0.1) (2026-07-06)
 
 

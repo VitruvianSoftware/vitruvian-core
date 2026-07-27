@@ -19,22 +19,28 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# affected-targets.sh — compute the Bazel targets affected by a diff, then
-# build (and test) exactly those targets against the BuildBuddy remote.
+# affected-targets.sh — build + test the repo against the BuildBuddy remote,
+# skipping only the diffs that provably need no Bazel work at all.
+#
+# NAME KEPT DELIBERATELY: three ci.yaml lanes and the conformance guards refer
+# to this path, and the file still owns the "does this diff need a build?"
+# decision. It no longer performs affected-TARGET selection -- see the block at
+# the bottom for the measurements that removed it (#1262).
 #
 # SAFETY INVARIANT (issue #81): the worst case must never be less safe than a
-# full `//...` sweep. Every uncertain or error path in here FALLS BACK to
-# `bazel build/test //...`. Invoked on all three ci.yaml lanes:
+# full `//...` sweep. That invariant is now trivially satisfied: every path that
+# builds anything builds `//...`. Invoked on all three ci.yaml lanes:
 #   pull_request  BASE_REF set        -> before-rev = merge-base vs origin/base
 #   merge_group   BEFORE_REV set to github.event.merge_group.base_sha
 #   push (main)   BEFORE_REV set to github.event.before (the pre-push tip);
 #                 FORCED_PUSH=true -> full sweep (rewritten history has no
 #                 trustworthy diff base).
 #
-# The cross-lane backstop for affected-selection under-attribution (e.g. an
-# empty affected set for a touched-but-unreferenced data file) is the scheduled
-# periodic-full-sweep.yaml workflow; //tools/conformance:check enforces that it
-# exists for as long as merge_group/push run affected-scoped.
+# periodic-full-sweep.yaml (nightly //...) is retained and still enforced by
+# //tools/conformance:check. It was the backstop for affected-selection
+# under-attribution; with selection gone there is nothing left to under-attribute,
+# so it is now belt-and-braces rather than load-bearing — it still catches a
+# non-determinism or a cache-poisoning that a per-diff run could mask.
 #
 # Environment (set by the workflow):
 #   BUILDBUDDY_API_KEY  RBE/remote-cache auth header value (required).
@@ -45,14 +51,15 @@
 # Flow:
 #   1. Determine BEFORE_REV: the explicit one if provided (verified to resolve
 #      to a commit), else git merge-base origin/$BASE_REF HEAD.
-#   2. If global-impact files changed (MODULE.bazel, lockfile, .bazelrc,
-#      .bazelversion, tools/**, root BUILD, gazelle_python.yaml, any
-#      .github/workflows/ file), short-circuit to //... .
-#   3. Otherwise run target-determinator to produce affected.txt.
-#   4. If TD fails, or affected.txt is unreadable -> fall back to //... .
-#   5. If affected.txt is empty -> nothing to do, exit 0 cleanly.
-#   6. build the whole affected set, then test ONLY the testable subset
-#      (--build_tests_only) so a build-only/zero-test set never errors.
+#   2. If the diff is docs/gitops/markdown-only, exit 0 without building
+#      anything -- the one short-circuit that is still strictly cheaper than a
+#      sweep, because it does no Bazel work at all.
+#   3. Otherwise `bazel build //...` + `bazel test //...`.
+#
+# The global-impact allowlist below no longer changes WHAT runs (everything
+# runs); it is retained because it classifies the sweep reason in the run UI and
+# because //tools/conformance:check asserts it stays byte-identical to the one
+# in deploy-affected.sh, which DOES still use it to gate live deploys.
 
 set -euo pipefail
 
@@ -191,149 +198,41 @@ if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.baze
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
-# --- 3. fetch + run target-determinator. -------------------------------------
-# The pinned TD version/checksum + fetch logic live in tools/ci/td-lib.sh (one
-# source shared with the deploy gate, tools/ci/deploy-affected.sh, so the pin
-# can never drift between callers). Any fetch failure -- unsupported host,
-# download error, checksum mismatch -- falls through to the full //... sweep
-# (the safety invariant above).
-# shellcheck source=tools/ci/td-lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/td-lib.sh"
-if ! fetch_td; then
-  run_full_sweep "${TD_FETCH_ERROR}" degraded
-fi
-
-# TD universe. NOT a plain `//...`: target-determinator answers the question by
-# running `cquery deps(<universe>)`, and cquery must CONFIGURE every target it
-# reaches -- including ones that can never be analyzed on this runner.
+# --- 3. build + test EVERYTHING. ----------------------------------------------
+# There is deliberately no affected-target selection here any more.
 #
-# //nexus-agent/macos/... is exactly that class. Those are rules_apple Swift
-# targets; on a Linux runner `cquery deps(//...)` aborts with:
+# target-determinator was measured 2026-07-27 to cost MORE than the work it
+# avoids on this repo, in every observed case including its best one:
 #
-#   ERROR: nexus-agent/macos/BUILD:56:18: While resolving toolchains for target
-#   //nexus-agent/macos:NexusAgent: No matching toolchains found for types:
-#   ERROR: Analysis of target '//nexus-agent/macos:NexusAgent' failed
+#   full //... sweep, no TD (global-impact runs)        393s / 399s / 407s
+#   TD, empty affected set                              441s / 470s
+#   TD, 8 affected targets                              506s
+#   TD, 64 affected targets (178-file diff, PR #1268)   579s
 #
-# TD then exits non-zero and this script fell back to a full //... sweep -- on
-# EVERY run. Measured 2026-07-27: 0 of 25 recent CI runs used affected
-# selection; 14 of them degraded on precisely this error. The fallback is safe
-# (nothing goes untested) but it made the fast path dead code while still
-# paying TD's analysis cost on top of the sweep.
+# The reason is BuildBuddy. A full sweep is cheap because the remote cache
+# absorbs it -- a representative sweep reports "Executed 5 out of 105 tests",
+# i.e. 100 of 105 were cache hits. So the marginal cost of NOT knowing which
+# targets changed is ~100 cache lookups, which is nearly free.
 #
-# Why the existing guards did not cover it:
-#   - `tags = ["manual"]` on the bundle (nexus-agent/macos/BUILD) keeps it out
-#     of wildcard BUILDS, but `manual` only affects target-pattern expansion
-#     for build/test -- it does NOT exclude a target from `deps()` in a query.
-#   - `target_compatible_with` provably does not work here either, documented
-#     at nexus-agent/macos/BUILD:42-47: macos_application applies an incoming
-#     transition to a darwin platform, so the macOS constraint is satisfied
-#     AFTER the transition and the target is never skipped on Linux.
-# So the exclusion has to happen in the query universe itself, which is what
-# this does. `--targets` accepts any valid Bazel query expression.
+# TD spent ~450s of `cquery` over a 9,101-target universe to avoid that, and
+# that cost is UNIVERSE-bound, not diff-bound: identical whether the diff is one
+# YAML file or 178 files. Meanwhile the build work itself is the same either
+# way, because the sweep cache-hits everything TD would have excluded. So
 #
-# CRITICAL: this must be a UNION of subtrees, NOT `//... except //nexus-agent/
-# macos/...`. A set-difference does NOT work, verified empirically 2026-07-27:
-# cquery EXPANDS and CONFIGURES the target patterns first and applies `except`
-# to the RESULT, so `deps(//... except //nexus-agent/macos/...)` still analyzes
-# the macOS targets and still dies:
+#   TD path  ~=  full sweep  +  ~450s analysis  -  ~0s avoided work
 #
-#   $ bazel cquery 'deps(//nexus-agent/... except //nexus-agent/macos/...)'
-#   ERROR: .../apple_support+/lib/BUILD:15:13: Analysis of target
-#   '@@apple_support+//lib:swizzle_absolute_xcttestsourcelocation' failed
-#   exit=1
+# and it cannot come out ahead while the remote cache is warm. The one case
+# where a sweep genuinely IS expensive -- a cold cache after a toolchain or
+# MODULE.bazel change -- is already routed past selection by the global-impact
+# guard above, which sweeps unconditionally.
 #
-# Naming the sibling subtrees explicitly never expands the macOS package at all:
+# Removing selection also deletes a whole class of defect. #1265 tried to make
+# TD cheaper by persisting its results cache and instead made it OVER-select:
+# restored before-rev hashes are not comparable with freshly-computed after-rev
+# hashes, so a workflow-only diff "affected" 8 targets including a flaky
+# Playwright suite, and main went red. With no selection there is nothing to get
+# wrong. See #1262 for the full measurements and history.
 #
-#   $ bazel cquery "deps(${TD_UNIVERSE})"   # the union below
-#   exit=0, 0 ERROR lines, 0 apple_support/macos targets configured
-#
-# `--keep_going` is NOT a substitute: it yields correct results but still exits
-# non-zero, which TD treats as failure.
-#
-# COMPLETENESS is proven by set-equality, not by reading this list -- the union
-# resolves to exactly the same 9101 targets as `//... except //nexus-agent/
-# macos/...` (0 missed, 0 extra). `//:all` covers the ROOT package (//:gazelle,
-# //:tidy), which a naive per-directory union silently drops. If a NEW top-level
-# package root is added, it must be added here or its targets stop being
-# affected-selected; the nightly periodic-full-sweep.yaml bounds that miss to
-# <24h, and //tools/conformance:check fails if a pattern here would re-expand an
-# apple package.
-#
-# Nothing is lost by omitting the macOS subtree: it is built and tested by the
-# dedicated macOS lane (ci.yaml detect-macos -> macos-build builds
-# //nexus-agent/macos:NexusAgent_tests by EXPLICIT label, bypassing `manual`),
-# and nothing outside //nexus-agent/macos/ depends on those targets.
-TD_UNIVERSE='//:all + //devx/... + //gitops/... + //homelab/... + //infrastructure/... + //mcp-slack/... + //oauth-user-inspector/... + //packages/... + //pulumi/... + //requirements/... + //tabula/... + //tools/... + //nexus-agent:all + //nexus-agent/hooks/... + //nexus-agent/src/...'
-
-# Run TD:
-#   --bazel bazel                       use the repo's bazelisk-resolved bazel.
-#   --targets "${TD_UNIVERSE}"          universe to diff over (see above).
-#   --bazel-opts                        opts threaded into TD's analysis
-#                                       cqueries -> remote auth, so the two
-#                                       analysis passes hit the same RBE cache
-#                                       the build will.
-#   --before-query-error-behavior=ignore-and-build-all
-#                                       if the BEFORE revision fails to analyze
-#                                       (e.g. a since-deleted package), TD emits
-#                                       //... rather than erroring -> stays safe.
-#   --ignore-file                       this workflow + the script never trigger
-#                                       a graph rebuild on their own (the global
-#                                       guard above already force-fulls on real
-#                                       build-config changes).
-# NB: never pass --verbose; with it each line becomes "label  reason", which is
-# not a valid Bazel target pattern when fed back via --target_pattern_file.
-echo "affected-targets: computing affected set since ${BEFORE_REV}..."
-if ! "${TD}" \
-      --bazel bazel \
-      --targets "${TD_UNIVERSE}" \
-      --bazel-opts="--config=remote" \
-      --bazel-opts="--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
-      --before-query-error-behavior=ignore-and-build-all \
-      --ignore-file .github/workflows/ci.yaml \
-      --ignore-file tools/ci/affected-targets.sh \
-      "${BEFORE_REV}" > affected.txt; then
-  run_full_sweep "target-determinator returned non-zero" degraded
-fi
-
-# --- 4 + 5. empty-set handling. ----------------------------------------------
-# [ -s file ] is true only for a non-empty regular file; this also covers the
-# "TD wrote nothing" case. An empty affected set is a clean no-op, not an error.
-# NB: by the time we get here the global-impact guard has already force-swept on
-# any build-config change, so an empty set means a non-global diff that TD
-# attributes to zero targets (e.g. a touched-but-unreferenced data file). The
-# safety floor for such a change is the scheduled periodic-full-sweep.yaml
-# workflow (nightly full //...), which bounds any miss to <24h.
-if [ ! -s affected.txt ]; then
-  echo "::notice::affected-targets: empty affected set -> nothing to build or test."
-  exit 0
-fi
-
-echo "affected-targets: $(wc -l < affected.txt) affected target(s):"
-sed 's/^/  /' affected.txt
-
-# --- 6. build the full affected set, then test only its testable subset. -----
-# bazel build accepts non-test targets; `bazel test` over a mixed/zero-test set
-# errors (exit 4 "no test targets were found"). So: build everything, then test
-# with --build_tests_only, which restricts to test targets in the pattern set
-# and is a clean no-op when there are none. Both honor the default
-# --test_tag_filters=-e2e from .bazelrc.
-echo "affected-targets: building affected targets..."
-bazel build "${REMOTE_ARGS[@]}" --target_pattern_file=affected.txt
-
-echo "affected-targets: testing affected test targets (build_tests_only)..."
-# Even with --build_tests_only, `bazel test` exits 4 ("no test targets were
-# found") when the affected set contains zero test targets -- a legitimate
-# non-test PR (e.g. only a genrule/docs target changed), NOT a real failure.
-# So: tolerate ONLY exit 4 here; any other non-zero is a genuine test failure
-# and must propagate. `set -e` is suspended for just this one command.
-test_rc=0
-bazel test "${REMOTE_ARGS[@]}" --build_tests_only --target_pattern_file=affected.txt || test_rc=$?
-if [ "${test_rc}" -eq 0 ]; then
-  echo "affected-targets: affected tests passed."
-elif [ "${test_rc}" -eq 4 ]; then
-  echo "::notice::affected-targets: no test targets in affected set (exit 4) -> build-only PR, OK."
-else
-  echo "::error::affected-targets: affected tests failed (bazel exit ${test_rc})."
-  exit "${test_rc}"
-fi
-
+# The cheap short-circuits ABOVE are kept and still matter: a docs/gitops/md-only
+# diff exits without building anything at all.
+run_full_sweep "affected-target selection removed -- a full sweep is cheaper than computing what to skip (#1262)" expected

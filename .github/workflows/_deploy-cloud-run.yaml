@@ -209,7 +209,7 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION || inputs.default-region }}
-      # Cache-only BuildBuddy access (--config=remotecache): reuse the image /
+      # Cache-only BuildBuddy access (--config=remotecache-ci): reuse the image /
       # schema-engine actions CI already cached instead of a cold rebuild on
       # the deploy critical path. No RBE, so outputs stay local for the push.
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -279,7 +279,7 @@ jobs:
       - name: Build and push image (Bazel)
         if: ${{ inputs.image-digest == '' && inputs.bazel-image-target != '' }}
         run: |
-          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             ${{ inputs.bazel-image-target }} -- \
             --repository "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${{ inputs.image-repository-path }}" \
             --tag "${GITHUB_SHA}" --tag latest
@@ -312,7 +312,7 @@ jobs:
         # via `--phase contract`. The migration-safety check already blocks an
         # un-marked backward-incompatible migration from reaching main.
         run: |
-          bazel build --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+          bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
           export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
           export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
@@ -334,7 +334,7 @@ jobs:
             exit 1
           fi
           export DATABASE_URL
-          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
 
       - name: Fetch the Cloudflare API token (Secret Manager)
@@ -432,4 +432,12 @@ jobs:
           if [ -n "$CUSTOM_SMOKE_SCRIPT" ]; then args+=(--custom-smoke-script "$CUSTOM_SMOKE_SCRIPT"); fi
           if [ -n "$CUSTOM_SMOKE_SCRIPT_FILE" ]; then args+=(--custom-smoke-script-file "$CUSTOM_SMOKE_SCRIPT_FILE"); fi
           if [ -n "$REFRESH_FLAG" ]; then args+=(--refresh); fi
-          bazel run //tools/deploy:cloud-run -- "${args[@]}"
+          # --config=remotecache-ci + the BuildBuddy header, matching the three
+          # sibling bazel steps in this job (image push :282, migrate build :315,
+          # migrate run :337). This step was the only one invoking bazel bare, so
+          # it ran cold against an empty local cache on every deploy and re-built
+          # //tools/deploy:cloud-run's dependencies from scratch -- on the deploy
+          # critical path, in every environment, for both apps. BUILDBUDDY_API_KEY
+          # is job-level env (:215), already in scope here.
+          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tools/deploy:cloud-run -- "${args[@]}"

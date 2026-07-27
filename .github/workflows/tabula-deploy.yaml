@@ -183,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
-          bazel run --config=remotecache --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:image_push -- \
             --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
           DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
