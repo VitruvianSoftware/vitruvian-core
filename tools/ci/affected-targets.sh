@@ -203,9 +203,71 @@ if ! fetch_td; then
   run_full_sweep "${TD_FETCH_ERROR}" degraded
 fi
 
+# TD universe. NOT a plain `//...`: target-determinator answers the question by
+# running `cquery deps(<universe>)`, and cquery must CONFIGURE every target it
+# reaches -- including ones that can never be analyzed on this runner.
+#
+# //nexus-agent/macos/... is exactly that class. Those are rules_apple Swift
+# targets; on a Linux runner `cquery deps(//...)` aborts with:
+#
+#   ERROR: nexus-agent/macos/BUILD:56:18: While resolving toolchains for target
+#   //nexus-agent/macos:NexusAgent: No matching toolchains found for types:
+#   ERROR: Analysis of target '//nexus-agent/macos:NexusAgent' failed
+#
+# TD then exits non-zero and this script fell back to a full //... sweep -- on
+# EVERY run. Measured 2026-07-27: 0 of 25 recent CI runs used affected
+# selection; 14 of them degraded on precisely this error. The fallback is safe
+# (nothing goes untested) but it made the fast path dead code while still
+# paying TD's analysis cost on top of the sweep.
+#
+# Why the existing guards did not cover it:
+#   - `tags = ["manual"]` on the bundle (nexus-agent/macos/BUILD) keeps it out
+#     of wildcard BUILDS, but `manual` only affects target-pattern expansion
+#     for build/test -- it does NOT exclude a target from `deps()` in a query.
+#   - `target_compatible_with` provably does not work here either, documented
+#     at nexus-agent/macos/BUILD:42-47: macos_application applies an incoming
+#     transition to a darwin platform, so the macOS constraint is satisfied
+#     AFTER the transition and the target is never skipped on Linux.
+# So the exclusion has to happen in the query universe itself, which is what
+# this does. `--targets` accepts any valid Bazel query expression.
+#
+# CRITICAL: this must be a UNION of subtrees, NOT `//... except //nexus-agent/
+# macos/...`. A set-difference does NOT work, verified empirically 2026-07-27:
+# cquery EXPANDS and CONFIGURES the target patterns first and applies `except`
+# to the RESULT, so `deps(//... except //nexus-agent/macos/...)` still analyzes
+# the macOS targets and still dies:
+#
+#   $ bazel cquery 'deps(//nexus-agent/... except //nexus-agent/macos/...)'
+#   ERROR: .../apple_support+/lib/BUILD:15:13: Analysis of target
+#   '@@apple_support+//lib:swizzle_absolute_xcttestsourcelocation' failed
+#   exit=1
+#
+# Naming the sibling subtrees explicitly never expands the macOS package at all:
+#
+#   $ bazel cquery "deps(${TD_UNIVERSE})"   # the union below
+#   exit=0, 0 ERROR lines, 0 apple_support/macos targets configured
+#
+# `--keep_going` is NOT a substitute: it yields correct results but still exits
+# non-zero, which TD treats as failure.
+#
+# COMPLETENESS is proven by set-equality, not by reading this list -- the union
+# resolves to exactly the same 9101 targets as `//... except //nexus-agent/
+# macos/...` (0 missed, 0 extra). `//:all` covers the ROOT package (//:gazelle,
+# //:tidy), which a naive per-directory union silently drops. If a NEW top-level
+# package root is added, it must be added here or its targets stop being
+# affected-selected; the nightly periodic-full-sweep.yaml bounds that miss to
+# <24h, and //tools/conformance:check fails if a pattern here would re-expand an
+# apple package.
+#
+# Nothing is lost by omitting the macOS subtree: it is built and tested by the
+# dedicated macOS lane (ci.yaml detect-macos -> macos-build builds
+# //nexus-agent/macos:NexusAgent_tests by EXPLICIT label, bypassing `manual`),
+# and nothing outside //nexus-agent/macos/ depends on those targets.
+TD_UNIVERSE='//:all + //devx/... + //gitops/... + //homelab/... + //infrastructure/... + //mcp-slack/... + //oauth-user-inspector/... + //packages/... + //pulumi/... + //requirements/... + //tabula/... + //tools/... + //nexus-agent:all + //nexus-agent/hooks/... + //nexus-agent/src/...'
+
 # Run TD:
 #   --bazel bazel                       use the repo's bazelisk-resolved bazel.
-#   --targets //...                     universe to diff over.
+#   --targets "${TD_UNIVERSE}"          universe to diff over (see above).
 #   --bazel-opts                        opts threaded into TD's analysis
 #                                       cqueries -> remote auth, so the two
 #                                       analysis passes hit the same RBE cache
@@ -223,7 +285,7 @@ fi
 echo "affected-targets: computing affected set since ${BEFORE_REV}..."
 if ! "${TD}" \
       --bazel bazel \
-      --targets "//..." \
+      --targets "${TD_UNIVERSE}" \
       --bazel-opts="--config=remote" \
       --bazel-opts="--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}" \
       --before-query-error-behavior=ignore-and-build-all \
