@@ -246,7 +246,7 @@ func main() {
 			if len(checks) == 0 {
 				checks = []string{
 					"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
-					"go-lint (devx)", "go-lint (homelab)", "validate-butane",
+					"go-lint (devx)", "go-lint (homelab)", "go-test (devx)", "go-test (homelab)", "validate-butane",
 					// gitops-validate (kubeconform over gitops/**, which reconciles to
 					// the LIVE cluster) and actionlint (workflow lint) now also trigger
 					// on merge_group, so they gate the queue instead of only advising on
