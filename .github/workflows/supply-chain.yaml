@@ -94,6 +94,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The scan always covers the WHOLE tree; the base is used only to ask
+          # whether this change touched a dependency manifest, which decides
+          # block-vs-report when advisories are found. See tools/osv-scan.
+          fetch-depth: 0
 
       - name: Install osv-scanner (pinned + checksum-verified)
         env:
@@ -110,7 +115,17 @@ jobs:
           rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
+      # The scan itself is always full-tree. BASE_REF/BASE_REV are used ONLY to
+      # decide whether found advisories block or report: a change that touches no
+      # dependency manifest cannot have introduced one, so blocking it would halt
+      # unrelated work for a vulnerability already present in the base (this
+      # wedged the merge queue on 2026-07-27, GO-2026-5841). Both resolve empty
+      # on schedule/dispatch, and the script fails CLOSED without a base -- so the
+      # nightly run still blocks on the entire advisory set.
       - name: Scan lockfiles for known advisories
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: bash tools/osv-scan/osv-scan.sh
 
   secret-scan:

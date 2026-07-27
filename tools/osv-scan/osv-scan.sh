@@ -115,6 +115,53 @@ cd "${ROOT}"
 # trips it.
 MIN_SOURCES=50
 
+# --- Did this change touch anything that can alter the dependency set? --------
+#
+# WHY THIS EXISTS. A newly-published advisory against a dependency that is
+# ALREADY in main turns this required gate red on every open PR at once, with no
+# relationship to what those PRs change. That happened on 2026-07-27
+# (GO-2026-5841, klauspost/compress): the merge queue wedged, and three
+# unrelated CI PRs were blocked by a vulnerability that was already shipped in
+# main. Blocking an unrelated merge protects nothing in that situation -- the
+# vulnerable code is already there -- it only stops all work until a human
+# notices. Same reasoning secret-scan is diff-scoped for (supply-chain.yaml):
+# "a permanently-red gate is one everybody learns to ignore".
+#
+# SOUNDNESS. A change cannot introduce a new vulnerable dependency without
+# touching a manifest or lockfile -- that is where dependency versions come
+# from. So if none changed, every advisory this run finds is pre-existing by
+# construction, and the honest signal is a loud warning, not a merge block.
+# osv-scanner.toml counts as a manifest: editing it (e.g. dropping an
+# ignoredVulns entry) legitimately changes the verdict and MUST still block.
+#
+# FAIL CLOSED ON AMBIGUITY. If no diff base resolves (schedule, dispatch,
+# unknown event, shallow clone, unreadable base), this returns "changed" and the
+# gate keeps its full blocking behaviour. The nightly scheduled run therefore
+# still blocks on the ENTIRE advisory set, which is what keeps pre-existing
+# vulnerabilities visible instead of quietly accumulating.
+DEP_MANIFEST_RE='(^|/)(go\.mod|go\.sum|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|requirements[^/]*\.txt|uv\.lock|poetry\.lock|Pipfile\.lock|pyproject\.toml|Cargo\.toml|Cargo\.lock|Gemfile|Gemfile\.lock|composer\.json|composer\.lock|osv-scanner\.toml)$'
+
+dep_manifests_changed() {
+  _base=""
+  if [ -n "${BASE_REV:-}" ]; then
+    _base="${BASE_REV}"
+  elif [ -n "${BASE_REF:-}" ]; then
+    git fetch --quiet --depth=1 origin "${BASE_REF}" 2>/dev/null || true
+    _base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null \
+             || git merge-base HEAD "origin/${BASE_REF}" 2>/dev/null || true)"
+  fi
+  # No base, or a base this clone cannot read -> fail closed (block as before).
+  [ -n "${_base}" ] || { echo "changed"; return; }
+  git cat-file -e "${_base}^{commit}" 2>/dev/null || { echo "changed"; return; }
+
+  _files="$(git diff --name-only "${_base}" HEAD 2>/dev/null)" || { echo "changed"; return; }
+  if printf '%s\n' "${_files}" | grep -qE "${DEP_MANIFEST_RE}"; then
+    echo "changed"
+  else
+    echo "unchanged"
+  fi
+}
+
 info() { printf '\033[36m→\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
@@ -358,7 +405,18 @@ case "${rc}" in
      # as clean as the success path does.
      osv-scanner "${SCAN_ARGS[@]}" . 2>/dev/null || true
      assert_tree_unchanged
-     die "osv-scanner found advisories not covered by osv-scanner.toml (above).
+
+     # Advisories exist. Whether they BLOCK depends on whether this change could
+     # have introduced them (see dep_manifests_changed above). The findings are
+     # printed either way -- this only decides the exit code.
+     if [ "$(dep_manifests_changed)" = "unchanged" ]; then
+       warn "osv-scanner found advisories (above), but this change touches NO dependency manifest or lockfile, so they are PRE-EXISTING in the base revision -- not introduced here. Reporting instead of blocking: failing an unrelated change for a vulnerability already present in main stops all work without removing the vulnerability. Fix it on its own branch (bump the dependency, or add a time-boxed osv-scanner.toml entry). The nightly scheduled scan still BLOCKS on the full set, so this does not go unnoticed."
+       exit 0
+     fi
+
+     die "osv-scanner found advisories not covered by osv-scanner.toml (above),
+   and this change DOES touch a dependency manifest/lockfile -- so it may have
+   introduced them.
    Fix by upgrading the dependency, or -- if it is genuinely not exploitable
    here -- add an ignoredVulns entry to osv-scanner.toml with a reason, and an
    expiry unless the advisory has no fix at all." ;;
