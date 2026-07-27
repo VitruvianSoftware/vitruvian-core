@@ -81,6 +81,8 @@ clashing   gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=different-se
 nocreds    gh      -                   -           -                                    No credentials at all.
 onlytok    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret                     Claims TOK and nothing else.
 envonly    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret,ENVCRED=-           Declares an environment-only credential.
+cached     bazel,gh sa-pinned@x.iam.gserviceaccount.com proj-a  TOK=tok-secret,BUILDBUDDY_API_KEY=- Declares the build-cache key AND installs bazel.
+nobazel    gh      sa-pinned@x.iam.gserviceaccount.com  proj-a  TOK=tok-secret,BUILDBUDDY_API_KEY=- Declares the build-cache key but installs no bazel.
 TSV
 
 SA_KEY_GOOD='{"type":"service_account","client_email":"sa-pinned@x.iam.gserviceaccount.com","private_key":"KEYBYTES"}'
@@ -114,6 +116,20 @@ FAKE
 	chmod +x "$work/gcloud"
 }
 
+# Fake build-cache configurator: records argv AND the environment it was handed,
+# so the test can pin that the API key arrived by env and never through argv.
+make_cache_setup() { # make_cache_setup <mode: ok|fail>
+	cat >"$work/cache-setup" <<FAKE
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$work/cache-setup.argv"
+printf 'KEY=%s WS=%s\n' "\${BUILDBUDDY_API_KEY:-<unset>}" \
+  "\${BUILD_WORKSPACE_DIRECTORY:-<unset>}" >>"$work/cache-setup.env"
+[ "$1" = fail ] && exit 3
+exit 0
+FAKE
+	chmod +x "$work/cache-setup"
+}
+
 # run_auth <key> [extra env assignments…] — drive the real script's auth path in
 # a throwaway HOME, and echo its combined output.
 run_auth() {
@@ -122,6 +138,8 @@ run_auth() {
 	rm -rf "$work/home" "$work/state"
 	mkdir -p "$work/home"
 	: >"$work/gcloud.argv"
+	: >"$work/cache-setup.argv"
+	: >"$work/cache-setup.env"
 	env -i \
 		PATH="$PATH" \
 		HOME="$work/home" \
@@ -345,6 +363,68 @@ out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok ENVCRED="$BIG_D")"
 [ -z "$(effective_value ENVCRED "$BIG_D")" ] &&
 	pass "…and a profile that omits it still gets it scrubbed" ||
 	fail "an environment-only credential escaped the boundary"
+
+# ---------------------------------------------------------------------------
+echo "cloud-bootstrap: build cache"
+# ---------------------------------------------------------------------------
+# The cache config lives in user.bazelrc, which is git-ignored -- so a freshly
+# cloned sandbox has none, and cold-builds a large polyglot repo while holding a
+# working BUILDBUDDY_API_KEY it never uses. What is pinned here is not "does the
+# cache work" (that is BuildBuddy's problem) but the properties whose failure is
+# a LEAKED KEY or a CREDENTIAL BAKED INTO A CACHED IMAGE.
+make_gcloud ok
+make_cache_setup ok
+BB_KEY="bbbbbbbbkeyeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
+	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+cargv="$(cat "$work/cache-setup.argv")"
+assert_contains "a declaring profile configures the cache" "$cargv" "--cache buildbuddy"
+assert_contains "…without touching CI secrets" "$cargv" "--no-ci"
+
+# argv is world-readable through `ps`. Same reflex as the SA key's --key-file.
+assert_not_contains "the API key never reaches argv" "$cargv" "$BB_KEY"
+assert_contains "…it is handed over in the environment instead" \
+	"$(cat "$work/cache-setup.env")" "KEY=$BB_KEY"
+# Without this the configurator falls back to `git rev-parse` and then $PWD, and
+# a hook's cwd is not guaranteed to be the workspace.
+assert_not_contains "…and the workspace is pinned, not guessed" \
+	"$(cat "$work/cache-setup.env")" "WS=<unset>"
+
+# The sandbox pre-sets several credential names to short dummy strings. Building
+# a cache config on one yields something that looks enabled and authenticates
+# against nothing -- strictly worse than no cache, because it reports success.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
+	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY=dummy-key)"
+[ ! -s "$work/cache-setup.argv" ] && pass "a placeholder key configures nothing" ||
+	fail "the cache was configured with a placeholder key"
+
+# Entitlement is the profile's, not the environment's: a row that does not name
+# BUILDBUDDY_API_KEY has already had it scrubbed, and must not get cache WRITE
+# access back through this path.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok \
+	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+[ ! -s "$work/cache-setup.argv" ] && pass "a profile that omits the key configures nothing" ||
+	fail "an unentitled profile still configured the cache"
+
+# No bazel in the row means nothing in the session would ever read user.bazelrc.
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=nobazel \
+	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+[ ! -s "$work/cache-setup.argv" ] && pass "a profile without bazel configures nothing" ||
+	fail "the cache was configured for a session with no bazel"
+
+# Best-effort like every other path here: a cache is a speed-up, and failing to
+# get one must never cost the session its credentials.
+make_cache_setup fail
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
+	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+assert_contains "a failed configuration is reported, not fatal" "$out" "builds stay local"
+if grep -q "^export TOK=" "$work/state/session.env"; then
+	pass "…and the session still got its credentials"
+else
+	fail "a build-cache failure cost the session its credentials"
+fi
+make_cache_setup ok
 
 # ---------------------------------------------------------------------------
 echo "cloud-bootstrap: multiple profiles"

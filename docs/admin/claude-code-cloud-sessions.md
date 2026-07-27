@@ -79,6 +79,40 @@ things land on disk — is in the
 > cloud-bootstrap leaves it alone. Moving them into the `homelab` profile's Secret
 > Manager entries is the upgrade, not a requirement.
 
+## Build cache
+
+The `auth` phase also points a plain `bazel` at the shared BuildBuddy cache, for
+any profile that both installs `bazel` and declares `BUILDBUDDY_API_KEY`.
+
+It has to, because the config that enables the cache lives in `user.bazelrc` —
+which is **git-ignored**, so a freshly cloned sandbox has none. Without this a
+session cold-builds a large polyglot repo on a 4-core box while holding a
+perfectly good key it never uses. A developer gets this from `bazel run
+//tools/remote:setup`; a cloud session has nobody to run it, so the bootstrap
+runs it for them (delegating to that same script, so the block has one
+definition).
+
+Two properties worth knowing:
+
+- **Cache only — never RBE.** Full `--config=remote` sets
+  `--remote_download_outputs=minimal` and cannot run macOS targets, so as a
+  default it would break `bazel run` of local tools and any lane consuming
+  `bazel-bin`. RBE stays an explicit opt-in, exactly as on a laptop.
+- **It happens in `auth`, never `install`.** The block contains the API key, and
+  `install` is what the *Setup script* bakes into a cached image. Writing it
+  there would bake a credential into a snapshot.
+
+> **A wrong key fails silently.** Bazel treats remote-cache auth errors as
+> warnings and builds locally, so the session just gets slow — and because the
+> BES upload is async, the giveaway surfaces on the *next* invocation:
+> ```
+> WARNING: Remote Cache: UNAUTHENTICATED: Invalid API key "0***J"
+> ```
+> `:whoami` reports the cache as *configured*, which is all it can check without
+> a network round trip — length alone cannot tell a valid 20-byte key from an
+> invalid one. **If builds are slow, read the warnings before trusting that
+> line.** Rotate with [`//tools/rotate-buildbuddy-key`](../../tools/rotate-buildbuddy-key).
+
 ## GCP access
 
 A cloud session can run `bazel run //infrastructure/pulumi/<project>:{preview,up}`
@@ -131,21 +165,35 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 **Prerequisites (set once, outside this repo):**
 - Env vars on the cloud environment (or, better, the `homelab` profile's Secret
   Manager entries — same values, rotated without touching the environment):
-  `TS_AUTHKEY` (reusable, pre-authorized for
-  `tag:claude-cloud`) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
+  `TS_AUTHKEY` (reusable, and permitting **untagged** device registration — see
+  below) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
   token — `kubectl -n claude-code get secret claude-code-token -o
   jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which
   expires).
-- Tailnet policy: `tag:claude-cloud` must have an ACL grant to the control-plane
-  nodes on `6443`, or the node joins able to *see* the netmap but not *touch* it
-  (every TCP connection is silently dropped).
+- Tailnet policy: **nothing to configure while the node joins untagged.**
+  `tailscale-up.sh` passes `--accept-routes=false` and no `--advertise-tags`, so
+  the node registers as a personal device of the tailnet owner and inherits that
+  account's access to its own machines. `tailscale status` shows it owned by
+  `james.nguyen@`, not tagged.
+
+> **Do not "fix" this by tagging the key.** A tagged node is owned by the *tag*,
+> not the user, and inherits none of that access — so `tag:claude-cloud` would
+> then need an explicit ACL grant to the control planes on `6443`, or the session
+> joins able to *see* the netmap but not *touch* it (every TCP connection
+> silently dropped, which presents as `i/o timeout`, not as a permission error).
+> This matters most if you regenerate `TS_AUTHKEY` as an **ephemeral** key so
+> finished sessions stop leaving stale nodes behind — that is worth doing, but
+> issue it untagged, or add the ACL grant in the same change.
 
 **Troubleshooting:**
 - `unsupported scheme "socks5h"` → kubeconfig must use `proxy-url: socks5://`
   (kubectl/client-go reject `socks5h`; only `curl` accepts it).
 - `Unauthorized` (401) → `LAB_SA_TOKEN` is wrong/expired; transport is fine.
-- `i/o timeout` / connection refused to `100.x` → tailnet ACL is not granting
-  `tag:claude-cloud`, or `tailscaled`/the SOCKS5 proxy isn't running.
+- `i/o timeout` / connection refused to `100.x` → `tailscaled`/the SOCKS5 proxy
+  isn't running, or the node joined **tagged** and so lost the owner's ambient
+  access (check `tailscale status`: it should show the node owned by the tailnet
+  owner, not by a tag). A tagged node needs an explicit ACL grant to the control
+  planes on `6443`.
 - The cluster API is the HA name `k8s-api.lab.ipv1337.dev` (Cloudflare A record →
   the 3 control-plane tailnet IPs); the apiserver serving cert carries it as a
   `tls-san`, so TLS validates against whichever control plane answers.

@@ -247,14 +247,21 @@ execs `.envrc`, so pinning them would add rot for no reproducibility gain.
 
 ## Where things land
 
-Nothing is written inside the workspace — a stray `git add -A` must not be able
-to stage a credential, and the secret-scan gate would (rightly) fail the push.
+Credentials go **outside the workspace** — a stray `git add -A` must not be able
+to stage one, and the secret-scan gate would (rightly) fail the push.
 
 ```
 ~/.config/vitruvian-core/cloud/sa-key-<profile>.json   0600   the decoded key, one per profile
 ~/.config/vitruvian-core/cloud/session.env             0600   the resolved credentials
 ~/.bashrc                                                     sources the above (marker-delimited)
 ```
+
+The one exception is `user.bazelrc` (see [Build cache](#build-cache)), which
+Bazel will only read from the workspace root. It carries the BuildBuddy API key,
+so it is safe for exactly one reason: it is **git-ignored**, and the configurator
+re-asserts that on every run rather than assuming a previous run did. That is the
+same protection the rule above buys, obtained differently because the file's
+location is not ours to choose.
 
 One key file per profile, because several identities can be active at once and
 the primary's path is what `GOOGLE_APPLICATION_CREDENTIALS` points at for the
@@ -271,6 +278,39 @@ the profile; `$CLAUDE_ENV_FILE` is also written when the harness provides one.
 The sibling hooks (`tailscale-up.sh`, `kube-setup.sh`) source `session.env`
 directly, since hooks are separate processes and would not otherwise see a
 `TS_AUTHKEY` or `LAB_SA_TOKEN` fetched from Secret Manager.
+
+## Build cache
+
+The `auth` phase points a plain `bazel` at the shared BuildBuddy cache, for any
+profile that both installs `bazel` and declares `BUILDBUDDY_API_KEY`. It
+delegates to `//tools/remote:setup` — the same script a developer runs — so the
+block written to `user.bazelrc` has one definition and one place that keeps the
+file git-ignored.
+
+It belongs here because that config is git-ignored and therefore absent from a
+fresh clone: without it a session cold-builds a large polyglot repo on a 4-core
+box while holding a working key it never uses. A laptop has someone to run the
+setup script; a cloud session does not.
+
+Four constraints shape it:
+
+- **The key travels in the environment, never as `--key`.** `argv` is
+  world-readable through `ps` — the same reason the service-account key travels
+  as `--key-file`.
+- **`auth`, never `install`.** The block contains the key, and `install` is the
+  phase the cloud environment's *Setup script* bakes into a cached image.
+- **Cache only, never `--config=remote`.** RBE sets
+  `--remote_download_outputs=minimal` and cannot run macOS targets, so as a
+  default it would break `bazel run` of local tools and any lane that consumes
+  `bazel-bin`.
+- **Entitlement is the profile's.** A row that does not name `BUILDBUDDY_API_KEY`
+  has already had it scrubbed and must not regain cache *write* access here.
+
+A wrong key degrades **silently**: Bazel treats remote-cache auth errors as
+warnings and builds locally, and because the BES upload is async the giveaway
+(`UNAUTHENTICATED: Invalid API key`) surfaces on the *next* invocation. Length
+cannot catch it — a 20-byte key passes `is_credential` and can still be rejected
+— so `whoami` reports the cache as *configured*, not *working*.
 
 ## Failure behavior
 
@@ -305,6 +345,13 @@ safe: each profile's secret is read as **its own** service account, with its own
 project, and one profile's SA is never used to read another's secret. Plus
 primary selection by list order, conflicting-mapping refusal, dedup, and
 all-or-nothing on an unknown name.
+
+For the build cache it pins the two failures that would matter: the API key
+reaching `argv` (a leak, since `ps` is world-readable) and the cache being
+configured for a profile not entitled to it. Plus the guards that keep it from
+producing a config that only *looks* enabled — a placeholder-length key, a
+profile with no `bazel`, and a configurator that fails without costing the
+session its credentials.
 
 The installers are not covered — they are network downloads whose only
 interesting property is whether `curl` worked.
