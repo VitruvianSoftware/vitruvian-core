@@ -796,13 +796,28 @@ configure_build_cache() {
 	# BUILD_WORKSPACE_DIRECTORY pins where user.bazelrc lands: the configurator
 	# otherwise falls back to `git rev-parse` and then to $PWD, and a hook's cwd is
 	# not guaranteed to be the workspace.
+	# VERIFIED, NOT ASSUMED: a zero exit is not evidence the block landed. Observed
+	# in a real session — the configurator died partway and left an EMPTY
+	# user.bazelrc, which is worse than no file at all: `bazel` reads it happily,
+	# the cache stays off for the entire session, and the report said so while
+	# nothing explained why. Grep for the line that actually makes a plain `bazel`
+	# use the cache.
 	if BUILD_WORKSPACE_DIRECTORY="$WS" \
 		BUILDBUDDY_API_KEY="$BUILDBUDDY_API_KEY" \
-		"$CACHE_SETUP" --cache buildbuddy --no-ci --yes >/dev/null 2>&1; then
+		"$CACHE_SETUP" --cache buildbuddy --no-ci --yes >/dev/null 2>&1 &&
+		grep -qs -- '--config=remotecache' "$WS/user.bazelrc"; then
 		note "build cache: BuildBuddy is now the default for plain bazel (cache only; RBE stays --config=remote)"
-	else
-		note "build cache: could not configure — builds stay local"
+		return 0
 	fi
+	# Clear up after a partial run so the NEXT session starts clean instead of
+	# inheriting the wreckage. Strictly a zero-byte file: that is the only state
+	# this path can have created, and a developer's own user.bazelrc is never
+	# empty — removing anything with content in it would be destroying their work.
+	if [ -f "$WS/user.bazelrc" ] && [ ! -s "$WS/user.bazelrc" ]; then
+		rm -f "$WS/user.bazelrc"
+		note "build cache: removed an empty user.bazelrc left by a partial run"
+	fi
+	note "build cache: could not configure — builds stay local"
 }
 
 # --- report -------------------------------------------------------------------

@@ -118,13 +118,23 @@ FAKE
 
 # Fake build-cache configurator: records argv AND the environment it was handed,
 # so the test can pin that the API key arrived by env and never through argv.
-make_cache_setup() { # make_cache_setup <mode: ok|fail>
+#
+# `partial` reproduces the failure seen in a real session: the real configurator
+# touches user.bazelrc before it writes, so dying midway leaves an EMPTY file
+# behind. `ok` writes the one line that actually makes a plain `bazel` use the
+# cache, because a zero exit alone is not evidence the block landed.
+make_cache_setup() { # make_cache_setup <mode: ok|fail|partial>
 	cat >"$work/cache-setup" <<FAKE
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$work/cache-setup.argv"
 printf 'KEY=%s WS=%s\n' "\${BUILDBUDDY_API_KEY:-<unset>}" \
   "\${BUILD_WORKSPACE_DIRECTORY:-<unset>}" >>"$work/cache-setup.env"
-[ "$1" = fail ] && exit 3
+case "$1" in
+fail) exit 3 ;;
+partial) : >"\${BUILD_WORKSPACE_DIRECTORY}/user.bazelrc"; exit 3 ;;
+esac
+printf 'common --config=remotecache\ncommon --remote_header=k=v\n' \
+  >"\${BUILD_WORKSPACE_DIRECTORY}/user.bazelrc"
 exit 0
 FAKE
 	chmod +x "$work/cache-setup"
@@ -376,8 +386,23 @@ make_gcloud ok
 make_cache_setup ok
 BB_KEY="bbbbbbbbkeyeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
-out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
-	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+# A THROWAWAY workspace, never the real one: this path both writes and deletes
+# user.bazelrc at the workspace root, and a test that reached the checkout would
+# clobber whatever cache config the developer running it depends on.
+CACHE_WS="$work/ws"
+
+# run_cache_auth <profile> [extra env…] — run_auth against that workspace.
+run_cache_auth() {
+	local profile="$1"
+	shift
+	rm -rf "$CACHE_WS"
+	mkdir -p "$CACHE_WS"
+	run_auth "$SA_KEY_GOOD" "VITRUVIAN_PROFILE=$profile" \
+		CLAUDE_PROJECT_DIR="$CACHE_WS" \
+		CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" "$@"
+}
+
+out="$(run_cache_auth cached BUILDBUDDY_API_KEY="$BB_KEY")"
 cargv="$(cat "$work/cache-setup.argv")"
 assert_contains "a declaring profile configures the cache" "$cargv" "--cache buildbuddy"
 assert_contains "…without touching CI secrets" "$cargv" "--no-ci"
@@ -391,39 +416,67 @@ assert_contains "…it is handed over in the environment instead" \
 assert_not_contains "…and the workspace is pinned, not guessed" \
 	"$(cat "$work/cache-setup.env")" "WS=<unset>"
 
+assert_contains "…and it is reported as configured" "$out" "default for plain bazel"
+
 # The sandbox pre-sets several credential names to short dummy strings. Building
 # a cache config on one yields something that looks enabled and authenticates
 # against nothing -- strictly worse than no cache, because it reports success.
-out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
-	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY=dummy-key)"
+out="$(run_cache_auth cached BUILDBUDDY_API_KEY=dummy-key)"
 [ ! -s "$work/cache-setup.argv" ] && pass "a placeholder key configures nothing" ||
 	fail "the cache was configured with a placeholder key"
 
 # Entitlement is the profile's, not the environment's: a row that does not name
 # BUILDBUDDY_API_KEY has already had it scrubbed, and must not get cache WRITE
 # access back through this path.
-out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=onlytok \
-	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+out="$(run_cache_auth onlytok BUILDBUDDY_API_KEY="$BB_KEY")"
 [ ! -s "$work/cache-setup.argv" ] && pass "a profile that omits the key configures nothing" ||
 	fail "an unentitled profile still configured the cache"
 
 # No bazel in the row means nothing in the session would ever read user.bazelrc.
-out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=nobazel \
-	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+out="$(run_cache_auth nobazel BUILDBUDDY_API_KEY="$BB_KEY")"
 [ ! -s "$work/cache-setup.argv" ] && pass "a profile without bazel configures nothing" ||
 	fail "the cache was configured for a session with no bazel"
 
 # Best-effort like every other path here: a cache is a speed-up, and failing to
 # get one must never cost the session its credentials.
 make_cache_setup fail
-out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
-	CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" BUILDBUDDY_API_KEY="$BB_KEY")"
+out="$(run_cache_auth cached BUILDBUDDY_API_KEY="$BB_KEY")"
 assert_contains "a failed configuration is reported, not fatal" "$out" "builds stay local"
 if grep -q "^export TOK=" "$work/state/session.env"; then
 	pass "…and the session still got its credentials"
 else
 	fail "a build-cache failure cost the session its credentials"
 fi
+
+# OBSERVED IN A REAL SESSION: the configurator died partway and left an EMPTY
+# user.bazelrc. A zero exit is therefore not evidence the block landed, and the
+# empty file is worse than no file -- `bazel` reads it happily, the cache stays
+# off for the whole session, and nothing retries because a file now exists.
+make_cache_setup partial
+out="$(run_cache_auth cached BUILDBUDDY_API_KEY="$BB_KEY")"
+assert_contains "a partial write is not mistaken for success" "$out" "builds stay local"
+[ ! -e "$CACHE_WS/user.bazelrc" ] &&
+	pass "…and the empty user.bazelrc is cleared for the next session" ||
+	fail "an empty user.bazelrc was left behind"
+
+# …but only ever a ZERO-BYTE file. Anything with content in it is a developer's
+# own configuration, and deleting that would be destroying their work. Uses the
+# `fail` fake, which does not touch the file -- `partial` truncates it, so it
+# could not tell "the cleanup spared this" from "there was nothing left to
+# spare".
+make_cache_setup fail
+rm -rf "$CACHE_WS"
+mkdir -p "$CACHE_WS"
+printf 'common --disk_cache=/tmp/mine\n' >"$CACHE_WS/user.bazelrc"
+out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=cached \
+	CLAUDE_PROJECT_DIR="$CACHE_WS" CLOUD_BOOTSTRAP_CACHE_SETUP="$work/cache-setup" \
+	BUILDBUDDY_API_KEY="$BB_KEY")"
+if grep -qs 'disk_cache' "$CACHE_WS/user.bazelrc"; then
+	pass "a non-empty user.bazelrc is never deleted"
+else
+	fail "a user's own user.bazelrc was destroyed by the cleanup"
+fi
+make_cache_setup ok
 make_cache_setup ok
 
 # ---------------------------------------------------------------------------
