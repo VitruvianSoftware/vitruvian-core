@@ -187,10 +187,18 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          # PR: diff against the target branch. merge_group: diff the queued
-          # commit against the base the queue is merging onto (base_sha is
-          # reachable because fetch-depth: 0 fetched the full history above).
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          # merge_group: diff the queued commit against the base the queue is
+          # merging onto (base_sha is reachable because fetch-depth: 0 fetched
+          # the full history above).
+          #
+          # PR: deliberately EMPTY. paths-filter ignores `base` entirely on a
+          # pull_request event -- it diffs the PR against its own base via the
+          # API -- and warns for any non-empty value ("'base' input parameter is
+          # ignored when action is triggered by pull request event"). Passing
+          # github.base_ref here changed nothing but put a warning annotation on
+          # every path-gated job of every PR run, 8 per run. Empty is falsy, so
+          # the action takes the identical code path without the annotation.
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             macos:
               - 'nexus-agent/**'
@@ -369,7 +377,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             module:
               - '${{ matrix.module }}/**'
@@ -421,7 +429,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             module:
               - '${{ matrix.module }}/**'
@@ -471,7 +479,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             iac:
               - 'infrastructure/pulumi/**'
@@ -527,7 +535,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             ex:
               - 'pulumi/examples/go-foundation/**'
@@ -593,7 +601,7 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             butane:
               - 'devx/dev-machine.template.bu'
