@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.10.2...foundation-gcp-bootstrap-v0.11.0) (2026-07-27)
+
+
+### Features
+
+* **foundation:** give the ESC identity org-level rights, and stop it impersonating silently ([#1255](https://github.com/VitruvianSoftware/vitruvian-core/issues/1255)) ([b7a05ec](https://github.com/VitruvianSoftware/vitruvian-core/commit/b7a05ecfe1af6a80376d152ce9eb43eac4389979))
+
 ## [0.10.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.10.1...foundation-gcp-bootstrap-v0.10.2) (2026-07-26)
 
 
