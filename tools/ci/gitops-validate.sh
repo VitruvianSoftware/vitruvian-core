@@ -38,13 +38,40 @@
 
 set -euo pipefail
 
+REPO="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+cd "${REPO}"
+
+# --- 1. goTemplate render simulation (the failure class kubeconform cannot see)
+#
+# kubeconform below validates the STATIC yaml. It never expands an
+# ApplicationSet, so a goTemplate that the controller cannot render passes it
+# clean and then reconciles live (app-of-platform PRUNES). That is not
+# hypothetical: issue #414 was a literal backtick closing the prometheus
+# values-block raw-string early, which broke rendering of the whole appset.
+#
+# tools/gitops/appset_render parses every appset with the SAME engine the
+# ApplicationSet controller uses (Go text/template + sprig names, under
+# `missingkey=zero`), so it agrees with the controller by construction. It is
+# pure CPU: no network, no cluster, no helm -- deliberately NOT `helm template`,
+# because all 26 chart sources here are remote and rendering them all is what
+# OOM-killed the argocd repo-server (#422).
+#
+# Runs FIRST: a template that cannot render makes the kubeconform result below
+# moot, and this failure is far cheaper to diagnose.
+#
+# Deliberately BEFORE the kubeconform guard below: this check needs neither
+# kubeconform nor network, so an operator can run it locally with nothing
+# installed -- which is the point of CONTRIBUTING.md:419's "simulate-render
+# before merge". Gating it behind a kubeconform lookup would have made the
+# cheapest, most-needed check the hardest one to run.
+echo "gitops-validate: simulating ApplicationSet goTemplate rendering ..."
+GOWORK=off go run ./tools/gitops/appset_render -root gitops/argocd
+
+# --- 2. Schema validation of the static manifests. ---------------------------
 if ! command -v kubeconform >/dev/null 2>&1; then
   echo "gitops-validate: kubeconform not found on PATH" >&2
   exit 1
 fi
-
-REPO="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-cd "${REPO}"
 
 # CRD schemas the k8s-core default set doesn't cover (ArgoCD, Gateway API,
 # cert-manager, external-dns DNSEndpoint, sealed-secrets, Envoy Gateway, …).
