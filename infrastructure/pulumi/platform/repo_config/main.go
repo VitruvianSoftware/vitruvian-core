@@ -297,6 +297,13 @@ func main() {
 					// at any visibility, runs locally as well as in CI, and also
 					// covers Cargo and PyPI, which GitHub's graph handled poorly
 					// here.
+					// go-race (#1039-adjacent) runs the race detector over EVERY Bazel
+					// go_test target. Before it, race coverage was the standalone
+					// `go test -race` matrix over devx+homelab only -- so every other Go
+					// target, tabula's included, was never race-tested anywhere. Its job
+					// is unconditional (only the STEPS are path-gated), so it always
+					// reports and is safe to require.
+					"go-race",
 					"osv-scan",
 					"secret-scan",
 				}

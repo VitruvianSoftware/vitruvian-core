@@ -81,3 +81,25 @@ try-import %workspace%/user.bazelrc
 # `bazel test --config=e2e //tabula/...` (dedicated CI lane).
 test --test_tag_filters=-e2e
 test:e2e --test_tag_filters=e2e
+
+# Go race detector (`--config=race`).
+#
+# WHY THIS EXISTS. Bazel runs all 72 go_test targets WITHOUT -race. Race
+# coverage came only from a separate non-Bazel job (ci.yaml `go-test`) running
+# `go test -race` over exactly two modules, devx and homelab -- so every other
+# Go target in the repo, tabula's included, has never been race-tested anywhere.
+# ci.yaml said so in a comment; this closes it.
+#
+# It is a SEPARATE config, not a default on `test`, because flipping it changes
+# the build configuration: Bazel reports "Build option --@rules_go//go/config:race
+# has changed, discarding analysis cache". Folding race into the default test
+# lane would thrash that cache against every non-race build. A dedicated lane
+# gets its own runner and output_base, so it pays the analysis once and nothing
+# else is disturbed.
+#
+# Verified 2026-07-27 that this genuinely arms the detector rather than being
+# accepted-and-ignored: a deliberately racy test PASSED without the flag and
+# FAILED with "WARNING: DATA RACE" with it. Measured cost: 83s for all 72
+# targets, 71 passing (the 1 failure is a pre-existing environment dependency in
+# //devx/internal/provider, which fails identically without race).
+common:race --@rules_go//go/config:race
