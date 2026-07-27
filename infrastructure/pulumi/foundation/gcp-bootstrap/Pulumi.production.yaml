@@ -75,3 +75,19 @@ config:
   # Secret Manager half of //tools/cloud-bootstrap; widen deliberately, not by
   # default.
   foundation-bootstrap:pulumi_esc_roles: "roles/secretmanager.secretAccessor"
+  # ORG-level roles. pulumi_esc_roles above is scoped to prj-b-cicd-e096 and
+  # cannot reach org or folder resources, so without these an agent session
+  # authenticates and then stops on a 403 the moment it touches a foundation
+  # stack -- which is most of what an agent is wanted for.
+  #
+  # This set mirrors the bootstrap SA (sa.go, orgRoles["bootstrap"]). It is a
+  # BROAD grant and should be read as one. What it is NOT is new agent access:
+  # //tools/gcp-token's tailnet broker already mints tokens for
+  # james@vitruviansoftware.dev, an org admin, so sessions have had org-admin GCP
+  # for as long as the broker has worked. This moves that capability onto a
+  # keyless federated identity -- no refresh token on a laptop, no dependency on
+  # a machine being awake, revocable by disabling one OIDC provider -- and writes
+  # it down here instead of leaving it an emergent property of who was logged in.
+  #
+  # Narrow it by removing entries; the stack re-converges on the next apply.
+  foundation-bootstrap:pulumi_esc_org_roles: "roles/resourcemanager.organizationAdmin,roles/orgpolicy.policyAdmin,roles/accesscontextmanager.policyAdmin,roles/serviceusage.serviceUsageConsumer,roles/iam.organizationRoleAdmin"

@@ -24,6 +24,10 @@ import (
 	"fmt"
 	"strings"
 
+	// libiam is the repo's OrganizationIAMMember component, the same one sa.go
+	// uses for every other org-level binding. Aliased because this file also needs
+	// the GCP provider's own `iam` package for the workload identity pool.
+	libiam "github.com/VitruvianSoftware/pulumi-library/go/pkg/iam"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/iam"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/orgpolicy"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
@@ -180,6 +184,28 @@ func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, is
 			Member:           pulumi.Sprintf("principal://iam.googleapis.com/%s/subject/%s", pool.Name, subject),
 		}); err != nil {
 			return nil, fmt.Errorf("binding ESC environment %q to the service account: %w", env, err)
+		}
+	}
+
+	// ORG-level capability. This is what lets an agent session actually run a
+	// foundation stack rather than authenticate and then stop on a 403; the
+	// project-scoped grants below cannot reach org or folder resources at all.
+	//
+	// Reviewer's note, because a diff that adds organizationAdmin to a federated
+	// identity deserves one: this does not create agent access to GCP that did not
+	// exist. //tools/gcp-token's tailnet broker already mints tokens for
+	// james@vitruviansoftware.dev, an org admin. What changes is the trust root --
+	// a Pulumi Cloud environment binding instead of a refresh token sitting on a
+	// laptop that must be awake -- and the fact that it is now written down here
+	// instead of being an emergent property of who happened to be logged in.
+	for _, role := range cfg.PulumiESCOrgRoles {
+		roleKey := strings.NewReplacer("/", "-", ".", "-").Replace(role)
+		if _, err := libiam.NewOrganizationIAMMember(ctx, fmt.Sprintf("org-iam-pulumi-esc-%s", roleKey), &libiam.OrganizationIAMMemberArgs{
+			OrgID:  pulumi.String(cfg.OrgID),
+			Role:   pulumi.String(role),
+			Member: pulumi.Sprintf("serviceAccount:%s", sa.Email),
+		}); err != nil {
+			return nil, fmt.Errorf("granting org role %q to the Pulumi ESC service account: %w", role, err)
 		}
 	}
 
