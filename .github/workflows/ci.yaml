@@ -514,6 +514,69 @@ jobs:
           done < <(find infrastructure/pulumi */infra -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort)
           echo "ran go test in $ran IaC module(s)"
 
+  go-race:
+    # Race detector over EVERY Bazel go_test target (72 today).
+    #
+    # Until this lane existed, race coverage came only from the `go-test` matrix
+    # above -- standalone `go test -race` over exactly two modules, devx and
+    # homelab. Every other Go target in the repo, including all of tabula's, had
+    # never been race-tested anywhere. `bazel test` does not enable -race (there
+    # was no race config in any bazelrc), which the go-test job's own comment
+    # noted without closing.
+    #
+    # Its own job, not a flag on build-test: `--@rules_go//go/config:race` is a
+    # build-configuration change ("Build option ... has changed, discarding
+    # analysis cache"), so folding it into the default lane would thrash that
+    # cache on every non-race build. A separate runner pays the analysis once.
+    #
+    # Verified the flag genuinely arms the detector rather than being silently
+    # accepted: a deliberately racy test PASSED without it and FAILED with
+    # "WARNING: DATA RACE" with it. Measured 83s for all 72 targets.
+    #
+    # Always reports (the steps are gated, never the job) so it is safe to
+    # require -- a skipped required check wedges the merge queue "pending".
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-bazel
+      - name: Detect Go changes
+        id: changes
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+          filters: |
+            go:
+              - '**/*.go'
+              - '**/go.mod'
+              - '**/go.sum'
+              - 'MODULE.bazel'
+              - '.bazelrc'
+              - '.github/workflows/ci.yaml'
+      - name: Race-test all Go targets
+        if: >-
+          github.event_name == 'push' ||
+          steps.changes.outputs.go == 'true'
+        run: |
+          set -euo pipefail
+          # Only go_test targets: race instruments Go, and sweeping //... here
+          # would duplicate build-test's work in a second configuration.
+          bazel query 'kind(go_test, //...)' > /tmp/go-tests.txt
+          count="$(wc -l < /tmp/go-tests.txt | tr -d ' ')"
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::no go_test targets found — refusing to report green on an empty race run."
+            exit 1
+          fi
+          echo "race-testing ${count} go_test target(s)"
+          bazel test --config=race --config=remote \
+            --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
+            --target_pattern_file=/tmp/go-tests.txt
+
   example-build:
     # The go-foundation EXAMPLE (pulumi/examples/go-foundation) is a reference
     # users copy. Its Go is otherwise compiled ONLY in its downstream copybara
