@@ -168,6 +168,25 @@ jobs:
   #   macos-build  (macOS) -- the actual build; the ONLY macOS-runner claim.
   #   build-macos  (Linux) -- the REQUIRED merge-queue check; always reports and
   #                           reflects macos-build's result.
+      # Tripwire for the pinned llvm content hash above: if llvm materialized
+      # under a DIFFERENT hash, the cache silently stopped covering it -- exactly
+      # the degraded-but-green failure mode this repo treats as a defect. Warn
+      # loudly with the replacement hash instead of letting it rot.
+      - name: LLVM cache tripwire
+        if: always()
+        run: |
+          C=/home/runner/.cache/bazel-repo/contents
+          PIN=$C/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          if [ ! -d "$PIN" ] && compgen -G "$C/*/*/bin/clang" >/dev/null 2>&1; then
+            NEW=$(dirname "$(dirname "$(compgen -G "$C/*/*/bin/clang" | head -1)")")
+            echo "::warning title=llvm-contents-cache stale::LLVM materialized under $(basename "$(dirname "$NEW")") but the cache pins b2a833d3... -- the toolchain is NO LONGER CACHED. Update the pinned hash in ci.yaml (both jobs)."
+            {
+              echo "### ⚠ llvm-contents-cache pinned hash is stale"
+              echo "- expected: b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513"
+              echo "- actual:   $(basename "$(dirname "$NEW")")"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   detect-macos:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -498,6 +517,60 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-bazel
+      # Cache the EXTRACTED llvm toolchain (#1039) -- the dominant variance
+      # source in this gate (uncached extraction measured 98-264s/run; the
+      # build-test spread is 336-545s).
+      #
+      # Why none of the generic layers ever covered it (all verified):
+      #  - repository-cache caches DOWNLOADS; extraction lands in the Bazel 9
+      #    repo contents cache (~/.cache/bazel-repo/contents) and the shared
+      #    "repository" entry is immutable + won by whichever job saves first --
+      #    a cheap lane that never fetched llvm (169MB entry, dated pre-#1297).
+      #  - setup-bazel's external-cache sizes $output_base/external/* entries;
+      #    the llvm entry there is a SYMLINK into the contents cache
+      #    (du: 4.0K apparent vs 8.2G real), so it always falls under the 10MB
+      #    floor and is silently skipped (#1302, closed).
+      #  - caching the whole contents tree is 3.81GB compressed -- too fat for
+      #    the 10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this
+      #    caches exactly that content-hash dir and nothing else.
+      #
+      # The path pins llvm's content hash. It changes ONLY when the llvm archive
+      # changes (bump of llvm_versions in MODULE.bazel); the tripwire step below
+      # turns a stale pin into a loud warning instead of a silent regression to
+      # uncached extraction. Restore runs here; the save happens in this
+      # action's post step after the build, only on a key miss.
+      - name: Restore the extracted LLVM toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+      # Cache the EXTRACTED llvm toolchain (#1039) -- the dominant variance
+      # source in this gate (uncached extraction measured 98-264s/run; the
+      # build-test spread is 336-545s).
+      #
+      # Why none of the generic layers ever covered it (all verified):
+      #  - repository-cache caches DOWNLOADS; extraction lands in the Bazel 9
+      #    repo contents cache (~/.cache/bazel-repo/contents) and the shared
+      #    "repository" entry is immutable + won by whichever job saves first --
+      #    a cheap lane that never fetched llvm (169MB entry, dated pre-#1297).
+      #  - setup-bazel's external-cache sizes $output_base/external/* entries;
+      #    the llvm entry there is a SYMLINK into the contents cache
+      #    (du: 4.0K apparent vs 8.2G real), so it always falls under the 10MB
+      #    floor and is silently skipped (#1302, closed).
+      #  - caching the whole contents tree is 3.81GB compressed -- too fat for
+      #    the 10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this
+      #    caches exactly that content-hash dir and nothing else.
+      #
+      # The path pins llvm's content hash. It changes ONLY when the llvm archive
+      # changes (bump of llvm_versions in MODULE.bazel); the tripwire step below
+      # turns a stale pin into a loud warning instead of a silent regression to
+      # uncached extraction. Restore runs here; the save happens in this
+      # action's post step after the build, only on a key miss.
+      - name: Restore the extracted LLVM toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
       - name: Detect Go changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -530,6 +603,25 @@ jobs:
           bazel test --config=race --config=remote \
             --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
             --target_pattern_file=/tmp/go-tests.txt
+
+      # Tripwire for the pinned llvm content hash above: if llvm materialized
+      # under a DIFFERENT hash, the cache silently stopped covering it -- exactly
+      # the degraded-but-green failure mode this repo treats as a defect. Warn
+      # loudly with the replacement hash instead of letting it rot.
+      - name: LLVM cache tripwire
+        if: always()
+        run: |
+          C=/home/runner/.cache/bazel-repo/contents
+          PIN=$C/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          if [ ! -d "$PIN" ] && compgen -G "$C/*/*/bin/clang" >/dev/null 2>&1; then
+            NEW=$(dirname "$(dirname "$(compgen -G "$C/*/*/bin/clang" | head -1)")")
+            echo "::warning title=llvm-contents-cache stale::LLVM materialized under $(basename "$(dirname "$NEW")") but the cache pins b2a833d3... -- the toolchain is NO LONGER CACHED. Update the pinned hash in ci.yaml (both jobs)."
+            {
+              echo "### ⚠ llvm-contents-cache pinned hash is stale"
+              echo "- expected: b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513"
+              echo "- actual:   $(basename "$(dirname "$NEW")")"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   example-build:
     # The go-foundation EXAMPLE (pulumi/examples/go-foundation) is a reference

@@ -211,6 +211,10 @@ llvm.toolchain(
     # 15 can't parse the macOS 15 SDK's libc++ headers. 19.1.7 is the last 19.1.x
     # that ships linux-x64 + darwin-arm64 + darwin-x64, so one entry covers every
     # platform — no per-platform map needed anymore.
+    # NB when bumping: ci.yaml pins this distribution's repo-contents hash for
+    # the extracted-toolchain cache (#1039, "Restore the extracted LLVM
+    # toolchain" in build-test + go-race). A bump changes that hash; the CI
+    # tripwire will warn with the replacement value -- update both jobs.
     llvm_versions = {
         "": "19.1.7",
     },
