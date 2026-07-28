@@ -67,7 +67,7 @@ jobs:
       # happens here -- but the toolchain must be pinned rather than inherited
       # from whatever the runner image ships, or the gate's fidelity to the
       # ApplicationSet controller drifts with the image.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
