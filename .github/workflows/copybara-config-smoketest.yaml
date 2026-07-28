@@ -26,7 +26,21 @@ name: Copybara Config Smoke Test
 # just the one being edited. This job runs the SAME pinned Copybara image the
 # exports use and `validate`s the whole config on any PR that touches the copybara
 # tooling, turning "the next scheduled export silently breaks" into a red check
-# that blocks the merge. Make this a REQUIRED check on the merge queue.
+# that blocks the merge.
+#
+# DO NOT make this a required merge-queue check while the `paths:` filters below
+# exist. A path-filtered workflow does not run -- and therefore never REPORTS --
+# on a PR outside its paths, so every PR that does not touch copybara would sit
+# "pending" forever and never become mergeable. This repo has already been
+# wedged that way once; see the standing warnings in gitops-validate.yaml,
+# actionlint.yaml and migration-safety.yaml, all of which deliberately carry no
+# `paths:` filter for exactly this reason.
+#
+# The safe pattern, if this ever does need to gate the queue, is "always report,
+# conditionally work" (tools/ci/relevant-paths.sh, PR #273): trigger on every
+# pull_request/merge_group with NO `paths:` filter, and skip the WORK inside the
+# job based on a changed-files diff. Note `merge_group` events ignore `paths:`
+# anyway, so the filter buys nothing on the lane that would matter.
 on:
     pull_request:
         paths:
