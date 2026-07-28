@@ -52,9 +52,33 @@ on:
   schedule:
     - cron: "30 6 * * *"
 
+# Cancel a PR's in-flight e2e when a newer push to the same PR supersedes it.
+# NEVER cancels the push-to-main or nightly-schedule lanes -- same invariant
+# ci.yaml states, for the same reason: their results VERIFY what is already on
+# main, so a cancelled run is a commit that main never got a verdict for.
+#
+# Both halves of this matter, and the old `cancel-in-progress: true` broke both:
+#
+#  - push-to-main. Observed 2026-07-28: ed081f43 ("Bump the go-minor-patch
+#    group across 3 directories") landed and its run was cancelled 2m6s in by
+#    the next merge -- BOTH `e2e` and `coverage` killed, so that commit has no
+#    e2e and no jest-coverage verdict on main. A later red run then misattributes
+#    the breakage to the wrong commit, which is exactly what culprit-finder.yaml
+#    has to bisect back out.
+#
+#  - the nightly schedule. `github.ref` is refs/heads/main for the schedule
+#    event too, so the quarantine lane shared one group with every merge and any
+#    merge landing while it ran would cancel it. That lane runs a DIFFERENT
+#    target (//tabula/extension:e2e_quarantine, line ~176) than the push lane,
+#    so nothing else reproduces the signal -- and green-streak evidence is the
+#    whole point of #501/#512. `github.event_name` in the group key keeps the
+#    schedule and push lanes from ever contending.
+#
+# Non-PR runs now serialize instead of cancelling. That is cheap here: e2e runs
+# ~4-7min against a merge cadence measured in tens of minutes.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least-privilege GITHUB_TOKEN: both jobs only check out and run the hermetic
 # Bazel stack (e2e + coverage); upload-artifact needs no token scope. Pin
