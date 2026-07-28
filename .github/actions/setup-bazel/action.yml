@@ -36,6 +36,29 @@ runs:
       with:
         bazelisk-cache: true
         repository-cache: true
+        # Cache the EXTRACTED llvm toolchain (#1039).
+        #
+        # repository-cache above caches DOWNLOADS; extraction is per-output_base,
+        # so every fresh runner re-extracts LLVM-19.1.7-Linux-X64.tar.xz. Measured
+        # on main: 35s / 94s / 95s / 106s / 154s / 204s within a single run, and
+        # 154s even on a warm re-run. It is the dominant slice of the ~3m45s of
+        # loading/analysis on lanes like tidy-check (only ~48s of that 275s is
+        # action execution -- Critical Path: 44.48s).
+        #
+        # Scoped with `manifest` rather than `external-cache: true`: that would
+        # cache EVERY external over 10MB, and each repo is a separate cache entry
+        # competing for the repo-wide 10GB Actions cache budget. LLVM is the one
+        # that actually costs minutes. Keyed on MODULE.bazel because that is where
+        # llvm_versions is pinned (:207-216), so a toolchain bump invalidates it.
+        #
+        # A remote ACTION cache does NOT substitute for this -- measured and
+        # rejected in #1038: --config=remotecache on tidy-check was slightly
+        # WORSE (288.5s vs 275.5s) with zero cache hits, because RBE and
+        # cache-only lanes compute different action keys, and because the cost
+        # here is loading/analysis rather than action execution.
+        external-cache: |
+          manifest:
+            llvm_toolchain_llvm: MODULE.bazel
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
