@@ -52,9 +52,44 @@ on:
   schedule:
     - cron: "30 6 * * *"
 
+# Cancel a PR's in-flight e2e when a newer push to the same PR supersedes it.
+# NEVER cancels the push-to-main or nightly-schedule lanes -- same invariant
+# ci.yaml states, for the same reason: their results VERIFY what is already on
+# main, so a cancelled run is a commit that main never got a verdict for.
+#
+# Both halves of this matter, and the old `cancel-in-progress: true` broke both:
+#
+#  - push-to-main. Observed 2026-07-28: ed081f43 ("Bump the go-minor-patch
+#    group across 3 directories") landed and its run was cancelled 2m6s in by
+#    the next merge -- BOTH `e2e` and `coverage` killed, so that commit has no
+#    e2e and no jest-coverage verdict on main. A later red run then misattributes
+#    the breakage to the wrong commit, which is exactly what culprit-finder.yaml
+#    has to bisect back out.
+#
+#  - the nightly schedule. `github.ref` is refs/heads/main for the schedule
+#    event too, so the quarantine lane shared one group with every merge and any
+#    merge landing while it ran would cancel it. That lane runs a DIFFERENT
+#    target (//tabula/extension:e2e_quarantine, line ~176) than the push lane,
+#    so nothing else reproduces the signal -- and green-streak evidence is the
+#    whole point of #501/#512. `github.event_name` in the group key keeps the
+#    schedule and push lanes from ever contending.
+#
+# WHY THE NON-PR LANES KEY ON `github.sha`, NOT `github.ref`. Turning
+# cancel-in-progress off is NOT sufficient on its own: GitHub also cancels an
+# already-PENDING run in a group when a newer one queues behind the running one.
+# Merges here arrive in dependabot bursts -- 10:00:15 and 10:02:05 on 2026-07-28,
+# ~2min apart, against a 4-7min e2e -- so a ref-keyed push lane would still drop
+# the middle commits of a burst, just at a different point. `github.sha` is
+# unique per commit, so every pushed commit gets its own group and its own
+# verdict: nothing cancels it, nothing queues it behind a sibling. Bursts run in
+# parallel, which is the same total work rather than extra.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # pull_request: group by ref, so a newer push to the SAME PR supersedes the
+  # old run. push / schedule: group by sha, unique per run, so they neither
+  # cancel nor queue. cancel-in-progress is additionally pinned to the PR event
+  # so the intent survives any later change to the key.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least-privilege GITHUB_TOKEN: both jobs only check out and run the hermetic
 # Bazel stack (e2e + coverage); upload-artifact needs no token scope. Pin
