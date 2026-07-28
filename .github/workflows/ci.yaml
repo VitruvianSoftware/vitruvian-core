@@ -168,23 +168,26 @@ jobs:
   #   macos-build  (macOS) -- the actual build; the ONLY macOS-runner claim.
   #   build-macos  (Linux) -- the REQUIRED merge-queue check; always reports and
   #                           reflects macos-build's result.
-      # TEMPORARY DIAGNOSTIC (#1039) — runs AFTER the build so external/ is
-      # populated. `if: always()` so it reports even when the build fails.
-      - name: DIAG - llvm external shape
+      # TEMPORARY DIAGNOSTIC round 2 (#1039). We now know the llvm external is
+      # a symlink into the Bazel 9 repo contents cache INSIDE ~/.cache/bazel-repo
+      # -- the very dir repository-cache:true caches. This measures (a) what the
+      # restored repository cache actually contained, (b) whether the contents
+      # tree is small enough to Actions-cache once zstd-compressed, (c) how long
+      # compress takes.
+      - name: DIAG2 - repo cache anatomy
         if: always()
         run: |
-          OB=$(cat /home/runner/.bazelrc 2>/dev/null | grep -oE 'output_base=\S+' | cut -d= -f2 | head -1)
-          OB=${OB:-/home/runner/.bazel}
-          echo "output_base=$OB"
-          echo "symlinks: $(find "$OB/external" -maxdepth 1 -type l 2>/dev/null | wc -l)"
-          echo "realdirs: $(find "$OB/external" -maxdepth 1 -type d 2>/dev/null | wc -l)"
-          L="$OB/external/toolchains_llvm++llvm+llvm_toolchain_llvm"
-          echo "--- llvm entry ---"
-          ls -ld "$L" 2>&1 | head -2
-          echo "is_symlink: $([ -L "$L" ] && echo YES || echo no)"
-          echo "du_nofollow: $(du -sh "$L" 2>/dev/null | cut -f1)"
-          echo "du_follow:   $(du -shL "$L" 2>/dev/null | cut -f1)"
-          echo "target:      $(readlink -f "$L" 2>/dev/null)"
+          RC=/home/runner/.cache/bazel-repo
+          echo "=== what the RESTORED repository cache held vs now ==="
+          du -sh "$RC" 2>/dev/null || true
+          du -sh "$RC/contents" 2>/dev/null || true
+          ls "$RC/contents" 2>/dev/null | head -5
+          echo "=== does it hold the llvm DOWNLOAD (the .tar.xz blob)? ==="
+          find "$RC" -maxdepth 3 -size +400M -not -path '*/contents/*' -exec du -sh {} \; 2>/dev/null | head -5
+          echo "=== compressed size + time of the contents tree ==="
+          time tar -C "$RC" -cf - contents 2>/dev/null | zstd -3 -T0 2>/dev/null | wc -c | awk '{printf "contents.tar.zst: %.2f GB\n", $1/1073741824}'
+          echo "=== per-entry sizes in contents ==="
+          du -sh "$RC"/contents/*/* 2>/dev/null | sort -rh | head -6
 
   detect-macos:
     runs-on: ubuntu-latest
