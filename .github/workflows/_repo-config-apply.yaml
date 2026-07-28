@@ -28,8 +28,10 @@ name: Repo Config Apply
 # DISABLED BY DEFAULT — opt in by setting the repository variable
 # REPO_CONFIG_AUTO_APPLY=true (Settings -> Secrets and variables -> Actions ->
 # Variables). Uses the same shared GitHub App credentials as the preview
-# workflow: set its app id in the PULUMI_APP_ID variable and its private key in
-# the APP_PRIVATE_KEY secret, plus PULUMI_ACCESS_TOKEN for the Pulumi backend.
+# workflow: its private key in the APP_PRIVATE_KEY secret, plus
+# PULUMI_ACCESS_TOKEN for the Pulumi backend. The App is identified by its
+# CLIENT id (#993) -- committed as the default, overridable via the
+# PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     push:
         # repo_config's Pulumi default branch is "main". GitHub Actions `on:`
@@ -75,7 +77,7 @@ jobs:
               id: app-token
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
-                  app-id: ${{ vars.PULUMI_APP_ID }}
+                  client-id: ${{ vars.PULUMI_APP_CLIENT_ID || 'Iv23lijyULMNaNPFbaQZ' }} # vitruviansoftware-pulumi; var wins so //tools/pulumi:create-app can rebootstrap
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
             - name: Pulumi up (repo_config)

@@ -179,6 +179,13 @@ fi
 APP_ID="$(printf '%s' "$CONVERSION" | jq -r '.id')"
 APP_SLUG="$(printf '%s' "$CONVERSION" | jq -r '.slug')"
 APP_PEM="$(printf '%s' "$CONVERSION" | jq -r '.pem')"
+# actions/create-github-app-token deprecated `app-id:` in favour of `client-id:`
+# (#993), so the workflows now authenticate with the App's CLIENT id. It is a
+# different value from the numeric App id and is NOT a secret -- GitHub returns
+# it from the public GET /apps/{slug}. Capture it here so a rebootstrapped App
+# is wired up completely; the workflows read PULUMI_APP_CLIENT_ID in preference
+# to their committed default.
+APP_CLIENT_ID="$(printf '%s' "$CONVERSION" | jq -r '.client_id // empty')"
 if [ -z "$APP_ID" ] || [ "$APP_ID" = "null" ] || [ -z "$APP_PEM" ] || [ "$APP_PEM" = "null" ]; then
   echo "! Conversion did not return an App id/pem (the code may have expired). Re-run." >&2
   exit 1
@@ -191,6 +198,16 @@ echo "Setting org-level credentials on '$OWNER' (App ID as a variable, key as a 
 gh variable set PULUMI_APP_ID --org "$OWNER" --visibility all --body "$APP_ID"
 printf '%s' "$APP_PEM" | gh secret set APP_PRIVATE_KEY --org "$OWNER" --visibility all
 echo "✓ Set PULUMI_APP_ID (variable) and APP_PRIVATE_KEY (secret)."
+# The workflows authenticate with client-id (#993). Without this the rebootstrapped
+# App would have a fresh id + key wired up but the workflows would still mint
+# against the PREVIOUS App's committed default client id.
+if [ -n "$APP_CLIENT_ID" ]; then
+  gh variable set PULUMI_APP_CLIENT_ID --org "$OWNER" --visibility all --body "$APP_CLIENT_ID"
+  echo "✓ Set PULUMI_APP_CLIENT_ID (variable)."
+else
+  echo "! Conversion returned no client_id. Read it from 'gh api /apps/$APP_SLUG --jq .client_id'" >&2
+  echo "  and set it with: gh variable set PULUMI_APP_CLIENT_ID --org $OWNER --visibility all --body <id>" >&2
+fi
 
 # --- Pulumi Cloud access token (read silently, never echoed) ---------------
 echo
