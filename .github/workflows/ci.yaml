@@ -79,6 +79,29 @@ jobs:
       # though no Android target is built here. Only CodeQL is pruned from the
       # toolcache (its Go/Node/Python are used by other jobs). `|| true` so a
       # missing path is never fatal to this required check.
+      # TEMPORARY DIAGNOSTIC (#1039): is the llvm external a symlink?
+      # setup-bazel's post step globs $output_base/external/* and sizes each
+      # entry; if llvm is a symlink, getFolderSize returns ~0, it falls under the
+      # 10MB threshold and is silently never cached. That would explain why no
+      # llvm cache entry exists despite three key formats and a manifest bust.
+      - name: DIAG - llvm external shape
+        if: always()
+        run: |
+          set -x
+          OB=$(bazel info output_base 2>/dev/null || echo /home/runner/.bazel)
+          echo "output_base=$OB"
+          ls -ld "$OB/external" || true
+          find "$OB/external" -maxdepth 1 -name '*llvm*' -exec ls -ld {} \; 2>/dev/null | head -10
+          echo "--- symlink vs dir counts ---"
+          echo "symlinks: $(find "$OB/external" -maxdepth 1 -type l 2>/dev/null | wc -l)"
+          echo "dirs:     $(find "$OB/external" -maxdepth 1 -type d 2>/dev/null | wc -l)"
+          echo "--- apparent vs real size of the llvm repo ---"
+          L="$OB/external/toolchains_llvm++llvm+llvm_toolchain_llvm"
+          ls -ld "$L" || true
+          du -sh "$L" 2>/dev/null || true
+          du -shL "$L" 2>/dev/null || true
+          readlink -f "$L" 2>/dev/null || true
+
       - name: Free up runner disk space
         run: |
           echo "Disk before cleanup:" && df -h /
