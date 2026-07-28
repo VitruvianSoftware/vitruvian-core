@@ -30,8 +30,10 @@ name: Repo Config Preview
 # REPO_CONFIG_PREVIEW_ENABLED=true (Settings -> Secrets and variables ->
 # Actions -> Variables). The shared GitHub App (created once per org via
 # `bazel run //tools/pulumi:create-app`) supplies the Pulumi GitHub provider
-# credentials; set its app id in the PULUMI_APP_ID variable and its private key
-# in the APP_PRIVATE_KEY secret, plus PULUMI_ACCESS_TOKEN for the Pulumi backend.
+# credentials; set its private key in the APP_PRIVATE_KEY secret, plus
+# PULUMI_ACCESS_TOKEN for the Pulumi backend. The App is identified by its
+# CLIENT id (#993) -- committed as the default, overridable via the
+# PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     pull_request:
         # repo_config compiles + deploys the shared pkg/secrets it imports (local
@@ -101,7 +103,7 @@ jobs:
               if: steps.creds.outputs.available == 'true'
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
-                  app-id: ${{ vars.PULUMI_APP_ID }}
+                  client-id: ${{ vars.PULUMI_APP_CLIENT_ID || 'Iv23lijyULMNaNPFbaQZ' }} # vitruviansoftware-pulumi; var wins so //tools/pulumi:create-app can rebootstrap
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
             # Says WHY the leg is green rather than leaving the reader to infer

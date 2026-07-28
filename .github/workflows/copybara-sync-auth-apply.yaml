@@ -30,7 +30,8 @@ name: Copybara Sync-Auth Apply
 # (Settings -> Secrets and variables -> Actions -> Variables) — off by default
 # because this stack manages auth for every component.
 #
-# Auth: the shared Pulumi GitHub App (PULUMI_APP_ID variable + APP_PRIVATE_KEY
+# Auth: the shared Pulumi GitHub App (client id committed as the default and
+# overridable via the PULUMI_APP_CLIENT_ID variable, see #993, + APP_PRIVATE_KEY
 # secret) — minted org-scoped so the provider can manage deploy keys on the
 # standalone repos, not just the monorepo — plus PULUMI_ACCESS_TOKEN for the
 # Pulumi Cloud backend. The App must be installed (with administration + secrets
@@ -81,7 +82,7 @@ jobs:
               id: app-token
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
-                  app-id: ${{ vars.PULUMI_APP_ID }}
+                  client-id: ${{ vars.PULUMI_APP_CLIENT_ID || 'Iv23lijyULMNaNPFbaQZ' }} # vitruviansoftware-pulumi; var wins so //tools/pulumi:create-app can rebootstrap
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
                   owner: ${{ github.repository_owner }}
 

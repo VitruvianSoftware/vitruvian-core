@@ -87,7 +87,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -117,7 +117,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -147,7 +147,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -413,7 +413,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -477,7 +477,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -551,7 +551,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.SYNC_APP_ID }}
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0

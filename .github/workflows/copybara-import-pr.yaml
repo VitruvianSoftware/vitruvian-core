@@ -38,8 +38,8 @@ name: Copybara Import PR
 #
 # CREDENTIAL (GitHub App, HTTPS only -- do NOT reintroduce SSH or a PAT):
 #   Each matrix leg mints a SHORT-LIVED installation token from the
-#   `vitruvian-copybara-sync` GitHub App (secrets.SYNC_APP_ID /
-#   secrets.SYNC_APP_PRIVATE_KEY), scoped to exactly TWO repos:
+#   `vitruvian-copybara-sync` GitHub App (its public client id, committed --
+#   see #993 -- plus secrets.SYNC_APP_PRIVATE_KEY), scoped to exactly TWO repos:
 #       - <component>      (Pull requests + Contents) -- lets `gh pr list` and
 #         Copybara's git.github_pr_origin read mirror PR metadata + head.
 #       - vitruvian-core   (Pull requests + Contents) -- lets Copybara's
@@ -130,7 +130,7 @@ jobs:
               # dependabot workflows already use.
               uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
-                app-id: ${{ secrets.SYNC_APP_ID }}
+                client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
                 owner: VitruvianSoftware
                 repositories: |
