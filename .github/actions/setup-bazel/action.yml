@@ -62,6 +62,16 @@ runs:
         # WORSE (288.5s vs 275.5s) with zero cache hits, because RBE and
         # cache-only lanes compute different action keys, and because the cost
         # here is loading/analysis rather than action execution.
+        # cache-version busts the MANIFEST, which is the actual blocker. The
+        # action decides WHICH externals to restore from a manifest file that is
+        # itself cached (`external-ci-<job>-manifest`), keyed on MODULE.bazel.
+        # The live manifest was captured BEFORE #1297, when build-test still used
+        # affected-target selection and therefore never built a C++ target, so
+        # llvm_toolchain_llvm is simply not in it -- and it is never restored,
+        # never saved, and never regenerates while MODULE.bazel is unchanged.
+        # Verified on run 30319917714: "Cache hit for: ...ci-build-test-manifest",
+        # then restores for rules_oci / rules_ruby / rules_multitool and NO llvm.
+        cache-version: 2
         external-cache: |
           manifest:
             toolchains_llvm++llvm+llvm_toolchain_llvm: MODULE.bazel
