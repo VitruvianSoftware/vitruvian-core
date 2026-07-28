@@ -45,11 +45,17 @@ runs:
         # loading/analysis on lanes like tidy-check (only ~48s of that 275s is
         # action execution -- Critical Path: 44.48s).
         #
-        # Scoped with `manifest` rather than `external-cache: true`: that would
-        # cache EVERY external over 10MB, and each repo is a separate cache entry
-        # competing for the repo-wide 10GB Actions cache budget. LLVM is the one
-        # that actually costs minutes. Keyed on MODULE.bazel because that is where
-        # llvm_versions is pinned (:207-216), so a toolchain bump invalidates it.
+        # NOTE on `manifest` semantics (learned the hard way on the first run of
+        # #1302): it does NOT restrict WHICH repos are cached -- it overrides the
+        # cache KEY for the repos named in it. Every external over 10MB is cached
+        # either way. The key must also be the CANONICAL repo name as it appears
+        # on disk (`toolchains_llvm++llvm+llvm_toolchain_llvm`), not the apparent
+        # name; with the short name the entry was simply never created and LLVM
+        # kept extracting. Keyed on MODULE.bazel because that is where
+        # llvm_versions is pinned, so a toolchain bump invalidates it.
+        #
+        # Measured cache footprint after enabling: ~2.4GB across ~56 entries,
+        # against the repo-wide 10GB Actions budget.
         #
         # A remote ACTION cache does NOT substitute for this -- measured and
         # rejected in #1038: --config=remotecache on tidy-check was slightly
@@ -58,7 +64,7 @@ runs:
         # here is loading/analysis rather than action execution.
         external-cache: |
           manifest:
-            llvm_toolchain_llvm: MODULE.bazel
+            toolchains_llvm++llvm+llvm_toolchain_llvm: MODULE.bazel
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
