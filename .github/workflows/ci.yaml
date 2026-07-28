@@ -91,6 +91,39 @@ jobs:
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
+      # Cache the EXTRACTED llvm toolchain (#1039) -- the dominant variance
+      # source in this gate (uncached extraction measured 98-264s/run; the
+      # build-test spread is 336-545s).
+      #
+      # Why none of the generic layers ever covered it (all verified):
+      #  - repository-cache caches DOWNLOADS; extraction lands in the Bazel 9
+      #    repo contents cache (~/.cache/bazel-repo/contents) and the shared
+      #    "repository" entry is immutable + won by whichever job saves first --
+      #    a cheap lane that never fetched llvm (169MB entry, dated pre-#1297).
+      #  - setup-bazel's external-cache sizes $output_base/external/* entries;
+      #    the llvm entry there is a SYMLINK into the contents cache
+      #    (du: 4.0K apparent vs 8.2G real), so it always falls under the 10MB
+      #    floor and is silently skipped (#1302, closed).
+      #  - caching the whole contents tree is 3.81GB compressed -- too fat for
+      #    the 10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this
+      #    caches exactly that content-hash dir and nothing else.
+      #
+      # The path pins llvm's content hash. It changes ONLY when the llvm archive
+      # changes (bump of llvm_versions in MODULE.bazel); the tripwire step below
+      # turns a stale pin into a loud warning instead of a silent regression to
+      # uncached extraction. Restore runs here; the save happens in this
+      # action's post step after the build, only on a key miss.
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+      - name: Record LLVM candidate count (pre-build)
+        id: llvm-pre
+        run: |
+          PIN=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          echo "count=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
       # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
       # `build-test` is a REQUIRED status check behind the merge queue, so it
@@ -168,6 +201,50 @@ jobs:
   #   macos-build  (macOS) -- the actual build; the ONLY macOS-runner claim.
   #   build-macos  (Linux) -- the REQUIRED merge-queue check; always reports and
   #                           reflects macos-build's result.
+      # Tripwire (#1039, hardened per review on #1304): assert the cache was
+      # USED, not merely that the pinned hash still exists. The first version
+      # checked only whether the pin moved -- and stayed green while build-test
+      # extracted with NO cache step at all (the placement bug), because
+      # extraction itself creates the pinned dir. Same green-but-degraded shape
+      # as the dead TD fast path (#1260): a guard must test the outcome.
+      #
+      #  - restore step missing/skipped        -> FAIL (structural, never legit)
+      #  - restored a hit, but Bazel STILL     -> FAIL (recorded-inputs mismatch;
+      #    materialized a new candidate            the cache is dead weight)
+      #  - key miss                            -> notice only (expected once
+      #                                            after an llvm_versions bump)
+      #  - llvm under a different content hash -> warning with replacement hash
+      - name: LLVM cache tripwire
+        if: always()
+        env:
+          RESTORE_OUTCOME: ${{ steps.llvm-contents.outcome }}
+          CACHE_HIT: ${{ steps.llvm-contents.outputs.cache-hit }}
+          PRE_COUNT: ${{ steps.llvm-pre.outputs.count }}
+        run: |
+          C=/home/runner/.cache/bazel-repo/contents
+          PIN=$C/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          POST_COUNT=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$RESTORE_OUTCOME" != "success" ]; then
+            echo "::error title=llvm-contents-cache broken::the 'Restore the extracted LLVM toolchain' step did not run in this job (outcome='$RESTORE_OUTCOME'). This is the exact placement bug that shipped once already -- the lane pays full extraction while everything looks green."
+            exit 1
+          fi
+          if [ "$CACHE_HIT" = "true" ] && [ "${POST_COUNT:-0}" -gt "${PRE_COUNT:-0}" ]; then
+            echo "::error title=llvm-contents-cache dead weight::cache HIT restored a candidate but Bazel materialized a NEW one anyway (candidates $PRE_COUNT -> $POST_COUNT): recorded-inputs validation rejected the restored dir, so every run now pays restore AND extraction. Investigate before this rots."
+            exit 1
+          fi
+          if [ "$CACHE_HIT" != "true" ] && [ "${POST_COUNT:-0}" -gt 0 ]; then
+            echo "::notice::llvm-contents cache miss -- extracted and the post step will save. Expected exactly once after an llvm_versions bump."
+          fi
+          if [ ! -d "$PIN" ] && compgen -G "$C/*/*/bin/clang" >/dev/null 2>&1; then
+            NEW=$(dirname "$(dirname "$(compgen -G "$C/*/*/bin/clang" | head -1)")")
+            echo "::warning title=llvm-contents-cache stale::LLVM materialized under $(basename "$(dirname "$NEW")") but the cache pins b2a833d3... -- update the pinned hash in ci.yaml (both jobs)."
+            {
+              echo "### llvm-contents-cache pinned hash is stale"
+              echo "- expected: b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513"
+              echo "- actual:   $(basename "$(dirname "$NEW")")"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   detect-macos:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -498,6 +575,39 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-bazel
+      # Cache the EXTRACTED llvm toolchain (#1039) -- the dominant variance
+      # source in this gate (uncached extraction measured 98-264s/run; the
+      # build-test spread is 336-545s).
+      #
+      # Why none of the generic layers ever covered it (all verified):
+      #  - repository-cache caches DOWNLOADS; extraction lands in the Bazel 9
+      #    repo contents cache (~/.cache/bazel-repo/contents) and the shared
+      #    "repository" entry is immutable + won by whichever job saves first --
+      #    a cheap lane that never fetched llvm (169MB entry, dated pre-#1297).
+      #  - setup-bazel's external-cache sizes $output_base/external/* entries;
+      #    the llvm entry there is a SYMLINK into the contents cache
+      #    (du: 4.0K apparent vs 8.2G real), so it always falls under the 10MB
+      #    floor and is silently skipped (#1302, closed).
+      #  - caching the whole contents tree is 3.81GB compressed -- too fat for
+      #    the 10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this
+      #    caches exactly that content-hash dir and nothing else.
+      #
+      # The path pins llvm's content hash. It changes ONLY when the llvm archive
+      # changes (bump of llvm_versions in MODULE.bazel); the tripwire step below
+      # turns a stale pin into a loud warning instead of a silent regression to
+      # uncached extraction. Restore runs here; the save happens in this
+      # action's post step after the build, only on a key miss.
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+      - name: Record LLVM candidate count (pre-build)
+        id: llvm-pre
+        run: |
+          PIN=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          echo "count=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
       - name: Detect Go changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -530,6 +640,50 @@ jobs:
           bazel test --config=race --config=remote \
             --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
             --target_pattern_file=/tmp/go-tests.txt
+
+      # Tripwire (#1039, hardened per review on #1304): assert the cache was
+      # USED, not merely that the pinned hash still exists. The first version
+      # checked only whether the pin moved -- and stayed green while build-test
+      # extracted with NO cache step at all (the placement bug), because
+      # extraction itself creates the pinned dir. Same green-but-degraded shape
+      # as the dead TD fast path (#1260): a guard must test the outcome.
+      #
+      #  - restore step missing/skipped        -> FAIL (structural, never legit)
+      #  - restored a hit, but Bazel STILL     -> FAIL (recorded-inputs mismatch;
+      #    materialized a new candidate            the cache is dead weight)
+      #  - key miss                            -> notice only (expected once
+      #                                            after an llvm_versions bump)
+      #  - llvm under a different content hash -> warning with replacement hash
+      - name: LLVM cache tripwire
+        if: always()
+        env:
+          RESTORE_OUTCOME: ${{ steps.llvm-contents.outcome }}
+          CACHE_HIT: ${{ steps.llvm-contents.outputs.cache-hit }}
+          PRE_COUNT: ${{ steps.llvm-pre.outputs.count }}
+        run: |
+          C=/home/runner/.cache/bazel-repo/contents
+          PIN=$C/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
+          POST_COUNT=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$RESTORE_OUTCOME" != "success" ]; then
+            echo "::error title=llvm-contents-cache broken::the 'Restore the extracted LLVM toolchain' step did not run in this job (outcome='$RESTORE_OUTCOME'). This is the exact placement bug that shipped once already -- the lane pays full extraction while everything looks green."
+            exit 1
+          fi
+          if [ "$CACHE_HIT" = "true" ] && [ "${POST_COUNT:-0}" -gt "${PRE_COUNT:-0}" ]; then
+            echo "::error title=llvm-contents-cache dead weight::cache HIT restored a candidate but Bazel materialized a NEW one anyway (candidates $PRE_COUNT -> $POST_COUNT): recorded-inputs validation rejected the restored dir, so every run now pays restore AND extraction. Investigate before this rots."
+            exit 1
+          fi
+          if [ "$CACHE_HIT" != "true" ] && [ "${POST_COUNT:-0}" -gt 0 ]; then
+            echo "::notice::llvm-contents cache miss -- extracted and the post step will save. Expected exactly once after an llvm_versions bump."
+          fi
+          if [ ! -d "$PIN" ] && compgen -G "$C/*/*/bin/clang" >/dev/null 2>&1; then
+            NEW=$(dirname "$(dirname "$(compgen -G "$C/*/*/bin/clang" | head -1)")")
+            echo "::warning title=llvm-contents-cache stale::LLVM materialized under $(basename "$(dirname "$NEW")") but the cache pins b2a833d3... -- update the pinned hash in ci.yaml (both jobs)."
+            {
+              echo "### llvm-contents-cache pinned hash is stale"
+              echo "- expected: b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513"
+              echo "- actual:   $(basename "$(dirname "$NEW")")"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   example-build:
     # The go-foundation EXAMPLE (pulumi/examples/go-foundation) is a reference
