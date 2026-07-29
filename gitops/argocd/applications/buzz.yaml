@@ -48,7 +48,10 @@ spec:
             existingSecret: buzz-secrets
 
           relay:
-            requireRelayMembership: true
+            # TEMP: disabled for initial boot — relay tries to bootstrap the
+            # owner into relay_members before auto-migrate creates the table.
+            # Re-enable after first successful migration.
+            requireRelayMembership: false
             requireAuthToken: true
 
           # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
