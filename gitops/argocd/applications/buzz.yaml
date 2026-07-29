@@ -54,6 +54,10 @@ spec:
             requireRelayMembership: true
             requireAuthToken: true
 
+          pairingRelay:
+            enabled: true
+            url: "wss://buzz.ipv1337.dev/pair"
+
           # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
           httproute:
             enabled: true
@@ -62,6 +66,27 @@ spec:
                 kind: Gateway
                 name: platform
                 namespace: envoy-gateway-system
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /pair
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: buzz-pairing
+                    port: 5000
+                    weight: 1
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: buzz
+                    port: 3000
+                    weight: 1
 
           # Redis: use the dedicated HA Redis cluster from the platform layer.
           redis:
