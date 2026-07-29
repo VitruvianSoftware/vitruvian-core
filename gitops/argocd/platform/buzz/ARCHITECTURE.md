@@ -36,6 +36,42 @@ sequenceDiagram
     Relay->>User: Syncs new message to user's screen
 ```
 
+## Component Architecture
+
+This diagram visualizes the static relationship between the infrastructure running in the homelab and the processes running natively on the local macOS machine.
+
+```mermaid
+graph TD
+    subgraph Local Mac [Local macOS Machine]
+        UI[Buzz Desktop App]
+        ACP[Agent Control Plane<br/>buzz-acp]
+        Agent[Agent Process<br/>buzz-agent]
+        MCP[Local Tools<br/>buzz-dev-mcp]
+        LLM[Local AI<br/>Ollama]
+        
+        UI <--> ACP
+        ACP --> Agent
+        Agent <--> MCP
+        Agent <--> LLM
+    end
+
+    subgraph Homelab [Homelab k3s Cluster]
+        Gateway[Envoy Gateway<br/>buzz.ipv1337.dev]
+        RelayPod[Buzz Relay Pod<br/>block/buzz]
+        DB[(PostgreSQL<br/>CNPG)]
+        Redis[(Redis<br/>PubSub)]
+        S3[(MinIO<br/>Object Storage)]
+        
+        Gateway --> RelayPod
+        RelayPod <--> DB
+        RelayPod <--> Redis
+        RelayPod <--> S3
+    end
+    
+    UI <-->|WSS| Gateway
+    ACP <-->|WSS| Gateway
+```
+
 ## Division of Labor
 
 ### 1. The Relay (Homelab Server)
