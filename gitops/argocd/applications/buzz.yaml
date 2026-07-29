@@ -51,8 +51,17 @@ spec:
             existingSecret: buzz-secrets
 
           relay:
-            requireRelayMembership: true
+            requireRelayMembership: false
             requireAuthToken: true
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: kubernetes.io/hostname
+                whenUnsatisfiable: ScheduleAnyway
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: buzz
+                    app.kubernetes.io/name: buzz
+                    app.kubernetes.io/component: relay
 
           pairingRelay:
             enabled: true
