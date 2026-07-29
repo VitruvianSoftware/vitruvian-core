@@ -17,42 +17,52 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-# redis — Dedicated HA Redis cluster for platform shared services.
-# Used by Buzz (and other apps) for Pub/Sub. Configured for High
-# Availability (Replication + Sentinel).
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: redis
   namespace: argocd
+  labels:
+    environment: redis
 spec:
-  project: platform-project
-  source:
-    repoURL: registry-1.docker.io/bitnamicharts
-    chart: redis
-    targetRevision: 27.0.12
-    helm:
-      releaseName: redis
-      values: |
-        architecture: replication
-        auth:
-          enabled: false
-        sentinel:
-          enabled: true
-          masterSet: mymaster
-        master:
-          persistence:
-            enabled: false
-        replica:
-          persistence:
-            enabled: false
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: redis
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: redis
+      labels:
+        app: redis
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: registry-1.docker.io/bitnamicharts
+        chart: redis
+        targetRevision: 27.0.12
+        helm:
+          releaseName: redis
+          values: |
+            architecture: replication
+            auth:
+              enabled: false
+            sentinel:
+              enabled: true
+              masterSet: mymaster
+            master:
+              persistence:
+                enabled: false
+            replica:
+              persistence:
+                enabled: false
+      destination:
+        server: '{{.server}}'
+        namespace: redis
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
