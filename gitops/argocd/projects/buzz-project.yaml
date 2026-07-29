@@ -72,3 +72,5 @@ spec:
       kind: Cluster
     - group: monitoring.coreos.com
       kind: ServiceMonitor
+    - group: cache.keiailab.io
+      kind: Valkey
