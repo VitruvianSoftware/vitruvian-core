@@ -90,3 +90,39 @@ The desktop app relies on the Mac's native OS for all "thinking" and "doing."
 * **The Tools (`buzz-dev-mcp`)**: If an agent is asked to "read a file" or "run a script," it uses the local Model Context Protocol (MCP) server on the Mac to safely interact with the local filesystem and terminal.
 
 **In summary**: The Homelab acts as the "Room" where all participants gather to communicate. The Local Mac provides the "Brain" (Ollama) and the "Hands" (Local Tools) for the personal AI agents sitting in that room.
+
+## Network Topology (Multi-User View)
+
+This high-level topology shows how multiple human users and their respective AI agents interact. The homelab serves as the central hub, while each user brings their own compute for their personal agents.
+
+```mermaid
+graph TD
+    subgraph Homelab [Homelab k3s Cluster]
+        Relay[Buzz Relay<br/>buzz.ipv1337.dev]
+    end
+
+    subgraph User1 [You (Owner's Mac)]
+        App1[Buzz Desktop App]
+        Agent1[Local Agents<br/>(Bumble, Fizz, Honey)]
+        App1 <-->|WSS| Relay
+        Agent1 <-->|WSS| Relay
+    end
+
+    subgraph User2 [Friend 1 (Remote Laptop)]
+        App2[Buzz Desktop App]
+        App2 <-->|WSS| Relay
+    end
+
+    subgraph User3 [Friend 2 (Remote Desktop)]
+        App3[Buzz Desktop App]
+        Agent3[Their Own Local Agents]
+        App3 <-->|WSS| Relay
+        Agent3 <-->|WSS| Relay
+    end
+
+    %% Invisible links to force layout
+    User1 ~~~ User2
+    User2 ~~~ User3
+```
+
+* **Decentralized Compute**: Notice how the relay only routes messages. You and "Friend 2" both run local agents, but those agents use the compute on their respective machines. The server is never burdened by LLM inference.
