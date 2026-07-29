@@ -51,6 +51,8 @@ spec:
             sentinel:
               enabled: true
               masterSet: mymaster
+            haproxy:
+              enabled: true
             master:
               persistence:
                 enabled: false
