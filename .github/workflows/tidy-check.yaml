@@ -104,6 +104,31 @@ jobs:
             exit 1
           fi
 
+      # MODULE.bazel.lock freshness (#1267). The step above deliberately
+      # EXCLUDES MODULE.bazel.lock from its clean-tree assertion (`bazel run
+      # //:tidy` does not regenerate it), so until now nothing gated Bazel
+      # module-lock drift at all -- a MODULE.bazel edit could land with a lock
+      # that never resolved it.
+      #
+      # The upstream preset ships `common:ci --lockfile_mode=error` for exactly
+      # this, but nothing passes `--config=ci`, so it has never applied (see the
+      # note at the top of .bazelrc). Enforced here as its own step rather than
+      # as a global CI flag ON PURPOSE: `bazel mod tidy` in
+      # dependabot-bazel-reconcile.yml must still be able to WRITE the lockfile,
+      # and a repo-wide --lockfile_mode=error would block it.
+      #
+      # `bazel mod graph` only does module resolution -- no analysis, no
+      # toolchain fetch -- so this is seconds, not minutes. Verified both ways:
+      # exit 0 against a current lock, exit 37 ("Missing checksum for registry
+      # file ... not permitted with --lockfile_mode=error") against a drifted one.
+      - name: MODULE.bazel.lock is in sync with MODULE.bazel
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          if ! bazel mod graph --lockfile_mode=error --depth=1 >/dev/null; then
+            echo "::error::MODULE.bazel.lock is out of date. Run 'bazel mod deps --lockfile_mode=update' and commit MODULE.bazel.lock."
+            exit 1
+          fi
+
       # Lockfile/manifest sync guard (#523 fallout). Dependabot PRs carry a
       # pnpm-lock.yaml diff generated BEFORE the merge queue rebases them; when
       # grouped/parallel dep PRs land in one queue window, main can end up with
