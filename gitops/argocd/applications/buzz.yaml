@@ -70,8 +70,6 @@ spec:
           s3:
             endpoint: http://minio-amd64.minio.svc.cluster.local:9000
             bucket: buzz-media
-            region: us-east-1
-            forcePathStyle: true
 
     # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
