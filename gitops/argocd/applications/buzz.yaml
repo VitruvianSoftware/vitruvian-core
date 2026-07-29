@@ -68,7 +68,7 @@ spec:
             enabled: false
 
           externalRedis:
-            url: "redis://redis-master.redis.svc.cluster.local:6379"
+            url: "redis://buzz-valkey.buzz.svc.cluster.local:6379"
 
           # S3: use the existing homelab MinIO cluster. Credentials are in
           # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
@@ -78,7 +78,7 @@ spec:
 
     # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
-      targetRevision: main
+      targetRevision: feat/buzz-valkey
       path: gitops/argocd/platform/buzz
       directory:
         recurse: true
