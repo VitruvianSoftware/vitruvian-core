@@ -68,7 +68,7 @@ spec:
             enabled: false
 
           externalRedis:
-            url: "redis://buzz-valkey.buzz.svc.cluster.local:6379"
+            url: "redis://buzz-valkey-primary.buzz.svc.cluster.local:6379"
 
           # S3: use the existing homelab MinIO cluster. Credentials are in
           # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
