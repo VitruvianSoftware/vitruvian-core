@@ -34,4 +34,4 @@ spec:
   auth:
     enabled: false
   persistence:
-    enabled: false
+    mode: None
