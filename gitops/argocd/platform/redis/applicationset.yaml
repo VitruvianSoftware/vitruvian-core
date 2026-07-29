@@ -49,10 +49,7 @@ spec:
             auth:
               enabled: false
             sentinel:
-              enabled: true
-              masterSet: mymaster
-            haproxy:
-              enabled: true
+              enabled: false
             master:
               persistence:
                 enabled: false

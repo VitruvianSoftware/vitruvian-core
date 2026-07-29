@@ -68,7 +68,7 @@ spec:
             enabled: false
 
           externalRedis:
-            url: "redis://redis-haproxy.redis.svc.cluster.local:6379"
+            url: "redis://redis-master.redis.svc.cluster.local:6379"
 
           # S3: use the existing homelab MinIO cluster. Credentials are in
           # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
