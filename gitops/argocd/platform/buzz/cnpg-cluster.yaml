@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # buzz-db — dedicated CloudNativePG Postgres cluster for the Buzz relay.
-# Single instance (homelab; no HA needed). The relay connects via the -rw Service
+# High Availability configuration with 3 instances. The relay connects via the -rw Service
 # at buzz-db-rw.buzz.svc.cluster.local:5432. Credentials are in the
 # buzz-db-credentials Secret (created by a SealedSecret).
 apiVersion: postgresql.cnpg.io/v1
@@ -28,7 +28,7 @@ metadata:
   name: buzz-db
   namespace: buzz
 spec:
-  instances: 1
+  instances: 3
   storage:
     size: 2Gi
     storageClass: local-path
