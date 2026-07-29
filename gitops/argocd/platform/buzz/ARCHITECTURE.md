@@ -97,25 +97,25 @@ This high-level topology shows how multiple human users and their respective AI 
 
 ```mermaid
 graph TD
-    subgraph Homelab [Homelab k3s Cluster]
-        Relay[Buzz Relay<br/>buzz.ipv1337.dev]
+    subgraph Homelab ["Homelab k3s Cluster"]
+        Relay["Buzz Relay<br/>buzz.ipv1337.dev"]
     end
 
-    subgraph User1 [You (Owner's Mac)]
-        App1[Buzz Desktop App]
-        Agent1[Local Agents<br/>(Bumble, Fizz, Honey)]
+    subgraph User1 ["You (Owner's Mac)"]
+        App1["Buzz Desktop App"]
+        Agent1["Local Agents<br/>(Bumble, Fizz, Honey)"]
         App1 <-->|WSS| Relay
         Agent1 <-->|WSS| Relay
     end
 
-    subgraph User2 [Friend 1 (Remote Laptop)]
-        App2[Buzz Desktop App]
+    subgraph User2 ["Friend 1 (Remote Laptop)"]
+        App2["Buzz Desktop App"]
         App2 <-->|WSS| Relay
     end
 
-    subgraph User3 [Friend 2 (Remote Desktop)]
-        App3[Buzz Desktop App]
-        Agent3[Their Own Local Agents]
+    subgraph User3 ["Friend 2 (Remote Desktop)"]
+        App3["Buzz Desktop App"]
+        Agent3["Their Own Local Agents"]
         App3 <-->|WSS| Relay
         Agent3 <-->|WSS| Relay
     end
