@@ -45,8 +45,6 @@ spec:
         helm:
           releaseName: valkey-operator
           values: |
-            metrics:
-              enabled: false
             features:
               autoscaling:
                 enabled: true
