@@ -37,6 +37,7 @@ spec:
     warn: true
   sourceRepos:
     - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
+    - 'ghcr.io/block/buzz/charts'
     - 'ghcr.io/block/buzz/charts/*'
   destinations:
     - namespace: buzz
