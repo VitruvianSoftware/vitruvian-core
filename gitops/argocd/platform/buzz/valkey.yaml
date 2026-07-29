@@ -35,11 +35,12 @@ spec:
     enabled: false
   persistence:
     mode: None
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: ScheduleAnyway
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/instance: buzz-valkey
-          app.kubernetes.io/name: valkey
+  pod:
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: buzz-valkey
+            app.kubernetes.io/name: valkey
