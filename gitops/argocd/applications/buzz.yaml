@@ -51,7 +51,7 @@ spec:
             existingSecret: buzz-secrets
 
           relay:
-            requireRelayMembership: false
+            requireRelayMembership: true
             requireAuthToken: true
 
           # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
@@ -78,7 +78,7 @@ spec:
 
     # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
-      targetRevision: feat/buzz-valkey
+      targetRevision: main
       path: gitops/argocd/platform/buzz
       directory:
         recurse: true
