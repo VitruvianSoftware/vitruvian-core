@@ -44,7 +44,7 @@ spec:
             tag: "main"
 
           relayUrl: wss://buzz.ipv1337.dev
-          ownerPubkey: "7ad66baa246cd85b0623ef79a31050bacd9645ef603132950a0605913a066fea"
+          ownerPubkey: "d6a7b951e82471bc01094ba399a484e48b66d2b208cc3261ae6365b8b7d90814"
           replicaCount: 3
 
           secrets:
