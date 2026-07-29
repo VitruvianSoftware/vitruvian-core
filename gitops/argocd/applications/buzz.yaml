@@ -51,7 +51,7 @@ spec:
             existingSecret: buzz-secrets
 
           relay:
-            requireRelayMembership: true
+            requireRelayMembership: false
             requireAuthToken: true
 
           # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
