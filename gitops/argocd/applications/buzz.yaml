@@ -1,0 +1,91 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# buzz — ArgoCD Application for the Buzz relay (block/buzz).
+# Uses the upstream OCI Helm chart with homelab-specific values.
+# Prerequisite: buzz-secrets SealedSecret (sealed-secrets-manifests/) and
+# buzz-db CNPG cluster (platform/buzz/) must exist in the buzz namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: buzz
+  namespace: argocd
+  annotations:
+    # Sync after platform infra (CNPG cluster, sealed secrets) is ready.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: buzz-project
+  sources:
+    # Source 1: Upstream Buzz Helm chart from GHCR.
+    - repoURL: ghcr.io/block/buzz/charts
+      chart: buzz
+      targetRevision: 0.1.7
+      helm:
+        releaseName: buzz
+        values: |
+          relayUrl: wss://buzz.ipv1337.dev
+          ownerPubkey: "7ad66baa246cd85b0623ef79a31050bacd9645ef603132950a0605913a066fea"
+          replicaCount: 1
+
+          secrets:
+            existingSecret: buzz-secrets
+
+          relay:
+            requireRelayMembership: true
+            requireAuthToken: true
+
+          # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
+          httproute:
+            enabled: true
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: platform
+                namespace: envoy-gateway-system
+
+          # Redis: chart-bundled single replica (no external Redis needed for
+          # replicaCount=1, but Redis gives us pubsub for future HA).
+          redis:
+            enabled: true
+
+          # S3: use the existing homelab MinIO cluster. Credentials are in
+          # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
+          s3:
+            endpoint: http://minio-amd64.minio.svc.cluster.local:9000
+            bucket: buzz-media
+            region: us-east-1
+            forcePathStyle: true
+
+    # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      path: gitops/argocd/platform/buzz
+      directory:
+        recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: buzz
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
