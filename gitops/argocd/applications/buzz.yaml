@@ -101,6 +101,9 @@ spec:
             endpoint: http://minio-amd64.minio.svc.cluster.local:9000
             bucket: buzz-media
 
+          serviceMonitor:
+            enabled: true
+
     # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
