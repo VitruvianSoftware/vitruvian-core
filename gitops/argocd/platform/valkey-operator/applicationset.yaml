@@ -47,6 +47,9 @@ spec:
           values: |
             metrics:
               enabled: false
+            features:
+              autoscaling:
+                enabled: true
       destination:
         server: '{{.server}}'
         namespace: valkey-operator-system
