@@ -62,7 +62,14 @@ spec:
                     app.kubernetes.io/instance: buzz
                     app.kubernetes.io/name: buzz
                     app.kubernetes.io/component: relay
-
+            # NIP-22: relax timestamp validation to 900s (15 min) to prevent
+            # the relay from rejecting Fiz agent events (kind 30177) whose
+            # timestamps drift slightly from server time.
+            extraEnv:
+              - name: BUZZ_NIP22_FUTURE_SECS
+                value: "900"
+              - name: BUZZ_NIP22_PAST_SECS
+                value: "900"
           pairingRelay:
             enabled: true
             url: "wss://buzz.ipv1337.dev/pair"
