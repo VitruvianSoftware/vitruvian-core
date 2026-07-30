@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: buzz-valkey
+  namespace: buzz
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: buzz-valkey
+      app.kubernetes.io/name: valkey
+  endpoints:
+    - port: metrics
+      interval: 15s
