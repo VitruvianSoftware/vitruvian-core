@@ -59,6 +59,13 @@
 #      workflow-level paths filter and gate the WORK via a step instead.
 # A matrix value that can't be confirmed for an existing merge_group job is a ⚠.
 #
+# It ALSO enforces POSTSUBMIT CONCURRENCY KEYING: a workflow that gates main
+# (triggers on both `push: branches: [main]` and `merge_group`) must key its
+# non-PR runs on `github.sha`. A `github.ref`-keyed (or constant) group puts
+# every push-to-main run in ONE group, and GitHub evicts an already-PENDING run
+# there when a newer one queues — so a burst of merges lands commits on main
+# with no verdict at all, regardless of `cancel-in-progress`.
+#
 # Per (file,tool) it prints a status glyph (✓ ok / ✗ fail / ⊘ pinned / ⚠ advisory),
 # the found vs canonical version, and a `→ fix:` hint on ✗. The process exits
 # NON-ZERO iff any ✗ — so this is a reliable CI gate.
@@ -369,6 +376,7 @@ ROWS_ADVISORY=""
 ROWS_CAT_ADVISORY=""
 ROWS_VIS=""
 ROWS_MERGEQ=""
+ROWS_CONCUR=""
 ROWS_SWEEP=""
 ROWS_IAC=""
 ROWS_META=""
@@ -390,6 +398,7 @@ emit() {
     cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
     vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
+    concur)       ROWS_CONCUR="${ROWS_CONCUR}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
@@ -905,6 +914,100 @@ check_merge_queue() {
   done <<EOF
 $required
 EOF
+}
+
+# ---------------------------------------------------------------------------
+# Postsubmit concurrency keying. A verification workflow that gates main (it
+# triggers on BOTH `push: branches: [main]` and `merge_group`) must give every
+# pushed commit its OWN concurrency group, or its postsubmit verdict can be
+# thrown away.
+#
+# `cancel-in-progress: false` (or `== 'pull_request'`) does NOT achieve that on
+# its own: GitHub additionally cancels an already-PENDING run in a group when a
+# newer one queues behind the running one. A group keyed only on `github.ref`
+# puts every push-to-main run into ONE group, so a burst of merges silently
+# evicts the middle commits' runs — they land on main with no verdict. Seen for
+# real on fb3859bd (2026-07-28) and 322f7ea7 (2026-07-29) before the sha-keyed
+# fix; the same trap cost tabula-e2e its postsubmit lane in #1311.
+#
+# The rule is textual and deliberately loose: a group that mentions
+# `github.ref` MUST also mention `github.sha`, so the non-PR events fall back to
+# a per-commit key. It does not constrain the PR lane (superseding a PR's own
+# older run is wanted) and it does not touch deploy/preview workflows, which do
+# not carry the push+merge_group verification signature.
+# ---------------------------------------------------------------------------
+check_postsubmit_concurrency() {
+  found_any=0
+  for wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
+    [ -f "$wf" ] || continue
+    wf_rel=".github/workflows$(printf '%s' "${wf##*/}" | sed 's|^|/|')"
+
+    # Verification signature: `push:` restricted to main AND a `merge_group:`
+    # trigger. Parsed with awk over the top-level `on:` block only, so a
+    # `merge_group` mention in a comment or a job body cannot fake it.
+    sig="$(awk '
+      /^on:[ \t]*$/            { in_on=1; next }
+      in_on && /^[A-Za-z_]/    { in_on=0 }
+      in_on && /^[ \t]*#/      { next }
+      in_on && /^  merge_group:/ { mg=1 }
+      in_on && /^  push:/      { in_push=1; next }
+      in_on && in_push && /^  [A-Za-z_]/ { in_push=0 }
+      in_on && in_push && /branches:.*main/ { pushmain=1 }
+      END { if (mg && pushmain) print "yes" }
+    ' "$wf")"
+    [ "$sig" = "yes" ] || continue
+    found_any=$((found_any + 1))
+
+    group="$(awk '
+      /^concurrency:[ \t]*$/ { in_c=1; next }
+      in_c && /^[A-Za-z_]/   { in_c=0 }
+      in_c && /^[ \t]*group:/ { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
+    ' "$wf")"
+
+    if [ -z "$group" ]; then
+      # No concurrency block at all is safe: every run gets its own lane.
+      emit "concur" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "none" "per-commit" \
+        "no concurrency group — every push/merge_group run keeps its verdict" ""
+      OK_COUNT=$((OK_COUNT + 1)); continue
+    fi
+
+    case "$group" in
+      *github.ref*)
+        case "$group" in
+          *github.sha*)
+            emit "concur" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "ref+sha" "per-commit" \
+              "PR lane supersedes by ref; push/merge_group key on sha" ""
+            OK_COUNT=$((OK_COUNT + 1)) ;;
+          *)
+            emit "concur" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "ref-only" "per-commit" \
+              "every push-to-main run shares one group — a merge burst evicts the middle commits' PENDING runs, landing them with no verdict" \
+              "key non-PR events on the commit: group: \${{ github.workflow }}-\${{ github.event_name }}-\${{ github.event_name == 'pull_request' && github.ref || github.sha }}"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+        esac ;;
+      *)
+        # A constant group serializes ALL pushes into one lane — same eviction.
+        case "$group" in
+          *github.sha*)
+            emit "concur" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "sha" "per-commit" \
+              "keyed on the commit — no cross-commit eviction" ""
+            OK_COUNT=$((OK_COUNT + 1)) ;;
+          *)
+            emit "concur" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "constant" "per-commit" \
+              "a constant group serializes every run into one lane — queued runs get evicted by newer ones" \
+              "key non-PR events on the commit (add \${{ github.sha }} to the group)"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+        esac ;;
+    esac
+  done
+
+  # A zero-match sweep means the parser (or the workflow layout) drifted, not
+  # that the repo suddenly has no main-gating workflows. Fail loudly.
+  if [ "$found_any" -eq 0 ]; then
+    emit "concur" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 matched" ">=1" \
+      "no workflow matched the push-to-main + merge_group signature — the parser or the workflow layout changed" \
+      "confirm ci.yaml still triggers on both 'push: branches: [main]' and 'merge_group:'"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1606,6 +1709,7 @@ advisory_catalog
 check_app_visibility
 check_app_metadata
 check_merge_queue
+check_postsubmit_concurrency
 check_sweep_backstop
 check_zitadel_import
 check_pulumi_project_names
@@ -1629,6 +1733,7 @@ print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATA
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
+print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
 print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"

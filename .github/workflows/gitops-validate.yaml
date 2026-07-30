@@ -47,9 +47,22 @@ on:
 permissions:
   contents: read
 
-# Cancel a superseded PR run; never cancel push-to-main or a merge_group run.
+# Cancel a PR's in-flight run when a newer push to the SAME PR supersedes it;
+# never drop a push-to-main or merge_group verdict.
+#
+# `cancel-in-progress: false` is NOT sufficient on its own: GitHub also cancels
+# an already-PENDING run in a group when a newer one queues behind the running
+# one. A ref-keyed group therefore put every push-to-main run in ONE group
+# (`refs/heads/main`), so a burst of merges silently evicted the middle
+# commits' still-pending runs -- observed on main: fb3859bd (2026-07-28,
+# evicted 34s later by e1f98538) and 322f7ea7 (2026-07-29, evicted by
+# 496dbb67). Those commits landed with no postsubmit verdict at all.
+#
+# `github.sha` is unique per commit, so every pushed commit gets its own group
+# and its own verdict: nothing cancels it, nothing queues it behind a sibling.
+# Same pattern as tabula-e2e.yaml (#1311); guarded by //tools/conformance:check.
 concurrency:
-  group: gitops-validate-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
