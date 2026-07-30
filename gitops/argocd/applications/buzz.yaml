@@ -113,6 +113,13 @@ spec:
           serviceMonitor:
             enabled: true
 
+          # Git scratch volume: disabled (emptyDir) for multi-replica HA.
+          # The chart docs confirm git state is S3-backed; the PVC is pure
+          # scratch and its RWO nodeAffinity prevents cross-node scheduling.
+          persistence:
+            git:
+              enabled: false
+
     # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
