@@ -29,20 +29,26 @@ metadata:
   namespace: buzz
 spec:
   instances: 3
-  # buzz-db was BestEffort QoS (no requests/limits) — cheap insurance against
-  # noisy-neighbor eviction, not the primary fix for the readiness-probe
-  # flapping (that's the Pooler in cnpg-pooler.yaml). Sized to the cluster's
-  # actual footprint (single-digit millicores, <30Mi RSS observed) with
-  # headroom for shared_buffers (128MB) + OS cache. Memory request==limit
-  # (no OOM/evict) and NO cpu limit — a cpu limit==request caused CFS
-  # throttling that SIGTERM'd a recovering replica in zitadel-db/grafana-db
-  # (2026-06-13), so this mirrors that established pattern.
+  # buzz-db was BestEffort QoS (no requests/limits) — moved to Burstable to
+  # avoid noisy-neighbor eviction, not the primary fix for the readiness-probe
+  # flapping (that's the Pooler in cnpg-pooler.yaml). The first attempt at
+  # this (256Mi request==limit) was sized off idle RSS alone (<30Mi observed)
+  # and was too tight: buzz-db-1 (the primary) OOMKilled at 2026-07-30T18:31:56Z
+  # under real connection load through the new pooler (up to 70 backend
+  # connections possible, see cnpg-pooler.yaml), triggering a failover
+  # cascade that reproduced the original relay 503s one layer down. 1Gi
+  # matches the proven-safe sizing already used for zitadel-db (a comparable
+  # dedicated CNPG cluster) rather than re-tuning tight a second time.
+  # Memory request==limit (no OOM/evict) and NO cpu limit — a cpu
+  # limit==request caused CFS throttling that SIGTERM'd a recovering replica
+  # in zitadel-db/grafana-db (2026-06-13), so this mirrors that established
+  # pattern.
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 1Gi
     limits:
-      memory: 256Mi
+      memory: 1Gi
   storage:
     size: 2Gi
     storageClass: local-path
