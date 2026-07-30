@@ -1,0 +1,59 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# buzz-db-pooler-rw — CNPG PgBouncer Pooler in front of buzz-db-rw.
+#
+# Why: 3 buzz relay pods each open their own client-side pool directly against
+# buzz-db-rw with no explicit pool size, so each inherits a small library
+# default. Any modest concurrency burst exhausts that thin pool and the relay
+# starts returning "pool timed out waiting for an open connection", which trips
+# the readiness probe (see the 2026-07-30 relay stabilization thread). PgBouncer
+# absorbs bursts in front of Postgres instead of each pod fending for itself.
+#
+# poolMode session (the CNPG/PgBouncer default) is intentional, not an
+# oversight: transaction pooling breaks LISTEN/NOTIFY and named prepared
+# statements, and a Nostr relay's realtime subscription fan-out plausibly
+# depends on LISTEN/NOTIFY. Revisit only after confirming the relay doesn't
+# rely on either.
+#
+# No authQuery/authQuerySecret is set, so CNPG wires PgBouncer to buzz-db
+# automatically (same app user/secret the Cluster already bootstraps).
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: buzz-db-pooler-rw
+  namespace: buzz
+spec:
+  cluster:
+    name: buzz-db
+  type: rw
+  instances: 2
+  pgbouncer:
+    poolMode: session
+    parameters:
+      # Headroom for 3 relay replicas' client connections into PgBouncer;
+      # PgBouncer multiplexes these down to default_pool_size backends.
+      max_client_conn: "200"
+      # Backend connections PgBouncer keeps open to buzz-db-rw per user/db
+      # pair. Well under CNPG's default max_connections (100), leaving room
+      # for the auto-managed superuser/monitoring/backup connections.
+      default_pool_size: "25"
+  monitoring:
+    enablePodMonitor: false
