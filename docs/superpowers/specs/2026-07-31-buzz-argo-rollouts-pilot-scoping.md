@@ -49,17 +49,25 @@ rendered by an upstream chart we don't control. Converting it to an
 
 - **(a) Upstream support** — block/buzz's chart would need to expose a
   `controller.kind: rollout` (or similar) toggle that renders a `Rollout` instead of a
-  `Deployment`, the way many charts added Argo Rollouts support. Unknown today whether
-  upstream has this; needs a check against `ghcr.io/block/buzz/charts` release notes
-  before committing to this path.
+  `Deployment`, the way many charts added Argo Rollouts support.
 - **(b) Fork the workload out of the chart** — stop letting the chart render the
   relay's Deployment, and own a local `Rollout` manifest (under
   `gitops/argocd/platform/buzz/`) that reads the same values (image tag, env, probes)
   this repo already sets. This trades chart convenience for control, and duplicates
   logic the chart currently owns (env wiring, service, etc. — need to check how much).
 
-Recommend resolving this fork-vs-upstream question as the **first pilot task**, before
-any AnalysisTemplate work, since it changes the shape of everything downstream.
+**Resolved — no upstream support exists.** Pulled the chart directly
+(`helm pull oci://ghcr.io/block/buzz/charts/buzz --version 0.1.7 --untar`) and inspected
+every template. `templates/deployment.yaml` hardcodes `kind: Deployment` with no
+conditional toggle — no `controller.kind`, no `strategy.canary`-style value anywhere in
+`values.yaml`/`values.schema.json`, and no `argoproj.io`/Argo Rollouts dependency in
+`Chart.yaml`. A repo-wide grep for `rollout|argoproj|canary` across every template in
+the chart (including the `postgres`/`redis` subcharts) turns up exactly one hit —
+`kubectl -n {{ .Release.Namespace }} rollout status deployment/...` in `NOTES.txt`,
+which is the generic `kubectl rollout status` command, unrelated to Argo Rollouts. So
+**option (a) is closed**: this is option (b) only — forking the Deployment/HTTPRoute
+rendering out of the chart into a locally-owned `Rollout` manifest, or no canary for
+buzz specifically. This also settles §4's first open question below.
 
 ### 2.2 ArgoCD app-of-apps onboarding pattern
 
@@ -166,16 +174,19 @@ authority), unrelated to Kubernetes canary deployments. This is a clean-slate pi
 
 ## 3. Effort estimate and sequencing
 
-Rough sizing, assuming the 2.1 fork-vs-upstream question resolves in favor of (b)
-(owning the Rollout manifest locally) — the more likely outcome given block/buzz's
-chart is unlikely to have first-party Rollouts support:
+Rough sizing, now that §2.1 is resolved to option (b) (owning the Rollout manifest
+locally — confirmed, not assumed: block/buzz's chart has no Rollouts support to fork
+into):
 
-1. **Confirm 2.1** — check block/buzz chart releases for Rollout support; if absent,
-   confirm how much of the chart's Deployment/Service/HTTPRoute rendering needs
-   reproducing locally to own a `Rollout` instead. *Half a day, blocks everything else.*
-2. **Controller onboarding** — `platform/argo-rollouts/applicationset.yaml` +
-   `platform-project.yaml` clusterResourceWhitelist entry. Mechanical, matches
-   cert-manager's shape closely. *Small.*
+1. **Scope the local fork** — confirm how much of the chart's Deployment/Service/
+   HTTPRoute rendering needs reproducing locally to own a `Rollout` instead (env wiring,
+   probes, topologySpreadConstraints, the `httproute:` values block). *Half a day, blocks
+   step 3.*
+2. **Controller onboarding** — done. PR #1343 (merged, `2026-07-31T05:08:24Z`) installed
+   the `argo-rollouts` ApplicationSet — controller + all 5 CRDs (`Rollout`,
+   `AnalysisTemplate`, `ClusterAnalysisTemplate`, `AnalysisRun`, `Experiment`), verified
+   Synced/Healthy live on-cluster, zero consumers yet, zero effect on any existing
+   Deployment.
 3. **Convert buzz's relay to a `Rollout`** — new local manifest, `buzz-project.yaml`
    namespaceResourceWhitelist entries, remove/disable the chart's Deployment+HTTPRoute
    rendering if still sourced from Source 1, wire the Gateway API traffic-router plugin
@@ -198,9 +209,12 @@ shape of steps 3 and 5 materially.
 
 ## 4. Open questions for James / Beacon before implementation
 
-- Does block/buzz's chart have any Rollout/canary support already, or do we need
-  sign-off to fork the Deployment rendering out locally (losing some upstream chart
-  convenience going forward, on every future chart bump)?
+- **Resolved:** block/buzz's chart has no Rollout/canary support (confirmed by pulling
+  and inspecting chart 0.1.7 — see §2.1). Forking the Deployment/HTTPRoute rendering
+  out locally is therefore the only path to a buzz canary. Still need sign-off on that
+  fork, since it loses upstream chart convenience going forward — every future
+  `ghcr.io/block/buzz/charts` bump would need its Deployment/Service/HTTPRoute changes
+  manually ported into the local fork instead of picked up automatically.
 - Is a restart/readiness-based `AnalysisTemplate` (weaker signal) an acceptable first
   cut if buzz doesn't export HTTP-level metrics, or should this wait until buzz exposes
   one?
