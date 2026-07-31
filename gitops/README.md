@@ -12,6 +12,9 @@ this directory.
 - `argocd/platform/` — platform Applications (cnpg, etc.) — placeholder for now.
 - `argocd/applications/` — one ArgoCD `Application` per first-party app, each
   deploying that app's Helm chart from GHCR by version.
+- `charts/` — source for **forked** third-party Helm charts (chart source we've
+  taken over from a vendor, not consumed as-is). Controller-agnostic by design
+  — see [`charts/README.md`](charts/README.md).
 
 ## Flow
 

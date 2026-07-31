@@ -306,8 +306,8 @@ Pick the category that matches the artifact you are shipping. Each section is se
 
 | Aspect | Standard |
 |---|---|
-| **Tech stack & build** | Upstream Helm chart / manifests, vendored under `gitops/argocd/platform/*`. Not bazel-built. |
-| **Local dev / ops** | `bazel run //tools/gitops:*`; changes land in git and reconcile via ArgoCD. |
+| **Tech stack & build** | Upstream Helm chart *consumed as-is* (values-only customization) via an `Application`/`ApplicationSet` under `gitops/argocd/platform/<name>/`; owned static manifests that were never chart-templated (CRs, dashboards, secrets) live in a distinctly-named sibling — `platform/<name>-manifests/` or a clearly-named subdirectory, never flat-mixed with the consuming `applicationset.yaml` (precedent: `sealed-secrets/` vs. `sealed-secrets-manifests/`, `grafana/` vs. `grafana-dashboards/`, `envoy-gateway/gateway/`). A **forked** chart — one whose upstream can't do something we need, so we've taken over its `Chart.yaml`/`templates`/`values.yaml` and now maintain it divergently — must be controller-agnostic: this repo's own GKE posture doc anticipates ArgoCD *or* Config Sync in prod, and Config Sync doesn't read ArgoCD's `Application`/`ApplicationSet` CRDs. So it does **not** live under `gitops/argocd/` at all: it goes in `gitops/charts/<name>/` (see that directory's README for the full how-to), with a header comment or README recording the version forked from, when, and why. Not bazel-built. |
+| **Local dev / ops** | `bazel run //tools/gitops:*`; changes land in git and reconcile via ArgoCD. A forked chart under `gitops/charts/*` additionally needs `helm lint` + `helm template \| kubeconform` — `tools/ci/gitops-validate.sh` only validates static YAML under `gitops/argocd/**` today and cannot parse a chart's unrendered `{{ }}` templates **(target: extend gitops-validate.sh to cover gitops/charts/**)**. |
 | **Hosting & runtime** | dev-local k3s (5-node laptop homelab). Storage = local-path + app-level redundancy. |
 | **Deploy / CI** | **GitOps only** — ArgoCD app-of-apps (`selfHeal`, `prune:false`). No imperative apply. |
 | **Environments & promotion** | git → ArgoCD; promoted by merge. |
