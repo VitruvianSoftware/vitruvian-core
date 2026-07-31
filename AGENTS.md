@@ -110,6 +110,9 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
   - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
   - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `homelab`, `devx`)
   - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml`; Ruby: `Gemfile`
+  - GitOps Helm chart pins (`gitops/argocd/**` `Application`/`ApplicationSet` `targetRevision`): tracked by Renovate
+    (`renovate.json5`, scoped to `enabledManagers: ["argocd"]` only — it never touches the ecosystems above,
+    which stay Dependabot's). Renovate opens the bump PR; review and merge it like any other PR, no re-lock step.
 - The **`infrastructure/pulumi` Go modules are intentionally kept OUT of `go.work`** — don't add them.
 - **License headers are enforced** (`addlicense`; CI `license-check`) — run the add helper before committing.
 - **Build cache:** both a local `--disk_cache` (opt-in; see `user.bazelrc.example`) and remote

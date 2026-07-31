@@ -1,0 +1,75 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// Renovate — sanctioned for exactly ONE gap: tracking Helm chart version pins
+// inside ArgoCD Application/ApplicationSet manifests under gitops/argocd/,
+// which Dependabot's ecosystem list has no manager for (confirmed: no
+// helm/argocd package-ecosystem exists in .github/dependabot.yml or upstream
+// Dependabot docs). Sign-off: James Nguyen, vitruvian-core-buzz channel,
+// 2026-07-31 (thread root 5955e5f7ba52d63429c49730945bd5b876bfb7c43419c6fca5410a6aa0b3374d),
+// per docs/engineering/application-development-principles.md §2.13
+// (new-tool sign-off).
+//
+// `enabledManagers: ["argocd"]` is deliberate and load-bearing: it disables
+// EVERY other Renovate manager (npm, gomod, github-actions, docker, ...),
+// so Renovate can never open a duplicate/conflicting PR against anything
+// Dependabot already owns (see .github/dependabot.yml). If this gap ever
+// widens beyond ArgoCD Helm pins, that is a new decision, not an assumed
+// extension of this config.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  enabledManagers: ['argocd'],
+  argocd: {
+    // Matches this repo's actual layout (verified against gitops/argocd/
+    // during the buzz Argo Rollouts scoping work, PR #1342/#1343):
+    //   - gitops/argocd/applications/*.yaml   — leaf Applications (e.g. buzz.yaml,
+    //     whose Source 1 pins ghcr.io/block/buzz/charts @ targetRevision).
+    //   - gitops/argocd/platform/*/applicationset.yaml — platform-service
+    //     ApplicationSets that consume an upstream chart as-is (cert-manager,
+    //     external-dns, cilium, prometheus, ...).
+    managerFilePatterns: [
+      '/^gitops/argocd/applications/.+\\.ya?ml$/',
+      '/^gitops/argocd/platform/[^/]+/applicationset\\.ya?ml$/',
+    ],
+  },
+  // `onboarding`/`requireConfig` are GLOBAL-only options (Renovate rejects them
+  // here: "reserved only for Renovate's global configuration") — set instead
+  // via RENOVATE_ONBOARDING=false / RENOVATE_REQUIRE_CONFIG=required in
+  // .github/workflows/renovate.yml.
+  //
+  // One PR per chart. buzz's chart-fork question (PR #1342) means every
+  // detected bump still needs a human to judge blast radius before merging —
+  // group-and-auto-merge is exactly what we do NOT want yet for this class of
+  // change (a chart bump can carry a Deployment/probe/RBAC change straight
+  // into a self-hosted platform's live reconciliation loop).
+  packageRules: [
+    {
+      matchManagers: ['argocd'],
+      groupName: null,
+      commitMessagePrefix: 'chore(gitops)',
+      labels: ['dependencies', 'gitops', 'helm'],
+      automerge: false,
+    },
+  ],
+  // Weekly is the schedule the workflow polls on; this just caps PR creation
+  // to the same window so a mid-week workflow_dispatch rerun doesn't spam.
+  schedule: ['before 6am on monday'],
+  timezone: 'UTC',
+}
