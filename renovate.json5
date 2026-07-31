@@ -34,8 +34,8 @@
 // widens beyond ArgoCD Helm pins, that is a new decision, not an assumed
 // extension of this config.
 {
-  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  enabledManagers: ['argocd'],
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  enabledManagers: ["argocd"],
   argocd: {
     // Matches this repo's actual layout (verified against gitops/argocd/
     // during the buzz Argo Rollouts scoping work, PR #1342/#1343):
@@ -45,8 +45,8 @@
     //     ApplicationSets that consume an upstream chart as-is (cert-manager,
     //     external-dns, cilium, prometheus, ...).
     managerFilePatterns: [
-      '/^gitops/argocd/applications/.+\\.ya?ml$/',
-      '/^gitops/argocd/platform/[^/]+/applicationset\\.ya?ml$/',
+      "/^gitops/argocd/applications/.+\\.ya?ml$/",
+      "/^gitops/argocd/platform/[^/]+/applicationset\\.ya?ml$/",
     ],
   },
   // `onboarding`/`requireConfig` are GLOBAL-only options (Renovate rejects them
@@ -61,15 +61,15 @@
   // into a self-hosted platform's live reconciliation loop).
   packageRules: [
     {
-      matchManagers: ['argocd'],
+      matchManagers: ["argocd"],
       groupName: null,
-      commitMessagePrefix: 'chore(gitops)',
-      labels: ['dependencies', 'gitops', 'helm'],
+      commitMessagePrefix: "chore(gitops)",
+      labels: ["dependencies", "gitops", "helm"],
       automerge: false,
     },
   ],
   // Weekly is the schedule the workflow polls on; this just caps PR creation
   // to the same window so a mid-week workflow_dispatch rerun doesn't spam.
-  schedule: ['before 6am on monday'],
-  timezone: 'UTC',
+  schedule: ["before 6am on monday"],
+  timezone: "UTC",
 }
