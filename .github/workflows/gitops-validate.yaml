@@ -93,8 +93,13 @@ jobs:
           base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
           # Keep the ORIGINAL filename (-O) so it matches the entry in CHECKSUMS
           # that `sha256sum -c` verifies against.
-          curl -fsSL -O "${base}/kubeconform-linux-amd64.tar.gz"
-          curl -fsSL -o CHECKSUMS "${base}/CHECKSUMS"
+          # --retry: this is a REQUIRED check, so one transient GitHub-releases
+          # blip reddens the merge queue for a reason unrelated to the change
+          # under test. Retry transport errors AND HTTP 5xx/429
+          # (--retry-all-errors), and bound each attempt with --max-time so a
+          # hung CDN connection fails fast instead of burning the job timeout.
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/kubeconform-linux-amd64.tar.gz"
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -o CHECKSUMS "${base}/CHECKSUMS"
           grep 'kubeconform-linux-amd64.tar.gz' CHECKSUMS | sha256sum -c -
           mkdir -p "${HOME}/.local/bin"
           tar -xzf kubeconform-linux-amd64.tar.gz -C "${HOME}/.local/bin" kubeconform
