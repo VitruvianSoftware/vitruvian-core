@@ -117,6 +117,11 @@ spec:
                     weight: 1
 
           # Redis: use the dedicated HA Redis cluster from the platform layer.
+          # NOTE: with secrets.existingSecret set (below), the chart never
+          # renders its own Secret, so externalRedis.url is NOT actually
+          # wired into REDIS_URL — it's documentation of intent only. The
+          # real value lives in the buzz-secrets SealedSecret and must be
+          # kept in sync with this by hand.
           redis:
             enabled: false
 
@@ -128,6 +133,18 @@ spec:
           s3:
             endpoint: http://minio-amd64.minio.svc.cluster.local:9000
             bucket: buzz-media
+
+          # This cluster's Prometheus is the community prometheus-server
+          # chart, not kube-prometheus-stack — there is no Prometheus
+          # Operator to reconcile ServiceMonitor CRDs, so serviceMonitor
+          # (below) is inert (kept for forward-compat if that ever changes).
+          # Prometheus discovers scrape targets via Service annotations
+          # instead (kubernetes-service-endpoints job), hence these.
+          service:
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "9102"
+              prometheus.io/path: "/metrics"
 
           serviceMonitor:
             enabled: true
