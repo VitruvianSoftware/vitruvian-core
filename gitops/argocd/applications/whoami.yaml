@@ -42,25 +42,17 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: whoami
-  # The Gateway API traffic-router plugin owns the HTTPRoute's backendRef
-  # weights live during a canary (see httproute.yaml) — without this, selfHeal
-  # would revert every weight change Rollouts makes back to git's 100/0
-  # resting value mid-canary, fighting the rollout. RespectIgnoreDifferences
-  # (below) is required too, or a routine sync still re-asserts git's value
-  # (matches the cnpg-cluster ApplicationSet's identical pattern).
-  #
-  # jqPathExpressions, NOT jsonPointers: verified live that jsonPointers with
-  # an array index that doesn't yet exist on the LIVE object silently breaks
-  # ArgoCD's diff/apply for the whole resource (the sync reported "Synced" but
-  # the live HTTPRoute never actually changed — backendRefs[1] didn't exist
-  # pre-migration, and an RFC 6901 pointer to a missing array index is
-  # invalid). jq's `[]` iterates whatever elements exist, so it doesn't have
-  # this fixed-index fragility.
-  ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      jqPathExpressions:
-        - .spec.rules[].backendRefs[].weight
+  # No ignoreDifferences here — deliberately. Tried excluding the HTTPRoute's
+  # backendRef weight field (both jsonPointers and jqPathExpressions syntax)
+  # so the Gateway API traffic-router plugin could own it live during a
+  # canary. Verified on the real cluster that ArgoCD's ServerSideApply +
+  # RespectIgnoreDifferences silently no-ops the ENTIRE sync when the ignored
+  # path is nested inside a list (the sync reported "serverside-applied"
+  # success every time, but the live object's managedFields showed
+  # argocd-controller's last actual spec Apply from over a month earlier).
+  # Fixed instead by omitting `weight` from httproute.yaml entirely — see that
+  # file's comment for why that sidesteps the conflict without needing this
+  # mechanism at all.
   syncPolicy:
     automated:
       prune: true
@@ -68,4 +60,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
