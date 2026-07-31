@@ -48,12 +48,19 @@ spec:
   # resting value mid-canary, fighting the rollout. RespectIgnoreDifferences
   # (below) is required too, or a routine sync still re-asserts git's value
   # (matches the cnpg-cluster ApplicationSet's identical pattern).
+  #
+  # jqPathExpressions, NOT jsonPointers: verified live that jsonPointers with
+  # an array index that doesn't yet exist on the LIVE object silently breaks
+  # ArgoCD's diff/apply for the whole resource (the sync reported "Synced" but
+  # the live HTTPRoute never actually changed — backendRefs[1] didn't exist
+  # pre-migration, and an RFC 6901 pointer to a missing array index is
+  # invalid). jq's `[]` iterates whatever elements exist, so it doesn't have
+  # this fixed-index fragility.
   ignoreDifferences:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      jsonPointers:
-        - /spec/rules/0/backendRefs/0/weight
-        - /spec/rules/0/backendRefs/1/weight
+      jqPathExpressions:
+        - .spec.rules[].backendRefs[].weight
   syncPolicy:
     automated:
       prune: true
