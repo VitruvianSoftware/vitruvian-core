@@ -72,6 +72,17 @@ spec:
                 value: "20"
               - name: BUZZ_REDIS_POOL_SIZE
                 value: "32"
+            # Default startupProbe budget (failureThreshold: 60 * periodSeconds:
+            # 2 = 120s) is too tight for this homelab: the git-store A3
+            # conformance probe (32-way concurrent conditional-write race
+            # against MinIO) hit intermittent "socket/send failure" transport
+            # drops on a routine relay restart, observed alongside a 5.6s
+            # spike on MinIO's own /minio/health/live from the same node —
+            # pushing total probe time past 120s and crash-looping a pod that
+            # was otherwise healthy. 150 * 2s = 300s gives headroom for a
+            # couple of slow rounds without masking a genuinely stuck probe.
+            startupProbe:
+              failureThreshold: 150
             topologySpreadConstraints:
               - maxSkew: 1
                 topologyKey: kubernetes.io/hostname
