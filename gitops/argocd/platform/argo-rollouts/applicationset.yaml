@@ -39,6 +39,26 @@
 # Single controller replica for now (chart default is 2/HA) — there is
 # nothing depending on this yet, so HA doesn't buy anything; bump to 2 when
 # buzz (or another app) actually starts gating promotions on it.
+#
+# Gateway API traffic-router plugin (added for the whoami pilot, PR follow-up
+# to #1343): controller.trafficRouterPlugins only populates the
+# argo-rollouts-config ConfigMap's `trafficRouterPlugins` key — the chart does
+# NOT auto-generate an initContainer/volume for it. That's fine: for an
+# http(s):// location (as opposed to file://) the controller downloads the
+# plugin binary itself at startup (confirmed via
+# https://argo-rollouts.readthedocs.io/en/stable/features/traffic-management/plugins/ —
+# "Argo Rollouts will download the plugin at startup only once but if the pod
+# is deleted it will need to download the plugin again on next startup").
+# Pinned to the plugin's v0.16.0 release asset (verified via
+# `gh api repos/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/tags/v0.16.0`
+# — no upstream checksums file is published for this project, so this is
+# version-pinned to an immutable release URL, not hash-verified).
+#
+# The controller's default RBAC has no gateway.networking.k8s.io permissions
+# (that's a plugin-specific need, not something the chart grants by default) —
+# see gitops/argocd/applications/argo-rollouts-resources.yaml for the
+# ClusterRole/ClusterRoleBinding this plugin actually needs to read/patch
+# HTTPRoutes.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -89,6 +109,9 @@ spec:
             # actually gating promotions through this controller.
             dashboard:
               enabled: false
+            trafficRouterPlugins:
+              - name: argoproj-labs/gatewayAPI
+                location: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.16.0/gatewayapi-plugin-linux-amd64
       destination:
         server: '{{.server}}'
         namespace: argo-rollouts

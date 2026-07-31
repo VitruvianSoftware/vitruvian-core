@@ -18,11 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# whoami Service — ClusterIP target for the HTTPRoute backend.
+# whoami-stable — replaces the old single "whoami" Service now that whoami is
+# a Rollout (rollout.yaml). Selector shown is the committed baseline; the
+# Rollout controller ADDS its own rollouts-pod-template-hash key live to pin
+# this Service to the current stable ReplicaSet's pods — an additive key we
+# never declare in git, so it isn't drift under ArgoCD's SSA field ownership.
 apiVersion: v1
 kind: Service
 metadata:
-  name: whoami
+  name: whoami-stable
   namespace: whoami
 spec:
   selector:
