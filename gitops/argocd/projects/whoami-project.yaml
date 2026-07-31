@@ -25,6 +25,10 @@
 # (enumerated from the live app: apps/Deployment, /Service,
 # externaldns.k8s.io/DNSEndpoint, gateway.networking.k8s.io/HTTPRoute).
 #
+# Also this cluster's first Argo Rollouts pilot: apps/Deployment retired below
+# in favor of argoproj.io/Rollout, AnalysisTemplate, AnalysisRun — see
+# platform/whoami/rollout.yaml.
+#
 # Scoping the shared platform-project the same way must be done incrementally
 # under supervision — a missed CRD kind there breaks reconciliation of Zitadel
 # (auth) and the CNPG databases.
@@ -50,8 +54,12 @@ spec:
   clusterResourceWhitelist: []
   # Exactly the namespaced kinds whoami manages — nothing else.
   namespaceResourceWhitelist:
-    - group: apps
-      kind: Deployment
+    - group: argoproj.io
+      kind: Rollout
+    - group: argoproj.io
+      kind: AnalysisTemplate
+    - group: argoproj.io
+      kind: AnalysisRun
     - group: ''
       kind: Service
     - group: externaldns.k8s.io

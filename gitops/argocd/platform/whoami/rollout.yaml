@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# whoami — converted from a plain Deployment to the FIRST Argo Rollouts pilot
+# on this cluster (replaces deployment.yaml). Chosen because whoami is a
+# first-party-owned Deployment (no external Helm chart to fork, unlike buzz —
+# see docs/superpowers/specs/2026-07-31-buzz-argo-rollouts-pilot-scoping.md)
+# and is already Gateway-API-routed via httproute.yaml.
+#
+# Canary strategy uses the Gateway API traffic-router plugin
+# (argoproj-labs/gatewayAPI, registered on the controller in
+# platform/argo-rollouts/applicationset.yaml) against whoami's existing
+# HTTPRoute — see httproute.yaml for the two backendRefs (stable/canary) the
+# plugin patches weights on, and service-stable.yaml/service-canary.yaml for
+# the two Services it manages the pod-template-hash selector on.
+#
+# AnalysisTemplate (analysistemplate.yaml) uses the "web" metric provider — a
+# plain HTTP check against the canary Service, no Prometheus needed. Fine for
+# a proof-of-concept on a zero-criticality echo app; a real production canary
+# would want a request-rate/error-rate signal instead (buzz's own gap, still
+# open).
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: whoami
+  namespace: whoami
+  labels:
+    app: whoami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.11.0
+          args: ["--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+  strategy:
+    canary:
+      canaryService: whoami-canary
+      stableService: whoami-stable
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: whoami
+            namespace: whoami
+      steps:
+        - setWeight: 50
+        - pause:
+            duration: 30s
+        - analysis:
+            templates:
+              - templateName: whoami-http-check
+        - setWeight: 100

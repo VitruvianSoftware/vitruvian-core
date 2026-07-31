@@ -18,47 +18,35 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# whoami — git-source Application (raw manifests; root-platform's include is
-# applicationset-only). Part of the Cloudflare Tunnel / Gateway-API migration.
-# Also this cluster's first Argo Rollouts pilot (rollout.yaml replaces the old
-# Deployment) — see platform/whoami/rollout.yaml for why whoami specifically.
+# argo-rollouts-resources — RBAC the Gateway API traffic-router plugin needs
+# that the argo-rollouts chart doesn't grant by default (gateway.networking.k8s.io
+# httproutes get/patch/update). Raw manifests, same shape as
+# envoy-gateway-resources.yaml: the chart's own ApplicationSet can't render
+# these, so they ride a separate git-source Application.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: whoami
+  name: argo-rollouts-resources
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    # After the controller + its ServiceAccount exist (argo-rollouts AppSet is
+    # sync-wave "-1"), before any app's Rollout might need this RBAC (whoami is
+    # sync-wave "2").
+    argocd.argoproj.io/sync-wave: "0"
 spec:
-  # Migrated to the fully-scoped per-app project (issue #459); see
-  # gitops/argocd/projects/whoami-project.yaml.
-  project: whoami-project
+  project: platform-project
   source:
     repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
     targetRevision: main
-    path: gitops/argocd/platform/whoami
+    path: gitops/argocd/platform/argo-rollouts/gateway-rbac
     directory:
       recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: whoami
-  # The Gateway API traffic-router plugin owns the HTTPRoute's backendRef
-  # weights live during a canary (see httproute.yaml) — without this, selfHeal
-  # would revert every weight change Rollouts makes back to git's 100/0
-  # resting value mid-canary, fighting the rollout. RespectIgnoreDifferences
-  # (below) is required too, or a routine sync still re-asserts git's value
-  # (matches the cnpg-cluster ApplicationSet's identical pattern).
-  ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      jsonPointers:
-        - /spec/rules/0/backendRefs/0/weight
-        - /spec/rules/0/backendRefs/1/weight
+    namespace: argo-rollouts
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
