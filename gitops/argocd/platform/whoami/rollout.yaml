@@ -36,6 +36,14 @@
 # a proof-of-concept on a zero-criticality echo app; a real production canary
 # would want a request-rate/error-rate signal instead (buzz's own gap, still
 # open).
+#
+# image pinned to v1.10.1 (down from v1.11.0) deliberately, as a real,
+# observable version change to prove the canary mechanism end-to-end: the
+# Rollout's very first apply (#1345) was an "Initial deploy" with no prior
+# stable revision, so Argo Rollouts correctly skipped straight to Healthy
+# without running any canary steps — nothing to canary FROM yet. This bump
+# creates revision 2, which has a real predecessor and will actually walk
+# setWeight(50) -> pause(30s) -> analysis -> setWeight(100).
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -60,7 +68,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: whoami
-          image: traefik/whoami:v1.11.0
+          image: traefik/whoami:v1.10.1
           args: ["--port", "8080"]
           ports:
             - name: http
