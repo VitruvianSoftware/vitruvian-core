@@ -115,6 +115,7 @@ vitruvian-core/
 │   ├── pulumi/platform/               # repo_config, dev-local bootstrap, zitadel-apps
 │   └── gcp-identities.tsv             # per-project GCP identity pinning
 ├── gitops/argocd/                     # the dev-local platform, as ArgoCD apps
+├── gitops/charts/                     # forked third-party Helm chart source (controller-agnostic)
 ├── pulumi/                            # shared Pulumi library + foundation examples
 ├── tools/                             # all operational tooling as bazel run targets
 ├── docs/                              # ← you are here (see docs/README.md)
