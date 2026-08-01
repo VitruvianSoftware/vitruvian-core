@@ -377,6 +377,7 @@ ROWS_CAT_ADVISORY=""
 ROWS_VIS=""
 ROWS_MERGEQ=""
 ROWS_CONCUR=""
+ROWS_TIMEOUT=""
 ROWS_SWEEP=""
 ROWS_IAC=""
 ROWS_META=""
@@ -399,6 +400,7 @@ emit() {
     vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
     concur)       ROWS_CONCUR="${ROWS_CONCUR}${_row}" ;;
+    timeout)      ROWS_TIMEOUT="${ROWS_TIMEOUT}${_row}" ;;
     sweep)        ROWS_SWEEP="${ROWS_SWEEP}${_row}" ;;
     iac)          ROWS_IAC="${ROWS_IAC}${_row}" ;;
     meta)         ROWS_META="${ROWS_META}${_row}" ;;
@@ -1007,6 +1009,103 @@ check_postsubmit_concurrency() {
       "no workflow matched the push-to-main + merge_group signature — the parser or the workflow layout changed" \
       "confirm ci.yaml still triggers on both 'push: branches: [main]' and 'merge_group:'"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# CHECK: every workflow job declares `timeout-minutes` (#209 / epic #200).
+#
+# A job without `timeout-minutes` inherits GitHub's default of 360 MINUTES. A
+# hung step (a wedged network call, a prompt nobody answers, a deadlocked test)
+# therefore holds a runner for six hours instead of failing fast — pure wasted
+# compute, and on a serialized lane it blocks every queued run behind it.
+#
+# #209 set explicit timeouts across all ~59 workflows, but nothing ENFORCED it,
+# so the invariant decayed the moment a new workflow was added: renovate.yaml
+# (#1344) shipped the repo's only unbounded job one day after landing. This
+# closes that loop — the rule now fails CI instead of relying on review.
+#
+# A job that only delegates (`uses:` a reusable workflow) is EXEMPT: the timeout
+# belongs to the callee's own jobs, and `timeout-minutes` is not even a valid key
+# on a workflow-call job. Parsed with POSIX awk over the `jobs:` block, keyed on
+# indentation (job ids at 2, job keys at 4), so a `timeout-minutes` inside a
+# step's `with:` block can't satisfy the job-level requirement.
+# ---------------------------------------------------------------------------
+check_job_timeouts() {
+  [ -d "$WORKFLOWS_DIR" ] || return 0
+  seen_jobs=0
+  for wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
+    [ -f "$wf" ] || continue
+    wf_rel=".github/workflows/${wf##*/}"
+
+    # Emits "<jobid>\t<has_timeout>\t<is_call>" for every job in the workflow.
+    #
+    # Indentation is DISCOVERED, never assumed: this repo mixes 2-space and
+    # 4-space workflow styles (the copybara/dependabot lanes indent by 4), so a
+    # hardcoded "job ids at column 2" parser silently skips those files and the
+    # whole check passes vacuously for them. `jobind` is taken from the first job
+    # entry and `keyind` from the first key inside each job, so a job-level
+    # `timeout-minutes` is distinguished from one nested in a step's `with:`
+    # regardless of the file's indent width.
+    jobs_report="$(awk '
+      function ind(l,  i){i=0;while(substr(l,i+1,1)==" ")i++;return i}
+      function flush(){ if(jobid!="") print jobid "\t" to "\t" call; jobid="";to=0;call=0;keyind=-1 }
+      BEGIN { jobind=-1; keyind=-1 }
+      { line=$0; sub(/\r$/,"",line); I=ind(line) }
+      /^jobs:[ \t]*$/ { in_jobs=1; next }
+      !in_jobs { next }
+      line ~ /^[ \t]*#/ { next }
+      line !~ /[^ \t]/  { next }
+      # A new top-level key ends the jobs block.
+      I==0 { flush(); in_jobs=0; next }
+      # First entry under `jobs:` fixes the job-id indent for this file.
+      jobind<0 { jobind=I }
+      # Job id: a bare "<name>:" at the job-id indent.
+      I==jobind && line ~ /^[ ]*[A-Za-z0-9_.-]+:[ \t]*$/ {
+        flush(); jobid=line; sub(/^[ ]*/,"",jobid); sub(/:[ \t]*$/,"",jobid); next
+      }
+      jobid=="" { next }
+      # First key inside this job fixes the job-level key indent.
+      keyind<0 && I>jobind { keyind=I }
+      I==keyind && line ~ /^[ ]*timeout-minutes:/ { to=1; next }
+      I==keyind && line ~ /^[ ]*uses:/            { call=1; next }
+      END { flush() }
+    ' "$wf")"
+
+    [ -n "$jobs_report" ] || continue
+    printf '%s\n' "$jobs_report" | while IFS="$(printf '\t')" read -r jid has_to is_call; do
+      [ -n "$jid" ] || continue
+      printf 'x\n' >>"$TIMEOUT_TALLY"
+      [ "$is_call" = "1" ] && continue
+      [ "$has_to" = "1" ] && continue
+      printf '%s\t%s\n' "$wf_rel" "$jid" >>"$TIMEOUT_MISSING"
+    done
+  done
+
+  seen_jobs="$(wc -l <"$TIMEOUT_TALLY" 2>/dev/null | tr -d ' ')"
+  [ -n "$seen_jobs" ] || seen_jobs=0
+
+  if [ -s "$TIMEOUT_MISSING" ]; then
+    while IFS="$(printf '\t')" read -r wfr jid; do
+      [ -n "$wfr" ] || continue
+      emit "timeout" "$GLYPH_FAIL" "$C_RED" "$wfr" "$jid" "timeout-minutes" \
+        "job has no timeout-minutes — it inherits GitHub's 360-minute default, so a hung step burns a runner for 6h" \
+        "add a 'timeout-minutes:' to the '$jid' job sized to its normal runtime plus headroom"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    done <"$TIMEOUT_MISSING"
+  fi
+
+  # A zero-job sweep means the parser (or the workflow layout) drifted, not that
+  # the repo suddenly has no jobs. Fail loudly rather than pass vacuously.
+  if [ "$seen_jobs" -eq 0 ]; then
+    emit "timeout" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 jobs" ">=1" \
+      "no workflow jobs parsed — the parser or the workflow layout changed" \
+      "confirm .github/workflows/*.yaml still declare jobs under a top-level 'jobs:' key"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  elif [ ! -s "$TIMEOUT_MISSING" ]; then
+    emit "timeout" "$GLYPH_OK" "$C_GREEN" ".github/workflows" "$seen_jobs jobs" "all bounded" \
+      "every non-delegating job declares timeout-minutes" ""
+    OK_COUNT=$((OK_COUNT + 1))
   fi
 }
 
@@ -1697,6 +1796,14 @@ parse_registry
 CATALOG_NAMES_FILE="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/conf-catnames.$$")"
 catalog_names > "$CATALOG_NAMES_FILE" 2>/dev/null || true
 
+# Scratch files for check_job_timeouts. Its per-workflow tally is accumulated
+# inside a `while read` on the right of a pipe — a SUBSHELL, so a plain variable
+# would be discarded when it exits. Files survive; removed at the end of MAIN.
+TIMEOUT_TALLY="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/conf-totally.$$")"
+TIMEOUT_MISSING="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/conf-tomissing.$$")"
+: > "$TIMEOUT_TALLY"
+: > "$TIMEOUT_MISSING"
+
 check_go
 check_node
 check_pnpm
@@ -1710,6 +1817,7 @@ check_app_visibility
 check_app_metadata
 check_merge_queue
 check_postsubmit_concurrency
+check_job_timeouts
 check_sweep_backstop
 check_zitadel_import
 check_pulumi_project_names
@@ -1734,6 +1842,7 @@ print_group "App visibility firewall (#82: app-scoped defaults + public allowlis
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
+print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
 print_group "IaC destructive-import guard (zitadel-apps must create, never import)" "$ROWS_IAC"
 print_group "Pulumi program identity (unique project names · customDomain under its zone)" "$ROWS_PULUMI"
@@ -1744,7 +1853,7 @@ print_group "CI gate guard (deploy + test gates must share one global-impact lis
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
-rm -f "$CATALOG_NAMES_FILE"
+rm -f "$CATALOG_NAMES_FILE" "$TIMEOUT_TALLY" "$TIMEOUT_MISSING"
 
 # Count active (non-expired, sanctioned) pin rows in the registry for the summary.
 ACTIVE_PINS=0
