@@ -86,8 +86,13 @@ jobs:
           set -euo pipefail
           base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
           asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL -O "${base}/${asset}"
-          curl -fsSL -O "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          # --retry: this is a REQUIRED check, so one transient GitHub-releases
+          # blip reddens the merge queue for a reason unrelated to the change
+          # under test. Retry transport errors AND HTTP 5xx/429
+          # (--retry-all-errors), and bound each attempt with --max-time so a
+          # hung CDN connection fails fast instead of burning the job timeout.
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/${asset}"
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
           grep "${asset}" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
           mkdir -p "${HOME}/.local/bin"
           tar -xzf "${asset}" -C "${HOME}/.local/bin" actionlint
