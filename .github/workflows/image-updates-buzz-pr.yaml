@@ -1,0 +1,85 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Buzz image update PR
+
+# argocd-image-updater's git write-back (gitops/argocd/platform/argocd-image-updater/
+# resources/imageupdater-buzz.yaml) pushes a resolved `main@sha256:...` digest
+# straight onto `image-updates/buzz` using its own sealed SSH deploy key -- it
+# never touches `main`. This workflow is the other half: it turns that branch
+# into a normal, mergeable PR so the digest bump goes through the merge queue
+# like every other change, instead of sitting on a branch nobody looks at.
+#
+# Trigger is `push` on the write-back branch itself, not pull_request_target and
+# not repository_dispatch -- the only external input is the digest the
+# controller already resolved from the public ghcr.io/block/buzz registry, and
+# this job never checks out or executes anything from a fork/PR head.
+#
+# Idempotent by design: GitHub auto-updates an existing open PR when its head
+# branch gets new commits, so this only needs to open one the first time the
+# branch appears (or after the previous bump's PR merged and closed it).
+on:
+  push:
+    branches:
+      - image-updates/buzz
+
+# Ambient GITHUB_TOKEN only -- the branch is already pushed by the controller's
+# own deploy key; this job just needs to read it and open a PR against main.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: image-updates-buzz-pr
+  cancel-in-progress: false
+
+jobs:
+  open-or-update-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Open PR into main (skip if one's already open)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          existing="$(gh pr list \
+            --head image-updates/buzz \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "PR #${existing} already open for image-updates/buzz -- the push that triggered this run already updated it, nothing to do."
+            exit 0
+          fi
+
+          gh pr create \
+            --head image-updates/buzz \
+            --base main \
+            --title "chore(buzz): bump image digest (automated)" \
+            --body "Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/block/buzz:main. Review the resolved digest in gitops/argocd/platform/buzz/values.yaml, then merge through the normal queue."

@@ -22,6 +22,14 @@
 # Uses the upstream OCI Helm chart with homelab-specific values.
 # Prerequisite: buzz-secrets SealedSecret (sealed-secrets-manifests/) and
 # buzz-db CNPG cluster (platform/buzz/) must exist in the buzz namespace.
+#
+# Values live in gitops/argocd/platform/buzz/values.yaml (source 2, referenced
+# by source 1 via the `$values` ref), not inline here — argocd-image-updater's
+# git write-back needs a real file to patch `image.tag`/digest against, which
+# an inline `helm.values` string embedded in this Application can't be. The
+# file is excluded from source 2's own directory-recurse render (see
+# `directory.exclude` below) so it's read as a values file only, never applied
+# as a raw manifest.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -39,140 +47,18 @@ spec:
       targetRevision: 0.1.7
       helm:
         releaseName: buzz
-        values: |
-          image:
-            tag: "main"
+        valueFiles:
+          - $values/gitops/argocd/platform/buzz/values.yaml
 
-          relayUrl: wss://buzz.ipv1337.dev
-          ownerPubkey: "d6a7b951e82471bc01094ba399a484e48b66d2b208cc3261ae6365b8b7d90814"
-          replicaCount: 3
-
-          secrets:
-            existingSecret: buzz-secrets
-
-          relay:
-            requireRelayMembership: false
-            requireAuthToken: true
-            # Explicit DB/Redis pool sizing for 3 replicas, replacing the
-            # relay's built-in defaults (BUZZ_DB_POOL_SIZE=50,
-            # BUZZ_REDIS_POOL_SIZE=16 per pod). Unsized, 3 pods x 50 = 150
-            # Postgres connections against CNPG's default max_connections=100
-            # (cnpg-cluster.yaml doesn't override it) — oversubscribed before
-            # accounting for replication, monitoring, or admin/migration
-            # connections, which manifests as readiness-probe 503s on
-            # `db.ping()` acquire timeouts. 20/pod keeps 3 pods at 60 total,
-            # well under the 100 cap. Redis pool at the 16 default was
-            # observed timing out under load (relay logs: "Redis pool: Error
-            # occurred while creating a new object: timed out" on the shared
-            # rate-limiter); Valkey has ample headroom (default maxclients
-            # 10000), so bump to 32/pod to absorb bursts and Tailscale mesh
-            # hiccups without contending with a scarce resource like Postgres.
-            extraEnv:
-              - name: BUZZ_DB_POOL_SIZE
-                value: "20"
-              - name: BUZZ_REDIS_POOL_SIZE
-                value: "32"
-            # Default startupProbe budget (failureThreshold: 60 * periodSeconds:
-            # 2 = 120s) is too tight for this homelab: the git-store A3
-            # conformance probe (32-way concurrent conditional-write race
-            # against MinIO) hit intermittent "socket/send failure" transport
-            # drops on a routine relay restart, observed alongside a 5.6s
-            # spike on MinIO's own /minio/health/live from the same node —
-            # pushing total probe time past 120s and crash-looping a pod that
-            # was otherwise healthy. 150 * 2s = 300s gives headroom for a
-            # couple of slow rounds without masking a genuinely stuck probe.
-            startupProbe:
-              failureThreshold: 150
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/instance: buzz
-                    app.kubernetes.io/name: buzz
-                    app.kubernetes.io/component: relay
-
-          pairingRelay:
-            enabled: true
-            url: "wss://buzz.ipv1337.dev/pair"
-
-          # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
-          httproute:
-            enabled: true
-            parentRefs:
-              - group: gateway.networking.k8s.io
-                kind: Gateway
-                name: platform
-                namespace: envoy-gateway-system
-            rules:
-              - matches:
-                  - path:
-                      type: PathPrefix
-                      value: /pair
-                backendRefs:
-                  - group: ""
-                    kind: Service
-                    name: buzz-pairing
-                    port: 5000
-                    weight: 1
-              - matches:
-                  - path:
-                      type: PathPrefix
-                      value: /
-                backendRefs:
-                  - group: ""
-                    kind: Service
-                    name: buzz
-                    port: 3000
-                    weight: 1
-
-          # Redis: use the dedicated HA Redis cluster from the platform layer.
-          # NOTE: with secrets.existingSecret set (below), the chart never
-          # renders its own Secret, so externalRedis.url is NOT actually
-          # wired into REDIS_URL — it's documentation of intent only. The
-          # real value lives in the buzz-secrets SealedSecret and must be
-          # kept in sync with this by hand.
-          redis:
-            enabled: false
-
-          externalRedis:
-            url: "redis://buzz-valkey-primary.buzz.svc.cluster.local:6379"
-
-          # S3: use the existing homelab MinIO cluster. Credentials are in
-          # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
-          s3:
-            endpoint: http://minio-amd64.minio.svc.cluster.local:9000
-            bucket: buzz-media
-
-          # This cluster's Prometheus is the community prometheus-server
-          # chart, not kube-prometheus-stack — there is no Prometheus
-          # Operator to reconcile ServiceMonitor CRDs, so serviceMonitor
-          # (below) is inert (kept for forward-compat if that ever changes).
-          # Prometheus discovers scrape targets via Service annotations
-          # instead (kubernetes-service-endpoints job), hence these.
-          service:
-            annotations:
-              prometheus.io/scrape: "true"
-              prometheus.io/port: "9102"
-              prometheus.io/path: "/metrics"
-
-          serviceMonitor:
-            enabled: true
-
-          # Git scratch volume: disabled (emptyDir) for multi-replica HA.
-          # The chart docs confirm git state is S3-backed; the PVC is pure
-          # scratch and its RWO nodeAffinity prevents cross-node scheduling.
-          persistence:
-            git:
-              enabled: false
-
-    # Source 2: Platform manifests (DNSEndpoint, CNPG cluster).
+    # Source 2: Platform manifests (DNSEndpoint, CNPG cluster) and the buzz
+    # Helm values file, referenced from source 1 as `$values`.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
       path: gitops/argocd/platform/buzz
+      ref: values
       directory:
         recurse: true
+        exclude: values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: buzz

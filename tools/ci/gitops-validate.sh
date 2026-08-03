@@ -163,17 +163,33 @@ echo "gitops-validate: kubeconform over gitops/argocd ..."
 
 # Only *.yaml manifests — NOT the Grafana dashboard .json files under
 # platform/grafana-dashboards (those are configMapGenerator inputs, not k8s
-# resources; kubeconform would reject them for a missing 'kind').
+# resources; kubeconform would reject them for a missing 'kind'), and NOT any
+# values.yaml (a plain Helm values file, referenced via an ArgoCD multi-source
+# `valueFiles` ref and/or an argocd-image-updater git write-back target --
+# excluded from the owning Application's own directory-recurse render via
+# `directory.exclude` for the same reason; see gitops/argocd/platform/buzz/).
 #
 # -strict                    reject duplicate keys + unknown fields.
 # -ignore-missing-schemas    CRDs in neither schema source (e.g. Cilium, k3s)
 #                            are skipped rather than failed -- see the guard
 #                            above for why that flag needs one.
+# -skip ImageUpdater         datreeio/CRDs-catalog's argocd-image-updater.
+#                            argoproj.io schema is ahead of the chart version
+#                            we actually pin (1.2.4 / appVersion v1.2.2):
+#                            it demands a top-level `spec.namespace` the real,
+#                            chart-shipped CRD (templates/crd-imageupdaters.yaml)
+#                            has no such requirement for -- confirmed by
+#                            pulling that exact template and diffing its
+#                            `required:` list. A genuine schema/version
+#                            mismatch, not a manifest bug; skip rather than
+#                            let a third-party catalog lag fail a correct
+#                            manifest.
 SUMMARY="$(
-  find gitops/argocd -name '*.yaml' -print0 \
+  find gitops/argocd -name '*.yaml' -not -name 'values.yaml' -print0 \
     | xargs -0 kubeconform \
         -strict \
         -ignore-missing-schemas \
+        -skip ImageUpdater \
         -schema-location "${SCHEMA_DIR}/${SCHEMA_CONE}/{{.ResourceKind}}{{.KindSuffix}}.json" \
         -schema-location "${CRD_CATALOG_DIR}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
         -summary

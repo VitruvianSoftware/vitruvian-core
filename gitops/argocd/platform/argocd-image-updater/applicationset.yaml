@@ -1,0 +1,115 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# argocd-image-updater — sign-off: James Nguyen, vitruvian-core-buzz channel,
+# 2026-08-03 (thread root a24278e9b2ff02de39bed78892b2a8d7ae5c0ccdbe583373cbdc54824e236645),
+# per docs/engineering/application-development-principles.md §2.13 (new-tool
+# sign-off). Scoped gap: buzz's `image.tag: "main"` floats with nothing
+# watching it — ArgoCD only diffs committed manifests, so a new upstream push
+# under that tag is invisible to it (confirmed against the live cluster the
+# same day). This is a controller-only install: it does not touch any other
+# app's Deployment; watching an image is purely opt-in per ImageUpdater CR
+# (see platform/argocd-image-updater/resources/imageupdater-buzz.yaml, the
+# only one that exists today).
+#
+# Installed INTO `argocd`, not its own namespace — this isn't a style choice,
+# it's required by how the controller actually resolves things (verified
+# against upstream source, not just docs): an ImageUpdater CR only ever lists
+# Applications in *its own* namespace (pkg/argocd/argocd.go,
+# FilterApplicationsForUpdate: `ctrlclient.InNamespace(cr.Namespace)`), and a
+# `git:secret:<ns>/<name>` write-back credential requires `<ns>` to equal the
+# target Application's namespace (pkg/argocd/update.go passes
+# `app.GetNamespace()`, i.e. `argocd`, into the secret lookup). The chart's own
+# RBAC (templates/rbac.yaml) only grants Secret get/list/watch inside the
+# release's own namespace — never cluster-wide, even with createClusterRoles.
+# So CR + Application + git-creds Secret + controller pod all have to be in
+# `argocd` together; there is no way to isolate this into its own namespace
+# without adding custom cross-namespace RBAC the chart doesn't ship.
+#
+# Sync-wave -1, same tier as argo-rollouts: no consumer yet at the time this
+# Application itself syncs (the `argocd-image-updater-resources` Application
+# carrying the actual ImageUpdater CR is wave 0), and `argocd` as a
+# destination namespace always exists already, so there's no
+# CreateNamespace-ordering hazard the way a fresh namespace would have.
+#
+# Chart config notes:
+# - No config.registries entry for ghcr.io: it's a public image
+#   (ghcr.io/block/buzz), and the controller talks to any standard Docker
+#   Registry HTTP API V2 endpoint anonymously by default -- no credentials
+#   needed for an unauthenticated pull.
+# - No ArgoCD API token/server config: the CRD-based (v1.x) controller reads
+#   and patches the Application resource directly via the Kubernetes API (see
+#   its own RBAC, chart default createClusterRoles/rbac.enabled=true) rather
+#   than going through ArgoCD's own gRPC/REST API -- confirmed by the upstream
+#   docs never mentioning an argocd-image-updater-secret argocd.token for this
+#   path, unlike the pre-1.0 annotation-based controller.
+# - git.user/git.email set so write-back commits aren't attributed to nothing;
+#   sshConfig left at chart default (the image ships pre-populated known_hosts
+#   for github.com per upstream) -- verify in controller logs after first
+#   sync that the SSH handshake doesn't hit a host-key prompt.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+  labels:
+    environment: argocd-image-updater
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: argocd-image-updater
+      labels:
+        app: argocd-image-updater
+      annotations:
+        argocd.argoproj.io/sync-wave: "-1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://argoproj.github.io/argo-helm
+        chart: argocd-image-updater
+        targetRevision: "1.2.4"
+        helm:
+          version: v3
+          values: |
+            replicaCount: 1
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+            config:
+              git.user: "argocd-image-updater"
+              git.email: "atlas+argocd-image-updater@ipv1337.dev"
+            metrics:
+              enabled: true
+              serviceMonitor:
+                enabled: false
+      destination:
+        server: '{{.server}}'
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
