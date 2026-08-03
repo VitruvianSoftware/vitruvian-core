@@ -51,15 +51,23 @@ spec:
   # earlier. managedFieldsManagers ignores diffs by which controller owns a
   # field instead of by JSON path, so it doesn't touch that bug at all.
   #
-  # rollouts-controller is the exact field-manager name the Argo Rollouts
-  # controller/gatewayAPI plugin uses for its patches — confirmed empirically
-  # via `kubectl get service whoami-stable -o
-  # jsonpath='{.metadata.managedFields[*].manager}'` (rollouts-controller
-  # also owns that Service's selector). httproute.yaml now writes `weight: 1`
-  # explicitly (the Gateway API default for an omitted field) so steady-state
-  # git == live and this Application is fully Synced when no canary is
-  # running; this ignoreDifferences entry only matters while
-  # rollouts-controller actually owns the weight fields mid-canary, so
+  # gatewayAPI is the exact field-manager name the Argo Rollouts
+  # controller/gatewayAPI plugin uses for its HTTPRoute patches (a plain
+  # Update, not an SSA Apply) — confirmed empirically via
+  # `kubectl get httproute whoami -n whoami -o
+  # jsonpath='{range .metadata.managedFields[*]}{.manager}{" "}{.operation}{"\n"}{end}'`.
+  # NOT rollouts-controller: that's the manager name for the Services
+  # (whoami-stable/whoami-canary) the same controller also owns, checked
+  # first here and wrongly assumed to be shared — a live canary run proved it
+  # wrong within minutes (autoHealAttemptsCount climbing again, HTTPRoute
+  # weight visibly getting stomped back to 1/1 mid-rollout) because
+  # ignoreDifferences silently does nothing for a manager name that doesn't
+  # match any entry in the live object's managedFields.
+  #
+  # httproute.yaml now writes `weight: 1` explicitly (the Gateway API default
+  # for an omitted field) so steady-state git == live and this Application is
+  # fully Synced when no canary is running; this ignoreDifferences entry only
+  # matters while gatewayAPI actually owns the weight fields mid-canary, so
   # self-heal doesn't fight it.
   #
   # This also needs the cluster's ArgoCD to have server-side diff OFF —
@@ -71,7 +79,7 @@ spec:
       kind: HTTPRoute
       name: whoami
       managedFieldsManagers:
-        - rollouts-controller
+        - gatewayAPI
   syncPolicy:
     automated:
       prune: true

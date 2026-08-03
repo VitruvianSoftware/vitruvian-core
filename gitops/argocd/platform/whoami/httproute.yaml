@@ -55,7 +55,9 @@
 # settles, then use ignoreDifferences' managedFieldsManagers (NOT
 # jsonPointers/jqPathExpressions — a different, working mechanism that
 # doesn't touch JSON paths inside the list at all) so self-heal backs off
-# fields `rollouts-controller` actually owns once a canary is running.
+# fields the `gatewayAPI` field manager actually owns once a canary is
+# running (that's the plugin's manager name for THIS resource specifically —
+# see whoami.yaml's comment for why it isn't the same name as the Services).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
