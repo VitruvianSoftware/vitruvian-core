@@ -26,15 +26,13 @@
 # from source 2's directory-recurse render (`directory.exclude`) so it isn't
 # also applied as a raw manifest.
 image:
-  tag: "main"
-
+  tag: "main@sha256:8d5a9a0e5259d416a8f94d14b92789bddce7ef6e70d84c38a4de6333f46eeddb"
+  repository: ghcr.io/block/buzz
 relayUrl: wss://buzz.ipv1337.dev
 ownerPubkey: "d6a7b951e82471bc01094ba399a484e48b66d2b208cc3261ae6365b8b7d90814"
 replicaCount: 3
-
 secrets:
   existingSecret: buzz-secrets
-
 relay:
   requireRelayMembership: false
   requireAuthToken: true
@@ -53,10 +51,10 @@ relay:
   # 10000), so bump to 32/pod to absorb bursts and Tailscale mesh
   # hiccups without contending with a scarce resource like Postgres.
   extraEnv:
-    - name: BUZZ_DB_POOL_SIZE
-      value: "20"
-    - name: BUZZ_REDIS_POOL_SIZE
-      value: "32"
+  - name: BUZZ_DB_POOL_SIZE
+    value: "20"
+  - name: BUZZ_REDIS_POOL_SIZE
+    value: "32"
   # Default startupProbe budget (failureThreshold: 60 * periodSeconds:
   # 2 = 120s) is too tight for this homelab: the git-store A3
   # conformance probe (32-way concurrent conditional-write race
@@ -69,49 +67,46 @@ relay:
   startupProbe:
     failureThreshold: 150
   topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/instance: buzz
-          app.kubernetes.io/name: buzz
-          app.kubernetes.io/component: relay
-
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/instance: buzz
+        app.kubernetes.io/name: buzz
+        app.kubernetes.io/component: relay
 pairingRelay:
   enabled: true
   url: "wss://buzz.ipv1337.dev/pair"
-
 # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
 httproute:
   enabled: true
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform
-      namespace: envoy-gateway-system
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: platform
+    namespace: envoy-gateway-system
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /pair
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: buzz-pairing
-          port: 5000
-          weight: 1
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: buzz
-          port: 3000
-          weight: 1
-
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /pair
+    backendRefs:
+    - group: ""
+      kind: Service
+      name: buzz-pairing
+      port: 5000
+      weight: 1
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - group: ""
+      kind: Service
+      name: buzz
+      port: 3000
+      weight: 1
 # Redis: use the dedicated HA Redis cluster from the platform layer.
 # NOTE: with secrets.existingSecret set (below), the chart never
 # renders its own Secret, so externalRedis.url is NOT actually
@@ -120,16 +115,13 @@ httproute:
 # kept in sync with this by hand.
 redis:
   enabled: false
-
 externalRedis:
   url: "redis://buzz-valkey-primary.buzz.svc.cluster.local:6379"
-
 # S3: use the existing homelab MinIO cluster. Credentials are in
 # buzz-secrets (BUZZ_S3_ACCESS_KEY / BUZZ_S3_SECRET_KEY).
 s3:
   endpoint: http://minio-amd64.minio.svc.cluster.local:9000
   bucket: buzz-media
-
 # This cluster's Prometheus is the community prometheus-server
 # chart, not kube-prometheus-stack — there is no Prometheus
 # Operator to reconcile ServiceMonitor CRDs, so serviceMonitor
@@ -141,10 +133,8 @@ service:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9102"
     prometheus.io/path: "/metrics"
-
 serviceMonitor:
   enabled: true
-
 # Git scratch volume: disabled (emptyDir) for multi-replica HA.
 # The chart docs confirm git state is S3-backed; the PVC is pure
 # scratch and its RWO nodeAffinity prevents cross-node scheduling.
