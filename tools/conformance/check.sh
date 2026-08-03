@@ -385,6 +385,7 @@ ROWS_COPYBARA=""
 ROWS_RELEASE=""
 ROWS_LOCALPATH=""
 ROWS_GATE=""
+ROWS_DURABLE=""
 ROWS_PULUMI=""
 
 emit() {
@@ -408,6 +409,7 @@ emit() {
     release)      ROWS_RELEASE="${ROWS_RELEASE}${_row}" ;;
     localpath)    ROWS_LOCALPATH="${ROWS_LOCALPATH}${_row}" ;;
     gate)         ROWS_GATE="${ROWS_GATE}${_row}" ;;
+    durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
@@ -1516,6 +1518,126 @@ check_deploy_sequencer_gate() {
   OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
 }
 
+# ---------------------------------------------------------------------------
+# Deploy durable-base guard (#1351, issue item 2). A workflow that gates a
+# Cloud-Run/publish lane via tools/ci/deploy-affected.sh diffs `BEFORE_REV`
+# against HEAD to decide whether to deploy. These lanes (tabula-deploy,
+# tabula-dev-latest, oauth-user-inspector-deploy) deliberately COALESCE queued
+# pushes onto one constant concurrency group — serializing on purpose, because
+# two commits racing the same live env + shared build Artifact Registry is
+# worse than a queued wait. That is the OPPOSITE shape from the postsubmit
+# GATING lanes check_postsubmit_concurrency guards above, which key on
+# github.sha because they CAN run in parallel.
+#
+# A constant group is exactly what makes github.event.before unsafe as a diff
+# base: GitHub evicts an already-PENDING run when a newer one queues behind it
+# (the #1311/#1335 mechanism), and event.before is fixed at the EVICTED run's
+# own push — a range no successor run ever re-diffs, so that commit's deploy
+# is skipped PERMANENTLY, not deferred (#1351).
+#
+# The fix is a durable base (tools/ci/resolve-deploy-base.sh), not a sha-keyed
+# group, so this guard asserts THREE directions per workflow:
+#   1. every deploy-affected.sh caller also invokes resolve-deploy-base.sh
+#      (the durable-base pattern is wired in, not silently reverted);
+#   2. its concurrency group is STILL a coalescing (non-sha) one — keying it
+#      on github.sha here would be the #1335 fix applied to the WRONG lane
+#      shape: it would let two commits race the same env/build AR, exactly
+#      what the constant group exists to prevent; and
+#   3. NOTHING in the push-triggered chain masks a failed deploy as a
+#      successful run. resolve-deploy-base.sh's whole premise is that
+#      `gh run list -s success` genuinely means the deploy happened (verified
+#      by hand at #1351's review: no `continue-on-error` anywhere in
+#      gate -> build -> deploy, including the reusable
+#      _deploy-cloud-run.yaml). A future `continue-on-error: true` anywhere
+#      in that chain would let a run whose deploy FAILED still conclude
+#      success — resolve-deploy-base.sh would then adopt that failed commit
+#      as the durable base, and every real change since would be silently
+#      skipped: #1351 reintroduced, and quieter, because conformance would
+#      otherwise never catch it. This turns that one-time grep into an
+#      enforced invariant instead of a fact only true the day it was checked.
+# ---------------------------------------------------------------------------
+check_deploy_durable_base() {
+  [ -d "$WORKFLOWS_DIR" ] || return 0
+  found_any=0
+  for wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
+    [ -f "$wf" ] || continue
+    # Anchored to an actual `run:` invocation, not a passing mention -- a
+    # comment, or (like deploy-affected-test.yaml's own `paths:` trigger)
+    # this script's regression-test workflow, must NOT satisfy the signature.
+    grep -qE '^[[:space:]]*run:[[:space:]]*bash tools/ci/deploy-affected\.sh[[:space:]]*$' "$wf" 2>/dev/null || continue
+    found_any=$((found_any + 1))
+    wf_rel=".github/workflows/${wf##*/}"
+
+    has_resolver=0
+    grep -qE '^[[:space:]]*run:[[:space:]]*bash tools/ci/resolve-deploy-base\.sh[[:space:]]*$' "$wf" 2>/dev/null && has_resolver=1
+
+    group="$(awk '
+      /^concurrency:[ \t]*$/ { in_c=1; next }
+      in_c && /^[A-Za-z_]/   { in_c=0 }
+      in_c && /^[ \t]*group:/ { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
+    ' "$wf")"
+    sha_keyed=0
+    case "$group" in *github.sha*) sha_keyed=1 ;; esac
+
+    # Anchored to the real YAML key (any indentation), not a passing prose
+    # mention of the term. Follows the ONE reusable-workflow edge the push
+    # chain's deploy job actually executes -- a mask inside
+    # _deploy-cloud-run.yaml is exactly as dangerous as one in the caller.
+    masked=0
+    mask_where=""
+    if grep -qE '^[[:space:]]*continue-on-error:' "$wf" 2>/dev/null; then
+      masked=1
+      mask_where="$wf_rel"
+    fi
+    if grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$wf" 2>/dev/null; then
+      # Single-hop by design (Aegis review, #1352): follows only the ONE
+      # reusable-workflow edge today's topology has. A mask hiding behind a
+      # SECOND reusable layer, or a caller adopting a different reusable
+      # deploy workflow, needs a new edge added here to stay caught.
+      _callee="$WORKFLOWS_DIR/_deploy-cloud-run.yaml"
+      if [ -f "$_callee" ] && grep -qE '^[[:space:]]*continue-on-error:' "$_callee" 2>/dev/null; then
+        masked=1
+        mask_where="${mask_where:+$mask_where, }.github/workflows/_deploy-cloud-run.yaml"
+      fi
+    fi
+
+    if [ "$has_resolver" -eq 1 ] && [ "$sha_keyed" -eq 0 ] && [ "$masked" -eq 0 ]; then
+      emit "durable" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "durable base" "coalescing, unmasked" \
+        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes; no continue-on-error in the deploy chain to fake a success verdict" ""
+      OK_COUNT=$((OK_COUNT + 1))
+      continue
+    fi
+
+    if [ "$has_resolver" -eq 0 ]; then
+      emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "event.before" "resolve-deploy-base.sh" \
+        "runs deploy-affected.sh but never resolve-deploy-base.sh — BEFORE_REV traces back to github.event.before, which a run dropped by the constant concurrency group (#1311/#1335 eviction) can skip forever (#1351)" \
+        "add a step running tools/ci/resolve-deploy-base.sh before the gate step and feed BEFORE_REV: \${{ steps.<id>.outputs.base_sha || github.event.before }}"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+    if [ "$sha_keyed" -eq 1 ]; then
+      emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "sha-keyed" "coalescing" \
+        "concurrency group keys on github.sha — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
+        "key the group on a constant string (e.g. group: ${wf_rel##*/}) and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+    if [ "$masked" -eq 1 ]; then
+      emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "continue-on-error" "no masking" \
+        "continue-on-error in ${mask_where} lets a failed deploy step still conclude the run success — resolve-deploy-base.sh would then adopt that FAILED commit as the durable base, silently skipping every real change since (a subtler #1351 that conformance would otherwise never catch)" \
+        "remove continue-on-error from the push-triggered deploy chain (gate -> build -> deploy), including inside _deploy-cloud-run.yaml — a masked failure there breaks the invariant the durable base depends on"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done
+
+  # A zero-match sweep means the parser (or the workflow layout) drifted, not
+  # that the repo suddenly has no coalescing deploy lanes. Fail loudly.
+  if [ "$found_any" -eq 0 ]; then
+    emit "durable" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 matched" ">=1" \
+      "no workflow invokes tools/ci/deploy-affected.sh — the parser or the workflow layout changed" \
+      "confirm tabula-deploy.yaml / tabula-dev-latest.yaml / oauth-user-inspector-deploy.yaml still call tools/ci/deploy-affected.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
 check_no_local_paths() {
   # Scope: committed text likely to be machine-generated. Docs legitimately
   # quote example paths, and this file names the pattern it greps for.
@@ -1829,6 +1951,7 @@ check_release_infra_exclude
 check_no_local_paths
 check_ci_gate_lists_match
 check_deploy_sequencer_gate
+check_deploy_durable_base
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1850,6 +1973,7 @@ print_group "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mir
 print_group "Release-unit guard (co-located <app>/infra/ must not bump the app version)" "$ROWS_RELEASE"
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
+print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

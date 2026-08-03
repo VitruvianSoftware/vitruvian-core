@@ -37,17 +37,35 @@
 # targets changed AND no declared non-graph input changed.
 #
 # Environment (set by the workflow):
-#   BUILDBUDDY_API_KEY  remote-cache auth for TD's analysis cqueries (required).
-#   BEFORE_REV          the pre-push tip (github.event.before).
+#   BUILDBUDDY_API_KEY  remote-cache auth for TD's analysis cqueries (required
+#                       UNLESS DEPLOY_TARGETS is unset -- see PATH-ONLY MODE).
+#   BEFORE_REV          the durable diff base (tools/ci/resolve-deploy-base.sh
+#                       output, falling back to github.event.before -- see
+#                       #1351; a raw github.event.before is NOT durable across
+#                       a dropped run in a coalescing concurrency group).
 #   FORCED_PUSH         "true" on a forced push -> affected=true.
 #   DEPLOY_TARGETS      space-separated Bazel labels of the deployable
 #                       artifacts (e.g. "//tabula/api:image_push
-#                       //tabula/extension:chrome_zip").
+#                       //tabula/extension:chrome_zip"). OPTIONAL -- unset it
+#                       for PATH-ONLY MODE (below).
 #   EXTRA_PATH_REGEX    ERE (anchored at path start) of NON-GRAPH inputs that
 #                       must also deploy: the app's Pulumi program (a
 #                       standalone Go module, invisible to the Bazel graph)
-#                       and the deploy workflow files themselves.
+#                       and the deploy workflow files themselves. In PATH-ONLY
+#                       MODE this is the SOLE affected signal, not an extra one.
+#   EXCLUDE_PATH_REGEX  optional ERE (anchored at path start); files matching
+#                       EXTRA_PATH_REGEX but ALSO this are dropped before the
+#                       match test (e.g. carving a subtree's own infra out of
+#                       its parent's broad include glob).
 #   TD_BIN              optional test hook (see tools/ci/td-lib.sh).
+#
+# PATH-ONLY MODE (DEPLOY_TARGETS unset): for an app with no Bazel-graph-tracked
+# deploy artifact (e.g. oauth-user-inspector's standalone Docker build --
+# CATALOG_EXEMPT in tools/conformance). Steps 3 (global-impact guard) and 4
+# (TD graph attribution) do not apply -- there is no Bazel target to attribute
+# against, and the global-impact allowlist exists to protect graph attribution
+# specifically. EXTRA_PATH_REGEX (step 2) must therefore be the app's COMPLETE
+# input set, and a non-match falls straight through to affected=false.
 #
 # Output: `affected=true|false` to $GITHUB_OUTPUT (echoed either way).
 
@@ -78,10 +96,18 @@ emit() {
   exit 0
 }
 
-DEPLOY_TARGETS="${DEPLOY_TARGETS:?DEPLOY_TARGETS must be set (space-separated Bazel labels)}"
+DEPLOY_TARGETS="${DEPLOY_TARGETS:-}"
 EXTRA_PATH_REGEX="${EXTRA_PATH_REGEX:-}"
+EXCLUDE_PATH_REGEX="${EXCLUDE_PATH_REGEX:-}"
 BEFORE_REV="${BEFORE_REV:-}"
 FORCED_PUSH="${FORCED_PUSH:-false}"
+# Path-only mode has no graph universe to attribute against, so it needs a
+# real trigger set -- an empty EXTRA_PATH_REGEX would make step 2 a permanent
+# no-op and every push would silently report affected=false forever.
+if [ -z "${DEPLOY_TARGETS}" ] && [ -z "${EXTRA_PATH_REGEX}" ]; then
+  echo "deploy-affected: DEPLOY_TARGETS is unset (path-only mode) but EXTRA_PATH_REGEX is also empty -- refusing to run with no affected signal at all" >&2
+  exit 1
+fi
 
 # --- 1. diff base. Anything untrustworthy -> deploy. --------------------------
 if [ "${FORCED_PUSH}" = "true" ]; then
@@ -98,10 +124,24 @@ fi
 echo "deploy-affected: changed files:"
 echo "${CHANGED_FILES}" | sed 's/^/  /'
 
-# --- 2. non-graph inputs (Pulumi program, workflow files). --------------------
-if [ -n "${EXTRA_PATH_REGEX}" ] \
-   && echo "${CHANGED_FILES}" | grep -E "^(${EXTRA_PATH_REGEX})" >/dev/null 2>&1; then
-  emit true "non-graph deploy input changed (matched ${EXTRA_PATH_REGEX})"
+# --- 2. non-graph inputs (Pulumi program, workflow files), or the SOLE signal
+#        in path-only mode. -----------------------------------------------------
+if [ -n "${EXTRA_PATH_REGEX}" ]; then
+  MATCHED_FILES="$(echo "${CHANGED_FILES}" | grep -E "^(${EXTRA_PATH_REGEX})" || true)"
+  if [ -n "${EXCLUDE_PATH_REGEX}" ] && [ -n "${MATCHED_FILES}" ]; then
+    MATCHED_FILES="$(echo "${MATCHED_FILES}" | grep -Ev "^(${EXCLUDE_PATH_REGEX})" || true)"
+  fi
+  if [ -n "${MATCHED_FILES}" ]; then
+    if [ -n "${EXCLUDE_PATH_REGEX}" ]; then
+      emit true "path matched ${EXTRA_PATH_REGEX} (excluding ${EXCLUDE_PATH_REGEX})"
+    else
+      emit true "path matched ${EXTRA_PATH_REGEX}"
+    fi
+  fi
+fi
+
+if [ -z "${DEPLOY_TARGETS}" ]; then
+  emit false "no path matched (path-only mode -- DEPLOY_TARGETS unset, no graph universe to attribute against)"
 fi
 
 # --- 3. global-impact guard (same set as affected-targets.sh). ----------------

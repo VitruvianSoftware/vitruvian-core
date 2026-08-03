@@ -106,6 +106,13 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # `actions: read` is the ONLY new grant this gate needs (#1351) -- it
+      # lets resolve-deploy-base.sh query this workflow's own run history via
+      # the GitHub Actions API. No GCP IAM change: this job never talks to
+      # Cloud Run. It also does not need id-token: write (no GCP auth here).
+      actions: read
     outputs:
       affected: ${{ steps.decide.outputs.affected }}
     env:
@@ -118,10 +125,21 @@ jobs:
           fetch-depth: 0
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
+      - name: Resolve the durable deploy base (#1351)
+        id: durable-base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_FILE: tabula-deploy.yaml
+        run: bash tools/ci/resolve-deploy-base.sh
       - name: Decide whether the deploy artifacts are affected
         id: decide
         env:
-          BEFORE_REV: ${{ github.event.before }}
+          # A dropped run (constant concurrency group, #1311/#1335 eviction)
+          # makes github.event.before alone unsafe -- it is the EVICTED run's
+          # own push tip, a range no successor run ever re-diffs. Prefer the
+          # durable base; fall back to today's behavior only when it could not
+          # be resolved (empty is falsy in GH Actions expressions).
+          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
           DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
           # `tools/deploy/` is a NON-GRAPH deploy input for this gate: the TD
