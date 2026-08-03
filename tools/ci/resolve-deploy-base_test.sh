@@ -50,9 +50,13 @@ EOF
 chmod +x "$work/fake-gh"
 
 # run <env...> — prints the base_sha= value written to $GITHUB_OUTPUT.
+# GITHUB_REPOSITORY is cleared by default (a real GH Actions runner always
+# sets it ambiently, and `env` overrides only the vars it lists) so a test
+# that overrides REPO="" here would still see an empty fallback; "$@" can
+# still re-set it explicitly if a future test needs to.
 run() {
   local out="$work/out"; : > "$out"
-  env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" \
+  env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" GITHUB_REPOSITORY="" \
     REPO="owner/repo" WORKFLOW_FILE="some-deploy.yaml" "$@" \
     bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
   sed -n 's/^base_sha=//p' "$out"
@@ -84,7 +88,12 @@ fi
 
 echo "--- REPO resolution ---"
 out="$work/out3"; : > "$out"
-env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" WORKFLOW_FILE="some-deploy.yaml" REPO="" \
+# GITHUB_REPOSITORY must be explicitly cleared, not just REPO: every real GH
+# Actions runner sets it ambiently, and `env` only OVERRIDES the listed vars,
+# it does not clear the rest of the inherited environment. Without this the
+# script's own fallback to GITHUB_REPOSITORY silently picks up the runner's
+# real value and this test passes locally but fails in CI.
+env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" WORKFLOW_FILE="some-deploy.yaml" REPO="" GITHUB_REPOSITORY="" \
   bash "$SCRIPT" >"$work/stdout3" 2>"$work/stderr3"
 got="$(sed -n 's/^base_sha=//p' "$out")"
 if [ "$got" = "" ] && grep -q "REPO/GITHUB_REPOSITORY unset" "$work/stdout3"; then
