@@ -1590,6 +1590,10 @@ check_deploy_durable_base() {
       mask_where="$wf_rel"
     fi
     if grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$wf" 2>/dev/null; then
+      # Single-hop by design (Aegis review, #1352): follows only the ONE
+      # reusable-workflow edge today's topology has. A mask hiding behind a
+      # SECOND reusable layer, or a caller adopting a different reusable
+      # deploy workflow, needs a new edge added here to stay caught.
       _callee="$WORKFLOWS_DIR/_deploy-cloud-run.yaml"
       if [ -f "$_callee" ] && grep -qE '^[[:space:]]*continue-on-error:' "$_callee" 2>/dev/null; then
         masked=1
