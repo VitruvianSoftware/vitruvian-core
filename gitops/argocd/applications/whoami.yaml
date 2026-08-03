@@ -74,12 +74,27 @@ spec:
   # managedFieldsManagers is known to stop working when server-side diff is
   # enabled (argo-cd#20178). Confirmed off: no controller.diff.server.side
   # key in the argocd-cmd-params-cm consumed by argocd-application-controller.
+  #
+  # Second entry: rollouts-controller owns the
+  # argo-rollouts.argoproj.io/managed-by-rollouts annotation it adds to both
+  # Services (whoami-stable/whoami-canary) — this IS the manager name
+  # verified above as wrong for the HTTPRoute; it's correct here because it's
+  # a different resource the main controller patches directly (a plain
+  # Update), not the gatewayAPI plugin subprocess. Confirmed via
+  # `kubectl get svc whoami-stable -n whoami -o
+  # jsonpath='{range .metadata.managedFields[*]}{.manager}{" "}{.operation}{"\n"}{end}'`
+  # against BOTH Services (not assumed shared from one, which is what went
+  # wrong with the HTTPRoute entry above). No `name` — applies to both
+  # Services in this Application, which need the identical rule.
   ignoreDifferences:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: whoami
       managedFieldsManagers:
         - gatewayAPI
+    - kind: Service
+      managedFieldsManagers:
+        - rollouts-controller
   syncPolicy:
     automated:
       prune: true
