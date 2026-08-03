@@ -69,10 +69,13 @@
 #   chart's `config.sshConfig` value (which this Application does NOT set)
 #   only affects the read-path Repository-credential SSH client, never this
 #   write-back path -- there is no way to pin GitHub's host key for it today.
-#   Accepted risk for now: blast radius is capped by the write-back branch
-#   (image-updates/buzz) still requiring a human-merged PR before anything
-#   reaches main, and the deploy key is scoped to this one repo. Tracked for
-#   an upstream issue/PR rather than worked around here.
+#   Filed upstream: argoproj-labs/argocd-image-updater#1760.
+#   Risk (reviewed by Aegis, security): SSH pubkey auth means an on-path MITM
+#   can't forward auth or steal the deploy key -- it can only drop/observe
+#   writes (availability, not integrity/confidentiality). Combined with the
+#   human-merge gate on the write-back PR, accepted as low severity; revisit
+#   once #1760 gets a fix upstream (or if we switch write-back to HTTPS + a
+#   fine-grained PAT, which sidesteps this SSH-only code path entirely).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
