@@ -1536,13 +1536,25 @@ check_deploy_sequencer_gate() {
 # is skipped PERMANENTLY, not deferred (#1351).
 #
 # The fix is a durable base (tools/ci/resolve-deploy-base.sh), not a sha-keyed
-# group, so this guard asserts BOTH directions per workflow:
+# group, so this guard asserts THREE directions per workflow:
 #   1. every deploy-affected.sh caller also invokes resolve-deploy-base.sh
-#      (the durable-base pattern is wired in, not silently reverted), and
+#      (the durable-base pattern is wired in, not silently reverted);
 #   2. its concurrency group is STILL a coalescing (non-sha) one — keying it
 #      on github.sha here would be the #1335 fix applied to the WRONG lane
 #      shape: it would let two commits race the same env/build AR, exactly
-#      what the constant group exists to prevent.
+#      what the constant group exists to prevent; and
+#   3. NOTHING in the push-triggered chain masks a failed deploy as a
+#      successful run. resolve-deploy-base.sh's whole premise is that
+#      `gh run list -s success` genuinely means the deploy happened (verified
+#      by hand at #1351's review: no `continue-on-error` anywhere in
+#      gate -> build -> deploy, including the reusable
+#      _deploy-cloud-run.yaml). A future `continue-on-error: true` anywhere
+#      in that chain would let a run whose deploy FAILED still conclude
+#      success — resolve-deploy-base.sh would then adopt that failed commit
+#      as the durable base, and every real change since would be silently
+#      skipped: #1351 reintroduced, and quieter, because conformance would
+#      otherwise never catch it. This turns that one-time grep into an
+#      enforced invariant instead of a fact only true the day it was checked.
 # ---------------------------------------------------------------------------
 check_deploy_durable_base() {
   [ -d "$WORKFLOWS_DIR" ] || return 0
@@ -1567,9 +1579,27 @@ check_deploy_durable_base() {
     sha_keyed=0
     case "$group" in *github.sha*) sha_keyed=1 ;; esac
 
-    if [ "$has_resolver" -eq 1 ] && [ "$sha_keyed" -eq 0 ]; then
-      emit "durable" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "durable base" "coalescing" \
-        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes" ""
+    # Anchored to the real YAML key (any indentation), not a passing prose
+    # mention of the term. Follows the ONE reusable-workflow edge the push
+    # chain's deploy job actually executes -- a mask inside
+    # _deploy-cloud-run.yaml is exactly as dangerous as one in the caller.
+    masked=0
+    mask_where=""
+    if grep -qE '^[[:space:]]*continue-on-error:' "$wf" 2>/dev/null; then
+      masked=1
+      mask_where="$wf_rel"
+    fi
+    if grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$wf" 2>/dev/null; then
+      _callee="$WORKFLOWS_DIR/_deploy-cloud-run.yaml"
+      if [ -f "$_callee" ] && grep -qE '^[[:space:]]*continue-on-error:' "$_callee" 2>/dev/null; then
+        masked=1
+        mask_where="${mask_where:+$mask_where, }.github/workflows/_deploy-cloud-run.yaml"
+      fi
+    fi
+
+    if [ "$has_resolver" -eq 1 ] && [ "$sha_keyed" -eq 0 ] && [ "$masked" -eq 0 ]; then
+      emit "durable" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "durable base" "coalescing, unmasked" \
+        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes; no continue-on-error in the deploy chain to fake a success verdict" ""
       OK_COUNT=$((OK_COUNT + 1))
       continue
     fi
@@ -1584,6 +1614,12 @@ check_deploy_durable_base() {
       emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "sha-keyed" "coalescing" \
         "concurrency group keys on github.sha — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
         "key the group on a constant string (e.g. group: ${wf_rel##*/}) and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+    if [ "$masked" -eq 1 ]; then
+      emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "continue-on-error" "no masking" \
+        "continue-on-error in ${mask_where} lets a failed deploy step still conclude the run success — resolve-deploy-base.sh would then adopt that FAILED commit as the durable base, silently skipping every real change since (a subtler #1351 that conformance would otherwise never catch)" \
+        "remove continue-on-error from the push-triggered deploy chain (gate -> build -> deploy), including inside _deploy-cloud-run.yaml — a masked failure there breaks the invariant the durable base depends on"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
   done
