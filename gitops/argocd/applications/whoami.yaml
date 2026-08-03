@@ -42,17 +42,24 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: whoami
-  # No ignoreDifferences here — deliberately. Tried excluding the HTTPRoute's
-  # backendRef weight field (both jsonPointers and jqPathExpressions syntax)
-  # so the Gateway API traffic-router plugin could own it live during a
-  # canary. Verified on the real cluster that ArgoCD's ServerSideApply +
-  # RespectIgnoreDifferences silently no-ops the ENTIRE sync when the ignored
-  # path is nested inside a list (the sync reported "serverside-applied"
-  # success every time, but the live object's managedFields showed
-  # argocd-controller's last actual spec Apply from over a month earlier).
-  # Fixed instead by omitting `weight` from httproute.yaml entirely — see that
-  # file's comment for why that sidesteps the conflict without needing this
-  # mechanism at all.
+  # HTTPRoute backendRef weight is owned live by the Gateway API traffic-router
+  # plugin (see platform/whoami/httproute.yaml, which omits the field from git
+  # entirely) — ignore it here so ArgoCD's diff never flags the CRD-defaulted
+  # live value as drift. jqPathExpressions, not jsonPointers: jq's `[]`
+  # iterates whatever backendRefs exist rather than requiring a fixed index
+  # (an RFC 6901 pointer to a not-yet-existing array index silently broke the
+  # whole sync — see #1346). Deliberately NOT paired with
+  # RespectIgnoreDifferences=true: that sync option strips the ignored path
+  # from the applied manifest, which only matters when git declares a value
+  # to strip. Git omits weight outright, so there's nothing to strip, and an
+  # earlier attempt that combined RespectIgnoreDifferences with an explicit
+  # git-side weight silently no-op'd the entire sync under ServerSideApply
+  # (verified twice on the real cluster — see httproute.yaml's comment).
+  ignoreDifferences:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      jqPathExpressions:
+        - .spec.rules[].backendRefs[].weight
   syncPolicy:
     automated:
       prune: true

@@ -32,19 +32,32 @@
 # plugin's own quick-start guide).
 #
 # `weight` is deliberately OMITTED here (matching the plugin's own quick-start
-# example, which shows backendRefs with no weight field at all) — NOT set to
-# 100/0 and excluded via ignoreDifferences. Tried that first; verified on the
-# real cluster (twice, with both jsonPointers and jqPathExpressions syntax)
-# that ArgoCD's ServerSideApply + RespectIgnoreDifferences silently no-ops the
-# entire sync when an ignoreDifferences path targets a field nested inside a
-# list under SSA — the live object's managedFields showed argocd-controller's
-# last actual spec Apply from before this migration, despite the sync
-# operation reporting "serverside-applied" success every time. Omitting the
-# field outright means ArgoCD's SSA field-manager never asserts ownership of
-# `weight` at all, so there is nothing for it to fight the traffic-router
-# plugin over — Rollouts becomes the sole owner of that leaf the moment it
-# first writes to it. Gateway API defaults an unset weight to 1, which is
-# harmless before a Rollout exists to manage it.
+# example, which shows backendRefs with no weight field at all), NOT set to
+# 100/0 — the Gateway API traffic-router plugin owns this field live during
+# (and after) a canary; git should never assert a value for it.
+#
+# That omission alone does NOT stop the drift, though: Gateway API's CRD
+# schema defaults an unset weight to 1, so the API server re-populates it on
+# every apply regardless of what git says, and since backendRefs has no
+# listType merge key, ArgoCD's structural diff sees git's "no weight" vs.
+# live's "weight: 1" as a real difference on every reconcile — perpetual
+# OutOfSync, and (worse) selfHeal re-syncing git's weight-less manifest can
+# race an in-progress canary and reset its weight mid-step. The actual fix is
+# whoami.yaml's `ignoreDifferences` (jqPathExpressions, scoped to this exact
+# path) so the diff never considers this field at all.
+#
+# An earlier attempt combined that same ignoreDifferences path with the
+# `RespectIgnoreDifferences=true` sync option AND an explicit weight: 100/0
+# in git (see PR #1346/#1347 history) — verified twice on the real cluster
+# that combination silently no-ops the entire sync under ServerSideApply when
+# the ignored path is nested inside a list (managedFields showed
+# argocd-controller's last real apply from over a month earlier despite
+# every sync operation reporting success). RespectIgnoreDifferences works by
+# stripping the ignored path from the applied manifest, which only matters
+# when git declares a value there to strip; since weight is omitted here
+# entirely, there is nothing for that sync option to strip, so it is not
+# used — ignoreDifferences alone (diff-only, doesn't touch what gets applied)
+# is the narrower change and doesn't hit the same failure mode.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
