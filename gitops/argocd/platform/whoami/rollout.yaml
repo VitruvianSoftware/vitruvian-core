@@ -44,6 +44,14 @@
 # without running any canary steps — nothing to canary FROM yet. This bump
 # creates revision 2, which has a real predecessor and will actually walk
 # setWeight(50) -> pause(30s) -> analysis -> setWeight(100).
+#
+# containerPort.protocol is written explicitly (TCP) for the same reason
+# httproute.yaml writes its Gateway-API defaults explicitly: the API server
+# defaults an omitted protocol to TCP live, and ArgoCD only normalizes that
+# default for workload kinds it recognizes natively (Deployment, StatefulSet,
+# ...) — not for a third-party CRD's embedded PodSpec like this Rollout. Left
+# omitted, the live object always carries "protocol: TCP" that the git target
+# doesn't, so the Rollout never settles out of OutOfSync.
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -73,6 +81,7 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+              protocol: TCP
           resources:
             requests:
               cpu: 5m

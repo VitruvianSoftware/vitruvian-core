@@ -42,17 +42,36 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: whoami
-  # No ignoreDifferences here — deliberately. Tried excluding the HTTPRoute's
-  # backendRef weight field (both jsonPointers and jqPathExpressions syntax)
-  # so the Gateway API traffic-router plugin could own it live during a
-  # canary. Verified on the real cluster that ArgoCD's ServerSideApply +
-  # RespectIgnoreDifferences silently no-ops the ENTIRE sync when the ignored
-  # path is nested inside a list (the sync reported "serverside-applied"
-  # success every time, but the live object's managedFields showed
-  # argocd-controller's last actual spec Apply from over a month earlier).
-  # Fixed instead by omitting `weight` from httproute.yaml entirely — see that
-  # file's comment for why that sidesteps the conflict without needing this
-  # mechanism at all.
+  # ignoreDifferences uses managedFieldsManagers, not jsonPointers/
+  # jqPathExpressions — those were tried first (targeting the HTTPRoute
+  # backendRef weight field nested inside the rules list) and confirmed to
+  # silently no-op the ENTIRE sync under ServerSideApply: the operation
+  # reported "serverside-applied" success every time, but the live object's
+  # managedFields kept showing argocd-controller's Apply from over a month
+  # earlier. managedFieldsManagers ignores diffs by which controller owns a
+  # field instead of by JSON path, so it doesn't touch that bug at all.
+  #
+  # rollouts-controller is the exact field-manager name the Argo Rollouts
+  # controller/gatewayAPI plugin uses for its patches — confirmed empirically
+  # via `kubectl get service whoami-stable -o
+  # jsonpath='{.metadata.managedFields[*].manager}'` (rollouts-controller
+  # also owns that Service's selector). httproute.yaml now writes `weight: 1`
+  # explicitly (the Gateway API default for an omitted field) so steady-state
+  # git == live and this Application is fully Synced when no canary is
+  # running; this ignoreDifferences entry only matters while
+  # rollouts-controller actually owns the weight fields mid-canary, so
+  # self-heal doesn't fight it.
+  #
+  # This also needs the cluster's ArgoCD to have server-side diff OFF —
+  # managedFieldsManagers is known to stop working when server-side diff is
+  # enabled (argo-cd#20178). Confirmed off: no controller.diff.server.side
+  # key in the argocd-cmd-params-cm consumed by argocd-application-controller.
+  ignoreDifferences:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: whoami
+      managedFieldsManagers:
+        - rollouts-controller
   syncPolicy:
     automated:
       prune: true
