@@ -1,0 +1,67 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Watches buzz's floating `main` tag (ghcr.io/block/buzz) for a new digest and
+# writes the resolved `main@sha256:...` back into
+# gitops/argocd/platform/buzz/values.yaml's `image.tag` -- the only thing
+# ArgoCD's own diff can't see today, since a mutable-tag push never touches a
+# committed manifest.
+#
+# Namespace MUST be `argocd`, matching the `buzz` Application: an ImageUpdater
+# CR only lists Applications in its own namespace (see reasoning in
+# ../applicationset.yaml and buzz-image-updater-git-creds.sealedsecret.yaml).
+#
+# Write-back never touches `main` directly: pushes to `image-updates/buzz`
+# (the `checkout:push` form of `branch`), and a separate Actions workflow
+# (.github/workflows/image-updates-buzz-pr.yaml) opens/updates a PR from
+# there into `main` so the change still goes through the merge queue like
+# every other change to this repo.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: buzz
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd/buzz-image-updater-git-creds"
+    gitConfig:
+      # Explicit, not inferred: the `buzz` Application is multi-source (an
+      # OCI Helm chart source with no git repoURL, plus this git source over
+      # HTTPS) -- inference from spec.source.repoURL would be ambiguous, and
+      # our deploy key is SSH, not the HTTPS URL source 2 already uses.
+      repository: "git@github.com:VitruvianSoftware/vitruvian-core.git"
+      # Read from main (latest), write to a side branch -- never main itself.
+      branch: "main:image-updates/buzz"
+      writeBackTarget: "helmvalues:./gitops/argocd/platform/buzz/values.yaml"
+  applicationRefs:
+    - namePattern: "buzz"
+      images:
+        - alias: "relay"
+          imageName: "ghcr.io/block/buzz:main"
+          commonUpdateSettings:
+            # Not semver/latest: `main` is a floating dev tag with no version
+            # ordering to compare -- "did the digest behind `main` change" is
+            # the only meaningful signal.
+            updateStrategy: "digest"
+            forceUpdate: true
+          manifestTargets:
+            helm:
+              name: "image.repository"
+              tag: "image.tag"
