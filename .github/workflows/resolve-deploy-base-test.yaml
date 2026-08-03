@@ -1,0 +1,54 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Regression guard for tools/ci/resolve-deploy-base.sh (#1351) — the durable
+# diff-base resolver for the coalescing deploy lanes (tabula-deploy,
+# tabula-dev-latest, oauth-user-inspector-deploy). Hermetic: a fake `gh`
+# binary, no network, no credentials. Pins the FAIL-OPEN invariant: any lookup
+# problem yields an empty base_sha so the caller falls back to
+# github.event.before, never a fabricated diff base.
+
+name: Resolve Deploy Base Test
+
+on:
+  pull_request:
+    paths:
+      - "tools/ci/resolve-deploy-base.sh"
+      - "tools/ci/resolve-deploy-base_test.sh"
+      - ".github/workflows/resolve-deploy-base-test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/ci/resolve-deploy-base.sh"
+      - "tools/ci/resolve-deploy-base_test.sh"
+      - ".github/workflows/resolve-deploy-base-test.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the resolve-deploy-base script tests
+        run: bash tools/ci/resolve-deploy-base_test.sh

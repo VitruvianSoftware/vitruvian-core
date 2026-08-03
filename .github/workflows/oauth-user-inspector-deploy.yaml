@@ -55,30 +55,21 @@ name: oauth-user-inspector-deploy
 on:
   push:
     branches: [main]
-    # Path globs are GRAPH-CORRECT for this app (#498), unlike tabula's: the
-    # oauth-user-inspector container builds STANDALONE (its own Docker Buildx
-    # build + self-contained package.json -- it is CATALOG_EXEMPT in
-    # tools/conformance for exactly this reason), so it has no cross-package
-    # Bazel dependencies a directory glob could under-trigger on. These globs
-    # ARE its complete input set. Revisit if/when the app migrates to
-    # Bazel rules_oci (docs/archive/assessments/repo-assessment.md §5.1) -- then it gates via
-    # tools/ci/deploy-affected.sh like tabula.
-    paths:
-      # NOTE: "oauth-user-inspector/**" already covers the co-located app stack
-      # (oauth-user-inspector/infra/app). The identity stack is carved OUT to
-      # preserve the pre-move trigger set: identity changes never triggered a
-      # deploy when the stack lived under infrastructure/pulumi/apps/.
-      - "oauth-user-inspector/**"
-      - "!oauth-user-inspector/infra/identity/**"
-      - "infrastructure/pulumi/platform/zitadel-apps/**"
-      # The rollout sequencer this app's deploy actually executes
-      # (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`), so a
-      # change to the candidate -> smoke -> promote sequence is a real input to
-      # this deploy and belongs in the complete input set above.
-      - "tools/deploy/**"
-      - ".github/workflows/oauth-user-inspector-deploy.yaml"
-      - ".github/workflows/_deploy-cloud-run.yaml"
-      - ".github/workflows/_zitadel-apps-apply.yaml"
+    # No `paths:` filter (#1351): a workflow-level `push.paths` filter is
+    # evaluated by GitHub from the SAME github.event.before..after range as
+    # this app's old gate would have used, and that range is exactly what a
+    # dropped run (this workflow's constant concurrency group + the
+    # #1311/#1335 eviction mechanism) breaks -- GitHub filters, decides "no
+    # match", and never starts a run at all, so the skipped commit's changes
+    # are never in ANY future push's evaluated range unless a later,
+    # unrelated commit happens to also touch these paths. That is a silent,
+    # permanent skip with no gate job to even blame. The `gate` job below
+    # replaces native path filtering with tools/ci/deploy-affected.sh in
+    # PATH-ONLY MODE (no Bazel graph -- oauth-user-inspector builds STANDALONE,
+    # its own Docker Buildx build + self-contained package.json, CATALOG_EXEMPT
+    # in tools/conformance for exactly this reason) against a DURABLE diff
+    # base (tools/ci/resolve-deploy-base.sh), which self-heals instead of
+    # silently losing the range.
   # Promotion trigger. release-please (apps-release.yml) publishes a GitHub
   # Release when this app's release PR merges; that fires here and drives the
   # nonprod -> prod ladder. Filtered to this app's tag in each promotion job.
@@ -139,6 +130,51 @@ jobs:
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
 
+  # Gate (#1351): replaces the old workflow-level `push.paths` filter. Path-only
+  # mode (tools/ci/deploy-affected.sh, DEPLOY_TARGETS unset) -- oauth-user-inspector
+  # has no Bazel-graph-tracked deploy artifact, so EXTRA_PATH_REGEX /
+  # EXCLUDE_PATH_REGEX below are the COMPLETE input set, carried over verbatim
+  # from the old `paths:`/`!paths:` globs. No Bazel setup needed: path-only
+  # mode never reaches the TD graph step. FAIL-OPEN: any uncertainty deploys.
+  gate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # `actions: read` is the ONLY new grant this gate needs -- it lets
+      # resolve-deploy-base.sh query this workflow's own run history via the
+      # GitHub Actions API. No GCP IAM change: this job never talks to Cloud Run.
+      actions: read
+    outputs:
+      affected: ${{ steps.decide.outputs.affected }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Resolve the durable deploy base (#1351)
+        id: durable-base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_FILE: oauth-user-inspector-deploy.yaml
+        run: bash tools/ci/resolve-deploy-base.sh
+      - name: Decide whether the deploy artifacts are affected
+        id: decide
+        env:
+          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
+          FORCED_PUSH: ${{ github.event.forced }}
+          # NOTE: "oauth-user-inspector/" already covers the co-located app
+          # stack (oauth-user-inspector/infra/app). The identity stack is
+          # carved out via EXCLUDE_PATH_REGEX below to preserve the pre-#1351
+          # trigger set: identity changes never triggered a deploy when the
+          # stack lived under infrastructure/pulumi/apps/.
+          #
+          # tools/deploy/ is the rollout sequencer this app's deploy actually
+          # executes (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`).
+          EXTRA_PATH_REGEX: "oauth-user-inspector/|infrastructure/pulumi/platform/zitadel-apps/|tools/deploy/|\\.github/workflows/oauth-user-inspector-deploy\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml|\\.github/workflows/_zitadel-apps-apply\\.yaml"
+          EXCLUDE_PATH_REGEX: "oauth-user-inspector/infra/identity/"
+        run: bash tools/ci/deploy-affected.sh
+
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable
   # digest every env promotes. The build ENVIRONMENT is ungated (no reviewer),
@@ -151,7 +187,11 @@ jobs:
   # `oauth-user-inspector-v*`; match the build to the union of cases where its
   # digest is actually consumed (push, dispatch, or THIS app's release).
   build:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) }}
+    needs: [gate]
+    # `needs: [gate]` waits for gate to COMPLETE; gate's own `if` skips it
+    # (result: skipped, not failure) for release/dispatch events, which does
+    # not block this condition below -- mirrors tabula-deploy.yaml's build job.
+    if: ${{ !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
