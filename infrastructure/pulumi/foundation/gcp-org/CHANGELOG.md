@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.6.2...foundation-gcp-org-v0.7.0) (2026-08-04)
+
+
+### Features
+
+* **billing:** fund gcp-networks' 4 host projects from personal billing ([#1376](https://github.com/VitruvianSoftware/vitruvian-core/issues/1376)) ([7d2cc6a](https://github.com/VitruvianSoftware/vitruvian-core/commit/7d2cc6a7230a2d484434e7c1c667db73997cbd76))
+
 ## [0.6.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.6.1...foundation-gcp-org-v0.6.2) (2026-07-27)
 
 
