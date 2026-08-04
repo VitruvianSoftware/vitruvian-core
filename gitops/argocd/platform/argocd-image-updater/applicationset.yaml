@@ -60,10 +60,22 @@
 #   than going through ArgoCD's own gRPC/REST API -- confirmed by the upstream
 #   docs never mentioning an argocd-image-updater-secret argocd.token for this
 #   path, unlike the pre-1.0 annotation-based controller.
-# - git.user/git.email set so write-back commits aren't attributed to nothing;
-#   sshConfig left at chart default (the image ships pre-populated known_hosts
-#   for github.com per upstream) -- verify in controller logs after first
-#   sync that the SSH handshake doesn't hit a host-key prompt.
+# - git.user/git.email set so write-back commits aren't attributed to nothing.
+# - KNOWN GAP, confirmed against live controller logs and upstream source --
+#   NOT a config mistake here, no Helm value fixes it: for the git:secret:
+#   write-back credential path specifically, pkg/argocd/gitcreds.go (v1.2.2)
+#   hardcodes NewSSHCreds(..., insecureIgnoreHostKey=true, ...), unconditionally
+#   passing -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null. The
+#   chart's `config.sshConfig` value (which this Application does NOT set)
+#   only affects the read-path Repository-credential SSH client, never this
+#   write-back path -- there is no way to pin GitHub's host key for it today.
+#   Filed upstream: argoproj-labs/argocd-image-updater#1760.
+#   Risk (reviewed by Aegis, security): SSH pubkey auth means an on-path MITM
+#   can't forward auth or steal the deploy key -- it can only drop/observe
+#   writes (availability, not integrity/confidentiality). Combined with the
+#   human-merge gate on the write-back PR, accepted as low severity; revisit
+#   once #1760 gets a fix upstream (or if we switch write-back to HTTPS + a
+#   fine-grained PAT, which sidesteps this SSH-only code path entirely).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
