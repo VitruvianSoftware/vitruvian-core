@@ -173,6 +173,36 @@ func main() {
 			return err
 		}
 
+		// 5c. Same cross-account billing grant, for the gcp-org stage's SA this
+		// time — James also funds the 4 network-folder projects gcp-networks
+		// depends on (prj-net-hub + the 3 per-env svpc host projects) from this
+		// account. gcp-org creates 10 projects total but only those 4 read
+		// network_billing_account (see foundation-org-shared's Pulumi.production.yaml
+		// and config.go's NetworkBillingAccount) — the other 6 (org logging,
+		// billing-export, SCC, KMS, Secrets, interconnect) stay on the Vitruvian
+		// org account and this grant does not affect them. costsManager is
+		// granted alongside billing.user even though gcp-org has no
+		// project_budget configured today (so the #1133 budget-REPLACE issue
+		// doesn't currently apply) — cheap insurance matching the proj SA
+		// pattern above, in case a budget is added later.
+		vitruvianOrgSA := "serviceAccount:sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com"
+		_, err = billing.NewAccountIamMember(ctx, "vitruvian-org-sa-billing-user", &billing.AccountIamMemberArgs{
+			BillingAccountId: pulumi.String("008CAA-C364C4-B29B67"),
+			Role:             pulumi.String("roles/billing.user"),
+			Member:           pulumi.String(vitruvianOrgSA),
+		})
+		if err != nil {
+			return err
+		}
+		_, err = billing.NewAccountIamMember(ctx, "vitruvian-org-sa-billing-costsmanager", &billing.AccountIamMemberArgs{
+			BillingAccountId: pulumi.String("008CAA-C364C4-B29B67"),
+			Role:             pulumi.String("roles/billing.costsManager"),
+			Member:           pulumi.String(vitruvianOrgSA),
+		})
+		if err != nil {
+			return err
+		}
+
 		// 6. Configure Cloud Build (placeholder for now, will write cloudbuild.yaml directly)
 		err = cloud_build.ConfigureCloudBuild(ctx, "personal-llc-cloudbuild", &cloud_build.CloudBuildArgs{
 			ProjectID: projectID,

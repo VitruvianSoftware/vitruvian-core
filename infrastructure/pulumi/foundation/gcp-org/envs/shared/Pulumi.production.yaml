@@ -11,6 +11,14 @@ config:
   # --- From bootstrap common_config output ---
   foundation-org-shared:org_id: "90456063361"
   foundation-org-shared:billing_account: "013EEF-107C95-8E11BD"
+  # Carve-out: funds ONLY the 4 network-folder projects gcp-networks depends
+  # on (prj-net-hub + the 3 per-env prj-{d,n,p}-svpc host projects) from
+  # James's personal account, mirroring the gcp-projects bu1/bu2 migration
+  # (#1133/#1135) but scoped narrower — everything else this stage creates
+  # (org logging, billing-export, SCC, KMS, Secrets, prj-net-interconnect)
+  # stays on billing_account above. See config.go's NetworkBillingAccount
+  # doc comment for the full rationale.
+  foundation-org-shared:network_billing_account: "008CAA-C364C4-B29B67"
   foundation-org-shared:enable_hub_and_spoke: "true"
   foundation-org-shared:default_region: "us-central1"
   foundation-org-shared:project_prefix: "prj"

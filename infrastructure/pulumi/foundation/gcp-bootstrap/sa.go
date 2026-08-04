@@ -252,6 +252,15 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.tagUser",
 			"roles/cloudasset.owner",
 			"roles/securitycenter.sourcesEditor",
+			// billing.projectManager: the org stage RE-ASSIGNS billing for its 4
+			// network-folder projects (net_hub + the 3 per-env svpc host
+			// projects) onto network_billing_account, same non-persistence gap
+			// and same fix as the "proj" grant below — the project-side
+			// permission (createBillingAssignment/deleteBillingAssignment ON
+			// THE PROJECT) isn't covered by any other standing role here.
+			// billing.user on the target account (granted in accounts/personal)
+			// covers the account side; this covers the project side.
+			"roles/billing.projectManager",
 		),
 		"env": withCommon(
 			"roles/resourcemanager.tagUser",
