@@ -113,3 +113,13 @@ sh_binary(
     args = ["verify"],
     visibility = ["//visibility:public"],
 )
+
+# One-time bootstrap for the self-hosted ntfy instance (gitops/argocd/platform/ntfy):
+# creates the alertmanager (write-only) and james (read-only) ntfy users that
+# auth-default-access: deny-all requires before anything can publish/subscribe.
+#   bazel run //tools/gitops:ntfy-bootstrap-users -- vitruvian-alerts
+sh_binary(
+    name = "ntfy-bootstrap-users",
+    srcs = ["ntfy_bootstrap_users.sh"],
+    visibility = ["//visibility:public"],
+)

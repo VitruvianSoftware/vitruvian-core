@@ -1,0 +1,55 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ntfy — git-source Application (raw manifests; root-platform's include is
+# applicationset-only), same pattern as cloudflared/whoami. Self-hosted push
+# notification server standing in for the public ntfy.sh topic that PR #966's
+# Alertmanager receiver posts to (see gitops/argocd/platform/ntfy/*.yaml).
+# sync-wave 2, same as cloudflared/whoami: needs the Gateway (envoy-gateway)
+# and the tunnel (cloudflared) up first for its HTTPRoute/DNSEndpoint to
+# resolve. No dependency the other direction — the alertmanager-ntfy-endpoint
+# SealedSecret that prometheus's Alertmanager config mounts is created
+# out-of-band by tools/gitops:seal-alert-ntfy once this app is live and a
+# topic URL exists (same precondition PR #966 already documents).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ntfy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/ntfy
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ntfy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

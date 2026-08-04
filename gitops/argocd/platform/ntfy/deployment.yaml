@@ -1,0 +1,108 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ntfy — self-hosted push-notification server for Alertmanager (PR #966) and
+# any other in-cluster alert source that needs to reach a phone. Single
+# replica: it's a personal alert channel, not a shared system of record, and
+# ntfy has no built-in clustering (replicaCount>1 would just split the SQLite
+# auth/cache DBs across pods with no coordination). The upstream image runs as
+# root by default (no USER in its Dockerfile) — runAsNonRoot here with an
+# arbitrary uid/fsGroup instead, since the ntfy binary needs nothing root-only
+# once listen-http is off the privileged <1024 range (see configmap.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  namespace: ntfy
+  labels:
+    app: ntfy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ntfy
+  template:
+    metadata:
+      labels:
+        app: ntfy
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.26.3
+          args: ["serve", "--config", "/etc/ntfy/server.yml"]
+          ports:
+            - name: http
+              containerPort: 8080
+          # tcpSocket, not an HTTP path: ntfy has no documented, verifiable
+          # health-check endpoint (checked config.md, the Dockerfile, and the
+          # examples/ dir — none define one), and guessing a path risks a
+          # false-negative probe crash-looping a healthy pod.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ntfy
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/ntfy
+            # ntfy writes its PID/runtime state under /var/cache/ntfy even
+            # when cache-file/attachment-cache-dir point elsewhere; without a
+            # writable mount there readOnlyRootFilesystem crash-loops it.
+            - name: tmp-cache
+              mountPath: /var/cache/ntfy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: ntfy-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: ntfy-data
+        - name: tmp-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
