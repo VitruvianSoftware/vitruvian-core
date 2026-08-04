@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # `git log <before>..<sha>` needs the history; the default depth-1
           # checkout would degrade every run to "scope could not be determined".
@@ -149,7 +149,7 @@ jobs:
     outputs:
       affected: ${{ steps.decide.outputs.affected }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Resolve the durable deploy base (#1351)
@@ -204,7 +204,7 @@ jobs:
     outputs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Authenticate to Google Cloud
         id: auth

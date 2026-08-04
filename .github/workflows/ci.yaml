@@ -66,7 +66,7 @@ jobs:
       # the key is the BUILDBUDDY_API_KEY repo secret.
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
           # merge-base with origin/main present locally. The default shallow
@@ -261,7 +261,7 @@ jobs:
     outputs:
       macos: ${{ steps.changes.outputs.macos }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # Need history so the path filter can diff against the merge-base.
           fetch-depth: 0
@@ -328,7 +328,7 @@ jobs:
       # falls back to local execution (never slower, never incorrect).
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       # --config=macos-app activates Apple's CC toolchain (needed for the
@@ -389,7 +389,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # The gate below diffs against the merge-base / before-rev.
           fetch-depth: 0
@@ -451,7 +451,7 @@ jobs:
       matrix:
         module: [devx, homelab]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # merge_group diffs need the base_sha reachable locally.
           fetch-depth: 0
@@ -512,7 +512,7 @@ jobs:
     env:
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Detect IaC-relevant changes
@@ -581,7 +581,7 @@ jobs:
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-bazel
@@ -710,7 +710,7 @@ jobs:
     env:
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Detect example/library changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -774,7 +774,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Detect Butane-relevant changes

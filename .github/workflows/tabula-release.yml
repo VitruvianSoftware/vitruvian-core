@@ -56,7 +56,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0 # need history for the diff
       - id: set-matrix
@@ -154,7 +154,7 @@ jobs:
       # a no-op for every other package's run.
       - name: Checkout for extension packaging
         if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Bazel
         if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}

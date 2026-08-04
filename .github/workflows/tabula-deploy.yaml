@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Changelog → step summary
         run: bash tools/ci/changelog-summary.sh tabula/api/CHANGELOG.md "" tabula-api
 
@@ -118,7 +118,7 @@ jobs:
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           # TD diffs the pre-push tip; full history keeps it + the object
           # graph reachable (same invariant as ci.yaml's build-test).
@@ -178,7 +178,7 @@ jobs:
     outputs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: ./.github/actions/setup-bazel
 
