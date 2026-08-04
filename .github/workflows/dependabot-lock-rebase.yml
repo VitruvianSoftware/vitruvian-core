@@ -32,32 +32,65 @@ name: Dependabot lock rebase
 # someone manually rebases it.
 #
 # This workflow automates that recovery: when the root pnpm-lock.yaml changes on
-# main (a dep PR merged, or any dep-touching PR landed), it asks Dependabot to
-# rebase every open npm PR. The rebase pushes a synchronize event, which re-runs
-# dependabot-bazel-reconcile.yml -- the SAME hermetic `@pnpm//:pnpm install
-# --lockfile-only` + `//:tidy` reconcile that runs at PR-creation time -- now
-# against the new base. CI and dependabot-auto-merge then re-run cleanly. If the
-# freshly-resolved versions actually break the build (the skew has hidden real
-# breakage before), CI now fails LOUDLY on the PR instead of detonating later on
-# an innocent `pnpm install`.
+# main (a dep PR merged, or any dep-touching PR landed), it merges main into every
+# open npm PR branch, re-resolves the lock with the SAME hermetic `@pnpm//:pnpm
+# install --lockfile-only` + `//:tidy` reconcile that runs at PR-creation time, and
+# pushes. CI and dependabot-auto-merge then re-run cleanly. If the freshly-resolved
+# versions actually break the build (the skew has hidden real breakage before), CI
+# now fails LOUDLY on the PR instead of detonating later on an innocent
+# `pnpm install`.
+#
+# IT DOES THE MERGE ITSELF RATHER THAN ASKING DEPENDABOT TO, and that is the whole
+# correctness story here. This workflow used to post `@dependabot rebase` with the
+# App token, on the stated assumption that "Dependabot only honors @dependabot
+# commands from a write-access identity, so the comment is posted with the App
+# token". That assumption is wrong, and it made this workflow a NO-OP for its
+# entire life: Dependabot replies
+#
+#     Sorry, only users with push access can use that command.
+#
+# and the job still reports success, because `gh pr comment` posts the comment
+# fine -- only the COMMAND is refused. Observed on #1380, #1383 and #1384 on
+# 2026-08-04, the first time the workflow's exact target scenario occurred.
+#
+# The confusion worth not repeating: an App's INSTALLATION permissions are not
+# collaborator push access. This App has `contents: write` + `pull_requests:
+# write`, yet
+#
+#     GET /repos/<repo>/collaborators/vitruvian-copybara-sync[bot]/permission
+#       -> "permission": "none", "push": false
+#
+# because App bots are never repository collaborators, and Dependabot gates its
+# commands on that collaborator bit. So NO installation permission can ever fix
+# this -- the only identities Dependabot accepts are real users with push access,
+# which would mean putting a human PAT in CI. Doing the git work directly needs no
+# new credential at all: `contents: write` is already enough to push, which
+# dependabot-bazel-reconcile.yml has been relying on all along.
 #
 # Trigger is push-to-main so it runs in the base context with full Actions secrets
-# (SYNC_APP_*); the just-merged PR is already closed and thus excluded. Dependabot
-# only honors `@dependabot` commands from a write-access identity, so the comment
-# is posted with the App token -- the same SYNC_APP the reconcile and auto-merge
-# workflows already use, not the plain GITHUB_TOKEN (which Dependabot ignores).
+# (SYNC_APP_*); the just-merged PR is already closed and thus excluded.
+#
+# NOTE the reconcile is inlined below rather than delegated. Pushing from the App
+# makes the actor a non-Dependabot bot, which dependabot-bazel-reconcile.yml
+# deliberately excludes (its `if` guards against push loops), so it will NOT run
+# for this push and the lock would otherwise be left unresolved.
 on:
   push:
     branches: [main]
     paths:
       - "pnpm-lock.yaml"
 
+# The job's own writes go through the App token, not GITHUB_TOKEN, so this stays
+# read-only. Raising it would not help anyway: a push by GITHUB_TOKEN does not
+# trigger downstream workflows, so the PR would never re-run CI.
 permissions:
   contents: read
 
 # Serialize: if two lock-changing merges land back-to-back, rebase in order rather
-# than dropping one. A repeated `@dependabot rebase` while a rebase is already in
-# flight is a no-op on Dependabot's side, so serialization is safe and idempotent.
+# than dropping one. Required for correctness now that the job PUSHES: two
+# concurrent runs would race on the same branches and the loser's push would be
+# rejected as non-fast-forward. Re-running is otherwise safe -- a second pass over
+# an already-merged branch finds nothing to do and pushes nothing.
 concurrency:
   group: dependabot-lock-rebase
   cancel-in-progress: false
@@ -65,7 +98,7 @@ concurrency:
 jobs:
   rebase:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - name: Mint App token
         id: app-token
@@ -74,26 +107,106 @@ jobs:
           client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
-      - name: Rebase open Dependabot npm PRs against the new root lock
+      # Full history: each PR branch is merged with main below, so both sides
+      # must be present. The App token is what makes the later push work.
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Rebase open Dependabot npm PRs onto the new root lock
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
-          # GitHub runs steps as `bash -eo pipefail`; clear the inherited -e so a
-          # single failed comment doesn't abort the rest (best-effort per PR).
-          set +e -u -o pipefail
+          set -u -o pipefail
           prs="$(gh pr list -R "$REPO" --state open --json number,headRefName \
-            --jq '.[] | select(.headRefName | startswith("dependabot/npm_and_yarn/")) | .number')"
-          if [ -z "$prs" ]; then
+            --jq '.[] | select(.headRefName | startswith("dependabot/npm_and_yarn/")) | [.number,.headRefName] | @tsv')"
+          if [ -z "${prs}" ]; then
             echo "No open Dependabot npm PRs — nothing to rebase."
             exit 0
           fi
+
+          git config user.name "VitruvianSoftware Sync"
+          git config user.email "sync@vitruviansoftware.com"
+
+          # Redirected from a FILE, deliberately. Piping into `while` runs the
+          # loop body in a SUBSHELL, so every `rc=1` below would be discarded and
+          # the final `exit "${rc}"` would report success no matter what failed --
+          # the same silently-green failure this rewrite exists to remove.
+          printf '%s\n' "${prs}" > "${RUNNER_TEMP}/prs.tsv"
+
           rc=0
-          for num in $prs; do
-            echo "Requesting rebase of Dependabot npm PR #$num (root pnpm-lock.yaml changed on main)."
-            if ! gh pr comment "$num" -R "$REPO" --body "@dependabot rebase"; then
-              echo "::warning::failed to request rebase on #$num"
+          while IFS="$(printf '\t')" read -r num branch; do
+            [ -n "${num}" ] || continue
+            echo "::group::#${num} (${branch})"
+
+            if ! git fetch --quiet origin "${branch}"; then
+              echo "::warning::#${num}: cannot fetch ${branch}; skipping."
+              echo "::endgroup::"; continue
+            fi
+            git checkout --quiet --force -B "rebase-${num}" "origin/${branch}"
+
+            # Merge, not rebase: a merge touches the branch once, and Dependabot
+            # treats a single extra commit far more gracefully than the rewritten
+            # history a force-push would leave.
+            if ! git merge --no-edit origin/main; then
+              # The ONLY conflict this workflow is competent to resolve is the
+              # root lock, and it does so by regenerating rather than by picking
+              # a side -- neither side is right once both manifests moved.
+              # Anything else is a real semantic conflict and belongs to a human.
+              unmerged="$(git diff --name-only --diff-filter=U)"
+              if [ "${unmerged}" != "pnpm-lock.yaml" ]; then
+                echo "::warning::#${num}: conflicts outside pnpm-lock.yaml, leaving for a human:"
+                printf '%s\n' "${unmerged}" | sed 's/^/    /'
+                git merge --abort || true
+                rc=1
+                echo "::endgroup::"; continue
+              fi
+              git checkout --theirs -- pnpm-lock.yaml || git checkout origin/main -- pnpm-lock.yaml
+              git add -- pnpm-lock.yaml
+              git commit --no-edit --quiet
+            fi
+
+            # Re-resolve from the MERGED manifests with the same hermetic pnpm
+            # tidy-check asserts against, then converge generated/formatted
+            # output exactly as dependabot-bazel-reconcile.yml does. That
+            # workflow will NOT re-run for this push (its `if` excludes bot
+            # actors other than Dependabot), so the reconcile has to happen here.
+            # Checked, not assumed: without `-e` a failing reconcile would
+            # otherwise push a half-resolved lock, which is strictly worse than
+            # leaving the PR stale.
+            if ! bazel run -- @pnpm//:pnpm install --dir "$PWD" --lockfile-only; then
+              echo "::error::#${num}: pnpm re-resolve failed; leaving the branch untouched."
+              rc=1; echo "::endgroup::"; continue
+            fi
+            if ! bazel run //:tidy; then
+              echo "::error::#${num}: //:tidy failed; leaving the branch untouched."
+              rc=1; echo "::endgroup::"; continue
+            fi
+
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit --quiet -m "chore(deps): reconcile lock against main (automated)"
+            fi
+
+            # Compare COMMITS, not trees. `git merge` with nothing to do leaves
+            # HEAD exactly at origin/<branch>, which is the real "nothing to
+            # push" case. A tree comparison would instead swallow a legitimate
+            # merge commit whose tree happens to match, leaving the PR looking
+            # rebased locally while main never actually got merged into it.
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${branch}")" ]; then
+              echo "#${num}: already current with main — nothing to push."
+            elif git push --quiet origin "HEAD:${branch}"; then
+              echo "#${num}: rebased onto main and pushed."
+            else
+              echo "::error::#${num}: push failed."
               rc=1
             fi
-          done
-          exit "$rc"
+            echo "::endgroup::"
+          done < "${RUNNER_TEMP}/prs.tsv"
+
+          exit "${rc}"
