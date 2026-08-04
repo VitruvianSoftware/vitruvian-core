@@ -50,11 +50,11 @@ packages:
 # apart. Deliberately divergent versions (e.g. apps on different React majors)
 # stay as explicit ranges, or move to a *named* catalog when intended.
 catalog:
-  "@swc/core": ^1.15.46
+  "@swc/core": ^1.15.47
   "@swc/jest": ^0.2.39
   jest: ^30.4.2
   "@pulumi/pulumi": ^3.0.0
-  "@pulumi/gcp": ^9.31.0
+  "@pulumi/gcp": ^9.32.1
   "@pulumi/random": ^4.0.0
   "@pulumi/command": ^1.0.0
   vitest: ^4.1.10
