@@ -105,7 +105,7 @@ jobs:
     env:
       GOWORK: off
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       # Per-leg scope: only preview the stack whose inputs changed (its own
       # dir, the shared pkg/ library, or this workflow). The other leg reports

@@ -64,7 +64,7 @@ jobs:
     env:
       PULUMI_BACKEND_URL: https://api.pulumi.com
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

@@ -63,7 +63,7 @@ jobs:
     env:
       DEPLOY_ENV: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Join the tailnet (ephemeral, tag:ci)
         uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
