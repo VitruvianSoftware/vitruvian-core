@@ -1,0 +1,48 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ntfy DNS — external endpoint published via external-dns's crd source, same
+# pattern as whoami. A PROXIED CNAME ntfy.ipv1337.dev -> <tunnel>.cfargotunnel.com
+# routes the hostname through Cloudflare's edge into the tunnel
+# (cfargotunnel.com only resolves behind the proxy, so cloudflare-proxied=true
+# is REQUIRED). Explicit CNAME because the gateway-httproute source would
+# instead publish the internal Gateway LB IP. Public reachability is required
+# here (not the .lab.ipv1337.dev tailnet-only pattern) so the ntfy phone app
+# gets push off the home network — auth-default-access: deny-all
+# (configmap.yaml) is what keeps that public reachability from meaning
+# public write access.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: ntfy-tunnel
+  namespace: ntfy
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  endpoints:
+    - dnsName: ntfy.ipv1337.dev
+      recordType: CNAME
+      recordTTL: 1
+      targets:
+        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+      providerSpecific:
+        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+          value: "true"
