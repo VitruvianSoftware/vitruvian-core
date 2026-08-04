@@ -28,9 +28,17 @@
 #   bazel run //tools/gitops:seal-alert-ntfy                       # prompts for the URL
 #   bazel run //tools/gitops:seal-alert-ntfy -- 'https://…' --apply # also apply now
 #
-# Writes the SealedSecret to the prometheus gitops dir (commit it → ArgoCD
-# applies, then Alertmanager mounts alertmanager-ntfy-endpoint/ntfy-url). The URL
-# is never printed. See gitops/argocd/platform/prometheus/applicationset.yaml
+# Writes the SealedSecret to gitops/argocd/platform/sealed-secrets-manifests
+# (commit it → ArgoCD applies, then Alertmanager mounts
+# alertmanager-ntfy-endpoint/ntfy-url). NOT platform/prometheus: that
+# Application's only source is the remote Helm chart (single-source, no
+# directory.recurse of its own folder), so a loose file dropped there is
+# never picked up by anything — confirmed live: the file sat in git for
+# several minutes with no matching SealedSecret ever appearing in-cluster.
+# sealed-secrets-manifests is the actual git-source Application for
+# cross-namespace SealedSecrets (each carries its own metadata.namespace);
+# every other SealedSecret in this repo already lives there. The URL is
+# never printed. See gitops/argocd/platform/prometheus/applicationset.yaml
 # (alertmanager.config) — the consuming receiver.
 set -euo pipefail
 
@@ -41,7 +49,7 @@ KCTX="${KUBE_CONTEXT:-default}"
 NS=monitoring
 SECRET=alertmanager-ntfy-endpoint
 KEY=ntfy-url
-OUT="gitops/argocd/platform/prometheus/${SECRET}-sealed.yaml"
+OUT="gitops/argocd/platform/sealed-secrets-manifests/${SECRET}.sealedsecret.yaml"
 CTRL_NS="${SEALED_SECRETS_NAMESPACE:-sealed-secrets}"
 CTRL_NAME="${SEALED_SECRETS_CONTROLLER:-sealed-secrets-controller}"
 
