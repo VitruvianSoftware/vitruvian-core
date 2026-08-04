@@ -5,8 +5,8 @@ go 1.26.2
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.1
 	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
-	github.com/pulumi/pulumi/sdk/v3 v3.254.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.32.1
+	github.com/pulumi/pulumi/sdk/v3 v3.255.0
 )
 
 require (
