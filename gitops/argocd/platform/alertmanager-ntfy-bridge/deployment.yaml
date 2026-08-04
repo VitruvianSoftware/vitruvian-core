@@ -1,0 +1,121 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Single stateless replica: pure request/response transform, no state, no HA
+# need — a missed alert during a pod restart is re-delivered by Alertmanager's
+# own webhook retry. Lives in `monitoring` (not its own namespace) so it can
+# mount the existing alertmanager-ntfy-endpoint Secret directly, no re-seal
+# into a second namespace. python:3.13-slim runs as root by default (no USER
+# in its Dockerfile) — runAsNonRoot here with an arbitrary uid/fsGroup
+# instead, matching gitops/argocd/platform/ntfy/deployment.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-ntfy-bridge
+  namespace: monitoring
+  labels:
+    app: alertmanager-ntfy-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager-ntfy-bridge
+  template:
+    metadata:
+      labels:
+        app: alertmanager-ntfy-bridge
+    spec:
+      # Pin to a wired node, same convention as zitadel-db
+      # (gitops/argocd/platform/zitadel-db/applicationset.yaml): WiFi nodes on
+      # this homelab (node.ipv1337.dev/link=wifi) have degraded/unreliable
+      # outbound internet — confirmed live, image pulls to james-mbp16
+      # (wifi) i/o-timed-out against two different registries on two
+      # different networks (Docker Hub direct AND its Google mirror) while
+      # wired nodes pull fine. Egress reliability matters here since this
+      # pod's whole job is an outbound HTTPS call per alert.
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bridge
+          image: python:3.13-slim
+          command: ["python3", "/etc/bridge/server.py"]
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: NTFY_BASE_URL
+              value: "https://ntfy.ipv1337.dev"
+            - name: NTFY_TOPIC
+              value: "vitruvian-alerts"
+            - name: NTFY_USERNAME
+              value: "alertmanager"
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/bridge
+              readOnly: true
+            - name: ntfy-secret
+              mountPath: /etc/bridge/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-ntfy-bridge
+        # Same Secret Alertmanager itself used to mount directly — the bridge
+        # now owns the outbound call to ntfy, Alertmanager no longer needs it
+        # (see gitops/argocd/platform/prometheus/applicationset.yaml).
+        - name: ntfy-secret
+          secret:
+            secretName: alertmanager-ntfy-endpoint
+        - name: tmp
+          emptyDir: {}
