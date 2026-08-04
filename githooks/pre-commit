@@ -30,9 +30,15 @@ if [ -e "bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle" ]; then
 else
   bazel run //:gazelle
 fi
-if [ -n "$(git status --porcelain -- '*BUILD' '*BUILD.bazel')" ]; then
+# Unstaged diff + untracked, not `git status --porcelain`: a BUILD file that's
+# already staged with content identical to gazelle's output has a real diff
+# against HEAD (so porcelain always reports it), which made this check fail on
+# every legitimate committed BUILD change, not just stale ones.
+build_untracked="$(git ls-files --others --exclude-standard -- '*BUILD' '*BUILD.bazel')"
+if ! git diff --quiet -- '*BUILD' '*BUILD.bazel' || [ -n "$build_untracked" ]; then
   echo "❌ gazelle updated BUILD files."
   echo "Please review and stage the changes before committing again."
-  git status --porcelain -- '*BUILD' '*BUILD.bazel'
+  git diff --stat -- '*BUILD' '*BUILD.bazel'
+  [ -n "$build_untracked" ] && printf '%s\n' "$build_untracked"
   exit 1
 fi

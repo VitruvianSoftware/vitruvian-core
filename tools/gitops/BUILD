@@ -133,3 +133,54 @@ sh_binary(
     srcs = ["ntfy_bootstrap_users.sh"],
     visibility = ["//visibility:public"],
 )
+
+# General-purpose ntfy account lifecycle management (list/add/delete users,
+# rotate passwords, change roles, grant/revoke per-topic access) — generalizes
+# ntfy-bootstrap-users above to any account, not just the initial two.
+#   bazel run //tools/gitops:ntfy-user-list
+#   bazel run //tools/gitops:ntfy-user-add -- USERNAME [admin|user]
+#   bazel run //tools/gitops:ntfy-user-del -- USERNAME
+#   bazel run //tools/gitops:ntfy-user-change-pass -- USERNAME
+#   bazel run //tools/gitops:ntfy-user-change-role -- USERNAME admin|user
+#   bazel run //tools/gitops:ntfy-user-access -- USERNAME TOPIC PERMISSION
+sh_binary(
+    name = "ntfy-user-list",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["list"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ntfy-user-add",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["add"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ntfy-user-del",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["del"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ntfy-user-change-pass",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["change-pass"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ntfy-user-change-role",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["change-role"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ntfy-user-access",
+    srcs = ["ntfy_manage_users.sh"],
+    args = ["access"],
+    visibility = ["//visibility:public"],
+)
