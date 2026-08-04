@@ -32,8 +32,13 @@
 #   bazel run //tools/gitops:ntfy-bootstrap-users            # prompts for the topic name
 #
 # Creates:
-#   - user "alertmanager", write-only on the topic — feed the printed URL
-#     straight into `bazel run //tools/gitops:seal-alert-ntfy -- '<url>'`
+#   - user "alertmanager", write-only on the topic — feed the printed password
+#     straight into `bazel run //tools/gitops:seal-alert-ntfy -- '<password>'`.
+#     The topic name here must match the url in the ntfy receiver config
+#     (gitops/argocd/platform/prometheus/applicationset.yaml — currently
+#     ntfy.ipv1337.dev/vitruvian-alerts, plain non-secret config since only
+#     the password is sealed, see that file's comment for why); this script
+#     doesn't write that file for you.
 #   - user "james", read-only on the topic — for the ntfy phone app / web UI
 # Both passwords are generated locally (openssl rand), never sent anywhere but
 # stdin of the ntfy pod, and printed to your terminal exactly once — save them
@@ -90,15 +95,12 @@ AM_CRED="$(create_user alertmanager write-only)"
 JAMES_CRED="$(create_user james read-only)"
 
 echo >&2
-echo "Alertmanager topic URL (feed straight into seal-alert-ntfy, never commit it raw):" >&2
+echo "Alertmanager webhook password (feed straight into seal-alert-ntfy, never commit it raw):" >&2
 if [ -n "${AM_CRED:-}" ]; then
-  AM_USER="${AM_CRED%%:*}"
   AM_PASS="${AM_CRED#*:}"
-  echo "  https://${AM_USER}:${AM_PASS}@ntfy.ipv1337.dev/${TOPIC}" >&2
-  echo >&2
-  echo "  bazel run //tools/gitops:seal-alert-ntfy -- 'https://${AM_USER}:${AM_PASS}@ntfy.ipv1337.dev/${TOPIC}'" >&2
+  echo "  bazel run //tools/gitops:seal-alert-ntfy -- '${AM_PASS}'" >&2
 else
-  echo "  (user already existed — rotate its password first if you need the URL again)" >&2
+  echo "  (user already existed — rotate its password first if you need it again)" >&2
 fi
 echo >&2
 echo "James's ntfy app / web UI login (save to a password manager now):" >&2
