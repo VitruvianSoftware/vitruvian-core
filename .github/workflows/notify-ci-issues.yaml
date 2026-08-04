@@ -1,0 +1,126 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Pushes an ntfy notification for the two concrete pain points from
+# 2026-08-04 (the gcp-networks billing migration + ntfy bridge deploys):
+# James twice had to be manually told a deploy needed his approval click, and
+# separately that a deploy had failed after landing on main.
+#
+# Polling, not event-driven, and DELIBERATELY so: GitHub Actions has no
+# trigger event for "a workflow run is waiting on a required-reviewer
+# approval" — deployment/deployment_status only fire AFTER a deployment (and
+# therefore approval) already happened, too late for what this needs
+# (confirmed against GitHub's own docs before building this). workflow_run
+# would cover the main-failure half event-driven, but it requires an
+# explicit `workflows:` allowlist of workflow *names* — this repo has 60+
+# workflow files, and keeping that list in sync by hand defeats the point.
+# One polling job covering both cases is simpler and more complete than a
+# hand-maintained allowlist plus a second, different mechanism for the half
+# nothing can trigger on anyway.
+#
+# No persistent dedup state (no actions/cache): each poll only considers
+# runs updated in the last 20 minutes, comfortably wider than the 5-minute
+# schedule (schedule triggers are best-effort and can slip under load) with
+# low duplicate risk in practice, since a run's updated_at is set once when
+# it enters "waiting" or completes, not continuously. Silence on a real
+# stuck approval is the failure mode this exists to prevent — an occasional
+# duplicate push is the acceptable cost of erring away from that.
+#
+# v1, scoped deliberately narrow (Beacon/James, 2026-08-04): only these two
+# cases. NOT in scope yet: "required check fails on a PR James cares about"
+# (the other half of the original ask — "cares about" has no crisp
+# definition, deferred) or a weekly dependency-PR digest (separate,
+# lower-priority ask). Expand from here rather than building every event
+# type up front.
+name: notify-ci-issues
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+
+# Never overlap two polls — a slow gh api page or ntfy hiccup in one run
+# shouldn't stack with the next scheduled tick.
+concurrency:
+  group: notify-ci-issues
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NTFY_PASSWORD: ${{ secrets.NTFY_GITHUB_ACTIONS_PASSWORD }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check for stuck approvals and main-branch failures, notify
+        run: |
+          set -uo pipefail  # no -e: one bad iteration must not stop the rest
+
+          cutoff=$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          notify() {
+            local title="$1" message="$2" priority="$3" tags="$4" url="$5"
+            local body
+            body=$(jq -n \
+              --arg title "$title" --arg message "$message" \
+              --argjson priority "$priority" --argjson tags "$tags" --arg click "$url" \
+              '{topic:"vitruvian-alerts", title:$title, message:$message, priority:$priority, tags:$tags, click:$click}')
+            if ! curl -fsS -u "github-actions:${NTFY_PASSWORD}" \
+                -H "Content-Type: application/json" \
+                -H "User-Agent: vitruvian-ci-notify/1.0" \
+                -X POST https://ntfy.ipv1337.dev -d "$body" >/dev/null; then
+              echo "WARN: ntfy push failed for: $title" >&2
+            fi
+          }
+
+          # shellcheck disable=SC2016 # $cutoff is jq's --arg binding, not a shell var
+          recent_filter='.workflow_runs[] | select(.updated_at >= $cutoff) | [.name, .html_url] | @tsv'
+
+          # gh api's -q/--jq takes only a filter string, with no equivalent of
+          # jq's own --arg for binding variables into it — pipe to a separate
+          # jq instead, which does support --arg. --paginate with no --slurp
+          # emits each page as its own top-level JSON object, back to back;
+          # jq processes a stream of top-level values by default, so this
+          # still applies the filter once per page correctly.
+          echo "Checking for runs waiting on approval, updated since ${cutoff}..."
+          gh api "repos/${REPO}/actions/runs?status=waiting&per_page=50" --paginate |
+          jq -r --arg cutoff "$cutoff" "$recent_filter" |
+          while IFS=$'\t' read -r name url; do
+            echo "  -> waiting: $name ($url)"
+            notify "[ci] approval needed: ${name}" \
+              "Workflow run is waiting on a required-reviewer approval. ${url}" \
+              4 '["hourglass_flowing_sand","ci"]' "$url"
+          done
+
+          echo "Checking for failures on main, updated since ${cutoff}..."
+          gh api "repos/${REPO}/actions/runs?branch=main&event=push&status=failure&per_page=20" --paginate |
+          jq -r --arg cutoff "$cutoff" "$recent_filter" |
+          while IFS=$'\t' read -r name url; do
+            echo "  -> failed on main: $name ($url)"
+            notify "[ci] main broken: ${name}" \
+              "Failed on main after landing. ${url}" \
+              5 '["red_circle","ci"]' "$url"
+          done
