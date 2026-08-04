@@ -653,7 +653,7 @@ spec:
               # push; drop known-noise/heartbeat. The ntfy URL is NOT committed (this
               # repo has a public mirror) — it is read at runtime from a mounted
               # Secret via url_file. PREREQUISITE: the SealedSecret
-              # `alertmanager-ntfy-endpoint` (key `ntfy-url` = the full ntfy topic
+              # alertmanager-ntfy-endpoint (key ntfy-url = the full ntfy topic
               # URL) must exist BEFORE this applies, or the alertmanager pod can't
               # mount it. Create it in one step:
               #   bazel run //tools/gitops:seal-alert-ntfy -- 'https://ntfy.host/mytopic'

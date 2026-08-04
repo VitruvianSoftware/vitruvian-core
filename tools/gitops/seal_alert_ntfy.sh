@@ -72,12 +72,36 @@ cd "${BUILD_WORKSPACE_DIRECTORY:?this target must be run via 'bazel run', not 'b
 
 # create-secret (client dry-run) → kubeseal → committed SealedSecret. The URL is
 # piped on stdin and never echoed.
+# License header first: license-check (tools/license) requires it on every
+# committed file, and kubeseal's raw output has none — without this, every
+# re-seal (e.g. credential rotation) regenerates a file that fails CI.
+cat > "$OUT" <<'HEADER'
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+HEADER
 printf '%s' "$URL" \
   | kubectl --context "$KCTX" create secret generic "$SECRET" -n "$NS" \
       --dry-run=client --from-file="${KEY}=/dev/stdin" -o yaml \
   | kubeseal --format yaml \
       --controller-namespace "$CTRL_NS" --controller-name "$CTRL_NAME" \
-  > "$OUT"
+  >> "$OUT"
 echo "✓ sealed → $OUT (SealedSecret ${NS}/${SECRET}, key ${KEY})"
 
 if [ "$APPLY" -eq 1 ]; then
