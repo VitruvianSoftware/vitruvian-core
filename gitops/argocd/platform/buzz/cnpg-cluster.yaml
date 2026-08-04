@@ -62,5 +62,11 @@ spec:
     parameters:
       shared_buffers: "128MB"
       effective_cache_size: "256MB"
+      # DDL/DML audit trail. Default 'none' meant the 2026-08-03 migration-26
+      # incident (relay startup DDL committed against prod outside a recorded
+      # migration) left the actual successful statements unlogged — only the
+      # later failing retries showed up, since 'none' only logs errors. 'mod'
+      # covers DDL + DML while skipping the read-heavy relay query traffic.
+      log_statement: "mod"
   monitoring:
     enablePodMonitor: false
