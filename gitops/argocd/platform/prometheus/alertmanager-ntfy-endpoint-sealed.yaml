@@ -1,0 +1,32 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: alertmanager-ntfy-endpoint
+  namespace: monitoring
+spec:
+  encryptedData:
+    ntfy-url: AgCvRkFY28xzgQgMeWu4lQxEi3FBRbpSJLUdnrLqjpyhB7M4vA4iwIoFJ7efZqMU4DHPPhrRC84DseIGFjJhHh0xikIiDzTU2xGhVtPqVGUf1IRW/nU69INWWMFEM630tmM+JMm/78k4Kq9Yi8I79/037EgVeFX+PMoXTmlM0m48PXhexCgvieFrrYp2bCDcLJtqZ/ZokPGB5JHJxUGgri7TDpHphZ28jYY28jxOp765A297+eTatolAuNb5WkngMVz+bZGYxJADIsqMLnb5yqOMHh4+kE+P18zJR9Y51VgWoSf9BFxlPA+GNHaCTPLkBcDenr2F0+B1AdH0xfhu9F0ixaXkkmQXwuqNu6MqGG04UhNB8E4xfRcrVd0Y6JyVxQtTZxwNhamcF3UW5mavmfmTpcbb1MNLzCjwGvU+ozNUjlhgeIe6X6LNdwJNYPI5WOic0wAR3MJu1ggoPQr7MvFzyRPtrMtjfFXqkmVR1FlDtzodXhIeeFxHEoxqYGxjwQmHeKifireXVLZbRtU3Oe0KYAJOP7lqzm8Md4SJQHM4sMC/fHbnH0bXGEZ7h0WE6YDfHhQFC6O9fmphCC6Vj4Utt49gEZtCPOTdIFlXaMYhfnSJ1boEX8hYkHko3HDczB9DNW4wC1T/DAahr0ZzM1wHXn1rB1zUyfXxoMPIA2nZ/1lfg/l5F4Ck2DilCDMfXSxSJnq9O7njfHtwijf2M0aDNxaK/GYoOiVxOYc8FH3RqP6WI+X5FB0XICvCtoeSILm6dcPVMU45qGcBSs3oZwNv7uukKxkNxsxkTw56tpdE6MkQCHw=
+  template:
+    metadata:
+      name: alertmanager-ntfy-endpoint
+      namespace: monitoring
