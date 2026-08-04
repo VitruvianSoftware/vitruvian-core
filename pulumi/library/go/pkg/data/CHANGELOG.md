@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-data-v0.6.0...go-data-v0.6.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **deps:** bump klauspost/compress to v1.18.7 (GO-2026-5841) — unwedges the merge queue ([#1268](https://github.com/VitruvianSoftware/vitruvian-core/issues/1268)) ([338f365](https://github.com/VitruvianSoftware/vitruvian-core/commit/338f365b0f84b328c0bf880ca0ebb4595590b8bd))
+
 ## [0.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-data-v0.5.0...go-data-v0.6.0) (2026-07-10)
 
 
