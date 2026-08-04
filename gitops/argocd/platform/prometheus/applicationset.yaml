@@ -652,33 +652,21 @@ spec:
               # Route actionable alerts (severity page|warning) to ntfy for phone
               # push; drop known-noise/heartbeat.
               #
-              # url (plain, not url_file): the live Alertmanager here is 0.25.0
-              # (build date 20221222) — webhook_configs.url_file wasn't added
-              # upstream until alertmanager#3223 (merged 2023-03-03, first
-              # released in 0.26.0), so it's not in this binary's config schema
-              # at all. Confirmed live: the original url_file version
-              # crash-looped both replicas with "field url_file not found in
-              # type config.plain". Bumping the alertmanager image to pick up
-              # url_file was considered and rejected here — an image bump
-              # restarts both HA replicas and crosses ~8 minor versions of gossip
-              # protocol / on-disk silence-store changes, a materially bigger
-              # blast radius than a receiver-config-only fix for what should be
-              # a small change.
-              #
-              # This IS safe to leave as plain, committed config: ntfy's own
-              # auth-default-access: deny-all (self-hosted instance, see
-              # gitops/argocd/platform/ntfy) means knowing the bare topic URL
-              # grants no read or write access by itself — unlike the original
-              # ntfy.sh-topic design (this repo has a public mirror) where the
-              # topic URL WAS the whole secret. Only the Basic Auth password is
-              # sensitive, so only it is sealed, via http_config.basic_auth
-              # (password_file has been stable in Alertmanager's HTTP client
-              # config since long before 0.25.0 — unlike url_file, this one
-              # actually exists in the running binary).
+              # url points at alertmanager-ntfy-bridge (see
+              # gitops/argocd/platform/alertmanager-ntfy-bridge), not ntfy
+              # directly: Alertmanager's raw webhook JSON has no title/message/
+              # priority fields ntfy understands, so a direct POST just showed
+              # the literal JSON blob as the notification text on the phone.
+              # The bridge reshapes it into ntfy's publish schema and forwards.
+              # Plain http, no auth on this hop: same namespace, cluster-
+              # internal only, nothing here crosses a network boundary. The
+              # bridge is the one that now authenticates to ntfy — see its
+              # deployment.yaml, which mounts the same alertmanager-ntfy-
+              # endpoint Secret this receiver used to mount directly.
               #
               # PREREQUISITE: the SealedSecret alertmanager-ntfy-endpoint (key
-              # ntfy-password) must exist BEFORE this applies, or the
-              # alertmanager pod can't mount it. Create it in one step:
+              # ntfy-password) must exist BEFORE alertmanager-ntfy-bridge can
+              # authenticate to ntfy. Create it in one step:
               #   bazel run //tools/gitops:seal-alert-ntfy -- '<the ntfy webhook password>'
               config:
                 global:
@@ -698,17 +686,8 @@ spec:
                   - name: "null"
                   - name: ntfy
                     webhook_configs:
-                      - url: https://ntfy.ipv1337.dev/vitruvian-alerts
-                        http_config:
-                          basic_auth:
-                            username: alertmanager
-                            password_file: /etc/alertmanager/secrets/ntfy/ntfy-password
+                      - url: http://alertmanager-ntfy-bridge.monitoring.svc.cluster.local:8080/webhook
                         send_resolved: true
-              extraSecretMounts:
-                - name: ntfy-endpoint
-                  secretName: alertmanager-ntfy-endpoint
-                  mountPath: /etc/alertmanager/secrets/ntfy
-                  readOnly: true
             # ── node-exporter: run as root so the RAPL collector can read ────
             # CPU package energy. node-exporter exports node_rapl_*_joules_total
             # from /host/sys/class/powercap/intel-rapl:*/energy_uj, but since

@@ -1,0 +1,167 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# alertmanager-ntfy-bridge — reshapes Alertmanager's raw webhook JSON (no
+# title/message/priority fields ntfy understands) into ntfy's publish schema,
+# then forwards it. Without this, ntfy has nothing it recognizes in the POST
+# body and falls back to showing the literal Alertmanager JSON blob as the
+# notification text. Stdlib-only Python (no pip deps, so a stock python:3.13
+# base image is all that's needed — no first-party image to build/publish),
+# mounted via ConfigMap in the style of ntfy's own server.yml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-ntfy-bridge
+  namespace: monitoring
+data:
+  server.py: |
+    """Alertmanager webhook -> ntfy publish-schema bridge (stdlib only)."""
+    import base64
+    import http.server
+    import json
+    import os
+    import socketserver
+    import sys
+    import urllib.request
+
+    NTFY_BASE_URL = os.environ.get("NTFY_BASE_URL", "https://ntfy.ipv1337.dev")
+    NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "vitruvian-alerts")
+    NTFY_USERNAME = os.environ.get("NTFY_USERNAME", "alertmanager")
+    NTFY_PASSWORD_FILE = os.environ.get(
+        "NTFY_PASSWORD_FILE", "/etc/bridge/secrets/ntfy-password"
+    )
+
+    # Alertmanager's route only ever sends severity=~"page|warning" here (the
+    # "null" receiver drops none|noise upstream) — the .get() default below is
+    # just a defensive fallback, not a real third tier.
+    PRIORITY_BY_SEVERITY = {"page": 5, "warning": 3}
+    DEFAULT_PRIORITY = 3
+    TAG_BY_STATUS = {"firing": "rotating_light", "resolved": "white_check_mark"}
+
+
+    def read_password():
+        with open(NTFY_PASSWORD_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+
+
+    def build_ntfy_payload(am_payload):
+        status = am_payload.get("status", "firing")
+        alerts = am_payload.get("alerts", [])
+        common_labels = am_payload.get("commonLabels", {})
+        alertname = (
+            common_labels.get("alertname")
+            or am_payload.get("groupLabels", {}).get("alertname")
+            or "Alert"
+        )
+
+        lines = []
+        max_priority = 1
+        for a in alerts:
+            labels = a.get("labels", {})
+            annotations = a.get("annotations", {})
+            severity = labels.get("severity", "warning")
+            summary = (
+                annotations.get("summary")
+                or annotations.get("description")
+                or labels.get("alertname", alertname)
+            )
+            ns = labels.get("namespace")
+            prefix = f"{ns}/" if ns else ""
+            lines.append(
+                f"- {prefix}{labels.get('alertname', alertname)} ({severity}): {summary}"
+            )
+            max_priority = max(max_priority, PRIORITY_BY_SEVERITY.get(severity, DEFAULT_PRIORITY))
+
+        if status == "resolved":
+            max_priority = min(max_priority, 2)
+
+        title = "{} {} ({})".format(
+            "resolved:" if status == "resolved" else "firing:", alertname, len(alerts)
+        )
+        message = "\n".join(lines) if lines else "(no alert detail)"
+
+        return {
+            "topic": NTFY_TOPIC,
+            "title": title,
+            "message": message,
+            "priority": max_priority,
+            "tags": [TAG_BY_STATUS.get(status, "bell")],
+        }
+
+
+    def forward_to_ntfy(payload):
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(NTFY_BASE_URL, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        # ntfy.ipv1337.dev sits behind the Cloudflare Tunnel, and Cloudflare's
+        # bot-fingerprint check 403s (error 1010) on urllib's default
+        # "Python-urllib/3.x" User-Agent — confirmed live, curl with its own
+        # UA was unaffected. Any real UA string clears it.
+        req.add_header("User-Agent", "alertmanager-ntfy-bridge/1.0")
+        auth = base64.b64encode(f"{NTFY_USERNAME}:{read_password()}".encode()).decode()
+        req.add_header("Authorization", f"Basic {auth}")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status
+
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            if self.path != "/webhook":
+                self.send_response(404)
+                self.end_headers()
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            try:
+                am_payload = json.loads(raw)
+                ntfy_payload = build_ntfy_payload(am_payload)
+                status = forward_to_ntfy(ntfy_payload)
+            except Exception as exc:
+                # Any failure -> 502, so Alertmanager's own webhook retry logic
+                # re-delivers instead of silently dropping the alert.
+                sys.stderr.write(f"ERROR forwarding to ntfy: {exc}\n")
+                self.send_response(502)
+                self.end_headers()
+                return
+            self.send_response(200 if 200 <= status < 300 else 502)
+            self.end_headers()
+
+
+    class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", "8080"))
+        server = ThreadingServer(("0.0.0.0", port), Handler)
+        sys.stderr.write(f"alertmanager-ntfy-bridge listening on :{port}\n")
+        server.serve_forever()
