@@ -21,6 +21,13 @@
 # ntfy HTTPRoute — attaches to the platform Gateway (cross-namespace; the
 # Gateway allows All), same pattern as whoami. Single backendRef: no canary
 # pilot here, just one Deployment.
+#
+# `weight: 1` is written explicitly even with only one backendRef — same
+# reasoning as whoami.yaml's HTTPRoute: Gateway API defaults an omitted
+# weight to 1 live, and ArgoCD doesn't normalize CRD-schema defaults, so an
+# omitted field here means perpetual OutOfSync (confirmed live: the
+# just-deployed HTTPRoute showed weight:1 server-side while git had it
+# unset).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -44,3 +51,4 @@ spec:
           kind: Service
           name: ntfy
           port: 80
+          weight: 1
