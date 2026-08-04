@@ -61,6 +61,22 @@ data:
             return f.read().strip()
 
 
+    def classify_source(common_labels):
+        # group_by: ["alertname", "namespace"] means every alert in one
+        # notification already shares the same namespace value (including
+        # "absent"), so this only needs to look at commonLabels once, not
+        # per-alert. namespace present -> a workload/app alert; no namespace
+        # but a node/instance label -> a cluster-host-level alert (node
+        # conditions, etcd quorum, disk/filesystem, scrape targets, etc).
+        # Cloud Run isn't wired into this pipeline yet, so there's no third
+        # branch for it — add one here when that integration exists.
+        if common_labels.get("namespace"):
+            return "[app]", "package"
+        if common_labels.get("node") or common_labels.get("kubernetes_node") or common_labels.get("instance"):
+            return "[host]", "computer"
+        return "[cluster]", "large_blue_circle"
+
+
     def build_ntfy_payload(am_payload):
         status = am_payload.get("status", "firing")
         alerts = am_payload.get("alerts", [])
@@ -70,6 +86,7 @@ data:
             or am_payload.get("groupLabels", {}).get("alertname")
             or "Alert"
         )
+        source_prefix, source_tag = classify_source(common_labels)
 
         lines = []
         max_priority = 1
@@ -92,8 +109,8 @@ data:
         if status == "resolved":
             max_priority = min(max_priority, 2)
 
-        title = "{} {} ({})".format(
-            "resolved:" if status == "resolved" else "firing:", alertname, len(alerts)
+        title = "{} {} {} ({})".format(
+            source_prefix, "resolved:" if status == "resolved" else "firing:", alertname, len(alerts)
         )
         message = "\n".join(lines) if lines else "(no alert detail)"
 
@@ -102,7 +119,7 @@ data:
             "title": title,
             "message": message,
             "priority": max_priority,
-            "tags": [TAG_BY_STATUS.get(status, "bell")],
+            "tags": [TAG_BY_STATUS.get(status, "bell"), source_tag],
         }
 
 
