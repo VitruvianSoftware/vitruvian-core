@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       # For the goTemplate render simulation in tools/gitops/appset_render. It
       # uses only the standard library (text/template), so no module download

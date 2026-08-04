@@ -79,7 +79,7 @@ jobs:
       # (job graph, expressions, deprecated actions, syntax) runs regardless.
       SHELLCHECK_OPTS: --severity=warning
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Install actionlint (pinned + checksum-verified)
         run: |

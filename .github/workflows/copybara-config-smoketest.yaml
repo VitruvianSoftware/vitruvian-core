@@ -66,7 +66,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         steps:
-            - uses: actions/checkout@v7
+            - uses: actions/checkout@v7.0.1
 
             - name: Validate copy.bara.sky loads on the pinned Copybara image
               run: |

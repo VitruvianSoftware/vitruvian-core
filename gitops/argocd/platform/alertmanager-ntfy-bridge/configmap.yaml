@@ -61,6 +61,50 @@ data:
             return f.read().strip()
 
 
+    # Alert names describing the cluster/host substrate itself (node
+    # conditions, etcd quorum, disk/filesystem, scrape targets, Prometheus's
+    # own health) rather than a specific workload. Keyed on alertname, not
+    # labels: kube-state-metrics joins a `node` label onto WORKLOAD metrics
+    # too (e.g. KubeJobFailed carries the node its pod ran on), and node
+    # metrics get double-scraped through both a dedicated job (no namespace)
+    # and the generic annotation-based job (namespace = wherever node-exporter
+    # itself happens to run) — confirmed live, the same NodeFilesystemNearFull
+    # alert showed up with and without a namespace label depending on which
+    # scrape path produced it. Labels alone can't reliably tell "about this
+    # workload" from "about the host it happens to run on"; alertname can.
+    # Update this set when adding a new cluster/host-level alert rule.
+    HOST_ALERTNAMES = {
+        "KubeNodeNotReady",
+        "KubeNodeUnreachable",
+        "KubeNodeMemoryPressure",
+        "KubeNodeDiskPressure",
+        "NodeFilesystemNearFull",
+        "NodeFilesystemNearFullCritical",
+        "NodeFilesystemInodesNearFull",
+        "NodeMemoryHigh",
+        "EtcdServerNodeDown",
+        "EtcdQuorumAtRisk",
+        "EtcdNoLeader",
+        "NodeContainersStuckWaiting",
+        "PrometheusTargetDown",
+        "PrometheusConfigReloadFailed",
+        "PrometheusTSDBCompactionsFailing",
+        "PrometheusNotificationsDropped",
+        "CertManagerCertExpiringSoon",
+        "CertManagerCertNotReady",
+    }
+
+
+    def classify_source(alertname, common_labels):
+        # Cloud Run isn't wired into this pipeline at all yet — add a third
+        # branch here when that integration exists.
+        if alertname in HOST_ALERTNAMES:
+            return "[host]", "computer"
+        if common_labels.get("namespace"):
+            return "[app]", "package"
+        return "[cluster]", "large_blue_circle"
+
+
     def build_ntfy_payload(am_payload):
         status = am_payload.get("status", "firing")
         alerts = am_payload.get("alerts", [])
@@ -70,6 +114,7 @@ data:
             or am_payload.get("groupLabels", {}).get("alertname")
             or "Alert"
         )
+        source_prefix, source_tag = classify_source(alertname, common_labels)
 
         lines = []
         max_priority = 1
@@ -92,8 +137,8 @@ data:
         if status == "resolved":
             max_priority = min(max_priority, 2)
 
-        title = "{} {} ({})".format(
-            "resolved:" if status == "resolved" else "firing:", alertname, len(alerts)
+        title = "{} {} {} ({})".format(
+            source_prefix, "resolved:" if status == "resolved" else "firing:", alertname, len(alerts)
         )
         message = "\n".join(lines) if lines else "(no alert detail)"
 
@@ -102,7 +147,7 @@ data:
             "title": title,
             "message": message,
             "priority": max_priority,
-            "tags": [TAG_BY_STATUS.get(status, "bell")],
+            "tags": [TAG_BY_STATUS.get(status, "bell"), source_tag],
         }
 
 
