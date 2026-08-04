@@ -6,9 +6,9 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi-command/sdk v1.2.1
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.31.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.32.1
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.1
-	github.com/pulumi/pulumi/sdk/v3 v3.254.0
+	github.com/pulumi/pulumi/sdk/v3 v3.255.0
 )
 
 require (
