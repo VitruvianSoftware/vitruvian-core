@@ -73,13 +73,24 @@ type OrgConfig struct {
 	// Core identifiers
 	OrgID          string
 	BillingAccount string
-	ProjectPrefix  string
-	FolderPrefix   string
-	DefaultRegion  string
-	Parent         string
-	ParentFolder   string
-	ParentID       string // Numeric ID (folder or org)
-	ParentType     string // "organization" or "folder"
+	// NetworkBillingAccount funds ONLY the 4 network-folder projects this
+	// stage creates directly (prj-net-hub + the 3 per-env prj-{d,n,p}-svpc
+	// host projects) — a deliberate carve-out from BillingAccount so network
+	// hosting costs can move to a different account (e.g. James's personal
+	// one) without also moving org audit logging, billing-export, SCC, KMS,
+	// or Secrets, which stay on BillingAccount. Defaults to BillingAccount
+	// when unset, so leaving network_billing_account out of a stack's yaml
+	// is a no-op (every project funds from the same account, current
+	// behavior). prj-net-interconnect is NOT in this carve-out — it funds
+	// from BillingAccount like the org-wide projects, not from this field.
+	NetworkBillingAccount string
+	ProjectPrefix         string
+	FolderPrefix          string
+	DefaultRegion         string
+	Parent                string
+	ParentFolder          string
+	ParentID              string // Numeric ID (folder or org)
+	ParentType            string // "organization" or "folder"
 
 	// Bootstrap cross-reference
 	BootstrapStackName  string
@@ -162,12 +173,13 @@ type OrgConfig struct {
 func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 	conf := config.New(ctx, "")
 	c := &OrgConfig{
-		OrgID:              conf.Require("org_id"),
-		BillingAccount:     conf.Require("billing_account"),
-		ProjectPrefix:      conf.Get("project_prefix"),
-		FolderPrefix:       conf.Get("folder_prefix"),
-		DefaultRegion:      conf.Get("default_region"),
-		BootstrapStackName: conf.Require("bootstrap_stack_name"),
+		OrgID:                 conf.Require("org_id"),
+		BillingAccount:        conf.Require("billing_account"),
+		NetworkBillingAccount: conf.Get("network_billing_account"),
+		ProjectPrefix:         conf.Get("project_prefix"),
+		FolderPrefix:          conf.Get("folder_prefix"),
+		DefaultRegion:         conf.Get("default_region"),
+		BootstrapStackName:    conf.Require("bootstrap_stack_name"),
 
 		// Governance groups — pulled from bootstrap outputs or overridden locally
 		GroupOrgAdmins:        conf.Get("group_org_admins"),
@@ -223,6 +235,13 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 
 		// Bootstrap
 		BootstrapFolderName: conf.Get("bootstrap_folder_name"),
+	}
+
+	// NetworkBillingAccount defaults to BillingAccount when the stack yaml
+	// doesn't set network_billing_account — every project funds from the
+	// same account, i.e. today's behavior, unchanged.
+	if c.NetworkBillingAccount == "" {
+		c.NetworkBillingAccount = c.BillingAccount
 	}
 
 	// Parse structured config for ProjectBudget

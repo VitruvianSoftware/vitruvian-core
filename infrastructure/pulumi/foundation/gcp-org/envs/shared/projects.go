@@ -51,8 +51,11 @@ type OrgProjects struct {
 // shared Project component from the Vitruvian Pulumi Library.
 // Labels mirror the Terraform foundation's project labeling convention (D3).
 // Budget and DefaultServiceAccount are optional — pass nil/empty to skip.
+// billingAccount is explicit at each call site (not read from cfg internally)
+// so which account funds which project is visible at the call site — most
+// pass cfg.BillingAccount, the net-hub project passes cfg.NetworkBillingAccount.
 // Returns both the project ID and project number for cross-stage exports.
-func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.StringOutput, cfg *OrgConfig, apis []string, labels map[string]string, budget *project.BudgetConfig) (pulumi.StringOutput, pulumi.StringOutput, pulumi.Resource, error) {
+func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.StringOutput, cfg *OrgConfig, apis []string, labels map[string]string, budget *project.BudgetConfig, billingAccount string) (pulumi.StringOutput, pulumi.StringOutput, pulumi.Resource, error) {
 	// Convert labels to Pulumi StringMap
 	pulumiLabels := pulumi.StringMap{}
 	for k, v := range labels {
@@ -63,7 +66,7 @@ func createProject(ctx *pulumi.Context, name, projectID string, folderID pulumi.
 		ProjectID:             pulumi.String(projectID),
 		Name:                  pulumi.String(projectID),
 		FolderID:              folderID,
-		BillingAccount:        pulumi.String(cfg.BillingAccount),
+		BillingAccount:        pulumi.String(billingAccount),
 		RandomProjectID:       cfg.RandomSuffix,
 		ActivateApis:          apis,
 		Labels:                pulumiLabels,
@@ -167,6 +170,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "logging")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -189,6 +193,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "billing_export")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -229,6 +234,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "scc")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -251,6 +257,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "kms")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -273,6 +280,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "secrets")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -299,6 +307,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			"vpc":               "none",
 		},
 		budgetFor(getProjectBudget(cfg, "interconnect")),
+		cfg.BillingAccount,
 	)
 	if err != nil {
 		return nil, err
@@ -331,6 +340,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 				"vpc":               "svpc",
 			},
 			budgetFor(getProjectBudget(cfg, "net_hub")),
+			cfg.NetworkBillingAccount,
 		)
 		if err != nil {
 			return nil, err
@@ -349,7 +359,7 @@ func deployOrgProjects(ctx *pulumi.Context, cfg *OrgConfig, folders *Folders) (*
 			EnvCode:               code,
 			ProjectPrefix:         cfg.ProjectPrefix,
 			FolderID:              networkFolderID,
-			BillingAccount:        cfg.BillingAccount,
+			BillingAccount:        cfg.NetworkBillingAccount,
 			RandomSuffix:          cfg.RandomSuffix,
 			ProjectDeletionPolicy: cfg.ProjectDeletionPolicy,
 			DefaultServiceAccount: cfg.DefaultServiceAccount,

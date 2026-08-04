@@ -41,6 +41,10 @@ func TestOrgConfigDefaults(t *testing.T) {
 		// Assert that defaults applied inside loadOrgConfig match Terraform upstream.
 		assert.Equal(t, "123456789", cfg.OrgID)
 		assert.Equal(t, "AAAAAA-BBBBBB-CCCCCC", cfg.BillingAccount)
+		// network_billing_account unset -> falls back to BillingAccount, i.e.
+		// every project (including the 4 network ones) funds from the same
+		// account, matching pre-carve-out behavior.
+		assert.Equal(t, "AAAAAA-BBBBBB-CCCCCC", cfg.NetworkBillingAccount)
 		assert.Equal(t, true, cfg.EnableBillingAccountSink)
 		assert.Equal(t, "prj", cfg.ProjectPrefix)
 		assert.Equal(t, "fldr", cfg.FolderPrefix)
@@ -64,6 +68,25 @@ func TestOrgConfigDefaults(t *testing.T) {
 		assert.Equal(t, true, cfg.FolderDeletionProtection)
 		assert.Equal(t, false, cfg.LogExportStorageForceDestroy)
 		assert.Equal(t, false, cfg.LogExportStorageVersioning)
+
+		return nil
+	}, pulumi.WithMocks("project", "stack", &mockResourceProvider{}))
+
+	assert.NoError(t, err)
+}
+
+// TestOrgConfigNetworkBillingAccountOverride verifies that an explicit
+// network_billing_account carves the 4 network-folder projects (net-hub +
+// the 3 per-env svpc host projects) off BillingAccount without touching it.
+func TestOrgConfigNetworkBillingAccountOverride(t *testing.T) {
+	os.Setenv("PULUMI_CONFIG", `{ "project:org_id": "123456789", "project:billing_account": "AAAAAA-BBBBBB-CCCCCC", "project:network_billing_account": "XXXXXX-YYYYYY-ZZZZZZ", "project:bootstrap_stack_name": "bootstrap" }`)
+	defer os.Unsetenv("PULUMI_CONFIG")
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		cfg := loadOrgConfig(ctx)
+
+		assert.Equal(t, "AAAAAA-BBBBBB-CCCCCC", cfg.BillingAccount)
+		assert.Equal(t, "XXXXXX-YYYYYY-ZZZZZZ", cfg.NetworkBillingAccount)
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", &mockResourceProvider{}))

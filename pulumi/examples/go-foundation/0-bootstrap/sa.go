@@ -100,6 +100,12 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.tagUser",
 			"roles/cloudasset.owner",
 			"roles/securitycenter.sourcesEditor",
+			// billing.projectManager: the org stage can re-assign billing for
+			// projects it creates (createBillingAssignment/deleteBillingAssignment
+			// ON THE PROJECT). No other standing role here grants it. billing.user
+			// on the target account covers the account side; this covers the
+			// project side.
+			"roles/billing.projectManager",
 		),
 		"env": withCommon(
 			"roles/resourcemanager.tagUser",
