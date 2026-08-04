@@ -61,19 +61,47 @@ data:
             return f.read().strip()
 
 
-    def classify_source(common_labels):
-        # group_by: ["alertname", "namespace"] means every alert in one
-        # notification already shares the same namespace value (including
-        # "absent"), so this only needs to look at commonLabels once, not
-        # per-alert. namespace present -> a workload/app alert; no namespace
-        # but a node/instance label -> a cluster-host-level alert (node
-        # conditions, etcd quorum, disk/filesystem, scrape targets, etc).
-        # Cloud Run isn't wired into this pipeline yet, so there's no third
-        # branch for it — add one here when that integration exists.
+    # Alert names describing the cluster/host substrate itself (node
+    # conditions, etcd quorum, disk/filesystem, scrape targets, Prometheus's
+    # own health) rather than a specific workload. Keyed on alertname, not
+    # labels: kube-state-metrics joins a `node` label onto WORKLOAD metrics
+    # too (e.g. KubeJobFailed carries the node its pod ran on), and node
+    # metrics get double-scraped through both a dedicated job (no namespace)
+    # and the generic annotation-based job (namespace = wherever node-exporter
+    # itself happens to run) — confirmed live, the same NodeFilesystemNearFull
+    # alert showed up with and without a namespace label depending on which
+    # scrape path produced it. Labels alone can't reliably tell "about this
+    # workload" from "about the host it happens to run on"; alertname can.
+    # Update this set when adding a new cluster/host-level alert rule.
+    HOST_ALERTNAMES = {
+        "KubeNodeNotReady",
+        "KubeNodeUnreachable",
+        "KubeNodeMemoryPressure",
+        "KubeNodeDiskPressure",
+        "NodeFilesystemNearFull",
+        "NodeFilesystemNearFullCritical",
+        "NodeFilesystemInodesNearFull",
+        "NodeMemoryHigh",
+        "EtcdServerNodeDown",
+        "EtcdQuorumAtRisk",
+        "EtcdNoLeader",
+        "NodeContainersStuckWaiting",
+        "PrometheusTargetDown",
+        "PrometheusConfigReloadFailed",
+        "PrometheusTSDBCompactionsFailing",
+        "PrometheusNotificationsDropped",
+        "CertManagerCertExpiringSoon",
+        "CertManagerCertNotReady",
+    }
+
+
+    def classify_source(alertname, common_labels):
+        # Cloud Run isn't wired into this pipeline at all yet — add a third
+        # branch here when that integration exists.
+        if alertname in HOST_ALERTNAMES:
+            return "[host]", "computer"
         if common_labels.get("namespace"):
             return "[app]", "package"
-        if common_labels.get("node") or common_labels.get("kubernetes_node") or common_labels.get("instance"):
-            return "[host]", "computer"
         return "[cluster]", "large_blue_circle"
 
 
@@ -86,7 +114,7 @@ data:
             or am_payload.get("groupLabels", {}).get("alertname")
             or "Alert"
         )
-        source_prefix, source_tag = classify_source(common_labels)
+        source_prefix, source_tag = classify_source(alertname, common_labels)
 
         lines = []
         max_priority = 1
