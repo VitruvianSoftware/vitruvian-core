@@ -208,6 +208,71 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@prisma/client"
         update-types: ["version-update:semver-major"]
+  # ─── policy-library: the Pulumi CrossGuard policy pack (issue #1391).
+  #
+  #     WHY A SECOND npm ENTRY, when the block above says "ONE block at the
+  #     workspace ROOT". That rule is about pnpm WORKSPACE MEMBERS, which share
+  #     the root pnpm-lock.yaml and must be bumped through it or the lock skews
+  #     (#531). policy-library is not one: it is absent from
+  #     pnpm-workspace.yaml, carries its own package.json + package-lock.json,
+  #     and Pulumi's policy runner installs it with npm at `pulumi up` time. So
+  #     the root entry cannot reach it -- Dependabot only updates a lockfile
+  #     inside its configured directory -- and it had NO scheduled updates at
+  #     all. Its lock is standalone, so bumping it here cannot skew the root
+  #     lock; the two share no resolution.
+  #
+  #     WHAT WENT WRONG WITHOUT IT: it drifted into a red REQUIRED osv-scan
+  #     three times, each cleared by a hand-written PR -- #1184
+  #     (brace-expansion), #1185 (tar), and #1390, where it carried 7 of the 24
+  #     advisories that blocked every open dependency PR at once. Three hand
+  #     fixes for the same missing config is the signal this entry answers.
+  #
+  #     WHAT THIS DOES AND DOES NOT BUY. It bumps the pack's DIRECT deps
+  #     (@pulumi/policy, @pulumi/pulumi, typescript) on a schedule, which
+  #     regenerates package-lock.json and pulls a fresh transitive tree with it
+  #     -- that is what keeps ordinary drift from accumulating. It does NOT make
+  #     every advisory fixable: alert-driven security updates already ran
+  #     against this directory before this entry existed, and failed
+  #     `security_update_not_possible` -- "undici is a transitive dependency and
+  #     no update path was found ... the parent package(s) that depend on it in
+  #     the lockfile require" an older range (job 1506484471, 2026-08-04).
+  #     Dependabot cannot rewrite a parent's range, so a transitive advisory
+  #     whose parents lag stays unfixable BY DEPENDABOT no matter what is
+  #     configured here. The tool for that case is the npm `overrides` block in
+  #     this directory's package.json, added in #1390 -- keep the two in mind
+  #     together: this entry prevents the drift, overrides clear what it cannot.
+  #
+  #     NOT a corepack problem. #1191 attributes this directory class's failures
+  #     to corepack intercepting `npm update` because the ROOT package.json
+  #     declares `packageManager: pnpm`. That was true when it was filed
+  #     (2026-07-25) and is no longer: the updater now runs `corepack prepare
+  #     npm@11 --activate` first and it succeeds. Verified across four update
+  #     jobs on 2026-08-04 (runs 30934672222/30934672307/30934672459/30934673760)
+  #     -- zero corepack errors, all four failing on resolution instead. Do not
+  #     re-diagnose this as corepack without re-measuring.
+  #
+  #     Group named *-minor-patch so dependabot-auto-merge enqueues it: that
+  #     workflow matches `contains(head_branch, '-minor-patch')`. ───
+  - package-ecosystem: "npm"
+    directory: "/pulumi/examples/go-foundation/policy-library"
+    schedule:
+      interval: "weekly"
+    # Three direct dependencies, so the ungrouped remainder (majors) is tiny.
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      policy-library-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      policy-library-security-minor-patch:
+        applies-to: "security-updates"
+        update-types:
+          - "minor"
+          - "patch"
   # ─── infrastructure/pulumi Go modules (issue #462 — previously uncovered).
   #     Each is its own go.mod (GOWORK=off); a bump PR that breaks a stack fails
   #     CI and won't merge. ───
