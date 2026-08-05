@@ -40,11 +40,13 @@ on:
     branches:
       - image-updates/buzz
 
-# Ambient GITHUB_TOKEN only -- the branch is already pushed by the controller's
-# own deploy key; this job just needs to read it and open a PR against main.
+# The branch is already pushed by the controller's own deploy key; the ambient
+# GITHUB_TOKEN here only needs to read this repo and the PUBLIC block/buzz
+# compare API for the changelog. Opening/editing the PR runs on the
+# vitruvian-copybara-sync App token instead (see the job) -- hence no
+# `pull-requests: write` on the ambient token.
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: image-updates-buzz-pr
@@ -122,9 +124,33 @@ jobs:
             echo "BUZZ_CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # A PR opened with the ambient GITHUB_TOKEN is authored by
+      # github-actions[bot], and GitHub deliberately does not let that PR's
+      # `pull_request` event start normal workflow runs -- so the digest bump
+      # arrives with none of its 15 required status checks. Observed both ways:
+      # #1395 and #1407 got ZERO check runs when they were opened (they only
+      # went green later, by luck, when the next digest push fired a
+      # `synchronize`), and #1409 got 8 runs parked in `action_required`
+      # awaiting a manual "Approve and run" click, leaving the PR BLOCKED.
+      # Either way the bump can sit unmergeable indefinitely if upstream
+      # block/buzz goes quiet.
+      #
+      # The App token is the repo's established fix for exactly this: every
+      # other automation PR here (release-please #1397-#1405, copybara import,
+      # dependabot reconcile) is authored by vitruvian-copybara-sync, and those
+      # PRs' required checks run and merge through the queue normally.
+      - name: Mint a short-lived App token so the PR's checks actually run
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
       - name: Open or update the PR into main
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           CHANGELOG: ${{ steps.changelog.outputs.changelog }}
         run: |
           set -euo pipefail
