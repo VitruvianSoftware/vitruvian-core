@@ -43,8 +43,10 @@
 # stuck approval is the failure mode this exists to prevent — an occasional
 # duplicate push is the acceptable cost of erring away from that.
 #
-# v1, scoped deliberately narrow (Beacon/James, 2026-08-04): only these two
-# cases. NOT in scope yet: "required check fails on a PR James cares about"
+# v1, scoped deliberately narrow (Beacon/James, 2026-08-04): only these
+# cases -- both flavours of "blocked on a human click" (`waiting` = deployment
+# reviewer gate, `action_required` = run-approval gate) plus main breakage.
+# NOT in scope yet: "required check fails on a PR James cares about"
 # (the other half of the original ask — "cares about" has no crisp
 # definition, deferred) or a weekly dependency-PR digest (separate,
 # lower-priority ask). Expand from here rather than building every event
@@ -112,6 +114,36 @@ jobs:
             echo "  -> waiting: $name ($url)"
             notify "[ci] approval needed: ${name}" \
               "Workflow run is waiting on a required-reviewer approval. ${url}" \
+              4 '["hourglass_flowing_sand","ci"]' "$url"
+          done
+
+          # `waiting` (above) is ONLY the deployment-environment reviewer gate.
+          # A workflow run blocked on the *other* GitHub approval gate -- the
+          # "Approve and run" button on a run GitHub refuses to start on its
+          # own -- reports `action_required` instead, and the poll above is
+          # blind to it. Found live on 2026-08-05: buzz digest PR #1409 had all
+          # 8 of its check runs parked in `action_required`, leaving the PR
+          # mergeStateStatus=BLOCKED with 14/15 required contexts absent, and
+          # this workflow said nothing for hours. Same class of silence the
+          # `waiting` poll exists to prevent, so it gets the same treatment.
+          # Grouped by head branch, unlike the two per-run polls either side of
+          # this one: this gate blocks EVERY workflow on the ref at once (all 8
+          # on #1409), so a per-run push would mean 8 phone alerts for a single
+          # click. `jq -s` slurps --paginate's back-to-back page objects into
+          # one array, which is what group_by needs; the click-through is the
+          # first run of the group, whose page carries the approval button for
+          # the whole ref.
+          echo "Checking for runs needing approval to start, updated since ${cutoff}..."
+          gh api "repos/${REPO}/actions/runs?status=action_required&per_page=50" --paginate |
+          jq -s -r --arg cutoff "$cutoff" '
+            [.[].workflow_runs[] | select(.updated_at >= $cutoff)]
+            | group_by(.head_branch)[]
+            | [.[0].head_branch, (length | tostring), .[0].html_url] | @tsv
+          ' |
+          while IFS=$'\t' read -r branch count url; do
+            echo "  -> action_required: ${count} run(s) on ${branch} ($url)"
+            notify "[ci] approval needed to start: ${branch}" \
+              "${count} workflow run(s) on ${branch} will not start until approved ('Approve and run'). Required checks stay absent and the PR stays blocked until then. ${url}" \
               4 '["hourglass_flowing_sand","ci"]' "$url"
           done
 
