@@ -60,11 +60,82 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Open PR into main (skip if one's already open)
+      # Resolves the upstream commit range behind this digest bump so the PR
+      # description shows what actually changed, not just a digest string.
+      #
+      # ghcr.io/block/buzz images carry OCI labels (confirmed live via
+      # `docker buildx imagetools inspect` -- org.opencontainers.image.revision
+      # is the exact source commit, org.opencontainers.image.source is the
+      # public github.com/block/buzz repo). The image is a multi-platform
+      # index, so labels live on a platform-specific manifest, not the index
+      # itself -- hence the two-step inspect (index -> amd64 manifest digest
+      # -> that manifest's config.Labels).
+      #
+      # Best-effort: if a label is missing, the compare API 404s, or the two
+      # commits aren't actually related (e.g. upstream force-pushed/rebased
+      # main), this step still succeeds with an empty changelog rather than
+      # failing the whole PR-open job over a changelog nicety.
+      - name: Resolve upstream commit range for the digest bump
+        id: changelog
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          resolve_revision() {
+            local digest="$1"
+            local platform_digest
+            platform_digest="$(docker buildx imagetools inspect "ghcr.io/block/buzz@${digest}" --raw 2>/dev/null \
+              | jq -r '.manifests[]? | select(.platform.architecture=="amd64" and .platform.os=="linux") | .digest' \
+              | head -1)"
+            [ -z "$platform_digest" ] && return 0
+            docker buildx imagetools inspect "ghcr.io/block/buzz@${platform_digest}" --format '{{json .}}' 2>/dev/null \
+              | jq -r '.image.config.Labels["org.opencontainers.image.revision"] // empty'
+          }
+
+          extract_tag() {
+            grep -oP '(?<=tag: "main@sha256:)[a-f0-9]+' "$1" | head -1
+          }
+
+          old_tag="$(git show origin/main:gitops/argocd/platform/buzz/values.yaml 2>/dev/null | extract_tag /dev/stdin || true)"
+          new_tag="$(extract_tag gitops/argocd/platform/buzz/values.yaml || true)"
+
+          changelog=""
+          if [ -n "$old_tag" ] && [ -n "$new_tag" ] && [ "$old_tag" != "$new_tag" ]; then
+            old_rev="$(resolve_revision "sha256:${old_tag}" || true)"
+            new_rev="$(resolve_revision "sha256:${new_tag}" || true)"
+
+            if [ -n "$old_rev" ] && [ -n "$new_rev" ] && [ "$old_rev" != "$new_rev" ]; then
+              compare_json="$(gh api "repos/block/buzz/compare/${old_rev}...${new_rev}" 2>/dev/null || true)"
+              if [ -n "$compare_json" ]; then
+                changelog="$(echo "$compare_json" | jq -r '
+                  .commits[]? |
+                  "- [`\(.sha[0:7])`](https://github.com/block/buzz/commit/\(.sha)) \(.commit.message | split("\n")[0])"
+                ')"
+              fi
+            fi
+          fi
+
+          {
+            echo "changelog<<BUZZ_CHANGELOG_EOF"
+            echo "$changelog"
+            echo "BUZZ_CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the PR into main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
+        run: |
+          set -euo pipefail
+
+          body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/block/buzz:main. Review the resolved digest in gitops/argocd/platform/buzz/values.yaml, then merge through the normal queue."
+
+          if [ -n "$CHANGELOG" ]; then
+            body="$(printf '%s\n\n### Upstream changes\n\n%s\n' "$body" "$CHANGELOG")"
+          else
+            body="$(printf '%s\n\n### Upstream changes\n\nCould not resolve the upstream commit range for this bump (missing OCI revision label, or the compare API had nothing to report) -- check gitops/argocd/platform/buzz/values.yaml for the raw digest.\n' "$body")"
+          fi
 
           existing="$(gh pr list \
             --head image-updates/buzz \
@@ -74,7 +145,8 @@ jobs:
             --jq '.[0].number // empty')"
 
           if [ -n "$existing" ]; then
-            echo "PR #${existing} already open for image-updates/buzz -- the push that triggered this run already updated it, nothing to do."
+            echo "PR #${existing} already open for image-updates/buzz -- updating its description with the new commit range."
+            gh pr edit "$existing" --body "$body"
             exit 0
           fi
 
@@ -82,4 +154,4 @@ jobs:
             --head image-updates/buzz \
             --base main \
             --title "chore(buzz): bump image digest (automated)" \
-            --body "Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/block/buzz:main. Review the resolved digest in gitops/argocd/platform/buzz/values.yaml, then merge through the normal queue."
+            --body "$body"
