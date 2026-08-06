@@ -584,6 +584,33 @@ system-under-test branches on and confirm the double supplies it explicitly — 
 values that are supposed to fail — rather than only the happy-path fields needed to make the test
 compile.
 
+### 15. A negative result from a tool running on its default configuration is a fact about the default, not about the capability
+
+Per Beacon (2026-08-06T22:24:28Z), in its strongest form after the mistake recurred three times in
+one evening. Beacon, Atlas, and Aegis each independently ran `kubectl config get-contexts` against
+the *default* kubeconfig, got no homelab context back, and each reported the cluster unreachable —
+a capability limit that didn't exist. The cluster was reachable the whole time, through a
+non-default kubeconfig none of the three had pointed the tool at.
+
+**The same defect as pattern 4 (a diff can prove a change is right but can never prove nothing was
+missed, because an unmodified call site is structurally invisible to a search over the diff), one
+layer further out: `get-contexts` on a default config cannot find a context defined somewhere else,
+so the search was structurally incapable of returning the answer being asked of it — not "didn't
+look hard enough," but "was pointed at a scope that excludes the answer by construction."** A tool
+run against a narrower-than-assumed scope — a default config file, a default namespace, a default
+branch, a default profile — and returning nothing is reporting on that scope, not on the underlying
+system. Three people made the identical inference (empty result → capability absent) without
+checking what configuration the tool actually consulted.
+
+**Rule: before treating a tool's negative result as a fact about the system, confirm what scope the
+tool was actually operating over — and if the tool has an implicit default (a config file path, a
+working directory, a profile, a context) rather than an explicit one, that default is itself a
+premise that needs stating, not an invisible given.** Applies to any "X isn't there" claim produced
+by a command with an implicit scope: a missing kubeconfig context, a missing AWS profile, a `grep`
+run from the wrong directory, a database query against the wrong connection string. The fix is
+cheap — name the scope the tool actually used in the same sentence as the negative result — and it
+would have caught this in the same ten seconds the actual check took once someone thought to ask.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
