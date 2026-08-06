@@ -311,6 +311,20 @@ describe("verifyAllowlistVisibility", () => {
     spy.mockRestore();
   });
 
+  it("distinguishes Slack being unreachable from Slack disagreeing", async () => {
+    // Both exit non-zero, so the exit code cannot tell them apart — the
+    // message has to. One is fixed by editing SLACK_PRIVATE_CHANNEL_IDS; the
+    // other is fixed by waiting. Same split the auth path draws between an IdP
+    // outage and a bad token.
+    const spy = jest.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(/availability failure, not a configuration error/);
+    spy.mockRestore();
+  });
+
   it("checks nothing on stdio, which declares no visibility", async () => {
     // The unrestricted guard has an empty allowed list, so the loop does not
     // run at all — no Slack calls, no failure, no behaviour change for the
