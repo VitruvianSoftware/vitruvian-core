@@ -67,6 +67,48 @@ To populate the tokens, a Slack app must be created.
 
 Once you have the tokens, update the configuration file and restart the MCP server connection!
 
+## Two Slack apps, on purpose
+
+This package ships **two** manifests, and they must not be merged into one.
+
+| | `manifest.json` | `manifest.remote.json` |
+|---|---|---|
+| Backs | the local **stdio** transport | the **HTTP** transport |
+| Reachable from | the machine that spawned it | the public internet |
+| Bot scopes | broad, incl. `im:history`, `mpim:history` | channels, pins, bookmarks, `users:read`, `chat:write` |
+| User-token scopes | yes — search, canvases, bookmark writes | **none** |
+
+**Why two apps rather than one with the union of the scopes.**
+
+*Independent revocation.* The cluster's token and the local token belong to
+different apps, so the public endpoint can be killed without breaking anyone's
+local setup. Under a single app the only way to cut off the endpoint is to
+revoke a credential the laptop also uses — an emergency control you would
+hesitate to pull is not much of an emergency control. **Consolidating the two
+apps removes this silently: nothing in the code or the chart expresses it, and
+the loss surfaces only when someone needs to revoke.**
+
+*A bot's reach is its channel membership.* A fresh app's bot starts in zero
+conversations, so the remote endpoint reaches exactly the channels it is
+deliberately invited to — no accumulated history to audit.
+
+*Scopes are the only boundary that survives a leaked token.* The channel
+allow-list is a property of this code; it is void if the credential leaves the
+process. What the bot's scopes forbid, Slack refuses regardless.
+
+**`manifest.json` is not a template for the remote app.** It is the local app's
+manifest, it is broader on purpose, and copying it forward would reinstate the
+reach the remote app exists to avoid — `im:history` and `mpim:history` (DMs the
+bot belongs to) and `users:read.email` (member email addresses, which nothing in
+this codebase reads). The remote manifest's scopes are derived from the tools
+the HTTP transport actually advertises. If that tool set changes, re-derive them
+rather than adding to them.
+
+**No user-token scopes in the remote manifest, by construction.** `resolveConfig`
+refuses to start the HTTP transport when `SLACK_USER_TOKEN` is set, and the tools
+that need one are withheld from its tool list. Search, canvases, bookmark writes
+and topic-set remain local-only features.
+
 ## Manual Setup
 
 ### 1. Create the Slack App
