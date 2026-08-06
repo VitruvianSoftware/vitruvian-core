@@ -73,6 +73,25 @@ export function headerSafe(message: string): string {
  * debugging a Spark connection is actually in.
  */
 function writeAuthFailure(res: ServerResponse, error: AuthError): void {
+  // A 503 must not carry a WWW-Authenticate challenge. That header means
+  // "here is how to authenticate", which is a lie when the failure is ours —
+  // it would send a caller holding a valid token off to re-authenticate
+  // against an IdP that is down.
+  if (error.status === 503) {
+    res.writeHead(503, {
+      "Content-Type": "application/json",
+      "Retry-After": "30",
+    });
+    res.end(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: error.message },
+        id: null,
+      })
+    );
+    return;
+  }
+
   res.writeHead(error.status, {
     "Content-Type": "application/json",
     "WWW-Authenticate":

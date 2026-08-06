@@ -42,7 +42,7 @@
 //   * the caller's scope string omits the audience-granting scope, so a token
 //     that is valid in every other respect carries the wrong audience.
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
 
 /** Base class for anything that should terminate a request at the boundary. */
 export abstract class AuthError extends Error {
@@ -85,6 +85,32 @@ export class OpaqueTokenError extends AuthError {
         "refresh, in the zitadel-apps-mcp-slack stack)."
     );
     this.name = "OpaqueTokenError";
+  }
+}
+
+/**
+ * We could not reach the IdP to validate the token at all.
+ *
+ * This is deliberately **not** a 401. `jwtVerify` fetches the JWKS over the
+ * network, so an IdP outage arrives at the same catch as a bad signature —
+ * and reporting it as "your token is invalid" is wrong twice over: it tells a
+ * caller holding a perfectly good token to go and fix it, and it makes an
+ * outage indistinguishable from an unauthenticated probe in the response
+ * codes, so nothing downstream can alert on it.
+ *
+ * 503 with Retry-After says what is actually true: the token was never judged.
+ */
+export class IdpUnavailableError extends AuthError {
+  readonly status = 503;
+  readonly code = "temporarily_unavailable";
+
+  constructor(reason: string) {
+    super(
+      `Unable to verify the bearer token: the identity provider could not be ` +
+        `reached (${reason}). The token was not judged — this is a server-side ` +
+        `failure, not a problem with the credential.`
+    );
+    this.name = "IdpUnavailableError";
   }
 }
 
@@ -225,9 +251,21 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
         clockTolerance: 30,
       }));
     } catch (error) {
-      throw new InvalidTokenError(
-        error instanceof Error ? error.message : String(error)
-      );
+      // Discriminate on "did we judge the token" rather than on the shape of
+      // the failure. jose raises a JOSEError subclass for everything that is
+      // a verdict about the token — bad signature, expired, wrong issuer, no
+      // matching key. Anything else reaching here means verification never
+      // completed, and the realistic case is the JWKS fetch failing.
+      //
+      // Enumerating network error shapes would be the fragile version: an
+      // unrecognised failure would fall through to 401 and tell a caller
+      // their valid token is bad. This way an unrecognised failure becomes
+      // 503, which is the direction that is safe to be wrong in.
+      const judged = error instanceof errors.JOSEError;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw judged
+        ? new InvalidTokenError(reason)
+        : new IdpUnavailableError(reason);
     }
 
     const audiences = audienceList(payload);
