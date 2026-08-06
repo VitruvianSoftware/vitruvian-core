@@ -302,6 +302,12 @@ describe("verifyAllowlistVisibility", () => {
     await expect(
       clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
     ).rejects.toThrow(/channel_not_found/);
+    // The remedy is in the message because this is read at deploy time. The
+    // intuitive order — add the ID, deploy, then invite the bot — produces
+    // exactly this error, and without the remedy it reads as a broken deploy.
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(/Invite the bot to the channel first/);
     spy.mockRestore();
   });
 
