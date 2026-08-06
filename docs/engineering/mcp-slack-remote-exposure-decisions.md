@@ -231,6 +231,24 @@ saying "someone will change this later" is a higher-priority audit target for th
 than one set once and left alone**, precisely because the person who eventually edits it is
 reconstructing intent from a comment rather than carrying the context that produced it.
 
+**Fourth instance, per Atlas/Beacon (2026-08-06T23:22-23:27Z), and the one that shows this isn't a
+Go-specific problem: Helm's `required` function on the Phase 2b chart's `networkPolicy.enabled`
+value.** Helm templates treat any non-empty string as truthy, so `networkPolicy.enabled: "false"` —
+a plausible, human-written way to express "off" in a YAML values file — passes `required` (the
+string is non-empty) and would have rendered the network policy anyway, silently taking the
+disable-looking value as enable. Not a parse failure this time, a type-coercion rule doing the same
+job unparseable input did in the first three instances: **a value the author clearly intended as
+"off," accepted and read as "on," because the check tests for presence/non-emptiness rather than
+for the specific boolean the author meant.** Fixed with an explicit `kindIs "string"` refusal
+rejecting the value outright rather than coercing it. **Four independent instances in one evening —
+TypeScript (`channelIdFromParams`), Go twice (`projectRoleCheck`, `requireCodeOwnerReview`), and now
+Go templates (Helm) — is not a coincidence about any one language; it's a property of "permissive
+coercion of an unexpected shape" that recurs everywhere a boolean is read from untyped input,
+regardless of the parsing mechanism.** Verify all the input shapes that matter, not just the happy
+one, whenever adding a check like this: unset, the wrong type, the right type in each meaningful
+value — Atlas's fix was verified against all four states (unset, string `"false"`, boolean `false`,
+boolean `true`) rather than only the case that was reported broken.
+
 ### 7. A check that serves two purposes should say so, or the second purpose dies in a refactor that looks like a simplification
 
 Per Beacon (2026-08-06T20:41:27Z): `looksLikeJwt()` in mcp-slack's auth path is a string-split
@@ -600,16 +618,22 @@ too strong, and the distinguishing property is worth stating precisely.** It hol
 revert it on their own schedule, independent of anyone running a command. **It does not hold for an
 apply-only system like Pulumi**, which reconciles *only* when someone runs `pulumi up`. A
 Pulumi-managed value gets both properties at once rather than trading one for the other: it's in
-git, reviewable, diffable — and a hand-toggle (in a dashboard, a console) survives indefinitely,
-because nothing is watching to revert it; the managed definition and the live hand-toggled state
-simply disagree until someone chooses to run an apply. The emergency lever becomes the hand-toggle,
-the durable definition stays the code, and they coexist rather than fight. **So the real dividing
-line for this pattern is "does anything reconcile without being told to," not "is it managed in
-code at all"** — Pulumi is managed and still safe for this class of control precisely because it
-lacks the continuous reconciler that makes ArgoCD/Kubernetes-controller-managed state dangerous
-here. Same tidy-up trap either way, worth restating: someone later folding a Pulumi-managed
-emergency toggle into an ArgoCD-managed one for "consistency" reintroduces the exact problem this
-narrowing shows how to avoid.
+git, reviewable, diffable — and a hand-toggle (in a dashboard, a console) **survives until the next
+`pulumi up` on that stack — not indefinitely.** Correction, per Beacon (2026-08-06T23:27:11Z), on
+their own restatement of this: "survives a hand-toggle: yes" oversells it. Nothing self-heals and
+nothing notifies, but the next apply on that stack, run by anyone, for any unrelated reason, at any
+later time, silently reverts the hand-toggle along with whatever else it applies. **The honest
+description is "survives until the next apply of that stack," not "durable" — and that distinction
+is the entire operational point: this is a genuine emergency lever, live only until routine
+maintenance overwrites it without warning, not a place to park a control long-term.** The emergency
+lever is the hand-toggle, the durable definition stays the code, and they coexist rather than fight
+— but only for as long as nobody applies. **So the real dividing line for this pattern is "does
+anything reconcile without being told to," not "is it managed in code at all"** — Pulumi is managed
+and still usable for this class of control precisely because it lacks the continuous reconciler
+that makes ArgoCD/Kubernetes-controller-managed state dangerous here, not because the hand-toggle
+is safe to leave in place. Same tidy-up trap either way, worth restating: someone later folding a
+Pulumi-managed emergency toggle into an ArgoCD-managed one for "consistency" reintroduces the exact
+problem this narrowing shows how to avoid.
 
 ### 14. A test double missing a field the real system always sends will silently exercise the wrong branch — and the dangerous direction is when that reads as the permissive case
 
