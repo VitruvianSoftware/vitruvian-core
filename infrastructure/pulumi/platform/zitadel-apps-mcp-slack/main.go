@@ -204,6 +204,24 @@ func main() {
 			return "openid offline_access urn:zitadel:iam:org:project:id:" + string(id) + ":aud"
 		}).(pulumi.StringOutput))
 		ctx.Export("clientId", app.ClientId)
+		// Exported because `accessTokenType` is in the IgnoreChanges list above and
+		// therefore the ONE setting Pulumi will never reconcile. mcp-slack's whole
+		// auth model assumes JWT: if the live client ever sits on BEARER (a partial
+		// apply, a console edit during debugging, a create that didn't land), the
+		// stack reports clean forever while the server rejects every request — and
+		// the symptom is indistinguishable from a broken transport.
+		//
+		// Surfacing it as an output makes the check a query rather than a thing
+		// someone has to remember to do in the console:
+		//
+		//   bazel run //infrastructure/pulumi/platform/zitadel-apps-mcp-slack:refresh
+		//   pulumi stack output accessTokenType   # want: OIDC_TOKEN_TYPE_JWT
+		//
+		// The refresh matters: without it this reports the value Pulumi last wrote,
+		// not the value Zitadel currently holds. Refresh updates state from live
+		// even for ignored fields — the ignore suppresses the diff being *applied*,
+		// not the state being read.
+		ctx.Export("accessTokenType", app.AccessTokenType)
 		// Secret output: Pulumi keeps it encrypted in state and masks it in
 		// plaintext output. It is pasted into Spark's connector config by hand —
 		// there is no GCP Secret Manager sync here, unlike the sibling stack,

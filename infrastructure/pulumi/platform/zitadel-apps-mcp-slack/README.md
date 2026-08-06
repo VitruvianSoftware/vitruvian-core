@@ -63,11 +63,37 @@ that look like mistakes until you know that:
 | `sparkScopes` | The exact space-separated scope string to paste into Spark |
 | `clientId` / `clientSecret` | Pasted into Spark's connector config (secret is masked in state) |
 | `authorizationEndpoint` / `tokenEndpoint` | Pasted into Spark; base URLs, no query parameters |
+| `accessTokenType` | Drift check — see below |
 
 `sparkScopes` is assembled here on purpose. A scope string missing the audience
 term still yields a **valid** token — correct signature, issuer and expiry — that
 mcp-slack then rejects on every call. That failure looks exactly like a broken
 build, so the value is generated rather than hand-written.
+
+## Checking the token type (the one field Pulumi won't fix)
+
+`accessTokenType` sits in the `IgnoreChanges` list, so it is the single setting
+this stack will never reconcile. mcp-slack's entire auth model assumes `JWT`: if
+the live client ends up on `BEARER`, the stack reports clean forever while the
+server rejects every request — and that failure is indistinguishable from a broken
+transport, because Spark authenticates fine and then every call fails.
+
+`IgnoreChanges` governs diffs, not creates, so the first apply sets it correctly.
+Nothing corrects it afterwards, which is why it's worth confirming rather than
+assuming:
+
+```sh
+bazel run //infrastructure/pulumi/platform/zitadel-apps-mcp-slack:refresh
+pulumi stack output accessTokenType   # want: OIDC_TOKEN_TYPE_JWT
+```
+
+The `refresh` is load-bearing. Without it the output reports the value Pulumi last
+wrote, not the value Zitadel currently holds; refresh updates state from live even
+for ignored fields, because the ignore suppresses the diff being *applied*, not the
+state being read.
+
+Note that `authMethodType` is deliberately **not** ignored — a POST↔BASIC change
+reconciles normally on a re-apply. `accessTokenType` is the only stuck field.
 
 ## Never import this client
 
