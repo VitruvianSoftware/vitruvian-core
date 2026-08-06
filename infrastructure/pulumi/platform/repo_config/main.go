@@ -62,14 +62,23 @@ func main() {
 		defaultBranch := defaultBranch(cfg)
 
 		// Branch-protection knobs, all config-driven with sane defaults.
-		requirePullRequest := requirePullRequest(cfg)
+		requirePullRequest, err := requirePullRequest(cfg)
+		if err != nil {
+			return err
+		}
 		requiredApprovals := cfg.GetInt("requiredApprovals") // default 0
-		requireStatusChecks := requireStatusChecks(cfg)
+		requireStatusChecks, err := requireStatusChecks(cfg)
+		if err != nil {
+			return err
+		}
 		// statusCheckContexts is an optional JSON string list. GetObject returns
 		// an error when the key is unset; we treat that as "no named contexts".
 		var statusCheckContexts []string
 		_ = cfg.GetObject("statusCheckContexts", &statusCheckContexts)
-		enforceAdmins := cfg.GetBool("enforceAdmins") // default false
+		enforceAdmins, err := boolConfig(cfg, "enforceAdmins", false) // default false
+		if err != nil {
+			return err
+		}
 
 		// Adopt the EXISTING repository rather than create it. The import ID is
 		// the bare repo name (the GitHub provider derives the owner from the
@@ -223,7 +232,11 @@ func main() {
 		// when they pass -- the trunk-based postsubmit gate from the scaling
 		// roadmap. The jobs in .github/workflows/ci.yaml now also run on the
 		// `merge_group` event so the queue has checks to wait on.
-		if mergeQueueEnabled(cfg) {
+		mergeQueueOn, err := mergeQueueEnabled(cfg)
+		if err != nil {
+			return err
+		}
+		if mergeQueueOn {
 			// Required checks default to the merge-queue gate set — the job names
 			// across ci.yaml (build-test, build-macos, license-check, go-lint,
 			// go-test, validate-butane), tidy-check.yaml and conformance-check.yaml.
@@ -325,7 +338,10 @@ func main() {
 			// manual admin merges. Flip requireCodeOwnerReview=true once a second
 			// reviewer exists; the merge queue + required status checks below stay
 			// enforced either way.
-			codeOwnerReview := cfg.GetBool("requireCodeOwnerReview")
+			codeOwnerReview, err := boolConfig(cfg, "requireCodeOwnerReview", false)
+			if err != nil {
+				return err
+			}
 			approvals := 0
 			if codeOwnerReview {
 				approvals = 1
@@ -1520,28 +1536,45 @@ func defaultBranch(cfg *config.Config) string {
 	return "main"
 }
 
-// requirePullRequest defaults to true when unset.
-func requirePullRequest(cfg *config.Config) bool {
-	if v, err := cfg.TryBool("requirePullRequest"); err == nil {
-		return v
+// boolConfig parses a Pulumi config boolean strictly. An unset key resolves
+// to def; an unparseable one is a fatal config error rather than silently
+// resolving to a value the caller never chose. cfg.GetBool (cast.ToBool) and
+// cfg.TryBool's own callers both swallow the parse error and fall back to
+// their default -- fine when the default is the safe direction, wrong for
+// the branch-protection flags routed through here, where the default is the
+// PERMISSIVE setting (see requireCodeOwnerReview/enforceAdmins below): a
+// typo like "yes" or "on" would silently mean "off".
+func boolConfig(cfg *config.Config, key string, def bool) (bool, error) {
+	return parseBoolConfig(key, cfg.Get(key), def)
+}
+
+// parseBoolConfig holds boolConfig's actual parsing logic, split out so it's
+// testable without standing up a *config.Config (which needs a live
+// pulumi.Context).
+func parseBoolConfig(key, raw string, def bool) (bool, error) {
+	if raw == "" {
+		return def, nil
 	}
-	return true
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("config %q = %q is not a boolean (use true/false)", key, raw)
+	}
+	return v, nil
+}
+
+// requirePullRequest defaults to true when unset.
+func requirePullRequest(cfg *config.Config) (bool, error) {
+	return boolConfig(cfg, "requirePullRequest", true)
 }
 
 // requireStatusChecks defaults to true when unset.
-func requireStatusChecks(cfg *config.Config) bool {
-	if v, err := cfg.TryBool("requireStatusChecks"); err == nil {
-		return v
-	}
-	return true
+func requireStatusChecks(cfg *config.Config) (bool, error) {
+	return boolConfig(cfg, "requireStatusChecks", true)
 }
 
 // mergeQueueEnabled defaults to true: the merge queue is the trunk-based
 // postsubmit gate (#83). Set `mergeQueue: "false"` in the stack config to
 // disable it (e.g. to fall back to direct pushes during a migration).
-func mergeQueueEnabled(cfg *config.Config) bool {
-	if v, err := cfg.TryBool("mergeQueue"); err == nil {
-		return v
-	}
-	return true
+func mergeQueueEnabled(cfg *config.Config) (bool, error) {
+	return boolConfig(cfg, "mergeQueue", true)
 }
