@@ -62,16 +62,27 @@ done
 # Only files that ALREADY carry a copyright/license header are content-checked;
 # header-less files are left to addlicense (presence). This catches a wrong
 # license (e.g. Apache) or a wrong holder that addlicense -check waves through.
+# NB: every header match below feeds grep from a HERESTRING, never from a
+# `printf ... | grep -q` pipeline. Under this script's `set -o pipefail`, that
+# pipeline is a false-failure generator: `grep -q` exits the instant it matches,
+# and if the header is larger than the pipe buffer the still-writing `printf`
+# takes SIGPIPE and the pipeline reports 141 -- so `if ! ...` fires and the file
+# is flagged even though its header is perfectly valid. That is not theoretical:
+# run 31064957694 (2026-08-06) failed the REQUIRED license-check on
+# infrastructure/pulumi/foundation/gcp-projects/business_unit_2/production/outputs.go
+# with "holder is not 'VitruvianSoftware'" -- on a commit where that file's very
+# first line reads `// Copyright (c) 2026 VitruvianSoftware`. A herestring has
+# no second process, so there is no SIGPIPE and no race.
 while IFS= read -r f; do
   hdr="$(head -30 "${f}")"
   # Skip files with no license header at all (addlicense enforces presence).
-  printf '%s' "${hdr}" | grep -qiE "copyright|licensed under|SPDX-License-Identifier" || continue
+  grep -qiE "copyright|licensed under|SPDX-License-Identifier" <<<"${hdr}" || continue
   # It has a header, so it MUST be the MIT permission grant with the right holder.
-  if ! printf '%s' "${hdr}" | grep -q "Permission is hereby granted, free of charge"; then
+  if ! grep -q "Permission is hereby granted, free of charge" <<<"${hdr}"; then
     note "${f}: has a non-MIT license header"
     continue
   fi
-  if ! printf '%s' "${hdr}" | grep -qE "Copyright \(c\) [0-9]{4} VitruvianSoftware"; then
+  if ! grep -qE "Copyright \(c\) [0-9]{4} VitruvianSoftware" <<<"${hdr}"; then
     note "${f}: license header holder is not 'VitruvianSoftware'"
   fi
 done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
