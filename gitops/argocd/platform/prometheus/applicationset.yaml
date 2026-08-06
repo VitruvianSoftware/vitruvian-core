@@ -690,6 +690,77 @@ spec:
                     annotations:
                       summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
                       description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Usual cause is Zitadel/JWKS unreachable — check pod logs for the auth path before suspecting the transport."
+
+                  # Complement to the ratio, not a duplicate of it. The ratio
+                  # answers "of what we answered, most failed"; this answers
+                  # "we could not reach the IdP" — and it is the one that
+                  # still works when the ratio goes NaN.
+                  #
+                  # WHAT IT DOES NOT YET COVER. This alert can only see
+                  # failures the server actually reports as 503, so it
+                  # inherits the JWKSTimeout gap exactly as the ratio does: a
+                  # Zitadel that is up but hanging past jose's 5s default
+                  # still returns 401, emits no 503, and fires neither alert.
+                  # It is NOT the answer to the slow-IdP blind spot today — it
+                  # becomes one only when the #1418 follow-up routes
+                  # JWKSTimeout to IdpUnavailableError. What it fixes now is
+                  # the NaN: a dead IdP that produces only 503s leaves the
+                  # ratio at 0/0 if nothing succeeds, and this still fires.
+                  #
+                  # NO DENOMINATOR, SO NOTHING CAN GO NaN. That is the whole
+                  # point: the ratio's blind spot is an outage where every
+                  # response is 4xx, which leaves it 0/0. A rate has no such
+                  # failure mode.
+                  #
+                  # A bare `> 0` is defensible here only because the 503
+                  # population is provably tiny, and that was verified rather
+                  # than assumed:
+                  #   - IdpUnavailableError is the ONLY 503 the application
+                  #     emits (httpTransport.ts writeAuthFailure).
+                  #   - An unauthenticated caller CANNOT produce one.
+                  #     auth.ts:289 runs extractBearerToken before verify(),
+                  #     and extraction is pure string parsing that throws
+                  #     MissingTokenError (401) with no network call. Absent,
+                  #     malformed and non-JWT tokens all short-circuit to 401
+                  #     without touching JWKS, so internet scanners on an
+                  #     exposed /mcp are confined to 4xx by construction.
+                  # So any sustained 503 rate has exactly one meaning and does
+                  # not need a ratio to make it significant.
+                  #
+                  # `for: 10m` against a 5m rate window means a single 503
+                  # cannot fire this: its rate decays to zero five minutes
+                  # after the event, well before the 10m elapses. It takes
+                  # repeated failures to hold the expression up.
+                  #
+                  # SCOPE — this does NOT cover pod-down, and the metric makes
+                  # that structural rather than a matter of thresholds.
+                  # envoy_cluster_upstream_rq counts responses that came FROM
+                  # an upstream. When Envoy synthesises a 503 because no
+                  # healthy upstream exists, no upstream response happened and
+                  # this counter never moves; envoy_cluster_upstream_cx_none_healthy
+                  # moves instead. Measured on this cluster 2026-08-06:
+                  # downstream 5xx on listener http-10080 exceeds the sum of
+                  # upstream 5xx across all httproute clusters by 406 — those
+                  # 406 are Envoy-generated and invisible here. Pod-down
+                  # belongs to KubeDeploymentReplicasMismatch.
+                  #
+                  # Metric is `envoy_cluster_upstream_rq` (per-code, carries
+                  # envoy_response_code), NOT `_rq_xx` (per-class only).
+                  # Confirmed against live series that the per-code label
+                  # exists on this cluster, including 503.
+                  - alert: McpSlackIdpUnavailable
+                    expr: |
+                      sum(rate(envoy_cluster_upstream_rq{
+                            envoy_response_code="503",
+                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                          }[5m]))
+                        > 0
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "mcp-slack cannot reach Zitadel (sustained 503)"
+                      description: "mcp-slack has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
             extraScrapeConfigs: |2
 
               - job_name: 'node-exporter'

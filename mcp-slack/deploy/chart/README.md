@@ -157,12 +157,41 @@ it.
 > verified against the outage that proves it right and not against the one
 > that proves it wrong.
 
-Note what this alert does **not** cover: `envoy_cluster_upstream_rq_xx` counts
-*upstream* responses. If the pod is gone entirely, Envoy synthesises a 503
-without an upstream response and this alert stays silent. That case is
-covered by `KubeDeploymentReplicasMismatch`. The division is clean — pod-down
-is pod-state's job, pod-up-but-failing is this alert's — but it is a division,
-not redundancy.
+Note what these alerts do **not** cover: `envoy_cluster_upstream_rq*` counts
+*upstream* responses. When Envoy synthesises a 503 because no healthy upstream
+exists, no upstream response happened and the counter never moves —
+`envoy_cluster_upstream_cx_none_healthy` moves instead. Measured on this
+cluster: downstream 5xx on listener `http-10080` exceeds the sum of upstream
+5xx across all `httproute` clusters by **406**, and those 406 are exactly the
+Envoy-generated ones. Pod-down belongs to `KubeDeploymentReplicasMismatch`.
+The division is clean — but it is a division, not redundancy.
+
+### Two alerts, not one
+
+`McpSlackIdpUnavailable` alerts on the **503 rate directly**, with no
+denominator, so nothing can go NaN. It complements the ratio rather than
+duplicating it: the ratio answers "of what we answered, most failed", this one
+answers "we could not reach the IdP".
+
+A bare `> 0` threshold is defensible only because the 503 population is
+provably tiny, which was verified rather than assumed:
+
+- `IdpUnavailableError` is the only 503 the application emits.
+- An unauthenticated caller **cannot** produce one. `auth.ts:289` runs
+  `extractBearerToken` before `verify()`, and extraction is pure string
+  parsing that throws `MissingTokenError` (401) with no network call — absent,
+  malformed and non-JWT tokens all short-circuit to 401 without touching JWKS.
+  Internet scanners on an exposed `/mcp` are confined to 4xx by construction.
+
+`for: 10m` against a 5m rate window means a single 503 cannot fire it; its
+rate decays to zero five minutes after the event.
+
+> **It does not fix the slow-IdP blind spot today.** It can only see failures
+> the server reports as 503, so it inherits the `JWKSTimeout` gap exactly as
+> the ratio does — a hanging Zitadel still returns 401 and fires neither. It
+> becomes the answer to that case only once #1418 routes `JWKSTimeout` to
+> `IdpUnavailableError`. What it fixes *now* is the NaN: a dead IdP producing
+> only 503s leaves the ratio at 0/0 if nothing succeeds, and this still fires.
 
 The alert is expressed as a **ratio**, not a request rate: the endpoint is idle
 between Spark sessions, so any absolute threshold is wrong in both directions.
