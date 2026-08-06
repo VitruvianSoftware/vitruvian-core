@@ -43,6 +43,36 @@
 # instruction was to validate before re-merge and that has not been possible —
 # ArgoCD reconciles from a repo whose CI is down. Treat this file as reviewed
 # but unexercised until a preview against the live cluster says otherwise.
+# DO NOT ADD AN EMERGENCY ingressDeny POLICY TO THIS CHART.
+#
+# The incident lever is a hand-created CiliumNetworkPolicy with an
+# `ingressDeny` rule selecting these pods. It works because it is untracked:
+# ArgoCD reverts drift on resources it owns, and a resource that was never in
+# git carries no tracking label, so no Application touches it. Deny beats
+# allow in Cilium regardless of which policy object grants the allow, so it
+# actually cuts traffic — and `kubectl delete ciliumnetworkpolicy` restores
+# service in seconds with no git change, no merge queue and nobody's
+# permission. That reversibility is the whole point.
+#
+# Templating it destroys it, and not merely by adding a reconciler: a deny
+# policy in the chart is PERMANENTLY ON. The lever's entire content is that it
+# does not exist until someone creates it. Gating it behind a value puts
+# ArgoCD between an operator and their stop button — toggle it during an
+# incident and the next reconcile turns your containment back off — and the
+# `IgnoreChanges`-style escape from that is the pattern that produced
+# `accessTokenType` in zitadel-apps-mcp-slack: a security-relevant field the
+# stack never reconciles while reporting clean.
+#
+# Verified on this cluster 2026-08-06, because a lever nobody tested is the
+# thing this comment exists to prevent:
+#   - Cilium is v1.17.17. Deny policies for peers OUTSIDE the cluster were
+#     unreliable before 1.14 (cilium#15198), and our traffic arrives through
+#     the tunnel from outside — so the version is load-bearing, not trivia.
+#   - Untracked resources genuinely survive: kube-root-ca.crt has sat in the
+#     whoami namespace since 2026-06-23 with no argocd tracking label, under
+#     an Application running prune: true + selfHeal: true.
+# Still unexercised: that a deny policy actually cuts tunnel-origin traffic
+# here. The version check addresses the known bug; it is not a live test.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
