@@ -1,0 +1,236 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+// ---------------------------------------------------------------------------
+// Bearer token validation (OAuth 2.0 resource server)
+// ---------------------------------------------------------------------------
+//
+// Gemini Enterprise authenticates as a pre-registered confidential client
+// against Zitadel and forwards the resulting access token to us. We are the
+// resource server: we have no callback URL, we register no client, and we run
+// no discovery endpoint. We validate the token we are handed and nothing else.
+//
+// Validation is local — signature and claims against the IdP's public JWKS —
+// rather than a call back to Zitadel's introspection endpoint. Introspection
+// would require this service to hold its own Zitadel credentials, which would
+// put a second secret in the cluster; JWKS is public and needs none.
+//
+// Two failures here are configuration mistakes made elsewhere, and both would
+// otherwise surface as an indistinguishable stream of 401s that reads exactly
+// like a broken build. Each one names its own cause instead:
+//
+//   * the client is issuing opaque tokens (its accessTokenType is not JWT), or
+//   * the caller's scope string omits the audience-granting scope, so a token
+//     that is valid in every other respect carries the wrong audience.
+
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+
+/** Base class for anything that should terminate a request at the boundary. */
+export abstract class AuthError extends Error {
+  /** HTTP status this failure should produce. */
+  abstract readonly status: number;
+  /** Machine-readable code, surfaced in the WWW-Authenticate error field. */
+  abstract readonly code: string;
+}
+
+/** No credentials presented at all. */
+export class MissingTokenError extends AuthError {
+  readonly status = 401;
+  readonly code = "invalid_request";
+
+  constructor() {
+    super("Authorization header with a Bearer token is required.");
+    this.name = "MissingTokenError";
+  }
+}
+
+/**
+ * The bearer token is not a JWT.
+ *
+ * This is nearly always an infrastructure misconfiguration rather than a bad
+ * caller: Zitadel issues opaque tokens unless the OIDC client sets
+ * accessTokenType to JWT. That field is deliberately covered by IgnoreChanges
+ * in the Pulumi stack — it prevents a destructive replace diff, at the cost of
+ * Pulumi never reconciling the value after creation. So this boundary is the
+ * only place a wrong value gets noticed, and it says so plainly.
+ */
+export class OpaqueTokenError extends AuthError {
+  readonly status = 401;
+  readonly code = "invalid_token";
+
+  constructor() {
+    super(
+      "Bearer token is not a JWT. The Zitadel OIDC client appears to be " +
+        "issuing opaque tokens — check that its accessTokenType is " +
+        "OIDC_TOKEN_TYPE_JWT (`pulumi stack output accessTokenType` after a " +
+        "refresh, in the zitadel-apps-mcp-slack stack)."
+    );
+    this.name = "OpaqueTokenError";
+  }
+}
+
+/** Signature, issuer or expiry check failed. */
+export class InvalidTokenError extends AuthError {
+  readonly status = 401;
+  readonly code = "invalid_token";
+
+  constructor(reason: string) {
+    super(`Bearer token rejected: ${reason}`);
+    this.name = "InvalidTokenError";
+  }
+}
+
+/**
+ * The token verified, but its audience does not include our project.
+ *
+ * The audience is granted by a scope the *client* requests, so the fix is in
+ * the caller's configuration, not here. Naming the exact scope string turns a
+ * silent uniform rejection into a self-service fix.
+ */
+export class AudienceMismatchError extends AuthError {
+  readonly status = 403;
+  readonly code = "insufficient_scope";
+  readonly requiredScope: string;
+
+  constructor(projectId: string, presented: string[]) {
+    const requiredScope = audienceScopeFor(projectId);
+    super(
+      `Token audience does not include this server's Zitadel project ` +
+        `(${projectId}). Presented audience: ` +
+        `${presented.length > 0 ? presented.join(", ") : "(none)"}. ` +
+        `Add "${requiredScope}" to the scopes requested by the OAuth client — ` +
+        `the full string this server expects is "${fullScopeString(projectId)}".`
+    );
+    this.name = "AudienceMismatchError";
+    this.requiredScope = requiredScope;
+  }
+}
+
+/** The Zitadel scope that adds a project to a token's audience. */
+export function audienceScopeFor(projectId: string): string {
+  return `urn:zitadel:iam:org:project:id:${projectId}:aud`;
+}
+
+/** The complete scope string a client must request to reach this server. */
+export function fullScopeString(projectId: string): string {
+  return `openid offline_access ${audienceScopeFor(projectId)}`;
+}
+
+/**
+ * A JWT is three base64url segments separated by dots. Checking the shape
+ * before verification lets an opaque token produce a specific diagnosis rather
+ * than being reported as a malformed signature.
+ */
+export function looksLikeJwt(token: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  return parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part));
+}
+
+/** Extracts the credential from an `Authorization: Bearer <token>` header. */
+export function extractBearerToken(header: string | undefined): string {
+  if (!header) throw new MissingTokenError();
+  const match = /^Bearer[ ]+(.+)$/i.exec(header.trim());
+  if (!match) throw new MissingTokenError();
+  const token = match[1]!.trim();
+  if (token.length === 0) throw new MissingTokenError();
+  return token;
+}
+
+/** Normalises the `aud` claim, which may be a string or an array of strings. */
+export function audienceList(payload: JWTPayload): string[] {
+  const aud = payload.aud;
+  if (typeof aud === "string") return [aud];
+  if (Array.isArray(aud)) return aud.filter((a): a is string => typeof a === "string");
+  return [];
+}
+
+export interface TokenVerifierConfig {
+  /** Zitadel issuer, e.g. https://auth.ipv1337.dev */
+  issuer: string;
+  /** Zitadel project ID that must appear in the token's audience. */
+  projectId: string;
+  /** Overridable for tests; defaults to the issuer's standard JWKS path. */
+  jwksUri?: string;
+  /**
+   * Key material to verify against. Defaults to a remote JWKS fetched from
+   * {@link jwksUri}. Tests inject a local key so the suite never needs network
+   * access; production never sets this.
+   */
+  keySource?: Parameters<typeof jwtVerify>[1];
+}
+
+export interface VerifiedCaller {
+  /** The `sub` claim — the Zitadel subject that authorised this session. */
+  subject: string;
+  claims: JWTPayload;
+}
+
+export interface TokenVerifier {
+  verify(token: string): Promise<VerifiedCaller>;
+  verifyAuthorizationHeader(header: string | undefined): Promise<VerifiedCaller>;
+}
+
+/**
+ * Builds the verifier used by the HTTP transport.
+ *
+ * The remote JWKS is cached and refreshed by `jose`, so steady-state
+ * verification makes no network call.
+ */
+export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier {
+  const issuer = config.issuer.replace(/\/+$/, "");
+  const jwksUri = config.jwksUri ?? `${issuer}/oauth/v2/keys`;
+  const jwks = config.keySource ?? createRemoteJWKSet(new URL(jwksUri));
+
+  async function verify(token: string): Promise<VerifiedCaller> {
+    if (!looksLikeJwt(token)) throw new OpaqueTokenError();
+
+    let payload: JWTPayload;
+    try {
+      ({ payload } = await jwtVerify(token, jwks, { issuer }));
+    } catch (error) {
+      throw new InvalidTokenError(
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+
+    const audiences = audienceList(payload);
+    if (!audiences.includes(config.projectId)) {
+      throw new AudienceMismatchError(config.projectId, audiences);
+    }
+
+    const subject = typeof payload.sub === "string" ? payload.sub : "";
+    if (subject.length === 0) {
+      throw new InvalidTokenError("token has no subject (sub) claim");
+    }
+
+    return { subject, claims: payload };
+  }
+
+  return {
+    verify,
+    // `async` is load-bearing: extractBearerToken throws, and a Promise-typed
+    // method that throws synchronously would slip past a caller's .catch() and
+    // escape the boundary handler as an uncaught exception rather than a 401.
+    verifyAuthorizationHeader: async (header) => verify(extractBearerToken(header)),
+  };
+}
