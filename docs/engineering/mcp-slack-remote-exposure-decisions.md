@@ -326,6 +326,19 @@ what they do with it can't be cheaply reversed. Apply this specifically to any h
 team is still actively finding problems with the artifact and the recipient's next action is a
 click, an apply, or an install rather than a re-readable message.
 
+**Corollary, per Aegis's example and Beacon (2026-08-06T22:37:38Z): holding an unverified claim out
+of the record isn't only defensive — it's what produces the verification in the first place.** When
+a scoped-vs-blanket Cilium deny policy was proposed, Beacon told Pace to hold it rather than record
+it as settled. That held-open status is what prompted two people to independently test it rather
+than accept the proposal on its stated reasoning — producing two live, converging experiments that
+would not have happened had the claim been written down as decided the moment it was proposed.
+**"We're holding this because it's unverified" reads as friction — a delay imposed on a plausible
+claim — until the moment it's the reason someone went and checked instead of building on it
+untested.** Apply this as the positive framing of pattern 9's discipline, not just the negative one:
+declining to record a claim as settled isn't merely avoiding a future correction, it actively
+creates the pressure that produces the verification which would otherwise never have happened,
+because nobody feels compelled to test something the record already treats as true.
+
 ### 10. A boundary built in one layer needs to be designed in every layer that could hold it — weakest first
 
 Per Aegis's design-level review (2026-08-06T20:55:43Z), answering the question the whole build had
