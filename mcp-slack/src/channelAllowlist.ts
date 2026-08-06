@@ -53,6 +53,40 @@ export class ChannelNotAllowedError extends Error {
   }
 }
 
+/** Raised when a channel is declared both public and private. */
+export class ConflictingChannelDeclarationError extends Error {
+  constructor(ids: string[]) {
+    super(
+      `Channel(s) ${ids.join(", ")} appear in both SLACK_CHANNEL_IDS and ` +
+        `SLACK_PRIVATE_CHANNEL_IDS. A channel is one or the other; listing it ` +
+        `twice means one of the two declarations is wrong, and guessing which ` +
+        `would defeat the point of declaring visibility separately.`
+    );
+    this.name = "ConflictingChannelDeclarationError";
+  }
+}
+
+/**
+ * Raised when Slack disagrees with how a channel was declared.
+ *
+ * The case this exists for: an operator means to add a public channel and
+ * pastes a private one. With a single allow-list that is undetectable — the ID
+ * is on the list, so it is admitted. Declaring visibility separately turns it
+ * into a contradiction, and a private conversation reached through a line that
+ * claims to be public is exactly the mistake worth refusing.
+ */
+export class ChannelVisibilityMismatchError extends Error {
+  constructor(channelId: string, declared: ChannelVisibility) {
+    super(
+      `Channel ${channelId} is declared ${declared} in configuration, but ` +
+        `Slack reports it as ${declared === "public" ? "private" : "public"}. ` +
+        `Refusing rather than resolving the disagreement — if it is genuinely ` +
+        `wanted, move it to the other list deliberately.`
+    );
+    this.name = "ChannelVisibilityMismatchError";
+  }
+}
+
 /** Raised at startup when the HTTP transport has no usable allow-list. */
 export class MissingAllowlistError extends Error {
   constructor() {
@@ -139,9 +173,26 @@ export function assertParamsAllowed(
   guard.assertAllowed(param.channelId);
 }
 
+/** How a channel was declared, which is what makes a mismatch detectable. */
+export type ChannelVisibility = "public" | "private";
+
 export interface ChannelGuard {
   /** Channel IDs this server may touch, in configuration order. */
   readonly allowed: readonly string[];
+  /** Only those declared public. */
+  readonly publicChannels: readonly string[];
+  /** Only those declared private — granted deliberately, per channel. */
+  readonly privateChannels: readonly string[];
+  /**
+   * How the operator declared this channel, or undefined if not allowed.
+   *
+   * The point of keeping the two lists apart: with one list, "is it allowed"
+   * and "is it explicitly listed as private" are the same question, so a check
+   * against Slack's own `is_private` can only ever agree with the guard. Two
+   * lists make "declared public, Slack says private" a contradiction the code
+   * can see.
+   */
+  declaredVisibility(channelId: string): ChannelVisibility | undefined;
   /** Throws {@link ChannelNotAllowedError} unless `channelId` is allowed. */
   assertAllowed(channelId: string): void;
   /** Non-throwing form, for filtering rather than rejecting. */
@@ -177,25 +228,49 @@ export function parseChannelIds(raw: string | undefined): string[] {
  */
 export function createChannelGuard(
   raw: string | undefined,
-  { required }: { required: boolean }
+  { required }: { required: boolean },
+  rawPrivate?: string
 ): ChannelGuard {
-  const allowed = parseChannelIds(raw);
+  const publicChannels = parseChannelIds(raw);
+  const privateChannels = parseChannelIds(rawPrivate);
+  const allowed = [...publicChannels, ...privateChannels];
+
+  const overlap = publicChannels.filter((id) => privateChannels.includes(id));
+  if (overlap.length > 0) {
+    throw new ConflictingChannelDeclarationError(overlap);
+  }
 
   if (allowed.length === 0) {
     if (required) throw new MissingAllowlistError();
     return {
       allowed: [],
+      publicChannels: [],
+      privateChannels: [],
+      declaredVisibility: () => undefined,
       assertAllowed: () => {},
       isAllowed: () => true,
     };
   }
 
-  const lookup = new Set(allowed);
+  const publicSet = new Set(publicChannels);
+  const privateSet = new Set(privateChannels);
   return {
     allowed,
-    isAllowed: (channelId: string) => lookup.has(channelId),
+    publicChannels,
+    privateChannels,
+    declaredVisibility: (channelId: string) =>
+      publicSet.has(channelId)
+        ? "public"
+        : privateSet.has(channelId)
+          ? "private"
+          : undefined,
+    isAllowed: (channelId: string) =>
+      publicSet.has(channelId) || privateSet.has(channelId),
     assertAllowed: (channelId: string) => {
-      if (!lookup.has(channelId)) throw new ChannelNotAllowedError(channelId);
+      if (!publicSet.has(channelId) && !privateSet.has(channelId)) {
+        throw new ChannelNotAllowedError(channelId);
+      }
     },
   };
 }
+

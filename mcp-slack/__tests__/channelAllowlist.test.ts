@@ -22,6 +22,7 @@
 
 import {
   ChannelNotAllowedError,
+  ConflictingChannelDeclarationError,
   MissingAllowlistError,
   UnusableChannelParamError,
   assertParamsAllowed,
@@ -222,5 +223,49 @@ describe("assertParamsAllowed", () => {
     expect(() => assertParamsAllowed(guard, { channel: "" })).toThrow(
       UnusableChannelParamError
     );
+  });
+});
+
+// Visibility is declared per channel rather than inferred, because with a
+// single list "is it allowed" and "is it listed as private" are the same
+// question — so a check against Slack's own is_private could only ever agree
+// with the guard. Two lists make disagreement expressible.
+describe("declared visibility", () => {
+  const guard = createChannelGuard("C_PUBLIC", { required: true }, "G_PRIVATE");
+
+  it("admits channels from either list", () => {
+    expect(guard.isAllowed("C_PUBLIC")).toBe(true);
+    expect(guard.isAllowed("G_PRIVATE")).toBe(true);
+    expect(guard.isAllowed("C_UNLISTED")).toBe(false);
+  });
+
+  it("reports how each channel was declared", () => {
+    expect(guard.declaredVisibility("C_PUBLIC")).toBe("public");
+    expect(guard.declaredVisibility("G_PRIVATE")).toBe("private");
+    expect(guard.declaredVisibility("C_UNLISTED")).toBeUndefined();
+  });
+
+  it("keeps the two lists separately readable for the deploy diff", () => {
+    // The point of the split is legibility in review: adding an id to the
+    // private list reads as granting a public endpoint access to a private
+    // conversation, which one undifferentiated list does not convey.
+    expect(guard.publicChannels).toEqual(["C_PUBLIC"]);
+    expect(guard.privateChannels).toEqual(["G_PRIVATE"]);
+  });
+
+  it("refuses a channel declared both public and private", () => {
+    expect(() =>
+      createChannelGuard("C_ONE,C_BOTH", { required: true }, "C_BOTH")
+    ).toThrow(ConflictingChannelDeclarationError);
+  });
+
+  it("still requires at least one channel from either list on http", () => {
+    expect(() => createChannelGuard(undefined, { required: true }, "")).toThrow(
+      MissingAllowlistError
+    );
+    // A private-only allow-list is legitimate.
+    expect(() =>
+      createChannelGuard(undefined, { required: true }, "G_ONLY")
+    ).not.toThrow();
   });
 });
