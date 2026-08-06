@@ -87,6 +87,19 @@ per-application may really be per-project, per-org, or per-tenant — and a vali
 not the same thing as a boundary that holds. Check this any time a new OIDC/OAuth client is added
 to an IdP that already hosts another app's client, not just once per IdP.
 
+**Confirmed a second time on this same build, at a different granularity, per Aegis (go-live review
+of `zitadel.Project`'s `HasProjectCheck` field).** Atlas had wired `ProjectRoleCheck` deliberately
+and left `HasProjectCheck` unset without considering it. Read from the pinned provider source
+rather than docs: `HasProjectCheck`'s own comment states it checks *"if the org of the user has
+permission to this project"* — its subject is the user's **organization**, not the user. In this
+single-org instance it discriminates nothing (every user is in the one org that owns every
+project), so it's excluded as a candidate access control, not merely weak. Exactly the same
+sentence as the project-vs-app case above, one granularity level down: **check what a boundary is
+actually scoped to before crediting it with doing work at the granularity you need.** Worth setting
+anyway as a genuine cross-org boundary against a future second org, with a comment stating plainly
+that it is not the user-granularity control — otherwise the next reader sees `true` and concludes
+the wrong question was answered.
+
 ### 4. A completeness claim needs two differently-blind searches to agree, not one wider search
 
 **Diff vs. file is the special case; "the search vs. the claim" is the general rule.**
@@ -424,7 +437,7 @@ Sources: [`token.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/in
 | # | Decision | Final answer | Rationale |
 |---|---|---|---|
 | 1 | Tenancy | **Single-tenant.** One deployment, one set of Slack tokens; every connected agent acts as James's Slack identity. | `src/index.ts:802-808` reads tokens once at process start — one identity per process. Multi-tenant needs per-request token resolution and a token store: a rewrite of the server's core, not a transport addition. |
-| 2 | Who may connect | **Zitadel-native subject, no Google social login.** Atlas confirmed no social-login IdP is configured on the Zitadel instance (`gitops/argocd/platform/zitadel/applicationset.yaml`); adding one is new config work that would put Google in the trust chain directly in front of the Slack workspace, for no PoC benefit. **Identity mechanics settled 2026-08-06T20:45Z:** James's Zitadel user is **not** a Pulumi resource — human accounts mutate outside IaC constantly (password, MFA, profile), and declaring one would need `IgnoreChanges` over most of the resource, deliberately reproducing the `accessTokenType` drift problem (pattern 6) on an identity. James creates his own user via the Zitadel console (he's currently only known to be signed in as the bootstrap admin, `admin@vitruvian.auth.ipv1337.dev`, and hasn't confirmed a personal account exists); the resulting user ID becomes stack config, and only the project-scoped `zitadel.UserGrant` in `zitadel-apps-mcp-slack` is code — it dies with the project, as it should. | Keeps the Gemini test account (client-side) and the Zitadel subject (gate-side) cleanly separate — conflating them was an early gap in the thread that Beacon caught. Keeping the human identity out of Pulumi keeps Zitadel as the system of record rather than creating a second, drifting one. |
+| 2 | Who may connect | **Zitadel-native subject, no Google social login. Identity resolved 2026-08-06T21:50-22:04Z — not a new user, an existing one, chosen pragmatically.** Atlas confirmed no social-login IdP is configured (`gitops/argocd/platform/zitadel/applicationset.yaml`); Google stays out of the trust chain. Human identity stays out of Pulumi as code (unchanged reasoning: accounts mutate outside IaC constantly, and declaring one would reproduce the `accessTokenType` drift problem, pattern 6, on an identity) — only the project-scoped `zitadel.UserGrant` is code. **What changed:** rather than James creating a fresh user, Atlas enumerated the instance (org-scoped read, no privileged credential needed) and found James already holds **two** accounts — the `FirstInstance` bootstrap admin (`378818267051722263`, email `james.nguyen@gmail.com`, password set and working since 2026-06-24) and a second, never-logged-into account from 2026-06-28 with the wrong email for this use. **The instance has no SMTP configured** (confirmed via API, not inferred) — the likely explanation for the second, dormant account, since its initialization email could never have arrived. No self-service password reset exists on this instance until SMTP is fixed. **The subject to allow-list is the bootstrap admin, `378818267051722263`** — the only account that demonstrably works. This is explicitly accepted as a dated tradeoff, not an open-ended PoC exception: the routine OAuth login for a Google-hosted client is the same identity that owns the entire Zitadel instance, and the trade is tracked as **"acceptable until SMTP lands,"** with SMTP configuration reframed as unblocking a real security improvement (a scoped personal account) rather than a mail nicety. Revocation in an incident is via the admin console (revoke the grant / refresh token) — not a password reset, which doesn't exist here and wouldn't invalidate an outstanding refresh token regardless. **Known, not discovered:** Spark holds a long-lived `offline_access` refresh token for the instance-owner identity, in Google's infrastructure, for a lifetime this team doesn't set — by design, not a flaw, but nobody should learn it later. MFA status on the pinned account is an open console-check item, since with `OIDC_ALLOWED_SUBJECTS` set to it and no recovery path, that password is simultaneously the only way in and the only thing to lose. | Keeps the Gemini test account (client-side) and the Zitadel subject (gate-side) cleanly separate — conflating them was an early gap in the thread that Beacon caught. Keeping the human identity out of Pulumi keeps Zitadel as the system of record rather than creating a second, drifting one. Reusing the existing working account avoided repeating the exact SMTP-silent-failure that left the second account dormant for six weeks. |
 | 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: bot-token-only write via `chat:write` (no `chat:write.public`), never the user token.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. **Mechanism updated 2026-08-06T20:50Z: a new, dedicated Slack app is now the recommended way to deliver this, not reinstalling the existing "Vitruvian Slack MCP" app.** See "Option A" section below — the ladder, the reordering, and why the new-app rung is now preferred on more than cost. | See "Option A" section below — the full resolution and the reordering rationale. |
 | 4 | Public exposure via cloudflared, gated only by Zitadel | **Accepted.** | Spark is Google-hosted and reaches the endpoint over the public internet through the existing tunnel; Cloudflare Access can't gate an OIDC flow, so Zitadel is the only gate — reasonable given decisions 1–3. |
 | 5 | Homelab k3s deployment lifetime | **Potentially permanent**, pending a post-PoC monetization decision — not throwaway-then-Cloud-Run as the team first recommended. | Changes what gets built, not just how long it lasts (see "Consequences of decision 5," below). |
@@ -461,14 +474,23 @@ inherits:
 **Why rung 1 beats rung 2 on more than cost** (the reasoning that reordered the ladder — record this
 where a future "why not just reinstall" question would look):
 
-- **Blast radius, categorical rather than probabilistic.** The existing bot has accumulated
-  membership in whatever DMs, group DMs, and private channels it's been invited to over its
-  lifetime — un-inventoried, and un-inventoriable from outside (`im:read`/`mpim:read` aren't on its
-  scopes). Reinstalling it inherits that membership as-is. A new app's bot starts in zero
-  conversations; its reach becomes exactly the channels James deliberately invites it to. That
-  guarantee is *probabilistic* under rung 2 (it holds only as long as membership is managed
-  carefully, forever) and *categorical* under rung 1 combined with a narrower scope set (below) —
-  Slack refuses the operation outright, independent of membership or the allow-list.
+- **Blast radius, categorical rather than probabilistic — for DMs and group DMs. Not, as originally
+  stated, for private channels once `groups:*` entered the scope set.** The existing bot has
+  accumulated membership in whatever DMs, group DMs, and private channels it's been invited to over
+  its lifetime — un-inventoried, and un-inventoriable from outside (`im:read`/`mpim:read` aren't on
+  its scopes). Reinstalling it inherits that membership as-is; a new app's bot starts in zero
+  conversations. **Correction, per Atlas (2026-08-06T20:52-21:53Z):** the original framing here —
+  "reach becomes exactly what James deliberately invites it to" — held only while the scope set
+  excluded `groups:*`. Once private channels entered scope (James confirmed read+write to private
+  channels, below), the categorical DM/group-DM bound (`im:history`/`mpim:history` dropped, still
+  true) no longer extends to private channels: the remaining bound there is bot **membership**,
+  and membership is not a reviewed artifact — any workspace member can invite the app to a private
+  channel, with no trace in this repo or any diff. So rung 1's advantage over rung 2 for private
+  channels specifically is narrower than first stated: both rest on membership discipline once
+  `groups:*` is granted; rung 1 only guarantees that membership *starts* at zero, not that it stays
+  reviewed. What still holds unconditionally under rung 1: DMs and group DMs remain categorically
+  unreachable regardless of scope choice elsewhere, and the allow-list split (below) is what
+  actually re-establishes a reviewed boundary for private channels.
 - **Independent revocation.** A new app means the cluster's `SLACK_BOT_TOKEN` and James's local
   stdio token are different Slack apps entirely — different credentials. If the public endpoint is
   ever compromised, misbehaving, or just needs to be killed in a hurry, James revokes the new app's
@@ -515,7 +537,7 @@ it left, per pattern 9):
 | `pins:read`, `bookmarks:read` | The two list tools — used |
 | `users:read` | Single-user profile lookup only (`slack_get_user_profile`) — resolves a `U…` id surfaced from allow-listed channel history. Bulk enumeration (`slack_get_users`/`users.list`) is withheld from the HTTP tool list, below — the scope alone was not sufficient protection. |
 | `chat:write` | Decision 6's write requirement |
-| `groups:read`, `groups:history` | **Off by default, not James's call to enable in advance.** Per Aegis: a private channel entering the allow-list should be a deliberate decision with its own line when James actually wants one, not a capability granted speculatively "in case." Being wrong in the direction of omitting costs one reinstall; being wrong in the direction of including costs an unbounded-by-anything-but-the-allow-list private-channel surface. |
+| `groups:read`, `groups:history` | **Settled IN, per James's direct answer** — read and write to private channels confirmed wanted. The team's default recommendation had been off-by-default with the trade stated explicitly (Aegis: a private channel entering the allow-list should be a deliberate decision with its own line, not a capability granted speculatively "in case"); James was given that framing and chose to include it. **Consequence, not yet built as of this writing:** granting `groups:*` promotes `SLACK_CHANNEL_IDS` from a convenience to the **only** boundary between the endpoint and every private channel the bot is ever invited to — see the allow-list re-review immediately below. |
 
 | Drop | Why |
 |---|---|
@@ -561,6 +583,43 @@ membership and, once `im:history`/`mpim:history` are dropped, cannot express a D
 does **not** retire for stdio: James's local Claude Code keeps using the existing app with its
 accumulated, un-inventoried membership. That inventory question stays open for the local tool; it
 does not apply to anything reachable from the public internet.
+
+**Allow-list re-review, required now that private channels are in scope — per Aegis
+(2026-08-06T21:53Z), not yet built as of this writing.** With `groups:*` granted, `SLACK_CHANNEL_IDS`
+graduated from a convenience filter to the sole control between the endpoint and every private
+channel the bot ever joins, and it has to stay correct for the deployment's whole lifetime rather
+than just at review time. Design, in order of what earns its keep:
+
+1. **Split the allow-list into `channelIds` and `privateChannelIds`, not one undifferentiated
+   list.** This is the load-bearing change, and it's the cheap one: with a single list, "explicitly
+   listed" and "passed the allow-list" are the same predicate, so a type-mismatch check (an operator
+   pastes a private channel ID into what they meant as the public set) can only ever agree with the
+   guard — it's a no-op in precisely the case it exists to catch. Splitting the list makes "listed
+   as public, Slack says private" a detectable contradiction. It also earns its place **in the diff,
+   before any runtime check exists**: adding an ID to `privateChannelIds` reads as *"this grants a
+   public endpoint access to a private conversation,"* which adding it to one undifferentiated list
+   does not.
+2. **Startup verification with hard refusal**, checking each configured ID's actual Slack-reported
+   type against which list it's declared in. The availability objection doesn't hold: this workload
+   is inert without Slack regardless, so a pod that starts and then can't validate its own config
+   serves nothing useful either way. Nearly free to build — `listChannels` already calls
+   `conversations.info` per allowed channel and the response already carries `is_private`; only the
+   destructuring needs to pick it up.
+3. **Free-of-charge request-time checks** wherever a Slack response already carries `is_private`,
+   catching the residual gap startup verification can't (Slack permits converting a channel's
+   privacy after deploy). **Deliberately not adding:** an extra `conversations.info` round trip
+   purely to re-check type on read/history/reply calls — the cost (a round trip per call, or a
+   check performed only after the content is already fetched) isn't justified when startup
+   verification plus free request-time checks already cover the realistic drift case.
+
+**Two properties confirmed while designing this, worth keeping:** no config-hot-reload path exists
+anywhere in the module (`resolveConfig` runs once at startup, the guard is captured once) — this is
+a security property now, not an omission, since hot-reloading the allow-list would introduce a race
+inside the only control in front of private channels, and it's the kind of "convenience" a later
+change could add without anyone connecting it to this boundary. And the L1/L2/L3 framework
+(pattern 10) needs a footnote for this scope: L1 for conversation *content* is now deliberately
+widened by `groups:*`, and what remains bounding it is bot membership — which, per the correction
+above, is not a reviewed artifact the way a scope declaration is.
 
 **What Option A requires under rung 1, in order:**
 
@@ -643,6 +702,28 @@ and still binding:**
   the write already goes out as the human — an attribution line there would be redundant on a
   message the reader already knows was posted by that person directly.
 
+**Resolution as actually deployed, per Beacon/Wren/Aegis (2026-08-06T21:53-21:59Z): no attribution
+line renders in this PoC.** The subject decision 2 allow-lists is the Zitadel `FirstInstance`
+bootstrap admin account (`378818267051722263`), not a personal account — see decision 2, above.
+Wren's original design already handles this correctly without a special case: the deploy-time
+subject→name mapping's precondition is that the subject denotes a *person*; the admin account
+denotes an account, not a person, so it has no valid mapping entry, and the existing
+unrecognized-subject-gets-no-line rule applies as the general rule, not as an exception carved out
+for this case. (Beacon initially proposed overriding this — reasoning that a single-entry allow-list
+makes "Requested by James Nguyen" contingently true today — and withdrew it: **unforgeable is not
+the same as true, and unforgeability is exactly the property that would make a Slack reader trust
+a line that's accurate today and silently wrong the moment the account is shared or the allow-list
+grows.** A forgeable claim gets discounted by a skeptical reader; an unforgeable one doesn't, which
+raises rather than lowers the bar for what it's allowed to assert.) The one addition taken:
+**the absent mapping must be deliberate and documented in the chart values**, not a blank a later
+editor "completes" while thinking they're tidying up an oversight.
+
+**Practical consequence, given directly to James:** he requested this feature and will not see it
+in this PoC, because there is no personal identity to attribute to until the instance's SMTP is
+configured (decision 2) and he has a personal Zitadel account to allow-list instead of the admin
+one. This is presented as the sharper, concrete argument for prioritizing SMTP — not a stale
+six-week-old broken account, but the blocker on a feature James asked for by name.
+
 ## Go-live gate — layers beyond L3 (added 2026-08-06T20:56-20:58Z, per Aegis's design review)
 
 Separate from and layered on top of Phase 1's code-merge gate (which does not reopen for any of
@@ -668,10 +749,34 @@ PR (that PR is frozen with three independent reviews against one head), but now 
 follow-up PR to a hard Phase 2b go-live gate, per Beacon 2026-08-06T21:48Z:** *mcp-slack rejects a
 validly-signed token whose `sub` is not in `OIDC_ALLOWED_SUBJECTS`, proven by a test, before the
 server accepts its first real request.* Pace has this on the Phase 2b DoD as blocking, not tracked.
-**Does not replace `projectRoleCheck: true`** — the point of the L1/L2/L3 framework above is that
-the same boundary held in two independent places is stronger than either alone, and this is L2 in
-two places rather than one. **It is also the only control in the chain below that doesn't depend on
-either open question's answer** — see the resolved paragraph immediately following.
+**Does not replace `projectRoleCheck: true`** on the path it actually covers — **but it is not
+uniformly "L2 in two places," and stating it that way overstated the redundancy. Correction, per
+Beacon (2026-08-06T21:59Z), on their own earlier framing:** Zitadel's documented `aud`-scope
+behavior lets *any* OIDC client in the org request a token carrying this project's audience,
+without that client verifying the caller holds a grant on the project. `projectRoleCheck` gates
+logins **through mcp-slack's own client** — it says nothing about a token minted via a *different*
+org client that requested this project's `aud`. So on the path that question 2 (above) is about,
+there is only one control, and it's `OIDC_ALLOWED_SUBJECTS`, not two. **This elevates the PR from
+defense-in-depth to load-bearing:** "separate PR, built after #1418 merges" is still the right
+sequencing, but nobody should read that scheduling choice as lower priority — if it slips, go-live
+slips with it rather than proceeding slightly less protected. **Whether the composed picture across
+all three controls (`azp`-pinning restricting to Spark's own client, `projectRoleCheck` for
+ungranted users of that client, `OIDC_ALLOWED_SUBJECTS` for the remaining case) actually closes as
+cleanly as a three-row table suggests is, as of this writing, an unconfirmed hypothesis pending
+review by Atlas and Aegis — not yet a decision this record treats as settled.** Do not read a future
+version of that table as describing today's running state: as of this writing `azp`-pinning is
+unbuilt (blocked on reading the claim, which needs #1417 applied), `projectRoleCheck` is `false` by
+design, and `OIDC_ALLOWED_SUBJECTS` itself is undeployed config, not yet a task — three rows,
+zero built.
+
+**Coupling constraint, per Atlas/Beacon (2026-08-06T21:53Z): the role grant and
+`projectRoleCheck: true` must land in the same apply, never staggered.** James currently holds zero
+grants on any Zitadel project — `oauth-user-inspector` works today specifically because its own
+role check is off. Flipping mcp-slack's check on without the grant already in place produces a
+login failure on James's own first attempt that presents as a bug in the auth guard rather than as
+the config gap it actually is, at exactly the moment he's trying to validate the PoC end to end.
+Tracked as one atomic change, not two tasks — if grant and flag can't both land together, neither
+ships, and `OIDC_ALLOWED_SUBJECTS` continues carrying the window alone, per the standing rule below.
 
 **Design requirement carried into that PR, continuing the self-describing-error pattern already
 established for `AudienceMismatchError`:** the rejection must print the `sub` it actually received.
@@ -686,6 +791,20 @@ other misconfiguration. The failure has to carry its own fix, the same disciplin
 makes it belt-and-braces rather than the plan: no real channel enters `SLACK_CHANNEL_IDS` while
 the endpoint is publicly reachable and caller identity is unenforced.** Windows are short until an
 apply fails.
+
+**Decision, ratified explicitly rather than left as an absence, per Beacon (2026-08-06T22:04Z):
+local JWT/JWKS validation stays; introspection is not adopted, despite Zitadel documenting it as
+the mitigation for the exact `aud`-scope-injection issue above.** Recorded with its cost, not as a
+silent default, so the next reader of `validate locally, no introspection call` in the
+`CiliumNetworkPolicy` header finds the reasoning beside it: introspection would put the IdP on the
+hot path of *every* request, and this evening already established that this particular IdP is not
+reliably reachable — the whole reason `IdpUnavailableError`/503 exists is to make that failure
+visible rather than a hang. Introspection converts every JWKS-adjacent blip from "auth fails
+loudly, once, at the edge" into "the whole endpoint is down." It would also add a second live
+credential to the pod, next to the Slack bot token — precisely the kind of additional in-cluster
+secret the design has otherwise gone out of its way to avoid (see the earlier reasoning for JWT
+over introspection in the Zitadel/OAuth section, above, which this ratifies rather than
+contradicts).
 
 **Phase 2b acceptance criteria — the runtime half of the boundary, which exists in none of #1416,
 #1417, or #1418 as of this writing (there is no `mcp-slack/deploy/` and no gitops reference yet;
