@@ -249,6 +249,25 @@ one, whenever adding a check like this: unset, the wrong type, the right type in
 value — Atlas's fix was verified against all four states (unset, string `"false"`, boolean `false`,
 boolean `true`) rather than only the case that was reported broken.
 
+**Fifth instance, per Atlas (2026-08-06T23:29:34Z) — a sibling shape rather than a repeat: a
+delimiter that can also appear inside the content it delimits.** Writing a corrected annotation for
+finding 1 (above), Atlas's first draft wrapped a grep target in backticks — inside a Go raw string
+literal, which is itself backtick-delimited, and whose own file comment says must contain none. A
+backtick in the payload doesn't just get misread; it terminates the string early and corrupts the
+container. **The validator built to catch exactly this class of error structurally could not have
+caught this instance**, because it locates the wrapper, strips it, and validates only the payload
+underneath — it is blind to damage done to the container it removes first, by construction, the
+same shape as pattern 4/15/8's structurally-limited searches. Caught only because Beacon posted the
+mechanism of a related finding into the channel before Atlas committed — not the specific bug, the
+general shape ("a delimiter that's also ordinary prose punctuation, and your checker strips it
+first") — which is what let Atlas recognize his own uncommitted edit as an instance of it. Fixed by
+reordering the check to validate the raw, unstripped block for delimiter collisions *before*
+extracting the payload, then mutation-tested (inject a backtick → fails with the line number; remove
+it → passes) rather than trusted on the strength of the reordering alone. **Rule: when validating a
+wrapped or delimited value, check the wrapper/delimiter integrity on the raw content before
+stripping it — a validator that only ever sees the post-extraction payload cannot detect damage to
+the extraction boundary itself, regardless of how careful the payload-level checks are.**
+
 ### 7. A check that serves two purposes should say so, or the second purpose dies in a refactor that looks like a simplification
 
 Per Beacon (2026-08-06T20:41:27Z): `looksLikeJwt()` in mcp-slack's auth path is a string-split
