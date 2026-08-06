@@ -279,13 +279,41 @@ actually closed the class of bug it was built to close. A tested primitive with 
 parallel caller is not partial coverage of the problem — it's a false sense that the problem is
 covered at all.
 
+### 9. When the artifact is a security configuration and the action is irreversible, wait for the specialists before sending anything
+
+Per Beacon (2026-08-06T20:54:14Z), owning it as a process failure rather than a code one: while the
+team was iterating live on which Slack app scopes the new app should carry (dropping `im:history`/
+`mpim:history`, then `users:read.email`, each correction genuinely right in isolation), Beacon
+relayed each successive version to James as it was found — three scope lists in five minutes — so
+he could act on it while the branch sat frozen on the CI outage. Aegis's design-level review then
+found a fourth, more serious problem with the same scope set (`slack_get_users` enumerating the
+entire workspace directory, unbounded by any control built that evening — see above) before the
+third relayed version had even been acted on.
+
+**The asymmetry that made this a mistake, not just churn:** the team's own artifact (a scope list in
+a channel) is trivially revisable — post a correction, nobody's harmed. **James's action on that
+artifact is not** — creating and installing a Slack app, then discovering it needs narrowing, costs
+a second app-and-token cycle in the live workspace. Relaying an in-progress design to someone who
+will act on it irreversibly treats a mutable draft and a one-way door as though they were the same
+kind of thing.
+
+**Rule: when what you're about to send is a security configuration (a scope list, a permission set,
+an IAM policy, a firewall rule) and the recipient's response to it is irreversible or expensive to
+undo, hold it until the people with the relevant expertise have finished reviewing it — do not send
+draft N so the recipient has something to do while draft N+1 is still being found.** The fix isn't
+reviewing faster or relaying more carefully; it's recognizing that some artifacts should never be
+partially relayed at all, because the value of "giving the human something to do" is negative once
+what they do with it can't be cheaply reversed. Apply this specifically to any handoff where the
+team is still actively finding problems with the artifact and the recipient's next action is a
+click, an apply, or an install rather than a re-readable message.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
 |---|---|---|---|
 | 1 | Tenancy | **Single-tenant.** One deployment, one set of Slack tokens; every connected agent acts as James's Slack identity. | `src/index.ts:802-808` reads tokens once at process start — one identity per process. Multi-tenant needs per-request token resolution and a token store: a rewrite of the server's core, not a transport addition. |
 | 2 | Who may connect | **Zitadel-native subject, no Google social login.** Atlas confirmed no social-login IdP is configured on the Zitadel instance (`gitops/argocd/platform/zitadel/applicationset.yaml`); adding one is new config work that would put Google in the trust chain directly in front of the Slack workspace, for no PoC benefit. **Identity mechanics settled 2026-08-06T20:45Z:** James's Zitadel user is **not** a Pulumi resource — human accounts mutate outside IaC constantly (password, MFA, profile), and declaring one would need `IgnoreChanges` over most of the resource, deliberately reproducing the `accessTokenType` drift problem (pattern 6) on an identity. James creates his own user via the Zitadel console (he's currently only known to be signed in as the bootstrap admin, `admin@vitruvian.auth.ipv1337.dev`, and hasn't confirmed a personal account exists); the resulting user ID becomes stack config, and only the project-scoped `zitadel.UserGrant` in `zitadel-apps-mcp-slack` is code — it dies with the project, as it should. | Keeps the Gemini test account (client-side) and the Zitadel subject (gate-side) cleanly separate — conflating them was an early gap in the thread that Beacon caught. Keeping the human identity out of Pulumi keeps Zitadel as the system of record rather than creating a second, drifting one. |
-| 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: add `chat:write` only (no `chat:write.public`) to the bot's scope, reinstall the app.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. **⚠️ At risk as of 2026-08-06T20:46Z:** James has confirmed he has **no admin rights on the abrial Slack workspace**. Option A's step 2 (reinstall the app to add the bot scope) needs someone who can reinstall it — an app-collaborator role might suffice, workspace admin might not be required, but that's unconfirmed. If nobody can reinstall, Option A cannot execute as specified and the choice reopens to Option B (user token, capped tool list — the risk profile the team rejected) or Option C (read-only PoC, drops decision 6's read+write goal). | See "Option A" section below — the full resolution, including the reinstall/token-rotation consequence everyone needs to sequence around, and the open risk that could unwind it. |
+| 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: bot-token-only write via `chat:write` (no `chat:write.public`), never the user token.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. **Mechanism updated 2026-08-06T20:50Z: a new, dedicated Slack app is now the recommended way to deliver this, not reinstalling the existing "Vitruvian Slack MCP" app.** See "Option A" section below — the ladder, the reordering, and why the new-app rung is now preferred on more than cost. | See "Option A" section below — the full resolution and the reordering rationale. |
 | 4 | Public exposure via cloudflared, gated only by Zitadel | **Accepted.** | Spark is Google-hosted and reaches the endpoint over the public internet through the existing tunnel; Cloudflare Access can't gate an OIDC flow, so Zitadel is the only gate — reasonable given decisions 1–3. |
 | 5 | Homelab k3s deployment lifetime | **Potentially permanent**, pending a post-PoC monetization decision — not throwaway-then-Cloud-Run as the team first recommended. | Changes what gets built, not just how long it lasts (see "Consequences of decision 5," below). |
 | 6 | Done criteria + hostname | Spark connects → Zitadel OAuth → lists tools → **reads and writes across an explicit, allowlisted set of channels**. Deployed at **`mcp-slack.ipv1337.dev`** (not `-poc`) — "PoC" lives in the namespace and this written decision, not the URL, since renaming later turned out to be free (DNS/HTTPRoute + Spark UI edit) once Wren corrected the redirect-URI assumption, but the team is keeping the real hostname anyway now that decision 5 says permanence is the plan. | Read+write was James's actual ask (scheduled reports/updates); satisfied via Option A rather than the user token. |
@@ -298,40 +326,132 @@ bot's ten original scopes are all `:read`/`:history`; every write lived on the u
 private channels. James's decision 6 (read+write, multiple channels, for scheduled reports) cannot
 be satisfied by bot-only as originally scoped. Three options were on the table; the team settled on
 the one that preserves the credential-boundary property rather than re-admitting the user token:
+**bot-token-only writes via `chat:write`, never the user token.**
 
 | Option | Delivers #6 | Cost |
 |---|---|---|
-| **A. Add `chat:write` to the bot's scopes, reinstall the app — chosen** | Yes | Manifest change + Slack app reinstall (needs abrial workspace admin); posts appear as the app ("Vitruvian Slack MCP"), not as James; keeps the user token out of the cluster entirely |
+| **A. Bot-token `chat:write` — chosen** | Yes | Posts appear as the app, not as James; keeps the user token out of the cluster entirely |
 | B. Ship the user token, cap the remote tool list | Yes | James's personal token on a public endpoint; posts as James; the capped-tool-list boundary is a hand-maintained filter that has to hold indefinitely now that the deployment may be permanent |
 | C. Read-only PoC, defer write | No | Doesn't meet the scheduled-reports goal that motivated decision 6 |
 
-**What Option A actually requires, in order** (this sequencing matters and was worked out across
-several messages — do not shortcut it):
+**Mechanism — reworked 2026-08-06T20:47-20:52Z. A new, dedicated Slack app is the recommended way to
+deliver Option A, not reinstalling the existing "Vitruvian Slack MCP" app James's local stdio
+tool already uses.** The choice started as a single path (reinstall the existing app) and was
+reordered into a three-rung ladder once the team reasoned through what reinstalling actually
+inherits:
 
-1. Add `chat:write` only to the bot's scopes in `manifest.json` (not `chat:write.public` — that
-   would let the bot post to any public channel in the workspace, undoing the channel-allowlist
-   containment). `chat.update` rides along on the same scope, so the bot can edit its own posts.
-2. Reinstall the Slack app in the abrial workspace (needs admin). This **issues a new `xoxb-` bot
-   token and immediately invalidates the old one** — `manifest.json:50` has
-   `token_rotation_enabled: false`, so there is no graceful rotation path.
-3. Update James's **local stdio mcp-slack config first**, confirm Claude Code still works against
-   the new token, **then** hand it to Atlas to re-seal the cluster's sealed-secret. This ordering is
-   deliberate so the two updates don't collide or leave either path broken mid-swap.
-4. Invite the bot to every channel it needs to read and write — `chat:write` (and history/info/
-   thread-reads) only work in channels the bot is a member of, which is a second Slack-enforced
-   boundary stacked on top of the `SLACK_CHANNEL_IDS` allowlist.
-5. On the code side (Wren's transport PR): `postMessage`/`replyToThread`/`updateMessage` route to
-   the bot token **only on the HTTP path**; stdio keeps user-token routing exactly as today. A
-   method-level (not transport-scoped) flip would silently rename James's local Claude Code posts
-   from "James Nguyen" to "Vitruvian Slack MCP" — a regression nobody would notice until it
-   embarrassed someone.
+| Rung | Mechanism | Delivers #6 | Note |
+|---|---|---|---|
+| **1 — chosen** | **New Slack app**, scoped narrowly from creation, `chat:write` included | Yes | James owns it outright; no admin rights on the existing app needed to create one (workspace app-creation/install policy pending confirmation) |
+| 2 — fallback | Reinstall the existing app with `chat:write` added | Yes | Needs collaborator/admin rights on the existing app, which James has confirmed he doesn't have on the workspace side; unconfirmed whether he holds narrower app-collaborator rights |
+| 3 — fallback | Read-only PoC | No | Only if neither 1 nor 2 is available |
 
-Bot-attribution (posts appearing as "Vitruvian Slack MCP" rather than as James) is the one piece of
-Option A that was a product call, not an engineering one. **Resolved 2026-08-06T20:36Z, direct from
-James (DM to Beacon):** yes, posts go out as the app — and he asked for a further, related feature:
-Slack readers should be able to tell which human requested a given app-posted message. See
-"Message attribution," immediately below — **this is active, in-scope work, not a deferred
-design note.**
+**Why rung 1 beats rung 2 on more than cost** (the reasoning that reordered the ladder — record this
+where a future "why not just reinstall" question would look):
+
+- **Blast radius, categorical rather than probabilistic.** The existing bot has accumulated
+  membership in whatever DMs, group DMs, and private channels it's been invited to over its
+  lifetime — un-inventoried, and un-inventoriable from outside (`im:read`/`mpim:read` aren't on its
+  scopes). Reinstalling it inherits that membership as-is. A new app's bot starts in zero
+  conversations; its reach becomes exactly the channels James deliberately invites it to. That
+  guarantee is *probabilistic* under rung 2 (it holds only as long as membership is managed
+  carefully, forever) and *categorical* under rung 1 combined with a narrower scope set (below) —
+  Slack refuses the operation outright, independent of membership or the allow-list.
+- **Independent revocation.** A new app means the cluster's `SLACK_BOT_TOKEN` and James's local
+  stdio token are different Slack apps entirely — different credentials. If the public endpoint is
+  ever compromised, misbehaving, or just needs to be killed in a hurry, James revokes the new app's
+  token and his local Claude Code keeps working. Under a shared app, the only lever to cut off the
+  public endpoint is a token his laptop also depends on — emergency shutdown becomes self-inflicted
+  denial of service on the trusted path, which is exactly the moment hesitation is most costly. A
+  containment control you'd think twice about pulling isn't much of a containment control.
+- **Eliminates a same-day coordination hazard entirely, rather than sequencing around it.** The
+  reinstall path (rung 2) issues a new `xoxb-` and kills the old token immediately
+  (`token_rotation_enabled: false`), so James's local config breaks until updated — a handoff that
+  had to be sequenced deliberately (James updates local, *then* Atlas re-seals the cluster). Under
+  rung 1 the existing app is never touched, so that hazard doesn't need managing — it doesn't exist.
+- **Marginal infra cost is ~zero.** Both rungs re-seal the cluster's sealed-secret and issue a new
+  `xoxb-` token; `SLACK_TEAM_ID` is unchanged either way, since it identifies the workspace, not the
+  app — worth stating so nobody re-derives it from the new app's install and gets it right by
+  accident, which would teach the wrong model. The only real cost of rung 1 over rung 2 is James
+  re-inviting the bot to his target channels by hand — and that manual step is what *creates* the
+  categorical guarantee above, not overhead on the way to it.
+
+**⚠️ Decision property, not a footnote — record where a future consolidation would be proposed:**
+**the cluster path and the local stdio path are on separate Slack apps deliberately.** Independent
+revocation exists *only* as a side effect of that separation; nothing in the code or chart
+expresses it as a requirement. A later "simplification" that merges both onto one app — which will
+look like sensible tidying to whoever proposes it — silently removes the ability to kill the public
+endpoint without also breaking James's local tool, **and the loss is invisible until the moment
+someone actually needs to revoke, which is the worst possible moment to discover it.** Same shape
+as pattern 7 (`looksLikeJwt`'s undocumented second purpose), landing during an incident rather than
+a refactor review.
+
+**Scope set for the new app — narrowed from the existing app's set, not copied.** The existing
+app's scopes were designed for a local stdio tool with unrestricted reach; several don't correspond
+to anything the HTTP tool list actually exposes, and copying them by default was itself an instance
+of pattern 8 (inherited from a different context, never re-checked against the current
+requirement — caught in this thread eight times now). Checked against the eleven tools the HTTP
+path advertises after filtering:
+
+| Keep | Why |
+|---|---|
+| `channels:read`, `channels:history` | Public channel list/read — used |
+| `pins:read`, `bookmarks:read` | The two list tools — used |
+| `users:read` | User lookups — used, but see the tool-level gap below; the scope alone is not sufficient |
+| `chat:write` | Decision 6's write requirement |
+| `groups:read`, `groups:history` | **James's deliberate call** — needed only if private channels are in the allow-list. Framed the same way as the dropped DM scopes below: including them makes private-channel reach probabilistic (bounded only by the allow-list, forever); omitting them makes it categorical (Slack refuses regardless of allow-list). Choose deliberately, not by habit. |
+
+| Drop | Why |
+|---|---|
+| `im:history`, `mpim:history` | Nothing in the HTTP tool set reads a DM or group DM. Dropping them makes DM/group-DM access categorically impossible on this credential — Slack refuses regardless of membership or allow-list — rather than merely unlikely. Retires the DM half of the membership-inventory question by construction (see below), not by policy. |
+| `users:read.email` | `slack_get_user_profile` (`slackClient.ts:206-211`) succeeds without it — Slack just omits the email field. Nothing in the tool set requires it; its only effect is putting workspace members' emails into responses. **Fails silently if omitted, not loudly** — unlike the DM scopes, an absent `users:read.email` produces a 200 with a missing field, not a `missing_scope` error, so if email is ever needed later the symptom is a silently absent field, worth a code comment if this scope is ever reconsidered. **General rule surfaced by this correction, per Wren:** whether a narrowed scope fails loudly or silently depends on whether it gates the *call* (loud — `missing_scope`) or gates a *field on an otherwise-successful call* (silent — the field is just absent). Check which shape applies before assuming a narrow scope is safe to try. |
+
+**The design gap underneath both scope questions, found by Aegis's design-level review (2026-08-06T20:52-20:54Z) — the most significant finding of this build, because it is the first one outside every boundary constructed so far, not a bug inside one:**
+
+`slack_get_users` (`users.list`) and `slack_get_user_profile` (`users.profile.get`) carry **no channel parameter at all** (`slackClient.ts:203,207`). `readChannelParam` correctly returns `{kind: "absent"}` for both — there is no channel to check — and `assertParamsAllowed` correctly passes them through, because that is the right behavior for a call that isn't channel-scoped. Neither tool is in `USER_TOKEN_ONLY_TOOLS`, so both are advertised and dispatchable over HTTP. The consequence: **`slack_get_users` returns the entire workspace member directory to any authenticated caller**, unbounded by `SLACK_CHANNEL_IDS`, bot channel membership, or which rung of the ladder above is chosen — because `users.list` is **workspace-scoped, not channel-scoped or membership-scoped**. A new app's bot in zero conversations still returns the full directory on its very first call. `projectRoleCheck` doesn't help either — it restricts *who* may call, not *what* a valid call reaches.
+
+**Every control built earlier tonight (the channel allow-list, the credential-boundary pattern, the new-app blast-radius argument) is channel-shaped. This tool is not channel-shaped, so none of those controls bind to it.** That is why a design-level review (Aegis's brief: "is the boundary correct," not "does the implementation match the design") caught what nine rounds of code review, testing, and adversarial completeness-checking did not — every prior defect this build found was *inside* the channel boundary; this is the first one *outside* it.
+
+**Fix, per Aegis, not yet landed:** withhold `slack_get_users` from the HTTP tool list entirely — Aegis sees no remote use case for bulk directory enumeration; a single-user lookup via `slack_get_user_profile` (given a `U…` ID surfaced from an allow-listed channel's history) is the narrow, defensible version. `users:read` scope alone is not sufficient protection — the tool itself must also be pulled from the HTTP path, same "belt and braces" relationship as a scope plus a tool-list withholding elsewhere in this doc.
+
+**Consequence — the scope list above is provisional, and James was told to stop.** Beacon sent James three successive scope corrections in five minutes as this discussion evolved (the original set, Wren's DM-scope correction, Atlas's email-scope correction) before Aegis's finding — a security configuration James would act on **irreversibly** by creating and installing a Slack app — landed and would have been a fourth. Beacon has told James to hold off entirely until one settled, complete list is sent, rather than narrowing after installation costs another app-and-token cycle. **This section's scope table is not yet the final word; treat it as provisional pending Aegis's complete exposure-model review**, which also covers two items not yet reflected here: `/health` should not be published through the cloudflared tunnel, and the runtime half of the boundary (egress `NetworkPolicy`, edge rate limiting, the sealed-secret shape) doesn't yet appear in any of #1416/#1417/#1418.
+
+**Consequence for the bot-membership-inventory open item (was: "someone with Slack workspace admin
+should inventory the bot's private-channel and DM membership before the endpoint goes public"):**
+retires **only for the exposed HTTP path** under rung 1 — a new app's bot starts with zero
+membership and, once `im:history`/`mpim:history` are dropped, cannot express a DM read at all. It
+does **not** retire for stdio: James's local Claude Code keeps using the existing app with its
+accumulated, un-inventoried membership. That inventory question stays open for the local tool; it
+does not apply to anything reachable from the public internet.
+
+**What Option A requires under rung 1, in order:**
+
+1. James creates a new Slack app in the abrial workspace with the scope set above (confirm first
+   whether workspace policy lets members create apps, and separately whether installing one needs
+   admin approval — a created-but-uninstallable app spends the round trip for nothing).
+2. Invite the new app's bot to every channel it needs to read and write — `chat:write` (and
+   history/info/thread-reads) only work in channels the bot is a member of, a second Slack-enforced
+   boundary stacked on the `SLACK_CHANNEL_IDS` allowlist.
+3. Atlas seals the new `xoxb-` token into the cluster's sealed-secret — independently, with no
+   sequencing dependency on James's local setup, since the existing app (and his local config) is
+   never touched.
+4. On the code side (Wren's transport PR): `postMessage`/`replyToThread`/`updateMessage` route
+   through the new app's bot token **only on the HTTP path**; stdio keeps routing through the
+   existing app's user token exactly as today — `manifest.json` continues describing the existing
+   app, with the new app's scopes documented alongside it, not editing over it.
+
+**If rung 1 turns out unavailable** (workspace blocks member-created apps, or blocks installing
+them without admin approval), fall back to rung 2's mechanics — reinstalling the existing app with
+`chat:write` added — which inherits the reinstall-coordination hazard and the un-inventoried
+membership blast radius described above, and needed a deliberate sequencing step: update James's
+local stdio config first, confirm Claude Code still works, *then* hand the new token to Atlas to
+re-seal — since that hazard doesn't exist under rung 1 but returns under rung 2.
+
+Bot-attribution (posts appearing as the app rather than as James) is the one piece of Option A that
+was a product call, not an engineering one. **Resolved 2026-08-06T20:36Z, direct from James (DM to
+Beacon):** yes, posts go out as the app — and he asked for a further, related feature: Slack
+readers should be able to tell which human requested a given app-posted message. See "Message
+attribution," immediately below — **this is active, in-scope work, not a deferred design note.**
 
 ## Message attribution — active requirement (added 2026-08-06T20:36Z, corrected into scope 20:46Z)
 
