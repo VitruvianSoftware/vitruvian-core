@@ -151,13 +151,22 @@ describe("token verification", () => {
   // on a couple of seconds of drift — presenting as an auth bug that
   // reproduces only sometimes. The tolerance is deliberate, so it is pinned:
   // small drift is absorbed, a genuinely expired token is still refused.
-  it("absorbs small clock drift but still refuses a genuinely expired token", async () => {
+  // Pinned at the boundary, not merely bracketed. The earlier version asserted
+  // -10s accepted and -120s rejected, which only proves the tolerance sits
+  // somewhere in (10s, 120s] — a later widening to 90s would have passed
+  // unnoticed. These two cases fail if the value moves in either direction.
+  //
+  // Scope of the evidence: the drift this absorbs is between this server and
+  // Zitadel, co-located and measured at 81ms worst case over 24h. It says
+  // nothing about the clock on the client side issuing the request, which
+  // nobody here can observe.
+  it("accepts 29s past expiry and rejects 31s, pinning the tolerance at 30s", async () => {
     await expect(
-      verifier().verify(await mintToken({ expiresIn: "-10s" }))
+      verifier().verify(await mintToken({ expiresIn: "-29s" }))
     ).resolves.toMatchObject({ subject: "user-42" });
 
     await expect(
-      verifier().verify(await mintToken({ expiresIn: "-120s" }))
+      verifier().verify(await mintToken({ expiresIn: "-31s" }))
     ).rejects.toBeInstanceOf(InvalidTokenError);
   });
 

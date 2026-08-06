@@ -28,7 +28,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 import { MissingTokenError, type TokenVerifier } from "../src/auth.js";
-import { startHttpTransport } from "../src/httpTransport.js";
+import { headerSafe, startHttpTransport } from "../src/httpTransport.js";
 
 const CONFIG = {
   port: 0, // ephemeral; the OS picks a free one
@@ -151,5 +151,27 @@ describe("http transport request boundary", () => {
       // The point: a transient IdP blip must not take the listener down.
       expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
     });
+  });
+});
+
+// The WWW-Authenticate description carries a diagnostic message. Two failure
+// modes, both measured against a real Node server rather than reasoned about.
+describe("headerSafe", () => {
+  it("strips CR/LF/NUL, which make writeHead throw and cost us the 403", () => {
+    expect(headerSafe("aud\r\nX-Injected: yes")).toBe("aud X-Injected: yes");
+    expect(headerSafe("aud\nvalue")).toBe("aud value");
+    expect(headerSafe("aud\0value")).toBe("aud value");
+  });
+
+  // The quieter of the two: a double quote sends successfully and produces a
+  // malformed RFC 7235 quoted-string, so a strict client mis-reads where the
+  // value ends. No security consequence; fails silently.
+  it("replaces the double quote that would break the quoted-string", () => {
+    expect(headerSafe('aud"quoted')).toBe("aud'quoted");
+  });
+
+  it("leaves an ordinary diagnostic message intact", () => {
+    const msg = "Token audience does not include this server's project (999).";
+    expect(headerSafe(msg)).toBe(msg);
   });
 });
