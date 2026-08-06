@@ -339,6 +339,18 @@ declining to record a claim as settled isn't merely avoiding a future correction
 creates the pressure that produces the verification which would otherwise never have happened,
 because nobody feels compelled to test something the record already treats as true.
 
+**Extended one step further, per Beacon (2026-08-06T22:39:21Z): the "unverified" marker doesn't
+just leave room for a test — it creates the obligation to run one, and that argues for writing it
+even when confident, not only when in doubt.** A record that says "measured" has no pull on anyone;
+a record that says "unverified" recruits whoever reads it. That inverts the usual instinct, where
+confidence is precisely the condition under which people stop annotating a claim's status — the
+more sure the author feels, the less likely "unverified" gets written, and the less likely anyone
+downstream double-checks it. Tonight's two independent Cilium experiments came from one held-open
+line, assigned to nobody; the record's admission that it didn't know is what did the recruiting.
+Apply this as a habit independent of actual confidence level: mark a claim's verification status
+explicitly, in both directions, because the marker is what does the work — not the author's private
+certainty about it.
+
 ### 10. A boundary built in one layer needs to be designed in every layer that could hold it — weakest first
 
 Per Aegis's design-level review (2026-08-06T20:55:43Z), answering the question the whole build had
