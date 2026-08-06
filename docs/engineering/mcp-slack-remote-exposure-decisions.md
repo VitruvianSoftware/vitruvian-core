@@ -611,6 +611,22 @@ run from the wrong directory, a database query against the wrong connection stri
 cheap — name the scope the tool actually used in the same sentence as the negative result — and it
 would have caught this in the same ten seconds the actual check took once someone thought to ask.
 
+**Companion error, per Aegis (self-correction) and Beacon (2026-08-06T22:26:31Z) — same family,
+different failure point: a precondition recorded as a version floor instead of the structural
+property that actually matters.** Aegis had written a break-condition citing a specific Cilium
+version; the real dependency was a structural property of this cluster's traffic path (whether a
+peer arrives in-cluster or as `world`), which the version number happened to correlate with at
+review time but doesn't encode. A version-floor precondition teaches the next reader to check
+something that can no longer change (the version they're already running) instead of the thing
+that can (whether the topology it was proxying for still holds). Beacon's armed-watch case is the
+live-system version of the same error: polling a status-page component label as a proxy for "can
+our workflows run" rather than polling the actual precondition (`gh run list`, a run created after
+the outage began) — the two can diverge in both directions, and a staged recovery is exactly where
+a proxy signal lags the real one. **Rule: when writing a precondition or a check, ask whether it
+names the condition that's actually load-bearing or a correlate that was merely true when the check
+was written — a version number, a status label, a component name — and prefer the structural
+property every time a choice exists between the two.**
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
@@ -1204,6 +1220,12 @@ any future Zitadel-client Pulumi stack in this repo:
    destroy` on what's still called a PoC would delete his identity); only the `zitadel.UserGrant`
    binding him to `mcp-slack-user` is code. Atlas's `grantUserIds` work is unblocked on the value now,
    not on a decision.
+5. **New, 2026-08-06T22:16Z — create the Cloudflare WAF/rate-limit block on `mcp-slack.ipv1337.dev`
+   (Gate 5, above).** His Cloudflare account, so this is his to create, not a spec someone else can
+   apply. Hard go-live gate, not Phase 2b hardening — the endpoint does not go live without it, and
+   the containment runbook stays unpublished until it exists. Deliberately unmanaged config (see
+   Gate 5's tension note above) — leave a comment on the rule itself stating what it is and why it
+   isn't in git, so a later cleanup pass doesn't remove it as an anti-pattern.
 
 ## Deferred, not closed
 
