@@ -84,7 +84,10 @@ export async function startHttpTransport(
     issuer: config.issuer,
     projectId: config.projectId,
   })
-): Promise<{ close: () => Promise<void> }> {
+): Promise<{
+  address: () => { port: number };
+  close: () => Promise<void>;
+}> {
   // sessionIdGenerator: undefined puts the transport in stateless mode — every
   // request is self-contained. That suits a single-tenant deployment behind an
   // IdP: the bearer token, not a server-side session, is what carries identity.
@@ -95,7 +98,32 @@ export async function startHttpTransport(
 
   const httpServer = createServer(
     (req: IncomingMessage, res: ServerResponse) => {
-      void handle(req, res);
+      // Every rejection has to be caught here. `handle` is async and its
+      // result is discarded, so anything it throws that isn't an AuthError —
+      // a JWKS fetch failure is the realistic one, since that reaches the
+      // network on the auth path — would otherwise become an unhandled
+      // rejection: the request never gets a response, and Node's default
+      // behaviour since v15 is to terminate the process. A transient IdP
+      // blip taking the server down is not the failure mode to have on a
+      // deployment whose whole job is being reachable.
+      handle(req, res).catch((error: unknown) => {
+        process.stderr.write(
+          `mcp-slack: unhandled error serving ${req.method} ${req.url}: ` +
+            `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+        );
+        if (res.headersSent) {
+          res.destroy();
+          return;
+        }
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "Internal server error" },
+            id: null,
+          })
+        );
+      });
     }
   );
 
@@ -136,6 +164,18 @@ export async function startHttpTransport(
   });
 
   return {
+    /**
+     * The address actually bound. Only meaningful after `listen` resolved,
+     * which is why it is a method rather than the configured port: tests bind
+     * port 0 and need to discover what the OS chose.
+     */
+    address: () => {
+      const address = httpServer.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("HTTP server is not bound to a TCP port");
+      }
+      return address;
+    },
     close: () =>
       new Promise<void>((resolve, reject) => {
         httpServer.close((err) => (err ? reject(err) : resolve()));
