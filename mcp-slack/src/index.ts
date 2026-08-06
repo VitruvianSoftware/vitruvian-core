@@ -29,7 +29,11 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { ChannelNotAllowedError, type ChannelGuard } from "./channelAllowlist.js";
+import {
+  ChannelNotAllowedError,
+  channelIdFromParams,
+  type ChannelGuard,
+} from "./channelAllowlist.js";
 import {
   ConfigError,
   resolveConfig,
@@ -547,14 +551,29 @@ class SlackClient {
   }
 
   /**
-   * Applied to every method that takes a caller-supplied channel ID.
+   * Enforces the channel allow-list on every outbound Slack call.
    *
    * This is the fix for `SLACK_CHANNEL_IDS` having only ever filtered
    * `listChannels`: without it, naming an ID was sufficient to read or write
    * any conversation the bot belongs to, including private channels and DMs.
+   *
+   * It lives in `api()` rather than at each call site on purpose. Guarding
+   * per-method made enforcement depend on someone remembering to add a line
+   * to each new method — and on the method's signature being shaped such that
+   * the channel parameter is obvious. Two methods (`addBookmark`,
+   * `createCanvas`) were missed on exactly that basis: one has a multi-line
+   * signature, the other takes the channel third and optional. Anchoring on
+   * the request parameters instead makes "a call naming a channel is checked"
+   * a property of the transport rather than a coincidence of how the wrappers
+   * happen to be written.
+   *
+   * Slack is inconsistent about the parameter name — `channel` on the
+   * conversations/chat/pins families, `channel_id` on bookmarks and canvases —
+   * so both are checked.
    */
-  private guard(channelId: string): void {
-    this.channelGuard.assertAllowed(channelId);
+  private guardParams(params: Record<string, unknown>): void {
+    const channelId = channelIdFromParams(params);
+    if (channelId) this.channelGuard.assertAllowed(channelId);
   }
 
   // Helper to make Slack API calls
@@ -564,6 +583,8 @@ class SlackClient {
     token: "bot" | "user" = "bot",
     httpMethod: "GET" | "POST" = "GET"
   ): Promise<unknown> {
+    this.guardParams(params);
+
     const headers = token === "bot" ? this.botHeaders : this.userHeaders;
     if (!headers) {
       // Reached only if a user-token tool is invoked on the HTTP transport.
@@ -623,7 +644,6 @@ class SlackClient {
   }
 
   async getChannelInfo(channelId: string) {
-    this.guard(channelId);
     return this.api("conversations.info", {
       channel: channelId,
       include_num_members: "true",
@@ -631,7 +651,6 @@ class SlackClient {
   }
 
   async getChannelHistory(channelId: string, limit = 10) {
-    this.guard(channelId);
     return this.api("conversations.history", {
       channel: channelId,
       limit,
@@ -639,7 +658,6 @@ class SlackClient {
   }
 
   async getThreadReplies(channelId: string, threadTs: string) {
-    this.guard(channelId);
     return this.api("conversations.replies", {
       channel: channelId,
       ts: threadTs,
@@ -647,7 +665,6 @@ class SlackClient {
   }
 
   async setChannelTopic(channelId: string, topic: string) {
-    this.guard(channelId);
     return this.api(
       "conversations.setTopic",
       { channel: channelId, topic },
@@ -695,7 +712,6 @@ class SlackClient {
   // ── Messaging (User Token) ─────────────────────────────────────────
 
   async postMessage(channelId: string, text: string) {
-    this.guard(channelId);
     return this.api(
       "chat.postMessage",
       { channel: channelId, text },
@@ -705,7 +721,6 @@ class SlackClient {
   }
 
   async replyToThread(channelId: string, threadTs: string, text: string) {
-    this.guard(channelId);
     return this.api(
       "chat.postMessage",
       { channel: channelId, thread_ts: threadTs, text },
@@ -715,7 +730,6 @@ class SlackClient {
   }
 
   async updateMessage(channelId: string, ts: string, text: string) {
-    this.guard(channelId);
     return this.api(
       "chat.update",
       { channel: channelId, ts, text },
@@ -725,7 +739,6 @@ class SlackClient {
   }
 
   async addReaction(channelId: string, timestamp: string, reaction: string) {
-    this.guard(channelId);
     return this.api(
       "reactions.add",
       { channel: channelId, timestamp, name: reaction },
@@ -737,12 +750,10 @@ class SlackClient {
   // ── Pins (User Token) ──────────────────────────────────────────────
 
   async listPins(channelId: string) {
-    this.guard(channelId);
     return this.api("pins.list", { channel: channelId }, "bot");
   }
 
   async pinMessage(channelId: string, timestamp: string) {
-    this.guard(channelId);
     return this.api(
       "pins.add",
       { channel: channelId, timestamp },
@@ -752,7 +763,6 @@ class SlackClient {
   }
 
   async unpinMessage(channelId: string, timestamp: string) {
-    this.guard(channelId);
     return this.api(
       "pins.remove",
       { channel: channelId, timestamp },
@@ -764,7 +774,6 @@ class SlackClient {
   // ── Bookmarks (Bot Token for read, User Token for write) ───────────
 
   async listBookmarks(channelId: string) {
-    this.guard(channelId);
     return this.api("bookmarks.list", { channel_id: channelId }, "bot");
   }
 

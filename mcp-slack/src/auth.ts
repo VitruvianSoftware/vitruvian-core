@@ -206,7 +206,15 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
 
     let payload: JWTPayload;
     try {
-      ({ payload } = await jwtVerify(token, jwks, { issuer }));
+      // algorithms is pinned rather than left to the token's own header.
+      // jose already rejects "alg: none" and an asymmetric JWKS cannot be
+      // coerced into HMAC, so this is defence in depth rather than a fix —
+      // it keeps the accepted set explicit if the IdP's advertised keys ever
+      // widen. RS256 is what Zitadel issues.
+      ({ payload } = await jwtVerify(token, jwks, {
+        issuer,
+        algorithms: ["RS256"],
+      }));
     } catch (error) {
       throw new InvalidTokenError(
         error instanceof Error ? error.message : String(error)

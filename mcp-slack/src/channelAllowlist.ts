@@ -64,6 +64,23 @@ export class MissingAllowlistError extends Error {
   }
 }
 
+/**
+ * Extracts the channel a Slack request is addressed to, if any.
+ *
+ * Slack is inconsistent about the parameter name: `channel` on the
+ * conversations, chat and pins families, `channel_id` on bookmarks and
+ * canvases. Enforcement anchors on this rather than on wrapper-method
+ * signatures, so it is the one piece that has to know both spellings.
+ */
+export function channelIdFromParams(
+  params: Record<string, unknown>
+): string | undefined {
+  const candidate = params.channel ?? params.channel_id;
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : undefined;
+}
+
 export interface ChannelGuard {
   /** Channel IDs this server may touch, in configuration order. */
   readonly allowed: readonly string[];
