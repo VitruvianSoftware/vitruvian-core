@@ -161,6 +161,39 @@ that the enumeration it replaced would have needed. Apply this any time a fix fo
 incomplete" is "route everything through one place": that's real progress, and the next step is
 scrutinizing that one place harder, not treating the routing itself as the proof.
 
+### 6. A value the code cannot interpret must never be treated as the permissive case
+
+Per Atlas (2026-08-06T20:19:12Z): distinct from pattern 5, and it bit two people independently
+within twenty minutes of each other on two different stacks in this build. Pattern 5 is about a
+gap in *what's checked*; this one is about what happens when a check runs and the input can't be
+parsed at all.
+
+**Instance one, mcp-slack:** `channelIdFromParams` returning `undefined` for a non-string channel
+argument, which `guardParams` then read as "not channel-scoped" — the permissive branch — rather
+than "couldn't determine the channel," the restrictive one. Covered above as the pattern-5 worked
+example; it's also an instance of this narrower rule.
+
+**Instance two, `zitadel-apps-mcp-slack` (PR #1417):** `cfg.GetBool("projectRoleCheck")` routes
+through `cast.ToBool`, which swallows any parse error and silently returns `false` for a string
+`strconv.ParseBool` doesn't recognize. `projectRoleCheck` is the enforcement for decision 2 (only
+the intended Zitadel subject may obtain a token) — `false` is Zitadel's permissive setting, issuing
+tokens to any authenticated user. So `projectRoleCheck: "yes"` — a plausible, human attempt to turn
+the check *on* — silently turned it **off**, while `pulumi up` reported success. Fixed at
+`e9a86712`: unset still defaults to `false` deliberately (enabling before the role grant exists
+locks out the first login), but a value that's *present and unparseable* now fails the apply with
+a message naming what it governs, rather than being coerced.
+
+**The rule: when coercing a value that governs a security-relevant branch, "I couldn't parse this"
+is never the same outcome as either valid answer — and if your coercion function collapses the
+two, that's the bug, independent of which branch happens to be the default.** Both instances share
+the same shape: a general-purpose stdlib/utility coercion (`cast.ToBool`, `Boolean(x)`, a `typeof`
+check that returns `undefined` on mismatch) has an implicit "give up gracefully" behavior, and that
+behavior happened to land on the permissive side of a security decision. The fix is never "pick a
+better default" — it's "distinguish 'absent' from 'malformed' from 'present and valid,' and treat
+malformed as an error, not a default." Check this specifically wherever a config flag, an env var,
+or a caller-supplied argument is parsed on the path to an allow/deny decision — a stray quote, a
+`"yes"` where `"true"` was expected, or a wrong JSON type should fail loudly, not fail open.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
