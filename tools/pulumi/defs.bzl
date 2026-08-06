@@ -34,6 +34,7 @@ Bazel only launches it). Extra args after `--` are forwarded to pulumi verbatim.
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # pulumi subcommands exposed as run targets, each baked into the wrapper via args.
 _SUBCOMMANDS = [
@@ -84,6 +85,55 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
         name = "setup",
         srcs = ["//tools/pulumi:pulumi_setup.sh"],
         args = [dir],
+        visibility = visibility,
+    )
+
+def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:public"]):
+    """Declare a `bazel test` target that runs `go test ./...` for this Pulumi
+    Go project.
+
+    These projects are standalone Go modules (their own `go.mod`), deliberately
+    kept out of the repo's `go.work` (see `pulumi_cmd.sh`) — so they aren't
+    covered by the ordinary rules_go + gazelle graph, and this shells out to the
+    ambient `go` toolchain the same way `pulumi_cmd.sh` shells out to the
+    ambient `pulumi` CLI. It exercises the SAME `go test ./...` CI already runs
+    (`.github/workflows/ci.yaml`, job "go test (IaC modules with tests)") —
+    this target gives local `bazel test` / `bazel query` visibility into that
+    coverage, it is not what makes CI run it.
+
+    Tagged `no-remote-exec` + `requires-network`: RBE workers aren't guaranteed
+    a `go` toolchain or Go module cache the way the GitHub Actions runner is
+    (`actions/setup-go` in that job), and module verification needs the
+    network. Same reasoning `tabula/api`'s `no-remote-exec` service tests use
+    for an unavailable-on-RBE dependency — this runs locally only, not on RBE.
+
+    Call this from the Pulumi project's own BUILD file, alongside
+    `pulumi_project`, e.g.:
+
+        pulumi_project(name = "repo_config", dir = "infrastructure/pulumi/platform/repo_config")
+        pulumi_go_test()
+
+    Args:
+      name: target name (developer-facing label is `test`).
+      extra_data: labels for files a `replace` directive in this project's
+        `go.mod` points at outside this package (glob() can't cross package
+        boundaries to reach them). E.g. repo_config's `go.mod` has
+        `replace .../pkg/secrets => ../../pkg/secrets`, so it passes
+        `["//infrastructure/pulumi:pkg_secrets_files"]` here — the replace
+        target's real files have to be on disk at that relative path or `go
+        test` fails with "replacement directory ... does not exist", not a
+        missing-dependency error.
+      visibility: visibility for the generated target.
+    """
+    sh_test(
+        name = name,
+        srcs = ["//tools/pulumi:pulumi_go_test.sh"],
+        args = [native.package_name()],
+        data = native.glob(["**/*.go", "go.mod", "go.sum"]) + extra_data,
+        tags = [
+            "no-remote-exec",
+            "requires-network",
+        ],
         visibility = visibility,
     )
 

@@ -21,6 +21,8 @@ exports_files([
     "resolve_identity.sh",
     "pulumi_setup.sh",
     "create_app.sh",
+    # Consumed by pulumi_go_test() (defs.bzl) from each project's own package.
+    "pulumi_go_test.sh",
 ])
 
 # One-time, repo-level App bootstrap: `bazel run //tools/pulumi:create-app`.

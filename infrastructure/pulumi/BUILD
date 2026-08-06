@@ -29,3 +29,15 @@ pulumi_project(
     name = "vitruvian-core-infra",
     dir = "infrastructure/pulumi",
 )
+
+# pkg/secrets has no BUILD file of its own, so it's part of THIS package.
+# Exported so sibling Pulumi projects whose go.mod has
+# `replace .../pkg/secrets => ../../pkg/secrets` (e.g. repo_config) can pull it
+# into their pulumi_go_test() sandbox via extra_data — the replace directive
+# resolves to a real path on disk, so `go test` needs the files there, not
+# just the module declared.
+filegroup(
+    name = "pkg_secrets_files",
+    srcs = glob(["pkg/secrets/**"]),
+    visibility = ["//visibility:public"],
+)
