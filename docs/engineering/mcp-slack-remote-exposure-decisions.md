@@ -7,9 +7,13 @@ call, 2026-08-06 — and merges at Phase 3 close, not before. The subject is sti
 record that chases every in-flight change costs a rewrite and a re-review each time for a document
 nobody is reading yet. **Correction pass taken 2026-08-06T21:49Z** (pattern 12 added; the two
 go-live blockers that were open at the previous pass are now resolved; `OIDC_ALLOWED_SUBJECTS`'s
-status corrected from "decided" to "decided, not built, now a hard Phase 2b gate") — it gets one
-more if Phase 1/2 land materially different from what's written here, then lands once, accurate,
-when the decisions have actually stopped moving.
+status corrected from "decided" to "decided, not built, now a hard Phase 2b gate"). **Second
+correction pass, 2026-08-06T22:17Z:** the first pass itself recorded a stale item — "James flips
+`allowRegister` in the console tonight" — sourced to a relay gap, not to James. He declined the
+console route entirely and wants the Zitadel-instance work done in code, same as everything else in
+this repo; corrected throughout, including "What's still James's to do." It gets one more if Phase
+1/2 land materially different from what's written here, then lands once, accurate, when the
+decisions have actually stopped moving.
 **Context:** James asked whether mcp-slack — today a local stdio tool for harnesses like Claude Code
 — could also serve remote agent harnesses (Google Gemini Spark). Wren and Atlas scoped six calls by
 reading `mcp-slack/src/index.ts` and `mcp-slack/manifest.json` directly; James answered on
@@ -432,16 +436,68 @@ the go-live gate correction immediately below.
 Sources: [`token.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/domain/token.go) ·
 [`auth_request.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/api/oidc/auth_request.go)
 
-### 13. Containment delivered through GitOps inherits the availability of the CI system that delivers it
+### 13. One root cause, two peer consequences: reconcilers fight emergency deviation, and GitOps-delivered controls inherit CI's availability
 
-Per Beacon (2026-08-06T22:10:25Z), naming a property Atlas's containment-lever comparison exposed
-but nobody had stated directly. mcp-slack's finest-grained per-caller containment lever —
-removing a subject from `OIDC_ALLOWED_SUBJECTS`, or any other chart/config change — ships as a git
-change through the merge queue, which runs on GitHub Actions. **Tonight's build lived through a live
-demonstration of the consequence: for the four hours Actions was in `major_outage`, that lever was
-not slow, it was unavailable.** What remained reachable were the controls that sit outside the
-GitOps delivery path entirely — deleting the Cloudflare DNS record fronting the tunnel, and
-suspending or scaling down the deployment directly.
+Per Atlas (2026-08-06T22:14Z), naming the root cause beneath two containment-lever findings from
+tonight's build. Beacon proposed nesting his own finding inside Atlas's as an instance
+(2026-08-06T22:16Z), then retracted that on Atlas's pushback in the same exchange
+(2026-08-06T22:18Z): the two share a cause but have distinct consequences, and collapsing one into
+the other loses the second. Recorded here as peers.
+
+**The shared root cause: a reconciler cannot distinguish "unauthorized drift" from "the responder
+just pulled the emergency brake."** Both look identical to it — a deviation to be corrected — so
+any control that lives *inside* a reconciled system inherits the reconciler's own view of what
+counts as a problem to fix.
+
+**Consequence A — the reconciler fights the responder (Atlas).** A control that lives inside a
+reconciled system is only as available during an incident as the reconciler is willing to let it
+be, which, if the deviation *is* the containment action, can mean not available at all — silently,
+with no notification that containment was undone. This is a property of reconciliation itself
+(GitOps sync, external-dns, any Kubernetes controller), independent of what delivers the change
+that trips it.
+
+**Consequence B — GitOps-delivered controls inherit CI's availability (Beacon, first stated
+2026-08-06T~21:50Z).** A different mechanism, same root cause one layer up: if the *only* way to
+change a control is a git change through a merge queue, the control is only as available as the CI
+system that queue depends on — a fact about the delivery pipeline, not about reconciliation.
+Tonight's build lived through a direct demonstration: for the four hours GitHub Actions was in
+`major_outage`, the finest-grained containment lever (removing a subject from
+`OIDC_ALLOWED_SUBJECTS`) required a git change through the merge queue, which runs on Actions — so
+the lever wasn't slow, it was unavailable, independent of how easy the underlying config fix was.
+A control could in principle be reconciler-fast (Consequence A doesn't apply) and still be
+CI-blocked (Consequence B does), or vice versa — treat them as two separate questions to ask of
+every proposed lever, not one.
+
+**Worked example of Consequence A, and sharper than pattern 7's `looksLikeJwt` case, because there
+is no version of "just don't make that change" that would have been right here (Beacon,
+2026-08-06T22:16Z).** The Cloudflare DNS record fronting the tunnel was, for a few hours, a real
+containment lever: hand-deleting it worked because mcp-slack's chart shipped no `DNSEndpoint` for
+the hostname, so nothing reconciled the record back. `54c295ab` fixes that chart gap — correctly;
+every other tunnel-exposed app on this cluster ships a `DNSEndpoint`, and mcp-slack's absence was
+its own defect, the same "renders clean while missing the thing that makes it work" shape as an
+unloaded `PrometheusRule`. Shipping the fix hands the record to external-dns's `policy: sync` loop,
+which silently deletes the only containment lever that had survived reconciliation. Nobody would
+have connected the two: the commit is unambiguously an improvement, its message says so
+accurately, and the property it removed was never written down — nobody knew the DNS gap was
+load-bearing for containment until an hour before the fix shipped. Pattern 7's fix was "document
+the second purpose so a future refactor doesn't remove it by accident" — a real option existed
+there (leave the code alone, or refactor with the comment in place). Here, the correct engineering
+action *was* the one that destroyed the lever; there is no "don't ship this" that both fixes the
+chart and preserves the lever, because the lever's existence was never a decision, only a side
+effect of a bug.
+
+**A third finding sharpens Consequence A further and belongs beside it, not folded in (Beacon,
+2026-08-06T22:18Z): "does undoing this lever require CI?" is a separate test from "does this lever
+survive both reconcilers," and a lever can pass the first and fail the second.** Revoking the Slack
+bot token at Slack survives both ArgoCD and external-dns — no reconciler has an opinion about a
+credential's validity at the far end — so it initially read as a clean example of a lever outside
+the reconciled system. It isn't: restoring the endpoint after a revoke needs a new `xoxb-` token
+sealed and deployed, which is a git change through the same CI-gated merge queue as everything
+else. Under a CI outage that makes it a one-way door — stop the endpoint and be unable to restore
+it until Actions recovers, an outage you chose rather than contained. **The gate for any proposed
+containment lever is reversibility, not just survival**: does pulling it require CI, and separately,
+does *undoing* it require CI — a lever can answer the first "no" and the second "yes," and only
+checking survival misses exactly that case.
 
 **Correction, per Beacon (2026-08-06T22:13:15Z) — the DNS-record example is conditional, and stating
 it unconditionally would teach the exact belief that breaks it.** The record survives a hand
@@ -884,13 +940,22 @@ unowned by this record because they're bigger than mcp-slack, and the platform-w
 tracked at the platform level, not folded into this build's gate — but the answers are in, and per
 pattern 11 they compose into a real path, not a bounded one:
 
-1. **Self-registration is open.** `allowRegister: true` on the instance-default login policy, live
-   since bootstrap (`sequence: 18`, unedited since 2026-06-24). Confirmed two independent ways —
-   Atlas at the policy (`GET /admin/v1/policies/login`), Beacon at the render (a live, submittable
-   registration form). **Decision: James flips it to `false` in the console tonight** — the durable
-   fix (a `zitadel-instance` Pulumi stack, its own `IAM_OWNER` machine user) is real but is days of
-   work, and closing a live directory-integrity gap shouldn't wait on it. Tracked as its own platform
-   item, not this build's — but see composition, next.
+1. **Self-registration is open, and it stays open — corrected 2026-08-06T22:17Z.** `allowRegister: true`
+   on the instance-default login policy, live since bootstrap (`sequence: 18`, unedited since
+   2026-06-24). Confirmed two independent ways — Atlas at the policy (`GET /admin/v1/policies/login`),
+   Beacon at the render (a live, submittable registration form). **A console flip was proposed and
+   James declined it, twice, directly:** *"Can't we manage this in code?"* (21:26) and *"we have never
+   configured zitadel manually. everything we have done has been done in code"* (21:36) — a standing
+   constraint on how this repo's infrastructure is configured, not a preference about one toggle. This
+   record briefly carried "James flips it in the console tonight" as decided; that was wrong, sourced
+   to a relay gap (Beacon held the answer in a DM channel and didn't bring it back here for roughly an
+   hour), not to James changing his mind. **The actual path is Atlas's option C:** a separate
+   `zitadel-instance` Pulumi stack with its own `IAM_OWNER` machine user, leaving `zitadel-apps-deploy`
+   at `ORG_OWNER`. The open ask for James is *approve that machine user and its Actions secret*, not
+   *click a toggle*. **Consequence, stated plainly: `allowRegister` stays `true` until that stack
+   exists and applies** — days of work, not tonight. Defensible given the re-rating below (directory
+   integrity, not data exposure — oauth-user-inspector has no gate behind the login to begin with).
+   Tracked as its own platform item, not this build's — but see composition, next.
 2. **The audience question is closed, and closed the wrong way.** Pattern 12 (above): `aud` in this
    instance is caller-controlled with no grant or existence check, confirmed at v4.15.3 source. There
    is no "different OIDC client in the org" precondition left to worry about — any authenticated
@@ -905,7 +970,10 @@ mcp-slack**, the moment its Zitadel project exists and the server is deployed. *
 PR #1417 (`zitadel-apps-mcp-slack`) hasn't applied and the server isn't deployed, so this is a
 go-live blocker, not a current exposure. It is the reason `OIDC_ALLOWED_SUBJECTS` was just elevated
 to a hard Phase 2b gate rather than a follow-up PR, above — audience validation contributes nothing
-against this path, so it cannot be the thing that closes it.
+against this path, so it cannot be the thing that closes it. **With `allowRegister` now confirmed to
+stay `true` for the foreseeable future (James's IaC-only constraint, above), `OIDC_ALLOWED_SUBJECTS`
+is not one of two mitigations — it is the only one on any near-term timeline.** No version of "the
+registration setting closes part of this" survives; the Phase 2b gate carries the entire weight.
 
 ## Consequences of decision 5 (potentially permanent, not throwaway)
 
@@ -1012,12 +1080,17 @@ any future Zitadel-client Pulumi stack in this repo:
    (`admin@vitruvian.auth.ipv1337.dev`) and hasn't confirmed whether a personal account already
    exists. The resulting user ID becomes stack config for the `zitadel.UserGrant` binding him to
    `mcp-slack-user`.
-4. **New, 2026-08-06T21:49Z — flip `allowRegister` to `false` in the Zitadel console tonight**, per
-   the resolved go-live blockers above. While there, confirm the three `oauth-user-inspector` project
-   toggles (Assert/Check Project on Authentication, Check Project Role) read `false` as derived —
-   Atlas's request, a zero-inference direct read costing one page. **Do not** flip `projectRoleCheck`
-   on any project — zero roles and zero grants exist anywhere checked so far, so enabling it locks
-   out every current user of that project, an outage rather than a fix.
+4. **Superseded 2026-08-06T22:17Z — item 4 was "flip `allowRegister` to `false` in the console
+   tonight"; James declined the console route entirely (see the corrected go-live-blocker paragraph
+   above).** What actually needs his sign-off: **approve a new `zitadel-instance` Pulumi stack and
+   its `IAM_OWNER` machine user** (Actions secret), the IaC path that replaces the console flip.
+   Separately, **he has already authorized creating his own Zitadel user** — verbatim: *"For my
+   zitadel user id, create one that makes sense for me"* — proposed as
+   `james.nguyen@vitruvian.auth.ipv1337.dev` against his gmail address, so he stops operating as the
+   bootstrap `admin`. Per decision 2, the **user** itself stays out of any Pulumi stack (a `pulumi
+   destroy` on what's still called a PoC would delete his identity); only the `zitadel.UserGrant`
+   binding him to `mcp-slack-user` is code. Atlas's `grantUserIds` work is unblocked on the value now,
+   not on a decision.
 
 ## Deferred, not closed
 
