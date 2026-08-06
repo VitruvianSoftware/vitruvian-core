@@ -247,6 +247,38 @@ at the check falls on whoever discovered it, not on the original author — beca
 refactor will only preserve the reason that's actually written there, regardless of who found it
 or when.
 
+### 8. A correct, tested primitive doesn't help the call site that quietly doesn't use it
+
+Per Scout (2026-08-06T20:42:35Z), reading the frozen head cold rather than following the thread's
+own trail: `listChannels()` re-parses `SLACK_CHANNEL_IDS` straight from `process.env`
+(`index.ts:621`) with its own inline splitting, instead of calling the already-built and
+already-tested `parseChannelIds`/`channelGuard` — the only `process.env` read anywhere in the
+module outside `config.ts`. Demonstrated, not asserted: fed `"C1,C1,,C2, ,C3"` through both paths —
+the tested parser normalizes it to `['C1', 'C2', 'C3']`; `listChannels()`'s own inline split
+iterates `['C1', 'C1', '', 'C2', '', 'C3']`, untouched by the trimming and dedup the *tested* path
+exists specifically to provide. Not a security bypass on its own (`SLACK_CHANNEL_IDS` is
+operator-set config here, not caller input), but the mechanism is exactly the one that would make
+it one somewhere else: a boundary-relevant primitive built correctly and covered by tests, quietly
+bypassed by a second, ad hoc implementation of the same logic three lines away.
+
+**Beacon's generalization across the build's five other defects (2026-08-06T20:44:33Z):** every
+one of them — the two unguarded methods, the fail-open extractor, the `cast.ToBool` fail-open (in
+two independent stacks), the malformed-`WWW-Authenticate` quoting — shares this shape at bottom. A
+correct piece of logic exists and, in most cases, is well-tested. The defect never lives in that
+logic; it lives in a *second* place that was supposed to use it and either doesn't, or
+reimplements a weaker version of it. **Six defects tonight were not six unrelated bugs — they were
+one pattern instantiated six times: trust the primitive, then go looking for who's actually
+calling it.**
+
+**Rule: when you've verified a security- or correctness-relevant primitive is right and tested, the
+next question is never "is it right" again — it's "who else in the codebase does the equivalent
+thing without going through it."** Grep for parallel implementations of the same parsing, the same
+validation, the same coercion (a second `.split(',')` on the same env var, a second regex for the
+same shape, a second inline type check) before trusting that a well-built, well-tested module has
+actually closed the class of bug it was built to close. A tested primitive with an untested,
+parallel caller is not partial coverage of the problem — it's a false sense that the problem is
+covered at all.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
@@ -417,6 +449,32 @@ much longer:
   was rejected as a future need. Decision 5's monetization direction makes this a live near-term
   question rather than a closed one; nobody should hard-code single-tenant assumptions deeper into
   the codebase than the PoC strictly needs.
+
+  **Design note for whoever builds multi-tenancy, per Beacon/Atlas/Wren (2026-08-06T20:42-20:44Z):**
+  message attribution ("Requested by \<name\> via Gemini Spark") was designed, then cut from this
+  PoC's scope entirely — not deferred as a feature, deferred as *unneeded*, because decisions 1+2
+  guarantee exactly one possible caller today, and attribution carries no information when there's
+  only one caller it could name. It becomes valuable, and simultaneously dangerous, the moment
+  multi-tenancy arrives:
+
+  > **Provenance sourced from an IdP claim the subject can edit is not provenance.** Attribution
+  > must come from a deploy-time mapping the requester cannot write, and an unrecognized subject
+  > gets no attribution line rather than one it authored.
+
+  The reasoning that produced this, preserved so it isn't rediscovered from scratch: (1) a
+  Zitadel display-name claim is user-editable, so rendering it verbatim into a Slack message posted
+  *as the app* means the requester controls what the provenance line says — harmless at one
+  authorized subject, a spoofing vector ("Requested by Security Team") the moment decision 2 widens
+  to more than one; (2) subject → display name is a one-entry mapping at single-tenant scale and
+  doesn't need to travel in a token at all — at multi-tenant scale it should be a deploy-time or
+  admin-managed mapping, not a token claim, for the same reason; (3) requesting the `profile`/
+  `email` scopes to carry a name claim grants real capability to a Google-hosted OAuth client in
+  exchange for a cosmetic string — don't widen scope for decoration; (4) a userinfo lookup per post
+  would put the IdP on the write path and reintroduce exactly the availability coupling readiness
+  was designed to avoid — don't call out to Zitadel to attribute a message; (5) if attribution is
+  built, an edit (`updateMessage`) that silently drops the block on rewrite is worse than never
+  having attribution — the message stays posted, still app-authored, now with the requester
+  erased, so re-rendering the block on every edit needs to be the default, not an opt-in.
 - **Who beyond James may connect** — decision 2 is a PoC-scoped answer (one Zitadel subject); no
   process exists yet for widening it.
 - **Whether search, canvases, bookmarks, or topic-set ever return to the remote path** — all
