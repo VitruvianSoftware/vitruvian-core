@@ -34,6 +34,24 @@ spec:
       # exits immediately and this only delays SIGKILL rather than draining.
       # Set anyway so the grace period exists the moment the handler lands.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      # This pod reads no Kubernetes objects and watches nothing — the same
+      # fact that makes it the safest first CiliumNetworkPolicy candidate.
+      # Without this, kubelet still mounts a projected apiserver credential at
+      # /var/run/secrets/kubernetes.io/serviceaccount on an internet-facing
+      # workload that has no use for it, sitting next to the Slack bot token:
+      # any file read yields both instead of one.
+      automountServiceAccountToken: false
+      # Paired with the narrowed DNS rules in the CiliumNetworkPolicy, and
+      # only correct because of them. Kubernetes defaults to ndots:5, so
+      # `slack.com` (1 dot) is tried against every search domain first —
+      # against a DNS policy that permits two exact names, those attempts are
+      # all refused before the real query is sent. ndots:1 resolves both hosts
+      # absolutely on the first try. Nothing here resolves an in-cluster
+      # Service, so short-name resolution is not a capability being given up.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

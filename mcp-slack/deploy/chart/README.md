@@ -73,16 +73,30 @@ Note the `toFQDNs` rules do nothing without the explicit DNS-proxy rule that
 precedes them — omit it and the policy silently denies everything rather than
 allowing the two hosts named.
 
-**3. Edge rate limit.** Configured at Cloudflare on the hostname; not a chart
-concern, recorded here so the criterion is not assumed covered by this repo.
+The DNS rule names the two hosts rather than allowing `matchPattern: "*"`.
+An unrestricted resolver is an unrestricted egress channel — kube-dns
+forwards upstream, so a compromised process can encode the bot token into DNS
+labels and exfiltrate it without opening a connection the TCP rules would
+deny. It is paired with `ndots: 1` on the pod: under the Kubernetes default
+of `ndots: 5`, `slack.com` is tried against every search domain first and
+those queries are refused before the real one is sent.
+
+**3. Edge rate limit. OPEN — not satisfied today.** Nothing throttles this
+hostname. It is configured at Cloudflare rather than in this repo, so it is
+not a defect in this chart, but recording it here does not discharge it:
+this is a go-live blocker owned by **James** (Cloudflare account), and the
+endpoint should not be announced to Spark until it is in place.
 
 **4. Pod hardening.** `deployment.yaml`: non-root (uid 10001),
 `readOnlyRootFilesystem`, all capabilities dropped, no privilege escalation,
 `RuntimeDefault` seccomp, resource limits, image by digest,
-`terminationGracePeriodSeconds`. `SLACK_BOT_TOKEN` and `SLACK_TEAM_ID` come
-from a Secret; `SLACK_USER_TOKEN` is deliberately absent, and the server also
-refuses to start on the HTTP transport if it is present — enforced on both
-sides rather than by this file's omission alone.
+`terminationGracePeriodSeconds`, and `automountServiceAccountToken: false` —
+the pod reads no Kubernetes objects, so an apiserver credential mounted next
+to the bot token is reachable by any file read and buys nothing.
+`SLACK_BOT_TOKEN` and `SLACK_TEAM_ID` come from a Secret; `SLACK_USER_TOKEN`
+is deliberately absent, and the server also refuses to start on the HTTP
+transport if it is present — enforced on both sides rather than by this
+file's omission alone.
 
 ## Alerting
 
@@ -99,14 +113,32 @@ and reported Healthy — while never being loaded by anything. Prometheus reads
 its rules from `serverFiles.alerting_rules.yml`.
 
 That matters here more than usual, because this alert is the only signal that
-authentication has broken. The server returns 500 rather than exiting when
-JWKS is unreachable, and the probes deliberately do not touch the IdP, so the
-pod stays Ready while every call fails. No pod-state alert can see it.
+authentication has broken. The server keeps its listener up rather than
+exiting when JWKS is unreachable, and the probes deliberately do not touch the
+IdP, so the pod stays Ready while every call fails. No pod-state alert can see
+it.
+
+> **The alert is inert until a server change lands.** It assumes an
+> unreachable IdP produces 5xx. As of PR #1418 it does not: `auth.ts` wraps
+> every `jwtVerify` failure — including `TypeError: fetch failed` from the
+> remote JWKS — in `InvalidTokenError`, which is a **401**. So during the
+> exact outage this alert exists to catch, the 5xx numerator is zero. The
+> server needs a distinct `IdpUnavailableError` at **503**: the failure is
+> ours, not the caller's, and 503 is both the correct status and the only one
+> this alert can see. Tracked on #1418.
 
 The alert is expressed as a **ratio**, not a request rate: the endpoint is idle
 between Spark sessions, so any absolute threshold is wrong in both directions.
 Idle produces no alert (0/0 is NaN), and a single failed call cannot fire it
 (its 5m rate decays before the 10m `for` elapses).
+
+The denominator counts 2xx and 5xx only. 4xx is a *separate population* on
+this endpoint, not noise around the same one: a request with no
+`Authorization` header is rejected at 401 before the auth path reaches JWKS,
+so unauthenticated probes to an internet-facing `/mcp` are unaffected by an
+IdP outage and would sit in the denominator diluting it — enough of them and
+a total outage never crosses `0.5`. The question worth asking is "of the
+requests we actually answered, how many failed".
 
 The metric label is `envoy_cluster_name`, not `cluster_name`. Verified against
 live series: the wrong name returns no data at all, which yields an alert that

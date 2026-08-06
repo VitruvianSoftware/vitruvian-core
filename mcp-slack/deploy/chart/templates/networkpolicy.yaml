@@ -58,6 +58,19 @@ spec:
     # hosts named. That is a fail-open-shaped mistake in the other direction:
     # it fails closed, but for a reason nobody would guess from reading the
     # FQDN rules alone.
+    #
+    # The names are enumerated rather than `matchPattern: "*"`, and that is
+    # the difference between this policy meeting its stated purpose and only
+    # appearing to. kube-dns forwards upstream, so an unrestricted resolver
+    # is an unrestricted egress channel: a compromised process encodes the
+    # bot token into DNS labels and it leaves the cluster without ever
+    # opening a connection to a host the TCP rules would deny. Bounding where
+    # the credential can go is the whole reason this file exists — a rule
+    # that bounds TCP and not DNS does not do it.
+    #
+    # Requires the pod's ndots:1 (see deployment.yaml): under the default
+    # ndots:5 every lookup of these two names is preceded by refused
+    # search-domain queries.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -70,7 +83,8 @@ spec:
               protocol: TCP
           rules:
             dns:
-              - matchPattern: "*"
+              - matchName: {{ .Values.egress.slackHost | quote }}
+              - matchName: {{ .Values.egress.idpHost | quote }}
 
     # Slack API — the workload's entire purpose.
     - toFQDNs:

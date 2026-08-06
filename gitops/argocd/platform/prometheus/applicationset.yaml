@@ -598,13 +598,26 @@ spec:
                 # This alert is the ONLY signal that authentication has broken
                 # on the mcp-slack endpoint.
                 #
-                # The server returns 500 rather than exiting when Zitadel's
-                # JWKS is unreachable — correct, since an IdP blip should not
-                # take the listener down — and its /health probe deliberately
-                # does not touch the IdP, so the pod stays Ready while every
-                # MCP call fails. No pod-state or replica-count alert can see
-                # that condition. See mcp-slack/deploy/chart/templates/
-                # deployment.yaml for why the probes are built that way.
+                # The server keeps its listener up rather than exiting when
+                # Zitadel's JWKS is unreachable — correct, since an IdP blip
+                # should not take the endpoint down — and its /health probe
+                # deliberately does not touch the IdP, so the pod stays Ready
+                # while every MCP call fails. No pod-state or replica-count
+                # alert can see that condition. See mcp-slack/deploy/chart/
+                # templates/deployment.yaml for why the probes are built that
+                # way.
+                #
+                # DEPENDS ON THE SERVER RETURNING 5xx FOR AN UNREACHABLE IdP.
+                # As of PR #1418 it does not: auth.ts wraps every jwtVerify
+                # failure — including `TypeError: fetch failed` from the
+                # remote JWKS — in InvalidTokenError, which is a 401. So the
+                # 5xx numerator stays at zero through the exact outage this
+                # alert exists to catch. The server fix (a distinct
+                # IdpUnavailableError at 503) is tracked on #1418 and must
+                # land before this alert means anything. Left in place
+                # deliberately rather than deleted: 5xx is the right signal
+                # once the status code is right, and the two changes are
+                # reviewed in different PRs.
                 #
                 # Expressed as a RATIO, not a request rate. The endpoint is
                 # idle between Spark sessions, so any absolute threshold is
@@ -618,6 +631,18 @@ spec:
                 # the expression is NaN, and nothing fires. A single failed
                 # call cannot fire it either — its 5m rate decays before the
                 # 10m `for` elapses.
+                #
+                # The denominator counts 2xx and 5xx only, NOT all requests.
+                # 4xx is a separate population on this endpoint rather than
+                # noise around the same one: a request with no Authorization
+                # header is rejected at 401 before the auth path ever reaches
+                # JWKS, so unauthenticated probes to an internet-facing /mcp
+                # are unaffected by an IdP outage and would sit in the
+                # denominator diluting it. Enough of them and a total outage
+                # stays under 0.5 and never fires. "Of the requests we
+                # actually answered, most failed" is the question worth
+                # asking, and it reads ~1.0 regardless of probe volume.
+                # NaN-on-idle survives: no 2xx and no 5xx is still 0/0.
                 #
                 # Label is `envoy_cluster_name`, NOT `cluster_name`. Verified
                 # 2026-08-06 against live series: the wrong name returns no
@@ -633,6 +658,7 @@ spec:
                           }[5m]))
                         /
                       sum(rate(envoy_cluster_upstream_rq_xx{
+                            envoy_response_code_class=~"2|5",
                             envoy_cluster_name=~"httproute/mcp-slack/.*"
                           }[5m]))
                         > 0.5
