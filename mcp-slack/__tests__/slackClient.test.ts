@@ -35,6 +35,7 @@
 import { SlackClient } from "../src/slackClient.js";
 import { ChannelNotAllowedError, UnusableChannelParamError } from "../src/channelAllowlist.js";
 import { resolveConfig } from "../src/config.js";
+import { toolsFor } from "../src/tools.js";
 
 const STDIO_ENV = {
   SLACK_BOT_TOKEN: "xoxb-test",
@@ -197,5 +198,38 @@ describe("listChannels enumerates the same list the guard enforces", () => {
   it("falls back to conversations.list when no allow-list is configured", async () => {
     await clientFor(STDIO_ENV).listChannels();
     expect(capture.calls[0]!.url).toContain("conversations.list");
+  });
+});
+
+// Workspace-scoped calls are the class every control built for this endpoint
+// misses: SLACK_CHANNEL_IDS bounds calls that name a channel, and `users.list`
+// names none. The guard correctly finds nothing to check, so the call goes
+// through — returning the full member directory regardless of the allow-list,
+// the bot's channel membership, or which subject holds the token.
+describe("workspace-scoped tools the allow-list cannot bound", () => {
+  it("withholds bulk user enumeration from the HTTP transport", () => {
+    const advertised = toolsFor(resolveConfig(HTTP_ENV)).map((t) => t.name);
+    expect(advertised).not.toContain("slack_get_users");
+    // Kept: resolving one U… id at a time is what a caller needs to turn an
+    // author id from allow-listed history into a name.
+    expect(advertised).toContain("slack_get_user_profile");
+  });
+
+  it("still offers bulk enumeration on stdio, which is not exposed", () => {
+    const advertised = toolsFor(resolveConfig(STDIO_ENV)).map((t) => t.name);
+    expect(advertised).toContain("slack_get_users");
+  });
+
+  // Demonstrates why the tool list has to carry this rather than the guard:
+  // the guard is behaving correctly, there is simply no channel to check.
+  it("confirms the guard has nothing to bind to on a workspace-scoped call", async () => {
+    const capture = captureFetch();
+    try {
+      await clientFor(HTTP_ENV).getUsers();
+      expect(capture.calls).toHaveLength(1);
+      expect(capture.calls[0]!.url).toContain("users.list");
+    } finally {
+      capture.restore();
+    }
   });
 });
