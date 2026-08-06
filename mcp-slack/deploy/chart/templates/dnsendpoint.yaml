@@ -35,8 +35,17 @@
 # other tunnel-exposed app here (whoami, ntfy, buzz) ships one of these; the
 # chart was missing it, which would have deployed cleanly and been unreachable.
 #
-# `sync-enabled: "true"` is not decorative: external-dns filters on exactly
-# this annotation, so without it the record is silently never created.
+# `sync-enabled: "true"` is kept for consistency with whoami/ntfy/buzz, but it
+# is NOT load-bearing on this cluster today, and do not write it down as if it
+# were. The gitops values set
+# `annotationFilter: "external-dns.alpha.kubernetes.io/sync-enabled in (true)"`
+# — correctly placed, same level as provider/policy/txtOwnerId — yet the
+# RUNNING deployment carries no `--annotation-filter` flag at all, and the
+# external-dns Application reports Synced. ArgoCD therefore renders the chart
+# and gets no flag: the value is inert as spelled for chart external-dns-1.15.0.
+#
+# Consequence: external-dns honours EVERY DNSEndpoint in scope regardless of
+# annotation. Verified 2026-08-06 against the live deployment args.
 #
 # Proxied, and that is what makes the criterion-3 edge rate limit possible at
 # all — a Cloudflare rate limit or WAF rule only applies to proxied traffic.

@@ -76,3 +76,9 @@ spec:
       kind: HTTPRoute
     - group: cilium.io
       kind: CiliumNetworkPolicy
+    # Added when the chart gained a DNSEndpoint. Caught by the
+    # rendered-kinds-vs-whitelist cross-check rather than by review: without
+    # this entry the app syncs everything else and fails on this one resource,
+    # which presents as "deployed but the hostname doesn't resolve".
+    - group: externaldns.k8s.io
+      kind: DNSEndpoint
