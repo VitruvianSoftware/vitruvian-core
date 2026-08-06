@@ -27,7 +27,11 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
-import { MissingTokenError, type TokenVerifier } from "../src/auth.js";
+import {
+  IdpUnavailableError,
+  MissingTokenError,
+  type TokenVerifier,
+} from "../src/auth.js";
 import { headerSafe, startHttpTransport } from "../src/httpTransport.js";
 
 const CONFIG = {
@@ -126,6 +130,24 @@ describe("http transport request boundary", () => {
         // Generic on the wire: an IdP outage is not the caller's business and
         // the detail belongs in the server's stderr, not the response.
         expect(body.error?.message).toBe("Internal server error");
+      }
+    );
+  });
+
+  // A 503 must not carry a WWW-Authenticate challenge: that header tells the
+  // caller how to authenticate, which is a lie when the failure is ours. It
+  // would send someone holding a valid token to re-authenticate against an
+  // IdP that is down.
+  it("answers an IdP outage with 503, Retry-After and no auth challenge", async () => {
+    await withServer(
+      verifierThat(async () => {
+        throw new IdpUnavailableError("fetch failed");
+      }),
+      async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/mcp`, { method: "POST" });
+        expect(res.status).toBe(503);
+        expect(res.headers.get("retry-after")).toBe("30");
+        expect(res.headers.get("www-authenticate")).toBeNull();
       }
     );
   });

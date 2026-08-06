@@ -24,6 +24,7 @@ import { SignJWT, generateKeyPair, type CryptoKey } from "jose";
 
 import {
   AudienceMismatchError,
+  IdpUnavailableError,
   InvalidTokenError,
   MissingTokenError,
   OpaqueTokenError,
@@ -250,5 +251,68 @@ describe("token verification", () => {
     await expect(
       verifier().verifyAuthorizationHeader(undefined)
     ).rejects.toBeInstanceOf(MissingTokenError);
+  });
+});
+
+// The defect this section exists for: `jwtVerify` fetches the JWKS over the
+// network, so an IdP outage lands in the same catch as a bad signature. It was
+// reported as InvalidTokenError/401 — telling a caller holding a valid token
+// that their credential was bad, and making an outage indistinguishable from
+// an unauthenticated probe in the response codes.
+//
+// These use the REAL verifier against a dead JWKS URI. The earlier transport
+// test asserted the outage path with a stub throwing a raw TypeError, which
+// the real verifier never produces — so it passed while the real path was
+// wrong. That is the difference between testing a path and testing a stub.
+describe("IdP reachability is distinguished from token validity", () => {
+  async function realVerifierWithDeadJwks() {
+    return createTokenVerifier({
+      issuer: ISSUER,
+      projectId: PROJECT_ID,
+      jwksUri: "http://127.0.0.1:1/unreachable",
+    });
+  }
+
+  it("reports a JWKS outage as 503, not as an invalid token", async () => {
+    const verifier = await realVerifierWithDeadJwks();
+    const error = await verifier.verify(await mintToken()).catch((e) => e);
+
+    expect(error).toBeInstanceOf(IdpUnavailableError);
+    expect((error as IdpUnavailableError).status).toBe(503);
+    // The message has to say whose fault it is, or the caller goes looking at
+    // their own credential.
+    expect((error as IdpUnavailableError).message).toContain("not judged");
+  });
+
+  it("still reports a genuinely bad token as 401 when the IdP is reachable", async () => {
+    const { privateKey: attackerKey } = await generateKeyPair("RS256");
+    const forged = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(attackerKey);
+
+    const error = await verifier().verify(forged).catch((e) => e);
+    expect(error).toBeInstanceOf(InvalidTokenError);
+    expect((error as InvalidTokenError).status).toBe(401);
+  });
+
+  // The discrimination is "did jose reach a verdict", not "does this look like
+  // a network error". An unrecognised failure must land on 503 — being wrong
+  // in that direction tells the truth (we could not judge it); being wrong the
+  // other way accuses a valid credential.
+  it("treats an unrecognised failure as unavailability, not as rejection", async () => {
+    const verifier = createTokenVerifier({
+      issuer: ISSUER,
+      projectId: PROJECT_ID,
+      keySource: () => {
+        throw new Error("something nobody anticipated");
+      },
+    });
+    const error = await verifier.verify(await mintToken()).catch((e) => e);
+    expect(error).toBeInstanceOf(IdpUnavailableError);
   });
 });
