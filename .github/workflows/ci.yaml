@@ -393,6 +393,12 @@ jobs:
         with:
           # The gate below diffs against the merge-base / before-rev.
           fetch-depth: 0
+      # Deliberately UNGATED and ahead of the changed-paths gate: it is a few
+      # seconds of pure bash with no Bazel, and it guards the verifier that this
+      # required check's verdict rests on. A silent hole in :verify (see the
+      # SIGPIPE case the test pins) is invisible in every other lane.
+      - name: Self-test the license verifier
+        run: bash tools/license/verify_test.sh
       # This was the last heavy Bazel lane with NO changed-paths gate, so a
       # docs-only PR still paid the full ~3min LLVM toolchain fetch here after
       # build-test/tidy-check/conformance-check had all already short-circuited.
@@ -404,7 +410,8 @@ jobs:
       # also treats gitops/ as inert. addlicense does not ignore gitops/ (those
       # manifests carry MIT headers today) and //tools/license:{check,verify}
       # are `bazel run` sh_binaries with no sh_test, so `bazel test //...` and
-      # the nightly periodic-full-sweep never cover them. Treating gitops/ as
+      # the nightly periodic-full-sweep never cover them (the self-test step
+      # above is what covers :verify). Treating gitops/ as
       # skippable here would let an unlicensed gitops file dodge a required
       # check with no backstop. docs/ and *.md ARE inert: addlicense ignores
       # **/docs/** and never headers markdown, and :verify only scans source
