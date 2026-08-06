@@ -29,6 +29,15 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { ChannelNotAllowedError, type ChannelGuard } from "./channelAllowlist.js";
+import {
+  ConfigError,
+  resolveConfig,
+  type ServerConfig,
+  type SlackCredentials,
+  type WriteTokenPreference,
+} from "./config.js";
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -510,19 +519,42 @@ const tools = [
 
 class SlackClient {
   private botHeaders: Record<string, string>;
-  private userHeaders: Record<string, string>;
+  private userHeaders: Record<string, string> | undefined;
   private teamId: string;
+  private channelGuard: ChannelGuard;
+  private writeToken: WriteTokenPreference;
 
-  constructor(botToken: string, userToken: string, teamId: string) {
+  constructor(
+    slack: SlackCredentials,
+    options: { channelGuard: ChannelGuard; writeToken: WriteTokenPreference }
+  ) {
     this.botHeaders = {
-      Authorization: `Bearer ${botToken}`,
+      Authorization: `Bearer ${slack.botToken}`,
       "Content-Type": "application/json",
     };
-    this.userHeaders = {
-      Authorization: `Bearer ${userToken}`,
-      "Content-Type": "application/json",
-    };
-    this.teamId = teamId;
+    // Absent on the HTTP transport. resolveConfig refuses to start if a user
+    // token is present there, so this is undefined by construction rather than
+    // by a code path that could be changed later.
+    this.userHeaders = slack.userToken
+      ? {
+          Authorization: `Bearer ${slack.userToken}`,
+          "Content-Type": "application/json",
+        }
+      : undefined;
+    this.teamId = slack.teamId;
+    this.channelGuard = options.channelGuard;
+    this.writeToken = options.writeToken;
+  }
+
+  /**
+   * Applied to every method that takes a caller-supplied channel ID.
+   *
+   * This is the fix for `SLACK_CHANNEL_IDS` having only ever filtered
+   * `listChannels`: without it, naming an ID was sufficient to read or write
+   * any conversation the bot belongs to, including private channels and DMs.
+   */
+  private guard(channelId: string): void {
+    this.channelGuard.assertAllowed(channelId);
   }
 
   // Helper to make Slack API calls
@@ -533,6 +565,15 @@ class SlackClient {
     httpMethod: "GET" | "POST" = "GET"
   ): Promise<unknown> {
     const headers = token === "bot" ? this.botHeaders : this.userHeaders;
+    if (!headers) {
+      // Reached only if a user-token tool is invoked on the HTTP transport.
+      // Those tools are withheld from the HTTP tool list, so this is a
+      // defence-in-depth backstop, not an expected path.
+      throw new Error(
+        `Slack method ${method} requires the user token, which is not ` +
+          `available on this transport.`
+      );
+    }
 
     if (httpMethod === "GET") {
       const qs = new URLSearchParams();
@@ -582,6 +623,7 @@ class SlackClient {
   }
 
   async getChannelInfo(channelId: string) {
+    this.guard(channelId);
     return this.api("conversations.info", {
       channel: channelId,
       include_num_members: "true",
@@ -589,6 +631,7 @@ class SlackClient {
   }
 
   async getChannelHistory(channelId: string, limit = 10) {
+    this.guard(channelId);
     return this.api("conversations.history", {
       channel: channelId,
       limit,
@@ -596,6 +639,7 @@ class SlackClient {
   }
 
   async getThreadReplies(channelId: string, threadTs: string) {
+    this.guard(channelId);
     return this.api("conversations.replies", {
       channel: channelId,
       ts: threadTs,
@@ -603,6 +647,7 @@ class SlackClient {
   }
 
   async setChannelTopic(channelId: string, topic: string) {
+    this.guard(channelId);
     return this.api(
       "conversations.setTopic",
       { channel: channelId, topic },
@@ -650,33 +695,37 @@ class SlackClient {
   // ── Messaging (User Token) ─────────────────────────────────────────
 
   async postMessage(channelId: string, text: string) {
+    this.guard(channelId);
     return this.api(
       "chat.postMessage",
       { channel: channelId, text },
-      "user",
+      this.writeToken,
       "POST"
     );
   }
 
   async replyToThread(channelId: string, threadTs: string, text: string) {
+    this.guard(channelId);
     return this.api(
       "chat.postMessage",
       { channel: channelId, thread_ts: threadTs, text },
-      "user",
+      this.writeToken,
       "POST"
     );
   }
 
   async updateMessage(channelId: string, ts: string, text: string) {
+    this.guard(channelId);
     return this.api(
       "chat.update",
       { channel: channelId, ts, text },
-      "user",
+      this.writeToken,
       "POST"
     );
   }
 
   async addReaction(channelId: string, timestamp: string, reaction: string) {
+    this.guard(channelId);
     return this.api(
       "reactions.add",
       { channel: channelId, timestamp, name: reaction },
@@ -688,10 +737,12 @@ class SlackClient {
   // ── Pins (User Token) ──────────────────────────────────────────────
 
   async listPins(channelId: string) {
+    this.guard(channelId);
     return this.api("pins.list", { channel: channelId }, "bot");
   }
 
   async pinMessage(channelId: string, timestamp: string) {
+    this.guard(channelId);
     return this.api(
       "pins.add",
       { channel: channelId, timestamp },
@@ -701,6 +752,7 @@ class SlackClient {
   }
 
   async unpinMessage(channelId: string, timestamp: string) {
+    this.guard(channelId);
     return this.api(
       "pins.remove",
       { channel: channelId, timestamp },
@@ -712,6 +764,7 @@ class SlackClient {
   // ── Bookmarks (Bot Token for read, User Token for write) ───────────
 
   async listBookmarks(channelId: string) {
+    this.guard(channelId);
     return this.api("bookmarks.list", { channel_id: channelId }, "bot");
   }
 
@@ -798,16 +851,46 @@ class SlackClient {
 // MCP Server
 // ---------------------------------------------------------------------------
 
-async function main() {
-  const botToken = process.env.SLACK_BOT_TOKEN;
-  const userToken = process.env.SLACK_USER_TOKEN;
-  const teamId = process.env.SLACK_TEAM_ID;
+/**
+ * Tools that call Slack with the user token and have no bot-token equivalent.
+ *
+ * They are withheld from the HTTP transport's tool list because the user token
+ * is not present there at all — advertising them would offer a remote caller
+ * capabilities that can only fail. Note `slack_post_message`,
+ * `slack_reply_to_thread` and `slack_update_message` are deliberately absent
+ * from this list: they route to whichever credential the transport configures,
+ * so they work on both.
+ */
+const USER_TOKEN_ONLY_TOOLS = new Set([
+  "slack_set_channel_topic",
+  "slack_search_messages",
+  "slack_search_files",
+  "slack_add_reaction",
+  "slack_pin_message",
+  "slack_unpin_message",
+  "slack_add_bookmark",
+  "slack_create_canvas",
+  "slack_edit_canvas",
+  "slack_lookup_canvas_sections",
+  "slack_delete_canvas",
+]);
 
-  if (!botToken || !userToken || !teamId) {
-    console.error(
-      "Required environment variables: SLACK_BOT_TOKEN, SLACK_USER_TOKEN, SLACK_TEAM_ID"
-    );
-    process.exit(1);
+function toolsFor(config: ServerConfig) {
+  if (config.transport === "stdio") return [...tools];
+  return tools.filter((tool) => !USER_TOKEN_ONLY_TOOLS.has(tool.name));
+}
+
+async function main() {
+  let config: ServerConfig;
+  try {
+    config = resolveConfig(process.env);
+  } catch (error) {
+    if (error instanceof ConfigError || error instanceof Error) {
+      // stderr only: stdout is the MCP stdio transport's wire protocol.
+      console.error(`Configuration error: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 
   const server = new Server(
@@ -815,7 +898,10 @@ async function main() {
     { capabilities: { tools: {} } }
   );
 
-  const client = new SlackClient(botToken, userToken, teamId);
+  const client = new SlackClient(config.slack, {
+    channelGuard: config.channelGuard,
+    writeToken: config.writeToken,
+  });
 
   // ── Tool handler ─────────────────────────────────────────────────────
 
@@ -990,17 +1076,31 @@ async function main() {
 
   // ── Tool listing ─────────────────────────────────────────────────────
 
+  const advertisedTools = toolsFor(config);
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...tools],
+    tools: advertisedTools,
   }));
 
   // ── Start ────────────────────────────────────────────────────────────
 
+  if (config.transport === "http") {
+    const { startHttpTransport } = await import("./httpTransport.js");
+    await startHttpTransport(server, config.http!);
+    process.stderr.write(
+      `mcp-slack server v2.0.0 running on http :${config.http!.port} ` +
+        `(${advertisedTools.length} tools, ` +
+        `${config.channelGuard.allowed.length} channels allow-listed)\n`
+    );
+    return;
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  
+
   // Note: All initialization logs must strictly use stderr to avoid violating the MCP stdio transport protocol.
-  process.stderr.write("mcp-slack server v2.0.0 running on stdio (22 tools)\n");
+  process.stderr.write(
+    `mcp-slack server v2.0.0 running on stdio (${advertisedTools.length} tools)\n`
+  );
 }
 
 main().catch((err) => {
