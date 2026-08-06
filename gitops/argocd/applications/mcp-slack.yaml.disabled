@@ -30,7 +30,7 @@
 # would produce a failed sync rather than an exposed endpoint — but a failed
 # sync on a publicly-routed hostname is still not a state worth entering.
 #
-# TO ENABLE, all four must be true:
+# TO ENABLE, all SEVEN must be true:
 #
 #   1. image.digest — the mcp-slack image is built and pushed, and you have
 #      its sha256 digest. Never a tag: an internet-facing workload must run
@@ -100,6 +100,37 @@
 #      EMERGENCY control, not to configuration generally. Nobody contains a
 #      breach by editing a token lifetime, so it does not license unmanaged
 #      config elsewhere.
+#
+#   7. THE EGRESS CiliumNetworkPolicy ACTUALLY PASSES TRAFFIC. IT DOES NOT
+#      TODAY — measured 2026-08-06 (`7711924c`), not suspected.
+#
+#      Cilium's L7 DNS proxy does not answer on this cluster, so with the
+#      policy applied the pod cannot resolve anything — including the two
+#      names the rule explicitly allows. Widening to `matchPattern: "*"`
+#      does not help. Dropping `rules.dns` restores DNS but then `toFQDNs`
+#      matches nothing, because the proxy is what populates the FQDN→IP
+#      mapping, so `:443` is blocked instead. Both ways out are closed.
+#      Tracked as a platform defect in #1428.
+#
+#      IF YOU ARE HERE BECAUSE SLACK CALLS FAIL AND THE CNP LOOKS LIKE THE
+#      CAUSE: it is the cause, and deleting it does fix it. DO NOT DELETE IT.
+#      That policy is the only control that survives compromise of the bot
+#      token — every other one on this endpoint is enforced by our own
+#      process and is void the moment the token leaves the pod. Removing it
+#      leaves an internet-facing pod holding a Slack credential with no
+#      egress bounding at all, and it will look like a successful fix.
+#      Escalate on #1428 instead.
+#
+#      The chart makes this a value rather than a warning: `networkPolicy.
+#      enabled` must be set explicitly to a boolean or the render aborts.
+#      Setting it false is a deliberate, typed decision to run without egress
+#      bounding — which is the honest state today. This criterion is met only
+#      when it can be set true.
+#
+#      Written as a numbered criterion rather than left in the template's
+#      header because criteria 1-7 are the list someone reads before
+#      enabling, and this is the item most likely to be acted on wrongly by
+#      someone who never opens the template. Aegis's ask on #1420.
 #
 # The alert for this workload is NOT in the chart — it lives in
 # gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
