@@ -1,0 +1,105 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# DISABLED ON PURPOSE. `.disabled` because ArgoCD's directory recursion only
+# reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
+# mechanism tabula.yaml.disabled uses.
+#
+# It is NOT disabled because it is unfinished. It is disabled because three
+# required values do not exist yet, and every one of them is a security
+# boundary rather than a setting. The chart refuses to render without them
+# (see mcp-slack/deploy/chart/templates/_helpers.tpl), so enabling this early
+# would produce a failed sync rather than an exposed endpoint — but a failed
+# sync on a publicly-routed hostname is still not a state worth entering.
+#
+# TO ENABLE, all four must be true:
+#
+#   1. image.digest — the mcp-slack image is built and pushed, and you have
+#      its sha256 digest. Never a tag: an internet-facing workload must run
+#      the artifact that was reviewed, not whatever the tag moved to.
+#
+#   2. oidc.projectId — `pulumi stack output projectId` on the
+#      zitadel-apps-mcp-slack stack (PR #1417), which has not been applied.
+#      Hand-typing this defeats the per-project audience isolation the
+#      dedicated Zitadel project exists to provide.
+#
+#   3. slack.channelIds — real channel IDs, which requires the Slack admin
+#      session that has not happened. Note the standing constraint: no real
+#      channel goes in here while the endpoint is publicly reachable and
+#      caller identity is unenforced. That is a sequencing rule, not a
+#      preference — the allow-list bounds which conversations a caller can
+#      reach, and it is doing that work alone until caller identity lands.
+#
+#   4. The Secret `mcp-slack-tokens` exists in the mcp-slack namespace,
+#      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID and nothing else. Created
+#      out-of-band via a SealedSecret (the ntfy alertmanager-ntfy-endpoint
+#      precedent) because it needs that same Slack admin session. No user
+#      token is ever mounted here.
+#
+# The alert for this workload is NOT in the chart — it lives in
+# gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
+# This cluster has no prometheus-operator, so a PrometheusRule would sync
+# Healthy and never load. See the chart's values.yaml for the full note.
+# ══════════════════════════════════════════════════════════════════════════
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mcp-slack
+  namespace: argocd
+  annotations:
+    # Wave 2, same as cloudflared/whoami/ntfy: the Gateway (envoy-gateway) and
+    # the tunnel (cloudflared) must be up before this HTTPRoute can resolve.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # Scoped per-app project, not the shared applications-project — see
+  # gitops/argocd/projects/mcp-slack-project.yaml.
+  project: mcp-slack-project
+  source:
+    # Git-source Helm, NOT the OCI chart pattern tabula uses. Deliberate: an
+    # OCI chart has to be published by CI before it can deploy, which adds a
+    # release step between "merged" and "reconciling" and lets the deployed
+    # chart lag the reviewed one. Rendering the chart straight from the
+    # monorepo keeps git the single source of truth, which is the property
+    # this platform is supposed to have.
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: mcp-slack/deploy/chart
+    helm:
+      values: |
+        # ALL THREE ARE PLACEHOLDERS. The chart fails to render on any of them
+        # being empty — that is the intended behaviour, not an obstacle to
+        # work around. Fill them from the sources named in the header above.
+        image:
+          digest: ""            # sha256:... — REQUIRED
+        oidc:
+          projectId: ""         # pulumi stack output projectId — REQUIRED
+        slack:
+          channelIds: ""        # comma-separated channel IDs — REQUIRED
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mcp-slack
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

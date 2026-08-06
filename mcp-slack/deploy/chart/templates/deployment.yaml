@@ -1,0 +1,107 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-slack.name" . }}
+  labels: {{- include "mcp-slack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "mcp-slack.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "mcp-slack.selectorLabels" . | nindent 8 }}
+    spec:
+      # Inert until the process installs a SIGTERM handler — without one Node
+      # exits immediately and this only delays SIGKILL rather than draining.
+      # Set anyway so the grace period exists the moment the handler lands.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-slack
+          image: {{ include "mcp-slack.imageRef" . }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: MCP_TRANSPORT
+              value: http
+            - name: PORT
+              value: "3000"
+            - name: OIDC_ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            # Piped from the Pulumi stack output, never hand-typed — a mistyped
+            # project id would silently defeat the per-project audience
+            # isolation that the dedicated Zitadel project exists to provide.
+            - name: OIDC_PROJECT_ID
+              value: {{ include "mcp-slack.projectId" . | quote }}
+            - name: SLACK_CHANNEL_IDS
+              value: {{ include "mcp-slack.channelIds" . | quote }}
+            # Bot token and team id only. SLACK_USER_TOKEN is deliberately
+            # absent: the server refuses to start on the HTTP transport if it
+            # is present, so this is enforced on both sides rather than by
+            # this file's omission alone.
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.secretName }}
+                  key: SLACK_BOT_TOKEN
+            - name: SLACK_TEAM_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.secretName }}
+                  key: SLACK_TEAM_ID
+          ports:
+            - name: http
+              containerPort: 3000
+          # Both probes hit /health, and NEITHER touches the IdP. A probe that
+          # reaches JWKS tests Zitadel's availability, not this process — and
+          # would pull every replica out of the Service during an IdP blip,
+          # converting a degraded-but-serving endpoint into a hard outage at
+          # exactly the wrong moment.
+          #
+          # The consequence is deliberate: during a JWKS failure this pod stays
+          # Ready while every MCP call returns 500. Pod state cannot see that,
+          # which is why the sustained-5xx alert is load-bearing rather than a
+          # nice-to-have. It lives in the platform prometheus values
+          # (gitops/argocd/platform/prometheus/applicationset.yaml, group
+          # `mcp-slack`), not in this chart — see values.yaml for why.
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem is on, so anything needing a writable
+            # path gets an explicit emptyDir rather than a relaxed rootfs.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

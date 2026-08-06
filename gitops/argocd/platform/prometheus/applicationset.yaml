@@ -593,6 +593,55 @@ spec:
                     annotations:
                       summary: "Scrape target down: {{ $labels.job }} / {{ $labels.instance }}"
                       description: "{{ $labels.job }} target {{ $labels.instance }} unscrapeable for >15m."
+
+                # ── 11. mcp-slack (internet-facing, auth-gated) ──────────────
+                # This alert is the ONLY signal that authentication has broken
+                # on the mcp-slack endpoint.
+                #
+                # The server returns 500 rather than exiting when Zitadel's
+                # JWKS is unreachable — correct, since an IdP blip should not
+                # take the listener down — and its /health probe deliberately
+                # does not touch the IdP, so the pod stays Ready while every
+                # MCP call fails. No pod-state or replica-count alert can see
+                # that condition. See mcp-slack/deploy/chart/templates/
+                # deployment.yaml for why the probes are built that way.
+                #
+                # Expressed as a RATIO, not a request rate. The endpoint is
+                # idle between Spark sessions, so any absolute threshold is
+                # wrong in both directions: high enough to avoid noise means a
+                # short failing session never reaches it, and low enough to
+                # catch that session fires on background scanner traffic. The
+                # ratio is volume-independent — a JWKS outage fails ~100% of
+                # calls whether there are five or five hundred.
+                #
+                # Idle is not an alert: with no traffic the denominator is 0,
+                # the expression is NaN, and nothing fires. A single failed
+                # call cannot fire it either — its 5m rate decays before the
+                # 10m `for` elapses.
+                #
+                # Label is `envoy_cluster_name`, NOT `cluster_name`. Verified
+                # 2026-08-06 against live series: the wrong name returns no
+                # data at all, which would make this alert permanently silent
+                # while still looking present.
+                - name: mcp-slack
+                  rules:
+                  - alert: McpSlackSustained5xx
+                    expr: |
+                      sum(rate(envoy_cluster_upstream_rq_xx{
+                            envoy_response_code_class="5",
+                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                          }[5m]))
+                        /
+                      sum(rate(envoy_cluster_upstream_rq_xx{
+                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                          }[5m]))
+                        > 0.5
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
+                      description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Usual cause is Zitadel/JWKS unreachable — check pod logs for the auth path before suspecting the transport."
             extraScrapeConfigs: |2
 
               - job_name: 'node-exporter'

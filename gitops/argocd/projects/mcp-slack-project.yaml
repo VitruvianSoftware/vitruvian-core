@@ -1,0 +1,78 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# mcp-slack-project — per-app AppProject, following the scoped pattern
+# whoami-project established (issue #459) rather than the shared
+# applications-project. This is the first INTERNET-FACING workload to use it,
+# which is the reason it gets the tighter of the two available patterns: this
+# object is the blast-radius boundary if the app's own manifests are ever
+# wrong, and it is enforced by ArgoCD regardless of what the chart renders.
+#
+# This file lands BEFORE the workload does. app-of-projects auto-syncs this
+# directory, so merging this creates a policy object with nothing referencing
+# it — inert by itself, and in place before mcp-slack.yaml.disabled is ever
+# enabled. The guardrail should never be the thing that arrives last.
+#
+# On adding the SealedSecret: the bot-token Secret is created out-of-band (the
+# ntfy alertmanager-ntfy-endpoint precedent) because it needs a Slack admin
+# session that has not happened yet. If it is later moved into the chart, BOTH
+# bitnami.com/SealedSecret and ''/Secret must be added below or the sync will
+# fail — a scoped whitelist is only a guardrail if adding a kind is a visible
+# diff.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: mcp-slack-project
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: mcp-slack — scoped per-app project for the Gemini Spark MCP endpoint
+  orphanedResources:
+    warn: true
+  sourceRepos:
+    - 'https://github.com/VitruvianSoftware/vitruvian-core.git'
+  # Single destination namespace — no cross-namespace writes. Notably this
+  # also means the app cannot touch envoy-gateway-system: its HTTPRoute
+  # attaches to the shared platform Gateway by parentRef from here, it does
+  # not modify the Gateway.
+  destinations:
+    - namespace: mcp-slack
+      server: 'https://kubernetes.default.svc'
+  # No cluster-scoped resources. Deliberate for a publicly-reachable workload:
+  # nothing it manages should ever be cluster-wide. In particular this makes
+  # cilium.io/CiliumClusterwideNetworkPolicy unreachable — the app can only
+  # write the namespaced CiliumNetworkPolicy that bounds itself, never a
+  # cluster-wide policy affecting other workloads.
+  #
+  # CreateNamespace=true on the Application still works with this empty:
+  # confirmed by whoami-project, which is [] and whose Application carries
+  # CreateNamespace=true while sitting Synced/Healthy on this cluster.
+  clusterResourceWhitelist: []
+  # Exactly the namespaced kinds the chart renders — nothing else.
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ''
+      kind: Service
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: cilium.io
+      kind: CiliumNetworkPolicy

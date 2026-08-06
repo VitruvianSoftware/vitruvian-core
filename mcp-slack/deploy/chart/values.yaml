@@ -1,0 +1,92 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# EVERY security-relevant value here is REQUIRED and has no default. The chart
+# fails to render rather than deploying an endpoint that is reachable but
+# unbounded — the same fail-closed reasoning applied throughout this build:
+# a value we cannot interpret must never resolve to the permissive case.
+
+image:
+  # Digest, never a tag. A tag is a moving reference to an internet-facing
+  # workload; a digest is the thing that was reviewed.
+  repository: ghcr.io/vitruviansoftware/mcp-slack
+  digest: ""            # REQUIRED — sha256:...
+  pullPolicy: IfNotPresent
+
+# Public hostname. Permanent name chosen deliberately rather than "-poc":
+# renaming later costs a DNS/HTTPRoute change plus reconfiguring the client.
+hostname: mcp-slack.ipv1337.dev
+
+# The MCP endpoint path. The HTTPRoute matches ONLY this prefix, which is what
+# keeps /health off the internet — see templates/httproute.yaml.
+mcpPath: /mcp
+
+oidc:
+  # Zitadel issuer. JWKS is fetched from here; nothing else is trusted.
+  issuer: https://auth.ipv1337.dev
+  # REQUIRED — `pulumi stack output projectId` from zitadel-apps-mcp-slack.
+  # Never hand-typed: a wrong value here means the audience check validates
+  # against the wrong project, which is the boundary, not a setting.
+  projectId: ""
+
+slack:
+  # REQUIRED — comma-separated channel IDs. This is the allow-list, and it is
+  # the only thing bounding which conversations a caller can reach. Empty is
+  # not "no restriction", it is a render failure.
+  channelIds: ""
+  # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN and
+  # SLACK_TEAM_ID. No user token is ever mounted on this path.
+  secretName: mcp-slack-tokens
+
+# Hosts this pod may reach. Anything not listed is denied by the
+# CiliumNetworkPolicy. Kept explicit rather than derived from other values so
+# that widening egress is a visible diff.
+egress:
+  slackHost: slack.com
+  idpHost: auth.ipv1337.dev
+
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }
+
+# Seconds the pod is given to finish in-flight requests. Inert unless the
+# process handles SIGTERM — that half is the application's, and until it lands
+# this only delays SIGKILL rather than draining.
+terminationGracePeriodSeconds: 30
+
+# NO ALERTING VALUES HERE, AND THE OMISSION IS DELIBERATE.
+#
+# The sustained-5xx alert for this workload is real, and it lives in
+# gitops/argocd/platform/prometheus/applicationset.yaml under the `mcp-slack`
+# rule group — not in this chart.
+#
+# This chart originally shipped it as a PrometheusRule, which was wrong: the
+# cluster runs the plain prometheus chart, and there is no prometheus-operator
+# and no `prometheuses.monitoring.coreos.com` CRD. The PrometheusRule CRD does
+# exist (the valkey operator installs it), so the object would have been
+# accepted by the apiserver, synced, and reported Healthy by ArgoCD — while
+# never being loaded by anything. Prometheus reads its rules from
+# `serverFiles.alerting_rules.yml`, full stop.
+#
+# That failure mode is worth naming because it is the one this alert exists to
+# catch, reproduced one level up: a thing that looks like coverage, reports
+# green, and is inert. Verified 2026-08-06 by `kubectl get crd` (no Prometheus
+# CRD) and the deployment list (kube-state-metrics and pushgateway present, no
+# operator).

@@ -1,0 +1,97 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WHY THIS EXISTS
+#
+# Every other control on this endpoint is enforced by our own process: the
+# channel allow-list, the audience check, the tool-list filter. All of them are
+# void the moment the bot token leaves the pod. This policy is the layer that
+# still holds in that case — it bounds where a compromised process can send
+# the credential, not merely what our code chooses to do with it.
+#
+# THIS IS THE CLUSTER'S FIRST CiliumNetworkPolicy AND THE LAST ATTEMPT WAS
+# REVERTED. Read `cecb67b7` and its revert `ec08150b` before changing this.
+# The argocd-image-updater policy denied apiserver egress because it allowed
+# the apiserver's *endpoint* IPs while traffic actually goes to the ClusterIP
+# `10.43.0.1:443`; leader election failed every ~8s until it was reverted. The
+# revert message records the fix: `toEntities: kube-apiserver` is the correct
+# Cilium primitive, because a post-DNAT endpoint allow does not match.
+#
+# mcp-slack is a better first candidate than that controller was, and the
+# reason is specific rather than optimistic: **it never talks to the
+# apiserver.** It reads no Kubernetes objects and watches nothing. The exact
+# failure that caused the revert is not in this workload's path.
+#
+# STILL UNVALIDATED AGAINST LIVE CLUSTER BEHAVIOUR. The revert's own
+# instruction was to validate before re-merge and that has not been possible —
+# ArgoCD reconciles from a repo whose CI is down. Treat this file as reviewed
+# but unexercised until a preview against the live cluster says otherwise.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "mcp-slack.name" . }}-egress
+  labels: {{- include "mcp-slack.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "mcp-slack.selectorLabels" . | nindent 6 }}
+  egress:
+    # DNS first, and it is not optional plumbing. `toFQDNs` matches nothing at
+    # all unless the DNS proxy sees the lookup — so without this rule the
+    # policy below silently denies everything rather than allowing the two
+    # hosts named. That is a fail-open-shaped mistake in the other direction:
+    # it fails closed, but for a reason nobody would guess from reading the
+    # FQDN rules alone.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Slack API — the workload's entire purpose.
+    - toFQDNs:
+        - matchName: {{ .Values.egress.slackHost | quote }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # Zitadel JWKS. Note this is the only reason the pod reaches the IdP at
+    # all: tokens are verified locally against public keys, so there is no
+    # introspection call and no client credential in this pod.
+    - toFQDNs:
+        - matchName: {{ .Values.egress.idpHost | quote }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+  # No apiserver rule, deliberately — see the header. If a future change needs
+  # one, it must use `toEntities: kube-apiserver` rather than endpoint IPs.
+  #
+  # Everything not listed above is denied: Cilium treats the presence of an
+  # egress section as default-deny for this endpoint.
