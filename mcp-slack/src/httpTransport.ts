@@ -73,6 +73,29 @@ export function headerSafe(message: string): string {
  * debugging a Spark connection is actually in.
  */
 function writeAuthFailure(res: ServerResponse, error: AuthError): void {
+  // Record the refusal before answering it.
+  //
+  // The presented subject already travels in the response body and the
+  // WWW-Authenticate header — which serves the operator setting this up, since
+  // they are the caller and can read their own `sub` off a curl. It does
+  // nothing for the case the alert exists for: when someone we do not know is
+  // knocking with an instance-issued token, that identity went to *them* and
+  // we kept none of it. Detection without attribution.
+  //
+  // Only 403s. This endpoint is on the public internet and will be scanned, so
+  // logging every 401 would bury the signal in unauthenticated noise. A 403
+  // here means the caller held a validly-signed, unexpired token audienced for
+  // our project and was refused anyway — which is precisely the cross-client
+  // path Zitadel documents as open, and the only externally-visible evidence
+  // it is real rather than theoretical.
+  if (error.status === 403) {
+    process.stderr.write(
+      `mcp-slack: refused ${error.code}` +
+        (error.presented ? ` sub=${headerSafe(error.presented)}` : "") +
+        `: ${headerSafe(error.message)}\n`
+    );
+  }
+
   // A 503 must not carry a WWW-Authenticate challenge. That header means
   // "here is how to authenticate", which is a lie when the failure is ours —
   // it would send a caller holding a valid token off to re-authenticate

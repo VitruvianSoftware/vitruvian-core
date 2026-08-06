@@ -32,7 +32,7 @@
 // it did. That claim was made repeatedly, was never tested, and turned out to
 // be false in one respect.
 
-import { SlackClient } from "../src/slackClient.js";
+import { SlackClient, UserTokenUnavailableError } from "../src/slackClient.js";
 import {
   ChannelNotAllowedError,
   ChannelVisibilityMismatchError,
@@ -322,7 +322,12 @@ describe("verifyAllowlistVisibility", () => {
     });
     await expect(
       clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
-    ).rejects.toThrow(/availability failure, not a configuration error/);
+    ).rejects.toThrow(/did not return a usable answer.*fetch failed/s);
+    // And not as a disagreement: Slack never answered, so there was nothing to
+    // disagree with. That is the discrimination, not the wording.
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.not.toBeInstanceOf(ChannelVisibilityMismatchError);
     spy.mockRestore();
   });
 
@@ -362,5 +367,24 @@ describe("request-time visibility checks are free ones only", () => {
     expect(capture.calls.every((c) => !c.url.includes("conversations.info"))).toBe(
       true
     );
+  });
+});
+
+describe("the user-token backstop is typed, not a bare Error", () => {
+  it("throws UserTokenUnavailableError so callers can tell it from an outage", async () => {
+    // verifyAllowlistVisibility wraps everything out of api() in a message
+    // asserting Slack was unreachable. That claim is false for this one, which
+    // is a configuration fault — the same assume-the-cause mistake auth.ts
+    // stopped making. Unreachable from that call site today; the type is what
+    // keeps it unreachable-and-correct rather than unreachable-and-lucky.
+    const capture = captureFetch();
+    try {
+      await expect(
+        clientFor(HTTP_ENV).setChannelTopic("C_ALLOWED", "x")
+      ).rejects.toBeInstanceOf(UserTokenUnavailableError);
+      expect(capture.calls).toHaveLength(0);
+    } finally {
+      capture.restore();
+    }
   });
 });
