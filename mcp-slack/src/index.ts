@@ -1094,11 +1094,23 @@ async function main() {
 
   if (config.transport === "http") {
     const { startHttpTransport } = await import("./httpTransport.js");
+    const { fullScopeString } = await import("./auth.js");
     await startHttpTransport(server, config.http!);
     process.stderr.write(
       `mcp-slack server v2.0.0 running on http :${config.http!.port} ` +
         `(${advertisedTools.length} tools, ` +
         `${config.channelGuard.allowed.length} channels allow-listed)\n`
+    );
+    // Echo the identity settings at startup. OIDC_PROJECT_ID has to match a
+    // value produced elsewhere (the zitadel-apps-mcp-slack stack output), and a
+    // wrong-but-well-formed one is otherwise only discovered on the first
+    // request — as a 403 demanding a scope that is itself wrong. Printing the
+    // scope this server expects makes it comparable against the stack output
+    // and against what gets pasted into the client, before anyone connects.
+    process.stderr.write(
+      `  issuer:   ${config.http!.issuer}\n` +
+        `  project:  ${config.http!.projectId}\n` +
+        `  expects scope: ${fullScopeString(config.http!.projectId)}\n`
     );
     return;
   }
