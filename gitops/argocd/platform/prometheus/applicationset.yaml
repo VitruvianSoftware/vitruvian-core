@@ -609,14 +609,14 @@ spec:
                 #
                 # DEPENDS ON THE SERVER RETURNING 5xx FOR AN UNREACHABLE IdP,
                 # which was NOT true until 45130c18 (PR #1418). auth.ts used
-                # to wrap every jwtVerify failure — including `TypeError:
-                # fetch failed` from the remote JWKS — in InvalidTokenError, a
+                # to wrap every jwtVerify failure — including 'TypeError:
+                # fetch failed' from the remote JWKS — in InvalidTokenError, a
                 # 401, so the 5xx numerator stayed at zero through the exact
                 # outage this alert exists to catch.
                 #
                 # 45130c18 fixed HALF of it. auth.ts now discriminates on
-                # whether jose reached a verdict (`error instanceof
-                # errors.JOSEError`), so a DEAD IdP (connection refused, DNS
+                # whether jose reached a verdict ('error instanceof
+                # errors.JOSEError'), so a DEAD IdP (connection refused, DNS
                 # failure — a raw TypeError) becomes IdpUnavailableError at
                 # 503. That status does survive to the wire: writeAuthFailure
                 # in httpTransport.ts writes error.status, so Envoy sees a
@@ -652,7 +652,7 @@ spec:
                 # Idle is not an alert: with no traffic the denominator is 0,
                 # the expression is NaN, and nothing fires. A single failed
                 # call cannot fire it either — its 5m rate decays before the
-                # 10m `for` elapses.
+                # 10m 'for' elapses.
                 #
                 # The denominator counts 2xx and 5xx only, NOT all requests.
                 # 4xx is a separate population on this endpoint rather than
@@ -666,7 +666,7 @@ spec:
                 # asking, and it reads ~1.0 regardless of probe volume.
                 # NaN-on-idle survives: no 2xx and no 5xx is still 0/0.
                 #
-                # Label is `envoy_cluster_name`, NOT `cluster_name`. Verified
+                # Label is 'envoy_cluster_name', NOT 'cluster_name'. Verified
                 # 2026-08-06 against live series: the wrong name returns no
                 # data at all, which would make this alert permanently silent
                 # while still looking present.
@@ -712,7 +712,7 @@ spec:
                   # response is 4xx, which leaves it 0/0. A rate has no such
                   # failure mode.
                   #
-                  # A bare `> 0` is defensible here only because the 503
+                  # A bare '> 0' is defensible here only because the 503
                   # population is provably tiny, and that was verified rather
                   # than assumed:
                   #   - IdpUnavailableError is the ONLY 503 the application
@@ -727,7 +727,7 @@ spec:
                   # So any sustained 503 rate has exactly one meaning and does
                   # not need a ratio to make it significant.
                   #
-                  # `for: 10m` against a 5m rate window means a single 503
+                  # 'for: 10m' against a 5m rate window means a single 503
                   # cannot fire this: its rate decays to zero five minutes
                   # after the event, well before the 10m elapses. It takes
                   # repeated failures to hold the expression up.
@@ -744,8 +744,8 @@ spec:
                   # 406 are Envoy-generated and invisible here. Pod-down
                   # belongs to KubeDeploymentReplicasMismatch.
                   #
-                  # Metric is `envoy_cluster_upstream_rq` (per-code, carries
-                  # envoy_response_code), NOT `_rq_xx` (per-class only).
+                  # Metric is 'envoy_cluster_upstream_rq' (per-code, carries
+                  # envoy_response_code), NOT '_rq_xx' (per-class only).
                   # Confirmed against live series that the per-code label
                   # exists on this cluster, including 503.
                   - alert: McpSlackIdpUnavailable
@@ -766,7 +766,7 @@ spec:
                   #
                   # A 403 here means SubjectNotAllowedError (#1424): the caller
                   # presented a validly-signed token, correctly audienced for
-                  # our project, and was refused because their `sub` is not in
+                  # our project, and was refused because their 'sub' is not in
                   # OIDC_ALLOWED_SUBJECTS. That is not a misconfigured client —
                   # Zitadel issues our audience to any client that asks without
                   # checking the requesting user's grants, so a sustained
@@ -786,7 +786,7 @@ spec:
                   # scanner that happens to hold a token. A pattern sustained
                   # over half an hour is the finding.
                   #
-                  # THIS RULE DEPENDS ON THE `azp` REJECTION ALSO BEING A 403.
+                  # THIS RULE DEPENDS ON THE 'azp' REJECTION ALSO BEING A 403.
                   # Once the client check lands, cross-client callers are
                   # refused EARLIER — at the client check rather than the
                   # subject check — so the signal moves. Given any status other
@@ -796,7 +796,7 @@ spec:
                   # the DNSEndpoint, where a correct improvement deleted a
                   # property nobody had written down.
                   #
-                  # Settled rather than left as a hazard: the `azp` rejection
+                  # Settled rather than left as a hazard: the 'azp' rejection
                   # is specified as a 403 with its own error class (Aegis, on
                   # #1424). 403 is also the semantically right answer — the
                   # token is validly signed, unexpired and correctly audienced,
@@ -810,8 +810,8 @@ spec:
                   # feature, not a collision: each means someone holding an
                   # instance-issued token is knocking.
                   #
-                  # Metric is `envoy_cluster_upstream_rq` (per-code), NOT
-                  # `_rq_xx` (per-class only, cannot separate 403 from 404).
+                  # Metric is 'envoy_cluster_upstream_rq' (per-code), NOT
+                  # '_rq_xx' (per-class only, cannot separate 403 from 404).
                   # Per-code series with envoy_response_code confirmed present
                   # on this cluster 2026-08-06.
                   - alert: McpSlackSustainedForbidden
