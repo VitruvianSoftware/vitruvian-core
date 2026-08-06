@@ -194,6 +194,24 @@ malformed as an error, not a default." Check this specifically wherever a config
 or a caller-supplied argument is parsed on the path to an allow/deny decision — a stray quote, a
 `"yes"` where `"true"` was expected, or a wrong JSON type should fail loudly, not fail open.
 
+**Addendum, per Atlas (2026-08-06T20:22:55Z), from sweeping the repo's other Pulumi stacks for the
+same defect shape:** `infrastructure/pulumi/platform/repo_config` has the identical bug — bare
+`cfg.GetBool` on `requireCodeOwnerReview` and `enforceAdmins`, both inheriting the same
+`cast.ToBool` fail-open-to-false — and unlike the two instances above, **this one is live** and
+applies via CI (`_repo-config-apply.yaml`), governing branch-protection approvals on `main`. Not
+fixed here; tracked separately, its own PR and review.
+
+**The sharper form this adds: the flags most exposed to this defect are the ones documented as
+"flip later."** `requireCodeOwnerReview` carries a comment reading *"flip to true once a second
+reviewer exists"* — which means the moment someone types the value by hand is necessarily months
+after the decision was made, by someone who wasn't there for the original context and has no
+reason to suspect `"yes"` behaves differently from `"true"`. `projectRoleCheck` (pattern 6's
+original instance) has the identical shape — a flag deliberately shipped `false` with a written
+plan to flip it once a precondition clears. **A boolean config value that ships with a comment
+saying "someone will change this later" is a higher-priority audit target for this class of bug
+than one set once and left alone**, precisely because the person who eventually edits it is
+reconstructing intent from a comment rather than carrying the context that produced it.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
