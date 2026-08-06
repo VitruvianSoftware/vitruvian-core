@@ -42,3 +42,17 @@ config:
   # Flipping it to true is the decision-2 ("only my Zitadel user may connect")
   # enforcement step, and it belongs in the same change as the role grant.
   zitadel-apps-mcp-slack:projectRoleCheck: "false"
+  # Zitadel user id(s) granted the mcp-slack-user role, comma-separated.
+  #
+  # COUPLED TO projectRoleCheck: setting that to "true" while this is empty is
+  # an apply error, not a warning. The two move together or not at all —
+  # enabling the check with nobody granted breaks the next LOGIN rather than
+  # the apply, which reads as a bug in the server's auth guard.
+  #
+  # Empty today because the flag is false, so no grant is required yet. The
+  # intended value when both land is 378818267051722263 — the account whose
+  # email is james.nguyen@gmail.com, which is the one that can actually log in
+  # (the instance has no SMTP, so the alternative user has never been
+  # verified). Left unset rather than pre-filled so that enabling the check is
+  # a deliberate two-line edit reviewed together.
+  zitadel-apps-mcp-slack:grantUserIds: ""

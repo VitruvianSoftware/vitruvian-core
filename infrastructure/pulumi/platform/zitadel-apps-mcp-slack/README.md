@@ -140,13 +140,35 @@ successful apply. For the flag that decides who may obtain a token, refusing to
 apply is the only honest response to a value we can't interpret.
 
 It ships **`false`**, deliberately. Enabling it before the role grant exists locks
-everyone out, including the first end-to-end Spark login. The sequence is:
+everyone out, including the first end-to-end Spark login.
 
-1. apply with `projectRoleCheck: "false"` (this is the committed state),
-2. grant the `mcp-slack-user` role to the intended user id,
-3. set `projectRoleCheck: "true"` and apply again.
+**The flag and the grant are one atomic change, and the stack enforces it.**
+Setting `projectRoleCheck: "true"` with an empty `grantUserIds` is an apply
+error — the same fail-closed treatment as an unparseable boolean, for the same
+reason: the permissive-looking outcome is the dangerous one.
 
-Steps 2 and 3 belong in one change.
+```yaml
+zitadel-apps-mcp-slack:projectRoleCheck: "true"
+zitadel-apps-mcp-slack:grantUserIds: "378818267051722263"   # comma-separated
+```
+
+An earlier version of this README prescribed a three-step sequence — apply
+`false`, grant, apply `true`. **That sequence is now forbidden.** It leaves a
+window in which the check is live and nobody holds the role, and the failure
+does not surface where it is caused: the apply succeeds, and the next *login*
+breaks. Zitadel declines to issue a token, the server rejects the request, and
+the symptom is an auth failure during a Spark test that points every reasonable
+investigation at the server's auth guard rather than at a config flag flipped in
+an earlier apply.
+
+This is not hypothetical. As of 2026-08-06 the human user holds **zero** grants
+on any project in this org, and the existing `oauth-user-inspector` project
+works only because its role check is off. The first apply with this flag `true`
+and no `grantUserIds` would lock out the one person who needs in.
+
+Grants are created regardless of the flag. A grant with the check off is inert,
+so creating it early is safe — and it means enabling the check later cannot
+introduce a gap, because the grant is already in the state.
 
 **Nothing functional forces step 3.** After the grant, the endpoint works completely
 — tokens issue, tools list, channels read and write — with the restriction still

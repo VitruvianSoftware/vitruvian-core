@@ -55,6 +55,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -120,10 +121,16 @@ func main() {
 			// real, server-side restriction rather than "there happens to be only
 			// one user in the instance".
 			//
-			// It defaults FALSE and must not be flipped before the grant exists:
-			// turning it on with no role granted locks everyone out, including the
-			// first end-to-end Spark login. Sequence is (1) apply with false, (2)
-			// grant the role to the human's user id, (3) apply again with true.
+			// It defaults FALSE. Turning it on with no role granted locks everyone
+			// out, including the first end-to-end Spark login.
+			//
+			// THE FLAG AND THE GRANT ARE ONE ATOMIC CHANGE. An earlier version of
+			// this comment prescribed the opposite — apply false, grant, apply
+			// true — and that sequence is now explicitly forbidden: it leaves a
+			// window where the check is live and nobody holds the role, and the
+			// resulting failure surfaces as a rejected login rather than as a
+			// config change, so it reads like a bug in the server's auth guard.
+			// The guard below enforces this rather than trusting the reader.
 			ProjectRoleCheck: pulumi.Bool(projectRoleCheck),
 		}
 		if orgID != "" {
@@ -152,6 +159,33 @@ func main() {
 		}
 		if _, err := zitadel.NewProjectRole(ctx, roleKey, roleArgs); err != nil {
 			return err
+		}
+
+		// THE COUPLING GUARD — see resolveGrantUserIDs. Extracted rather than
+		// written inline so it can actually be exercised by a test: this
+		// constraint is a release-gate condition, and a gate enforced by code
+		// nobody ran is the same shape of problem it exists to prevent.
+		grantIDs, err := resolveGrantUserIDs(projectRoleCheck, cfg.Get("grantUserIds"), roleKey)
+		if err != nil {
+			return err
+		}
+
+		// Grants are created whether or not the check is on. Granting a role
+		// nobody is checking is inert, so this is safe ahead of the flip — and
+		// it means enabling the check later cannot introduce a gap, because the
+		// grant is already in the state.
+		for _, userID := range grantIDs {
+			grantArgs := &zitadel.UserGrantArgs{
+				ProjectId: project.ID(),
+				UserId:    pulumi.String(userID),
+				RoleKeys:  pulumi.StringArray{pulumi.String(roleKey)},
+			}
+			if orgID != "" {
+				grantArgs.OrgId = pulumi.String(orgID)
+			}
+			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs); err != nil {
+				return err
+			}
 		}
 
 		appArgs := &zitadel.ApplicationOidcArgs{
@@ -268,4 +302,49 @@ func main() {
 		ctx.Export("tokenEndpoint", pulumi.String("https://auth.ipv1337.dev/oauth/v2/token"))
 		return nil
 	})
+}
+
+// resolveGrantUserIDs parses the grantUserIds config and enforces the coupling
+// between it and projectRoleCheck.
+//
+// THE FLAG AND THE GRANT ARE ONE ATOMIC CHANGE. Enabling the project role
+// check without granting the role to at least one user in the SAME apply is
+// refused here rather than tracked as a task somebody remembers.
+//
+// The failure it prevents is specifically nasty because it does not surface
+// where it is caused: enabling the check while nobody holds the role does not
+// break the apply, it breaks the next LOGIN. Zitadel declines to issue a token
+// for the project, the server rejects the request, and the symptom is an auth
+// failure during the first end-to-end Spark test — which points every
+// reasonable investigation at the server's auth guard rather than at a config
+// flag flipped in an earlier, already-forgotten apply.
+//
+// Not hypothetical. As of 2026-08-06 the human user holds ZERO grants on any
+// project in this org, and the existing oauth-user-inspector project works
+// only because its role check is off. The first apply with this flag true and
+// no grantUserIds would lock out the one person who needs in.
+//
+// Note the asymmetry: a grant with the check OFF is inert and harmless, so
+// grants are always created. Only the reverse — check on, no grant — is
+// refused. Failing closed here means refusing to apply, not applying something
+// permissive.
+func resolveGrantUserIDs(projectRoleCheck bool, raw, roleKey string) ([]string, error) {
+	var ids []string
+	for _, id := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			ids = append(ids, trimmed)
+		}
+	}
+	if projectRoleCheck && len(ids) == 0 {
+		return nil, fmt.Errorf(
+			"zitadel-apps-mcp-slack:projectRoleCheck is true but grantUserIds "+
+				"is empty. Refusing to apply: enabling the project role check "+
+				"without granting %q to at least one user in the SAME apply "+
+				"locks every user out of this project, and the resulting login "+
+				"failure looks like a server auth bug rather than a config "+
+				"change. Set grantUserIds to the Zitadel user id(s) that must "+
+				"retain access, or leave projectRoleCheck false", roleKey,
+		)
+	}
+	return ids, nil
 }
