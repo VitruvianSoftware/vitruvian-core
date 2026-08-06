@@ -118,14 +118,32 @@ exiting when JWKS is unreachable, and the probes deliberately do not touch the
 IdP, so the pod stays Ready while every call fails. No pod-state alert can see
 it.
 
-> **The alert is inert until a server change lands.** It assumes an
-> unreachable IdP produces 5xx. As of PR #1418 it does not: `auth.ts` wraps
-> every `jwtVerify` failure — including `TypeError: fetch failed` from the
-> remote JWKS — in `InvalidTokenError`, which is a **401**. So during the
-> exact outage this alert exists to catch, the 5xx numerator is zero. The
-> server needs a distinct `IdpUnavailableError` at **503**: the failure is
-> ours, not the caller's, and 503 is both the correct status and the only one
-> this alert can see. Tracked on #1418.
+> **This alert depends on a server behaviour that was wrong until
+> `45130c18`.** It assumes an unreachable IdP produces 5xx. `auth.ts`
+> originally wrapped *every* `jwtVerify` failure — including `TypeError:
+> fetch failed` from the remote JWKS — in `InvalidTokenError`, a **401**. The
+> 5xx numerator was zero during the exact outage this alert exists to catch,
+> and the endpoint blamed the caller's credential for our own downtime.
+>
+> Fixed on #1418: `auth.ts` discriminates on whether jose reached a verdict
+> (`error instanceof errors.JOSEError`) rather than on the shape of the
+> failure, so an unrecognised error cannot fall through to 401 and accuse a
+> valid token. Verification failures stay 401; anything that means
+> verification never completed becomes `IdpUnavailableError` at **503**,
+> carrying `Retry-After` and deliberately no `WWW-Authenticate` — that header
+> would send a caller holding a good token to re-authenticate against an IdP
+> that is down.
+>
+> Confirmed end-to-end for this alert's purposes: `writeAuthFailure` in
+> `httpTransport.ts` writes `error.status`, so the 503 reaches Envoy and is
+> counted by `envoy_response_code_class="5"`.
+
+Note what this alert does **not** cover: `envoy_cluster_upstream_rq_xx` counts
+*upstream* responses. If the pod is gone entirely, Envoy synthesises a 503
+without an upstream response and this alert stays silent. That case is
+covered by `KubeDeploymentReplicasMismatch`. The division is clean — pod-down
+is pod-state's job, pod-up-but-failing is this alert's — but it is a division,
+not redundancy.
 
 The alert is expressed as a **ratio**, not a request rate: the endpoint is idle
 between Spark sessions, so any absolute threshold is wrong in both directions.

@@ -607,17 +607,28 @@ spec:
                 # templates/deployment.yaml for why the probes are built that
                 # way.
                 #
-                # DEPENDS ON THE SERVER RETURNING 5xx FOR AN UNREACHABLE IdP.
-                # As of PR #1418 it does not: auth.ts wraps every jwtVerify
-                # failure — including `TypeError: fetch failed` from the
-                # remote JWKS — in InvalidTokenError, which is a 401. So the
-                # 5xx numerator stays at zero through the exact outage this
-                # alert exists to catch. The server fix (a distinct
-                # IdpUnavailableError at 503) is tracked on #1418 and must
-                # land before this alert means anything. Left in place
-                # deliberately rather than deleted: 5xx is the right signal
-                # once the status code is right, and the two changes are
-                # reviewed in different PRs.
+                # DEPENDS ON THE SERVER RETURNING 5xx FOR AN UNREACHABLE IdP,
+                # which was NOT true until 45130c18 (PR #1418). auth.ts used
+                # to wrap every jwtVerify failure — including `TypeError:
+                # fetch failed` from the remote JWKS — in InvalidTokenError, a
+                # 401, so the 5xx numerator stayed at zero through the exact
+                # outage this alert exists to catch.
+                #
+                # Now fixed: auth.ts discriminates on whether jose reached a
+                # verdict (`error instanceof errors.JOSEError`), so anything
+                # meaning verification never completed becomes
+                # IdpUnavailableError at 503. Confirmed for this alert's
+                # purposes that the status survives to the wire —
+                # writeAuthFailure in httpTransport.ts writes error.status, so
+                # Envoy sees a real 503 and counts it under
+                # envoy_response_code_class="5".
+                #
+                # Note the scope: envoy_cluster_upstream_rq_xx counts UPSTREAM
+                # responses. A pod that is gone entirely makes Envoy
+                # synthesise a 503 with no upstream response, and this alert
+                # stays silent — that case belongs to
+                # KubeDeploymentReplicasMismatch. Clean division of labour,
+                # but a division, not redundancy.
                 #
                 # Expressed as a RATIO, not a request rate. The endpoint is
                 # idle between Spark sessions, so any absolute threshold is
