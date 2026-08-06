@@ -689,7 +689,7 @@ spec:
                       severity: warning
                     annotations:
                       summary: "mcp-slack failing {{ $value | humanizePercentage }} of requests"
-                      description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Usual cause is Zitadel/JWKS unreachable — check pod logs for the auth path before suspecting the transport."
+                      description: "Majority of mcp-slack requests returning 5xx for >10m while the pod is Ready and /health is green. Split the class before debugging: 503 means the IdP was unreachable and the token was never judged (IdpUnavailableError — check Zitadel/JWKS, not this server); 500 means an unexpected failure in this server (check pod logs). The alert fires on both because either is an outage, but they are different systems."
 
                   # Complement to the ratio, not a duplicate of it. The ratio
                   # answers "of what we answered, most failed"; this answers
