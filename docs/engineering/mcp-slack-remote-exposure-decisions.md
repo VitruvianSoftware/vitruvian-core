@@ -266,6 +266,19 @@ at the check falls on whoever discovered it, not on the original author — beca
 refactor will only preserve the reason that's actually written there, regardless of who found it
 or when.
 
+**Proactive instance, per Aegis/Beacon (2026-08-06T22:42:56Z), applied before the code exists rather
+than found in a review afterward:** the planned `azp`-mismatch rejection (part of `OIDC_ALLOWED_SUBJECTS`,
+above) shares its HTTP status with the audience-mismatch and unlisted-subject rejections
+deliberately — all three mean "someone holding an instance-issued token is knocking, but not one
+authorized here," and one alert rule catching all three under a shared status is a real property
+worth having, not an oversight. Named in the spec *before implementation* precisely because it's
+the same accidental-looking-property shape that took out the DNS containment lever (pattern 13): a
+future reader seeing three distinct error classes returning one status code could reasonably read
+that as insufficiently precise and "tidy" it into per-class codes, silently breaking the single
+alert the shared status exists to enable. Recorded here so the error definitions carry the reason
+the status is shared, not just the fact that it is — same fix as the rest of pattern 7, applied
+before the trap is built rather than after.
+
 ### 8. A correct, tested primitive doesn't help the call site that quietly doesn't use it
 
 Per Scout (2026-08-06T20:42:35Z), reading the frozen head cold rather than following the thread's
