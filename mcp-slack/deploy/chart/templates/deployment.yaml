@@ -78,6 +78,20 @@ spec:
             capabilities:
               drop: ["ALL"]
           env:
+            # DERIVED from terminationGracePeriodSeconds, deliberately — the
+            # process cannot read the pod's grace period (no downward-API
+            # field exposes it), so it cannot validate the ordering itself.
+            # #1433 moved the number out of the server for exactly that
+            # reason; setting it here is the half that makes the invariant
+            # real rather than relocated, because this is the one file where
+            # both numbers are visible together.
+            #
+            # The in-process drain must FINISH BEFORE the kubelet's SIGKILL,
+            # so it gets the grace period minus a 2s margin. Invert that and
+            # the drain is decorative: the kubelet wins the race and kills
+            # in-flight requests the drain existed to protect.
+            - name: SHUTDOWN_GRACE_MS
+              value: {{ include "mcp-slack.shutdownGraceMs" . | quote }}
             - name: MCP_TRANSPORT
               value: http
             - name: PORT

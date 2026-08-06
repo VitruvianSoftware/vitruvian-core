@@ -62,3 +62,20 @@ deployment that renders, syncs, reports Healthy, and is wrong.
 {{- define "mcp-slack.channelIds" -}}
 {{ required "slack.channelIds is required — this is the channel allow-list and it is the only thing bounding which conversations a caller can reach. Refusing to render is correct; an empty allow-list would expose every channel the bot belongs to." .Values.slack.channelIds }}
 {{- end -}}
+
+{{/*
+The in-process shutdown budget, in milliseconds, derived from the pod's
+terminationGracePeriodSeconds so the two cannot drift apart.
+
+Guarded rather than computed blindly. A grace period of 2s or less yields a
+zero or negative budget, which would either disable the drain or be coerced
+into something meaningless — the fail-open-on-an-uninterpretable-value shape
+this chart refuses everywhere else. Refusing to render is the honest outcome.
+*/}}
+{{- define "mcp-slack.shutdownGraceMs" -}}
+{{- $g := int .Values.terminationGracePeriodSeconds -}}
+{{- if lt $g 3 -}}
+{{- fail (printf "terminationGracePeriodSeconds is %d, which leaves no room for the in-process drain. SHUTDOWN_GRACE_MS is derived as (grace - 2s); at %ds that is zero or negative, so the drain would be disabled while appearing configured. Use at least 3." $g $g) -}}
+{{- end -}}
+{{- mul (sub $g 2) 1000 -}}
+{{- end -}}
