@@ -190,6 +190,50 @@ export function audienceList(payload: JWTPayload): string[] {
   return [];
 }
 
+
+/**
+ * jose error codes that mean *we* could not judge the token, rather than that
+ * the token is bad.
+ *
+ * All fourteen of jose's error classes extend `JOSEError`, so "is it a
+ * JOSEError" cannot separate a verdict from an inability to reach one — an
+ * earlier version used exactly that predicate and sent a JWKS **timeout** back
+ * as a 401, telling a caller with a valid token that their credential was bad.
+ * That survived its own fix because the repro used an unreachable host, which
+ * throws a plain `TypeError` and so took the correct branch by accident.
+ *
+ * So the classification is explicit and complete. Every code in `jose@6` is
+ * listed in one of the two groups below; adding a case means choosing.
+ *
+ * **IdP-side — 503, the token was never judged:**
+ *   ERR_JWKS_TIMEOUT                  the IdP is up but did not answer in time
+ *   ERR_JWKS_INVALID                  the IdP served a malformed key set
+ *   ERR_JWK_INVALID                   a key within that set is malformed
+ *   ERR_JWKS_MULTIPLE_MATCHING_KEYS   the key set is ambiguous for this kid
+ *
+ * **Verdicts about the presented token — 401:**
+ *   ERR_JWS_SIGNATURE_VERIFICATION_FAILED, ERR_JWT_EXPIRED,
+ *   ERR_JWT_CLAIM_VALIDATION_FAILED, ERR_JWT_INVALID, ERR_JWS_INVALID,
+ *   ERR_JWKS_NO_MATCHING_KEY, ERR_JOSE_ALG_NOT_ALLOWED,
+ *   ERR_JOSE_NOT_SUPPORTED, ERR_JWE_INVALID, ERR_JWE_DECRYPTION_FAILED
+ *
+ * Anything that is not a jose error at all — a bare `TypeError: fetch failed`
+ * from an unreachable host — is also IdP-side. An unrecognised failure lands
+ * on 503 deliberately: "we could not judge it" is true of every case, whereas
+ * a wrong 401 accuses a credential that may be perfectly good.
+ */
+const IDP_SIDE_JOSE_CODES = new Set([
+  "ERR_JWKS_TIMEOUT",
+  "ERR_JWKS_INVALID",
+  "ERR_JWK_INVALID",
+  "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
+]);
+
+export function isIdpSideFailure(error: unknown): boolean {
+  if (!(error instanceof errors.JOSEError)) return true;
+  return IDP_SIDE_JOSE_CODES.has((error as { code?: string }).code ?? "");
+}
+
 export interface TokenVerifierConfig {
   /** Zitadel issuer, e.g. https://auth.ipv1337.dev */
   issuer: string;
@@ -203,6 +247,12 @@ export interface TokenVerifierConfig {
    * access; production never sets this.
    */
   keySource?: Parameters<typeof jwtVerify>[1];
+  /**
+   * How long to wait for the JWKS fetch. jose's default is 5s and is
+   * invisible; naming it makes the timeout a decision rather than a default,
+   * and lets a test exercise the timeout path without waiting five seconds.
+   */
+  jwksTimeoutMs?: number;
 }
 
 export interface VerifiedCaller {
@@ -225,7 +275,11 @@ export interface TokenVerifier {
 export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier {
   const issuer = config.issuer.replace(/\/+$/, "");
   const jwksUri = config.jwksUri ?? `${issuer}/oauth/v2/keys`;
-  const jwks = config.keySource ?? createRemoteJWKSet(new URL(jwksUri));
+  const jwks =
+    config.keySource ??
+    createRemoteJWKSet(new URL(jwksUri), {
+      timeoutDuration: config.jwksTimeoutMs ?? 5000,
+    });
 
   async function verify(token: string): Promise<VerifiedCaller> {
     if (!looksLikeJwt(token)) throw new OpaqueTokenError();
@@ -251,21 +305,10 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
         clockTolerance: 30,
       }));
     } catch (error) {
-      // Discriminate on "did we judge the token" rather than on the shape of
-      // the failure. jose raises a JOSEError subclass for everything that is
-      // a verdict about the token — bad signature, expired, wrong issuer, no
-      // matching key. Anything else reaching here means verification never
-      // completed, and the realistic case is the JWKS fetch failing.
-      //
-      // Enumerating network error shapes would be the fragile version: an
-      // unrecognised failure would fall through to 401 and tell a caller
-      // their valid token is bad. This way an unrecognised failure becomes
-      // 503, which is the direction that is safe to be wrong in.
-      const judged = error instanceof errors.JOSEError;
       const reason = error instanceof Error ? error.message : String(error);
-      throw judged
-        ? new InvalidTokenError(reason)
-        : new IdpUnavailableError(reason);
+      throw isIdpSideFailure(error)
+        ? new IdpUnavailableError(reason)
+        : new InvalidTokenError(reason);
     }
 
     const audiences = audienceList(payload);
