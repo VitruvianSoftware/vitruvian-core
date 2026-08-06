@@ -55,6 +55,10 @@ deployment that renders, syncs, reports Healthy, and is wrong.
 {{ required "oidc.projectId is required — take it from `pulumi stack output projectId` on the zitadel-apps-mcp-slack stack. It is the audience the server validates against, so a wrong or absent value is the boundary, not a setting." .Values.oidc.projectId }}
 {{- end -}}
 
+{{- define "mcp-slack.allowedSubjects" -}}
+{{ required "oidc.allowedSubjects is required — comma-separated Zitadel subjects (numeric user ids). This is the only identity check made per request; the audience check is not one, because `aud` is caller-authored and every account this instance issues a token to can put this project in it. Refusing to render is correct: an empty subject list would admit the whole instance, which today is anyone who can self-register." .Values.oidc.allowedSubjects }}
+{{- end -}}
+
 {{- define "mcp-slack.channelIds" -}}
 {{ required "slack.channelIds is required — this is the channel allow-list and it is the only thing bounding which conversations a caller can reach. Refusing to render is correct; an empty allow-list would expose every channel the bot belongs to." .Values.slack.channelIds }}
 {{- end -}}

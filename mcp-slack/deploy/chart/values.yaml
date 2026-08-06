@@ -53,6 +53,22 @@ oidc:
   # Never hand-typed: a wrong value here means the audience check validates
   # against the wrong project, which is the boundary, not a setting.
   projectId: ""
+  # REQUIRED — comma-separated Zitadel subjects (`sub`), the NUMERIC user ids,
+  # not loginnames or email addresses.
+  #
+  # This is the only identity control evaluated per request rather than at
+  # token issuance, and it is what closes the gap the audience check does not:
+  # `aud` is caller-authored (any authenticated user can add any project to it
+  # with a scope string), so issuer + audience alone admit every account this
+  # Zitadel instance will issue a token to. That set is currently "anyone on
+  # the internet", because self-registration is open.
+  #
+  # Unset is a render failure, not "allow everyone" — and the server agrees:
+  # `parseSubjects` (mcp-slack/src/config.ts) throws when the list is empty on
+  # the HTTP transport. Guarding it here too means the failure surfaces as a
+  # refused render with this message, rather than as a CrashLoopBackOff that
+  # reads like an application fault.
+  allowedSubjects: ""
 
 slack:
   # REQUIRED — comma-separated channel IDs. This is the allow-list, and it is

@@ -77,6 +77,14 @@ spec:
             # isolation that the dedicated Zitadel project exists to provide.
             - name: OIDC_PROJECT_ID
               value: {{ include "mcp-slack.projectId" . | quote }}
+            # The per-request identity check. OIDC_PROJECT_ID above is NOT one:
+            # `aud` is caller-authored, so issuer + audience admit every account
+            # this Zitadel instance will issue a token to. This list is what
+            # narrows that to the intended callers, and the server refuses to
+            # start without it — the chart refuses to render, so the failure
+            # names the missing value instead of arriving as CrashLoopBackOff.
+            - name: OIDC_ALLOWED_SUBJECTS
+              value: {{ include "mcp-slack.allowedSubjects" . | quote }}
             - name: SLACK_CHANNEL_IDS
               value: {{ include "mcp-slack.channelIds" . | quote }}
             # Bot token and team id only. SLACK_USER_TOKEN is deliberately
