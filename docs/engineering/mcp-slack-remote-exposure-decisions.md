@@ -307,6 +307,69 @@ what they do with it can't be cheaply reversed. Apply this specifically to any h
 team is still actively finding problems with the artifact and the recipient's next action is a
 click, an apply, or an install rather than a re-readable message.
 
+### 10. A boundary built in one layer needs to be designed in every layer that could hold it — weakest first
+
+Per Aegis's design-level review (2026-08-06T20:55:43Z), answering the question the whole build had
+been implicitly avoiding — not "does the implementation match the design" but "is the design
+right." mcp-slack has (at least) three places a control over what the endpoint can reach could
+live, from weakest to strongest:
+
+| | Layer | Enforced by | Survives | Built, as of this review |
+|---|---|---|---|---|
+| **L3** | `SLACK_CHANNEL_IDS` allow-list | this process's own code | our own correctness | to a high standard — nine defects found and fixed here |
+| **L2** | who may call at all | Zitadel `projectRoleCheck` | an apply landing right | off, single-instance |
+| **L1** | Slack bot scopes | Slack itself | *everything*, including a leaked token | inherited from the local stdio tool, never re-derived for this use |
+
+Nine of this build's defects were all found and fixed in L3 — real, worth finding, and still the
+weakest layer available, for two properties that hadn't been named before this review:
+
+- **L3 only binds channel-shaped calls.** A control keyed on a channel parameter cannot, by
+  construction, say anything about a call that doesn't carry one — see the `slack_get_users` gap,
+  above. No amount of care inside the guard changes what class of call the guard can see.
+- **L3 is void the moment the credential leaves the process.** The bot token lives in the pod's
+  environment. Anyone who obtains it by any means — pod exec, a log dump, an unrestricted egress
+  path, a future bug — holds the bot's full reach, unbounded by anything this repo's code does,
+  because the allow-list is a property of the code, not of the token.
+
+**L1 is the only layer that holds when the code is wrong, and it's the one that was inherited
+rather than designed** — see the scope table above, narrowed only after this review. L2 was built
+but shipped off by necessity (the bootstrap-ordering problem) with no second enforcement point,
+until `OIDC_ALLOWED_SUBJECTS` closed that gap (below).
+
+**Rule: for any system exposing a boundary, enumerate every layer capable of holding that boundary
+— weakest and least trustworthy first, most authoritative last — before declaring the boundary
+"designed."** A team can pour real scrutiny into the weakest layer (as this one did, to a high
+standard) and still have an undesigned system, because scrutiny inside one layer says nothing about
+whether the other layers were considered at all. The question to ask isn't "did we test this
+control correctly" — it's "what layers could hold this boundary, and did we design for all of
+them, or only for the one we happened to be looking at."
+
+### 11. Findings that are each individually "doesn't reach us" can compose into one that does
+
+Per Beacon (2026-08-06T20:58:17Z), on Atlas's Zitadel exposure analysis. Two open questions —
+whether the instance permits self-registration, and whether a different OIDC client in the org can
+request this project's audience scope — were each assessed independently and each, alone, judged
+insufficient to reach mcp-slack: self-registration alone still requires a token scoped to this
+project, which needs a client that can request it; a permissive audience alone still requires an
+account to authenticate with, which registration being closed would prevent. **Together, they
+compose into a live path:** anyone on the internet registers, authenticates through some other
+client in the org capable of requesting this project's audience, and holds a token this server
+accepts — during any window where caller identity is unenforced.
+
+**Nobody had checked for this because each question was correctly closed on its own, and closed
+questions don't get revisited against each other.** Every pattern this build produced before this
+one is about a single claim, made and later found wrong or incomplete on its own terms — a
+completeness claim, a parse-fallback default, an undocumented second purpose. This is different in
+kind: **two independently-true, independently-insufficient findings, neither of which is a defect
+by itself, can multiply into a real exposure that neither review would surface alone.**
+
+**Rule: when a system's safety argument rests on multiple independent conditions each being
+false (or each being narrow), explicitly check the conjunction, not just each condition in
+isolation.** After closing a finding as "doesn't reach us, because X is also required," ask what
+else would need to be true for X itself to be satisfied — and whether anything already known, or
+still open, satisfies it. A go-live review that closes N findings independently has not yet checked
+whether any two of those N compose into an N+1th.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
@@ -393,28 +456,54 @@ of pattern 8 (inherited from a different context, never re-checked against the c
 requirement — caught in this thread eight times now). Checked against the eleven tools the HTTP
 path advertises after filtering:
 
+**Settled 2026-08-06T20:56Z** (sent to James by Beacon only after Aegis, Wren, and Atlas had all
+signed off on the same list — the first list this build sent him that specialists agreed on before
+it left, per pattern 9):
+
 | Keep | Why |
 |---|---|
 | `channels:read`, `channels:history` | Public channel list/read — used |
 | `pins:read`, `bookmarks:read` | The two list tools — used |
-| `users:read` | User lookups — used, but see the tool-level gap below; the scope alone is not sufficient |
+| `users:read` | Single-user profile lookup only (`slack_get_user_profile`) — resolves a `U…` id surfaced from allow-listed channel history. Bulk enumeration (`slack_get_users`/`users.list`) is withheld from the HTTP tool list, below — the scope alone was not sufficient protection. |
 | `chat:write` | Decision 6's write requirement |
-| `groups:read`, `groups:history` | **James's deliberate call** — needed only if private channels are in the allow-list. Framed the same way as the dropped DM scopes below: including them makes private-channel reach probabilistic (bounded only by the allow-list, forever); omitting them makes it categorical (Slack refuses regardless of allow-list). Choose deliberately, not by habit. |
+| `groups:read`, `groups:history` | **Off by default, not James's call to enable in advance.** Per Aegis: a private channel entering the allow-list should be a deliberate decision with its own line when James actually wants one, not a capability granted speculatively "in case." Being wrong in the direction of omitting costs one reinstall; being wrong in the direction of including costs an unbounded-by-anything-but-the-allow-list private-channel surface. |
 
 | Drop | Why |
 |---|---|
 | `im:history`, `mpim:history` | Nothing in the HTTP tool set reads a DM or group DM. Dropping them makes DM/group-DM access categorically impossible on this credential — Slack refuses regardless of membership or allow-list — rather than merely unlikely. Retires the DM half of the membership-inventory question by construction (see below), not by policy. |
-| `users:read.email` | `slack_get_user_profile` (`slackClient.ts:206-211`) succeeds without it — Slack just omits the email field. Nothing in the tool set requires it; its only effect is putting workspace members' emails into responses. **Fails silently if omitted, not loudly** — unlike the DM scopes, an absent `users:read.email` produces a 200 with a missing field, not a `missing_scope` error, so if email is ever needed later the symptom is a silently absent field, worth a code comment if this scope is ever reconsidered. **General rule surfaced by this correction, per Wren:** whether a narrowed scope fails loudly or silently depends on whether it gates the *call* (loud — `missing_scope`) or gates a *field on an otherwise-successful call* (silent — the field is just absent). Check which shape applies before assuming a narrow scope is safe to try. |
+| `users:read.email` | `slack_get_user_profile` (`slackClient.ts:206-211`) succeeds without it — Slack just omits the email field. Nothing in the tool set requires it; its only effect is putting workspace members' emails into responses. **Fails silently if omitted, not loudly** — unlike the DM scopes, an absent `users:read.email` produces a 200 with a missing field, not a `missing_scope` error, so if email is ever needed later the symptom is a silently absent field, worth a code comment if this scope is ever reconsidered. **General rule, per Wren, self-corrected after over-generalizing once:** whether a narrowed scope fails loudly or silently depends on whether it gates the *call* (loud — `missing_scope`) or gates a *field on an otherwise-successful call* (silent — the field is just absent). Check which shape applies before assuming a narrow scope is safe to try. |
 
-**The design gap underneath both scope questions, found by Aegis's design-level review (2026-08-06T20:52-20:54Z) — the most significant finding of this build, because it is the first one outside every boundary constructed so far, not a bug inside one:**
+**The design gap underneath both scope questions, found by Aegis's design-level review (2026-08-06T20:52-20:55Z) — the most significant finding of this build, because it is the first one outside every boundary constructed so far, not a bug inside one:**
 
-`slack_get_users` (`users.list`) and `slack_get_user_profile` (`users.profile.get`) carry **no channel parameter at all** (`slackClient.ts:203,207`). `readChannelParam` correctly returns `{kind: "absent"}` for both — there is no channel to check — and `assertParamsAllowed` correctly passes them through, because that is the right behavior for a call that isn't channel-scoped. Neither tool is in `USER_TOKEN_ONLY_TOOLS`, so both are advertised and dispatchable over HTTP. The consequence: **`slack_get_users` returns the entire workspace member directory to any authenticated caller**, unbounded by `SLACK_CHANNEL_IDS`, bot channel membership, or which rung of the ladder above is chosen — because `users.list` is **workspace-scoped, not channel-scoped or membership-scoped**. A new app's bot in zero conversations still returns the full directory on its very first call. `projectRoleCheck` doesn't help either — it restricts *who* may call, not *what* a valid call reaches.
+`slack_get_users` (`users.list`) and `slack_get_user_profile` (`users.profile.get`) carry **no channel parameter at all** (`slackClient.ts:203,207`). `readChannelParam` correctly returns `{kind: "absent"}` for both — there is no channel to check — and `assertParamsAllowed` correctly passes them through, because that is the right behavior for a call that isn't channel-scoped. Neither tool is in `USER_TOKEN_ONLY_TOOLS`, so both were advertised and dispatchable over HTTP. The consequence: **`slack_get_users` returned the entire workspace member directory to any authenticated caller**, unbounded by `SLACK_CHANNEL_IDS`, bot channel membership, or which rung of the ladder above is chosen — because `users.list` is **workspace-scoped, not channel-scoped or membership-scoped**. A new app's bot in zero conversations still returns the full directory on its very first call. `projectRoleCheck` doesn't help either — it restricts *who* may call, not *what* a valid call reaches.
 
-**Every control built earlier tonight (the channel allow-list, the credential-boundary pattern, the new-app blast-radius argument) is channel-shaped. This tool is not channel-shaped, so none of those controls bind to it.** That is why a design-level review (Aegis's brief: "is the boundary correct," not "does the implementation match the design") caught what nine rounds of code review, testing, and adversarial completeness-checking did not — every prior defect this build found was *inside* the channel boundary; this is the first one *outside* it.
+**Every control built earlier tonight (the channel allow-list, the credential-boundary pattern, the new-app blast-radius argument) is channel-shaped. This tool is not channel-shaped, so none of those controls bind to it.** That is why a design-level review (Aegis's brief: "is the boundary correct," not "does the implementation match the design") caught what nine rounds of code review, testing, and adversarial completeness-checking did not — every prior defect this build found was *inside* the channel boundary; this was the first one *outside* it.
 
-**Fix, per Aegis, not yet landed:** withhold `slack_get_users` from the HTTP tool list entirely — Aegis sees no remote use case for bulk directory enumeration; a single-user lookup via `slack_get_user_profile` (given a `U…` ID surfaced from an allow-listed channel's history) is the narrow, defensible version. `users:read` scope alone is not sufficient protection — the tool itself must also be pulled from the HTTP path, same "belt and braces" relationship as a scope plus a tool-list withholding elsewhere in this doc.
+**Fixed and shipped, `922e9146` on #1418, independently verified by both Aegis and Beacon at the file
+level.** `slack_get_users` is withheld from `HTTP_WITHHELD_TOOLS` (`tools.ts:531`), which feeds both
+`ListTools` and the dispatch-time name check (`index.ts:68,80`) — withheld from advertisement *and*
+from invocation by name, not just hidden from the list. `slack_get_user_profile` correctly stays.
 
-**Consequence — the scope list above is provisional, and James was told to stop.** Beacon sent James three successive scope corrections in five minutes as this discussion evolved (the original set, Wren's DM-scope correction, Atlas's email-scope correction) before Aegis's finding — a security configuration James would act on **irreversibly** by creating and installing a Slack app — landed and would have been a fourth. Beacon has told James to hold off entirely until one settled, complete list is sent, rather than narrowing after installation costs another app-and-token cycle. **This section's scope table is not yet the final word; treat it as provisional pending Aegis's complete exposure-model review**, which also covers two items not yet reflected here: `/health` should not be published through the cloudflared tunnel, and the runtime half of the boundary (egress `NetworkPolicy`, edge rate limiting, the sealed-secret shape) doesn't yet appear in any of #1416/#1417/#1418.
+**Wren enumerated every method in the module with no channel parameter — the durable artifact from
+this finding, worth more than the one-line fix:**
+
+```
+getUsers               users.list                   ← was reachable on HTTP; now withheld
+getUserProfile         users.profile.get             ← reachable on HTTP; legitimate, kept
+searchMessages         search.messages                user-token, already refused
+searchFiles            search.files                   user-token, already refused
+editCanvas             canvases.edit                   user-token, already refused
+lookupCanvasSections    canvases.sections.lookup       user-token, already refused
+deleteCanvas           canvases.delete                 user-token, already refused
+```
+
+**Five of the seven were already refused — by `USER_TOKEN_ONLY_TOOLS`, a control aimed at something
+else entirely (bot/user credential separation, decision 3), not at this class of gap.** That's the
+residual risk stated exactly right, per Wren: being saved by an unrelated control is the definition
+of a gap that isn't actually closed. If the user token ever returns to the HTTP path, or a canvas
+tool ever gains a bot-token route, five refusals evaporate silently, because nothing in the code
+records that they were load-bearing for this reason. The fix Aegis asked for and Wren is carrying:
+a comment at `HTTP_WITHHELD_TOOLS` stating *why* each entry is there, not just that it is.
 
 **Consequence for the bot-membership-inventory open item (was: "someone with Slack workspace admin
 should inventory the bot's private-channel and DM membership before the endpoint goes public"):**
@@ -470,10 +559,27 @@ and still binding:**
   display-name claims are user-editable; rendering one verbatim into an app-posted message would
   let the requester write their own provenance line — harmless at one authorized subject today,
   a spoofing vector ("Requested by Security Team") the moment decision 2 ever widens. Source the
-  name from a **deploy-time mapping** (subject ID → display name, configured alongside the
-  deployment) instead — a one-entry mapping at today's single-tenant scale, extended per-subject if
-  decision 1 ever changes. An unrecognized subject gets no attribution line rather than one it
-  authored.
+  name from a **deploy-time mapping** (`sub` → display name, configured alongside the deployment)
+  instead — a one-entry mapping at today's single-tenant scale, extended per-subject if decision 1
+  ever changes. `sub` is specifically the claim to key on because it's the one claim the subject
+  cannot edit; `name`/`email`/`preferred_username` are profile fields the user changes at will, and
+  the failure mode to guard against isn't someone forgetting the mapping — it's someone later
+  "simplifying" it to read the display name straight off the token, which turns provenance into
+  self-assertion and looks like a cleanup. An unrecognized subject gets no attribution line rather
+  than one it authored.
+- **Correction, per Aegis (2026-08-06T20:55:43Z) — this is not an addition to the design, it's a
+  correction to how it must be understood: attribution is not a security control, and it must
+  never be documented or reasoned about as one.** The caller controls the message `text`. Nothing
+  in this design stops a caller writing `Requested by Someone Else` directly into the message body
+  — the deploy-time mapping only governs the server-appended attribution line, not the content a
+  caller supplies. **The line proves a message came from this endpoint. It proves nothing about who
+  asked, to a reader who doesn't already trust the endpoint's own attribution mechanism over
+  arbitrary body text.** Build consequence: render the attribution as a **server-appended Block Kit
+  `context` block**, never string-concatenated into `text`. A `context` block is visually and
+  structurally distinct from the message body, so a body-text forgery of "Requested by ..." stays
+  distinguishable from the real thing at no extra cost — and it's what keeps the
+  unrecognized-subject-gets-no-line rule meaningful, which plain string concatenation would quietly
+  undermine (a forger could just write the line themselves).
 - **Don't widen OAuth scope to carry the name.** Requesting `profile`/`email` to get a name claim
   onto the token grants Spark real additional capability for a cosmetic string; the deploy-time
   mapping needs no extra scope at all.
@@ -487,11 +593,81 @@ and still binding:**
 - **stdio is out of scope for this feature.** No `authInfo` exists on that transport, and on stdio
   the write already goes out as the human — an attribution line there would be redundant on a
   message the reader already knows was posted by that person directly.
-- **Open question, not yet answered:** whether Zitadel's access token carries a name/email claim
-  by default is unverified (Atlas confirmed the *instance* supports emitting `name`, `email`, etc.,
-  per its discovery document, but not which token type carries them) — moot for the chosen design
-  above, which sources the name from deploy config rather than the token, but worth closing out if
-  the deploy-time mapping ever needs to fall back to something token-derived.
+
+## Go-live gate — layers beyond L3 (added 2026-08-06T20:56-20:58Z, per Aegis's design review)
+
+Separate from and layered on top of Phase 1's code-merge gate (which does not reopen for any of
+this). None of the following blocks merging the transport PR; all of it blocks the endpoint being
+publicly reachable. Restructured, per Beacon, so review has something written to check against
+rather than chasing code that doesn't exist yet — Atlas writes to this list, Aegis reviews against
+it, not the other way around.
+
+**L2, doubled: `OIDC_ALLOWED_SUBJECTS`.** `projectRoleCheck: true` (decision 2's Zitadel-side
+enforcement) can't be enabled before James's role grant exists, which can't exist before he creates
+a Zitadel user — a hard bootstrap ordering that left a window where the endpoint would be publicly
+reachable with caller identity unenforced. Rather than accept that window (bounded only by
+discipline — see the standing rule below), the team added a second, independently-testable
+enforcement point: a required, fail-closed `OIDC_ALLOWED_SUBJECTS` config, checked against the
+verified `sub` claim, same shape and same `MissingAllowlistError` treatment as `SLACK_CHANNEL_IDS`.
+Built as its own PR after the transport PR merges (not folded in — that PR is frozen with three
+independent reviews against one head, and reopening it costs a schedule with nothing to gain while
+both are outage-blocked anyway). **Does not replace `projectRoleCheck: true`** — the point of the
+L1/L2/L3 framework above is that the same boundary held in two independent places is stronger than
+either alone, and this is L2 in two places rather than one.
+
+**Design requirement carried into that PR, continuing the self-describing-error pattern already
+established for `AudienceMismatchError`:** the rejection must print the `sub` it actually received.
+The argument for `OIDC_ALLOWED_SUBJECTS` over accepting the bootstrap window rests on "a wrong
+assumption about `sub`'s shape fails closed — James gets a 403 on his own first login and reads
+the true value off the log." That claim is only true if the code actually prints the value; absent
+that, a fail-closed *unknown* quietly becomes a fail-closed *mystery*, indistinguishable from any
+other misconfiguration. The failure has to carry its own fix, the same discipline that makes
+`AudienceMismatchError` print the audience actually presented rather than just refuse.
+
+**Standing rule, adopted verbatim from Aegis's fallback proposal even though `OIDC_ALLOWED_SUBJECTS`
+makes it belt-and-braces rather than the plan: no real channel enters `SLACK_CHANNEL_IDS` while
+the endpoint is publicly reachable and caller identity is unenforced.** Windows are short until an
+apply fails.
+
+**Phase 2b acceptance criteria — the runtime half of the boundary, which exists in none of #1416,
+#1417, or #1418 as of this writing (there is no `mcp-slack/deploy/` and no gitops reference yet;
+this is unwritten work, not an unreviewed gap):**
+
+1. **Tunnel ingress scoped to the MCP path only; `/health` stays in-cluster.** Kubelet probes hit
+   the pod IP directly and never traverse the route, so nothing needs `/health` reachable from the
+   internet — an unauthenticated 200 on a public hostname is a free liveness oracle for anyone
+   scanning. This is a **routing property, not a server property**: the fix is an `HTTPRoute`
+   matching only the MCP path (the cluster already does this elsewhere), not a second listener or
+   any code change. `/health` keeps returning exactly `{"status":"ok"}` — health endpoints accrete
+   diagnostic fields over time, and each addition individually looks reasonable while turning an
+   in-cluster probe into a reconnaissance response if the route is ever widened.
+2. **Egress `CiliumNetworkPolicy`** scoped to `slack.com:443` and the Zitadel JWKS host, nothing
+   else. No workload on this cluster currently has egress restricted (zero `CiliumNetworkPolicy`
+   resources exist in `gitops/` today), and the one prior attempt (on `argocd-image-updater`) was
+   reverted because it needed apiserver access the policy didn't correctly grant — moot for
+   mcp-slack, which needs no apiserver access at all, making it a better first candidate than the
+   workload that failed. **`toFQDNs` requires an explicit DNS-proxy rule or it silently matches
+   nothing** — the same fail-open shape as the reverted attempt, worth getting right the first time
+   given the precedent.
+3. **Rate-limit rule at the Cloudflare edge**, since the entire auth path currently runs before
+   anything throttles a request.
+4. **Pod hardening**: sealed bot token (already decided — bot token + team ID only, no user
+   token in-cluster), non-root, read-only rootfs, resource limits, image by digest, a
+   **sustained-5xx alert** (a JWKS outage leaves the pod `Ready` while every call fails — passing
+   readiness and being useless are different states, and nothing currently distinguishes them),
+   `terminationGracePeriodSeconds` + `preStop` paired with the app's own `SIGTERM` handler.
+
+**Two go-live blockers, unowned by this record because they're bigger than mcp-slack — noted here
+only because `OIDC_ALLOWED_SUBJECTS`'s value depends on them, not because this doc is where they
+get resolved.** Whether the Zitadel instance permits self-registration, and whether a different
+OIDC client in the org can request this project's audience scope, both bear on how exposed the
+bootstrap window actually is (see pattern 11 — the two compose). **Self-registration, if enabled,
+is a platform-wide Zitadel exposure question, not an mcp-slack one** — Zitadel is the SSO for the
+whole homelab, `oauth-user-inspector` already sits behind it, and it would be true regardless of
+whether this PoC existed. It's being raised as its own standing platform question elsewhere, not
+tracked as part of this build's gate. What *is* specific to this build: whichever way both
+questions resolve, `OIDC_ALLOWED_SUBJECTS` is the one control in the chain that doesn't depend on
+either answer, because it's enforced in this process against a value in this chart.
 
 ## Consequences of decision 5 (potentially permanent, not throwaway)
 
