@@ -212,6 +212,41 @@ saying "someone will change this later" is a higher-priority audit target for th
 than one set once and left alone**, precisely because the person who eventually edits it is
 reconstructing intent from a comment rather than carrying the context that produced it.
 
+### 7. A check that serves two purposes should say so, or the second purpose dies in a refactor that looks like a simplification
+
+Per Beacon (2026-08-06T20:41:27Z): `looksLikeJwt()` in mcp-slack's auth path is a string-split
+and a regex that rejects an obviously-malformed bearer token before any network call or
+cryptographic work. Wren wrote it as a diagnostic — so a garbage token gets a self-describing
+"this isn't a JWT" error instead of a generic 401. Reviewing the rate-limiting gap, Atlas traced
+the rejection path and found it does something Wren hadn't named as a goal: because it runs before
+`jwtVerify` and before JWKS lookup, it makes a flood of junk requests cheap to reject — CPU only,
+no I/O, no crypto — which is load-bearing for the endpoint's resistance to a trivial DoS on a
+public, unauthenticated-until-parsed path. Neither purpose was written down as the reason for the
+check; both were true, and only one was intentional at the time.
+
+**The risk this creates: a later change that looks like a pure simplification can silently remove
+a property nobody documented.** Someone optimizing the auth path and seeing a diagnostic-only
+regex ahead of the "real" verification could reasonably fold `looksLikeJwt`'s check into
+`jwtVerify` itself — correct by the diagnostic's own stated purpose, and a regression by the
+purpose nobody wrote down. The code would look cleaner and be worse.
+
+**Rule: when a check earns its keep for more than one reason, name all of them at the check
+itself — not just the one that motivated writing it.** A comment reading "cheap rejection of
+malformed input before any I/O — also serves as DoS resistance on the public path" costs one line
+and removes the trap. Apply this any time a review (like Atlas's here) surfaces a benefit the
+author didn't intend: the fix isn't just gratitude, it's writing the second purpose into the code
+before it has a chance to be refactored away by someone who only ever saw the first one.
+
+**Sharpened by Atlas (2026-08-06T20:41:53Z), the same day:** this isn't only about an author who
+knew a check served two purposes and failed to document the second one — `looksLikeJwt` didn't
+have that author. Wren wrote it for one reason; Atlas found the second reason later, while tracing
+something unrelated, and neither of them knew about it at the point the code was written. **The
+rule has to cover the case where nobody knew there was a second purpose to document:** when a
+reviewer discovers a check doing work its author never intended, the obligation to write it down
+at the check falls on whoever discovered it, not on the original author — because the next
+refactor will only preserve the reason that's actually written there, regardless of who found it
+or when.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
