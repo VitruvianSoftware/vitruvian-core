@@ -34,6 +34,14 @@ image:
 # renaming later costs a DNS/HTTPRoute change plus reconfiguring the client.
 hostname: mcp-slack.ipv1337.dev
 
+tunnel:
+  # Cloudflare Tunnel UUID, from gitops/argocd/platform/cloudflared/configmap.yaml.
+  # Not a secret — it is the CNAME target every tunnel-exposed app in this
+  # cluster points at, and it is already in the repo in plaintext. Defaulted
+  # rather than required because a wrong value here fails loudly (the name does
+  # not resolve) rather than quietly widening anything.
+  id: 1f7b9704-bb66-41f4-966f-5bb722e3c10e
+
 # The MCP endpoint path. The HTTPRoute matches ONLY this prefix, which is what
 # keeps /health off the internet — see templates/httproute.yaml.
 mcpPath: /mcp

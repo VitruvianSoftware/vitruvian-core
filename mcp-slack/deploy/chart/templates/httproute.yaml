@@ -35,6 +35,9 @@
 # rejected: it implements one security property in two places that then have
 # to stay consistent. This version cannot drift because the server is unaware
 # the distinction exists.
+# This HTTPRoute does NOT create the public DNS name — see
+# templates/dnsendpoint.yaml, which does, and which also explains why shipping
+# it costs us a containment lever.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
