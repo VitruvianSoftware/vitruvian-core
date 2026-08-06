@@ -533,6 +533,57 @@ ones.** Document the fast lever explicitly (what it is, who can pull it, what st
 in) rather than letting "we have an allow-list in the chart" stand in as the containment story when
 the chart's own delivery mechanism might be the thing that's down.
 
+**Corollary, per Aegis (2026-08-06T22:19:22Z): leaving an emergency lever's enabled-state out of
+IaC is sometimes the correct design, not the gap it looks like next to this build's general push
+toward everything-as-code.** Narrowly scoped to *the enabled/disabled state of a control meant to
+be pulled under incident pressure* — not to configuration generally. Work through what codifying
+such a lever into Pulumi actually buys: a reviewable definition, genuinely valuable — but now the
+enabled state is a reconciled field. Toggle it by hand during an incident and the next apply
+reverts it — Consequence A, above, the reconciler undoing the exact deviation that was the
+response. Escape that with `IgnoreChanges` on the field and the stack has reproduced
+`accessTokenType` (this doc's Zitadel/OAuth section): a security-relevant setting Pulumi will never
+reconcile, reporting clean forever while the live value is whatever was last set by hand — the
+precise failure mode a dedicated stack output had to be built to detect. **So it isn't that a
+managed path is unavailable for this class of control — it's that every managed path puts a
+reconciler between the operator and the stop button, and the one way out of that (`IgnoreChanges`)
+reproduces a failure this build has already documented once.** The comment this earns at the point
+of the design is not *"don't put this in Pulumi, it's load-bearing"* — a claim the next person can
+disagree with — but *"this is deliberately unmanaged: codifying it puts a reconciler between an
+operator and their stop button, and the workaround is the `IgnoreChanges` pattern that produced the
+`accessTokenType` problem"* — a specific argument the next person has to defeat, not a label to
+override. Apply this test to any future proposal to bring an incident-time toggle under IaC: does
+making it reviewable also make it something the system will fight you to keep on?
+
+### 14. A test double missing a field the real system always sends will silently exercise the wrong branch — and the dangerous direction is when that reads as the permissive case
+
+Found in a startup-verification test for the allow-list re-review (private channels now in scope,
+above): the test double for Slack's `conversations.info` omitted `is_private`, a field the real API
+always sends. Wren initially framed this as "the mock was too simple," a test-quality note.
+**Sharpened, per Wren himself (2026-08-06T22:21:29Z), after Beacon flagged it for the record: it
+isn't about mocks being thin in general — it's about which direction the missing field resolves
+to.** The check read `typeof is_private !== "boolean"`; with the field absent from the double,
+`is_private` was `undefined`, and `undefined` is falsy — so the double silently exercised the
+branch that treats an unset value as "public, verified," the exact permissive case a check on
+private-channel type exists to prevent. **A too-fat double (extra fields the code doesn't read) is
+harmless. A too-thin double is only dangerous when the specific missing field is one a security or
+correctness check branches on** — and it's dangerous silently, because the test still passes; it
+just verified the wrong thing.
+
+**This is pattern 6 (a value the code cannot interpret must never resolve to the permissive case)
+recurring one layer up, in the test harness rather than the production code.** The production check
+itself may be correctly fail-closed; a double that omits the field the check depends on can still
+make the *test* fail open, passing while asserting nothing about the failure mode it was written to
+catch.
+
+**Rule: the fields a security or correctness check reads must be present in every test double for
+the same reason they're present in production — not "richer mocks are better," but "an absent field
+a branch depends on is not automatically the safe branch, and a double that omits it inherits
+whichever branch `undefined`/`null`/absent happens to fall into by accident of the language, not by
+design."** When writing or reviewing a test double for an external API, check each field the
+system-under-test branches on and confirm the double supplies it explicitly — including the
+values that are supposed to fail — rather than only the happy-path fields needed to make the test
+compile.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
@@ -934,6 +985,41 @@ this is unwritten work, not an unreviewed gap):**
    **sustained-5xx alert** (a JWKS outage leaves the pod `Ready` while every call fails — passing
    readiness and being useless are different states, and nothing currently distinguishes them),
    `terminationGracePeriodSeconds` + `preStop` paired with the app's own `SIGTERM` handler.
+
+**Gate 5 — Cloudflare WAF/rate-limit block on `mcp-slack.ipv1337.dev`, promoted to a hard go-live
+blocker rather than folded into criterion 3 (Beacon, 2026-08-06T22:16Z), owner James (his
+Cloudflare account).** Distinct from criterion 3's edge rate limit in kind, not just severity:
+criterion 3 hardens the endpoint against load; this gate is the incident-response stop button.
+Forced by pattern 13's finding that no other lever available tonight both survives ArgoCD's and
+external-dns's reconcile loops *and* is undoable without a working CI system — see pattern 13's
+Consequence-A worked example (the DNS record, dead as a lever once `54c295ab` ships) and its token-
+revocation finding (Beacon, 2026-08-06T22:18Z: survives both reconcilers, but restoring the endpoint
+after a revoke needs a new bot token deployed through the same CI-gated path, making it a one-way
+door under an outage — reversibility, not just survival, is the bar).
+- **Definition of done inherits tonight's own recurring correction, applied to itself:** the
+  criterion is satisfied by someone having *seen the rule in the Cloudflare console*, not by having
+  been told it was made — the same standard that caught every major error in this thread (Scout on
+  the test file, Aegis on the tool list, Ridge on the CI job, Atlas on his own `DNSEndpoint`). A
+  status report of "WAF rule added" does not close this gate; a screenshot or console read does.
+- **Known, accepted tension — record the trade rather than let two true statements read as
+  contradictory (Beacon, 2026-08-06T22:18Z).** Beacon separately escalated unmanaged Zitadel
+  instance-level config (`DefaultOidcSettings` — set by hand, no diff, invisible to review) as a
+  platform-level gap in the main `vitruvian-core` channel. This gate adds a second instance of
+  exactly that class: a hand-made Cloudflare rule with no Pulumi/Terraform representation. **The
+  trade is deliberate, not an oversight the platform note contradicts**: the reversibility
+  requirement above rules out every reconciled, CI-gated alternative, so the only lever that
+  qualifies is one that lives outside any pipeline — which is definitionally unmanaged config. The
+  rule needs a comment or console note stating what it is and why it isn't in git, so a future
+  reader doesn't correctly identify it as the anti-pattern the platform note warns about and remove
+  it — the `DNSEndpoint` failure one layer out (a fix that's locally correct and destroys a property
+  nobody wrote down). Paired follow-up, tracked but not blocking: bring the rule into IaC once a
+  managed path exists that is *also* reversible without CI (a standing, not yet designed,
+  requirement — Cloudflare's Terraform provider can express the rule, but applying it through this
+  repo's CI reintroduces the exact coupling the gate exists to avoid).
+- **Held per Aegis's condition, restated by Beacon 2026-08-06T22:16Z:** the containment runbook in
+  `PLANS/MCP_SLACK_ROLLOUT_TRACKER.md` is not published as ready until this gate is closed. A
+  runbook whose fastest row is aspirational reads as available at the moment someone needs it and
+  isn't — worse than no runbook.
 
 **Both go-live blockers below are now resolved, not open — updated 2026-08-06T21:49Z.** They remain
 unowned by this record because they're bigger than mcp-slack, and the platform-wide question stays
