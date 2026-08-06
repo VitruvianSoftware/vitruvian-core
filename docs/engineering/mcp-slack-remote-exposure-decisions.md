@@ -85,6 +85,27 @@ per-application may really be per-project, per-org, or per-tenant — and a vali
 not the same thing as a boundary that holds. Check this any time a new OIDC/OAuth client is added
 to an IdP that already hosts another app's client, not just once per IdP.
 
+### 4. Reviewing a diff is not reviewing the file, and only one of them can support a completeness claim
+
+Per Beacon (2026-08-06T20:09:23Z), on itself: reviewing PR #1418's channel-allowlist enforcement,
+Beacon grepped the *diff* for `this.guard(`, found twelve call sites, verified each was correctly
+placed, and reported allow-list coverage as complete. Atlas then found two channel-scoped methods
+— `addBookmark`, `createCanvas` — that name a channel in their signature but were never wired to
+the guard at all, because they weren't touched by this PR and so could never have appeared in the
+diff Beacon searched. Not exploitable (both are user-token-only methods, independently withheld
+from the HTTP tool list), but missed for the same reason `SLACK_CHANNEL_IDS` originally covered
+only `listChannels`: enforcement present everywhere someone thought to add it, silently absent
+wherever they didn't need to touch the code to leave it out.
+
+**"Every guard added here is correct" and "every path that needs a guard has one" are different
+assertions, and only the file — never the diff — can support the second one.** A diff is bounded to
+lines the PR touched, so a search over it can prove a change is right but can never prove nothing
+was missed; an unmodified method is structurally invisible to that search regardless of how
+carefully it's read. When a PR's job is closing every instance of a class of gap (an allowlist, an
+auth check, an escaping rule), verify completeness against the whole file the property is supposed
+to hold over, not the diff that happens to be under review. Apply this any time a review claims
+"coverage is complete" for something that spans more of the codebase than the current PR touches.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
