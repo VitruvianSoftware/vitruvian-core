@@ -48,6 +48,13 @@ spec:
       # all refused before the real query is sent. ndots:1 resolves both hosts
       # absolutely on the first try. Nothing here resolves an in-cluster
       # Service, so short-name resolution is not a capability being given up.
+      #
+      # Its reason is currently moot and it stays anyway: the DNS rules it
+      # pairs with cannot run — Cilium's L7 DNS proxy never answers on this
+      # cluster (measured, see networkpolicy.yaml). ndots:1 is harmless
+      # without them, and removing it would have to be undone the moment the
+      # proxy is fixed. Do not read its presence as evidence that the policy
+      # works.
       dnsConfig:
         options:
           - name: ndots
@@ -111,7 +118,9 @@ spec:
           # exactly the wrong moment.
           #
           # The consequence is deliberate: during a JWKS failure this pod stays
-          # Ready while every MCP call returns 500. Pod state cannot see that,
+          # Ready while every MCP call returns 503 (IdpUnavailableError, since
+          # #1418's `44843bab` — it was a 401 before that, which is what made
+          # the alert below inert). Pod state cannot see that,
           # which is why the sustained-5xx alert is load-bearing rather than a
           # nice-to-have. It lives in the platform prometheus values
           # (gitops/argocd/platform/prometheus/applicationset.yaml, group
