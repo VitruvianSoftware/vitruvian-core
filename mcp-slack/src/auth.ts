@@ -211,9 +211,18 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
       // coerced into HMAC, so this is defence in depth rather than a fix —
       // it keeps the accepted set explicit if the IdP's advertised keys ever
       // widen. RS256 is what Zitadel issues.
+      //
+      // clockTolerance is not optional in practice. jose defaults to zero
+      // slack on exp/nbf/iat, and this server and the IdP are separate hosts
+      // with independently drifting clocks. Without it, a couple of seconds
+      // of drift rejects freshly-issued tokens intermittently — which
+      // presents as an auth bug that reproduces only sometimes, the most
+      // expensive kind to chase. 30s is small enough not to meaningfully
+      // extend a token's life and large enough to cover ordinary NTP drift.
       ({ payload } = await jwtVerify(token, jwks, {
         issuer,
         algorithms: ["RS256"],
+        clockTolerance: 30,
       }));
     } catch (error) {
       throw new InvalidTokenError(
