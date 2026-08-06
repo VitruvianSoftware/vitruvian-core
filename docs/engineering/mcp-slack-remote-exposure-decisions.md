@@ -584,6 +584,24 @@ system-under-test branches on and confirm the double supplies it explicitly — 
 values that are supposed to fail — rather than only the happy-path fields needed to make the test
 compile.
 
+**Second instance, per Wren (2026-08-06T22:31:47Z), one layer up from a missing field: a test can
+pass for a reason unrelated to what it claims to prove, when something *outside* the code under
+test happens to already provide the property being asserted.** Writing the SIGTERM-drain fix for
+the HTTP transport, Wren's first test asserted `close()` resolves with an idle keep-alive socket
+still open — and it passed with the actual fix deleted, because Node has closed idle sockets inside
+`close()` since v19 (the pinned runtime is 22), independent of any code in this package. The
+accompanying code comment asserted the opposite and was also simply wrong. The real defect was at
+the other end entirely: `close()` waiting forever on an *active* request, which — undetected — would
+leave a pod stuck in `Terminating` until the kubelet's `SIGKILL` took down every other in-flight
+request too, the drain mechanism causing exactly the outage it exists to prevent. Caught only
+because Wren ran the check he'd been telling everyone else to run all evening: delete the fix and
+confirm the test fails. It didn't, on the first test; it did on the second, which wedged a handler
+that never responds and asserted the close call actually times out without `closeAllConnections()`.
+**Same rule as the first instance, restated for platform-provided behavior rather than a missing
+field: a green test proves the code is correct only if the test would have failed without the code
+— confirm that by removing the fix and rerunning, not by trusting that a passing assertion is
+evidence of the thing it was written to check.**
+
 ### 15. A negative result from a tool running on its default configuration is a fact about the default, not about the capability
 
 Per Beacon (2026-08-06T22:24:28Z), in its strongest form after the mistake recurred three times in
@@ -626,6 +644,20 @@ a proxy signal lags the real one. **Rule: when writing a precondition or a check
 names the condition that's actually load-bearing or a correlate that was merely true when the check
 was written — a version number, a status label, a component name — and prefer the structural
 property every time a choice exists between the two.**
+
+**Temporal instance of the same scope-blindness as pattern 4/15, per Wren (2026-08-06T22:31:47Z):
+a measurement window can be mistaken for a steady state, the same way a diff or a default config
+can be mistaken for the whole search space.** While chasing the CI-outage question, one batch of
+nine workflow runs at an identical timestamp read as evidence that Actions had recovered. Wren
+disproved it with two controls: a brand-new PR created 29 minutes after that batch, from a
+different author, got zero runs; and the repo created no workflow runs at all for 35 minutes on
+either side of that one batch, across every branch. The batch wasn't a recovered state — it was the
+only successes between one scheduled run and a continuing outage, and reading it as "working" was
+measuring inside a narrow time window and reporting the measurement as the underlying condition.
+**Rule, restated for time: a sample taken inside a window supports a claim about that window, not
+about the state before or after it — check what happened immediately outside the window (a control
+after, a control before) before generalizing a burst of successes into "recovered" or a burst of
+failures into "broken."**
 
 ## The six decisions
 
