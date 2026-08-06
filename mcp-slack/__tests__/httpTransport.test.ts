@@ -32,6 +32,8 @@ import {
   MissingTokenError,
   type TokenVerifier,
 } from "../src/auth.js";
+import { Agent, request } from "node:http";
+
 import { headerSafe, startHttpTransport } from "../src/httpTransport.js";
 
 const CONFIG = {
@@ -195,5 +197,53 @@ describe("headerSafe", () => {
   it("leaves an ordinary diagnostic message intact", () => {
     const msg = "Token audience does not include this server's project (999).";
     expect(headerSafe(msg)).toBe(msg);
+  });
+});
+
+// Shutdown.
+//
+// The first version of this test asserted that close() resolves with an idle
+// keep-alive socket open. It passed with the fix removed — Node has closed idle
+// sockets in close() since v19 and this package pins 22, so it was measuring
+// the runtime, not this code. The real unbounded wait is an *active* request:
+// without closeAllConnections() the promise never settles, the pod sits in
+// Terminating, and the kubelet SIGKILLs every other in-flight request.
+describe("close() bounds the wait on an active request", () => {
+  it("forces the connection after the grace period instead of hanging", async () => {
+    const server = new Server(
+      { name: "mcp-slack-test", version: "0.0.0" },
+      { capabilities: { tools: {} } }
+    );
+    const listener = await startHttpTransport(server, CONFIG, {
+      // Never resolves: models a handler wedged on a hung upstream call.
+      verify: () => new Promise(() => {}),
+      verifyAuthorizationHeader: () => new Promise(() => {}),
+    });
+    const port = listener.address().port;
+
+    const agent = new Agent({ keepAlive: true });
+    const inFlight = new Promise<void>((resolve) => {
+      const req = request(
+        { port, host: "127.0.0.1", path: "/mcp", method: "POST", agent },
+        () => resolve()
+      );
+      req.on("error", () => resolve()); // forced close lands here
+      req.setHeader("Authorization", "Bearer wedged");
+      req.setHeader("Content-Type", "application/json");
+      req.end("{}");
+    });
+    // Let the request reach the wedged handler before shutting down.
+    await new Promise((r) => setTimeout(r, 100));
+
+    const started = process.hrtime.bigint();
+    await listener.close(300);
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+
+    // Resolves because the grace period expired and forced it — not because
+    // the request finished, which it never does.
+    expect(elapsedMs).toBeGreaterThanOrEqual(250);
+    expect(elapsedMs).toBeLessThan(5_000);
+    await inFlight;
+    agent.destroy();
   });
 });
