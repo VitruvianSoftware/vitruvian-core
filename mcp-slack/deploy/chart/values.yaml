@@ -50,6 +50,17 @@ slack:
   # REQUIRED — comma-separated channel IDs. This is the allow-list, and it is
   # the only thing bounding which conversations a caller can reach. Empty is
   # not "no restriction", it is a render failure.
+  #
+  # THE MANIFEST NOW CARRIES groups:read AND groups:history, so this list
+  # gates PRIVATE channels too, not only public ones. That changes what a
+  # defect here costs: a wrong or over-broad entry is a private-conversation
+  # disclosure, not a wider-than-intended public read. The value is unchanged
+  # — required, fail-closed — but the reason it is required got stronger.
+  #
+  # Practical consequence for whoever fills this in: the IDs are opaque, and a
+  # typo cannot be caught by reading them. Confirm each ID resolves to the
+  # conversation you intend BEFORE putting it here, rather than after the
+  # endpoint is live.
   channelIds: ""
   # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN and
   # SLACK_TEAM_ID. No user token is ever mounted on this path.

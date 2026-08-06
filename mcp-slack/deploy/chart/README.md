@@ -31,6 +31,10 @@ permissive case.
 | `oidc.projectId` | `pulumi stack output projectId` (`zitadel-apps-mcp-slack`) | render fails |
 | `slack.channelIds` | the Slack admin session | render fails |
 
+Since the manifest carries `groups:read`/`groups:history`, `slack.channelIds`
+gates **private** channels too — a defect there is a private-conversation
+disclosure, not a wider-than-intended public read.
+
 `required` is used rather than `default` on all three: a default here would
 produce a deployment that renders, syncs, reports Healthy, and is wrong.
 

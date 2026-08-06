@@ -48,6 +48,12 @@
 #      preference — the allow-list bounds which conversations a caller can
 #      reach, and it is doing that work alone until caller identity lands.
 #
+#      That rule got stricter, not looser, now that the app manifest carries
+#      groups:read and groups:history: the list gates PRIVATE channels too,
+#      so the thing it is holding back alone is private-conversation
+#      disclosure. Public-only would have been a defensible risk to carry for
+#      a short PoC window. This is not.
+#
 #   4. The Secret `mcp-slack-tokens` exists in the mcp-slack namespace,
 #      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID and nothing else. Created
 #      out-of-band via a SealedSecret (the ntfy alertmanager-ntfy-endpoint
