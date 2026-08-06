@@ -440,9 +440,27 @@ removing a subject from `OIDC_ALLOWED_SUBJECTS`, or any other chart/config chang
 change through the merge queue, which runs on GitHub Actions. **Tonight's build lived through a live
 demonstration of the consequence: for the four hours Actions was in `major_outage`, that lever was
 not slow, it was unavailable.** What remained reachable were the controls that sit outside the
-GitOps delivery path entirely — deleting the Cloudflare DNS record fronting the tunnel (the one
-action no reconciler fights, since routing lives in Cloudflare DNS rather than in anything ArgoCD
-manages) and suspending or scaling down the deployment directly.
+GitOps delivery path entirely — deleting the Cloudflare DNS record fronting the tunnel, and
+suspending or scaling down the deployment directly.
+
+**Correction, per Beacon (2026-08-06T22:13:15Z) — the DNS-record example is conditional, and stating
+it unconditionally would teach the exact belief that breaks it.** The record survives a hand
+deletion, and survives *at all* under external-dns's `sync` policy, only **while no `DNSEndpoint`
+resource exists for that hostname carrying the
+`external-dns.alpha.kubernetes.io/sync-enabled: "true"` annotation** — the annotation is what makes
+the CRD source (if enabled on the running reconciler) treat the hostname as something it owns and
+reconciles. The cluster's own convention template for a `DNSEndpoint`
+(`gitops/argocd/platform/whoami/dnsendpoint.yaml`) ships that annotation already set, so a
+copy-paste "let's manage this hostname declaratively too" change — which reads as an unrelated
+tidy-up, not a security decision — silently converts this lever from outside-the-delivery-path back
+into just another GitOps-managed value with all the availability coupling this pattern describes.
+**Do not read this as "add a `DNSEndpoint` without the annotation to be safe" — that trades a stated
+condition for an unstated one, the same absent-vs-unusable collapse this build's pattern 6 already
+named.** The fix is documentation at the point someone would make the change, not a workaround.
+General form of the correction: **when citing a specific control as an example of "outside the
+delivery path," state the condition under which that's true, not just the conclusion — an
+unconditional example is exactly the kind of claim a later, unrelated-looking change can quietly
+invalidate.**
 
 **The general property: any containment control whose activation is "commit a change and let the
 delivery pipeline apply it" is only as available as that pipeline is.** A GitOps model is the right
