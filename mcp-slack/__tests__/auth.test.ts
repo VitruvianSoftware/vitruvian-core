@@ -20,11 +20,14 @@
  * SOFTWARE.
  */
 
-import { SignJWT, generateKeyPair, type CryptoKey } from "jose";
+import { createServer } from "node:http";
+
+import { SignJWT, errors, generateKeyPair, type CryptoKey } from "jose";
 
 import {
   AudienceMismatchError,
   IdpUnavailableError,
+  isIdpSideFailure,
   InvalidTokenError,
   MissingTokenError,
   OpaqueTokenError,
@@ -314,5 +317,70 @@ describe("IdP reachability is distinguished from token validity", () => {
     });
     const error = await verifier.verify(await mintToken()).catch((e) => e);
     expect(error).toBeInstanceOf(IdpUnavailableError);
+  });
+});
+
+// The first fix for the JWKS-outage defect survived the defect. All fourteen
+// jose error classes extend JOSEError, so "is it a JOSEError" cannot separate
+// a verdict from an inability to reach one — and the repro used an
+// unreachable host, which throws a bare TypeError and so took the correct
+// branch by accident. These test the shapes that actually discriminate.
+describe("IdP-side failures are classified explicitly, not by base class", () => {
+  // A slow IdP, not a dead one: the server accepts the connection and never
+  // answers. This is the case the earlier fix got wrong.
+  it("reports a JWKS timeout as 503, not as an invalid token", async () => {
+    const hanging = createServer(() => {
+      /* accept the socket and never respond */
+    });
+    await new Promise<void>((resolve) => hanging.listen(0, resolve));
+    const { port } = hanging.address() as { port: number };
+
+    try {
+      const verifier = createTokenVerifier({
+        issuer: ISSUER,
+        projectId: PROJECT_ID,
+        jwksUri: `http://127.0.0.1:${port}/jwks`,
+        jwksTimeoutMs: 50,
+      });
+      const error = await verifier.verify(await mintToken()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(IdpUnavailableError);
+      expect((error as IdpUnavailableError).status).toBe(503);
+    } finally {
+      hanging.closeAllConnections?.();
+      await new Promise<void>((resolve) => hanging.close(() => resolve()));
+    }
+  });
+
+  it("routes each IdP-side jose error to unavailability", () => {
+    expect(isIdpSideFailure(new errors.JWKSTimeout())).toBe(true);
+    expect(isIdpSideFailure(new errors.JWKSInvalid("bad"))).toBe(true);
+    expect(isIdpSideFailure(new errors.JWKInvalid("bad"))).toBe(true);
+    expect(isIdpSideFailure(new errors.JWKSMultipleMatchingKeys())).toBe(true);
+    // Not a jose error at all — unreachable host. Also ours.
+    expect(isIdpSideFailure(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  it("keeps genuine verdicts about the token on the caller's side", () => {
+    expect(isIdpSideFailure(new errors.JWTExpired("exp", {}))).toBe(false);
+    expect(isIdpSideFailure(new errors.JWSSignatureVerificationFailed())).toBe(
+      false
+    );
+    expect(isIdpSideFailure(new errors.JWTInvalid("bad"))).toBe(false);
+    expect(isIdpSideFailure(new errors.JWKSNoMatchingKey())).toBe(false);
+    expect(isIdpSideFailure(new errors.JOSEAlgNotAllowed("no"))).toBe(false);
+  });
+
+  // A partial enumeration is what produced the original defect, so this fails
+  // if jose adds an error class nobody has classified.
+  it("has classified every error class the library exposes", () => {
+    const unclassified = Object.entries(errors)
+      .filter(([name]) => name !== "JOSEError")
+      .map(([name, ctor]) => [name, (ctor as { code?: string }).code])
+      .filter(([, code]) => typeof code !== "string");
+
+    expect(unclassified).toEqual([]);
+    // 14 as of jose@6.2.4; a change here means a new case to place.
+    expect(Object.keys(errors).filter((n) => n !== "JOSEError")).toHaveLength(14);
   });
 });
