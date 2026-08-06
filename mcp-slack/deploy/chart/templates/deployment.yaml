@@ -113,6 +113,12 @@ spec:
               value: {{ include "mcp-slack.allowedSubjects" . | quote }}
             - name: SLACK_CHANNEL_IDS
               value: {{ include "mcp-slack.channelIds" . | quote }}
+            # Always emitted, even when empty. The deployed manifest should
+            # state "no private channels" explicitly rather than leave an
+            # operator inferring it from an absent variable — the same reason
+            # the visibility split exists at all.
+            - name: SLACK_PRIVATE_CHANNEL_IDS
+              value: {{ .Values.slack.privateChannelIds | quote }}
             # Bot token and team id only. SLACK_USER_TOKEN is deliberately
             # absent: the server refuses to start on the HTTP transport if it
             # is present, so this is enforced on both sides rather than by

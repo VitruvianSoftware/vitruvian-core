@@ -99,6 +99,27 @@ slack:
   # conversation you intend BEFORE putting it here, rather than after the
   # endpoint is live.
   channelIds: ""
+  # Private channel IDs, declared SEPARATELY and deliberately NOT required.
+  #
+  # Since #1421 the server verifies each allow-listed conversation's actual
+  # visibility at startup and refuses a channel whose declared list disagrees
+  # with what Slack reports. The chart previously set only channelIds, which
+  # declares EVERY channel public — so any private channel in the allow-list
+  # made the process exit non-zero, and with replicas: 1 that presents as
+  # CrashLoopBackOff rather than "you put it in the wrong list".
+  #
+  # That matters because the app manifest carries groups:read and
+  # groups:history specifically so private channels are usable. Without this
+  # value the chart cannot deploy the case those scopes exist for.
+  #
+  # NOT `required`, unlike channelIds, and the distinction is the point: an
+  # empty channelIds means "no bound at all", which must never be inferred.
+  # An empty privateChannelIds means "no private channels", which is a real,
+  # safe and common configuration. Requiring it would force operators to type
+  # a value they do not have.
+  #
+  # A channel named in BOTH lists is refused at startup rather than resolved.
+  privateChannelIds: ""
   # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN and
   # SLACK_TEAM_ID. No user token is ever mounted on this path.
   secretName: mcp-slack-tokens
