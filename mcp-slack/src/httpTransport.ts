@@ -124,6 +124,7 @@ export async function startHttpTransport(
   verifier: TokenVerifier = createTokenVerifier({
     issuer: config.issuer,
     projectId: config.projectId,
+    allowedSubjects: config.allowedSubjects,
   })
 ): Promise<{
   address: () => { port: number };

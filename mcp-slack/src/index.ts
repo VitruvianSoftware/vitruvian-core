@@ -315,6 +315,11 @@ async function main() {
     process.stderr.write(
       `  issuer:   ${config.http!.issuer}\n` +
         `  project:  ${config.http!.projectId}\n` +
+        // The count, not the IDs. It confirms the variable parsed into what
+        // the operator meant — the failure worth catching is a quoting mistake
+        // that collapses several subjects into one string, which reads as
+        // "1 subject" here and as an inexplicable 403 an hour later.
+        `  serving:  ${config.http!.allowedSubjects.length} allowed subject(s)\n` +
         `  expects scope: ${fullScopeString(config.http!.projectId)}\n`
     );
     return;

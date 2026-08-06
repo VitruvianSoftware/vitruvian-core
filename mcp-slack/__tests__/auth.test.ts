@@ -26,6 +26,7 @@ import { SignJWT, errors, generateKeyPair, type CryptoKey } from "jose";
 
 import {
   AudienceMismatchError,
+  SubjectNotAllowedError,
   IdpUnavailableError,
   isIdpSideFailure,
   InvalidTokenError,
@@ -71,10 +72,11 @@ async function mintToken({
     .sign(privateKey);
 }
 
-function verifier(projectId = PROJECT_ID) {
+function verifier(projectId = PROJECT_ID, allowedSubjects = ["user-42"]) {
   return createTokenVerifier({
     issuer: ISSUER,
     projectId,
+    allowedSubjects,
     keySource: () => Promise.resolve(publicKey),
   });
 }
@@ -271,6 +273,7 @@ describe("IdP reachability is distinguished from token validity", () => {
   async function realVerifierWithDeadJwks() {
     return createTokenVerifier({
       issuer: ISSUER,
+      allowedSubjects: ["user-42"],
       projectId: PROJECT_ID,
       jwksUri: "http://127.0.0.1:1/unreachable",
     });
@@ -310,6 +313,7 @@ describe("IdP reachability is distinguished from token validity", () => {
   it("treats an unrecognised failure as unavailability, not as rejection", async () => {
     const verifier = createTokenVerifier({
       issuer: ISSUER,
+      allowedSubjects: ["user-42"],
       projectId: PROJECT_ID,
       keySource: () => {
         throw new Error("something nobody anticipated");
@@ -338,6 +342,7 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
     try {
       const verifier = createTokenVerifier({
         issuer: ISSUER,
+        allowedSubjects: ["user-42"],
         projectId: PROJECT_ID,
         jwksUri: `http://127.0.0.1:${port}/jwks`,
         jwksTimeoutMs: 50,
@@ -382,5 +387,68 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
     expect(unclassified).toEqual([]);
     // 14 as of jose@6.2.4; a change here means a new case to place.
     expect(Object.keys(errors).filter((n) => n !== "JOSEError")).toHaveLength(14);
+  });
+});
+
+// The per-request identity control. Everything else in this file checks that a
+// token is genuine; this checks whose it is.
+describe("subject allow-list", () => {
+  it("admits a listed subject", async () => {
+    const token = await mintToken({ subject: "379361013981513322" });
+    const caller = await verifier(PROJECT_ID, [
+      "379361013981513322",
+    ]).verify(token);
+    expect(caller.subject).toBe("379361013981513322");
+  });
+
+  it("refuses a valid token from an unlisted subject", async () => {
+    // The token is entirely genuine: right issuer, right audience, valid
+    // signature, unexpired. Zitadel will issue exactly this to any account in
+    // the instance, because the audience scope is grantable without checking
+    // the requesting user's grants.
+    const token = await mintToken({ subject: "999999999999999999" });
+    await expect(
+      verifier(PROJECT_ID, ["379361013981513322"]).verify(token)
+    ).rejects.toBeInstanceOf(SubjectNotAllowedError);
+  });
+
+  it("names the received subject in the rejection", async () => {
+    // Zitadel subjects are opaque numeric IDs, so an operator configuring this
+    // cannot discover the right value without decoding a token by hand.
+    const token = await mintToken({ subject: "123456789012345678" });
+    await expect(
+      verifier(PROJECT_ID, ["other"]).verify(token)
+    ).rejects.toThrow(/123456789012345678/);
+  });
+
+  it("rejects with 403, not 401", async () => {
+    // The credential is fine; the identity is not served. A 401 would tell a
+    // client to go and get a new token, which would produce the same result.
+    const token = await mintToken({ subject: "nope" });
+    await verifier(PROJECT_ID, ["other"])
+      .verify(token)
+      .catch((error: SubjectNotAllowedError) => {
+        expect(error.status).toBe(403);
+        expect(error.subject).toBe("nope");
+      });
+    expect.assertions(2);
+  });
+
+  it("refuses to construct a verifier with an empty allow-list", () => {
+    // Fail at construction rather than admitting everyone at request time.
+    expect(() => verifier(PROJECT_ID, [])).toThrow(/at least one allowed subject/);
+  });
+
+  it("checks the subject only after the signature and audience", async () => {
+    // Ordering matters: this must never be the reason a forged or misaudienced
+    // token is accepted, so an unlisted subject on a bad token still reports
+    // the token problem.
+    const wrongAudience = await mintToken({
+      audience: "some-other-project",
+      subject: "not-listed",
+    });
+    await expect(
+      verifier(PROJECT_ID, ["379361013981513322"]).verify(wrongAudience)
+    ).rejects.toBeInstanceOf(AudienceMismatchError);
   });
 });

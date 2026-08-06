@@ -40,6 +40,9 @@ const CONFIG = {
   port: 0, // ephemeral; the OS picks a free one
   issuer: "https://auth.example.test",
   projectId: "123456789",
+  // Required by HttpConfig; these tests inject their own verifier, so the
+  // value is never consulted — but it cannot be omitted, which is the point.
+  allowedSubjects: ["user-42"],
 };
 
 /** A verifier whose behaviour each test controls. */
