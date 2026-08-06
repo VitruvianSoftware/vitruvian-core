@@ -199,9 +199,30 @@ export class SlackClient {
    */
   async verifyAllowlistVisibility(): Promise<void> {
     for (const channelId of this.channelGuard.allowed) {
-      const data = (await this.api("conversations.info", {
-        channel: channelId,
-      })) as { ok?: boolean; error?: string; channel?: { is_private?: unknown } };
+      let data: {
+        ok?: boolean;
+        error?: string;
+        channel?: { is_private?: unknown };
+      };
+      try {
+        data = (await this.api("conversations.info", {
+          channel: channelId,
+        })) as typeof data;
+      } catch (error) {
+        // Slack never answered, which is a different failure from Slack
+        // answering and disagreeing — the same distinction the auth path draws
+        // between an IdP outage and a bad token. Both exit non-zero, because
+        // starting with unverified channels would defeat the check entirely,
+        // but only one of them is fixed by editing configuration. Without this
+        // the operator gets "fetch failed" and no idea which system to look at.
+        throw new Error(
+          `Could not reach Slack to verify allow-listed channel ${channelId}: ` +
+            `${error instanceof Error ? error.message : String(error)}. ` +
+            `This is a Slack or network availability failure, not a ` +
+            `configuration error — the allow-list has not been judged either ` +
+            `way. Startup fails closed rather than serving unverified channels.`
+        );
+      }
       if (!data.ok || !data.channel) {
         // channel_not_found is what Slack returns for a private channel the
         // bot has not joined, which makes it the expected answer for the
