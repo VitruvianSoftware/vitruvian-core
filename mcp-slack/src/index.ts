@@ -31,7 +31,7 @@ import {
 
 import {
   ChannelNotAllowedError,
-  channelIdFromParams,
+  assertParamsAllowed,
   type ChannelGuard,
 } from "./channelAllowlist.js";
 import {
@@ -572,9 +572,9 @@ class SlackClient {
    * so both are checked.
    */
   private guardParams(params: Record<string, unknown>): void {
-    const channelId = channelIdFromParams(params);
-    if (channelId) this.channelGuard.assertAllowed(channelId);
+    assertParamsAllowed(this.channelGuard, params);
   }
+
 
   // Helper to make Slack API calls
   private async api(
