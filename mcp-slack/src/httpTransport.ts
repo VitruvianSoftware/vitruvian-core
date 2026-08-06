@@ -43,14 +43,6 @@ const MCP_PATH = "/mcp";
 const HEALTH_PATH = "/health";
 
 /**
- * Writes an RFC 6750 style rejection.
- *
- * The `WWW-Authenticate` error/description carry the same self-describing text
- * as the thrown error, so a misconfiguration is legible from `curl -i` without
- * needing access to the server's logs — which is the situation someone
- * debugging a Spark connection is actually in.
- */
-/**
  * Makes a message safe to carry inside an RFC 7235 quoted-string.
  *
  * Two distinct failures, both measured rather than reasoned about:
@@ -72,6 +64,14 @@ export function headerSafe(message: string): string {
     .trim();
 }
 
+/**
+ * Writes an RFC 6750 style rejection.
+ *
+ * The `WWW-Authenticate` error/description carry the same self-describing text
+ * as the thrown error, so a misconfiguration is legible from `curl -i` without
+ * needing access to the server's logs — which is the situation someone
+ * debugging a Spark connection is actually in.
+ */
 function writeAuthFailure(res: ServerResponse, error: AuthError): void {
   res.writeHead(error.status, {
     "Content-Type": "application/json",
@@ -157,6 +157,19 @@ export async function startHttpTransport(
 
     // Unauthenticated on purpose: a liveness probe that requires a token tells
     // you the IdP is reachable, not that this process is healthy.
+    //
+    // Keeping it off the internet is a *routing* property, not a server one —
+    // the HTTPRoute matches the MCP path only, and kubelet probes reach the
+    // pod IP without traversing it. Deliberately not a second listener: that
+    // would be more surface, a second bind to get wrong, and one security
+    // property implemented in two places that must stay consistent. This
+    // version cannot drift because the code is unaware of the distinction.
+    //
+    // The body is deliberately contentless and must stay that way. Health
+    // endpoints accrete — a version string, a config echo, "issuer reachable".
+    // Each addition is individually reasonable, and each one turns an
+    // in-cluster probe into a reconnaissance response if the route is ever
+    // widened. Adding a field here should require arguing with this comment.
     if (url.pathname === HEALTH_PATH) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));

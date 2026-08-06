@@ -527,6 +527,17 @@ export const tools = [
  * `slack_get_user_profile` is kept: it resolves one `U…` id at a time, which
  * is what a caller needs to turn an author id from allow-listed channel
  * history into a name. Bulk enumeration has no remote use case here.
+ *
+ * **Residual risk, recorded because nothing else in the code says it.** Seven
+ * methods in this package issue a Slack call with no channel parameter, so the
+ * allow-list cannot bound any of them. Two are handled above. The other five —
+ * `searchMessages`, `searchFiles`, `editCanvas`, `lookupCanvasSections`,
+ * `deleteCanvas` — are currently refused on this transport only because they
+ * happen to be user-token-only, which is a control aimed at something else
+ * entirely. That is luck, not design. If the user token ever returns to the
+ * HTTP path, or a canvas tool gains a bot-token route, those five refusals
+ * disappear with nothing failing to announce it. Anything added here should
+ * say which of the two reasons it is being withheld for.
  */
 export const HTTP_WITHHELD_TOOLS = new Set([
   // Workspace-scoped — unbounded by the channel allow-list.
