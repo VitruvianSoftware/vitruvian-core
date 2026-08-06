@@ -127,17 +127,29 @@ reachability; neither is available from a plain checkout.
 
 ## Restricting who may connect
 
-`projectRoleCheck` is the enforcement point for "only this subject may connect".
-With it `true`, Zitadel will not issue a token for this project to a user who has
-no role grant on it — a server-side restriction rather than a de-facto one that
-holds only while the instance has a single user.
+`projectRoleCheck` gates logins through **this project's own OIDC client**. With
+it `true`, Zitadel will not complete an auth request against this project's client
+for a user who has no role grant on it — a server-side restriction rather than a
+de-facto one that holds only while the instance has a single user.
+
+Be precise about the boundary, because an earlier version of this section
+overstated it. Zitadel resolves the project from the client being logged into, not
+from the audience (`ProjectByClientID(request.ApplicationID)`,
+`internal/auth/repository/eventsourcing/eventstore/auth_request.go:1841-1861` @
+v4.15.3). It therefore does **nothing** about a token that acquires this project in
+its `aud` while authenticating to a different client — `aud` is caller-authored in
+this instance. That path is closed inside mcp-slack (a `client_id` pin, an `azp`
+rejection and a subject allowlist, all blocking Phase 2b DoD items), not by this
+flag. The two are complementary, not layered: this one covers the intended
+own-client path, which is exactly the path the `client_id` pin lets through.
 
 A value this stack cannot parse as a boolean is an **apply error**, not a silent
 `false`. `cfg.GetBool` would have been fail-open here — it routes through
 `cast.ToBool`, which swallows the parse error, so `projectRoleCheck: "yes"` (a
 plausible way to try to turn this *on*) would disable the check and report a
-successful apply. For the flag that decides who may obtain a token, refusing to
-apply is the only honest response to a value we can't interpret.
+successful apply. For the flag that decides who may log in through this project's
+client, refusing to apply is the only honest response to a value we can't
+interpret.
 
 It ships **`false`**, deliberately. Enabling it before the role grant exists locks
 everyone out, including the first end-to-end Spark login.

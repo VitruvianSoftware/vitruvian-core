@@ -103,7 +103,8 @@ func main() {
 					"zitadel-apps-mcp-slack:projectRoleCheck must be a boolean "+
 						"(%q is not one). Refusing to apply rather than silently "+
 						"leaving the project role check disabled — this flag is what "+
-						"restricts who may obtain a token for this project", raw,
+						"restricts who may log in through this project's own OIDC "+
+						"client", raw,
 				)
 			}
 			projectRoleCheck = parsed
@@ -111,15 +112,41 @@ func main() {
 
 		projectArgs := &zitadel.ProjectArgs{
 			Name: pulumi.String(projectName),
-			// Role assertion off: mcp-slack authorizes on the audience claim, not
-			// on project roles, so asserting roles into the token would add claims
-			// nothing reads.
+			// Role assertion off: mcp-slack reads no role claim, so asserting
+			// roles into the token would add claims nothing consumes.
+			//
+			// The earlier rationale here said "mcp-slack authorizes on the
+			// audience claim". That model is wrong and has been retracted: in
+			// this instance `aud` is caller-authored — any authenticated user can
+			// append any project id to it by requesting
+			// `urn:zitadel:iam:org:project:id:<ID>:aud`, and Zitadel appends it
+			// unconditionally (internal/domain/token.go:10-22 @ v4.15.3, no grant
+			// check and no project-existence check). Audience is not an
+			// authorization decision here.
+			//
+			// Consequence worth knowing before someone reaches for role-based
+			// authorization and finds the claim missing: with assertion off, the
+			// resource server has no role claim available, so SUBJECT is its only
+			// authorization axis under current config. That is consistent with
+			// mcp-slack's blocking DoD (client_id pin + azp reject + subject
+			// allowlist), not in conflict with it — but flipping this to true is
+			// the prerequisite if role-based authz is ever wanted.
 			ProjectRoleAssertion: pulumi.Bool(false),
-			// ROLE CHECK IS THE ENFORCEMENT POINT FOR "only James's subject may
-			// connect". With it true, a user needs an explicit role grant on this
-			// project before Zitadel will issue them a token for it — which is a
-			// real, server-side restriction rather than "there happens to be only
-			// one user in the instance".
+			// ROLE CHECK GATES LOGINS THROUGH THIS PROJECT'S OWN OIDC CLIENT.
+			// With it true, a user needs an explicit role grant on this project
+			// before Zitadel will complete an auth request for a client belonging
+			// to it — a real, server-side restriction rather than "there happens
+			// to be only one user in the instance".
+			//
+			// Be precise about what it does NOT cover, because an earlier version
+			// of this comment overstated it and the wrong claim propagated into a
+			// tracker and two review messages before it was caught. Zitadel
+			// resolves the project via ProjectByClientID(request.ApplicationID)
+			// — the client being logged into, never the audience
+			// (internal/auth/repository/eventsourcing/eventstore/auth_request.go:1841-1861
+			// @ v4.15.3). So this flag has NO effect on a token that acquires this
+			// project in `aud` while authenticating to some other client. That
+			// path is closed by mcp-slack's own client_id pin, not here.
 			//
 			// It defaults FALSE. Turning it on with no role granted locks everyone
 			// out, including the first end-to-end Spark login.
@@ -253,9 +280,14 @@ func main() {
 			return err
 		}
 
-		// projectId is consumed by the mcp-slack deployment (it validates the
-		// audience claim against it) and appears in the scope string pasted into
-		// Spark. Exported rather than hardcoded anywhere downstream.
+		// projectId is consumed by the mcp-slack deployment and appears in the
+		// scope string pasted into Spark. Exported rather than hardcoded anywhere
+		// downstream.
+		//
+		// mcp-slack does check `aud` against this value, but that check is NOT an
+		// authorization decision — `aud` is caller-authored here (see the
+		// ProjectRoleAssertion comment above). The authorizing checks are the
+		// client_id pin, the azp rejection and the subject allowlist.
 		ctx.Export("projectId", project.ID())
 		// The exact scope string Spark must be configured with. Assembled here
 		// because the audience form is easy to get subtly wrong by hand, and a
