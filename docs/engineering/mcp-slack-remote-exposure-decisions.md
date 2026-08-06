@@ -759,6 +759,47 @@ about the state before or after it — check what happened immediately outside t
 after, a control before) before generalizing a burst of successes into "recovered" or a burst of
 failures into "broken."**
 
+### 16. Absence renders as success — the pattern with the most instances of anything in this record
+
+Named explicitly by Beacon (2026-08-06T23:37:09Z) after its fourth occurrence in one evening, each
+independently discovered and each initially read as fine precisely because nothing visibly failed:
+
+1. **The 403-rejection alert's own remediation** named "check the rejection logs" as the detection
+   path for cross-client audience injection — and no rejection logging existed anywhere in the
+   codebase. The absence of a log doesn't read as "there's nothing to check"; it reads as "nothing
+   went wrong," until someone actually goes looking for the log that was never written.
+2. **The test double missing `is_private`** (pattern 14): the field's absence didn't produce a test
+   failure or an error — it silently selected the branch that reads "unset" as "public, verified,"
+   and the test passed.
+3. **`SLACK_CHANNEL_IDS` gating only `listChannels`** (this build's founding finding, pattern 1):
+   the absence of enforcement in `getChannelHistory`/`getChannelInfo`/`getThreadReplies` produced no
+   error either — those calls simply succeeded, indistinguishable from a correctly-bounded read.
+4. **Stacked PRs (based on something other than `main`) never triggering `actionlint`,
+   `gitops-validate`, `osv-scan`, or `secret-scan`** — not failed, never created — while the PR's
+   status check UI renders exactly as green as a PR that ran and passed every one of them. James's
+   own merge authorization ("green checks") was written against a predicate this defect breaks
+   without him being able to know it, since a missing check and a passing one are visually
+   identical in the interface he was looking at.
+
+**The shared shape: in each case, the mechanism that would signal a problem is the same mechanism
+whose absence *is* the problem — so there is no error, no red state, no exception to notice. A
+control that reports success by not running at all is indistinguishable, from the outside, from a
+control that ran and found nothing wrong.** This is the most-instantiated pattern in this record,
+and that frequency is itself informative: "did the check run" is a question reviewers, tests, and
+CI dashboards are all structurally bad at surfacing, because the default rendering of "didn't run"
+and "ran clean" is the same green/blank/silent state everywhere absence and success both go
+unmarked.
+
+**Rule: for any control whose job is to catch a problem, verify — separately from verifying the
+control's logic — that the control actually executed on the case it's supposed to cover.** A green
+checkmark, a passing test, an empty log, a clean-looking guard are all consistent with "worked
+correctly" and equally consistent with "never ran." Where possible, make non-execution loud: a
+required status check that must exist and be enumerated (not merely "not failing"), a mutation test
+that confirms the check fails when it should, a counter or log line that increments even on the
+success path so its absence is itself detectable. The recurring cost tonight was time spent
+building elaborate reasoning about *why* something was fine, when the actual defect was that
+nothing had checked at all.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
