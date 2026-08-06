@@ -146,6 +146,21 @@ describe("token verification", () => {
     );
   });
 
+  // This server and the IdP are separate hosts with independently drifting
+  // clocks. jose defaults to zero slack, which rejects freshly-issued tokens
+  // on a couple of seconds of drift — presenting as an auth bug that
+  // reproduces only sometimes. The tolerance is deliberate, so it is pinned:
+  // small drift is absorbed, a genuinely expired token is still refused.
+  it("absorbs small clock drift but still refuses a genuinely expired token", async () => {
+    await expect(
+      verifier().verify(await mintToken({ expiresIn: "-10s" }))
+    ).resolves.toMatchObject({ subject: "user-42" });
+
+    await expect(
+      verifier().verify(await mintToken({ expiresIn: "-120s" }))
+    ).rejects.toBeInstanceOf(InvalidTokenError);
+  });
+
   it("rejects a token signed by an unknown key", async () => {
     const { privateKey: attackerKey } = await generateKeyPair("RS256");
     const forged = await new SignJWT({})
