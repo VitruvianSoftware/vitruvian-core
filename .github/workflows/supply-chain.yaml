@@ -40,8 +40,11 @@
 name: Supply Chain
 
 on:
+  # NO `branches:` filter on pull_request: this backs required checks
+  # (osv-scan, secret-scan), and `branches: [main]` filters on the PR's BASE
+  # branch -- a stacked PR's base isn't main, so this never ran on one (see
+  # ci.yaml's `on:` block for the full incident).
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   merge_group:
