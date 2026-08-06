@@ -50,12 +50,34 @@ const HEALTH_PATH = "/health";
  * needing access to the server's logs — which is the situation someone
  * debugging a Spark connection is actually in.
  */
+/**
+ * Makes a message safe to carry inside an RFC 7235 quoted-string.
+ *
+ * Two distinct failures, both measured rather than reasoned about:
+ *
+ *   - CR, LF and NUL make Node's `writeHead` throw `ERR_INVALID_CHAR`. Node
+ *     rejects them before anything reaches the wire, so this was never an
+ *     injection risk — but the throw turned a diagnostic 403 into an opaque
+ *     500, losing the self-describing error at exactly the moment something
+ *     strange is in the token.
+ *   - A double quote *sends successfully* and produces a malformed
+ *     quoted-string, so a strict client mis-reads where the value ends. That
+ *     one fails silently, which makes it the more dangerous of the two.
+ */
+export function headerSafe(message: string): string {
+  return message
+    .replace(/"/g, "'")
+    .replace(/[^\x20-\x7e]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function writeAuthFailure(res: ServerResponse, error: AuthError): void {
   res.writeHead(error.status, {
     "Content-Type": "application/json",
     "WWW-Authenticate":
       `Bearer error="${error.code}", ` +
-      `error_description="${error.message.replace(/"/g, "'")}"`,
+      `error_description="${headerSafe(error.message)}"`,
   });
   res.end(
     JSON.stringify({
