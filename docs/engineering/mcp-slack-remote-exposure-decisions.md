@@ -127,6 +127,40 @@ built on a different mechanism than the first — grep-by-name and grep-by-usage
 call-site scan, AST-based and text-based — and treat agreement between two differently-blind
 searches as the actual evidence of completeness, not either search alone.
 
+### 5. Restructuring away a completeness claim concentrates the risk into what's left — verify that, don't skip it
+
+Wren's response to pattern 4 was to remove the need for the enumeration entirely: instead of
+finding every call site that should have a channel guard, route all Slack egress through one
+`api()` chokepoint with the guard as its first statement, so a call site literally cannot reach
+Slack without passing through it. Verified structurally — only two `fetch()` calls exist in the
+whole package, both inside `api()`. Beacon initially endorsed this as strictly better than the
+enumeration discipline in pattern 4: *"when a completeness claim is load-bearing, prefer
+restructuring so it doesn't need to be made."*
+
+That endorsement was half right, and finding the other half cost a real bug. Atlas found that
+`channelIdFromParams` **fails open**: a channel argument that isn't a string (an array, an object —
+nothing validates tool-call argument types before the `as string` cast) makes the extractor return
+`undefined`; `guardParams` reads `undefined` as *"this call isn't channel-scoped"* rather than
+*"couldn't determine the channel"*; the value is still sent to Slack, coerced with `String(v)` on
+the GET path. `{"channel_id": ["C0PRIVATE"]}` reaches Slack as `channel=C0PRIVATE` with the
+allow-list never consulted — from an authenticated caller (bot membership still bounds it,
+`SLACK_CHANNEL_IDS` no longer does). The chokepoint was real and did exactly what it promised:
+every call reaches the guard. The defect had simply moved to live at the one place structurally
+guaranteed to run — the guard's own logic — which nobody had re-verified with the same scrutiny
+that went into proving the chokepoint existed.
+
+**"Every call reaches the guard" and "the guard decides correctly" are different properties, and
+making the first one structural does not establish the second — it concentrates all the remaining
+risk into it.** Beacon's corrected version, stated for the record: **prefer restructuring so a
+completeness claim isn't needed — then verify the thing the structure now depends on, because
+you've concentrated the risk rather than removed it.** A chokepoint converts "did we find every
+call site" into "is the one piece of logic every call site now shares correct," which is a smaller
+and more tractable question — but it is still a question, not a conclusion, and it deserves the
+same adversarial testing (malformed input, wrong types, the values an attacker would actually send)
+that the enumeration it replaced would have needed. Apply this any time a fix for "coverage is
+incomplete" is "route everything through one place": that's real progress, and the next step is
+scrutinizing that one place harder, not treating the routing itself as the proof.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
