@@ -161,6 +161,12 @@ can contradict it. With two, pasting a private channel ID into the public list �
 the mistake an allow-list structurally cannot catch, since the ID *is* on the
 list — becomes a contradiction the server can see.
 
+> **Deploy order matters, and the intuitive one fails.** Invite the bot to a
+> channel *before* adding its ID and deploying. Slack answers `channel_not_found`
+> for a private channel the bot has not joined, and this check runs ahead of the
+> listener — so add-then-deploy-then-invite does not start at all, and looks like
+> a broken deploy rather than a skipped step. The startup error names the remedy.
+
 ### 4. Build & run
 
 ```bash

@@ -203,10 +203,22 @@ export class SlackClient {
         channel: channelId,
       })) as { ok?: boolean; error?: string; channel?: { is_private?: unknown } };
       if (!data.ok || !data.channel) {
+        // channel_not_found is what Slack returns for a private channel the
+        // bot has not joined, which makes it the expected answer for the
+        // intuitive deploy order — add the ID, deploy, then invite the bot.
+        // That order does not start, and without this it presents as a broken
+        // deploy rather than a skipped step. The remedy goes in the message
+        // because this is read at deploy time, when nobody is reading a README.
+        const remedy =
+          data.error === "channel_not_found" || data.error === "not_in_channel"
+            ? ` Invite the bot to the channel first, then deploy — this check ` +
+              `runs before the listener starts, so an uninvited private ` +
+              `channel stops the server rather than degrading it.`
+            : "";
         throw new Error(
           `Cannot verify allow-listed channel ${channelId}: Slack returned ` +
             `${data.error ?? "no channel"}. Every channel in SLACK_CHANNEL_IDS ` +
-            `and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.`
+            `and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.${remedy}`
         );
       }
       this.channelGuard.assertVisibilityMatches(
