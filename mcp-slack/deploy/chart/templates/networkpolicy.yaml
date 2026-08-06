@@ -39,10 +39,49 @@
 # apiserver.** It reads no Kubernetes objects and watches nothing. The exact
 # failure that caused the revert is not in this workload's path.
 #
-# STILL UNVALIDATED AGAINST LIVE CLUSTER BEHAVIOUR. The revert's own
-# instruction was to validate before re-merge and that has not been possible —
-# ArgoCD reconciles from a repo whose CI is down. Treat this file as reviewed
-# but unexercised until a preview against the live cluster says otherwise.
+# THIS POLICY DOES NOT WORK ON THIS CLUSTER TODAY. MEASURED, NOT SUSPECTED.
+#
+# Validated 2026-08-06 against the live cluster in a scratch namespace
+# (`atlas-egress-probe`, node `fedora`) with a pod carrying this chart's exact
+# selector labels and `ndots: 1`. Three states, in order:
+#
+#   1. No policy .................. slack.com resolves, :443 OPEN. Baseline good.
+#   2. This policy, as written .... EVERY DNS query times out — including the
+#                                   two names the rule explicitly allows.
+#   3. Same policy with the DNS
+#      rule widened back to
+#      `matchPattern: "*"` ........ still times out.
+#
+# State 3 is the important one: the failure is NOT the narrowing. The version
+# of this file that was reviewed *before* the narrowing was equally dead, so
+# review could not have caught it either way.
+#
+# Root cause is Cilium's L7 DNS proxy, not this policy. Drop the `rules.dns`
+# block entirely — a plain L3/L4 allow to kube-dns:53 — and DNS resolves
+# immediately; but then `toFQDNs` never matches (the proxy is what populates
+# the FQDN→IP mapping) and slack.com:443 is BLOCKED. Hubble shows the query
+# reaching `policy-verdict:L3-L4 EGRESS ALLOWED` and then `to-proxy
+# FORWARDED`, with no answer ever returning. The agent creates the proxy
+# instance (`cilium-dns-egress`, endpoint 1187) without error.
+#
+# So both ways out are closed: keep the DNS rule and the workload cannot
+# resolve; remove it and the workload cannot connect. `toFQDNs` is unusable
+# on this cluster until the DNS proxy is fixed.
+#
+# This is a PLATFORM defect, not an mcp-slack one — the cluster runs ZERO
+# CiliumNetworkPolicies, so the L7 DNS path had never been exercised here.
+# It is very likely the other half of the `ec08150b` revert: that policy also
+# used `toFQDNs`, and its post-mortem attributed the failure entirely to the
+# apiserver ClusterIP. That diagnosis may have been incomplete.
+#
+# Scope of the measurement, stated so nobody over-reads it: one node
+# (`fedora`). A second probe pinned to `james-mbp16` never ran — that node is
+# NotReady. Cilium v1.17.17.
+#
+# DO NOT ENABLE THE mcp-slack APPLICATION WHILE THIS FILE IS IN THE CHART.
+# It renders, lints, validates and syncs Healthy, and it takes the workload
+# off the network. That is the same failure shape as the PrometheusRule and
+# the missing DNSEndpoint, and it is the third instance in this one PR.
 # DO NOT ADD AN EMERGENCY ingressDeny POLICY TO THIS CHART.
 #
 # The incident lever is a hand-created CiliumNetworkPolicy with an

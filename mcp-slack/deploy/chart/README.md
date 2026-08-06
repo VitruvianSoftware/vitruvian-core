@@ -72,6 +72,17 @@ endpoint — the channel allow-list, the audience check, the tool filter — is
 enforced by our own process and is void the moment the bot token leaves the
 pod. This policy is the layer that still holds in that case.
 
+> **MEASURED 2026-08-06: this policy breaks the workload on this cluster.**
+> Validated live in a scratch namespace against a pod with the chart's exact
+> selector labels. With the policy applied, *every* DNS query times out —
+> including the two names it allows — and widening the rule back to
+> `matchPattern: "*"` does not help, so the failure is not the narrowing.
+> Remove the `rules.dns` block and DNS works but `toFQDNs` never matches, so
+> egress is blocked instead. Cilium's L7 DNS proxy is the root cause and it is
+> a platform defect: the cluster runs zero CiliumNetworkPolicies, so that path
+> had never been exercised. Scoped to node `fedora`, Cilium v1.17.17.
+> **Do not enable the Application while this template is in the chart.**
+
 > **This is the cluster's first CiliumNetworkPolicy and the previous attempt
 > was reverted** (`cecb67b7`, revert `ec08150b`). That policy denied apiserver
 > egress because it allowed the apiserver's *endpoint* IPs while traffic
