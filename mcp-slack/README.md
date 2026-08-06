@@ -104,6 +104,21 @@ this codebase reads). The remote manifest's scopes are derived from the tools
 the HTTP transport actually advertises. If that tool set changes, re-derive them
 rather than adding to them.
 
+**Creating the remote app is a console step, not a CLI one.** Verified against
+`slack` v4.6.0 rather than assumed: `slack app link` *"Saves an existing app to
+a project"* and needs an App ID that already exists; `slack app install` has no
+manifest flag; and `apps.manifest.create` — the only API that creates an app
+from a manifest — requires an app configuration access token, which only the
+console mints. So: **Create New App → From an app manifest**, paste
+`manifest.remote.json`.
+
+`slack app link` afterwards is worth doing, because it unlocks
+`slack manifest diff` for drift between the live app settings and this repo.
+One caveat before relying on it: `slack manifest` reads the *project* manifest
+through the `get-manifest` hook in `.slack/hooks.json`, so a plain file is not
+automatically what it compares against — the hook has to be wired to emit this
+manifest first.
+
 **No user-token scopes in the remote manifest, by construction.** `resolveConfig`
 refuses to start the HTTP transport when `SLACK_USER_TOKEN` is set, and the tools
 that need one are withheld from its tool list. Search, canvases, bookmark writes
