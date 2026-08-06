@@ -249,6 +249,16 @@ func main() {
 		// even for ignored fields — the ignore suppresses the diff being *applied*,
 		// not the state being read.
 		ctx.Export("accessTokenType", app.AccessTokenType)
+		// Exported so "is the access control actually on?" is a query rather than a
+		// recollection. The bootstrap order means the PoC necessarily works before
+		// this is enabled — apply with it false, grant the role, then apply again
+		// with it true — and nothing about the endpoint functioning would reveal
+		// that the last step never happened. Every tool call succeeds either way.
+		//
+		// So this is the value that answers it: `pulumi stack output
+		// projectRoleCheck` must read true before the deployment is considered
+		// restricted to its intended subject.
+		ctx.Export("projectRoleCheck", project.ProjectRoleCheck)
 		// Secret output: Pulumi keeps it encrypted in state and masks it in
 		// plaintext output. It is pasted into Spark's connector config by hand —
 		// there is no GCP Secret Manager sync here, unlike the sibling stack,

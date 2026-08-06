@@ -64,6 +64,7 @@ that look like mistakes until you know that:
 | `clientId` / `clientSecret` | Pasted into Spark's connector config (secret is masked in state) |
 | `authorizationEndpoint` / `tokenEndpoint` | Pasted into Spark; base URLs, no query parameters |
 | `accessTokenType` | Drift check — see below |
+| `projectRoleCheck` | Whether the access restriction is actually enabled — see below |
 
 `sparkScopes` is assembled here on purpose. A scope string missing the audience
 term still yields a **valid** token — correct signature, issuer and expiry — that
@@ -146,6 +147,18 @@ everyone out, including the first end-to-end Spark login. The sequence is:
 3. set `projectRoleCheck: "true"` and apply again.
 
 Steps 2 and 3 belong in one change.
+
+**Nothing functional forces step 3.** After the grant, the endpoint works completely
+— tokens issue, tools list, channels read and write — with the restriction still
+off, and no symptom distinguishes that from the intended state. So the check is a
+query, not a memory:
+
+```sh
+pulumi stack output projectRoleCheck   # want: true
+```
+
+That output, not someone recalling they ran the apply, is what establishes the
+deployment is restricted to its intended subject.
 
 ## Client authentication method
 
