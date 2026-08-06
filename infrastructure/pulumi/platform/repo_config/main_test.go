@@ -65,3 +65,47 @@ func TestParseBoolConfig(t *testing.T) {
 		})
 	}
 }
+
+// parseIntConfig is boolConfig's intConfig sibling (#825 follow-up, flagged
+// by Aegis in review): cfg.GetInt (cast.ToInt) swallows the same class of
+// parse error and returns 0 -- which for requiredApprovals is also the
+// permissive value, so a trailing-space typo like "1 " must error rather
+// than silently mean "no approvals required".
+func TestParseIntConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		def     int
+		want    int
+		wantErr bool
+	}{
+		{name: "unset uses default", raw: "", def: 2, want: 2},
+		{name: "literal 0", raw: "0", def: 2, want: 0},
+		{name: "literal 1", raw: "1", def: 0, want: 1},
+		// cast.ToInt("two"), cast.ToInt("1 "), cast.ToInt(" 1") and
+		// cast.ToInt("1.9") all silently resolve to 0 at the pinned
+		// spf13/cast v1.4.1 -- these must error instead.
+		{name: "word is not an int", raw: "two", def: 0, wantErr: true},
+		{name: "trailing space is not an int", raw: "1 ", def: 0, wantErr: true},
+		{name: "leading space is not an int", raw: " 1", def: 0, wantErr: true},
+		{name: "float is not an int", raw: "1.9", def: 0, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseIntConfig("someCount", tt.raw, tt.def)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("parseIntConfig(%q, def=%v) = %v, nil; want an error", tt.raw, tt.def, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseIntConfig(%q, def=%v) unexpected error: %v", tt.raw, tt.def, err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseIntConfig(%q, def=%v) = %v, want %v", tt.raw, tt.def, got, tt.want)
+			}
+		})
+	}
+}

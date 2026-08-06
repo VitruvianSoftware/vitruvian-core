@@ -66,15 +66,23 @@ func main() {
 		if err != nil {
 			return err
 		}
-		requiredApprovals := cfg.GetInt("requiredApprovals") // default 0
+		requiredApprovals, err := intConfig(cfg, "requiredApprovals", 0)
+		if err != nil {
+			return err
+		}
 		requireStatusChecks, err := requireStatusChecks(cfg)
 		if err != nil {
 			return err
 		}
 		// statusCheckContexts is an optional JSON string list. GetObject returns
-		// an error when the key is unset; we treat that as "no named contexts".
+		// nil when the key is unset (no named contexts) and a non-nil error only
+		// when it's SET but fails to unmarshal -- unlike mergeQueueRequiredChecks
+		// below, there's no safe hardcoded fallback here, so a malformed value
+		// must abort the apply rather than silently produce an empty list.
 		var statusCheckContexts []string
-		_ = cfg.GetObject("statusCheckContexts", &statusCheckContexts)
+		if err := cfg.GetObject("statusCheckContexts", &statusCheckContexts); err != nil {
+			return fmt.Errorf("config %q: %w", "statusCheckContexts", err)
+		}
 		enforceAdmins, err := boolConfig(cfg, "enforceAdmins", false) // default false
 		if err != nil {
 			return err
@@ -1558,6 +1566,30 @@ func parseBoolConfig(key, raw string, def bool) (bool, error) {
 	v, err := strconv.ParseBool(raw)
 	if err != nil {
 		return false, fmt.Errorf("config %q = %q is not a boolean (use true/false)", key, raw)
+	}
+	return v, nil
+}
+
+// intConfig parses a Pulumi config integer strictly, the intConfig sibling to
+// boolConfig above: an unset key resolves to def; an unparseable one is a
+// fatal config error. cfg.GetInt (cast.ToInt) swallows the parse error and
+// returns 0 -- for requiredApprovals below, 0 is also the PERMISSIVE value
+// (no approvals required), so e.g. a trailing-space typo like "1 " would
+// silently mean "no approvals required" while reading as correct in a diff.
+func intConfig(cfg *config.Config, key string, def int) (int, error) {
+	return parseIntConfig(key, cfg.Get(key), def)
+}
+
+// parseIntConfig holds intConfig's actual parsing logic, split out so it's
+// testable without standing up a *config.Config (which needs a live
+// pulumi.Context).
+func parseIntConfig(key, raw string, def int) (int, error) {
+	if raw == "" {
+		return def, nil
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("config %q = %q is not an integer", key, raw)
 	}
 	return v, nil
 }
