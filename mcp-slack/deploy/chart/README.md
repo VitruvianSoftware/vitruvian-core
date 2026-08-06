@@ -35,6 +35,14 @@ Since the manifest carries `groups:read`/`groups:history`, `slack.channelIds`
 gates **private** channels too — a defect there is a private-conversation
 disclosure, not a wider-than-intended public read.
 
+> **Invite the bot to every listed channel BEFORE deploying.** The intuitive
+> order — add the ID, deploy, then invite — does not work. Since #1421 the
+> server verifies each allow-listed conversation's visibility at startup, and
+> `conversations.info` on a private channel the bot has not joined returns
+> `channel_not_found`, so the process exits non-zero. With `replicas: 1` and
+> self-heal that presents as CrashLoopBackOff, which reads as "the deploy is
+> broken" rather than "you skipped a step".
+
 `required` is used rather than `default` on all three: a default here would
 produce a deployment that renders, syncs, reports Healthy, and is wrong.
 

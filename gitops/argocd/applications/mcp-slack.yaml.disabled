@@ -60,6 +60,47 @@
 #      precedent) because it needs that same Slack admin session. No user
 #      token is ever mounted here.
 #
+#   5. THE BOT IS ALREADY IN EVERY CHANNEL NAMED IN slack.channelIds, AND
+#      THE INVITE HAPPENS BEFORE THE DEPLOY, NOT AFTER.
+#
+#      The intuitive order — add the ID, deploy, then invite the bot — does
+#      not work and does not look like a missing step when it fails. Since
+#      #1421 the server verifies each allow-listed conversation's visibility
+#      at startup, and `conversations.info` on a private channel the bot has
+#      not joined returns `channel_not_found`, so the process exits non-zero.
+#      With replicas: 1 and self-heal that presents as CrashLoopBackOff —
+#      i.e. "the deploy is broken", pointing at the chart rather than at the
+#      skipped invite. Aegis's catch on #1421.
+#
+#   6. A REVERSIBLE fast containment lever exists — currently the Cloudflare
+#      WAF/rate-limit rule (criterion 3, James's account). Not "a stop button"
+#      but a reversible one: revoking the Slack bot token also stops the
+#      endpoint, but restoring it needs a re-seal and a deploy, so under a CI
+#      outage it is a one-way door. The test to apply to any lever proposed
+#      later is whether UNDOING it requires CI.
+#
+#      THIS RULE IS DELIBERATELY NOT IN IaC, and "no managed path exists" is
+#      too weak a reason — it reads as a limitation, which invites someone to
+#      fix it. The actual argument, which a future proposal has to defeat:
+#
+#      Codifying it makes the ENABLED state a managed field. Toggle the rule
+#      on in the console during an incident and that is drift, so the next
+#      apply turns your containment back off — the reconciler-undoes-your-
+#      deviation property this lever exists to escape. Avoid that with
+#      IgnoreChanges on the enabled field and you have rebuilt
+#      `accessTokenType` from zitadel-apps-mcp-slack: a security-relevant
+#      setting the stack will never reconcile, reporting clean forever while
+#      the live value is whatever someone last set by hand. That stack needed
+#      a dedicated output just to detect it.
+#
+#      So unmanaged is not the compromise here; it is the only shape with no
+#      reconciler between an operator and the stop button. Aegis's framing.
+#
+#      Narrowly scoped on purpose: this applies to the enabled state of an
+#      EMERGENCY control, not to configuration generally. Nobody contains a
+#      breach by editing a token lifetime, so it does not license unmanaged
+#      config elsewhere.
+#
 # The alert for this workload is NOT in the chart — it lives in
 # gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
 # This cluster has no prometheus-operator, so a PrometheusRule would sync
