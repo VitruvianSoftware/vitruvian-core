@@ -2,7 +2,12 @@
 
 **Status:** all six decisions resolved to a team-level call or a specific pending confirmation from
 James; nothing is blocked on re-litigating a decision, only on three concrete admin-side actions
-(see "What's still James's to do," below).
+(see "What's still James's to do," below). **This PR (#1416) is held open by design** — Beacon's
+call, 2026-08-06 — and merges at Phase 3 close, not before. The subject is still being built; a
+record that chases every in-flight change costs a rewrite and a re-review each time for a document
+nobody is reading yet. It gets one more correction pass if Phase 1/2 land materially different
+from what's written here, then lands once, accurate, when the decisions have actually stopped
+moving.
 **Context:** James asked whether mcp-slack — today a local stdio tool for harnesses like Claude Code
 — could also serve remote agent harnesses (Google Gemini Spark). Wren and Atlas scoped six calls by
 reading `mcp-slack/src/index.ts` and `mcp-slack/manifest.json` directly; James answered on
@@ -62,6 +67,23 @@ that drive IdP configuration, and it looked verified because confident people ke
 Before a build proceeds on a claim about a third-party API, someone links the vendor's page and
 dates the check. Apply this the next time a remote-exposure (or any external-integration) thread
 opens with an assumption about what the other side "requires."
+
+### 3. An audience claim is only a boundary at the granularity the IdP scopes it to
+
+Surfaced by Wren while reviewing this record, generalized by Beacon: mcp-slack's Zitadel OIDC
+client lives in its **own** Zitadel project (PR #1417, `zitadel-apps-mcp-slack`) rather than as a
+second application inside oauth-user-inspector's existing project — and the reason isn't tidiness.
+Zitadel's audience-granting scope is `urn:zitadel:iam:org:project:id:{projectId}:aud`, which is
+scoped to the **project**, not the individual application. Had mcp-slack's client been created
+inside oauth-user-inspector's project, a token minted with that project's audience would have
+validated at *both* apps — mcp-slack's local `aud` check would have kept passing while silently
+providing no isolation at all between the two integrations.
+
+The general form: **before trusting an `aud` (or any claim an IdP lets you check locally), confirm
+what granularity the IdP actually issues and scopes it at.** A claim that looks like it's
+per-application may really be per-project, per-org, or per-tenant — and a validation that passes is
+not the same thing as a boundary that holds. Check this any time a new OIDC/OAuth client is added
+to an IdP that already hosts another app's client, not just once per IdP.
 
 ## The six decisions
 
@@ -148,24 +170,58 @@ Verified against Google's own docs
   `https://vertexaisearch.cloud.google.com/oauth-redirect`. mcp-slack is a resource server with no
   callback URL of its own — there is no per-env redirect URI to register, retiring a work item the
   thread had been carrying since the second message.
-- PKCE is optional per-provider; Zitadel supports it — enable it on the client anyway.
+- **PKCE: not applicable, closed.** The pulumiverse/zitadel provider exposes no PKCE field on
+  `ApplicationOidc`, and PKCE in Zitadel isn't an independent toggle — it's an auth *method*
+  equivalent to `authMethodType = NONE`, i.e. a public client with no secret. Spark requires a
+  Client ID **and** Secret (a confidential client), so that shape isn't available here regardless.
+  What remains true and is worth keeping: the Zitadel instance advertises `S256` in its discovery
+  document, so if Spark ever sends a `code_challenge` it's honored — that's client-side behavior
+  the team neither configures nor obstructs, not something to enable server-side. (Corrected during
+  PR #1416 review — an earlier draft of this doc repeated the "enable it anyway" instruction, which
+  sent a reader hunting for a toggle that doesn't exist.)
 - Scopes are space-separated and must include **`offline_access`** for Spark to refresh tokens
   without James re-authenticating by hand — directly relevant to his scheduled-reports use case.
 - **Operational note for Phase 3 validation:** allow 5+ minutes after saving redirect-URI settings
   before testing login, or the first failed attempt reads as a bug that isn't one.
 
 **Zitadel client registration is real, separately-scoped work, not a sub-bullet of "wire the
-chart."** The OIDC client must come from the existing `infrastructure/pulumi/platform/zitadel-apps`
-Pulumi stack (pulumiverse/zitadel provider) — currently single-app, hardcoded to
-oauth-user-inspector, with a GCP Secret Manager cred-sync step that doesn't apply to a k3s target at
-all. Generalizing it (or standing up a sibling stack) carries three hard constraints Atlas verified
-from the stack's own config and history:
-- **Never hand-create the client in the Zitadel console and later adopt it into Pulumi** — that
-  diff is destructive on this provider and already deleted a live client once (2026-06-26 CI apply,
-  `Errors.App.NotFound`).
+chart" — and it's its own project, not an app inside oauth-user-inspector's.** The OIDC client
+comes from a **new sibling Pulumi stack**, `infrastructure/pulumi/platform/zitadel-apps-mcp-slack`
+(PR #1417, pulumiverse/zitadel provider) — deliberately *not* a generalization of the existing
+`platform/zitadel-apps` stack, which is oauth-user-inspector's: hardcoded
+`OAUTH_USER_INSPECTOR_` secret prefix, GCP Secret Manager cred-sync, per-env Cloud Run redirect
+origins, none of which apply to a single k3s deployment. Refactoring a live path whose client has
+already been destroyed once by a bad apply, for no shared benefit, wasn't a trade worth taking.
+
+It gets its **own Zitadel project** rather than a second application inside
+oauth-user-inspector's, for the reason pattern 3 (above) exists to generalize: Zitadel's
+audience-granting scope (`urn:zitadel:iam:org:project:id:{projectId}:aud`) is project-scoped, so
+sharing a project would have made a token minted for either app valid at both — `aud` would stop
+being a real boundary while still passing mcp-slack's local check.
+
+Two more decisions baked into that stack, worth recording because they explain constraints
+elsewhere in this doc and in Wren's PR:
+- **Token validation is local JWT/JWKS verification, not introspection** (`AccessTokenType: JWT`
+  on the client). Introspection would require mcp-slack to hold its own Zitadel credential
+  in-cluster on top of the Slack bot token — a second secret, right after Option A's whole point
+  was getting the cluster down to bot-token-plus-team-ID. JWKS is public and needs none.
+- **`AccessTokenType` sits in the client's `IgnoreChanges` list**, along with `appType`, `version`,
+  the three assertion booleans, and `clockSkew` — so it is the one setting Pulumi will never
+  reconcile after creation. If the live client ever drifts off `JWT`, the stack reports clean
+  forever while mcp-slack rejects every request, indistinguishable from a broken transport. Verify
+  it once after first apply (`pulumi stack output accessTokenType`, after a `:refresh` — the
+  refresh matters, since it's the only way the output reflects live state rather than what Pulumi
+  last wrote) — there's no ongoing check after that.
+
+Three hard constraints Atlas verified from the stack's own config and history apply to this and
+any future Zitadel-client Pulumi stack in this repo:
+- **Never hand-create the client in the Zitadel console and later adopt it into Pulumi** — the
+  provider's replace-triggering fields aren't populated on import, so an import plans a
+  *replacement*, which against a live app means "create replacement + delete original." That's
+  what destroyed oauth-user-inspector's client on 2026-06-26 (`Errors.App.NotFound`).
 - Whatever redirect URI is configured must match exactly, trailing slash included, or Zitadel
-  rejects the authorize request outright (moot for Spark specifically now that the redirect URI is
-  Google's fixed value, but the constraint is general to this stack).
+  rejects the authorize request outright (moot for Spark specifically, since its redirect URI is
+  Google's fixed value, but the constraint is general to the provider).
 - CI can't reach Zitadel's management API over the public edge (Cloudflare blocks non-browser
   clients); applies route over tailnet to an internal Envoy LB, which needs a one-time tailnet ACL
   prerequisite already in place.
