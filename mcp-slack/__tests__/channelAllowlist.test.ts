@@ -23,9 +23,11 @@
 import {
   ChannelNotAllowedError,
   MissingAllowlistError,
-  channelIdFromParams,
+  UnusableChannelParamError,
+  assertParamsAllowed,
   createChannelGuard,
   parseChannelIds,
+  readChannelParam,
 } from "../src/channelAllowlist.js";
 
 describe("parseChannelIds", () => {
@@ -112,30 +114,113 @@ describe("createChannelGuard on stdio", () => {
 });
 
 // Enforcement is anchored on request parameters rather than on wrapper-method
-// signatures, so this function is the single thing that has to know how Slack
-// spells the channel. Two methods were originally missed because their
-// signatures hid the parameter; nothing can be missed this way.
-describe("channelIdFromParams", () => {
+// signatures, so this is the single thing that has to know how Slack spells
+// the channel. Two methods were originally missed because their signatures hid
+// the parameter; nothing can be missed this way.
+describe("readChannelParam", () => {
   it("reads Slack's `channel` spelling (conversations, chat, pins)", () => {
-    expect(channelIdFromParams({ channel: "C1", limit: 10 })).toBe("C1");
+    expect(readChannelParam({ channel: "C1", limit: 10 })).toEqual({
+      kind: "channel",
+      channelId: "C1",
+    });
   });
 
   it("reads Slack's `channel_id` spelling (bookmarks, canvases)", () => {
-    expect(channelIdFromParams({ channel_id: "C2", title: "x" })).toBe("C2");
+    expect(readChannelParam({ channel_id: "C2", title: "x" })).toEqual({
+      kind: "channel",
+      channelId: "C2",
+    });
   });
 
-  it("returns undefined when the call is not channel-scoped", () => {
-    expect(channelIdFromParams({ query: "hello", count: 20 })).toBeUndefined();
-    expect(channelIdFromParams({})).toBeUndefined();
+  it("reports absent when the call is not channel-scoped", () => {
+    expect(readChannelParam({ query: "hello" })).toEqual({ kind: "absent" });
+    expect(readChannelParam({})).toEqual({ kind: "absent" });
   });
 
-  // A non-string or empty value must not be treated as a channel to check —
-  // silently "passing" a guard on a malformed value is the failure worth
-  // avoiding here.
-  it("ignores empty or non-string values rather than guarding on them", () => {
-    expect(channelIdFromParams({ channel: "" })).toBeUndefined();
-    expect(channelIdFromParams({ channel: 123 })).toBeUndefined();
-    expect(channelIdFromParams({ channel: null })).toBeUndefined();
-    expect(channelIdFromParams({ channel_id: undefined })).toBeUndefined();
+  it("treats an explicitly undefined or null channel as absent", () => {
+    // createCanvas omits the key this way when no channel is given.
+    expect(readChannelParam({ channel_id: undefined })).toEqual({
+      kind: "absent",
+    });
+    expect(readChannelParam({ channel: null })).toEqual({ kind: "absent" });
+  });
+
+  // The distinction the first version of this collapsed: a value that is
+  // present but not usable is NOT the same as no value.
+  it("reports unusable for a present-but-non-string channel", () => {
+    expect(readChannelParam({ channel: ["C1"] })).toEqual({
+      kind: "unusable",
+      value: ["C1"],
+    });
+    expect(readChannelParam({ channel: 123 })).toMatchObject({
+      kind: "unusable",
+    });
+    expect(readChannelParam({ channel: "" })).toMatchObject({
+      kind: "unusable",
+    });
+  });
+});
+
+// These are the tests that would have caught the fail-open defect. The earlier
+// ones asserted only what the *extractor* returned, which was correct in
+// isolation; the bug was in what the guard concluded from it.
+describe("assertParamsAllowed", () => {
+  const guard = createChannelGuard("C_ALLOWED", { required: true });
+
+  it("permits an allow-listed channel", () => {
+    expect(() =>
+      assertParamsAllowed(guard, { channel: "C_ALLOWED", limit: 5 })
+    ).not.toThrow();
+  });
+
+  it("permits a call that names no channel at all", () => {
+    expect(() =>
+      assertParamsAllowed(guard, { query: "hello" })
+    ).not.toThrow();
+    expect(() =>
+      assertParamsAllowed(guard, { title: "a canvas", channel_id: undefined })
+    ).not.toThrow();
+  });
+
+  it("rejects a channel outside the allow-list", () => {
+    expect(() => assertParamsAllowed(guard, { channel: "G_PRIVATE" })).toThrow(
+      ChannelNotAllowedError
+    );
+  });
+
+  // The actual bypass: `String(["C0PRIVATE"])` is "C0PRIVATE", and the GET
+  // branch coerces every parameter that way — so an array-wrapped ID reached
+  // Slack intact while the guard saw "no channel" and waved it through.
+  it("rejects an array-wrapped channel rather than skipping the check", () => {
+    expect(() =>
+      assertParamsAllowed(guard, { channel: ["G_PRIVATE"] })
+    ).toThrow(UnusableChannelParamError);
+    expect(() =>
+      assertParamsAllowed(guard, { channel_id: ["G_PRIVATE"] })
+    ).toThrow(UnusableChannelParamError);
+  });
+
+  it("rejects an object whose toString would coerce to a channel ID", () => {
+    const sneaky = { toString: () => "G_PRIVATE" };
+    expect(() => assertParamsAllowed(guard, { channel: sneaky })).toThrow(
+      UnusableChannelParamError
+    );
+  });
+
+  // Fail-closed applies even to a value that would coerce to an ALLOWED
+  // channel: the point is that an unreadable parameter is never waved through.
+  it("rejects an unusable value even when it would coerce to an allowed id", () => {
+    expect(() =>
+      assertParamsAllowed(guard, { channel: ["C_ALLOWED"] })
+    ).toThrow(UnusableChannelParamError);
+  });
+
+  it("rejects other non-string shapes", () => {
+    expect(() => assertParamsAllowed(guard, { channel: 123 })).toThrow(
+      UnusableChannelParamError
+    );
+    expect(() => assertParamsAllowed(guard, { channel: "" })).toThrow(
+      UnusableChannelParamError
+    );
   });
 });
