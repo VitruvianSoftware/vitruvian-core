@@ -1,13 +1,15 @@
 # Decision record: mcp-slack remote exposure (Gemini Spark PoC)
 
 **Status:** all six decisions resolved to a team-level call or a specific pending confirmation from
-James; nothing is blocked on re-litigating a decision, only on three concrete admin-side actions
+James; nothing is blocked on re-litigating a decision, only on four concrete admin-side actions
 (see "What's still James's to do," below). **This PR (#1416) is held open by design** — Beacon's
 call, 2026-08-06 — and merges at Phase 3 close, not before. The subject is still being built; a
 record that chases every in-flight change costs a rewrite and a re-review each time for a document
-nobody is reading yet. It gets one more correction pass if Phase 1/2 land materially different
-from what's written here, then lands once, accurate, when the decisions have actually stopped
-moving.
+nobody is reading yet. **Correction pass taken 2026-08-06T21:49Z** (pattern 12 added; the two
+go-live blockers that were open at the previous pass are now resolved; `OIDC_ALLOWED_SUBJECTS`'s
+status corrected from "decided" to "decided, not built, now a hard Phase 2b gate") — it gets one
+more if Phase 1/2 land materially different from what's written here, then lands once, accurate,
+when the decisions have actually stopped moving.
 **Context:** James asked whether mcp-slack — today a local stdio tool for harnesses like Claude Code
 — could also serve remote agent harnesses (Google Gemini Spark). Wren and Atlas scoped six calls by
 reading `mcp-slack/src/index.ts` and `mcp-slack/manifest.json` directly; James answered on
@@ -370,6 +372,53 @@ else would need to be true for X itself to be satisfied — and whether anything
 still open, satisfies it. A go-live review that closes N findings independently has not yet checked
 whether any two of those N compose into an N+1th.
 
+### 12. `aud` is never an authorization decision in this Zitadel instance — the control that looks like a gate and isn't
+
+Resolves the audience-scope question pattern 3 and the go-live gate section (below) both left open.
+Per Atlas (2026-08-06T21:36-21:49Z), verified twice from independent retrievals of
+`zitadel/zitadel` at the deployed tag **v4.15.3**, and per Beacon's independent confirmation of the
+same file ranges on branch `44843bab`:
+
+**The rule: in this Zitadel instance the `aud` claim is caller-controlled and carries no
+authorization. Any resource server here authorizes on subject or role — never on audience.**
+
+**Why it holds, verbatim:**
+
+- `internal/api/oidc/auth_request.go:82-103` builds the audience from whatever scopes survived
+  request processing: `scope, err = o.assertProjectRoleScopesByProject(...)` at `:93`, then
+  `audience = domain.AddAudScopeToAudience(ctx, audience, scope)` at `:98`.
+- `internal/api/oidc/auth_request.go:564-585`, the only scope processing that runs first, **only
+  ever appends** role scopes on every return path — it never removes one. A caller-supplied
+  `urn:zitadel:iam:org:project:id:<ID>:aud` scope reaches `:98` untouched.
+- `internal/domain/token.go:10-22` parses the project ID out of that scope string and appends it to
+  the audience **unconditionally** — no grant check, no membership check, no `hasProjectCheck`.
+- **Stronger than first stated: there is no project-*existence* check either.** `addProjectID`
+  (`token.go:35-45`) is a dedupe-and-append on a string slice. Whatever the caller writes between
+  the prefix and suffix becomes an audience entry, real project or not. The rule isn't "any user can
+  claim any *real* project's audience" — it's "the audience list is caller-authored, full stop." A
+  resource server matching on `aud` is matching a string its own attacker chose.
+- This is documented, intended Zitadel behavior. `aud` is not an authorization decision in OIDC;
+  Zitadel is correct. The error would be ours, and the team was about to make it (see decision below
+  on `OIDC_ALLOWED_SUBJECTS`).
+
+**The half that makes the rule stick — why three reviews passed a check that isn't one, per
+Beacon:** `mcp-slack/src/auth.ts:135-152`'s `AudienceMismatchError` hands the caller
+`fullScopeString(projectId)` on failure — the literal scope string to request in order to *obtain*
+the audience it just failed to present — and the comment at `:131-133` states outright that the
+audience "is granted by a scope the client requests." **The code documents that `aud` is
+caller-supplied directly beneath the line that checks it, and it still reads as a gate**, because a
+reviewer sees a cryptographically-verified claim being compared and infers authorization from the
+verification, not from what the claim actually encodes. Phrase this as *"the control we had looked
+like one and wasn't,"* not *"we forgot a control"* — the first framing is what stops the next person
+from reaching for audience validation the same reasonable, wrong way.
+
+**Composed with two other findings from tonight (self-registration open, `projectRoleCheck: false`
+on every project so far checked), this is a live go-live blocker for mcp-slack specifically** — see
+the go-live gate correction immediately below.
+
+Sources: [`token.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/domain/token.go) ·
+[`auth_request.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/api/oidc/auth_request.go)
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
@@ -606,14 +655,23 @@ it, not the other way around.
 enforcement) can't be enabled before James's role grant exists, which can't exist before he creates
 a Zitadel user — a hard bootstrap ordering that left a window where the endpoint would be publicly
 reachable with caller identity unenforced. Rather than accept that window (bounded only by
-discipline — see the standing rule below), the team added a second, independently-testable
+discipline — see the standing rule below), the team decided on a second, independently-testable
 enforcement point: a required, fail-closed `OIDC_ALLOWED_SUBJECTS` config, checked against the
 verified `sub` claim, same shape and same `MissingAllowlistError` treatment as `SLACK_CHANNEL_IDS`.
-Built as its own PR after the transport PR merges (not folded in — that PR is frozen with three
-independent reviews against one head, and reopening it costs a schedule with nothing to gain while
-both are outage-blocked anyway). **Does not replace `projectRoleCheck: true`** — the point of the
-L1/L2/L3 framework above is that the same boundary held in two independent places is stronger than
-either alone, and this is L2 in two places rather than one.
+**Status correction, 2026-08-06T21:48Z — this was decided, not built, and had been carried as
+built.** Beacon grepped the whole tree on branch `44843bab` (`OIDC_ALLOWED_SUBJECTS`,
+`allowedSubjects`, `allowed_subjects`) and found **zero matches** — this is the exact "config value
+that ships with a comment saying someone will change this later" failure mode pattern 6 already
+generalized, here manifesting as a decision that was never encoded as a task at all and quietly
+drifted from "planned" to "assumed shipped" in a teammate's own memory. Not folded into the transport
+PR (that PR is frozen with three independent reviews against one head), but now **elevated from
+follow-up PR to a hard Phase 2b go-live gate, per Beacon 2026-08-06T21:48Z:** *mcp-slack rejects a
+validly-signed token whose `sub` is not in `OIDC_ALLOWED_SUBJECTS`, proven by a test, before the
+server accepts its first real request.* Pace has this on the Phase 2b DoD as blocking, not tracked.
+**Does not replace `projectRoleCheck: true`** — the point of the L1/L2/L3 framework above is that
+the same boundary held in two independent places is stronger than either alone, and this is L2 in
+two places rather than one. **It is also the only control in the chain below that doesn't depend on
+either open question's answer** — see the resolved paragraph immediately following.
 
 **Design requirement carried into that PR, continuing the self-describing-error pattern already
 established for `AudienceMismatchError`:** the rejection must print the `sub` it actually received.
@@ -657,17 +715,33 @@ this is unwritten work, not an unreviewed gap):**
    readiness and being useless are different states, and nothing currently distinguishes them),
    `terminationGracePeriodSeconds` + `preStop` paired with the app's own `SIGTERM` handler.
 
-**Two go-live blockers, unowned by this record because they're bigger than mcp-slack — noted here
-only because `OIDC_ALLOWED_SUBJECTS`'s value depends on them, not because this doc is where they
-get resolved.** Whether the Zitadel instance permits self-registration, and whether a different
-OIDC client in the org can request this project's audience scope, both bear on how exposed the
-bootstrap window actually is (see pattern 11 — the two compose). **Self-registration, if enabled,
-is a platform-wide Zitadel exposure question, not an mcp-slack one** — Zitadel is the SSO for the
-whole homelab, `oauth-user-inspector` already sits behind it, and it would be true regardless of
-whether this PoC existed. It's being raised as its own standing platform question elsewhere, not
-tracked as part of this build's gate. What *is* specific to this build: whichever way both
-questions resolve, `OIDC_ALLOWED_SUBJECTS` is the one control in the chain that doesn't depend on
-either answer, because it's enforced in this process against a value in this chart.
+**Both go-live blockers below are now resolved, not open — updated 2026-08-06T21:49Z.** They remain
+unowned by this record because they're bigger than mcp-slack, and the platform-wide question stays
+tracked at the platform level, not folded into this build's gate — but the answers are in, and per
+pattern 11 they compose into a real path, not a bounded one:
+
+1. **Self-registration is open.** `allowRegister: true` on the instance-default login policy, live
+   since bootstrap (`sequence: 18`, unedited since 2026-06-24). Confirmed two independent ways —
+   Atlas at the policy (`GET /admin/v1/policies/login`), Beacon at the render (a live, submittable
+   registration form). **Decision: James flips it to `false` in the console tonight** — the durable
+   fix (a `zitadel-instance` Pulumi stack, its own `IAM_OWNER` machine user) is real but is days of
+   work, and closing a live directory-integrity gap shouldn't wait on it. Tracked as its own platform
+   item, not this build's — but see composition, next.
+2. **The audience question is closed, and closed the wrong way.** Pattern 12 (above): `aud` in this
+   instance is caller-controlled with no grant or existence check, confirmed at v4.15.3 source. There
+   is no "different OIDC client in the org" precondition left to worry about — any authenticated
+   subject can request any project's audience directly, no other client involved.
+
+**What this means specifically for mcp-slack, per Atlas (2026-08-06T21:46Z):** compose
+self-registration (open) with the audience finding (pattern 12) with mcp-slack's current
+`auth.ts` (`:302-322` — issuer, RS256/JWKS, `aud` contains `config.projectId`, non-empty `sub`, and
+**nothing else** — confirmed by Beacon's independent whole-tree grep, zero `OIDC_ALLOWED_SUBJECTS`
+matches) and the result is: **any self-registered stranger on the internet would be accepted by
+mcp-slack**, the moment its Zitadel project exists and the server is deployed. **Not live today** —
+PR #1417 (`zitadel-apps-mcp-slack`) hasn't applied and the server isn't deployed, so this is a
+go-live blocker, not a current exposure. It is the reason `OIDC_ALLOWED_SUBJECTS` was just elevated
+to a hard Phase 2b gate rather than a follow-up PR, above — audience validation contributes nothing
+against this path, so it cannot be the thing that closes it.
 
 ## Consequences of decision 5 (potentially permanent, not throwaway)
 
@@ -759,7 +833,7 @@ any future Zitadel-client Pulumi stack in this repo:
   clients); applies route over tailnet to an internal Envoy LB, which needs a one-time tailnet ACL
   prerequisite already in place.
 
-## What's still James's to do (updated 2026-08-06T20:46Z)
+## What's still James's to do (updated 2026-08-06T21:49Z)
 
 1. ~~Bot-attribution yes/no~~ — **Answered, 20:36Z (DM to Beacon): yes**, posts go out as the app —
    and James asked for the further attribution feature specified above, which is now active work.
@@ -774,6 +848,12 @@ any future Zitadel-client Pulumi stack in this repo:
    (`admin@vitruvian.auth.ipv1337.dev`) and hasn't confirmed whether a personal account already
    exists. The resulting user ID becomes stack config for the `zitadel.UserGrant` binding him to
    `mcp-slack-user`.
+4. **New, 2026-08-06T21:49Z — flip `allowRegister` to `false` in the Zitadel console tonight**, per
+   the resolved go-live blockers above. While there, confirm the three `oauth-user-inspector` project
+   toggles (Assert/Check Project on Authentication, Check Project Role) read `false` as derived —
+   Atlas's request, a zero-inference direct read costing one page. **Do not** flip `projectRoleCheck`
+   on any project — zero roles and zero grants exist anywhere checked so far, so enabling it locks
+   out every current user of that project, an outage rather than a fix.
 
 ## Deferred, not closed
 
