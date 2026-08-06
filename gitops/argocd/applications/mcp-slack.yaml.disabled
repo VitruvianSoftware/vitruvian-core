@@ -102,6 +102,31 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: mcp-slack
+  # CONTAINMENT NOTE — READ BEFORE REACHING FOR kubectl IN AN INCIDENT.
+  #
+  # selfHeal is on, and this cluster reconciles every 120s with 60s of jitter
+  # (argocd-cm: timeout.reconciliation 120s, timeout.reconciliation.jitter
+  # 60s). So `kubectl scale deploy/mcp-slack --replicas=0` and
+  # `kubectl delete httproute mcp-slack` DO NOT CONTAIN ANYTHING — both are
+  # desired state here, and ArgoCD reverts them within ~2-3 minutes.
+  #
+  # That is the worst shape a containment action can have: it appears to work,
+  # then silently undoes itself on a timer while someone believes the endpoint
+  # is down.
+  #
+  # To actually stop traffic fast, suspend reconciliation FIRST:
+  #
+  #   kubectl patch application mcp-slack -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  #   kubectl scale deploy/mcp-slack -n mcp-slack --replicas=0
+  #
+  # Both are seconds and the result survives, because nothing is reconciling
+  # it back. Restore by re-adding the automated block.
+  #
+  # The alternative — revert the git commit — is correct and durable but runs
+  # at GitOps speed (commit, CI, sync, rollout), which is minutes and depends
+  # on CI being up. Prefer it for anything non-urgent; it leaves git as the
+  # source of truth rather than a cluster that silently disagrees with it.
   syncPolicy:
     automated:
       prune: true
