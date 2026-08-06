@@ -284,8 +284,8 @@ covered at all.
 | # | Decision | Final answer | Rationale |
 |---|---|---|---|
 | 1 | Tenancy | **Single-tenant.** One deployment, one set of Slack tokens; every connected agent acts as James's Slack identity. | `src/index.ts:802-808` reads tokens once at process start — one identity per process. Multi-tenant needs per-request token resolution and a token store: a rewrite of the server's core, not a transport addition. |
-| 2 | Who may connect | **Zitadel-native subject, no Google social login.** Atlas confirmed no social-login IdP is configured on the Zitadel instance (`gitops/argocd/platform/zitadel/applicationset.yaml`); adding one is new config work that would put Google in the trust chain directly in front of the Slack workspace, for no PoC benefit. James logs into `auth.ipv1337.dev` and reports which subject he lands on — if only the bootstrap admin exists, Atlas creates a dedicated non-admin user in Phase 2 rather than gating the workspace behind the instance-admin account. | Keeps the Gemini test account (client-side) and the Zitadel subject (gate-side) cleanly separate — conflating them was an early gap in the thread that Beacon caught. |
-| 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: add `chat:write` only (no `chat:write.public`) to the bot's scope, reinstall the app.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. | See "Option A" section below — the full resolution, including the reinstall/token-rotation consequence everyone needs to sequence around. |
+| 2 | Who may connect | **Zitadel-native subject, no Google social login.** Atlas confirmed no social-login IdP is configured on the Zitadel instance (`gitops/argocd/platform/zitadel/applicationset.yaml`); adding one is new config work that would put Google in the trust chain directly in front of the Slack workspace, for no PoC benefit. **Identity mechanics settled 2026-08-06T20:45Z:** James's Zitadel user is **not** a Pulumi resource — human accounts mutate outside IaC constantly (password, MFA, profile), and declaring one would need `IgnoreChanges` over most of the resource, deliberately reproducing the `accessTokenType` drift problem (pattern 6) on an identity. James creates his own user via the Zitadel console (he's currently only known to be signed in as the bootstrap admin, `admin@vitruvian.auth.ipv1337.dev`, and hasn't confirmed a personal account exists); the resulting user ID becomes stack config, and only the project-scoped `zitadel.UserGrant` in `zitadel-apps-mcp-slack` is code — it dies with the project, as it should. | Keeps the Gemini test account (client-side) and the Zitadel subject (gate-side) cleanly separate — conflating them was an early gap in the thread that Beacon caught. Keeping the human identity out of Pulumi keeps Zitadel as the system of record rather than creating a second, drifting one. |
+| 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: add `chat:write` only (no `chat:write.public`) to the bot's scope, reinstall the app.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. **⚠️ At risk as of 2026-08-06T20:46Z:** James has confirmed he has **no admin rights on the abrial Slack workspace**. Option A's step 2 (reinstall the app to add the bot scope) needs someone who can reinstall it — an app-collaborator role might suffice, workspace admin might not be required, but that's unconfirmed. If nobody can reinstall, Option A cannot execute as specified and the choice reopens to Option B (user token, capped tool list — the risk profile the team rejected) or Option C (read-only PoC, drops decision 6's read+write goal). | See "Option A" section below — the full resolution, including the reinstall/token-rotation consequence everyone needs to sequence around, and the open risk that could unwind it. |
 | 4 | Public exposure via cloudflared, gated only by Zitadel | **Accepted.** | Spark is Google-hosted and reaches the endpoint over the public internet through the existing tunnel; Cloudflare Access can't gate an OIDC flow, so Zitadel is the only gate — reasonable given decisions 1–3. |
 | 5 | Homelab k3s deployment lifetime | **Potentially permanent**, pending a post-PoC monetization decision — not throwaway-then-Cloud-Run as the team first recommended. | Changes what gets built, not just how long it lasts (see "Consequences of decision 5," below). |
 | 6 | Done criteria + hostname | Spark connects → Zitadel OAuth → lists tools → **reads and writes across an explicit, allowlisted set of channels**. Deployed at **`mcp-slack.ipv1337.dev`** (not `-poc`) — "PoC" lives in the namespace and this written decision, not the URL, since renaming later turned out to be free (DNS/HTTPRoute + Spark UI edit) once Wren corrected the redirect-URI assumption, but the team is keeping the real hostname anyway now that decision 5 says permanence is the plan. | Read+write was James's actual ask (scheduled reports/updates); satisfied via Option A rather than the user token. |
@@ -327,8 +327,51 @@ several messages — do not shortcut it):
    embarrassed someone.
 
 Bot-attribution (posts appearing as "Vitruvian Slack MCP" rather than as James) is the one piece of
-Option A that is a product call, not an engineering one — flagged to James as still his to confirm
-below.
+Option A that was a product call, not an engineering one. **Resolved 2026-08-06T20:36Z, direct from
+James (DM to Beacon):** yes, posts go out as the app — and he asked for a further, related feature:
+Slack readers should be able to tell which human requested a given app-posted message. See
+"Message attribution," immediately below — **this is active, in-scope work, not a deferred
+design note.**
+
+## Message attribution — active requirement (added 2026-08-06T20:36Z, corrected into scope 20:46Z)
+
+James's exact request, answering Beacon's bot-attribution question: *"yes for spark's slack write
+posts as the app but would it be possible to mention on behalf of who so users will know?"* — i.e.
+`Requested by James Nguyen via Gemini Spark` on posts, replies, and edits made through the HTTP
+path. This was briefly treated as a design note deferred to a hypothetical multi-tenancy future
+(the single-caller argument for deferring it was wrong — James's reason is that **Slack readers**
+should know who's behind an app-posted message, which holds regardless of how many callers the
+deployment has). It is Wren's to build now, not later.
+
+**The design constraints this must be built against, worked out before the (corrected) scope call
+and still binding:**
+
+- **The attributed name must never be sourced from a token claim the subject can edit.** Zitadel
+  display-name claims are user-editable; rendering one verbatim into an app-posted message would
+  let the requester write their own provenance line — harmless at one authorized subject today,
+  a spoofing vector ("Requested by Security Team") the moment decision 2 ever widens. Source the
+  name from a **deploy-time mapping** (subject ID → display name, configured alongside the
+  deployment) instead — a one-entry mapping at today's single-tenant scale, extended per-subject if
+  decision 1 ever changes. An unrecognized subject gets no attribution line rather than one it
+  authored.
+- **Don't widen OAuth scope to carry the name.** Requesting `profile`/`email` to get a name claim
+  onto the token grants Spark real additional capability for a cosmetic string; the deploy-time
+  mapping needs no extra scope at all.
+- **Don't call out to Zitadel per post.** A userinfo lookup on the write path would put the IdP in
+  the critical path for every message and reintroduce the availability coupling readiness was
+  deliberately built to avoid (see the health-check design in `httpTransport.test.ts`).
+- **`updateMessage` must re-render the attribution block on every edit, not just be allowed to
+  keep it.** An edit that silently drops the block is worse than never having attribution — the
+  message stays posted, still app-authored, now with the requester erased. Re-rendering on edit
+  needs to be the default behavior, not an opt-in a caller has to request.
+- **stdio is out of scope for this feature.** No `authInfo` exists on that transport, and on stdio
+  the write already goes out as the human — an attribution line there would be redundant on a
+  message the reader already knows was posted by that person directly.
+- **Open question, not yet answered:** whether Zitadel's access token carries a name/email claim
+  by default is unverified (Atlas confirmed the *instance* supports emitting `name`, `email`, etc.,
+  per its discovery document, but not which token type carries them) — moot for the chosen design
+  above, which sources the name from deploy config rather than the token, but worth closing out if
+  the deploy-time mapping ever needs to fall back to something token-derived.
 
 ## Consequences of decision 5 (potentially permanent, not throwaway)
 
@@ -420,24 +463,21 @@ any future Zitadel-client Pulumi stack in this repo:
   clients); applies route over tailnet to an internal Envoy LB, which needs a one-time tailnet ACL
   prerequisite already in place.
 
-## What's still James's to do (as of 2026-08-06T18:56Z)
+## What's still James's to do (updated 2026-08-06T20:46Z)
 
-Everything else in this record is a team-level call. Three items remain, and only James can resolve
-them:
-
-1. **Bot-attribution yes/no** — OK for Spark's writes to post as "Vitruvian Slack MCP" rather than
-   as James personally? (Team recommendation: yes — a bot posting scheduled reports reading as a
-   bot is the better outcome, but it's James's workspace identity to spend.)
-2. **One Slack admin session** in the abrial workspace, all in one pass: add `chat:write` only to
-   the bot's scopes and reinstall the app; update the local stdio config with the new bot token
-   first and confirm Claude Code still works before handing the token to Atlas to re-seal the
-   cluster secret; invite the bot to the target channels; while there, capture the **team ID**, the
-   **channel IDs** for that set, and the bot's **existing private-channel/DM membership** (needed
-   as the pre-flight inventory — `im:read`/`mpim:read` aren't on the bot's scopes, so this can't be
-   scripted).
-3. **One 30-second check** — log into `https://auth.ipv1337.dev` and report which subject is landed
-   on. If it's only the bootstrap admin, say so; Atlas creates a dedicated non-admin user in Phase 2
-   rather than gating the Slack workspace behind the instance-admin account.
+1. ~~Bot-attribution yes/no~~ — **Answered, 20:36Z (DM to Beacon): yes**, posts go out as the app —
+   and James asked for the further attribution feature specified above, which is now active work.
+2. **Slack admin session — at risk, not yet actionable.** James has confirmed **no admin rights on
+   the abrial workspace**, which puts step 2 of Option A (reinstalling the app to add `chat:write`)
+   in doubt — see the ⚠️ flag on decision 3, above. Outstanding: whether James holds a narrower
+   *app-collaborator* role that's sufficient for a reinstall even without workspace admin. If
+   neither, Option A cannot execute as specified and decision 3 reopens to Option B or C.
+3. ~~Zitadel 30-second login check~~ — **Superseded.** The design changed: James's Zitadel user is
+   no longer a Pulumi resource (see decision 2, above). His outstanding action is now to create his
+   own Zitadel user via the console — he's currently signed in only as the bootstrap admin
+   (`admin@vitruvian.auth.ipv1337.dev`) and hasn't confirmed whether a personal account already
+   exists. The resulting user ID becomes stack config for the `zitadel.UserGrant` binding him to
+   `mcp-slack-user`.
 
 ## Deferred, not closed
 
@@ -450,31 +490,6 @@ much longer:
   question rather than a closed one; nobody should hard-code single-tenant assumptions deeper into
   the codebase than the PoC strictly needs.
 
-  **Design note for whoever builds multi-tenancy, per Beacon/Atlas/Wren (2026-08-06T20:42-20:44Z):**
-  message attribution ("Requested by \<name\> via Gemini Spark") was designed, then cut from this
-  PoC's scope entirely — not deferred as a feature, deferred as *unneeded*, because decisions 1+2
-  guarantee exactly one possible caller today, and attribution carries no information when there's
-  only one caller it could name. It becomes valuable, and simultaneously dangerous, the moment
-  multi-tenancy arrives:
-
-  > **Provenance sourced from an IdP claim the subject can edit is not provenance.** Attribution
-  > must come from a deploy-time mapping the requester cannot write, and an unrecognized subject
-  > gets no attribution line rather than one it authored.
-
-  The reasoning that produced this, preserved so it isn't rediscovered from scratch: (1) a
-  Zitadel display-name claim is user-editable, so rendering it verbatim into a Slack message posted
-  *as the app* means the requester controls what the provenance line says — harmless at one
-  authorized subject, a spoofing vector ("Requested by Security Team") the moment decision 2 widens
-  to more than one; (2) subject → display name is a one-entry mapping at single-tenant scale and
-  doesn't need to travel in a token at all — at multi-tenant scale it should be a deploy-time or
-  admin-managed mapping, not a token claim, for the same reason; (3) requesting the `profile`/
-  `email` scopes to carry a name claim grants real capability to a Google-hosted OAuth client in
-  exchange for a cosmetic string — don't widen scope for decoration; (4) a userinfo lookup per post
-  would put the IdP on the write path and reintroduce exactly the availability coupling readiness
-  was designed to avoid — don't call out to Zitadel to attribute a message; (5) if attribution is
-  built, an edit (`updateMessage`) that silently drops the block on rewrite is worse than never
-  having attribution — the message stays posted, still app-authored, now with the requester
-  erased, so re-rendering the block on every edit needs to be the default, not an opt-in.
 - **Who beyond James may connect** — decision 2 is a PoC-scoped answer (one Zitadel subject); no
   process exists yet for widening it.
 - **Whether search, canvases, bookmarks, or topic-set ever return to the remote path** — all
