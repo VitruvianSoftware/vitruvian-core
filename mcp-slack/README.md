@@ -144,7 +144,22 @@ After creating the app, click **Install to Workspace**. Then navigate to **OAuth
 | `SLACK_BOT_TOKEN` | ✅ | Bot User OAuth Token (`xoxb-...`) |
 | `SLACK_USER_TOKEN` | ✅ | User OAuth Token (`xoxp-...`) |
 | `SLACK_TEAM_ID` | ✅ | Workspace Team ID |
-| `SLACK_CHANNEL_IDS` | ❌ | Comma-separated channel IDs to restrict channel listing |
+| `SLACK_CHANNEL_IDS` | ❌ | Comma-separated **public** channel IDs. When set, restricts every channel-scoped call, not only listing |
+| `SLACK_PRIVATE_CHANNEL_IDS` | ❌ | Comma-separated **private** channel IDs, declared separately from the public ones |
+
+`SLACK_CHANNEL_IDS` used to filter only `slack_list_channels`; a caller who knew
+an ID could still read or write any conversation the bot belonged to. It is now
+enforced on every call. On stdio that is the only difference — visibility is not
+checked, because stdio users were never asked to declare it and a private channel
+in an existing `SLACK_CHANNEL_IDS` would otherwise start failing on upgrade.
+
+Both lists are required to be accurate on the HTTP transport, where the server
+verifies each one against Slack at startup and **refuses to start** on a
+disagreement. The split exists for exactly that check: with one list, "is this
+channel allowed" and "is it listed as private" are the same question, so nothing
+can contradict it. With two, pasting a private channel ID into the public list —
+the mistake an allow-list structurally cannot catch, since the ID *is* on the
+list — becomes a contradiction the server can see.
 
 ### 4. Build & run
 

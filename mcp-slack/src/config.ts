@@ -137,7 +137,10 @@ export function resolveConfig(env: Env): ServerConfig {
       slack: { botToken, userToken, teamId },
       channelGuard: createChannelGuard(
         env.SLACK_CHANNEL_IDS,
-        { required: false },
+        // Not enforced here: stdio users who set SLACK_CHANNEL_IDS were never
+        // asked to declare visibility, so every channel would read as public
+        // and any private one among them would begin failing on an upgrade.
+        { required: false, enforceVisibility: false },
         env.SLACK_PRIVATE_CHANNEL_IDS
       ),
       writeToken: "user",
@@ -162,7 +165,7 @@ export function resolveConfig(env: Env): ServerConfig {
     slack: { botToken, teamId },
     channelGuard: createChannelGuard(
       env.SLACK_CHANNEL_IDS,
-      { required: true },
+      { required: true, enforceVisibility: true },
       env.SLACK_PRIVATE_CHANNEL_IDS
     ),
     // Writes go out as the app. This is only reachable because the Slack app
