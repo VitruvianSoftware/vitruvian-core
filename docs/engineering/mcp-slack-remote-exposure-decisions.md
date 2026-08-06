@@ -592,6 +592,25 @@ operator and their stop button, and the workaround is the `IgnoreChanges` patter
 override. Apply this test to any future proposal to bring an incident-time toggle under IaC: does
 making it reviewable also make it something the system will fight you to keep on?
 
+**Narrowing, per Atlas (2026-08-06T23:22Z), on a sibling case (a Cloudflare WAF rule) rather than
+this stack — the "every managed path puts a reconciler in front of the stop button" claim above is
+too strong, and the distinguishing property is worth stating precisely.** It holds for
+*continuously-reconciling* systems (ArgoCD sync, any Kubernetes controller, and the Zitadel
+`Project`/`ApplicationOidc` resources this build's own stack manages) — they watch for drift and
+revert it on their own schedule, independent of anyone running a command. **It does not hold for an
+apply-only system like Pulumi**, which reconciles *only* when someone runs `pulumi up`. A
+Pulumi-managed value gets both properties at once rather than trading one for the other: it's in
+git, reviewable, diffable — and a hand-toggle (in a dashboard, a console) survives indefinitely,
+because nothing is watching to revert it; the managed definition and the live hand-toggled state
+simply disagree until someone chooses to run an apply. The emergency lever becomes the hand-toggle,
+the durable definition stays the code, and they coexist rather than fight. **So the real dividing
+line for this pattern is "does anything reconcile without being told to," not "is it managed in
+code at all"** — Pulumi is managed and still safe for this class of control precisely because it
+lacks the continuous reconciler that makes ArgoCD/Kubernetes-controller-managed state dangerous
+here. Same tidy-up trap either way, worth restating: someone later folding a Pulumi-managed
+emergency toggle into an ArgoCD-managed one for "consistency" reintroduces the exact problem this
+narrowing shows how to avoid.
+
 ### 14. A test double missing a field the real system always sends will silently exercise the wrong branch — and the dangerous direction is when that reads as the permissive case
 
 Found in a startup-verification test for the allow-list re-review (private channels now in scope,
