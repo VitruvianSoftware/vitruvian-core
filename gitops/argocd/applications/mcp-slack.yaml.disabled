@@ -114,14 +114,25 @@ spec:
   # then silently undoes itself on a timer while someone believes the endpoint
   # is down.
   #
-  # To actually stop traffic fast, suspend reconciliation FIRST:
+  # THERE ARE TWO RECONCILERS, AND SUSPENDING ONLY THIS APPLICATION IS NOT
+  # ENOUGH. `app-of-applications` (gitops/argocd/root-applications.yaml) also
+  # runs selfHeal: true and owns this Application object, so patching this
+  # file's syncPolicy is itself reverted by the root app-of-apps. Verified
+  # against the live root Application, which lists every leaf as a managed
+  # resource.
   #
+  # To actually stop traffic fast, suspend from the ROOT DOWN, then act:
+  #
+  #   kubectl patch application app-of-applications -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
   #   kubectl patch application mcp-slack -n argocd --type=json \
   #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
   #   kubectl scale deploy/mcp-slack -n mcp-slack --replicas=0
   #
-  # Both are seconds and the result survives, because nothing is reconciling
-  # it back. Restore by re-adding the automated block.
+  # Seconds, and it survives, because nothing is reconciling any layer back.
+  # Restore in reverse order. Skipping the first command produces the exact
+  # failure this note exists to prevent, one level up: the suspend appears to
+  # work and is quietly undone.
   #
   # The alternative — revert the git commit — is correct and durable but runs
   # at GitOps speed (commit, CI, sync, rollout), which is minutes and depends

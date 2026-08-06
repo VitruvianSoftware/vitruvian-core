@@ -77,6 +77,14 @@
 # outside-the-cluster lever. It shares an owner with criterion 3 (the edge rate
 # limit), which is James's item either way.
 #
+# `cloudflare-proxied: "true"` IS LOAD-BEARING FOR THAT LEVER, not a
+# performance preference. An unproxied record resolves straight to the origin,
+# bypassing Cloudflare's edge entirely — which means no WAF rule and no rate
+# limit can apply, and the replacement lever above silently stops existing.
+# "Set it unproxied to debug something" is therefore a security change, not a
+# debugging convenience. If you need to bypass the edge temporarily, know that
+# you are removing the only durable stop button while you do it.
+#
 # Do not restore the DNS lever by deleting this file — that trades a working
 # endpoint for a kill switch, which is backwards.
 apiVersion: externaldns.k8s.io/v1alpha1
