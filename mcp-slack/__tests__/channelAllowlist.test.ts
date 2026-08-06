@@ -23,6 +23,7 @@
 import {
   ChannelNotAllowedError,
   MissingAllowlistError,
+  channelIdFromParams,
   createChannelGuard,
   parseChannelIds,
 } from "../src/channelAllowlist.js";
@@ -107,5 +108,34 @@ describe("createChannelGuard on stdio", () => {
     const guard = createChannelGuard("C_ONLY", { required: false });
     expect(guard.isAllowed("C_ONLY")).toBe(true);
     expect(() => guard.assertAllowed("C_OTHER")).toThrow(ChannelNotAllowedError);
+  });
+});
+
+// Enforcement is anchored on request parameters rather than on wrapper-method
+// signatures, so this function is the single thing that has to know how Slack
+// spells the channel. Two methods were originally missed because their
+// signatures hid the parameter; nothing can be missed this way.
+describe("channelIdFromParams", () => {
+  it("reads Slack's `channel` spelling (conversations, chat, pins)", () => {
+    expect(channelIdFromParams({ channel: "C1", limit: 10 })).toBe("C1");
+  });
+
+  it("reads Slack's `channel_id` spelling (bookmarks, canvases)", () => {
+    expect(channelIdFromParams({ channel_id: "C2", title: "x" })).toBe("C2");
+  });
+
+  it("returns undefined when the call is not channel-scoped", () => {
+    expect(channelIdFromParams({ query: "hello", count: 20 })).toBeUndefined();
+    expect(channelIdFromParams({})).toBeUndefined();
+  });
+
+  // A non-string or empty value must not be treated as a channel to check —
+  // silently "passing" a guard on a malformed value is the failure worth
+  // avoiding here.
+  it("ignores empty or non-string values rather than guarding on them", () => {
+    expect(channelIdFromParams({ channel: "" })).toBeUndefined();
+    expect(channelIdFromParams({ channel: 123 })).toBeUndefined();
+    expect(channelIdFromParams({ channel: null })).toBeUndefined();
+    expect(channelIdFromParams({ channel_id: undefined })).toBeUndefined();
   });
 });
