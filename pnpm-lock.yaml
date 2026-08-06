@@ -82,7 +82,7 @@ importers:
         specifier: ^26.1.2
         version: 26.1.2
       jest:
-        specifier: ^30.4.2
+        specifier: 'catalog:'
         version: 30.4.2(@types/node@26.1.2)(esbuild-register@3.6.0(esbuild@0.28.1))(ts-node@10.9.2(@swc/core@1.15.47)(@types/node@26.1.2)(typescript@6.0.3))
       jest-cli:
         specifier: ^30.4.2
