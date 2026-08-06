@@ -761,6 +761,72 @@ spec:
                     annotations:
                       summary: "mcp-slack cannot reach Zitadel (sustained 503)"
                       description: "mcp-slack has been returning IdpUnavailableError (503) for >10m — the server could not reach the IdP to verify tokens. This is our failure, not the caller's. Does NOT indicate pod-down (an Envoy-generated 503 is not counted here), and does NOT yet cover a slow IdP — JWKSTimeout still returns 401, tracked on #1418."
+
+                  # THE ONLY DETECTION WE HAVE FOR CROSS-CLIENT INJECTION.
+                  #
+                  # A 403 here means SubjectNotAllowedError (#1424): the caller
+                  # presented a validly-signed token, correctly audienced for
+                  # our project, and was refused because their `sub` is not in
+                  # OIDC_ALLOWED_SUBJECTS. That is not a misconfigured client —
+                  # Zitadel issues our audience to any client that asks without
+                  # checking the requesting user's grants, so a sustained
+                  # stream of these IS that path being exercised, not a theory
+                  # about it. Aegis's find; prevention existed with no
+                  # detection.
+                  #
+                  # Deliberately NOT folded into the 5xx rules. The 403 is
+                  # correctly classified (SubjectNotAllowedError extends
+                  # AuthError with status 403), which keeps refused callers out
+                  # of the 5xx alert — that is what stops an IdP outage looking
+                  # identical to someone knocking. The cost of that correctness
+                  # is that nothing watches 403 unless we say so here.
+                  #
+                  # LONGER WINDOW THAN THE 5xx RULES, ON PURPOSE. One refused
+                  # caller is noise — a stale token, a fat-fingered config, a
+                  # scanner that happens to hold a token. A pattern sustained
+                  # over half an hour is the finding.
+                  #
+                  # THIS RULE DEPENDS ON THE `azp` REJECTION ALSO BEING A 403.
+                  # Once the client check lands, cross-client callers are
+                  # refused EARLIER — at the client check rather than the
+                  # subject check — so the signal moves. Given any status other
+                  # than 403 this expression goes quiet while the attempts
+                  # continue: prevention improves, detection disappears, and
+                  # nothing looks wrong. Beacon's catch, and the same shape as
+                  # the DNSEndpoint, where a correct improvement deleted a
+                  # property nobody had written down.
+                  #
+                  # Settled rather than left as a hazard: the `azp` rejection
+                  # is specified as a 403 with its own error class (Aegis, on
+                  # #1424). 403 is also the semantically right answer — the
+                  # token is validly signed, unexpired and correctly audienced,
+                  # so nothing is wrong with the CREDENTIAL; what is wrong is
+                  # that this CLIENT is not authorised here, which is what 403
+                  # means and 401 does not.
+                  #
+                  # So all three refusals — wrong audience, wrong client,
+                  # unlisted subject — share status 403 deliberately, and this
+                  # one rule catches all of them. That shared status is the
+                  # feature, not a collision: each means someone holding an
+                  # instance-issued token is knocking.
+                  #
+                  # Metric is `envoy_cluster_upstream_rq` (per-code), NOT
+                  # `_rq_xx` (per-class only, cannot separate 403 from 404).
+                  # Per-code series with envoy_response_code confirmed present
+                  # on this cluster 2026-08-06.
+                  - alert: McpSlackSustainedForbidden
+                    expr: |
+                      sum(rate(envoy_cluster_upstream_rq{
+                            envoy_response_code="403",
+                            envoy_cluster_name=~"httproute/mcp-slack/.*"
+                          }[15m]))
+                        > 0
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "mcp-slack refusing an unlisted subject repeatedly (sustained 403)"
+                      description: "Someone holding a validly-signed token audienced for the mcp-slack project has been refused for >30m because their sub is not in OIDC_ALLOWED_SUBJECTS. The endpoint is doing its job — this alert is the evidence that the cross-client path is being exercised. Check the rejection logs for the presented sub before assuming misconfiguration."
             extraScrapeConfigs: |2
 
               - job_name: 'node-exporter'
