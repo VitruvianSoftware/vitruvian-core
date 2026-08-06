@@ -67,6 +67,11 @@ spec:
       containers:
         - name: mcp-slack
           image: {{ include "mcp-slack.imageRef" . }}
+          # Wired rather than dropped. It sat in values.yaml reading like
+          # policy and doing nothing — the same "looks like coverage, is
+          # inert" shape as the PrometheusRule, with a smaller blast radius.
+          # Aegis's finding 6 on #1420.
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -139,4 +144,9 @@ spec:
               mountPath: /tmp
       volumes:
         - name: tmp
-          emptyDir: {}
+          # sizeLimit is not decoration: readOnlyRootFilesystem makes this the
+          # ONE writable path on an internet-facing pod, and an unbounded
+          # emptyDir is charged against node ephemeral storage — a pod that
+          # fills it evicts itself and can pressure neighbours on the node.
+          emptyDir:
+            sizeLimit: {{ .Values.tmpSizeLimit }}

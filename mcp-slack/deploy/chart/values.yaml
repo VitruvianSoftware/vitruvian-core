@@ -60,8 +60,21 @@ oidc:
   # token issuance, and it is what closes the gap the audience check does not:
   # `aud` is caller-authored (any authenticated user can add any project to it
   # with a scope string), so issuer + audience alone admit every account this
-  # Zitadel instance will issue a token to. That set is currently "anyone on
-  # the internet", because self-registration is open.
+  # Zitadel instance will issue a token to.
+  #
+  # How large that set is remains UNCONFIRMED, and the evidence is stated here
+  # rather than the conclusion. What is established: `GET /ui/v2/login/register`
+  # returns 200 and renders a form, i.e. the registration flow is reachable
+  # unauthenticated. Nobody submitted it, deliberately. The definitive
+  # `allowRegister` read needs a management credential we do not hold, and
+  # whether the project requires authorization on authentication is separately
+  # unanswered. Aegis's accuracy nit on #1420.
+  #
+  # The control is right either way — it does not depend on the size of that
+  # set, only on it being larger than the intended callers. Written this way on
+  # purpose: if someone later confirms registration is disabled, a sentence
+  # asserting "self-registration is open" reads as wrong, and a control resting
+  # on a wrong reason is one somebody proposes removing.
   #
   # Unset is a render failure, not "allow everyone" — and the server agrees:
   # `parseSubjects` (mcp-slack/src/config.ts) throws when the list is empty on
@@ -96,6 +109,24 @@ slack:
 egress:
   slackHost: slack.com
   idpHost: auth.ipv1337.dev
+
+# REQUIRED, and deliberately left unset so the render aborts until someone
+# decides. The CiliumNetworkPolicy is MEASURED BROKEN on this cluster (Cilium's
+# L7 DNS proxy never answers, so keeping `rules.dns` kills the pod's DNS and
+# dropping it makes `toFQDNs` match nothing — see templates/networkpolicy.yaml).
+#
+# false = deploy WITHOUT egress bounding. Say it plainly: nothing then
+#         constrains where the bot token can be sent.
+# true  = only after the DNS-proxy platform defect is fixed.
+#
+# Must be a real boolean. A quoted "false" is refused rather than interpreted,
+# because Helm treats a non-empty string as true and that would enable the very
+# policy this gate exists to keep off.
+networkPolicy: {}
+
+# Bound on the only writable path in the container (readOnlyRootFilesystem is
+# on). Unbounded, it is charged against node ephemeral storage.
+tmpSizeLimit: 64Mi
 
 resources:
   requests: { cpu: 25m, memory: 64Mi }

@@ -112,6 +112,32 @@
 #     an Application running prune: true + selfHeal: true.
 # Still unexercised: that a deny policy actually cuts tunnel-origin traffic
 # here. The version check addresses the known bug; it is not a live test.
+{{- /*
+  GATED ON AN EXPLICIT VALUE, NOT ON THE COMMENT ABOVE.
+
+  The header explains that this policy is measured to blackhole the workload.
+  A comment someone must read at the right moment is exactly the control class
+  that has now failed three times in this PR (PrometheusRule, missing
+  DNSEndpoint, this), and enabling the app is a one-line rename of
+  mcp-slack.yaml.disabled. So the absence of egress bounding has to be a value
+  someone typed, not a warning someone skipped. Aegis's finding 3 on #1420.
+
+  `required` on a nil value aborts the render, which is the chart's stated
+  convention: a value we cannot interpret must never resolve to the permissive
+  case.
+
+  The kindIs guard is not ceremony. Helm treats a non-empty STRING as truthy,
+  so `networkPolicy.enabled: "false"` — a plausible way to write this in a
+  values file — would sail through `required` and then render the broken
+  policy. That is the same fail-open-on-a-string shape as cfg.GetBool in
+  zitadel-apps-mcp-slack and the ChannelParam array bypass. Refuse it rather
+  than interpret it.
+*/}}
+{{- $npEnabled := required "networkPolicy.enabled must be set explicitly (true/false). The toFQDNs egress policy is MEASURED BROKEN on this cluster — Cilium's L7 DNS proxy does not answer, so keeping the rules.dns block kills the pod's DNS and dropping it makes toFQDNs match nothing. See this file's header. Set false to deploy WITHOUT egress bounding (nothing then constrains where the bot token can be sent), or true only after the DNS-proxy defect is fixed." .Values.networkPolicy.enabled }}
+{{- if kindIs "string" $npEnabled }}
+{{- fail "networkPolicy.enabled must be a boolean, not a string. Helm treats a non-empty string as true, so \"false\" would enable the policy this guard exists to keep off." }}
+{{- end }}
+{{- if $npEnabled }}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -178,3 +204,4 @@ spec:
   #
   # Everything not listed above is denied: Cilium treats the presence of an
   # egress section as default-deny for this endpoint.
+{{- end }}
