@@ -90,8 +90,13 @@ jobs:
           while IFS= read -r chart; do
             dir="$(dirname "$chart")"
             reldir="${dir#./}"
+            # Herestring, NOT `printf ... | grep -q`: `run:` blocks execute under
+            # `bash -eo pipefail`, and `grep -q` exits on its first match, so a
+            # push whose changed-path list exceeds the 64 KiB pipe buffer makes
+            # the still-writing printf take SIGPIPE and the pipeline report 141 --
+            # inverting `! ...` and skipping a chart that DID change.
             if [ "$publish_all" != 1 ] \
-               && ! printf '%s\n' "$changed" | grep -q "^${reldir}/"; then
+               && ! grep -q "^${reldir}/" <<<"$changed"; then
               echo "skipping ${reldir} (unchanged in this push)"
               continue
             fi

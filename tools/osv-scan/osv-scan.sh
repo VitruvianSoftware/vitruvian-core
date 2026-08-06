@@ -155,7 +155,15 @@ dep_manifests_changed() {
   git cat-file -e "${_base}^{commit}" 2>/dev/null || { echo "changed"; return; }
 
   _files="$(git diff --name-only "${_base}" HEAD 2>/dev/null)" || { echo "changed"; return; }
-  if printf '%s\n' "${_files}" | grep -qE "${DEP_MANIFEST_RE}"; then
+  # Herestring, NOT `printf '%s\n' "${_files}" | grep -qE ...`. This script runs
+  # under `set -o pipefail`, and `grep -q` exits the moment it matches -- so on a
+  # diff whose path list exceeds the 64 KiB pipe buffer (a wide refactor; git
+  # sorts paths, so an early `MODULE.bazel`/`go.mod` match makes it likely) the
+  # still-writing `printf` takes SIGPIPE and the pipeline reports 141. The `if`
+  # then takes the FALSE branch and this returns "unchanged" -- silently
+  # downgrading a REQUIRED security gate to non-blocking on exactly the large
+  # dependency changes it exists to catch. Fails OPEN, and looks green.
+  if grep -qE "${DEP_MANIFEST_RE}" <<<"${_files}"; then
     echo "changed"
   else
     echo "unchanged"

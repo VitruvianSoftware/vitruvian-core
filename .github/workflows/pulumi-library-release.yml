@@ -74,7 +74,12 @@ jobs:
             while IFS= read -r pkg; do
               [ -z "${pkg}" ] && continue
               pkg_path="pulumi/library/${pkg}"
-              if echo "${CHANGED_FILES}" | grep -q "^${pkg_path}/"; then
+              # Herestring, NOT `echo ... | grep -q`: `run:` blocks execute under
+              # `bash -eo pipefail`, and `grep -q` exits on its first match, so a
+              # CHANGED_FILES list past the 64 KiB pipe buffer makes the still-
+              # writing echo take SIGPIPE and the pipeline report 141 -- dropping
+              # a package that DID change out of the release matrix, silently.
+              if grep -q "^${pkg_path}/" <<<"${CHANGED_FILES}"; then
                 MATCHED_PKGS="${MATCHED_PKGS}${MATCHED_PKGS:+$'\n'}${pkg}"
               fi
             done <<< "${ALL_PKGS}"

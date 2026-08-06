@@ -365,6 +365,30 @@ check "advisories + unreadable base -> fails CLOSED, blocks" \
   "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}"
 
+# 4f. A go.mod buried in a WIDE diff must still block. dep_manifests_changed
+#     used to test the path list with `printf '%s\n' "$_files" | grep -qE ...`;
+#     under this script's `set -o pipefail`, `grep -q` exits on its first match
+#     and a path list past the 64 KiB pipe buffer left the still-writing printf
+#     with SIGPIPE, so the pipeline returned 141, the `if` took the FALSE branch,
+#     and the gate reported "unchanged" -- failing OPEN on exactly the large
+#     dependency changes it exists to catch. Pre-fix this case does NOT block.
+root="$(new_root)"; bin="$(mktemp -d)"
+base="$(git -C "${root}" rev-parse HEAD)"
+printf 'module x\n' > "${root}/go.mod"
+# ~2000 long paths (~90 KiB of `git diff --name-only` output), sorted after
+# go.mod so the regex match lands early while the writer is still going.
+mkdir -p "${root}/zz"
+for i in $(seq 1 2000); do
+  : > "${root}/zz/padding-file-with-a-deliberately-long-name-${i}.txt"
+done
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm wide >/dev/null 2>&1
+fake_scanner "${bin}" 60 1
+out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" \
+      PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+check "advisories + go.mod inside a >64KiB path list -> still BLOCKS" \
+  "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1
