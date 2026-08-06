@@ -154,19 +154,66 @@ export class SlackClient {
     for (const channelId of this.channelGuard.allowed) {
       const data = (await this.api("conversations.info", {
         channel: channelId,
-      })) as { ok: boolean; channel?: { is_archived: boolean } };
-      if (data.ok && data.channel && !data.channel.is_archived) {
-        channels.push(data.channel);
+      })) as {
+        ok: boolean;
+        channel?: { is_archived: boolean; is_private?: unknown };
+      };
+      if (data.ok && data.channel) {
+        // Before the archived filter, not after: a channel declared public
+        // that Slack says is private is a contradiction worth refusing whether
+        // or not it would have been listed.
+        this.channelGuard.assertVisibilityMatches(
+          channelId,
+          data.channel.is_private
+        );
+        if (!data.channel.is_archived) channels.push(data.channel);
       }
     }
     return { ok: true, channels, response_metadata: { next_cursor: "" } };
   }
 
   async getChannelInfo(channelId: string) {
-    return this.api("conversations.info", {
+    const data = await this.api("conversations.info", {
       channel: channelId,
       include_num_members: "true",
     });
+    const channel = (data as { channel?: { is_private?: unknown } }).channel;
+    if (channel) {
+      this.channelGuard.assertVisibilityMatches(channelId, channel.is_private);
+    }
+    return data;
+  }
+
+  /**
+   * Confirms every allow-listed channel is what configuration says it is.
+   *
+   * Run once at HTTP startup, before the listener accepts anything, so the
+   * operator finds out from a process that refuses to start rather than from a
+   * private conversation reached through a line that claimed to be public.
+   *
+   * A channel the bot cannot see is also fatal here. It would otherwise be an
+   * allow-list entry that silently does nothing — and the reason it does
+   * nothing (bot not invited, wrong ID, wrong workspace) is exactly the sort of
+   * thing worth learning at deploy time rather than the first time someone
+   * asks for it.
+   */
+  async verifyAllowlistVisibility(): Promise<void> {
+    for (const channelId of this.channelGuard.allowed) {
+      const data = (await this.api("conversations.info", {
+        channel: channelId,
+      })) as { ok?: boolean; error?: string; channel?: { is_private?: unknown } };
+      if (!data.ok || !data.channel) {
+        throw new Error(
+          `Cannot verify allow-listed channel ${channelId}: Slack returned ` +
+            `${data.error ?? "no channel"}. Every channel in SLACK_CHANNEL_IDS ` +
+            `and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.`
+        );
+      }
+      this.channelGuard.assertVisibilityMatches(
+        channelId,
+        data.channel.is_private
+      );
+    }
   }
 
   async getChannelHistory(channelId: string, limit = 10) {
