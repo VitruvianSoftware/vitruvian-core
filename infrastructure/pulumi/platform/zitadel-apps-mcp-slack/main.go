@@ -53,6 +53,9 @@
 package main
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 	"github.com/pulumiverse/pulumi-zitadel/sdk/go/zitadel"
@@ -81,6 +84,30 @@ func main() {
 			appName = "mcp-slack-spark"
 		}
 
+		// Parsed explicitly rather than via cfg.GetBool, which is fail-OPEN here:
+		// GetBool routes through cast.ToBool, which swallows the parse error and
+		// returns false for anything strconv.ParseBool doesn't recognise. So
+		// `projectRoleCheck: "yes"` — a plausible way to try to turn this ON —
+		// silently turns it off, and the apply reports success.
+		//
+		// This flag is the enforcement for "only the intended subject may
+		// connect", so a silent false means the project issues tokens to any
+		// authenticated user while the config file claims otherwise. Refusing the
+		// apply is the only honest outcome for a value we can't interpret.
+		projectRoleCheck := false
+		if raw := cfg.Get("projectRoleCheck"); raw != "" {
+			parsed, err := strconv.ParseBool(raw)
+			if err != nil {
+				return fmt.Errorf(
+					"zitadel-apps-mcp-slack:projectRoleCheck must be a boolean "+
+						"(%q is not one). Refusing to apply rather than silently "+
+						"leaving the project role check disabled — this flag is what "+
+						"restricts who may obtain a token for this project", raw,
+				)
+			}
+			projectRoleCheck = parsed
+		}
+
 		projectArgs := &zitadel.ProjectArgs{
 			Name: pulumi.String(projectName),
 			// Role assertion off: mcp-slack authorizes on the audience claim, not
@@ -97,7 +124,7 @@ func main() {
 			// turning it on with no role granted locks everyone out, including the
 			// first end-to-end Spark login. Sequence is (1) apply with false, (2)
 			// grant the role to the human's user id, (3) apply again with true.
-			ProjectRoleCheck: pulumi.Bool(cfg.GetBool("projectRoleCheck")),
+			ProjectRoleCheck: pulumi.Bool(projectRoleCheck),
 		}
 		if orgID != "" {
 			projectArgs.OrgId = pulumi.String(orgID)

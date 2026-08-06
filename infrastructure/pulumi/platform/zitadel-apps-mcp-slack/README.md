@@ -131,6 +131,13 @@ With it `true`, Zitadel will not issue a token for this project to a user who ha
 no role grant on it — a server-side restriction rather than a de-facto one that
 holds only while the instance has a single user.
 
+A value this stack cannot parse as a boolean is an **apply error**, not a silent
+`false`. `cfg.GetBool` would have been fail-open here — it routes through
+`cast.ToBool`, which swallows the parse error, so `projectRoleCheck: "yes"` (a
+plausible way to try to turn this *on*) would disable the check and report a
+successful apply. For the flag that decides who may obtain a token, refusing to
+apply is the only honest response to a value we can't interpret.
+
 It ships **`false`**, deliberately. Enabling it before the role grant exists locks
 everyone out, including the first end-to-end Spark login. The sequence is:
 
