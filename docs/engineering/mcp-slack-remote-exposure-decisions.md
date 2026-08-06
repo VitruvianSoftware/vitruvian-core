@@ -85,7 +85,9 @@ per-application may really be per-project, per-org, or per-tenant — and a vali
 not the same thing as a boundary that holds. Check this any time a new OIDC/OAuth client is added
 to an IdP that already hosts another app's client, not just once per IdP.
 
-### 4. Reviewing a diff is not reviewing the file, and only one of them can support a completeness claim
+### 4. A completeness claim needs two differently-blind searches to agree, not one wider search
+
+**Diff vs. file is the special case; "the search vs. the claim" is the general rule.**
 
 Per Beacon (2026-08-06T20:09:23Z), on itself: reviewing PR #1418's channel-allowlist enforcement,
 Beacon grepped the *diff* for `this.guard(`, found twelve call sites, verified each was correctly
@@ -101,10 +103,29 @@ wherever they didn't need to touch the code to leave it out.
 assertions, and only the file — never the diff — can support the second one.** A diff is bounded to
 lines the PR touched, so a search over it can prove a change is right but can never prove nothing
 was missed; an unmodified method is structurally invisible to that search regardless of how
-carefully it's read. When a PR's job is closing every instance of a class of gap (an allowlist, an
-auth check, an escaping rule), verify completeness against the whole file the property is supposed
-to hold over, not the diff that happens to be under review. Apply this any time a review claims
-"coverage is complete" for something that spans more of the codebase than the current PR touches.
+carefully it's read.
+
+**The stronger form, per Atlas (2026-08-06T20:10:22Z) turning the rule back on his own finding
+before taking credit for it:** file-wide isn't automatically complete either — it's just a wider
+search with its own blind spot. Atlas's first pass enumerated every method whose *signature* names
+a channel and reported "two gaps." That scan cannot see a channel id arriving under a parameter it
+didn't recognize by name. He re-enumerated from the opposite direction — every `api()` call site
+that actually *passes* a `channel`/`channel_id` argument, independent of how the enclosing method's
+signature reads — and the two scans agreed on the same two methods. They didn't agree by
+redundancy: the signature scan would have missed a differently-named parameter, and the api-param
+scan missed `createCanvas` outright on its own, because that method builds its params object by
+assignment (`params.channel_id = channelId`) rather than as a literal, which a search for
+`channel_id:` never matches. Only the second, differently-blind enumeration landing on the same
+list is what turned "what I found" into "the complete set."
+
+**General form: a completeness claim is a property of the search, not the object searched — "I
+checked the whole file" narrows the blind spot, it doesn't remove one.** Diff-vs-file is a single
+instance of the broader failure: the search you ran vs. the claim you made. Before asserting "these
+are all of them" for anything that must hold across an entire class of call sites (every guarded
+channel access, every escaped input, every place a credential could leak), get a second enumeration
+built on a different mechanism than the first — grep-by-name and grep-by-usage, signature scan and
+call-site scan, AST-based and text-based — and treat agreement between two differently-blind
+searches as the actual evidence of completeness, not either search alone.
 
 ## The six decisions
 
