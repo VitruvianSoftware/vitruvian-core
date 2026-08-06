@@ -291,6 +291,13 @@ describe("assertVisibilityMatches", () => {
     expect(() => http.assertVisibilityMatches("C_PUBLIC", true)).toThrow(
       ChannelVisibilityMismatchError
     );
+    // Names the variable to edit, and the direction. This is read at deploy
+    // time: with replicas: 1 the refusal presents as CrashLoopBackOff, so
+    // "the deploy is broken" is the natural reading unless the message says
+    // otherwise. Same reasoning as the invite-the-bot-first remedy.
+    expect(() => http.assertVisibilityMatches("C_PUBLIC", true)).toThrow(
+      /SLACK_CHANNEL_IDS to SLACK_PRIVATE_CHANNEL_IDS/
+    );
   });
 
   it("refuses a channel declared private that Slack reports public", () => {
@@ -299,6 +306,9 @@ describe("assertVisibilityMatches", () => {
     // of the two beliefs is wrong.
     expect(() => http.assertVisibilityMatches("G_PRIVATE", false)).toThrow(
       ChannelVisibilityMismatchError
+    );
+    expect(() => http.assertVisibilityMatches("G_PRIVATE", false)).toThrow(
+      /SLACK_PRIVATE_CHANNEL_IDS to SLACK_CHANNEL_IDS/
     );
   });
 

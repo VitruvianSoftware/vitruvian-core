@@ -80,8 +80,11 @@ export class ChannelVisibilityMismatchError extends Error {
     super(
       `Channel ${channelId} is declared ${declared} in configuration, but ` +
         `Slack reports it as ${declared === "public" ? "private" : "public"}. ` +
-        `Refusing rather than resolving the disagreement — if it is genuinely ` +
-        `wanted, move it to the other list deliberately.`
+        `Refusing rather than resolving the disagreement. If that access is ` +
+        `genuinely wanted, move the ID from ` +
+        `${declared === "public" ? "SLACK_CHANNEL_IDS to SLACK_PRIVATE_CHANNEL_IDS" : "SLACK_PRIVATE_CHANNEL_IDS to SLACK_CHANNEL_IDS"}` +
+        ` — deliberately, because granting a public endpoint access to a ` +
+        `private conversation is the decision the two lists exist to make visible.`
     );
     this.name = "ChannelVisibilityMismatchError";
   }
