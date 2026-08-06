@@ -432,6 +432,33 @@ the go-live gate correction immediately below.
 Sources: [`token.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/domain/token.go) ·
 [`auth_request.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/api/oidc/auth_request.go)
 
+### 13. Containment delivered through GitOps inherits the availability of the CI system that delivers it
+
+Per Beacon (2026-08-06T22:10:25Z), naming a property Atlas's containment-lever comparison exposed
+but nobody had stated directly. mcp-slack's finest-grained per-caller containment lever —
+removing a subject from `OIDC_ALLOWED_SUBJECTS`, or any other chart/config change — ships as a git
+change through the merge queue, which runs on GitHub Actions. **Tonight's build lived through a live
+demonstration of the consequence: for the four hours Actions was in `major_outage`, that lever was
+not slow, it was unavailable.** What remained reachable were the controls that sit outside the
+GitOps delivery path entirely — deleting the Cloudflare DNS record fronting the tunnel (the one
+action no reconciler fights, since routing lives in Cloudflare DNS rather than in anything ArgoCD
+manages) and suspending or scaling down the deployment directly.
+
+**The general property: any containment control whose activation is "commit a change and let the
+delivery pipeline apply it" is only as available as that pipeline is.** A GitOps model is the right
+default for almost everything — it's exactly what this build's other decisions lean on — but an
+incident-response control is a different category of thing than routine config, because the moment
+you most need it (an active compromise, a runaway process, a leaked credential) correlates with
+exactly the kind of chaos that also tends to take infrastructure down, including CI. An outage that
+blocks shipping a fix also blocks shipping the containment for whatever the fix would have covered.
+
+**Rule: for any system with a containment/kill-switch requirement, identify which of its levers are
+GitOps-delivered and which sit outside the delivery path — and treat the outside-path levers as the
+ones the incident response plan actually depends on, not as a redundant backup to the in-repo
+ones.** Document the fast lever explicitly (what it is, who can pull it, what state it leaves things
+in) rather than letting "we have an allow-list in the chart" stand in as the containment story when
+the chart's own delivery mechanism might be the thing that's down.
+
 ## The six decisions
 
 | # | Decision | Final answer | Rationale |
