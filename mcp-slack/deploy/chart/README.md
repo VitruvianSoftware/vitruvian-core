@@ -125,18 +125,37 @@ it.
 > 5xx numerator was zero during the exact outage this alert exists to catch,
 > and the endpoint blamed the caller's credential for our own downtime.
 >
-> Fixed on #1418: `auth.ts` discriminates on whether jose reached a verdict
-> (`error instanceof errors.JOSEError`) rather than on the shape of the
-> failure, so an unrecognised error cannot fall through to 401 and accuse a
-> valid token. Verification failures stay 401; anything that means
-> verification never completed becomes `IdpUnavailableError` at **503**,
-> carrying `Retry-After` and deliberately no `WWW-Authenticate` — that header
-> would send a caller holding a good token to re-authenticate against an IdP
-> that is down.
+> `45130c18` fixed half of it. `auth.ts` now discriminates on whether jose
+> reached a verdict (`error instanceof errors.JOSEError`) rather than on the
+> shape of the failure, so an unrecognised error cannot fall through to 401
+> and accuse a valid token. Anything meaning verification never completed
+> becomes `IdpUnavailableError` at **503**, carrying `Retry-After` and
+> deliberately no `WWW-Authenticate` — that header would send a caller
+> holding a good token to re-authenticate against an IdP that is down. The
+> status does survive to the wire: `writeAuthFailure` in `httpTransport.ts`
+> writes `error.status`, so Envoy sees a real 503.
 >
-> Confirmed end-to-end for this alert's purposes: `writeAuthFailure` in
-> `httpTransport.ts` writes `error.status`, so the 503 reaches Envoy and is
-> counted by `envoy_response_code_class="5"`.
+> **STILL OPEN — a slow IdP is not covered.** `JWKSTimeout` *is* a
+> `JOSEError` subclass, so it takes the 401 branch. Verified by installing
+> the pinned `jose@6.2.4` and introspecting at runtime: **all 14** exported
+> error classes extend `JOSEError`, and `jwks/remote.js` throws `JWKSTimeout`
+> on a default `timeoutDuration` of **5000ms** that `createTokenVerifier`
+> does not override.
+>
+> So *dead* IdP (connection refused, DNS failure → raw `TypeError`) → 503 and
+> this alert fires; *hanging* IdP (≥5s → `JWKSTimeout`) → 401, and a caller
+> with a valid token is told their credential is bad. In that case this alert
+> is not merely insensitive, it is **mathematically silent**: every request
+> is 4xx, so with 4xx excluded from the denominator the expression is 0/0 =
+> NaN. Tracked on #1418 (Aegis); the fix also needs a deliberate call on
+> `JWKSInvalid`, `JWKInvalid` and `JWKSMultipleMatchingKeys`, which are
+> IdP-side conditions currently inheriting 401 from a shared base class.
+>
+> Worth recording *why* this survived a fix aimed straight at it: the repro
+> was mine, it pointed at a **dead** JWKS URI, and a dead URI throws a raw
+> `TypeError` — the one shape that takes the correct branch. The fix was
+> verified against the outage that proves it right and not against the one
+> that proves it wrong.
 
 Note what this alert does **not** cover: `envoy_cluster_upstream_rq_xx` counts
 *upstream* responses. If the pod is gone entirely, Envoy synthesises a 503

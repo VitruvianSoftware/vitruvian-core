@@ -614,14 +614,25 @@ spec:
                 # 401, so the 5xx numerator stayed at zero through the exact
                 # outage this alert exists to catch.
                 #
-                # Now fixed: auth.ts discriminates on whether jose reached a
-                # verdict (`error instanceof errors.JOSEError`), so anything
-                # meaning verification never completed becomes
-                # IdpUnavailableError at 503. Confirmed for this alert's
-                # purposes that the status survives to the wire —
-                # writeAuthFailure in httpTransport.ts writes error.status, so
-                # Envoy sees a real 503 and counts it under
-                # envoy_response_code_class="5".
+                # 45130c18 fixed HALF of it. auth.ts now discriminates on
+                # whether jose reached a verdict (`error instanceof
+                # errors.JOSEError`), so a DEAD IdP (connection refused, DNS
+                # failure — a raw TypeError) becomes IdpUnavailableError at
+                # 503. That status does survive to the wire: writeAuthFailure
+                # in httpTransport.ts writes error.status, so Envoy sees a
+                # real 503 and counts it under envoy_response_code_class="5".
+                #
+                # A SLOW IdP IS STILL NOT COVERED, and this alert is blind to
+                # it. JWKSTimeout is itself a JOSEError subclass, so a Zitadel
+                # that is up but hanging past jose's default 5s timeout takes
+                # the 401 branch. Verified against the pinned jose@6.2.4: all
+                # 14 exported error classes extend JOSEError.
+                #
+                # In that outage this alert is not merely insensitive, it is
+                # mathematically silent — every request is 4xx, and with 4xx
+                # excluded from the denominator (see below) the expression is
+                # 0/0 = NaN. Do NOT read a quiet alert as a healthy IdP until
+                # the #1418 follow-up lands.
                 #
                 # Note the scope: envoy_cluster_upstream_rq_xx counts UPSTREAM
                 # responses. A pod that is gone entirely makes Envoy
