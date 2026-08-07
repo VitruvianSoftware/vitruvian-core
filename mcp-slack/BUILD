@@ -70,6 +70,9 @@ jest_test(
     ) + [
         "jest.config.cjs",
         "package.json",
+        # Read at runtime by envDocumentation.test.ts, which compares the
+        # variables config.ts reads against the ones the README explains.
+        "README.md",
         "tsconfig.json",
         "tsconfig.test.json",
         ":node_modules/@modelcontextprotocol/sdk",
