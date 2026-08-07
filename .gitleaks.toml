@@ -43,9 +43,18 @@ useDefault = true
 # directory that merely ENDS with one of these prefixes -- e.g.
 # `vendor/gitops/argocd/platform/sealed-secrets-manifests/` -- is exempted too.
 # The anchor is the obvious intent; these are repo-rooted locations.
+#
+# The `.disabled` variant is in scope deliberately (Atlas, #1420). A SealedSecret
+# whose target namespace does not exist yet CANNOT be applied -- `kubectl apply
+# --dry-run=server` returns `namespaces "..." not found` -- so it ships with that
+# suffix until its workload is enabled, the same mechanism as
+# gitops/argocd/applications/*.yaml.disabled. Matching only `\.sealedsecret\.yaml$`
+# made identical ciphertext pass on one PR and fail secret-scan on another purely
+# because of the rename. Widen here rather than renaming the file, which would
+# trade a scanner false positive for a broken sync on a live Application.
 [[allowlists]]
 description = "SealedSecret manifests contain ciphertext that is safe to commit"
-paths = ['''^gitops/argocd/platform/sealed-secrets-manifests/.*\.sealedsecret\.yaml$''']
+paths = ['''^gitops/argocd/platform/sealed-secrets-manifests/.*\.sealedsecret\.yaml(\.disabled)?$''']
 
 # The committed example store holds placeholder values only; the real values
 # live in Bitwarden and are pulled by //tools/sync-env-secrets.
