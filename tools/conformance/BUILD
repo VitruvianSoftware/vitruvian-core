@@ -29,10 +29,24 @@
 # gazelle:ignore
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 sh_binary(
     name = "check",
     srcs = ["check.sh"],
     data = ["version-pins.tsv"],
     visibility = ["//visibility:public"],
+)
+
+# Regression guard for the merge-queue trigger-filter arm. check.sh is a data dep
+# rather than a src: the test execs it as a subprocess against a throwaway ROOT it
+# builds itself (BUILD_WORKSPACE_DIRECTORY), so the assertions are hermetic — no
+# file in the real tree can flip them. Deliberately NOT covering the rest of
+# check.sh: this arm is the one that emits a green verdict about a control that
+# is not in force, which is the failure mode a missing check cannot produce.
+sh_test(
+    name = "check_test",
+    size = "small",
+    srcs = ["check_test.sh"],
+    data = ["check.sh"],
 )
