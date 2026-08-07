@@ -167,6 +167,44 @@ list — becomes a contradiction the server can see.
 > listener — so add-then-deploy-then-invite does not start at all, and looks like
 > a broken deploy rather than a skipped step. The startup error names the remedy.
 
+#### HTTP transport only
+
+Set `MCP_TRANSPORT=http` and the server becomes a network listener instead of a
+stdio child process. Every variable below is **required**, and the server
+refuses to start without them — there is no permissive default anywhere in this
+branch, because a misconfigured public endpoint that starts anyway is the whole
+failure mode.
+
+| Variable | Description |
+|---|---|
+| `MCP_TRANSPORT` | `http` to switch transports; omit for stdio |
+| `PORT` | Listener port (default `3000`) |
+| `OIDC_ISSUER` | Issuer whose tokens are accepted, e.g. `https://auth.ipv1337.dev` |
+| `OIDC_PROJECT_ID` | Zitadel project that must appear in each token's `aud` |
+| `OIDC_ALLOWED_SUBJECTS` | Comma-separated `sub` values this endpoint serves |
+
+`SLACK_USER_TOKEN` must **not** be set here; the server refuses to start if it
+is. It posts as the authenticated human and can search their DMs, so a network
+listener that merely doesn't use it is one code path away from handing a remote
+caller that identity.
+
+**`OIDC_ALLOWED_SUBJECTS` is not redundant with the audience check**, and it is
+worth being clear about why, because the two look like they overlap. Zitadel
+documents that any client may request an arbitrary audience scope and receive a
+token carrying it, *without* verifying the requesting user's grants. So a valid
+`aud` proves the token came from this instance for this project — it never
+proves who holds it. Everything else is decided when the token is **issued**,
+which means revoking a grant leaves already-issued tokens working until they
+expire. This list is read on **every request**, making it the only control here
+whose revocation takes effect immediately, and the only one that separates two
+users of the same client.
+
+The value is the numeric Zitadel user ID. A rejected caller's `sub` is named in
+the 403, so the way to discover it is to attempt a connection and read the error
+rather than decode a token by hand. Startup prints the *count* it parsed — check
+it matches, since a quoting mistake that collapses several IDs into one string
+reads as `1 allowed subject(s)` here and as an inexplicable 403 an hour later.
+
 ### 4. Build & run
 
 ```bash

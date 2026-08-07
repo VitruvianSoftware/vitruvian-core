@@ -65,6 +65,8 @@ export interface HttpConfig {
   issuer: string;
   /** Zitadel project ID that must appear in each token's audience. */
   projectId: string;
+  /** The `sub` values this endpoint serves. Never empty on HTTP. */
+  allowedSubjects: string[];
 }
 
 export interface ServerConfig {
@@ -94,6 +96,41 @@ export function parseTransportMode(raw: string | undefined): TransportMode {
     `MCP_TRANSPORT must be "stdio" or "http" (got "${raw}"). ` +
       `Omit it for the default stdio behaviour.`
   );
+}
+
+/**
+ * Splits `OIDC_ALLOWED_SUBJECTS`, refusing an empty result.
+ *
+ * Mandatory on HTTP, and the refusal is the point rather than an inconvenience.
+ * Every other identity control here is decided when Zitadel *issues* a token —
+ * the audience scope, and `projectRoleCheck` if it is ever turned on — so all
+ * of them leave an already-issued token working until it expires. This list is
+ * read per request, which makes it the only one whose revocation takes effect
+ * immediately, and the only one that separates two users of the same client.
+ *
+ * Deliberately not sharing parseChannelIds: the shapes coincide today, and
+ * coupling a subject list to a channel-list parser means a later change made
+ * for channels silently changes who can authenticate.
+ */
+function parseSubjects(raw: string | undefined): string[] {
+  const seen = new Set<string>();
+  const subjects: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    const value = part.trim();
+    if (value.length === 0 || seen.has(value)) continue;
+    seen.add(value);
+    subjects.push(value);
+  }
+  if (subjects.length === 0) {
+    throw new ConfigError(
+      "OIDC_ALLOWED_SUBJECTS must list at least one Zitadel subject (sub) " +
+        "when MCP_TRANSPORT=http. Without it any account this Zitadel " +
+        "instance will issue a token to reaches this endpoint, which is a " +
+        "much larger set than the people it is meant to serve. The value is " +
+        "the numeric user ID; a rejected caller's sub is named in the 403."
+    );
+  }
+  return subjects;
 }
 
 function parsePort(raw: string | undefined): number {
@@ -183,6 +220,7 @@ export function resolveConfig(env: Env): ServerConfig {
         "OIDC_PROJECT_ID",
         "to check the token audience; it is a stack output of zitadel-apps-mcp-slack"
       ),
+      allowedSubjects: parseSubjects(env.OIDC_ALLOWED_SUBJECTS),
     },
   };
 }

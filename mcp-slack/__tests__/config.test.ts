@@ -35,6 +35,7 @@ const HTTP_ENV = {
   SLACK_CHANNEL_IDS: "C1,C2",
   OIDC_ISSUER: "https://auth.example.test",
   OIDC_PROJECT_ID: "999",
+  OIDC_ALLOWED_SUBJECTS: "379361013981513322",
 };
 
 describe("parseTransportMode", () => {
@@ -93,6 +94,7 @@ describe("http configuration", () => {
       port: 3000,
       issuer: "https://auth.example.test",
       projectId: "999",
+      allowedSubjects: ["379361013981513322"],
     });
     expect(config.channelGuard.allowed).toEqual(["C1", "C2"]);
   });
@@ -129,6 +131,35 @@ describe("http configuration", () => {
     expect(() => resolveConfig(noProject)).toThrow(
       /OIDC_PROJECT_ID is required/
     );
+  });
+
+  // The only identity control here that is evaluated per request. The audience
+  // check and projectRoleCheck are both decided when Zitadel issues a token, so
+  // revoking a grant leaves issued tokens working until they expire.
+  it("requires at least one allowed subject", () => {
+    const { OIDC_ALLOWED_SUBJECTS: _s, ...noSubjects } = HTTP_ENV;
+    expect(() => resolveConfig(noSubjects)).toThrow(
+      /OIDC_ALLOWED_SUBJECTS must list at least one/
+    );
+    // Present-but-empty is the same intent as absent, and the more likely
+    // shape: a manifest that declares the variable with no value.
+    expect(() =>
+      resolveConfig({ ...HTTP_ENV, OIDC_ALLOWED_SUBJECTS: "  , ,, " })
+    ).toThrow(ConfigError);
+  });
+
+  it("parses several subjects and drops duplicates", () => {
+    const config = resolveConfig({
+      ...HTTP_ENV,
+      OIDC_ALLOWED_SUBJECTS: " 111, 222 ,111,",
+    });
+    expect(config.http?.allowedSubjects).toEqual(["111", "222"]);
+  });
+
+  it("does not require subjects on stdio", () => {
+    // stdio has no bearer tokens at all; requiring this there would break
+    // every existing local user for a check that has nothing to check.
+    expect(() => resolveConfig(STDIO_ENV)).not.toThrow();
   });
 
   it("defaults the port and validates an explicit one", () => {

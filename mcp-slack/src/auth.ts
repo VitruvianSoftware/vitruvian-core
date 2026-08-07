@@ -151,6 +151,43 @@ export class AudienceMismatchError extends AuthError {
   }
 }
 
+/**
+ * Raised when a valid token belongs to a subject this server does not serve.
+ *
+ * **Not redundant with Zitadel's `projectRoleCheck`, and not a duplicate of the
+ * audience check.** Both of those are decided at *issuance*: they govern which
+ * tokens Zitadel mints, so revoking a grant leaves every already-issued token
+ * working until it expires. This is evaluated per request, against
+ * configuration this server reads at startup — which makes it **the only
+ * control here whose revocation takes effect on the next request** rather than
+ * at the end of an access-token lifetime nobody has read yet.
+ *
+ * It is also the only one that discriminates between two users of the same
+ * client. Zitadel's audience scope is documented as grantable to any client
+ * that asks, without verifying the requesting user's grants, so `aud` alone
+ * says the token came from this instance for this project — never who holds it.
+ *
+ * The received `sub` is named in the message on purpose. Zitadel subjects are
+ * opaque numeric IDs with nothing human-readable in them, so an operator
+ * configuring this cannot otherwise discover what to put in the variable
+ * without decoding a token by hand.
+ */
+export class SubjectNotAllowedError extends AuthError {
+  readonly status = 403;
+  readonly code = "insufficient_scope";
+  readonly subject: string;
+
+  constructor(subject: string) {
+    super(
+      `Token is valid but subject "${subject}" is not served by this ` +
+        `endpoint. Add it to OIDC_ALLOWED_SUBJECTS to grant access, or leave ` +
+        `it out to keep this caller refused.`
+    );
+    this.name = "SubjectNotAllowedError";
+    this.subject = subject;
+  }
+}
+
 /** The Zitadel scope that adds a project to a token's audience. */
 export function audienceScopeFor(projectId: string): string {
   return `urn:zitadel:iam:org:project:id:${projectId}:aud`;
@@ -239,6 +276,13 @@ export interface TokenVerifierConfig {
   issuer: string;
   /** Zitadel project ID that must appear in the token's audience. */
   projectId: string;
+  /**
+   * The `sub` values this endpoint serves. Required rather than optional, and
+   * deliberately not defaulted: an optional allow-list whose absence means
+   * "allow everyone" is the shape that gets forgotten and never noticed,
+   * because a working endpoint looks identical either way.
+   */
+  allowedSubjects: readonly string[];
   /** Overridable for tests; defaults to the issuer's standard JWKS path. */
   jwksUri?: string;
   /**
@@ -280,6 +324,16 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     createRemoteJWKSet(new URL(jwksUri), {
       timeoutDuration: config.jwksTimeoutMs ?? 5000,
     });
+  // Captured once. Same reasoning as the channel guard: no reload path exists,
+  // so the set cannot change under an in-flight request.
+  const allowedSubjects = new Set(config.allowedSubjects);
+  if (allowedSubjects.size === 0) {
+    throw new Error(
+      "createTokenVerifier requires at least one allowed subject. An empty " +
+        "list would authenticate every caller Zitadel is willing to issue a " +
+        "token to, which is not the same set as the people this endpoint serves."
+    );
+  }
 
   async function verify(token: string): Promise<VerifiedCaller> {
     if (!looksLikeJwt(token)) throw new OpaqueTokenError();
@@ -319,6 +373,13 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     const subject = typeof payload.sub === "string" ? payload.sub : "";
     if (subject.length === 0) {
       throw new InvalidTokenError("token has no subject (sub) claim");
+    }
+
+    // Last, after the signature, issuer and audience have all been checked —
+    // so this only ever sees a subject the IdP actually vouched for, and can
+    // never be the reason a forged token is accepted.
+    if (!allowedSubjects.has(subject)) {
+      throw new SubjectNotAllowedError(subject);
     }
 
     return { subject, claims: payload };
