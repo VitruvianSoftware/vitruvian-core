@@ -23,14 +23,19 @@
 # reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
 # mechanism tabula.yaml.disabled uses.
 #
-# It is NOT disabled because it is unfinished. It is disabled because three
+# It is NOT disabled because it is unfinished. It is disabled because four
 # required values do not exist yet, and every one of them is a security
 # boundary rather than a setting. The chart refuses to render without them
 # (see mcp-slack/deploy/chart/templates/_helpers.tpl), so enabling this early
 # would produce a failed sync rather than an exposed endpoint — but a failed
 # sync on a publicly-routed hostname is still not a state worth entering.
 #
-# TO ENABLE, all SEVEN must be true:
+# A fifth, networkPolicy.enabled, is required in the same fail-closed sense but
+# is a DECISION rather than a lookup — see criterion 7. It has no placeholder
+# to fill from elsewhere; someone has to choose, and the render aborts until
+# they do.
+#
+# TO ENABLE, all EIGHT must be true:
 #
 #   1. image.digest — the mcp-slack image is built and pushed, and you have
 #      its sha256 digest. Never a tag: an internet-facing workload must run
@@ -128,9 +133,30 @@
 #      when it can be set true.
 #
 #      Written as a numbered criterion rather than left in the template's
-#      header because criteria 1-7 are the list someone reads before
+#      header because criteria 1-8 are the list someone reads before
 #      enabling, and this is the item most likely to be acted on wrongly by
 #      someone who never opens the template. Aegis's ask on #1420.
+#
+#   8. oidc.allowedSubjects — the comma-separated Zitadel subjects (NUMERIC
+#      user ids) permitted to call this endpoint.
+#
+#      Added late, and the omission is the point: this criterion list ran to
+#      seven items across eight commits while the chart already refused to
+#      render without this value. A checklist that is shorter than the set of
+#      things that block the render is worse than no checklist — it reads as
+#      complete, so the reader stops when they reach the end of it.
+#
+#      It is NOT a duplicate of criterion 2. projectId is the audience check,
+#      and the audience check is not an identity check: `aud` is caller-
+#      authored — any authenticated principal can add this project to it with
+#      a scope string — so issuer + audience together admit every account this
+#      Zitadel instance will issue a token to. THIS is the only per-request
+#      identity control. Criterion 2 being satisfied says nothing about this
+#      one.
+#
+#      Nothing outside this repo has to happen first, unlike 1-5: the ids come
+#      from Zitadel and can be read today. That makes it the cheapest of the
+#      eight, which is its own hazard — cheap items get assumed done.
 #
 # The alert for this workload is NOT in the chart — it lives in
 # gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
@@ -162,15 +188,32 @@ spec:
     path: mcp-slack/deploy/chart
     helm:
       values: |
-        # ALL THREE ARE PLACEHOLDERS. The chart fails to render on any of them
+        # ALL FIVE ARE PLACEHOLDERS. The chart fails to render on any of them
         # being empty — that is the intended behaviour, not an obstacle to
         # work around. Fill them from the sources named in the header above.
+        #
+        # THIS BLOCK IS THE COMPLETE SET OF RENDER-BLOCKING VALUES, verified by
+        # rendering the chart rather than by reading it: with all five present
+        # `helm template` succeeds, and removing any one of them fails with that
+        # value's own message. Helm reports only the FIRST missing value, so a
+        # block that is short by two looks exactly like a block that is short by
+        # one — which is how this one carried three entries for eight commits
+        # while the chart required five. If you add a `required` to the chart,
+        # add its placeholder here in the same commit.
         image:
           digest: ""            # sha256:... — REQUIRED
         oidc:
           projectId: ""         # pulumi stack output projectId — REQUIRED
+          allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
         slack:
           channelIds: ""        # comma-separated channel IDs — REQUIRED
+        networkPolicy:
+          # REQUIRED, and a real boolean — a quoted "false" is refused, because
+          # Helm treats any non-empty string as true and that would enable the
+          # very policy this gate exists to keep off. See criterion 7: today the
+          # only honest value is false, and false means NOTHING constrains where
+          # the bot token can be sent.
+          enabled:
   destination:
     server: https://kubernetes.default.svc
     namespace: mcp-slack
