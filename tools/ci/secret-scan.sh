@@ -71,6 +71,24 @@ trap 'rm -rf "${BIN_DIR}"' EXIT
 
 if command -v gitleaks >/dev/null 2>&1 && [ "${USE_SYSTEM_GITLEAKS:-}" = "1" ]; then
   GITLEAKS="$(command -v gitleaks)"
+  # The download path is pinned AND checksum-verified; this escape hatch skipped
+  # both, so a local run could use any gitleaks on PATH -- different rules,
+  # different detectors -- and still print "no secrets found" in the same words
+  # CI uses. Same failure as the 126/127 case below: a verdict the run did not
+  # earn. Refuse rather than warn, because the output of this script gets quoted
+  # as evidence and a warning does not travel with the quote.
+  system_version="$("${GITLEAKS}" version 2>/dev/null | tr -d '[:space:]')"
+  if [ "${system_version}" != "${GITLEAKS_VERSION}" ]; then
+    cat >&2 <<MSG
+::error::secret-scan: USE_SYSTEM_GITLEAKS=1 but ${GITLEAKS} reports
+'${system_version:-<no version>}', not the pinned v${GITLEAKS_VERSION}. A scan by
+a different gitleaks is not the scan CI runs -- its rules and detectors differ --
+so its result must not be reported as this gate's.
+  * Install v${GITLEAKS_VERSION}, or unset USE_SYSTEM_GITLEAKS to use the pinned,
+    checksum-verified download (Linux only -- see the exec-failure note below).
+MSG
+    exit 1
+  fi
 else
   tarball="${BIN_DIR}/gitleaks.tar.gz"
   url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
@@ -99,6 +117,25 @@ else
   rc=$?
 fi
 set -e
+
+# A gitleaks exec failure and a real finding are both non-zero exits, and
+# without this check they render identically -- "gitleaks found a candidate
+# secret" -- even though nothing was scanned. Concretely: this script always
+# fetches the LINUX release tarball (line ~76), so a local run on macOS
+# downloads it, passes the checksum, and then fails to exec with the shell's
+# reserved 126 ("found but not executable" -- an ELF binary on Darwin) or 127
+# ("command not found"). Both are shell-level exec failures, not a gitleaks
+# verdict, and must not be reported as one.
+if [ "${rc}" -eq 126 ] || [ "${rc}" -eq 127 ]; then
+  cat >&2 <<MSG
+::error::secret-scan: gitleaks did not run (exit ${rc}) -- this is an exec
+failure, NOT a secret finding. The fetched binary is Linux-only; on macOS (or
+any non-Linux host) it cannot execute.
+  * Install gitleaks locally (e.g. \`brew install gitleaks\`) and re-run with
+    USE_SYSTEM_GITLEAKS=1, or run this script on Linux/in CI.
+MSG
+  exit "${rc}"
+fi
 
 if [ "${rc}" -ne 0 ]; then
   cat >&2 <<'MSG'
