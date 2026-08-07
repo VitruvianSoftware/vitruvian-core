@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.2.0...mcp-slack-v1.3.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** declare channel visibility separately from the allow-list ([#1421](https://github.com/VitruvianSoftware/vitruvian-core/issues/1421)) ([87a202d](https://github.com/VitruvianSoftware/vitruvian-core/commit/87a202d9a24df13a5a26357a98953f640a16f16e))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.1.0...mcp-slack-v1.2.0) (2026-08-07)
 
 
