@@ -127,7 +127,7 @@ export async function startHttpTransport(
   })
 ): Promise<{
   address: () => { port: number };
-  close: () => Promise<void>;
+  close: (gracePeriodMs?: number) => Promise<void>;
 }> {
   // sessionIdGenerator: undefined puts the transport in stateless mode — every
   // request is self-contained. That suits a single-tenant deployment behind an
@@ -230,9 +230,37 @@ export async function startHttpTransport(
       }
       return address;
     },
-    close: () =>
+    /**
+     * Stops accepting connections and drains the ones in flight.
+     *
+     * `httpServer.close()` gets the easy half right on its own: since Node 19
+     * it closes *idle* keep-alive sockets itself, and this package pins 22 via
+     * `.nvmrc`. What it will not do is bound the wait on an **active** request.
+     * A handler that never responds — a hung Slack call, a client that stops
+     * mid-body — leaves `close()` pending forever, so the pod sits in
+     * Terminating until the kubelet SIGKILLs it. That kills every *other*
+     * request still in flight, which is the opposite of draining.
+     *
+     * So the only thing added here is the bound: let active requests finish,
+     * and force the remainder after `gracePeriodMs`. The default must stay
+     * below the pod's `terminationGracePeriodSeconds` or the kubelet wins the
+     * race and the grace period is decorative.
+     */
+    close: (gracePeriodMs = 10_000) =>
       new Promise<void>((resolve, reject) => {
-        httpServer.close((err) => (err ? reject(err) : resolve()));
+        let force: NodeJS.Timeout | undefined;
+        httpServer.close((err) => {
+          if (force) clearTimeout(force);
+          if (err) reject(err);
+          else resolve();
+        });
+        force = setTimeout(
+          () => httpServer.closeAllConnections(),
+          gracePeriodMs
+        );
+        // Never a reason to hold the process open just to fire a timer whose
+        // whole purpose is to stop holding the process open.
+        force.unref();
       }),
   };
 }

@@ -278,7 +278,29 @@ async function main() {
       process.exit(1);
     }
 
-    await startHttpTransport(server, config.http!);
+    const listener = await startHttpTransport(server, config.http!);
+
+    // A pod being rolled gets SIGTERM, and without a handler Node's default is
+    // to exit immediately — every in-flight request dies mid-response. The
+    // kubelet has already removed this pod from the Service endpoints by the
+    // time the signal arrives, so there is nothing to gain by exiting fast and
+    // a request to lose. Once, not per-signal: a second SIGTERM during the
+    // drain would otherwise start a second one.
+    let draining = false;
+    const drain = (signal: NodeJS.Signals) => {
+      if (draining) return;
+      draining = true;
+      process.stderr.write(`${signal} received, draining\n`);
+      listener
+        .close()
+        .then(() => process.exit(0))
+        .catch((error) => {
+          console.error(`Drain failed: ${error}`);
+          process.exit(1);
+        });
+    };
+    process.on("SIGTERM", drain);
+    process.on("SIGINT", drain);
     process.stderr.write(
       `mcp-slack server v2.0.0 running on http :${config.http!.port} ` +
         `(${advertisedTools.length} tools, ` +
