@@ -82,7 +82,14 @@ trap 'rm -rf "${FIXTURE}"' EXIT
 mkdir -p "${FIXTURE}/bin"
 cat >"${FIXTURE}/bin/go" <<'STUB'
 #!/usr/bin/env bash
-# Stub `go`. Invoked as `go test ./...` from inside a module directory.
+# Stub `go`. Invoked as `go test -p N ./...` from inside a module directory.
+# Records the -p it was handed, so the concurrency-budget assertions can read
+# back what the runner actually asked for.
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-p" ] && echo "$a" >>"${OBSERVED_P:-/dev/null}"
+  prev="$a"
+done
 [ -f ./SLOW_MARKER ] && sleep 1
 if [ -f ./FAIL_MARKER ]; then
   echo "--- FAIL: TestStub (0.00s)"
@@ -94,6 +101,7 @@ exit 0
 STUB
 chmod +x "${FIXTURE}/bin/go"
 export PATH="${FIXTURE}/bin:${PATH}"
+export OBSERVED_P="${FIXTURE}/observed-p"
 
 # mod <name> [tested|untested] [fail] [slow]
 mod() {
@@ -168,6 +176,49 @@ echo "== serial execution keeps the same verdict =="
 out="$(run_under_test GO_TEST_INFRA_JOBS=1)"; rc=$?
 check_eq       "serial run reaches the same verdict" 1 "$rc"
 check_contains "serial run reports the same failure count" "FAILED in 2 of 3 IaC module(s)" "$out"
+
+# ---------------------------------------------------------------------------
+echo "== the compiler-concurrency budget is respected =="
+# THE REGRESSION THIS EXISTS FOR. `go test` defaults -p to GOMAXPROCS, so N
+# modules in flight at the default -p means N*cores concurrent compilers, not N.
+# The first cut of this script ran 4 modules at the default on a 4-core runner
+# (up to 16 compilers, each building the pulumi-gcp SDK) and the runner killed
+# the step: "Terminated", exit 143, ~480s, no output. The invariant that keeps
+# this lane inside the resource envelope the old serial loop already used is
+# JOBS * -p <= cores, so it is asserted rather than left to a comment.
+rm -rf "${FIXTURE}/iac"
+mod a tested; mod b tested; mod c tested; mod d tested
+
+for jobs in 1 2 4; do
+  : >"${OBSERVED_P}"
+  out="$(run_under_test GO_TEST_INFRA_JOBS="${jobs}")"; rc=$?
+  cores="$(printf '%s\n' "$out" | sed -n 's/.*(\([0-9]*\) cores).*/\1/p' | head -1)"
+  p="$(sort -u "${OBSERVED_P}" | head -1)"
+  distinct="$(sort -u "${OBSERVED_P}" | wc -l | tr -d ' ')"
+
+  check_eq "JOBS=${jobs}: run is green" 0 "$rc"
+  check_eq "JOBS=${jobs}: every module gets the same -p" 1 "$distinct"
+  if [ -n "$cores" ] && [ -n "$p" ] && [ "$((jobs * p))" -le "$cores" ]; then
+    ok "JOBS=${jobs}: JOBS*-p (${jobs}*${p}) stays within ${cores} cores"
+  else
+    bad "JOBS=${jobs}: JOBS*-p (${jobs}*${p:-?}) exceeds ${cores:-?} cores — the OOM shape"
+  fi
+  # -p must never be omitted: an absent flag silently restores the Go default
+  # (=GOMAXPROCS) and reintroduces the multiplication.
+  check_eq "JOBS=${jobs}: -p is passed explicitly, never left to the default" \
+           "$(printf '%s\n' "$out" | grep -c '^  -> ')" "$(wc -l <"${OBSERVED_P}" | tr -d ' ')"
+done
+
+# ---------------------------------------------------------------------------
+echo "== progress is visible before the run finishes =="
+# The buffered logs replay only at the end, so a step killed mid-run would print
+# nothing at all without a per-completion line -- exactly what made the OOM above
+# undiagnosable from its log.
+rm -rf "${FIXTURE}/iac"
+mod a tested; mod b tested fail
+out="$(run_under_test GO_TEST_INFRA_JOBS=2)"
+check_contains "emits a progress line as each module completes (ok)" "-> ok     iac/a" "$out"
+check_contains "emits a progress line as each module completes (FAILED)" "-> FAILED iac/b" "$out"
 
 # ---------------------------------------------------------------------------
 echo "== no modules is not silently green =="

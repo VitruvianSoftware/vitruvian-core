@@ -40,9 +40,30 @@
 # 9.2GB against GitHub's 10GB repo-wide cache budget, which would evict the
 # llvm-contents and setup-bazel entries that ci.yaml's other lanes depend on
 # (tracked separately). Running the modules concurrently needs no cache budget
-# at all. Measured cold at GOMAXPROCS=4 (the runner's core count): serial 225s,
-# -P2 155s, -P4 151s — so ~-33%, with the gain flattening past 2 because a
-# single module's compile already saturates the cores.
+# at all.
+#
+# WHY THE CONCURRENCY IS BOUNDED THE WAY IT IS. The knob that matters is not the
+# module count but the number of concurrent Go COMPILER processes: each one can
+# hold a lot of resident memory while building the pulumi-gcp SDK. `go test`
+# defaults `-p` to GOMAXPROCS, so N modules at the default `-p` means N*cores
+# compilers, not N. The first cut of this script ran 4 modules at default `-p`
+# on a 4-core runner — up to 16 — and the runner killed the step at ~480s with a
+# bare "Terminated" / exit 143 and, because output was buffered, nothing else.
+# Laptop measurements never saw it; they had the RAM to absorb it.
+#
+# So JOBS and the per-module `-p` are chosen TOGETHER to keep JOBS * P == cores:
+# exactly the compiler concurrency the old serial loop already ran at, which is
+# what makes this change resource-neutral rather than a gamble. Measured cold at
+# GOMAXPROCS=4 (the runner's core count), with peak concurrent compilers
+# observed in each case:
+#
+#   JOBS=1, -p 4  (the old serial loop)   224s   peak 4
+#   JOBS=2, -p 2                          176s   peak 4   <- chosen
+#   JOBS=4, -p 1                          198s   peak 4
+#   JOBS=4, -p default (=4)                 --   peak 16  <- OOM-killed on CI
+#
+# ~-21%, projecting ~692s to ~545s. Less than the unbounded config appeared to
+# offer — but that config does not survive the runner.
 #
 # WHY NOT `set -e` ON THE POOL. The inline loop ran under `set -euo pipefail`,
 # so the FIRST failing module aborted the run and the later ones never reported.
@@ -54,7 +75,8 @@
 # required gate green while the tests are red.
 #
 # Usage: tools/ci/go-test-infra.sh
-#   GO_TEST_INFRA_JOBS   concurrency (default: min(nproc, 4))
+#   GO_TEST_INFRA_JOBS   modules in flight (default 2; -p is derived so that
+#                        JOBS * -p stays at the core count)
 #   GO_TEST_INFRA_ROOTS  space-separated discovery roots (default: the two above)
 
 set -uo pipefail
@@ -71,7 +93,7 @@ if [ "${1:-}" = "--run-one" ]; then
   : "${GO_TEST_INFRA_WORKDIR:?--run-one needs GO_TEST_INFRA_WORKDIR}"
   slug="$(printf '%s' "$dir" | tr '/' '_')"
 
-  if out="$(cd "$dir" && go test ./... 2>&1)"; then
+  if out="$(cd "$dir" && go test -p "${GO_TEST_INFRA_P:-1}" ./... 2>&1)"; then
     status="ok"
   else
     status="FAILED"
@@ -86,6 +108,13 @@ if [ "${1:-}" = "--run-one" ]; then
     printf '%s\n' "$out"
     printf '::endgroup::\n'
   } >"${GO_TEST_INFRA_WORKDIR}/${slug}.log"
+
+  # Liveness. The buffered logs are only replayed once every module is done, so
+  # without this a step killed mid-run (the OOM above, or the job timeout) prints
+  # NOTHING and there is no way to tell how far it got or which module was in
+  # flight — strictly worse than the streaming loop this replaced. One short line
+  # per completion is under PIPE_BUF, so concurrent writers cannot tear it.
+  printf '  -> %-6s %s\n' "$status" "$dir"
   exit 0
 fi
 
@@ -100,16 +129,20 @@ export GOWORK=off
 
 ROOTS="${GO_TEST_INFRA_ROOTS:-infrastructure/pulumi */infra}"
 
-if [ -n "${GO_TEST_INFRA_JOBS:-}" ]; then
-  JOBS="${GO_TEST_INFRA_JOBS}"
-else
-  ncpu="$( (command -v nproc >/dev/null 2>&1 && nproc) || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-  # Capped at 4: measured gain flattens past 2 (151s at -P4 vs 155s at -P2),
-  # while every extra concurrent `go build` adds peak disk and RSS on a runner
-  # that already carries a multi-GB GOCACHE by the end of the run.
-  JOBS=$((ncpu > 4 ? 4 : ncpu))
-fi
+ncpu="$( (command -v nproc >/dev/null 2>&1 && nproc) || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+[ "${ncpu}" -ge 1 ] 2>/dev/null || ncpu=1
+
+JOBS="${GO_TEST_INFRA_JOBS:-2}"
 [ "${JOBS}" -ge 1 ] 2>/dev/null || JOBS=1
+[ "${JOBS}" -le "${ncpu}" ] || JOBS="${ncpu}"
+
+# The compiler-concurrency budget: JOBS modules each building up to P packages
+# in parallel means JOBS*P concurrent compilers. Derive P so that product stays
+# at the core count -- the same load the old serial loop (1 module at -p ncpu)
+# already placed on the runner. Without this, `go test` defaults -p to
+# GOMAXPROCS and the pool multiplies it, which is what got the step OOM-killed.
+export GO_TEST_INFRA_P=$((ncpu / JOBS))
+[ "${GO_TEST_INFRA_P}" -ge 1 ] || GO_TEST_INFRA_P=1
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
@@ -135,7 +168,7 @@ if [ -z "${mods}" ]; then
 fi
 
 count="$(printf '%s\n' "${mods}" | wc -l | tr -d ' ')"
-echo "Running go test across ${count} IaC module(s) with ${JOBS} job(s)..."
+echo "Running go test across ${count} IaC module(s): ${JOBS} module(s) in flight, -p ${GO_TEST_INFRA_P} each (${ncpu} cores)..."
 
 printf '%s\n' "${mods}" | xargs -P "${JOBS}" -I{} "${SELF}" --run-one {}
 
