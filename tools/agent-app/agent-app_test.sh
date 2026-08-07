@@ -105,12 +105,19 @@ decode() { # base64url -> json
 hdr="$(decode "$(cut -d. -f1 <<<"$JWT")")"
 pay="$(decode "$(cut -d. -f2 <<<"$JWT")")"
 
-[ "$(jq -r .alg <<<"$hdr")" = "RS256" ] && ok "alg is RS256" || bad "alg is not RS256: $hdr"
-[ "$(jq -r .iss <<<"$pay")" = "12345" ] && ok "iss is the app id" || bad "iss wrong: $pay"
+# Deliberately NOT jq. The Bazel test sandbox has no jq -- this test passed on a
+# laptop and failed in CI for exactly that reason. These are two tiny fixed-shape
+# JSON objects this file generates itself, so a sed reader is sufficient and
+# keeps the test dependent only on what the sandbox actually provides.
+json_str() { sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" <<<"$1"; }
+json_num() { sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" <<<"$1"; }
+
+[ "$(json_str "$hdr" alg)" = "RS256" ] && ok "alg is RS256" || bad "alg is not RS256: $hdr"
+[ "$(json_str "$pay" iss)" = "12345" ] && ok "iss is the app id" || bad "iss wrong: $pay"
 
 now="$(date +%s)"
-iat="$(jq -r .iat <<<"$pay")"
-exp="$(jq -r .exp <<<"$pay")"
+iat="$(json_num "$pay" iat)"
+exp="$(json_num "$pay" exp)"
 # GitHub rejects a future iat outright; backdating is the whole reason this is
 # not simply `date +%s`.
 if [ "$iat" -lt "$now" ]; then
