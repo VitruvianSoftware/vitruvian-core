@@ -38,6 +38,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -350,10 +351,35 @@ func main() {
 			if err != nil {
 				return err
 			}
-			approvals := 0
-			if codeOwnerReview {
-				approvals = 1
+			// requiredApprovals is deliberately SEPARATE from codeOwnerReview,
+			// because the two are no longer the same question. Agent identities are
+			// GitHub Apps (see agentAppInstallations below), and an App CANNOT be
+			// listed in CODEOWNERS -- GitHub's CODEOWNERS docs enumerate users,
+			// teams and email addresses only. But an App's review DOES satisfy the
+			// approval count: measured on a canary PR, where an installation token
+			// POSTing event=APPROVE moved the PR from
+			// reviewDecision=REVIEW_REQUIRED/blocked to APPROVED, with the review
+			// recorded as type=Bot.
+			//
+			// So the reachable configuration is requiredApprovals>=1 with
+			// requireCodeOwnerReview=false. Deriving approvals from codeOwnerReview,
+			// as this did, made that combination unexpressible.
+			//
+			// Both still default OFF. The old blocker was that a lone maintainer has
+			// no second reviewer, so the rule produced zero real reviews while
+			// wedging bot auto-merge (release-please / Dependabot) at
+			// REVIEW_REQUIRED forever -- a ruleset bypass applies to a DIRECT merge,
+			// never to auto-merge INTO the merge queue. That blocker is removed only
+			// once each agent authors PRs under its own App; until then, raising
+			// this re-creates exactly that wedge.
+			requiredApprovals, err := intConfig(cfg, "requiredApprovals", 0)
+			if err != nil {
+				return err
 			}
+			if requiredApprovals < 0 {
+				return fmt.Errorf("config \"requiredApprovals\" = %d must not be negative", requiredApprovals)
+			}
+			approvals := resolveApprovals(requiredApprovals, codeOwnerReview)
 
 			if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
 				Name:        pulumi.String("merge-queue"),
@@ -406,19 +432,22 @@ func main() {
 						RequiredChecks:                   requiredChecks,
 						StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
 					},
-					// Require a PR before merging + squash-only, ALWAYS. The
-					// code-owner REVIEW requirement (#804) is gated by
-					// requireCodeOwnerReview (computed above the ruleset; default
-					// OFF for the solo team). When on, the CODEOWNERS catch-all owns
-					// every path so a PR needs a code-owner approval, with
-					// dismiss-stale + require-last-push-approval so it can't be gamed
-					// by a later push. When off, RequiredApprovingReviewCount is 0
-					// and no review blocks the merge queue.
+					// Require a PR before merging + squash-only, ALWAYS. Review is
+					// gated by two INDEPENDENT knobs, both default OFF (see above):
+					// requiredApprovals (a count, satisfiable by an agent App) and
+					// requireCodeOwnerReview (#804, satisfiable only by a human or
+					// team, since an App cannot be a code owner).
+					//
+					// dismiss-stale and require-last-push-approval key off whether any
+					// approval is required at all, NOT off codeOwnerReview. Keying
+					// them off codeOwnerReview meant requiredApprovals=1 alone left
+					// both off, so an approval survived a later push -- exactly the
+					// gaming these two exist to prevent.
 					PullRequest: &github.RepositoryRulesetRulesPullRequestArgs{
 						RequireCodeOwnerReview:       pulumi.Bool(codeOwnerReview),
 						RequiredApprovingReviewCount: pulumi.Int(approvals),
-						DismissStaleReviewsOnPush:    pulumi.Bool(codeOwnerReview),
-						RequireLastPushApproval:      pulumi.Bool(codeOwnerReview),
+						DismissStaleReviewsOnPush:    pulumi.Bool(approvals > 0),
+						RequireLastPushApproval:      pulumi.Bool(approvals > 0),
 						AllowedMergeMethods:          pulumi.StringArray{pulumi.String("squash")},
 					},
 				},
@@ -452,6 +481,10 @@ func main() {
 		}
 
 		if err := manageTeams(ctx, repo, repoName); err != nil {
+			return err
+		}
+
+		if err := agentAppInstallations(ctx, cfg, repo); err != nil {
 			return err
 		}
 
@@ -1609,4 +1642,74 @@ func requireStatusChecks(cfg *config.Config) (bool, error) {
 // disable it (e.g. to fall back to direct pushes during a migration).
 func mergeQueueEnabled(cfg *config.Config) (bool, error) {
 	return boolConfig(cfg, "mergeQueue", true)
+}
+
+// resolveApprovals combines the two independent review knobs into the single
+// count GitHub takes. codeOwnerReview acts as a FLOOR, not an override: GitHub
+// rejects require_code_owner_review with an approval count of 0, but a
+// deliberately higher requiredApprovals must survive.
+func resolveApprovals(requiredApprovals int, codeOwnerReview bool) int {
+	approvals := requiredApprovals
+	if codeOwnerReview && approvals < 1 {
+		approvals = 1
+	}
+	return approvals
+}
+
+// agentApp is one agent's GitHub App identity: the App itself is created out of
+// band (see below), this records WHICH repositories its installation may touch.
+type agentApp struct {
+	// Name is the agent, e.g. "beacon". Used only for the Pulumi resource name,
+	// so a diff names the agent rather than an opaque installation id.
+	Name string `json:"name"`
+	// InstallationID is the numeric id of the App's installation on this org,
+	// readable at /orgs/{org}/installations. NOT the app id -- an App has one
+	// app id and a separate installation id per account it is installed on, and
+	// passing the app id here yields a 404 that reads like a permissions problem.
+	InstallationID string `json:"installationId"`
+}
+
+// agentAppInstallations pins each agent App's installation to an explicit set of
+// repositories, so "which agent can write where" is reviewable in a diff rather
+// than a checkbox someone ticked in a web form.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO: create the Apps. GitHub has no API to
+// create a GitHub App -- creation is the web form or the App-manifest flow, both
+// of which need a signed-in human, and the private key is returned exactly once
+// at creation. So per agent there is one irreducible manual step, documented in
+// docs/agent-github-identities.md, and everything after it is code.
+//
+// The default is an empty list, which creates nothing. That matters: this
+// resource REPLACES an installation's repository selection, so an accidentally
+// empty entry would revoke an agent's access rather than leave it alone.
+func agentAppInstallations(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	var apps []agentApp
+	if err := cfg.TryObject("agentApps", &apps); err != nil {
+		if errors.Is(err, config.ErrMissingVar) {
+			return nil
+		}
+		return fmt.Errorf("config \"agentApps\" is not a list of {name, installationId}: %w", err)
+	}
+
+	seen := make(map[string]string, len(apps))
+	for _, a := range apps {
+		if a.Name == "" || a.InstallationID == "" {
+			return fmt.Errorf("config \"agentApps\" entry %+v needs both name and installationId", a)
+		}
+		// Two agents sharing an installation id means one App is doing both jobs,
+		// which silently defeats the point of per-agent identities. Fail rather
+		// than apply it.
+		if prev, dup := seen[a.InstallationID]; dup {
+			return fmt.Errorf("config \"agentApps\": %q and %q share installationId %q; per-agent identities require one App each", prev, a.Name, a.InstallationID)
+		}
+		seen[a.InstallationID] = a.Name
+
+		if _, err := github.NewAppInstallationRepositories(ctx, "agent-app-"+a.Name, &github.AppInstallationRepositoriesArgs{
+			InstallationId:       pulumi.String(a.InstallationID),
+			SelectedRepositories: pulumi.StringArray{repo.Name},
+		}); err != nil {
+			return fmt.Errorf("agent app %q: %w", a.Name, err)
+		}
+	}
+	return nil
 }
