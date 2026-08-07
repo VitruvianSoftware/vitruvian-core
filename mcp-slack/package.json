@@ -14,13 +14,21 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "jest"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "jose": "^6.2.4"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.1.2",
+    "jest": "catalog:",
+    "jest-cli": "^30.4.2",
+    "jest-environment-node": "^30.4.1",
+    "jest-junit": "^17.0.0",
+    "ts-jest": "^29.4.12",
     "typescript": "^6.0.3"
   }
 }

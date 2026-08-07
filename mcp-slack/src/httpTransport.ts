@@ -1,0 +1,238 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+// ---------------------------------------------------------------------------
+// Streamable HTTP transport
+// ---------------------------------------------------------------------------
+//
+// Gemini Enterprise's custom MCP connector speaks Streamable HTTP exclusively —
+// its docs state the legacy SSE transport is not supported — so this is the one
+// transport that makes a remote harness work, not a preference.
+//
+// This module is imported dynamically by index.ts only when MCP_TRANSPORT=http,
+// so the stdio path never loads it and its behaviour is untouched.
+
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+import { AuthError, createTokenVerifier, type TokenVerifier } from "./auth.js";
+import type { HttpConfig } from "./config.js";
+
+const MCP_PATH = "/mcp";
+const HEALTH_PATH = "/health";
+
+/**
+ * Makes a message safe to carry inside an RFC 7235 quoted-string.
+ *
+ * Two distinct failures, both measured rather than reasoned about:
+ *
+ *   - CR, LF and NUL make Node's `writeHead` throw `ERR_INVALID_CHAR`. Node
+ *     rejects them before anything reaches the wire, so this was never an
+ *     injection risk — but the throw turned a diagnostic 403 into an opaque
+ *     500, losing the self-describing error at exactly the moment something
+ *     strange is in the token.
+ *   - A double quote *sends successfully* and produces a malformed
+ *     quoted-string, so a strict client mis-reads where the value ends. That
+ *     one fails silently, which makes it the more dangerous of the two.
+ */
+export function headerSafe(message: string): string {
+  return message
+    .replace(/"/g, "'")
+    .replace(/[^\x20-\x7e]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Writes an RFC 6750 style rejection.
+ *
+ * The `WWW-Authenticate` error/description carry the same self-describing text
+ * as the thrown error, so a misconfiguration is legible from `curl -i` without
+ * needing access to the server's logs — which is the situation someone
+ * debugging a Spark connection is actually in.
+ */
+function writeAuthFailure(res: ServerResponse, error: AuthError): void {
+  // A 503 must not carry a WWW-Authenticate challenge. That header means
+  // "here is how to authenticate", which is a lie when the failure is ours —
+  // it would send a caller holding a valid token off to re-authenticate
+  // against an IdP that is down.
+  if (error.status === 503) {
+    res.writeHead(503, {
+      "Content-Type": "application/json",
+      "Retry-After": "30",
+    });
+    res.end(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: error.message },
+        id: null,
+      })
+    );
+    return;
+  }
+
+  res.writeHead(error.status, {
+    "Content-Type": "application/json",
+    "WWW-Authenticate":
+      `Bearer error="${error.code}", ` +
+      `error_description="${headerSafe(error.message)}"`,
+  });
+  res.end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32001, message: error.message },
+      id: null,
+    })
+  );
+}
+
+function writeNotFound(res: ServerResponse): void {
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "not_found" }));
+}
+
+/**
+ * Starts the HTTP listener and binds the MCP server to it.
+ *
+ * `verifier` is injectable so the request-routing and rejection behaviour can
+ * be tested without a live IdP.
+ */
+export async function startHttpTransport(
+  server: Server,
+  config: HttpConfig,
+  verifier: TokenVerifier = createTokenVerifier({
+    issuer: config.issuer,
+    projectId: config.projectId,
+  })
+): Promise<{
+  address: () => { port: number };
+  close: () => Promise<void>;
+}> {
+  // sessionIdGenerator: undefined puts the transport in stateless mode — every
+  // request is self-contained. That suits a single-tenant deployment behind an
+  // IdP: the bearer token, not a server-side session, is what carries identity.
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  await server.connect(transport);
+
+  const httpServer = createServer(
+    (req: IncomingMessage, res: ServerResponse) => {
+      // Every rejection has to be caught here. `handle` is async and its
+      // result is discarded, so anything it throws that isn't an AuthError —
+      // a JWKS fetch failure is the realistic one, since that reaches the
+      // network on the auth path — would otherwise become an unhandled
+      // rejection: the request never gets a response, and Node's default
+      // behaviour since v15 is to terminate the process. A transient IdP
+      // blip taking the server down is not the failure mode to have on a
+      // deployment whose whole job is being reachable.
+      handle(req, res).catch((error: unknown) => {
+        process.stderr.write(
+          `mcp-slack: unhandled error serving ${req.method} ${req.url}: ` +
+            `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+        );
+        if (res.headersSent) {
+          res.destroy();
+          return;
+        }
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32603, message: "Internal server error" },
+            id: null,
+          })
+        );
+      });
+    }
+  );
+
+  async function handle(
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<void> {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "local"}`);
+
+    // Unauthenticated on purpose: a liveness probe that requires a token tells
+    // you the IdP is reachable, not that this process is healthy.
+    //
+    // Keeping it off the internet is a *routing* property, not a server one —
+    // the HTTPRoute matches the MCP path only, and kubelet probes reach the
+    // pod IP without traversing it. Deliberately not a second listener: that
+    // would be more surface, a second bind to get wrong, and one security
+    // property implemented in two places that must stay consistent. This
+    // version cannot drift because the code is unaware of the distinction.
+    //
+    // The body is deliberately contentless and must stay that way. Health
+    // endpoints accrete — a version string, a config echo, "issuer reachable".
+    // Each addition is individually reasonable, and each one turns an
+    // in-cluster probe into a reconnaissance response if the route is ever
+    // widened. Adding a field here should require arguing with this comment.
+    if (url.pathname === HEALTH_PATH) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+
+    if (url.pathname !== MCP_PATH) {
+      writeNotFound(res);
+      return;
+    }
+
+    try {
+      await verifier.verifyAuthorizationHeader(req.headers.authorization);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        writeAuthFailure(res, error);
+        return;
+      }
+      throw error;
+    }
+
+    await transport.handleRequest(req, res);
+  }
+
+  await new Promise<void>((resolve) => {
+    httpServer.listen(config.port, resolve);
+  });
+
+  return {
+    /**
+     * The address actually bound. Only meaningful after `listen` resolved,
+     * which is why it is a method rather than the configured port: tests bind
+     * port 0 and need to discover what the OS chose.
+     */
+    address: () => {
+      const address = httpServer.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("HTTP server is not bound to a TCP port");
+      }
+      return address;
+    },
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        httpServer.close((err) => (err ? reject(err) : resolve()));
+      }),
+  };
+}
