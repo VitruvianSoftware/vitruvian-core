@@ -38,21 +38,35 @@ useDefault = true
 # can only be decrypted by the sealed-secrets controller's private key, which
 # lives in the cluster and is never committed. Committing them is the entire
 # point of the GitOps closed loop, so their ciphertext must not read as a leak.
+# Each path pattern below is anchored with `^`. gitleaks matches `paths`
+# unanchored against the repo-relative path, so without the anchor a nested
+# directory that merely ENDS with one of these prefixes -- e.g.
+# `vendor/gitops/argocd/platform/sealed-secrets-manifests/` -- is exempted too.
+# The anchor is the obvious intent; these are repo-rooted locations.
+#
+# The `.disabled` variant is in scope deliberately (Atlas, #1420). A SealedSecret
+# whose target namespace does not exist yet CANNOT be applied -- `kubectl apply
+# --dry-run=server` returns `namespaces "..." not found` -- so it ships with that
+# suffix until its workload is enabled, the same mechanism as
+# gitops/argocd/applications/*.yaml.disabled. Matching only `\.sealedsecret\.yaml$`
+# made identical ciphertext pass on one PR and fail secret-scan on another purely
+# because of the rename. Widen here rather than renaming the file, which would
+# trade a scanner false positive for a broken sync on a live Application.
 [[allowlists]]
 description = "SealedSecret manifests contain ciphertext that is safe to commit"
-paths = ['''gitops/argocd/platform/sealed-secrets-manifests/.*\.sealedsecret\.yaml$''']
+paths = ['''^gitops/argocd/platform/sealed-secrets-manifests/.*\.sealedsecret\.yaml(\.disabled)?$''']
 
 # The committed example store holds placeholder values only; the real values
 # live in Bitwarden and are pulled by //tools/sync-env-secrets.
 [[allowlists]]
 description = "sync-env-secrets example store holds placeholders, not real values"
-paths = ['''tools/sync-env-secrets/secrets\.example/''']
+paths = ['''^tools/sync-env-secrets/secrets\.example/''']
 
 # A Chrome extension's manifest `key` is its PUBLIC identity key: it pins the
 # extension ID and is meant to ship inside the published bundle.
 [[allowlists]]
 description = "Chrome extension manifest key is a public identity key"
-paths = ['''tabula/extension/src/manifest\.json$''']
+paths = ['''^tabula/extension/src/manifest\.json$''']
 
 # `cloudflare-token-secret-project` is a reusable-workflow input naming the GCP
 # project that HOLDS the token in Secret Manager. It is a project id, not a
