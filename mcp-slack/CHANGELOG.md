@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.3.0...mcp-slack-v1.4.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** drain in-flight requests on SIGTERM ([#1423](https://github.com/VitruvianSoftware/vitruvian-core/issues/1423)) ([1b476b3](https://github.com/VitruvianSoftware/vitruvian-core/commit/1b476b3be2afc8d8fa7363231e010d5cad656588))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.2.0...mcp-slack-v1.3.0) (2026-08-07)
 
 
