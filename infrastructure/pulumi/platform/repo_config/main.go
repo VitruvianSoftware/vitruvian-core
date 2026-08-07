@@ -483,7 +483,6 @@ func main() {
 			return err
 		}
 
-
 		// Surface the resolved owner so `pulumi stack output` records which
 		// account these settings were applied to.
 		ctx.Export("repoOwner", pulumi.String(repoOwner))
@@ -1651,4 +1650,3 @@ func resolveApprovals(requiredApprovals int, codeOwnerReview bool) int {
 	}
 	return approvals
 }
-
