@@ -38,7 +38,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -353,7 +352,7 @@ func main() {
 			}
 			// requiredApprovals is deliberately SEPARATE from codeOwnerReview,
 			// because the two are no longer the same question. Agent identities are
-			// GitHub Apps (see agentAppInstallations below), and an App CANNOT be
+			// GitHub Apps (docs/guides/agent-github-identities.md), and an App CANNOT be
 			// listed in CODEOWNERS -- GitHub's CODEOWNERS docs enumerate users,
 			// teams and email addresses only. But an App's review DOES satisfy the
 			// approval count: measured on a canary PR, where an installation token
@@ -481,10 +480,6 @@ func main() {
 		}
 
 		if err := manageTeams(ctx, repo, repoName); err != nil {
-			return err
-		}
-
-		if err := agentAppInstallations(ctx, cfg, repo); err != nil {
 			return err
 		}
 
@@ -1654,62 +1649,4 @@ func resolveApprovals(requiredApprovals int, codeOwnerReview bool) int {
 		approvals = 1
 	}
 	return approvals
-}
-
-// agentApp is one agent's GitHub App identity: the App itself is created out of
-// band (see below), this records WHICH repositories its installation may touch.
-type agentApp struct {
-	// Name is the agent, e.g. "beacon". Used only for the Pulumi resource name,
-	// so a diff names the agent rather than an opaque installation id.
-	Name string `json:"name"`
-	// InstallationID is the numeric id of the App's installation on this org,
-	// readable at /orgs/{org}/installations. NOT the app id -- an App has one
-	// app id and a separate installation id per account it is installed on, and
-	// passing the app id here yields a 404 that reads like a permissions problem.
-	InstallationID string `json:"installationId"`
-}
-
-// agentAppInstallations pins each agent App's installation to an explicit set of
-// repositories, so "which agent can write where" is reviewable in a diff rather
-// than a checkbox someone ticked in a web form.
-//
-// WHAT THIS DELIBERATELY DOES NOT DO: create the Apps. GitHub has no API to
-// create a GitHub App -- creation is the web form or the App-manifest flow, both
-// of which need a signed-in human, and the private key is returned exactly once
-// at creation. So per agent there is one irreducible manual step, documented in
-// docs/agent-github-identities.md, and everything after it is code.
-//
-// The default is an empty list, which creates nothing. That matters: this
-// resource REPLACES an installation's repository selection, so an accidentally
-// empty entry would revoke an agent's access rather than leave it alone.
-func agentAppInstallations(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
-	var apps []agentApp
-	if err := cfg.TryObject("agentApps", &apps); err != nil {
-		if errors.Is(err, config.ErrMissingVar) {
-			return nil
-		}
-		return fmt.Errorf("config \"agentApps\" is not a list of {name, installationId}: %w", err)
-	}
-
-	seen := make(map[string]string, len(apps))
-	for _, a := range apps {
-		if a.Name == "" || a.InstallationID == "" {
-			return fmt.Errorf("config \"agentApps\" entry %+v needs both name and installationId", a)
-		}
-		// Two agents sharing an installation id means one App is doing both jobs,
-		// which silently defeats the point of per-agent identities. Fail rather
-		// than apply it.
-		if prev, dup := seen[a.InstallationID]; dup {
-			return fmt.Errorf("config \"agentApps\": %q and %q share installationId %q; per-agent identities require one App each", prev, a.Name, a.InstallationID)
-		}
-		seen[a.InstallationID] = a.Name
-
-		if _, err := github.NewAppInstallationRepositories(ctx, "agent-app-"+a.Name, &github.AppInstallationRepositoriesArgs{
-			InstallationId:       pulumi.String(a.InstallationID),
-			SelectedRepositories: pulumi.StringArray{repo.Name},
-		}); err != nil {
-			return fmt.Errorf("agent app %q: %w", a.Name, err)
-		}
-	}
-	return nil
 }

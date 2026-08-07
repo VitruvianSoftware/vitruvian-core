@@ -82,9 +82,11 @@ https://github.com/apps/vitruvian-<agent>-agent/installations/new/permissions?ta
 
 (`228271878` is the `VitruvianSoftware` org id.)
 
-> **Do not accept the default.** The page preselects **All repositories**, which
-> grants the App write access to every repo in the org. Choose **Only select
-> repositories** and pick `vitruvian-core`.
+**All repositories** is the accepted setting for this org (decision: James,
+2026-08-07). It is a standing grant covering **current and future** repositories
+— 46 at time of writing — with `contents: write` and `pull_requests: write`. The
+alternative, **Only select repositories**, is the tighter choice and is what to
+pick if this is ever revisited.
 
 Click **Install**. You land on
 `…/settings/installations/<INSTALLATION_ID>` — **the installation id is in that
@@ -100,19 +102,52 @@ bazel run //tools/agent-app -- repos <APP_ID> ~/keys/<agent>.pem <INSTALLATION_I
 `repos` must list `VitruvianSoftware/vitruvian-core` and nothing you did not
 intend. This is the step that catches an accidental "All repositories".
 
-## 5. Record it in code
+## 5. Repository scope: UI only, and here is why it cannot be code
 
-Add the agent to `agentApps` in
-`infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml`:
+This is the one step that resisted being automated, and the reason is worth
+recording rather than rediscovering.
 
-```yaml
-vitruvian-core-repo-config:agentApps:
-  - name: <agent>
-    installationId: "<INSTALLATION_ID>"
+`github_app_installation_repository` / `AppInstallationRepositories` looks like
+the right resource, and it is not usable here. The provider reads installation
+state via `GET /user/installations/{id}/repositories` — a **user-scoped**
+endpoint. The `repo_config` stack authenticates as a **GitHub App**, and GitHub
+answers:
+
+```
+403 Resource not accessible by integration
 ```
 
-From here the repository selection is managed by Pulumi, so a change to which
-repos an agent can reach is a reviewable diff rather than a checkbox.
+A user PAT does not rescue it either: modifying an organization's app
+installation requires org-owner rights the deploy identity does not have, and
+should not be given for this.
+
+The Terraform provider states it in a single line that is easy to skim past —
+and was skimmed past here, at the cost of a broken `main`:
+
+> **Note**: This resource is not compatible with the GitHub App Installation
+> authentication method.
+
+There is also no endpoint that flips an installation to **All repositories**:
+GitHub's installations API has six endpoints and none sets `repository_selection`.
+The only related one adds repositories **one at a time** and, per GitHub, "only
+works for PATs (classic) with the repo scope".
+
+So repository access is a UI setting, per installation:
+`https://github.com/organizations/<ORG>/settings/installations/<INSTALLATION_ID>`
+→ **Repository access** → choose → **Save**.
+
+> Driving that screen scripted: a JavaScript `.click()` on the radio updates the
+> DOM but does **not** persist — the Save button stays disabled and the setting
+> reverts on reload. It needs real browser events on both the radio and Save.
+> This looked exactly like a successful save until the API was re-read.
+
+**Verify from the API, never from the page.** The org endpoint reports the
+setting without needing any private key:
+
+```sh
+gh api orgs/<ORG>/installations \
+  -q '.installations[] | "\(.app_slug)\t\(.repository_selection)"'
+```
 
 ## 6. Only after every agent exists
 
