@@ -71,6 +71,24 @@ trap 'rm -rf "${BIN_DIR}"' EXIT
 
 if command -v gitleaks >/dev/null 2>&1 && [ "${USE_SYSTEM_GITLEAKS:-}" = "1" ]; then
   GITLEAKS="$(command -v gitleaks)"
+  # The download path is pinned AND checksum-verified; this escape hatch skipped
+  # both, so a local run could use any gitleaks on PATH -- different rules,
+  # different detectors -- and still print "no secrets found" in the same words
+  # CI uses. Same failure as the 126/127 case below: a verdict the run did not
+  # earn. Refuse rather than warn, because the output of this script gets quoted
+  # as evidence and a warning does not travel with the quote.
+  system_version="$("${GITLEAKS}" version 2>/dev/null | tr -d '[:space:]')"
+  if [ "${system_version}" != "${GITLEAKS_VERSION}" ]; then
+    cat >&2 <<MSG
+::error::secret-scan: USE_SYSTEM_GITLEAKS=1 but ${GITLEAKS} reports
+'${system_version:-<no version>}', not the pinned v${GITLEAKS_VERSION}. A scan by
+a different gitleaks is not the scan CI runs -- its rules and detectors differ --
+so its result must not be reported as this gate's.
+  * Install v${GITLEAKS_VERSION}, or unset USE_SYSTEM_GITLEAKS to use the pinned,
+    checksum-verified download (Linux only -- see the exec-failure note below).
+MSG
+    exit 1
+  fi
 else
   tarball="${BIN_DIR}/gitleaks.tar.gz"
   url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
