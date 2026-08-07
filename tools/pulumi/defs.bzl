@@ -130,6 +130,20 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
         srcs = ["//tools/pulumi:pulumi_go_test.sh"],
         args = [native.package_name()],
         data = native.glob(["**/*.go", "go.mod", "go.sum"]) + extra_data,
+        # Bazel sanitizes the test environment to PATH=/bin:/usr/bin:/usr/local/bin,
+        # so an ambient `go` installed anywhere else (mise, asdf, /opt/homebrew,
+        # actions/setup-go's toolcache) is invisible and the wrapper's toolchain
+        # guard fires on a machine that HAS go. Inherit the caller's PATH so this
+        # target resolves the same toolchain the developer's shell does; HOME and
+        # the GO* cache vars come along because `go test` writes to the module and
+        # build caches and re-downloads the module graph without them.
+        env_inherit = [
+            "PATH",
+            "HOME",
+            "GOPATH",
+            "GOCACHE",
+            "GOMODCACHE",
+        ],
         tags = [
             "no-remote-exec",
             "requires-network",
