@@ -18,6 +18,11 @@ Pulumi.*.yaml
 # checkout. The Zitadel machine-user credential is injected from a pipeline
 # secret at apply time, never committed.
 !platform/zitadel-apps/Pulumi.*.yaml
+# zitadel-apps-mcp-slack commits its stack config for the same reason: non-secret
+# Zitadel identifiers (project/app/role names, the role-check flag). The client id
+# and secret it mints are stack OUTPUTS held in Pulumi Cloud state, not config, so
+# nothing sensitive is committed here either.
+!platform/zitadel-apps-mcp-slack/Pulumi.*.yaml
 # foundation/gcp-bootstrap commits its production stack config: only non-secret
 # identifiers (org id, billing account id, group emails, parent folder id,
 # github owner, the co-tenancy gate flag). It has no secret config keys (the
@@ -66,6 +71,7 @@ Pulumi.*.yaml
 # path predates the platform/ move and matched nothing — which is how the
 # binary got committed.)
 platform/zitadel-apps/zitadel-apps
+platform/zitadel-apps-mcp-slack/zitadel-apps-mcp-slack
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders
 /foundation/gcp-org/envs/shared/foundation-org-shared

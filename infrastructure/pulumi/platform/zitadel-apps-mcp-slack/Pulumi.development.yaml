@@ -1,0 +1,58 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Committed stack config (config-as-code): non-secret identifiers only, so the
+# apply can resolve them on a clean checkout (principle §2.5). The Zitadel
+# provider credential is injected at apply time from the ZITADEL_MACHINE_KEY_JSON
+# pipeline secret — never stored here.
+#
+# Single stack: mcp-slack's listener is one deployment on the dev-local k3s
+# cluster, not a dev/nonprod/prod promotion chain like the sibling
+# oauth-user-inspector stack. If it ever gains environments, they get their own
+# stack files here — the client config itself is env-independent because the only
+# redirect URI belongs to Google.
+config:
+  zitadel:domain: auth.ipv1337.dev
+  # Own project — NOT oauth-user-inspector's (378961731155658332). The audience
+  # scope is project-scoped, so sharing a project would make the `aud` claim
+  # validate across both apps. Created by this stack; the id is an output.
+  zitadel-apps-mcp-slack:projectName: mcp-slack
+  zitadel-apps-mcp-slack:appName: mcp-slack-spark
+  zitadel-apps-mcp-slack:roleKey: mcp-slack-user
+  # Restricts token issuance to users holding the role above. MUST stay false
+  # until the role has actually been granted to the intended subject — enabling
+  # it with no grant locks everyone out, including the first Spark login.
+  # Flipping it to true is the decision-2 ("only my Zitadel user may connect")
+  # enforcement step, and it belongs in the same change as the role grant.
+  zitadel-apps-mcp-slack:projectRoleCheck: "false"
+  # Zitadel user id(s) granted the mcp-slack-user role, comma-separated.
+  #
+  # COUPLED TO projectRoleCheck: setting that to "true" while this is empty is
+  # an apply error, not a warning. The two move together or not at all —
+  # enabling the check with nobody granted breaks the next LOGIN rather than
+  # the apply, which reads as a bug in the server's auth guard.
+  #
+  # Empty today because the flag is false, so no grant is required yet. The
+  # intended value when both land is 378818267051722263 — the account whose
+  # email is james.nguyen@gmail.com, which is the one that can actually log in
+  # (the instance has no SMTP, so the alternative user has never been
+  # verified). Left unset rather than pre-filled so that enabling the check is
+  # a deliberate two-line edit reviewed together.
+  zitadel-apps-mcp-slack:grantUserIds: ""
