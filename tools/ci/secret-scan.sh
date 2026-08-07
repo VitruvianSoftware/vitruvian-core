@@ -100,6 +100,25 @@ else
 fi
 set -e
 
+# A gitleaks exec failure and a real finding are both non-zero exits, and
+# without this check they render identically -- "gitleaks found a candidate
+# secret" -- even though nothing was scanned. Concretely: this script always
+# fetches the LINUX release tarball (line ~76), so a local run on macOS
+# downloads it, passes the checksum, and then fails to exec with the shell's
+# reserved 126 ("found but not executable" -- an ELF binary on Darwin) or 127
+# ("command not found"). Both are shell-level exec failures, not a gitleaks
+# verdict, and must not be reported as one.
+if [ "${rc}" -eq 126 ] || [ "${rc}" -eq 127 ]; then
+  cat >&2 <<MSG
+::error::secret-scan: gitleaks did not run (exit ${rc}) -- this is an exec
+failure, NOT a secret finding. The fetched binary is Linux-only; on macOS (or
+any non-Linux host) it cannot execute.
+  * Install gitleaks locally (e.g. \`brew install gitleaks\`) and re-run with
+    USE_SYSTEM_GITLEAKS=1, or run this script on Linux/in CI.
+MSG
+  exit "${rc}"
+fi
+
 if [ "${rc}" -ne 0 ]; then
   cat >&2 <<'MSG'
 ::error::secret-scan: gitleaks found a candidate secret in the commits this change adds.
