@@ -1,0 +1,262 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# DISABLED ON PURPOSE. `.disabled` because ArgoCD's directory recursion only
+# reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
+# mechanism tabula.yaml.disabled uses.
+#
+# It is NOT disabled because it is unfinished. It is disabled because four
+# required values do not exist yet, and every one of them is a security
+# boundary rather than a setting. The chart refuses to render without them
+# (see mcp-slack/deploy/chart/templates/_helpers.tpl), so enabling this early
+# would produce a failed sync rather than an exposed endpoint — but a failed
+# sync on a publicly-routed hostname is still not a state worth entering.
+#
+# A fifth, networkPolicy.enabled, is required in the same fail-closed sense but
+# is a DECISION rather than a lookup — see criterion 7. It has no placeholder
+# to fill from elsewhere; someone has to choose, and the render aborts until
+# they do.
+#
+# TO ENABLE, all EIGHT must be true:
+#
+#   1. image.digest — the mcp-slack image is built and pushed, and you have
+#      its sha256 digest. Never a tag: an internet-facing workload must run
+#      the artifact that was reviewed, not whatever the tag moved to.
+#
+#   2. oidc.projectId — `pulumi stack output projectId` on the
+#      zitadel-apps-mcp-slack stack (PR #1417), which has not been applied.
+#      Hand-typing this defeats the per-project audience isolation the
+#      dedicated Zitadel project exists to provide.
+#
+#   3. slack.channelIds — real channel IDs, which requires the Slack admin
+#      session that has not happened. Note the standing constraint: no real
+#      channel goes in here while the endpoint is publicly reachable and
+#      caller identity is unenforced. That is a sequencing rule, not a
+#      preference — the allow-list bounds which conversations a caller can
+#      reach, and it is doing that work alone until caller identity lands.
+#
+#      That rule got stricter, not looser, now that the app manifest carries
+#      groups:read and groups:history: the list gates PRIVATE channels too,
+#      so the thing it is holding back alone is private-conversation
+#      disclosure. Public-only would have been a defensible risk to carry for
+#      a short PoC window. This is not.
+#
+#   4. The Secret `mcp-slack-tokens` exists in the mcp-slack namespace,
+#      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID and nothing else. Created
+#      out-of-band via a SealedSecret (the ntfy alertmanager-ntfy-endpoint
+#      precedent) because it needs that same Slack admin session. No user
+#      token is ever mounted here.
+#
+#   5. THE BOT IS ALREADY IN EVERY CHANNEL NAMED IN slack.channelIds, AND
+#      THE INVITE HAPPENS BEFORE THE DEPLOY, NOT AFTER.
+#
+#      The intuitive order — add the ID, deploy, then invite the bot — does
+#      not work and does not look like a missing step when it fails. Since
+#      #1421 the server verifies each allow-listed conversation's visibility
+#      at startup, and `conversations.info` on a private channel the bot has
+#      not joined returns `channel_not_found`, so the process exits non-zero.
+#      With replicas: 1 and self-heal that presents as CrashLoopBackOff —
+#      i.e. "the deploy is broken", pointing at the chart rather than at the
+#      skipped invite. Aegis's catch on #1421.
+#
+#   6. A REVERSIBLE fast containment lever exists — currently the Cloudflare
+#      WAF/rate-limit rule (criterion 3, James's account). Not "a stop button"
+#      but a reversible one: revoking the Slack bot token also stops the
+#      endpoint, but restoring it needs a re-seal and a deploy, so under a CI
+#      outage it is a one-way door. The test to apply to any lever proposed
+#      later is whether UNDOING it requires CI.
+#
+#      THIS RULE IS DELIBERATELY NOT IN IaC, and "no managed path exists" is
+#      too weak a reason — it reads as a limitation, which invites someone to
+#      fix it. The actual argument, which a future proposal has to defeat:
+#
+#      Codifying it makes the ENABLED state a managed field. Toggle the rule
+#      on in the console during an incident and that is drift, so the next
+#      apply turns your containment back off — the reconciler-undoes-your-
+#      deviation property this lever exists to escape. Avoid that with
+#      IgnoreChanges on the enabled field and you have rebuilt
+#      `accessTokenType` from zitadel-apps-mcp-slack: a security-relevant
+#      setting the stack will never reconcile, reporting clean forever while
+#      the live value is whatever someone last set by hand. That stack needed
+#      a dedicated output just to detect it.
+#
+#      So unmanaged is not the compromise here; it is the only shape with no
+#      reconciler between an operator and the stop button. Aegis's framing.
+#
+#      Narrowly scoped on purpose: this applies to the enabled state of an
+#      EMERGENCY control, not to configuration generally. Nobody contains a
+#      breach by editing a token lifetime, so it does not license unmanaged
+#      config elsewhere.
+#
+#   7. THE EGRESS CiliumNetworkPolicy ACTUALLY PASSES TRAFFIC. IT DOES NOT
+#      TODAY — measured 2026-08-06 (`7711924c`), not suspected.
+#
+#      Cilium's L7 DNS proxy does not answer on this cluster, so with the
+#      policy applied the pod cannot resolve anything — including the two
+#      names the rule explicitly allows. Widening to `matchPattern: "*"`
+#      does not help. Dropping `rules.dns` restores DNS but then `toFQDNs`
+#      matches nothing, because the proxy is what populates the FQDN→IP
+#      mapping, so `:443` is blocked instead. Both ways out are closed.
+#      Tracked as a platform defect in #1428.
+#
+#      IF YOU ARE HERE BECAUSE SLACK CALLS FAIL AND THE CNP LOOKS LIKE THE
+#      CAUSE: it is the cause, and deleting it does fix it. DO NOT DELETE IT.
+#      That policy is the only control that survives compromise of the bot
+#      token — every other one on this endpoint is enforced by our own
+#      process and is void the moment the token leaves the pod. Removing it
+#      leaves an internet-facing pod holding a Slack credential with no
+#      egress bounding at all, and it will look like a successful fix.
+#      Escalate on #1428 instead.
+#
+#      The chart makes this a value rather than a warning: `networkPolicy.
+#      enabled` must be set explicitly to a boolean or the render aborts.
+#      Setting it false is a deliberate, typed decision to run without egress
+#      bounding — which is the honest state today. This criterion is met only
+#      when it can be set true.
+#
+#      Written as a numbered criterion rather than left in the template's
+#      header because criteria 1-8 are the list someone reads before
+#      enabling, and this is the item most likely to be acted on wrongly by
+#      someone who never opens the template. Aegis's ask on #1420.
+#
+#   8. oidc.allowedSubjects — the comma-separated Zitadel subjects (NUMERIC
+#      user ids) permitted to call this endpoint.
+#
+#      Added late, and the omission is the point: this criterion list ran to
+#      seven items across eight commits while the chart already refused to
+#      render without this value. A checklist that is shorter than the set of
+#      things that block the render is worse than no checklist — it reads as
+#      complete, so the reader stops when they reach the end of it.
+#
+#      It is NOT a duplicate of criterion 2. projectId is the audience check,
+#      and the audience check is not an identity check: `aud` is caller-
+#      authored — any authenticated principal can add this project to it with
+#      a scope string — so issuer + audience together admit every account this
+#      Zitadel instance will issue a token to. THIS is the only per-request
+#      identity control. Criterion 2 being satisfied says nothing about this
+#      one.
+#
+#      Nothing outside this repo has to happen first, unlike 1-5: the ids come
+#      from Zitadel and can be read today. That makes it the cheapest of the
+#      eight, which is its own hazard — cheap items get assumed done.
+#
+# The alert for this workload is NOT in the chart — it lives in
+# gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
+# This cluster has no prometheus-operator, so a PrometheusRule would sync
+# Healthy and never load. See the chart's values.yaml for the full note.
+# ══════════════════════════════════════════════════════════════════════════
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mcp-slack
+  namespace: argocd
+  annotations:
+    # Wave 2, same as cloudflared/whoami/ntfy: the Gateway (envoy-gateway) and
+    # the tunnel (cloudflared) must be up before this HTTPRoute can resolve.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # Scoped per-app project, not the shared applications-project — see
+  # gitops/argocd/projects/mcp-slack-project.yaml.
+  project: mcp-slack-project
+  source:
+    # Git-source Helm, NOT the OCI chart pattern tabula uses. Deliberate: an
+    # OCI chart has to be published by CI before it can deploy, which adds a
+    # release step between "merged" and "reconciling" and lets the deployed
+    # chart lag the reviewed one. Rendering the chart straight from the
+    # monorepo keeps git the single source of truth, which is the property
+    # this platform is supposed to have.
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: mcp-slack/deploy/chart
+    helm:
+      values: |
+        # ALL FIVE ARE PLACEHOLDERS. The chart fails to render on any of them
+        # being empty — that is the intended behaviour, not an obstacle to
+        # work around. Fill them from the sources named in the header above.
+        #
+        # THIS BLOCK IS THE COMPLETE SET OF RENDER-BLOCKING VALUES, verified by
+        # rendering the chart rather than by reading it: with all five present
+        # `helm template` succeeds, and removing any one of them fails with that
+        # value's own message. Helm reports only the FIRST missing value, so a
+        # block that is short by two looks exactly like a block that is short by
+        # one — which is how this one carried three entries for eight commits
+        # while the chart required five. If you add a `required` to the chart,
+        # add its placeholder here in the same commit.
+        image:
+          digest: ""            # sha256:... — REQUIRED
+        oidc:
+          projectId: ""         # pulumi stack output projectId — REQUIRED
+          allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
+        slack:
+          channelIds: ""        # comma-separated channel IDs — REQUIRED
+        networkPolicy:
+          # REQUIRED, and a real boolean — a quoted "false" is refused, because
+          # Helm treats any non-empty string as true and that would enable the
+          # very policy this gate exists to keep off. See criterion 7: today the
+          # only honest value is false, and false means NOTHING constrains where
+          # the bot token can be sent.
+          enabled:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mcp-slack
+  # CONTAINMENT NOTE — READ BEFORE REACHING FOR kubectl IN AN INCIDENT.
+  #
+  # selfHeal is on, and this cluster reconciles every 120s with 60s of jitter
+  # (argocd-cm: timeout.reconciliation 120s, timeout.reconciliation.jitter
+  # 60s). So `kubectl scale deploy/mcp-slack --replicas=0` and
+  # `kubectl delete httproute mcp-slack` DO NOT CONTAIN ANYTHING — both are
+  # desired state here, and ArgoCD reverts them within ~2-3 minutes.
+  #
+  # That is the worst shape a containment action can have: it appears to work,
+  # then silently undoes itself on a timer while someone believes the endpoint
+  # is down.
+  #
+  # THERE ARE TWO RECONCILERS, AND SUSPENDING ONLY THIS APPLICATION IS NOT
+  # ENOUGH. `app-of-applications` (gitops/argocd/root-applications.yaml) also
+  # runs selfHeal: true and owns this Application object, so patching this
+  # file's syncPolicy is itself reverted by the root app-of-apps. Verified
+  # against the live root Application, which lists every leaf as a managed
+  # resource.
+  #
+  # To actually stop traffic fast, suspend from the ROOT DOWN, then act:
+  #
+  #   kubectl patch application app-of-applications -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  #   kubectl patch application mcp-slack -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  #   kubectl scale deploy/mcp-slack -n mcp-slack --replicas=0
+  #
+  # Seconds, and it survives, because nothing is reconciling any layer back.
+  # Restore in reverse order. Skipping the first command produces the exact
+  # failure this note exists to prevent, one level up: the suspend appears to
+  # work and is quietly undone.
+  #
+  # The alternative — revert the git commit — is correct and durable but runs
+  # at GitOps speed (commit, CI, sync, rollout), which is minutes and depends
+  # on CI being up. Prefer it for anything non-urgent; it leaves git as the
+  # source of truth rather than a cluster that silently disagrees with it.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

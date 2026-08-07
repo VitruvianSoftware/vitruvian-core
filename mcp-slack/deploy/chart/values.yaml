@@ -1,0 +1,179 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# EVERY security-relevant value here is REQUIRED and has no default. The chart
+# fails to render rather than deploying an endpoint that is reachable but
+# unbounded — the same fail-closed reasoning applied throughout this build:
+# a value we cannot interpret must never resolve to the permissive case.
+
+image:
+  # Digest, never a tag. A tag is a moving reference to an internet-facing
+  # workload; a digest is the thing that was reviewed.
+  repository: ghcr.io/vitruviansoftware/mcp-slack
+  digest: ""            # REQUIRED — sha256:...
+  pullPolicy: IfNotPresent
+
+# Public hostname. Permanent name chosen deliberately rather than "-poc":
+# renaming later costs a DNS/HTTPRoute change plus reconfiguring the client.
+hostname: mcp-slack.ipv1337.dev
+
+tunnel:
+  # Cloudflare Tunnel UUID, from gitops/argocd/platform/cloudflared/configmap.yaml.
+  # Not a secret — it is the CNAME target every tunnel-exposed app in this
+  # cluster points at, and it is already in the repo in plaintext. Defaulted
+  # rather than required because a wrong value here fails loudly (the name does
+  # not resolve) rather than quietly widening anything.
+  id: 1f7b9704-bb66-41f4-966f-5bb722e3c10e
+
+# The MCP endpoint path. The HTTPRoute matches ONLY this prefix, which is what
+# keeps /health off the internet — see templates/httproute.yaml.
+mcpPath: /mcp
+
+oidc:
+  # Zitadel issuer. JWKS is fetched from here; nothing else is trusted.
+  issuer: https://auth.ipv1337.dev
+  # REQUIRED — `pulumi stack output projectId` from zitadel-apps-mcp-slack.
+  # Never hand-typed: a wrong value here means the audience check validates
+  # against the wrong project, which is the boundary, not a setting.
+  projectId: ""
+  # REQUIRED — comma-separated Zitadel subjects (`sub`), the NUMERIC user ids,
+  # not loginnames or email addresses.
+  #
+  # This is the only identity control evaluated per request rather than at
+  # token issuance, and it is what closes the gap the audience check does not:
+  # `aud` is caller-authored (any authenticated user can add any project to it
+  # with a scope string), so issuer + audience alone admit every account this
+  # Zitadel instance will issue a token to.
+  #
+  # How large that set is remains UNCONFIRMED, and the evidence is stated here
+  # rather than the conclusion. What is established: `GET /ui/v2/login/register`
+  # returns 200 and renders a form, i.e. the registration flow is reachable
+  # unauthenticated. Nobody submitted it, deliberately. The definitive
+  # `allowRegister` read needs a management credential we do not hold, and
+  # whether the project requires authorization on authentication is separately
+  # unanswered. Aegis's accuracy nit on #1420.
+  #
+  # The control is right either way — it does not depend on the size of that
+  # set, only on it being larger than the intended callers. Written this way on
+  # purpose: if someone later confirms registration is disabled, a sentence
+  # asserting "self-registration is open" reads as wrong, and a control resting
+  # on a wrong reason is one somebody proposes removing.
+  #
+  # Unset is a render failure, not "allow everyone" — and the server agrees:
+  # `parseSubjects` (mcp-slack/src/config.ts) throws when the list is empty on
+  # the HTTP transport. Guarding it here too means the failure surfaces as a
+  # refused render with this message, rather than as a CrashLoopBackOff that
+  # reads like an application fault.
+  allowedSubjects: ""
+
+slack:
+  # REQUIRED — comma-separated channel IDs. This is the allow-list, and it is
+  # the only thing bounding which conversations a caller can reach. Empty is
+  # not "no restriction", it is a render failure.
+  #
+  # THE MANIFEST NOW CARRIES groups:read AND groups:history, so this list
+  # gates PRIVATE channels too, not only public ones. That changes what a
+  # defect here costs: a wrong or over-broad entry is a private-conversation
+  # disclosure, not a wider-than-intended public read. The value is unchanged
+  # — required, fail-closed — but the reason it is required got stronger.
+  #
+  # Practical consequence for whoever fills this in: the IDs are opaque, and a
+  # typo cannot be caught by reading them. Confirm each ID resolves to the
+  # conversation you intend BEFORE putting it here, rather than after the
+  # endpoint is live.
+  channelIds: ""
+  # Private channel IDs, declared SEPARATELY and deliberately NOT required.
+  #
+  # Since #1421 the server verifies each allow-listed conversation's actual
+  # visibility at startup and refuses a channel whose declared list disagrees
+  # with what Slack reports. The chart previously set only channelIds, which
+  # declares EVERY channel public — so any private channel in the allow-list
+  # made the process exit non-zero, and with replicas: 1 that presents as
+  # CrashLoopBackOff rather than "you put it in the wrong list".
+  #
+  # That matters because the app manifest carries groups:read and
+  # groups:history specifically so private channels are usable. Without this
+  # value the chart cannot deploy the case those scopes exist for.
+  #
+  # NOT `required`, unlike channelIds, and the distinction is the point: an
+  # empty channelIds means "no bound at all", which must never be inferred.
+  # An empty privateChannelIds means "no private channels", which is a real,
+  # safe and common configuration. Requiring it would force operators to type
+  # a value they do not have.
+  #
+  # A channel named in BOTH lists is refused at startup rather than resolved.
+  privateChannelIds: ""
+  # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN and
+  # SLACK_TEAM_ID. No user token is ever mounted on this path.
+  secretName: mcp-slack-tokens
+
+# Hosts this pod may reach. Anything not listed is denied by the
+# CiliumNetworkPolicy. Kept explicit rather than derived from other values so
+# that widening egress is a visible diff.
+egress:
+  slackHost: slack.com
+  idpHost: auth.ipv1337.dev
+
+# REQUIRED, and deliberately left unset so the render aborts until someone
+# decides. The CiliumNetworkPolicy is MEASURED BROKEN on this cluster (Cilium's
+# L7 DNS proxy never answers, so keeping `rules.dns` kills the pod's DNS and
+# dropping it makes `toFQDNs` match nothing — see templates/networkpolicy.yaml).
+#
+# false = deploy WITHOUT egress bounding. Say it plainly: nothing then
+#         constrains where the bot token can be sent.
+# true  = only after the DNS-proxy platform defect is fixed.
+#
+# Must be a real boolean. A quoted "false" is refused rather than interpreted,
+# because Helm treats a non-empty string as true and that would enable the very
+# policy this gate exists to keep off.
+networkPolicy: {}
+
+# Bound on the only writable path in the container (readOnlyRootFilesystem is
+# on). Unbounded, it is charged against node ephemeral storage.
+tmpSizeLimit: 64Mi
+
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }
+
+# Seconds the pod is given to finish in-flight requests. Inert unless the
+# process handles SIGTERM — that half is the application's, and until it lands
+# this only delays SIGKILL rather than draining.
+terminationGracePeriodSeconds: 30
+
+# NO ALERTING VALUES HERE, AND THE OMISSION IS DELIBERATE.
+#
+# The sustained-5xx alert for this workload is real, and it lives in
+# gitops/argocd/platform/prometheus/applicationset.yaml under the `mcp-slack`
+# rule group — not in this chart.
+#
+# This chart originally shipped it as a PrometheusRule, which was wrong: the
+# cluster runs the plain prometheus chart, and there is no prometheus-operator
+# and no `prometheuses.monitoring.coreos.com` CRD. The PrometheusRule CRD does
+# exist (the valkey operator installs it), so the object would have been
+# accepted by the apiserver, synced, and reported Healthy by ArgoCD — while
+# never being loaded by anything. Prometheus reads its rules from
+# `serverFiles.alerting_rules.yml`, full stop.
+#
+# That failure mode is worth naming because it is the one this alert exists to
+# catch, reproduced one level up: a thing that looks like coverage, reports
+# green, and is inert. Verified 2026-08-06 by `kubectl get crd` (no Prometheus
+# CRD) and the deployment list (kube-state-metrics and pushgateway present, no
+# operator).

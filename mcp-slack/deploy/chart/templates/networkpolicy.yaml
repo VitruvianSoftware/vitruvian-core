@@ -1,0 +1,207 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WHY THIS EXISTS
+#
+# Every other control on this endpoint is enforced by our own process: the
+# channel allow-list, the audience check, the tool-list filter. All of them are
+# void the moment the bot token leaves the pod. This policy is the layer that
+# still holds in that case — it bounds where a compromised process can send
+# the credential, not merely what our code chooses to do with it.
+#
+# THIS IS THE CLUSTER'S FIRST CiliumNetworkPolicy AND THE LAST ATTEMPT WAS
+# REVERTED. Read `cecb67b7` and its revert `ec08150b` before changing this.
+# The argocd-image-updater policy denied apiserver egress because it allowed
+# the apiserver's *endpoint* IPs while traffic actually goes to the ClusterIP
+# `10.43.0.1:443`; leader election failed every ~8s until it was reverted. The
+# revert message records the fix: `toEntities: kube-apiserver` is the correct
+# Cilium primitive, because a post-DNAT endpoint allow does not match.
+#
+# mcp-slack is a better first candidate than that controller was, and the
+# reason is specific rather than optimistic: **it never talks to the
+# apiserver.** It reads no Kubernetes objects and watches nothing. The exact
+# failure that caused the revert is not in this workload's path.
+#
+# THIS POLICY DOES NOT WORK ON THIS CLUSTER TODAY. MEASURED, NOT SUSPECTED.
+#
+# Validated 2026-08-06 against the live cluster in a scratch namespace
+# (`atlas-egress-probe`, node `fedora`) with a pod carrying this chart's exact
+# selector labels and `ndots: 1`. Three states, in order:
+#
+#   1. No policy .................. slack.com resolves, :443 OPEN. Baseline good.
+#   2. This policy, as written .... EVERY DNS query times out — including the
+#                                   two names the rule explicitly allows.
+#   3. Same policy with the DNS
+#      rule widened back to
+#      `matchPattern: "*"` ........ still times out.
+#
+# State 3 is the important one: the failure is NOT the narrowing. The version
+# of this file that was reviewed *before* the narrowing was equally dead, so
+# review could not have caught it either way.
+#
+# Root cause is Cilium's L7 DNS proxy, not this policy. Drop the `rules.dns`
+# block entirely — a plain L3/L4 allow to kube-dns:53 — and DNS resolves
+# immediately; but then `toFQDNs` never matches (the proxy is what populates
+# the FQDN→IP mapping) and slack.com:443 is BLOCKED. Hubble shows the query
+# reaching `policy-verdict:L3-L4 EGRESS ALLOWED` and then `to-proxy
+# FORWARDED`, with no answer ever returning. The agent creates the proxy
+# instance (`cilium-dns-egress`, endpoint 1187) without error.
+#
+# So both ways out are closed: keep the DNS rule and the workload cannot
+# resolve; remove it and the workload cannot connect. `toFQDNs` is unusable
+# on this cluster until the DNS proxy is fixed.
+#
+# This is a PLATFORM defect, not an mcp-slack one — the cluster runs ZERO
+# CiliumNetworkPolicies, so the L7 DNS path had never been exercised here.
+# It is very likely the other half of the `ec08150b` revert: that policy also
+# used `toFQDNs`, and its post-mortem attributed the failure entirely to the
+# apiserver ClusterIP. That diagnosis may have been incomplete.
+#
+# Scope of the measurement, stated so nobody over-reads it: one node
+# (`fedora`). A second probe pinned to `james-mbp16` never ran — that node is
+# NotReady. Cilium v1.17.17.
+#
+# DO NOT ENABLE THE mcp-slack APPLICATION WHILE THIS FILE IS IN THE CHART.
+# It renders, lints, validates and syncs Healthy, and it takes the workload
+# off the network. That is the same failure shape as the PrometheusRule and
+# the missing DNSEndpoint, and it is the third instance in this one PR.
+# DO NOT ADD AN EMERGENCY ingressDeny POLICY TO THIS CHART.
+#
+# The incident lever is a hand-created CiliumNetworkPolicy with an
+# `ingressDeny` rule selecting these pods. It works because it is untracked:
+# ArgoCD reverts drift on resources it owns, and a resource that was never in
+# git carries no tracking label, so no Application touches it. Deny beats
+# allow in Cilium regardless of which policy object grants the allow, so it
+# actually cuts traffic — and `kubectl delete ciliumnetworkpolicy` restores
+# service in seconds with no git change, no merge queue and nobody's
+# permission. That reversibility is the whole point.
+#
+# Templating it destroys it, and not merely by adding a reconciler: a deny
+# policy in the chart is PERMANENTLY ON. The lever's entire content is that it
+# does not exist until someone creates it. Gating it behind a value puts
+# ArgoCD between an operator and their stop button — toggle it during an
+# incident and the next reconcile turns your containment back off — and the
+# `IgnoreChanges`-style escape from that is the pattern that produced
+# `accessTokenType` in zitadel-apps-mcp-slack: a security-relevant field the
+# stack never reconciles while reporting clean.
+#
+# Verified on this cluster 2026-08-06, because a lever nobody tested is the
+# thing this comment exists to prevent:
+#   - Cilium is v1.17.17. Deny policies for peers OUTSIDE the cluster were
+#     unreliable before 1.14 (cilium#15198), and our traffic arrives through
+#     the tunnel from outside — so the version is load-bearing, not trivia.
+#   - Untracked resources genuinely survive: kube-root-ca.crt has sat in the
+#     whoami namespace since 2026-06-23 with no argocd tracking label, under
+#     an Application running prune: true + selfHeal: true.
+# Still unexercised: that a deny policy actually cuts tunnel-origin traffic
+# here. The version check addresses the known bug; it is not a live test.
+{{- /*
+  GATED ON AN EXPLICIT VALUE, NOT ON THE COMMENT ABOVE.
+
+  The header explains that this policy is measured to blackhole the workload.
+  A comment someone must read at the right moment is exactly the control class
+  that has now failed three times in this PR (PrometheusRule, missing
+  DNSEndpoint, this), and enabling the app is a one-line rename of
+  mcp-slack.yaml.disabled. So the absence of egress bounding has to be a value
+  someone typed, not a warning someone skipped. Aegis's finding 3 on #1420.
+
+  `required` on a nil value aborts the render, which is the chart's stated
+  convention: a value we cannot interpret must never resolve to the permissive
+  case.
+
+  The kindIs guard is not ceremony. Helm treats a non-empty STRING as truthy,
+  so `networkPolicy.enabled: "false"` — a plausible way to write this in a
+  values file — would sail through `required` and then render the broken
+  policy. That is the same fail-open-on-a-string shape as cfg.GetBool in
+  zitadel-apps-mcp-slack and the ChannelParam array bypass. Refuse it rather
+  than interpret it.
+*/}}
+{{- $npEnabled := required "networkPolicy.enabled must be set explicitly (true/false). The toFQDNs egress policy is MEASURED BROKEN on this cluster — Cilium's L7 DNS proxy does not answer, so keeping the rules.dns block kills the pod's DNS and dropping it makes toFQDNs match nothing. See this file's header. Set false to deploy WITHOUT egress bounding (nothing then constrains where the bot token can be sent), or true only after the DNS-proxy defect is fixed." .Values.networkPolicy.enabled }}
+{{- if kindIs "string" $npEnabled }}
+{{- fail "networkPolicy.enabled must be a boolean, not a string. Helm treats a non-empty string as true, so \"false\" would enable the policy this guard exists to keep off." }}
+{{- end }}
+{{- if $npEnabled }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "mcp-slack.name" . }}-egress
+  labels: {{- include "mcp-slack.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "mcp-slack.selectorLabels" . | nindent 6 }}
+  egress:
+    # DNS first, and it is not optional plumbing. `toFQDNs` matches nothing at
+    # all unless the DNS proxy sees the lookup — so without this rule the
+    # policy below silently denies everything rather than allowing the two
+    # hosts named. That is a fail-open-shaped mistake in the other direction:
+    # it fails closed, but for a reason nobody would guess from reading the
+    # FQDN rules alone.
+    #
+    # The names are enumerated rather than `matchPattern: "*"`, and that is
+    # the difference between this policy meeting its stated purpose and only
+    # appearing to. kube-dns forwards upstream, so an unrestricted resolver
+    # is an unrestricted egress channel: a compromised process encodes the
+    # bot token into DNS labels and it leaves the cluster without ever
+    # opening a connection to a host the TCP rules would deny. Bounding where
+    # the credential can go is the whole reason this file exists — a rule
+    # that bounds TCP and not DNS does not do it.
+    #
+    # Requires the pod's ndots:1 (see deployment.yaml): under the default
+    # ndots:5 every lookup of these two names is preceded by refused
+    # search-domain queries.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchName: {{ .Values.egress.slackHost | quote }}
+              - matchName: {{ .Values.egress.idpHost | quote }}
+
+    # Slack API — the workload's entire purpose.
+    - toFQDNs:
+        - matchName: {{ .Values.egress.slackHost | quote }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+    # Zitadel JWKS. Note this is the only reason the pod reaches the IdP at
+    # all: tokens are verified locally against public keys, so there is no
+    # introspection call and no client credential in this pod.
+    - toFQDNs:
+        - matchName: {{ .Values.egress.idpHost | quote }}
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+  # No apiserver rule, deliberately — see the header. If a future change needs
+  # one, it must use `toEntities: kube-apiserver` rather than endpoint IPs.
+  #
+  # Everything not listed above is denied: Cilium treats the presence of an
+  # egress section as default-deny for this endpoint.
+{{- end }}

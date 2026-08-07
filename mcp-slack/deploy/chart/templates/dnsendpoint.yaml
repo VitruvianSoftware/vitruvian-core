@@ -1,0 +1,106 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WITHOUT THIS THE HOSTNAME DOES NOT RESOLVE AND NOTHING REACHES THE HTTPROUTE.
+#
+# The tunnel's ingress is a single catch-all to the gateway
+# (gitops/argocd/platform/cloudflared/configmap.yaml) — that file's own header
+# says "only hostnames whose DNS points at this tunnel ever reach here." So
+# the public name is created here, by external-dns, and not by anything the
+# HTTPRoute does.
+#
+# It has to be a DNSEndpoint specifically. external-dns runs with
+# `sources: [service, ingress, crd]` and NOT `gateway-httproute` — that source
+# was tried during the Gateway-API migration and rejected because it ignores
+# the annotationFilter and publishes every HTTPRoute hostname as an A record
+# to the gateway LB, colliding with the proxied tunnel CNAMEs external apps
+# need. See gitops/argocd/platform/external-dns/applicationset.yaml. Every
+# other tunnel-exposed app here (whoami, ntfy, buzz) ships one of these; the
+# chart was missing it, which would have deployed cleanly and been unreachable.
+#
+# `sync-enabled: "true"` is kept for consistency with whoami/ntfy/buzz, but it
+# is NOT load-bearing on this cluster today, and do not write it down as if it
+# were. The gitops values set
+# `annotationFilter: "external-dns.alpha.kubernetes.io/sync-enabled in (true)"`
+# — correctly placed, same level as provider/policy/txtOwnerId — yet the
+# RUNNING deployment carries no `--annotation-filter` flag at all, and the
+# external-dns Application reports Synced. ArgoCD therefore renders the chart
+# and gets no flag: the value is inert as spelled for chart external-dns-1.15.0.
+#
+# Consequence: external-dns honours EVERY DNSEndpoint in scope regardless of
+# annotation. Verified 2026-08-06 against the live deployment args.
+#
+# Proxied, and that is what makes the criterion-3 edge rate limit possible at
+# all — a Cloudflare rate limit or WAF rule only applies to proxied traffic.
+#
+# THIS FILE COSTS US A CONTAINMENT LEVER, AND THAT IS A DELIBERATE TRADE.
+#
+# Before it existed, deleting the `mcp-slack.ipv1337.dev` record by hand stayed
+# deleted — the only kill switch not reverted by ArgoCD on a timer, since the
+# in-cluster ones (scale to zero, delete the HTTPRoute) are desired state and
+# come back within ~2-3 minutes. That worked by OMISSION: external-dns runs
+# `policy: sync` over ipv1337.dev with txtOwnerId bluecentre-dev and only
+# manages records it owns, the gateway-httproute source was deliberately
+# removed, and nothing here claimed the name.
+#
+# Confirmed against the live zone rather than from external-dns docs:
+# argocd.lab.ipv1337.dev resolves (10.44.86.210) with NO DNSEndpoint CR — an
+# unowned record surviving under policy: sync. ("Unowned" inferred from the
+# absent DNSEndpoint, not from reading the TXT registry.)
+#
+# Once this template ships, external-dns owns the record and recreates a
+# hand-deletion on the next reconcile. The lever is gone. It is shipped anyway
+# because the alternative is worse: the tunnel ingress is a single catch-all,
+# so with no DNS record the hostname does not resolve and the deployment is
+# unreachable — a chart that syncs Healthy and serves nothing.
+#
+# WHAT REPLACES IT: a Cloudflare-side block. external-dns manages records, not
+# WAF or rate-limit rules, so a block rule on this hostname is outside both
+# ArgoCD's and external-dns's reconcile loops and is the durable
+# outside-the-cluster lever. It shares an owner with criterion 3 (the edge rate
+# limit), which is James's item either way.
+#
+# `cloudflare-proxied: "true"` IS LOAD-BEARING FOR THAT LEVER, not a
+# performance preference. An unproxied record resolves straight to the origin,
+# bypassing Cloudflare's edge entirely — which means no WAF rule and no rate
+# limit can apply, and the replacement lever above silently stops existing.
+# "Set it unproxied to debug something" is therefore a security change, not a
+# debugging convenience. If you need to bypass the edge temporarily, know that
+# you are removing the only durable stop button while you do it.
+#
+# Do not restore the DNS lever by deleting this file — that trades a working
+# endpoint for a kill switch, which is backwards.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: {{ include "mcp-slack.name" . }}-tunnel
+  labels: {{- include "mcp-slack.labels" . | nindent 4 }}
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  endpoints:
+    - dnsName: {{ .Values.hostname | quote }}
+      recordType: CNAME
+      # TTL 1 is Cloudflare's "automatic"; the record is proxied, so the
+      # authoritative TTL is not what clients observe anyway.
+      recordTTL: 1
+      targets:
+        - {{ printf "%s.cfargotunnel.com" (required "tunnel.id is required — the Cloudflare Tunnel UUID from gitops/argocd/platform/cloudflared/configmap.yaml" .Values.tunnel.id) | quote }}

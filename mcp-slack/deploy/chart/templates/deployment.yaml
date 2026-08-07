@@ -1,0 +1,172 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-slack.name" . }}
+  labels: {{- include "mcp-slack.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "mcp-slack.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "mcp-slack.selectorLabels" . | nindent 8 }}
+    spec:
+      # Inert until the process installs a SIGTERM handler — without one Node
+      # exits immediately and this only delays SIGKILL rather than draining.
+      # Set anyway so the grace period exists the moment the handler lands.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      # This pod reads no Kubernetes objects and watches nothing — the same
+      # fact that makes it the safest first CiliumNetworkPolicy candidate.
+      # Without this, kubelet still mounts a projected apiserver credential at
+      # /var/run/secrets/kubernetes.io/serviceaccount on an internet-facing
+      # workload that has no use for it, sitting next to the Slack bot token:
+      # any file read yields both instead of one.
+      automountServiceAccountToken: false
+      # Paired with the narrowed DNS rules in the CiliumNetworkPolicy, and
+      # only correct because of them. Kubernetes defaults to ndots:5, so
+      # `slack.com` (1 dot) is tried against every search domain first —
+      # against a DNS policy that permits two exact names, those attempts are
+      # all refused before the real query is sent. ndots:1 resolves both hosts
+      # absolutely on the first try. Nothing here resolves an in-cluster
+      # Service, so short-name resolution is not a capability being given up.
+      #
+      # Its reason is currently moot and it stays anyway: the DNS rules it
+      # pairs with cannot run — Cilium's L7 DNS proxy never answers on this
+      # cluster (measured, see networkpolicy.yaml). ndots:1 is harmless
+      # without them, and removing it would have to be undone the moment the
+      # proxy is fixed. Do not read its presence as evidence that the policy
+      # works.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-slack
+          image: {{ include "mcp-slack.imageRef" . }}
+          # Wired rather than dropped. It sat in values.yaml reading like
+          # policy and doing nothing — the same "looks like coverage, is
+          # inert" shape as the PrometheusRule, with a smaller blast radius.
+          # Aegis's finding 6 on #1420.
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # DERIVED from terminationGracePeriodSeconds, deliberately — the
+            # process cannot read the pod's grace period (no downward-API
+            # field exposes it), so it cannot validate the ordering itself.
+            # #1433 moved the number out of the server for exactly that
+            # reason; setting it here is the half that makes the invariant
+            # real rather than relocated, because this is the one file where
+            # both numbers are visible together.
+            #
+            # The in-process drain must FINISH BEFORE the kubelet's SIGKILL,
+            # so it gets the grace period minus a 2s margin. Invert that and
+            # the drain is decorative: the kubelet wins the race and kills
+            # in-flight requests the drain existed to protect.
+            - name: SHUTDOWN_GRACE_MS
+              value: {{ include "mcp-slack.shutdownGraceMs" . | quote }}
+            - name: MCP_TRANSPORT
+              value: http
+            - name: PORT
+              value: "3000"
+            - name: OIDC_ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            # Piped from the Pulumi stack output, never hand-typed — a mistyped
+            # project id would silently defeat the per-project audience
+            # isolation that the dedicated Zitadel project exists to provide.
+            - name: OIDC_PROJECT_ID
+              value: {{ include "mcp-slack.projectId" . | quote }}
+            # The per-request identity check. OIDC_PROJECT_ID above is NOT one:
+            # `aud` is caller-authored, so issuer + audience admit every account
+            # this Zitadel instance will issue a token to. This list is what
+            # narrows that to the intended callers, and the server refuses to
+            # start without it — the chart refuses to render, so the failure
+            # names the missing value instead of arriving as CrashLoopBackOff.
+            - name: OIDC_ALLOWED_SUBJECTS
+              value: {{ include "mcp-slack.allowedSubjects" . | quote }}
+            - name: SLACK_CHANNEL_IDS
+              value: {{ include "mcp-slack.channelIds" . | quote }}
+            # Always emitted, even when empty. The deployed manifest should
+            # state "no private channels" explicitly rather than leave an
+            # operator inferring it from an absent variable — the same reason
+            # the visibility split exists at all.
+            - name: SLACK_PRIVATE_CHANNEL_IDS
+              value: {{ .Values.slack.privateChannelIds | quote }}
+            # Bot token and team id only. SLACK_USER_TOKEN is deliberately
+            # absent: the server refuses to start on the HTTP transport if it
+            # is present, so this is enforced on both sides rather than by
+            # this file's omission alone.
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.secretName }}
+                  key: SLACK_BOT_TOKEN
+            - name: SLACK_TEAM_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.secretName }}
+                  key: SLACK_TEAM_ID
+          ports:
+            - name: http
+              containerPort: 3000
+          # Both probes hit /health, and NEITHER touches the IdP. A probe that
+          # reaches JWKS tests Zitadel's availability, not this process — and
+          # would pull every replica out of the Service during an IdP blip,
+          # converting a degraded-but-serving endpoint into a hard outage at
+          # exactly the wrong moment.
+          #
+          # The consequence is deliberate: during a JWKS failure this pod stays
+          # Ready while every MCP call returns 503 (IdpUnavailableError, since
+          # #1418's `44843bab` — it was a 401 before that, which is what made
+          # the alert below inert). Pod state cannot see that,
+          # which is why the sustained-5xx alert is load-bearing rather than a
+          # nice-to-have. It lives in the platform prometheus values
+          # (gitops/argocd/platform/prometheus/applicationset.yaml, group
+          # `mcp-slack`), not in this chart — see values.yaml for why.
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem is on, so anything needing a writable
+            # path gets an explicit emptyDir rather than a relaxed rootfs.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          # sizeLimit is not decoration: readOnlyRootFilesystem makes this the
+          # ONE writable path on an internet-facing pod, and an unbounded
+          # emptyDir is charged against node ephemeral storage — a pod that
+          # fills it evicts itself and can pressure neighbours on the node.
+          emptyDir:
+            sizeLimit: {{ .Values.tmpSizeLimit }}
