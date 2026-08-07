@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.5.0...mcp-slack-v1.6.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** record refused callers instead of only answering them ([#1429](https://github.com/VitruvianSoftware/vitruvian-core/issues/1429)) ([329a49d](https://github.com/VitruvianSoftware/vitruvian-core/commit/329a49d5e4796305bcf80bb1f86e9283a07f757b))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.4.0...mcp-slack-v1.5.0) (2026-08-07)
 
 
