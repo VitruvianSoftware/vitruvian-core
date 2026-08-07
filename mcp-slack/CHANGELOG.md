@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.4.0...mcp-slack-v1.5.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** require an explicit subject allow-list on the HTTP transport ([#1424](https://github.com/VitruvianSoftware/vitruvian-core/issues/1424)) ([600fc26](https://github.com/VitruvianSoftware/vitruvian-core/commit/600fc269d81a426ec2987c39a7d6827d4382ddc7))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.3.0...mcp-slack-v1.4.0) (2026-08-07)
 
 
