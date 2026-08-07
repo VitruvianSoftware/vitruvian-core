@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.1.0...mcp-slack-v1.2.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** Streamable HTTP transport with OAuth and channel allow-list ([#1418](https://github.com/VitruvianSoftware/vitruvian-core/issues/1418)) ([11c8f8d](https://github.com/VitruvianSoftware/vitruvian-core/commit/11c8f8dfc06743b8961c4e639e98fc8231280f4e))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.0.3...mcp-slack-v1.1.0) (2026-07-10)
 
 
