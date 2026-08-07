@@ -40,6 +40,20 @@ sh_binary(
 )
 
 sh_binary(
+    name = "agent-keys-push",
+    srcs = ["sync-env-secrets.sh"],
+    args = ["agent-keys-push"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "agent-keys-pull",
+    srcs = ["sync-env-secrets.sh"],
+    args = ["agent-keys-pull"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "bw-pull",
     srcs = ["sync-env-secrets.sh"],
     args = ["bw-pull"],

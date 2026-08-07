@@ -55,6 +55,17 @@ fi
 STORE="$BASE/secrets"
 BW_ITEM="${BW_ITEM:-vitruvian-core/deploy-env-secrets}"
 ARCHIVE_NAME="deploy-env-secrets.tar.gz"
+# A SECOND store, for the per-agent GitHub App private keys
+# (docs/guides/agent-github-identities.md). Same Bitwarden plumbing, deliberately
+# NOT the same item or archive: these are never-expiring identity keys consumed
+# locally by an agent harness, not deploy-time GitHub Actions secrets, and
+# `apply` must never be able to see them -- it would PUT them into the repo's
+# Actions secrets, which is both wrong and a much larger blast radius. Only the
+# agent-keys-* subcommands repoint STORE, and the script runs exactly one
+# subcommand per invocation, so `apply` cannot reach this directory.
+AGENT_KEY_STORE="$BASE/agent-keys"
+AGENT_KEY_ITEM="${AGENT_KEY_BW_ITEM:-vitruvian-core/agent-app-keys}"
+AGENT_KEY_ARCHIVE="agent-app-keys.tar.gz"
 # A one-time `:unlock` caches the unlocked session here (0600) so an agent/CI can
 # drive bw-push/bw-pull/apply headless until the vault relocks; `:lock` clears it.
 # A persistent vault session on disk is the deliberate tradeoff for unattended
@@ -189,6 +200,33 @@ cmd_lock() {
   echo "✓ cleared the cached session and locked the vault."
 }
 
+# The agent-key pair reuses the bw plumbing above by repointing its three globals
+# and delegating -- no second copy of the item-create / attachment-replace logic,
+# which is the part that is easy to get subtly wrong.
+cmd_agent_keys_push() {
+  STORE="$AGENT_KEY_STORE"
+  BW_ITEM="$AGENT_KEY_ITEM"
+  ARCHIVE_NAME="$AGENT_KEY_ARCHIVE"
+  [ -d "$STORE" ] || die "nothing to push: $STORE does not exist (put <agent>.pem files there)"
+  # A key is worthless-but-dangerous if world-readable; refuse rather than
+  # silently archive a badly-permissioned key.
+  local f mode
+  for f in "$STORE"/*.pem; do
+    [ -e "$f" ] || die "no .pem files in $STORE"
+    mode="$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f")"
+    [ "$mode" = "600" ] || die "$f is mode $mode; expected 600"
+  done
+  cmd_bw_push
+}
+
+cmd_agent_keys_pull() {
+  STORE="$AGENT_KEY_STORE"
+  BW_ITEM="$AGENT_KEY_ITEM"
+  ARCHIVE_NAME="$AGENT_KEY_ARCHIVE"
+  umask 077
+  cmd_bw_pull
+}
+
 # Safely add/update one secret: prompt for the value, then persist. bw-push
 # REPLACES the vault attachment with the whole local store, so we bw-pull FIRST
 # to make the local store complete -- otherwise pushing a partial store would
@@ -219,6 +257,12 @@ case "${1:-}" in
   apply)
     shift
     cmd_apply "$@"
+    ;;
+  agent-keys-push)
+    cmd_agent_keys_push
+    ;;
+  agent-keys-pull)
+    cmd_agent_keys_pull
     ;;
   bw-push)
     shift
