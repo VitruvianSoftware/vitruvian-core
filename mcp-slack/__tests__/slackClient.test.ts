@@ -33,7 +33,11 @@
 // be false in one respect.
 
 import { SlackClient } from "../src/slackClient.js";
-import { ChannelNotAllowedError, UnusableChannelParamError } from "../src/channelAllowlist.js";
+import {
+  ChannelNotAllowedError,
+  ChannelVisibilityMismatchError,
+  UnusableChannelParamError,
+} from "../src/channelAllowlist.js";
 import { resolveConfig } from "../src/config.js";
 import { toolsFor } from "../src/tools.js";
 
@@ -52,8 +56,17 @@ const HTTP_ENV = {
   OIDC_PROJECT_ID: "999",
 };
 
-/** Captures outbound Slack calls instead of making them. */
-function captureFetch() {
+/**
+ * Captures outbound Slack calls instead of making them.
+ *
+ * `is_private` is in the default response because `conversations.info` always
+ * returns it, and the visibility check refuses a response without it. The
+ * first version of this mock returned a bare `channel: {}`, which made every
+ * caller of `conversations.info` fail closed — correct behaviour against an
+ * unfaithful mock. `channel` is the one place a stub that is *thinner* than
+ * the real API produces a wrong test result rather than a passing one.
+ */
+function captureFetch(channel: Record<string, unknown> = { is_private: false }) {
   const calls: { url: string; auth: string | undefined; body?: string }[] = [];
   const spy = jest
     .spyOn(globalThis, "fetch")
@@ -64,7 +77,7 @@ function captureFetch() {
         auth: headers.Authorization,
         body: typeof init?.body === "string" ? init.body : undefined,
       });
-      return new Response(JSON.stringify({ ok: true, channel: {} }), {
+      return new Response(JSON.stringify({ ok: true, channel }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -231,5 +244,122 @@ describe("workspace-scoped tools the allow-list cannot bound", () => {
     } finally {
       capture.restore();
     }
+  });
+});
+
+// Startup verification: the one check that runs before the listener binds.
+//
+// This is the layer that catches the mistake the allow-list structurally
+// cannot — a private channel ID pasted into SLACK_CHANNEL_IDS is on the list,
+// so the guard admits it. Only Slack can say the declaration was wrong.
+describe("verifyAllowlistVisibility", () => {
+  let capture: ReturnType<typeof captureFetch> | undefined;
+  afterEach(() => capture?.restore());
+
+  const PRIVATE_ENV = {
+    ...HTTP_ENV,
+    SLACK_CHANNEL_IDS: "C_PUBLIC",
+    SLACK_PRIVATE_CHANNEL_IDS: "G_PRIVATE",
+  };
+
+  it("passes when every channel is what configuration claims", async () => {
+    // conversations.info is called per channel, and the declaration decides
+    // what a passing answer looks like for each.
+    const spy = jest
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: RequestInfo | URL) => {
+        const isPrivate = String(input).includes("G_PRIVATE");
+        return new Response(
+          JSON.stringify({ ok: true, channel: { is_private: isPrivate } }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      });
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).resolves.toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it("refuses to start when a private channel was declared public", async () => {
+    // The whole reason the two lists exist. Every channel answers is_private:
+    // true, so C_PUBLIC — declared public — is a contradiction.
+    capture = captureFetch({ is_private: true });
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(ChannelVisibilityMismatchError);
+  });
+
+  it("refuses to start when the bot cannot see an allow-listed channel", async () => {
+    // An entry that silently does nothing is worth failing on: the reasons
+    // (bot not invited, wrong ID, wrong workspace) are all deploy-time facts.
+    const spy = jest.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ ok: false, error: "channel_not_found" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+    );
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(/channel_not_found/);
+    // The remedy is in the message because this is read at deploy time. The
+    // intuitive order — add the ID, deploy, then invite the bot — produces
+    // exactly this error, and without the remedy it reads as a broken deploy.
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(/Invite the bot to the channel first/);
+    spy.mockRestore();
+  });
+
+  it("distinguishes Slack being unreachable from Slack disagreeing", async () => {
+    // Both exit non-zero, so the exit code cannot tell them apart — the
+    // message has to. One is fixed by editing SLACK_PRIVATE_CHANNEL_IDS; the
+    // other is fixed by waiting. Same split the auth path draws between an IdP
+    // outage and a bad token.
+    const spy = jest.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+    ).rejects.toThrow(/availability failure, not a configuration error/);
+    spy.mockRestore();
+  });
+
+  it("checks nothing on stdio, which declares no visibility", async () => {
+    // The unrestricted guard has an empty allowed list, so the loop does not
+    // run at all — no Slack calls, no failure, no behaviour change for the
+    // path every existing user is on.
+    capture = captureFetch({ is_private: true });
+    await expect(
+      clientFor(STDIO_ENV).verifyAllowlistVisibility()
+    ).resolves.toBeUndefined();
+    expect(capture.calls).toHaveLength(0);
+  });
+});
+
+describe("request-time visibility checks are free ones only", () => {
+  let capture: ReturnType<typeof captureFetch>;
+  afterEach(() => capture.restore());
+
+  it("catches a mismatch on getChannelInfo without a second call", async () => {
+    capture = captureFetch({ is_private: true });
+    await expect(
+      clientFor(HTTP_ENV).getChannelInfo("C_ALLOWED")
+    ).rejects.toThrow(ChannelVisibilityMismatchError);
+    expect(capture.calls).toHaveLength(1);
+  });
+
+  it("does not add a round trip to history or replies", async () => {
+    // Deliberate: conversations.history does not return is_private, so
+    // checking there would mean an extra conversations.info on the hot path to
+    // re-answer what startup already settled. One call in, one call out.
+    capture = captureFetch({ is_private: true });
+    const client = clientFor(HTTP_ENV);
+    await client.getChannelHistory("C_ALLOWED");
+    await client.getThreadReplies("C_ALLOWED", "1234.5678");
+    expect(capture.calls).toHaveLength(2);
+    expect(capture.calls.every((c) => !c.url.includes("conversations.info"))).toBe(
+      true
+    );
   });
 });

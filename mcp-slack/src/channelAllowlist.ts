@@ -53,6 +53,61 @@ export class ChannelNotAllowedError extends Error {
   }
 }
 
+/** Raised when a channel is declared both public and private. */
+export class ConflictingChannelDeclarationError extends Error {
+  constructor(ids: string[]) {
+    super(
+      `Channel(s) ${ids.join(", ")} appear in both SLACK_CHANNEL_IDS and ` +
+        `SLACK_PRIVATE_CHANNEL_IDS. A channel is one or the other; listing it ` +
+        `twice means one of the two declarations is wrong, and guessing which ` +
+        `would defeat the point of declaring visibility separately.`
+    );
+    this.name = "ConflictingChannelDeclarationError";
+  }
+}
+
+/**
+ * Raised when Slack disagrees with how a channel was declared.
+ *
+ * The case this exists for: an operator means to add a public channel and
+ * pastes a private one. With a single allow-list that is undetectable — the ID
+ * is on the list, so it is admitted. Declaring visibility separately turns it
+ * into a contradiction, and a private conversation reached through a line that
+ * claims to be public is exactly the mistake worth refusing.
+ */
+export class ChannelVisibilityMismatchError extends Error {
+  constructor(channelId: string, declared: ChannelVisibility) {
+    super(
+      `Channel ${channelId} is declared ${declared} in configuration, but ` +
+        `Slack reports it as ${declared === "public" ? "private" : "public"}. ` +
+        `Refusing rather than resolving the disagreement — if it is genuinely ` +
+        `wanted, move it to the other list deliberately.`
+    );
+    this.name = "ChannelVisibilityMismatchError";
+  }
+}
+
+/**
+ * Raised when a channel's visibility could not be established at all.
+ *
+ * Distinct from a mismatch on purpose. A mismatch means Slack answered and
+ * disagreed; this means Slack did not answer the question, so there is nothing
+ * to compare the declaration against. Treating "unverified" as "verified fine"
+ * is the failure this whole module exists to avoid, and it would be invisible:
+ * a missing field reads exactly like a passing check.
+ */
+export class ChannelVisibilityUnverifiableError extends Error {
+  constructor(channelId: string, received: unknown) {
+    super(
+      `Cannot determine whether channel ${channelId} is private: Slack's ` +
+        `response carried is_private as ${Object.prototype.toString.call(received)} ` +
+        `rather than a boolean. Refusing rather than assuming the declaration ` +
+        `was correct.`
+    );
+    this.name = "ChannelVisibilityUnverifiableError";
+  }
+}
+
 /** Raised at startup when the HTTP transport has no usable allow-list. */
 export class MissingAllowlistError extends Error {
   constructor() {
@@ -139,9 +194,39 @@ export function assertParamsAllowed(
   guard.assertAllowed(param.channelId);
 }
 
+/** How a channel was declared, which is what makes a mismatch detectable. */
+export type ChannelVisibility = "public" | "private";
+
 export interface ChannelGuard {
   /** Channel IDs this server may touch, in configuration order. */
   readonly allowed: readonly string[];
+  /** Only those declared public. */
+  readonly publicChannels: readonly string[];
+  /** Only those declared private — granted deliberately, per channel. */
+  readonly privateChannels: readonly string[];
+  /**
+   * How the operator declared this channel, or undefined if not allowed.
+   *
+   * The point of keeping the two lists apart: with one list, "is it allowed"
+   * and "is it explicitly listed as private" are the same question, so a check
+   * against Slack's own `is_private` can only ever agree with the guard. Two
+   * lists make "declared public, Slack says private" a contradiction the code
+   * can see.
+   */
+  declaredVisibility(channelId: string): ChannelVisibility | undefined;
+  /**
+   * Checks Slack's own `is_private` against how the channel was declared.
+   *
+   * Call this wherever `is_private` is *already* in hand — `conversations.info`
+   * returns it, so `listChannels` and `getChannelInfo` get the check for free.
+   * It deliberately does not fetch: making `history` and `replies` verify would
+   * add a round trip to the hot path to re-answer a question startup already
+   * settled.
+   *
+   * A no-op unless the guard was built with `enforceVisibility`, which is the
+   * HTTP transport only. See {@link createChannelGuard}.
+   */
+  assertVisibilityMatches(channelId: string, isPrivate: unknown): void;
   /** Throws {@link ChannelNotAllowedError} unless `channelId` is allowed. */
   assertAllowed(channelId: string): void;
   /** Non-throwing form, for filtering rather than rejecting. */
@@ -174,28 +259,91 @@ export function parseChannelIds(raw: string | undefined): string[] {
  * `required` is true for HTTP and false for stdio. When not required and no IDs
  * are configured, the returned guard allows everything — that is the existing
  * local behaviour and changing it would break every current stdio user.
+ *
+ * `enforceVisibility` is also HTTP-only, and is a *separate* flag rather than a
+ * second reading of `required` because it answers a different question. A stdio
+ * user may set `SLACK_CHANNEL_IDS` today to filter what gets listed; they have
+ * never been asked to say which of those channels are private, so every one of
+ * them would read as declared-public and any private channel among them would
+ * start failing. `required` asks "may this list be empty"; `enforceVisibility`
+ * asks "may Slack contradict the declaration". They coincide today only because
+ * both happen to be properties of the HTTP transport.
  */
 export function createChannelGuard(
   raw: string | undefined,
-  { required }: { required: boolean }
+  {
+    required,
+    enforceVisibility = false,
+  }: { required: boolean; enforceVisibility?: boolean },
+  rawPrivate?: string
 ): ChannelGuard {
-  const allowed = parseChannelIds(raw);
+  const publicChannels = parseChannelIds(raw);
+  const privateChannels = parseChannelIds(rawPrivate);
+  const allowed = [...publicChannels, ...privateChannels];
+
+  const overlap = publicChannels.filter((id) => privateChannels.includes(id));
+  if (overlap.length > 0) {
+    throw new ConflictingChannelDeclarationError(overlap);
+  }
 
   if (allowed.length === 0) {
     if (required) throw new MissingAllowlistError();
     return {
       allowed: [],
+      publicChannels: [],
+      privateChannels: [],
+      declaredVisibility: () => undefined,
+      // Nothing was declared, so there is nothing for Slack to contradict.
+      // This is the same reason isAllowed returns true above, and it is why
+      // assertVisibilityMatches cannot simply key off declaredVisibility being
+      // undefined: on this guard it is undefined for every channel in the
+      // workspace, so that reading would refuse every stdio call.
+      assertVisibilityMatches: () => {},
       assertAllowed: () => {},
       isAllowed: () => true,
     };
   }
 
-  const lookup = new Set(allowed);
+  const publicSet = new Set(publicChannels);
+  const privateSet = new Set(privateChannels);
+  const declaredVisibility = (
+    channelId: string
+  ): ChannelVisibility | undefined =>
+    publicSet.has(channelId)
+      ? "public"
+      : privateSet.has(channelId)
+        ? "private"
+        : undefined;
+
+  const checkVisibility = (channelId: string, isPrivate: unknown): void => {
+    const declared = declaredVisibility(channelId);
+    // Fail closed on its own terms rather than leaning on assertAllowed having
+    // already refused this channel somewhere upstream. That would be true
+    // today and silently false the first time this is called from a path that
+    // reaches Slack by some other route — and the symptom would be an
+    // undeclared channel passing a check named "assert".
+    if (declared === undefined) throw new ChannelNotAllowedError(channelId);
+    if (typeof isPrivate !== "boolean") {
+      throw new ChannelVisibilityUnverifiableError(channelId, isPrivate);
+    }
+    if (declared !== (isPrivate ? "private" : "public")) {
+      throw new ChannelVisibilityMismatchError(channelId, declared);
+    }
+  };
+
   return {
     allowed,
-    isAllowed: (channelId: string) => lookup.has(channelId),
+    publicChannels,
+    privateChannels,
+    assertVisibilityMatches: enforceVisibility ? checkVisibility : () => {},
+    declaredVisibility,
+    isAllowed: (channelId: string) =>
+      publicSet.has(channelId) || privateSet.has(channelId),
     assertAllowed: (channelId: string) => {
-      if (!lookup.has(channelId)) throw new ChannelNotAllowedError(channelId);
+      if (!publicSet.has(channelId) && !privateSet.has(channelId)) {
+        throw new ChannelNotAllowedError(channelId);
+      }
     },
   };
 }
+

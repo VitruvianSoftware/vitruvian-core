@@ -261,6 +261,23 @@ async function main() {
   if (config.transport === "http") {
     const { startHttpTransport } = await import("./httpTransport.js");
     const { fullScopeString } = await import("./auth.js");
+
+    // Deliberately before the listener binds. The allow-list is the only thing
+    // standing between a public endpoint and every conversation this bot can
+    // reach, and a typo'd private channel ID pasted into SLACK_CHANNEL_IDS is
+    // the mistake it cannot catch on its own — the ID is on the list, so it is
+    // admitted. Refusing to start is the whole point: a server that came up and
+    // logged a warning would already be serving.
+    try {
+      await client.verifyAllowlistVisibility();
+    } catch (error) {
+      console.error(
+        `Allow-list verification failed: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exit(1);
+    }
+
     await startHttpTransport(server, config.http!);
     process.stderr.write(
       `mcp-slack server v2.0.0 running on http :${config.http!.port} ` +

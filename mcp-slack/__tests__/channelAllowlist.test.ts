@@ -22,6 +22,9 @@
 
 import {
   ChannelNotAllowedError,
+  ChannelVisibilityMismatchError,
+  ChannelVisibilityUnverifiableError,
+  ConflictingChannelDeclarationError,
   MissingAllowlistError,
   UnusableChannelParamError,
   assertParamsAllowed,
@@ -222,5 +225,124 @@ describe("assertParamsAllowed", () => {
     expect(() => assertParamsAllowed(guard, { channel: "" })).toThrow(
       UnusableChannelParamError
     );
+  });
+});
+
+// Visibility is declared per channel rather than inferred, because with a
+// single list "is it allowed" and "is it listed as private" are the same
+// question — so a check against Slack's own is_private could only ever agree
+// with the guard. Two lists make disagreement expressible.
+describe("declared visibility", () => {
+  const guard = createChannelGuard("C_PUBLIC", { required: true }, "G_PRIVATE");
+
+  it("admits channels from either list", () => {
+    expect(guard.isAllowed("C_PUBLIC")).toBe(true);
+    expect(guard.isAllowed("G_PRIVATE")).toBe(true);
+    expect(guard.isAllowed("C_UNLISTED")).toBe(false);
+  });
+
+  it("reports how each channel was declared", () => {
+    expect(guard.declaredVisibility("C_PUBLIC")).toBe("public");
+    expect(guard.declaredVisibility("G_PRIVATE")).toBe("private");
+    expect(guard.declaredVisibility("C_UNLISTED")).toBeUndefined();
+  });
+
+  it("keeps the two lists separately readable for the deploy diff", () => {
+    // The point of the split is legibility in review: adding an id to the
+    // private list reads as granting a public endpoint access to a private
+    // conversation, which one undifferentiated list does not convey.
+    expect(guard.publicChannels).toEqual(["C_PUBLIC"]);
+    expect(guard.privateChannels).toEqual(["G_PRIVATE"]);
+  });
+
+  it("refuses a channel declared both public and private", () => {
+    expect(() =>
+      createChannelGuard("C_ONE,C_BOTH", { required: true }, "C_BOTH")
+    ).toThrow(ConflictingChannelDeclarationError);
+  });
+
+  it("still requires at least one channel from either list on http", () => {
+    expect(() => createChannelGuard(undefined, { required: true }, "")).toThrow(
+      MissingAllowlistError
+    );
+    // A private-only allow-list is legitimate.
+    expect(() =>
+      createChannelGuard(undefined, { required: true }, "G_ONLY")
+    ).not.toThrow();
+  });
+});
+
+// The check the split exists to make possible: an operator who means to add a
+// public channel and pastes a private one is undetectable with one list, and a
+// contradiction with two.
+describe("assertVisibilityMatches", () => {
+  const http = createChannelGuard(
+    "C_PUBLIC",
+    { required: true, enforceVisibility: true },
+    "G_PRIVATE"
+  );
+
+  it("passes when Slack agrees with the declaration", () => {
+    expect(() => http.assertVisibilityMatches("C_PUBLIC", false)).not.toThrow();
+    expect(() => http.assertVisibilityMatches("G_PRIVATE", true)).not.toThrow();
+  });
+
+  it("refuses a channel declared public that Slack reports private", () => {
+    expect(() => http.assertVisibilityMatches("C_PUBLIC", true)).toThrow(
+      ChannelVisibilityMismatchError
+    );
+  });
+
+  it("refuses a channel declared private that Slack reports public", () => {
+    // The less obvious direction, and still a contradiction: the operator
+    // believed they were granting private-channel access deliberately, and one
+    // of the two beliefs is wrong.
+    expect(() => http.assertVisibilityMatches("G_PRIVATE", false)).toThrow(
+      ChannelVisibilityMismatchError
+    );
+  });
+
+  // Aegis's requirement, and the reason it is its own test: it would pass by
+  // accident today because every caller runs after assertAllowed. That makes
+  // the behaviour a property of the call order rather than of this function,
+  // and call orders change.
+  it("fails closed on an undeclared channel without relying on assertAllowed", () => {
+    expect(() => http.assertVisibilityMatches("C_UNLISTED", false)).toThrow(
+      ChannelNotAllowedError
+    );
+    // Same input, no allow-list check anywhere near it — the refusal has to
+    // come from this function alone.
+    expect(() => http.assertVisibilityMatches("C_UNLISTED", true)).toThrow(
+      ChannelNotAllowedError
+    );
+  });
+
+  it("refuses rather than assuming when is_private is not a boolean", () => {
+    // A missing field reads exactly like a passing check if it is coerced.
+    expect(() =>
+      http.assertVisibilityMatches("C_PUBLIC", undefined)
+    ).toThrow(ChannelVisibilityUnverifiableError);
+    expect(() => http.assertVisibilityMatches("C_PUBLIC", "false")).toThrow(
+      ChannelVisibilityUnverifiableError
+    );
+  });
+
+  it("is a no-op on stdio, which never declared visibility", () => {
+    // Two stdio shapes. Unrestricted is the common one; the second matters
+    // more, because a stdio user who set SLACK_CHANNEL_IDS to filter listings
+    // has a fully-populated guard and would otherwise start failing on any
+    // private channel in it after an upgrade.
+    const unrestricted = createChannelGuard(undefined, { required: false });
+    expect(() =>
+      unrestricted.assertVisibilityMatches("C_ANYTHING", true)
+    ).not.toThrow();
+
+    const filtered = createChannelGuard("C_PUBLIC", { required: false });
+    expect(() =>
+      filtered.assertVisibilityMatches("C_PUBLIC", true)
+    ).not.toThrow();
+    expect(() =>
+      filtered.assertVisibilityMatches("C_UNLISTED", false)
+    ).not.toThrow();
   });
 });

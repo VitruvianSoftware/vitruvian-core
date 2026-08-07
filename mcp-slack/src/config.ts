@@ -111,6 +111,13 @@ function parsePort(raw: string | undefined): number {
  * Pure in `env` so the failure modes are testable without spawning a process —
  * these branches decide whether a public endpoint is safe to expose, which is
  * not something to leave to a manual smoke test.
+ *
+ * Called exactly once, at startup. There is deliberately no watch, no SIGHUP
+ * handler and no reload path anywhere in this package, and that absence is
+ * load-bearing rather than incidental: the guard is captured once and cannot
+ * change under an in-flight request. Config hot-reload is the kind of
+ * convenience that arrives looking like an improvement and would put a race
+ * inside the only control standing in front of private channels.
  */
 export function resolveConfig(env: Env): ServerConfig {
   const transport = parseTransportMode(env.MCP_TRANSPORT);
@@ -128,9 +135,14 @@ export function resolveConfig(env: Env): ServerConfig {
     return {
       transport,
       slack: { botToken, userToken, teamId },
-      channelGuard: createChannelGuard(env.SLACK_CHANNEL_IDS, {
-        required: false,
-      }),
+      channelGuard: createChannelGuard(
+        env.SLACK_CHANNEL_IDS,
+        // Not enforced here: stdio users who set SLACK_CHANNEL_IDS were never
+        // asked to declare visibility, so every channel would read as public
+        // and any private one among them would begin failing on an upgrade.
+        { required: false, enforceVisibility: false },
+        env.SLACK_PRIVATE_CHANNEL_IDS
+      ),
       writeToken: "user",
     };
   }
@@ -151,7 +163,11 @@ export function resolveConfig(env: Env): ServerConfig {
   return {
     transport,
     slack: { botToken, teamId },
-    channelGuard: createChannelGuard(env.SLACK_CHANNEL_IDS, { required: true }),
+    channelGuard: createChannelGuard(
+      env.SLACK_CHANNEL_IDS,
+      { required: true, enforceVisibility: true },
+      env.SLACK_PRIVATE_CHANNEL_IDS
+    ),
     // Writes go out as the app. This is only reachable because the Slack app
     // manifest grants the bot chat:write; without it Slack rejects the call.
     writeToken: "bot",
