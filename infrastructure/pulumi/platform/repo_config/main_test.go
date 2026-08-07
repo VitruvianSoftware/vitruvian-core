@@ -109,3 +109,67 @@ func TestParseIntConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestParseIntConfigRequiredApprovals pins the reason intConfig exists rather
+// than cfg.GetInt: for requiredApprovals, 0 is the PERMISSIVE value, so a
+// typo must be a hard error and never a silent "no approvals required".
+func TestParseIntConfigRequiredApprovals(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		raw     string
+		want    int
+		wantErr bool
+	}{
+		{name: "unset falls back to the permissive default", raw: "", want: 0},
+		{name: "one approval", raw: "1", want: 1},
+		{name: "trailing space is an error, not zero", raw: "1 ", wantErr: true},
+		{name: "word is an error, not zero", raw: "one", wantErr: true},
+		{name: "empty-ish whitespace is an error, not zero", raw: " ", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseIntConfig("requiredApprovals", tc.raw, 0)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseIntConfig(%q) = %d, nil; want an error -- a bad value must not read as 'no approvals required'", tc.raw, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseIntConfig(%q) returned unexpected error: %v", tc.raw, err)
+			}
+			if got != tc.want {
+				t.Fatalf("parseIntConfig(%q) = %d; want %d", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestApprovalsFloorWithCodeOwnerReview pins the interaction between the two
+// now-independent knobs. GitHub rejects require_code_owner_review with an
+// approval count of 0, so codeOwnerReview must raise a 0 count to 1 -- and must
+// NOT lower a higher count that was set deliberately.
+func TestApprovalsFloorWithCodeOwnerReview(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name            string
+		required        int
+		codeOwnerReview bool
+		want            int
+	}{
+		{name: "both off is the current production state", required: 0, codeOwnerReview: false, want: 0},
+		{name: "app approvals without code owners is the agent-identity case", required: 1, codeOwnerReview: false, want: 1},
+		{name: "code owner review floors a zero count to one", required: 0, codeOwnerReview: true, want: 1},
+		{name: "code owner review does not lower a deliberate higher count", required: 2, codeOwnerReview: true, want: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := resolveApprovals(tc.required, tc.codeOwnerReview); got != tc.want {
+				t.Fatalf("resolveApprovals(%d, %t) = %d; want %d", tc.required, tc.codeOwnerReview, got, tc.want)
+			}
+		})
+	}
+}
