@@ -35,6 +35,7 @@ import {
 import { Agent, request } from "node:http";
 
 import { headerSafe, startHttpTransport } from "../src/httpTransport.js";
+import { SubjectNotAllowedError } from "../src/auth.js";
 
 const CONFIG = {
   port: 0, // ephemeral; the OS picks a free one
@@ -248,5 +249,68 @@ describe("close() bounds the wait on an active request", () => {
     expect(elapsedMs).toBeLessThan(5_000);
     await inFlight;
     agent.destroy();
+  });
+});
+
+// Detection without attribution was the gap: the presented sub travels to the
+// caller in the body and WWW-Authenticate, and we kept none of it. The 403
+// alert's own remediation step — "check the rejection logs" — named something
+// that could not be done.
+describe("refusals are recorded, not only answered", () => {
+  function captureStderr() {
+    const lines: string[] = [];
+    const spy = jest
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: unknown) => {
+        lines.push(String(chunk));
+        return true;
+      });
+    return { lines, restore: () => spy.mockRestore() };
+  }
+
+  it("logs the presented subject when a caller is refused", async () => {
+    const err = captureStderr();
+    try {
+      await withServer(
+        verifierThat(() => {
+          throw new SubjectNotAllowedError("379361013981513322");
+        }),
+        async (baseUrl) => {
+          const res = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: { Authorization: "Bearer t", "Content-Type": "application/json" },
+            body: "{}",
+          });
+          expect(res.status).toBe(403);
+        }
+      );
+    } finally {
+      err.restore();
+    }
+    const refusal = err.lines.find((l) => l.includes("refused"));
+    expect(refusal).toBeDefined();
+    // The whole point: the identity is on OUR side of the exchange.
+    expect(refusal).toContain("sub=379361013981513322");
+  });
+
+  it("does not log 401s, which a public endpoint gets by the thousand", async () => {
+    // Scanners produce these. Burying a 403 — which requires a validly-signed
+    // token audienced for our project — under that noise would defeat the
+    // reason for logging at all.
+    const err = captureStderr();
+    try {
+      await withServer(
+        verifierThat(() => {
+          throw new MissingTokenError();
+        }),
+        async (baseUrl) => {
+          const res = await fetch(`${baseUrl}/mcp`, { method: "POST", body: "{}" });
+          expect(res.status).toBe(401);
+        }
+      );
+    } finally {
+      err.restore();
+    }
+    expect(err.lines.filter((l) => l.includes("refused"))).toEqual([]);
   });
 });

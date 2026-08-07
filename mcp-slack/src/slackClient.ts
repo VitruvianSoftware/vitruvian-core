@@ -35,6 +35,26 @@ import {
 } from "./channelAllowlist.js";
 import type { SlackCredentials, WriteTokenPreference } from "./config.js";
 
+/**
+ * The user token was required by a call that reached the HTTP transport.
+ *
+ * Its own type rather than a bare Error so callers can tell it apart from a
+ * network failure. It is a configuration/transport fault, and the startup
+ * verifier would otherwise wrap it in a message asserting Slack was
+ * unreachable — the exact inversion auth.ts stopped making when it began
+ * discriminating on whether the library reached a verdict instead of assuming
+ * a cause.
+ */
+export class UserTokenUnavailableError extends Error {
+  constructor(method: string) {
+    super(
+      `Slack method ${method} requires the user token, which is not ` +
+        `available on this transport.`
+    );
+    this.name = "UserTokenUnavailableError";
+  }
+}
+
 export class SlackClient {
   private botHeaders: Record<string, string>;
   private userHeaders: Record<string, string> | undefined;
@@ -104,10 +124,7 @@ export class SlackClient {
       // Reached only if a user-token tool is invoked on the HTTP transport.
       // Those tools are withheld from the HTTP tool list, so this is a
       // defence-in-depth backstop, not an expected path.
-      throw new Error(
-        `Slack method ${method} requires the user token, which is not ` +
-          `available on this transport.`
-      );
+      throw new UserTokenUnavailableError(method);
     }
 
     if (httpMethod === "GET") {
@@ -209,6 +226,14 @@ export class SlackClient {
           channel: channelId,
         })) as typeof data;
       } catch (error) {
+        // Not everything out of api() is an availability failure. The
+        // user-token backstop is a configuration fault, and claiming it was an
+        // outage would send the operator to the wrong system — the same
+        // assume-the-cause mistake this catch exists to avoid making about
+        // token validity. Unreachable from here today, since this calls with
+        // the bot token and SLACK_BOT_TOKEN is required; the guarantee lives
+        // in another file from the claim, which is what makes it worth typing.
+        if (error instanceof UserTokenUnavailableError) throw error;
         // Slack never answered, which is a different failure from Slack
         // answering and disagreeing — the same distinction the auth path draws
         // between an IdP outage and a bad token. Both exit non-zero, because
@@ -216,11 +241,13 @@ export class SlackClient {
         // but only one of them is fixed by editing configuration. Without this
         // the operator gets "fetch failed" and no idea which system to look at.
         throw new Error(
-          `Could not reach Slack to verify allow-listed channel ${channelId}: ` +
+          `Could not verify allow-listed channel ${channelId} — Slack did not ` +
+            `return a usable answer: ` +
             `${error instanceof Error ? error.message : String(error)}. ` +
-            `This is a Slack or network availability failure, not a ` +
-            `configuration error — the allow-list has not been judged either ` +
-            `way. Startup fails closed rather than serving unverified channels.`
+            `The allow-list has not been judged either way, so startup fails ` +
+            `closed rather than serving unverified channels. Usually this is ` +
+            `Slack or network availability; the underlying message above is ` +
+            `the thing to read, not this sentence.`
         );
       }
       if (!data.ok || !data.channel) {

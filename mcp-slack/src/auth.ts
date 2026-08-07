@@ -50,6 +50,15 @@ export abstract class AuthError extends Error {
   abstract readonly status: number;
   /** Machine-readable code, surfaced in the WWW-Authenticate error field. */
   abstract readonly code: string;
+  /**
+   * Identity the caller presented, when the failure got far enough to know it.
+   *
+   * Exists so the boundary can record *who* was refused without importing each
+   * subclass to test for it. Undefined on the failures that happen before a
+   * verified identity exists — no token, opaque token, bad signature — where
+   * there is nothing trustworthy to record.
+   */
+  readonly presented?: string;
 }
 
 /** No credentials presented at all. */
@@ -176,6 +185,7 @@ export class SubjectNotAllowedError extends AuthError {
   readonly status = 403;
   readonly code = "insufficient_scope";
   readonly subject: string;
+  readonly presented: string;
 
   constructor(subject: string) {
     super(
@@ -185,6 +195,7 @@ export class SubjectNotAllowedError extends AuthError {
     );
     this.name = "SubjectNotAllowedError";
     this.subject = subject;
+    this.presented = subject;
   }
 }
 
