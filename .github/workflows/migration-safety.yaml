@@ -35,8 +35,12 @@ on:
   # reports -- on a PR outside its paths, wedging that PR's mergeability. The
   # WORK is gated instead by the script's own changed-files diff (which is empty,
   # and thus a fast no-op, for PRs that touch no migrations).
+  #
+  # Also NO `branches:` filter on pull_request, for the same reporting
+  # requirement: that filters on the PR's BASE branch, and a stacked PR's base
+  # isn't main -- so this required check silently never ran on one (see
+  # ci.yaml's `on:` block for the full incident).
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   merge_group:

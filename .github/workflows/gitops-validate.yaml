@@ -37,8 +37,12 @@ on:
   # unconditionally is both correct and cheap. The required-check context is the
   # job name `gitops-validate`, wired into the ruleset in
   # infrastructure/pulumi/platform/repo_config/main.go (guarded by //tools/conformance:check).
+  #
+  # Also NO `branches:` filter on pull_request, for the same reporting
+  # requirement: that filters on the PR's BASE branch, and a stacked PR's base
+  # isn't main -- so this required check silently never ran on one (see
+  # ci.yaml's `on:` block for the full incident).
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   merge_group:

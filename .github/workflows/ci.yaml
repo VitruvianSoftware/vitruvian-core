@@ -23,8 +23,15 @@ name: CI
 on:
   push:
     branches: [main]
+  # NO `branches:` filter here: this job backs several required merge-queue
+  # checks (build-test, build-macos, license-check, go-lint, go-test-infra,
+  # go-race, validate-butane). `pull_request: branches: [main]` filters on the
+  # PR's BASE branch, and a stacked PR (opened against another open PR's
+  # branch, not main) has a non-main base -- so a base-branch filter here
+  # meant these required checks silently never ran on any stacked PR, which
+  # then merges anyway via `bypass_actors: RepositoryRole:always`. Matches
+  # tidy-check.yaml / conformance-check.yaml, which never had this filter.
   pull_request:
-    branches: [main]
   # Merge queue (#83): GitHub runs CI on the would-be-merged commit before it
   # fast-forwards main. Builds/tests the AFFECTED targets vs the queue base
   # (same engine + fail-safe //... fallbacks as presubmit); the scheduled
