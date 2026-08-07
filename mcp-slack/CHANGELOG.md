@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.6.0...mcp-slack-v1.7.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** Phase 2b deployment chart, scoped project, and 5xx alert ([#1420](https://github.com/VitruvianSoftware/vitruvian-core/issues/1420)) ([58601fa](https://github.com/VitruvianSoftware/vitruvian-core/commit/58601fa53e25140fe614addcf3b8cef5bb7a994b))
+
 ## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.5.0...mcp-slack-v1.6.0) (2026-08-07)
 
 
