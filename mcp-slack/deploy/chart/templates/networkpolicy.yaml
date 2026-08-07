@@ -39,6 +39,16 @@
 # egress to the internet on :443 is unrestricted; this policy does NOT bound
 # credential exfiltration; that gap is #1428.
 #
+# AND :443 IS NOT THE ONLY WAY OUT. The DNS rule below carries no `rules.dns`
+# block — it cannot, see #1428 — so DNS QUERY CONTENT is unrestricted too. A
+# compromised process encodes the token into query labels, kube-dns forwards
+# them upstream, and nothing goes near :443. Two independent exfiltration
+# channels; naming only the first invites the conclusion that pinning :443 to
+# a CIDR set would close exfiltration. It would not — DNS tunnelling survives
+# that untouched. No L3/L4 shape closes the DNS half either, so this is a
+# property of the available policy language, not a defect in the rules below.
+# (Aegis, review of #1487.)
+#
 # WHY NOT toFQDNs — MEASURED, NOT ASSUMED (#1428)
 #
 # Host pinning would close the exfiltration half, and it is unusable here.
@@ -99,7 +109,7 @@
   zitadel-apps-mcp-slack and the ChannelParam array bypass. Refuse it rather
   than interpret it.
 */}}
-{{- $npEnabled := required "networkPolicy.enabled must be set explicitly (true/false). true applies an L3/L4 CiliumNetworkPolicy that bounds LATERAL movement — the pod cannot reach the apiserver, other namespaces, Postgres or the relay (measured; see this file's header). It does NOT bound egress to the internet on :443, so it does not prevent credential exfiltration — that gap is #1428. false deploys with NO in-cluster containment at all, on an internet-facing pod holding a Slack token. Choose deliberately." .Values.networkPolicy.enabled }}
+{{- $npEnabled := required "networkPolicy.enabled must be set explicitly (true/false). true applies an L3/L4 CiliumNetworkPolicy that bounds LATERAL movement — the pod cannot reach the apiserver, other namespaces, Postgres or the relay (measured; see this file's header). It does NOT bound egress OUT of the cluster — neither :443 to any host nor DNS query content — so it does not prevent credential exfiltration by either route; that gap is #1428. false deploys with NO in-cluster containment at all, on an internet-facing pod holding a Slack token. Choose deliberately." .Values.networkPolicy.enabled }}
 {{- if kindIs "string" $npEnabled }}
 {{- fail "networkPolicy.enabled must be a boolean, not a string. Helm treats a non-empty string as true, so \"false\" would silently ENABLE the policy — the opposite of what was written." }}
 {{- end }}
@@ -122,7 +132,9 @@ spec:
     # The cost is honest: without the proxy there is no per-name DNS
     # restriction, so this pod can resolve anything. Paired with the :443 rule
     # below, that means no host pinning at all — see the residual in the
-    # header.
+    # header. Note the cost is not only resolution: unrestricted query CONTENT
+    # makes this rule an exfiltration path in its own right, independent of
+    # :443.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
