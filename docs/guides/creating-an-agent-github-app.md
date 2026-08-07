@@ -100,19 +100,35 @@ bazel run //tools/agent-app -- repos <APP_ID> ~/keys/<agent>.pem <INSTALLATION_I
 `repos` must list `VitruvianSoftware/vitruvian-core` and nothing you did not
 intend. This is the step that catches an accidental "All repositories".
 
-## 5. Record it in code
+## 5. Repository scope stays in the GitHub UI — and here is why it cannot be code
 
-Add the agent to `agentApps` in
-`infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml`:
+This is the one step that resisted being automated, and the reason is worth
+recording rather than rediscovering.
 
-```yaml
-vitruvian-core-repo-config:agentApps:
-  - name: <agent>
-    installationId: "<INSTALLATION_ID>"
+`github_app_installation_repository` / `AppInstallationRepositories` looks like
+the right resource, and it is not usable here. The provider reads installation
+state via `GET /user/installations/{id}/repositories` — a **user-scoped**
+endpoint. The `repo_config` stack authenticates as a **GitHub App**, and GitHub
+answers:
+
+```
+403 Resource not accessible by integration
 ```
 
-From here the repository selection is managed by Pulumi, so a change to which
-repos an agent can reach is a reviewable diff rather than a checkbox.
+A user PAT does not rescue it either: modifying an organization's app
+installation requires org-owner rights the deploy identity does not have, and
+should not be given for this.
+
+The Terraform provider states it in a single line that is easy to skim past —
+and was skimmed past here, at the cost of a broken `main`:
+
+> **Note**: This resource is not compatible with the GitHub App Installation
+> authentication method.
+
+So record the installation ids in the table below and set repository access in
+the install screen. **Re-verify with `agent-app repos` after any change** — that
+is the check that catches an accidental "All repositories", and it is now the
+only check, since Pulumi is not watching this.
 
 ## 6. Only after every agent exists
 
