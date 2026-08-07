@@ -71,6 +71,32 @@ bazel run //tools/sync-env-secrets:bw-push
 bazel run //tools/sync-env-secrets:lock
 ```
 
+## Agent GitHub App keys
+
+A **second** store, same Bitwarden plumbing, different item:
+`tools/sync-env-secrets/agent-keys/<agent>.pem` ↔ Bitwarden item
+`vitruvian-core/agent-app-keys` (archive `agent-app-keys.tar.gz`).
+
+```sh
+bazel run //tools/sync-env-secrets:unlock            # once per session
+bazel run //tools/sync-env-secrets:agent-keys-push   # store -> Bitwarden
+bazel run //tools/sync-env-secrets:agent-keys-pull   # Bitwarden -> store (new machine)
+```
+
+These are the per-agent GitHub App private keys
+([agent-github-identities.md](../../docs/guides/agent-github-identities.md)) — the
+durable proof of each agent's identity, and unlike an installation token they
+**never expire**.
+
+Kept separate from the deploy-env store on purpose: `apply` PUTs the store into
+the repository's **GitHub Actions secrets**, which would be both wrong for these
+and a far larger blast radius. Only the `agent-keys-*` subcommands repoint the
+store, and the script runs one subcommand per invocation, so `apply` cannot reach
+them.
+
+`agent-keys-push` refuses to archive a key that is not mode `600`, rather than
+silently backing up a world-readable private key.
+
 Overrides (env): `REPO` (default `VitruvianSoftware/vitruvian-core`), `BW_ITEM`
 (default `vitruvian-core/deploy-env-secrets`), `BW_PASSWORD` (non-interactive
 unlock). The store is held in Bitwarden as a single `deploy-env-secrets.tar.gz`

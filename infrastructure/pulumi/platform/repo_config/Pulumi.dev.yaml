@@ -14,6 +14,37 @@ config:
   # release-please/Dependabot auto-merge. Flip to "true" once a second reviewer
   # exists — the merge queue + required CI checks stay enforced regardless.
   vitruvian-core-repo-config:requireCodeOwnerReview: "false"
+  # Per-agent GitHub App identities (docs/guides/agent-github-identities.md).
+  # Each entry pins that App's installation to this repository, so "which agent
+  # can write where" is a reviewable diff rather than a checkbox in a web form.
+  # These are INSTALLATION ids, not app ids -- an App has one app id and a
+  # separate installation id per account, and the app id 404s here in a way that
+  # reads like a permissions problem. Neither is a secret; the private keys are,
+  # and they are not in this repository.
+  vitruvian-core-repo-config:agentApps:
+    - name: beacon
+      installationId: "152031070"
+    - name: atlas
+      installationId: "152054030"
+    - name: ridge
+      installationId: "152054236"
+    - name: wren
+      installationId: "152054411"
+    - name: scout
+      installationId: "152054588"
+    - name: quill
+      installationId: "152054783"
+    - name: compass
+      installationId: "152054955"
+    - name: pace
+      installationId: "152055117"
+    - name: aegis
+      installationId: "152055295"
+  # Approval count. Independent of requireCodeOwnerReview above, because an App
+  # CAN satisfy an approval but CANNOT be a code owner. Still "0": raising it
+  # before every agent authors PRs under its own App re-creates the wedge
+  # described above. See docs/guides/creating-an-agent-github-app.md step 6.
+  vitruvian-core-repo-config:requiredApprovals: "0"
   vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
   # Stage-5 multi-env on business unit 2. Every environment federates the SHARED
