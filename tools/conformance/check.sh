@@ -828,16 +828,23 @@ check_merge_queue() {
   [ -n "$required" ] || return 0   # no declared gate set -> nothing to assert
 
   # Producible check contexts across every workflow triggering on merge_group,
-  # each tagged <context>\t<pr_paths> where pr_paths=1 iff that workflow's
-  # `pull_request` trigger carries a workflow-level `paths:`/`paths-ignore:`
-  # filter. A required check whose workflow is pr-paths-filtered does NOT report
-  # on a PR outside those paths, which blocks that PR from becoming mergeable —
-  # a different wedge from the merge_group one, so we detect both.
+  # each tagged <context>\t<pr_paths>\t<pr_branches>. pr_paths=1 iff the
+  # workflow's `pull_request` trigger carries a workflow-level
+  # `paths:`/`paths-ignore:` filter -- a required check whose workflow is
+  # pr-paths-filtered does NOT report on a PR outside those paths, which blocks
+  # that PR from becoming mergeable. pr_branches=1 iff it carries a
+  # `pull_request` `branches:` filter -- `branches:` matches the PR's BASE, not
+  # its diff, so this does NOT run on a stacked PR (one based on another PR's
+  # branch rather than main): 13 of 15 required checks did exactly this for
+  # real, silently, presenting every stacked PR as fully green while only
+  # tidy-check and conformance-check (the two with no branches: filter) had
+  # actually run. Different wedge from paths, different fix, so tagged and
+  # reported separately.
   producible_raw="$(
     for wf in "$WORKFLOWS_DIR"/*.yml "$WORKFLOWS_DIR"/*.yaml; do
       [ -f "$wf" ] || continue
       awk '
-        BEGIN{in_on=0;has_mg=0;in_pr=0;pr_paths=0;in_jobs=0;jobid="";jobname="";nvals=0;cb=0;nout=0}
+        BEGIN{in_on=0;has_mg=0;in_pr=0;pr_paths=0;pr_branches=0;in_jobs=0;jobid="";jobname="";nvals=0;cb=0;nout=0}
         function strip(s){gsub(/^[ \t]+|[ \t\r]+$/,"",s);return s}
         function unq(s){gsub(/^[\047"]+|[\047"]+$/,"",s);return s}
         function ind(l,  i){i=0;while(substr(l,i+1,1)==" ")i++;return i}
@@ -856,6 +863,7 @@ check_merge_queue() {
             if(I==2&&k ~ /^pull_request:/)in_pr=1
             else if(I<=2&&k!=""&&k !~ /^pull_request:/)in_pr=0
             if(in_pr==1&&I>=4&&(k ~ /^paths:/||k ~ /^paths-ignore:/))pr_paths=1
+            if(in_pr==1&&I>=4&&k ~ /^branches:/)pr_branches=1
           }
         }
         /^jobs:[ \t]*$/{in_jobs=1;next}
@@ -867,13 +875,15 @@ check_merge_queue() {
           if(I==8&&k ~ /:$/&&k !~ /^(include|exclude):$/){cb=1;next}
           if(cb==1){if(I>=10&&k ~ /^-[ \t]*/){x=k;sub(/^-[ \t]*/,"",x);x=unq(strip(x));if(x!="")vals[++nvals]=x;next}else if(k!="")cb=0}
         }
-        END{flush();if(!has_mg)exit 3;for(i=1;i<=nout;i++)print out[i] "\t" pr_paths}
+        END{flush();if(!has_mg)exit 3;for(i=1;i<=nout;i++)print out[i] "\t" pr_paths "\t" pr_branches}
       ' "$wf" 2>/dev/null
     done | LC_ALL=C sort -u
   )"
   producible="$(printf '%s\n' "$producible_raw" | awk -F'\t' 'NF{print $1}' | LC_ALL=C sort -u)"
   # Bases (matrix suffix stripped) whose workflow has a pull_request paths filter.
   prpaths_bases="$(printf '%s\n' "$producible_raw" | awk -F'\t' '$2==1{c=$1;sub(/ \(.*\)$/,"",c);print c}' | LC_ALL=C sort -u)"
+  # Bases whose workflow has a pull_request branches filter (stacked-PR wedge).
+  prbranches_bases="$(printf '%s\n' "$producible_raw" | awk -F'\t' '$3==1{c=$1;sub(/ \(.*\)$/,"",c);print c}' | LC_ALL=C sort -u)"
 
   # Fail LOUD (not 10 confusing MISSING rows) if extraction yielded nothing while
   # a gate set is declared — means the workflows or this parser changed.
@@ -891,6 +901,7 @@ check_merge_queue() {
     [ -n "$rc" ] || continue
     if printf '%s\n' "$producible" | grep -qxF "$rc"; then
       rcbase="$(printf '%s' "$rc" | sed 's/ (.*)$//')"
+      hit=0
       if printf '%s\n' "$prpaths_bases" | grep -qxF "$rcbase"; then
         # Reports on merge_group, but its workflow won't report on PRs outside
         # its pull_request `paths:` — so any such PR can never become mergeable.
@@ -898,7 +909,19 @@ check_merge_queue() {
           "workflow has a pull_request 'paths:' filter, so this required check does NOT report on PRs outside those paths — wedging their mergeability" \
           "drop the workflow-level pull_request 'paths:' filter (gate the WORK via a step instead) so the check always reports"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
-      else
+        hit=1
+      fi
+      if printf '%s\n' "$prbranches_bases" | grep -qxF "$rcbase"; then
+        # branches: filters on the PR's BASE, not the diff -- so a PR stacked
+        # on another PR's branch (base != main) never draws this check at all.
+        # It presents as green with the check simply never created, not failed.
+        emit "mergeq" "$GLYPH_FAIL" "$C_RED" "$rc" "required" "PR-RETARGET-BLOCKED" \
+          "workflow has a pull_request 'branches:' filter, so this required check does NOT report on a PR whose base isn't in that list -- a stacked PR presents as fully green while this check silently never ran" \
+          "drop the workflow-level pull_request 'branches:' filter so the check reports regardless of the PR's base"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        hit=1
+      fi
+      if [ "$hit" = 0 ]; then
         emit "mergeq" "$GLYPH_OK" "$C_GREEN" "$rc" "required" "producible" "reports on merge_group + every PR" ""
         OK_COUNT=$((OK_COUNT + 1))
       fi
