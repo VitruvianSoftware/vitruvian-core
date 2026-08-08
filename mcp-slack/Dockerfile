@@ -52,10 +52,24 @@ COPY src/ ./src/
 # Standalone-context catalog neutralization, same mechanism and same reason as
 # oauth-user-inspector/Dockerfile:51 — the Docker context is this directory
 # alone, with no monorepo pnpm-workspace.yaml, so pnpm cannot resolve the
-# `catalog:` protocol. `jest` is the ONLY catalog reference in this package and
-# it is a devDependency the image never runs, so the concrete version is
-# immaterial; only that the spec parses.
-RUN sed -i 's/"catalog:"/"^30.0.0"/g' package.json
+# `catalog:` protocol. Today `jest` is the only such reference and it is a
+# devDependency the image never runs, so the concrete version is immaterial;
+# only that the spec parses.
+#
+# THE GUARD IS THE POINT, not the rewrite. #1498 adds mcp-slack to
+# CATALOG_EXEMPT and pins jest literally, which would make this `sed` a no-op —
+# and a no-op that reads like a control is the exact failure this build has now
+# hit three times (an inert PrometheusRule, an unwired imagePullPolicy, a
+# `required` behind a default). So rather than leave a blind rewrite that
+# silently stops mattering, fail the build if ANY catalog reference survives.
+# That also covers the case the `sed` alone would miss: a named `catalog:group`
+# reference, which would otherwise reach pnpm and fail with an error about the
+# protocol rather than about this line.
+RUN sed -i 's/"catalog:[^"]*"/"^30.4.2"/g' package.json; \
+    if grep -q '"catalog:' package.json; then \
+      echo "unresolved catalog: reference remains in package.json" >&2; \
+      exit 1; \
+    fi
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 
@@ -75,9 +89,13 @@ ENV NODE_ENV=production \
 
 RUN corepack enable
 COPY package.json ./
-# Same neutralization as the build stage: --prod skips devDependencies but pnpm
-# still PARSES every spec, `catalog:` included.
-RUN sed -i 's/"catalog:"/"^30.0.0"/g' package.json
+# Same neutralization and same guard as the build stage: --prod skips
+# devDependencies but pnpm still PARSES every spec, `catalog:` included.
+RUN sed -i 's/"catalog:[^"]*"/"^30.4.2"/g' package.json; \
+    if grep -q '"catalog:' package.json; then \
+      echo "unresolved catalog: reference remains in package.json" >&2; \
+      exit 1; \
+    fi
 RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 COPY --from=build /app/dist ./dist
 
