@@ -72,8 +72,15 @@ STRING_REJECT_CONTROLS="mcp-slack/deploy/chart networkPolicy.enabled"
 # over whether the count was five or six while the deciding fact sat in the
 # templates. Extracting it means adding a `required` automatically adds a
 # negative control, and cannot silently leave one ungated.
+#
+# `|| true` on the grep is load-bearing under `set -e`: grep exits 1 when it
+# matches nothing, which is the correct and expected result for a chart with no
+# `required` calls at all. Without it the script dies on the first such chart —
+# which is exactly what the first CI run of this file did, on
+# oauth-user-inspector, immediately after mcp-slack passed every assertion. A
+# chart having no required values is not an error; it is most charts.
 required_paths() {
-  grep -rho 'required "[^"]*" \.Values\.[A-Za-z0-9_.]*' "$1/templates" 2>/dev/null \
+  { grep -rho 'required "[^"]*" \.Values\.[A-Za-z0-9_.]*' "$1/templates" 2>/dev/null || true; } \
     | sed 's/.*\.Values\.//' \
     | sort -u
 }
