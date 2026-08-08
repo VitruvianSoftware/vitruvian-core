@@ -29,6 +29,7 @@ exports_files(["agent-app.sh"])
 sh_binary(
     name = "agent-app",
     srcs = ["agent-app.sh"],
+    data = ["agents.tsv"],
     visibility = ["//visibility:public"],
 )
 
@@ -36,5 +37,8 @@ sh_test(
     name = "agent_app_test",
     size = "small",
     srcs = ["agent-app_test.sh"],
-    data = ["agent-app.sh"],
+    data = [
+        "agent-app.sh",
+        "agents.tsv",
+    ],
 )

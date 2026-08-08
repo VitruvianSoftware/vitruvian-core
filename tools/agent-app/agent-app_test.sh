@@ -30,6 +30,7 @@ set -uo pipefail
 
 SCRIPT="${SCRIPT:-tools/agent-app/agent-app.sh}"
 [ -x "$SCRIPT" ] || SCRIPT="$(dirname "$0")/agent-app.sh"
+REGISTRY="${REGISTRY:-$(dirname "$SCRIPT")/agents.tsv}"
 
 failures=0
 ok() { echo "  ok: $1"; }
@@ -143,6 +144,35 @@ if openssl dgst -sha256 -verify "$KEYDIR/pub.pem" -signature "$KEYDIR/sig.bin" "
   ok "signature verifies against the key"
 else
   bad "signature does NOT verify -- the JWT would be rejected by GitHub"
+fi
+
+
+echo "== login rejects an unknown agent rather than guessing =="
+if out="$(AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login nosuchagent 2>&1)"; then
+  bad "login accepted an unknown agent"
+elif [[ "$out" != *"unknown agent"* ]]; then
+  bad "login failed for the wrong reason: $out"
+else
+  ok "login rejects an unknown agent and lists the known ones"
+fi
+
+echo "== login refuses when the key is absent, naming the fix =="
+if out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" login beacon 2>&1)"; then
+  bad "login proceeded without a key"
+elif [[ "$out" != *"agent-keys-pull"* ]]; then
+  bad "login did not point at the recovery command: $out"
+else
+  ok "login names agent-keys-pull when the key is missing"
+fi
+
+echo "== every registry row is well-formed =="
+# A row with a missing column would resolve to an empty id and produce a 404 that
+# reads like a permissions problem -- the exact confusion called out in the SOP.
+bad_rows="$(awk -F'\t' '!/^#/ && NF>0 && (NF!=3 || $2=="" || $3=="")' "$REGISTRY" | wc -l | tr -d ' ')"
+if [ "$bad_rows" = "0" ]; then
+  ok "all registry rows have agent, app id and installation id"
+else
+  bad "$bad_rows malformed row(s) in agents.tsv"
 fi
 
 if [ "$failures" -ne 0 ]; then

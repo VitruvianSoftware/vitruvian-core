@@ -30,6 +30,35 @@ the [docs hub](docs/README.md) routes everything else, and the
 [Bazel targets catalog](docs/reference/bazel-targets.md) lists the sanctioned tool
 surface. When an app's own docs conflict with `CONTRIBUTING.md`, CONTRIBUTING wins.
 
+## GitHub identity: act as yourself, not as James
+
+Every agent has its own GitHub App. **Mint a token for YOUR OWN identity at the
+start of any session that will touch GitHub**, so commits, PRs and reviews are
+attributed to you rather than to the repository owner:
+
+```sh
+export GH_TOKEN="$(bazel run //tools/agent-app -- login <your-agent-name>)"
+```
+
+`gh` prefers `GH_TOKEN` over the stored keyring credential, and git already
+delegates to `gh` (`credential.https://github.com.helper = !gh auth
+git-credential`), so this one variable covers API calls **and** pushes.
+
+Names and ids are in [`tools/agent-app/agents.tsv`](tools/agent-app/agents.tsv).
+If the key is missing, run `bazel run //tools/sync-env-secrets:agent-keys-pull`
+(needs the Bitwarden vault unlocked).
+
+**Use your own name.** The keys sit in one directory readable by every agent, so
+nothing stops you minting someone else's token — which makes attribution a
+convention we keep, not a control that holds. Minting as another agent puts their
+name on your work.
+
+**Tokens expire after one hour.** Re-run the command rather than caching it.
+
+Without this you are `ipv1337`, and you cannot approve another agent's PR:
+GitHub blocks self-approval, and every PR is self-authored from its point of view.
+See [docs/guides/agent-github-identities.md](docs/guides/agent-github-identities.md).
+
 ## GCP identity is pinned per-infrastructure
 
 This repo manages cloud infrastructure under multiple Google accounts (personal,

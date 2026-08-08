@@ -10,8 +10,10 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `installations <app-id> <key.pem>` | Lists the App's installations, with their ids. |
 | `repos <app-id> <key.pem> <inst-id>` | Lists the repositories an installation can reach. |
 | `token <app-id> <key.pem> <inst-id>` | Mints a **1-hour** installation access token. |
+| `login <agent>` | The one agents use. Resolves ids from `agents.tsv`, finds the key, mints the token. |
 
 ```sh
+export GH_TOKEN="$(bazel run //tools/agent-app -- login beacon)"   # what an agent runs
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app:agent_app_test
 ```
