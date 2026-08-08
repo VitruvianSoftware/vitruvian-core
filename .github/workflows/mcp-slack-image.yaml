@@ -219,10 +219,32 @@ jobs:
         id: publish
         run: |
           set -euo pipefail
+          # --sbom=true because the dependency tree that RUNS is not the tree
+          # anything scans. //tools/osv-scan reads the repo's committed
+          # lockfiles; this image installs with `pnpm install
+          # --no-frozen-lockfile` in a standalone context, which explicitly
+          # permits a different resolution and re-resolves at build time. So
+          # nothing pins the image's tree to the scanned one, nothing scans the
+          # image's tree, and two builds of the same commit can differ — the
+          # same late-binding the PNPM_VERSION pin fixed for the tool, one layer
+          # down in the packages.
+          #
+          # `--frozen-lockfile` is not the fix available here: the standalone
+          # Docker context is exactly why the `catalog:` rewrite exists, so there
+          # is no workspace lockfile to freeze against. Attaching an SBOM closes
+          # it at the artifact instead — osv-scanner can scan an SBOM directly.
+          #
+          # NOT already covered by what buildx attaches. Measured on the first
+          # published index rather than inferred from the flags: both
+          # attestation manifests carry exactly one in-toto layer with
+          # `in-toto.io/predicate-type: https://slsa.dev/provenance/v1`, and no
+          # SPDX predicate. Provenance records HOW it was built; it says nothing
+          # about what is inside. Aegis's finding.
           docker buildx build --push \
             --build-arg NODE_VERSION="${NODE_MAJOR}" \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
+            --sbom=true \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
