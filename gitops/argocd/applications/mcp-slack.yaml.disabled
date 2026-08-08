@@ -41,6 +41,51 @@
 #      its sha256 digest. Never a tag: an internet-facing workload must run
 #      the artifact that was reviewed, not whatever the tag moved to.
 #
+#      MET as of this commit. `sha256:63912eee…` is filled in below, and the
+#      thing that makes it the right digest rather than merely a recent one is
+#      that it CONTAINS #1499 — the per-request transport fix, without which
+#      the pod answers exactly one MCP request per lifetime. Four properties,
+#      all re-measured here rather than carried over from the thread that
+#      produced them:
+#
+#        C := gh pr view 1499 --json mergeCommit --jq .mergeCommit.oid
+#             → 524d9217.  NOT the branch head (50c41b7f), NOT `git log
+#             --grep "(#1499)"`.  `main` is squash-only, so a PR's branch head
+#             is an ancestor of nothing on `main` and the ancestry test below
+#             would return false forever, for every digest, however new — a
+#             false negative in the dangerous direction: it reads as "the
+#             transport fix is missing from this image" and blocks a correct
+#             pin. `--grep` fails differently and just as quietly: a revert or
+#             a follow-up citing the PR also matches, and an empty result from
+#             a STALE local `origin/main` is indistinguishable from one that
+#             never landed. The API field cannot be stale-confounded.
+#        R := org.opencontainers.image.revision, read off the digest itself in
+#             the registry → 03cf6dab, on BOTH platform manifests separately.
+#        git merge-base --is-ancestor 524d9217 03cf6dab   → exit 0
+#             (and the reverse direction exits 1 — the test can say no).
+#        The index carries spdx.dev/Document alongside slsa.dev/provenance/v1
+#             on both platforms. Positive control: the pre-#1504 image
+#             de6e4203 carries provenance and NOTHING else, so this arm
+#             distinguishes rather than always agreeing.
+#
+#      #1499 merged in the same merge group as #1505, so no `push` run fired
+#      on 524d9217 itself and only the batch tip 03cf6dab published. Looking
+#      for "#1499's image" finds nothing; that absence is the batch, not a
+#      failure. Which is the whole reason this criterion is an ancestry test
+#      on the revision label and not "the run that fired after the PR merged".
+#
+#      PIN THE INDEX DIGEST, NOT A PLATFORM MANIFEST. `_helpers.tpl` emits
+#      `repository@digest` verbatim, and this cluster is mixed-arch; pinning
+#      `sha256:a718e0be…` (amd64) would fail to schedule on arm64 nodes AND
+#      orphan the SBOM, because the attestations hang off the index.
+#
+#      NOT COVERED BY THIS CRITERION, and it has no owner in the chart: there
+#      are no `imagePullSecrets` anywhere in mcp-slack/deploy, so the pull is
+#      anonymous and works only because the GHCR package is public. That
+#      property is load-bearing in two independent places (this pull, and
+#      #1507's visibility gate), nothing asserts it, and flipping it is one
+#      click. Tracked on #1507.
+#
 #   2. oidc.projectId — `pulumi stack output projectId` on the
 #      zitadel-apps-mcp-slack stack (PR #1417), which has not been applied.
 #      Hand-typing this defeats the per-project audience isolation the
@@ -201,14 +246,16 @@ spec:
     path: mcp-slack/deploy/chart
     helm:
       values: |
-        # SIX VALUES ARE RENDER-BLOCKING. Five are still empty placeholders below;
+        # SIX VALUES ARE RENDER-BLOCKING. FOUR are still empty placeholders below.
         # `networkPolicy.enabled` is filled (#1497 — #1487 fixed the CNP, so `true`
-        # is now the correct value, see criterion 7). `oidc.clientId` (#1491) pins
-        # the caller to this server's own OIDC client — added to the count, not yet
-        # to the go-live criteria list above, which is item 4's job. The chart
-        # fails to render on any of the six being empty/unset — that is the
-        # intended behaviour, not an obstacle to work around. Fill the rest from
-        # the sources named above.
+        # is now the correct value, see criterion 7) and `image.digest` is filled
+        # (criterion 1, which carries the four assertions that make this
+        # particular digest the correct one — read it before replacing the
+        # value). `oidc.clientId` (#1491) pins the caller to this server's own
+        # OIDC client — added to the count, not yet to the go-live criteria list
+        # above, which is item 4's job. The chart fails to render on any of the
+        # six being empty/unset — that is the intended behaviour, not an obstacle
+        # to work around. Fill the rest from the sources named above.
         #
         # ALL SIX ARE NOW RENDER-VERIFIED, not merely read: #1502's `chart-render`
         # CI job nulls each required value in turn and asserts the render aborts
@@ -222,7 +269,13 @@ spec:
         # controls are extracted from the templates, so a new one is
         # automatically gated even if this comment is forgotten.
         image:
-          digest: ""            # sha256:... — REQUIRED
+          # FILLED — criterion 1. Index digest of ghcr.io/vitruviansoftware/
+          # mcp-slack, revision label 03cf6dab, which contains #1499's squashed
+          # merge commit 524d9217 (the per-request transport fix). Do not
+          # replace this with a platform manifest digest or a tag; do not
+          # replace it with a newer digest without re-running criterion 1's
+          # four assertions against the new one.
+          digest: "sha256:63912eee3f7f5b00114f9ea40701d8f6a984353eae766442e1367d62cc5833bb"
         oidc:
           projectId: ""         # pulumi stack output projectId — REQUIRED
           allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
