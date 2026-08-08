@@ -68,8 +68,35 @@
       automerge: false,
     },
   ],
-  // Weekly is the schedule the workflow polls on; this just caps PR creation
-  // to the same window so a mid-week workflow_dispatch rerun doesn't spam.
-  schedule: ["before 6am on monday"],
-  timezone: "UTC",
+  // NO `schedule`. The workflow's own cron is the SINGLE cadence authority.
+  //
+  // This previously read `schedule: ["before 6am on monday"]`, paired with the
+  // workflow's `cron: "0 5 * * 1"`, on the assumption that the two "line up".
+  // They do not. Renovate's `schedule` gates BRANCH CREATION against the
+  // wall-clock at the moment the run executes, and GitHub's scheduled-workflow
+  // delivery is best-effort: it routinely lands 30-180 minutes after the cron
+  // time. A 05:00 cron with a "before 06:00" window has 60 minutes of slack and
+  // has never fit inside it -- both runs on record started outside the window
+  // (2026-07-31 07:37 UTC, 2026-08-03 08:36 UTC). Renovate extracted its 36
+  // deps, found itself out of schedule, created nothing, and exited
+  // `"result": "done"` -- a green run that did no work.
+  //
+  // The cost was silent and real: with zero PRs ever opened, the pinned charts
+  // drifted badly behind upstream while the lane reported success -- e.g.
+  // cert-manager pinned v1.17.0 against upstream v1.21.1, external-dns pinned
+  // 1.15.0 against upstream 1.21.1 (both measured 2026-08-08).
+  //
+  // Dropping `schedule` makes every DELIVERED run do its work, whenever GitHub
+  // gets round to delivering it. Cadence is still weekly, because the cron is
+  // weekly; a mid-week `workflow_dispatch` is now an explicit human asking for
+  // updates, which is the only time that happens.
+  //
+  // `timezone` went with it: it exists only to interpret `schedule`.
+  //
+  // Rate limits stand in for the window that used to (accidentally) throttle
+  // this. The first effective run has ~5 months of accumulated drift to
+  // propose, and each PR is a chart bump into a live self-hosted platform that
+  // a human must judge (automerge: false, above). Trickle them.
+  prConcurrentLimit: 3,
+  prHourlyLimit: 2,
 }

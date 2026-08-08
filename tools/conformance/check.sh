@@ -387,6 +387,7 @@ ROWS_LOCALPATH=""
 ROWS_GATE=""
 ROWS_DURABLE=""
 ROWS_PULUMI=""
+ROWS_RENOVATE=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -411,6 +412,7 @@ emit() {
     gate)         ROWS_GATE="${ROWS_GATE}${_row}" ;;
     durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
+    renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -1888,6 +1890,62 @@ check_app_metadata() {
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: renovate.json5 must not carry a `schedule:` of its own.
+#
+# Renovate's config-level `schedule` gates BRANCH CREATION against the
+# wall-clock at the instant the run executes. The workflow's cron decides when
+# the run executes -- and GitHub delivers scheduled runs on a best-effort basis,
+# routinely 30-180 minutes after the cron time. Any config window narrower than
+# that drift is therefore a window the delivered run can, and does, miss: the
+# run extracts every dependency, finds itself out of schedule, creates nothing,
+# and exits successfully. Green, and no work done.
+#
+# That is not hypothetical. `cron: "0 5 * * 1"` paired with
+# `schedule: ["before 6am on monday"]` shipped in #1344 and produced ZERO PRs
+# for its entire life: both runs on record started outside the window
+# (2026-07-31 07:37 UTC, 2026-08-03 08:36 UTC) while the pins it exists to track
+# drifted 4-6 minor versions behind upstream (cert-manager v1.17.0 vs v1.21.1,
+# external-dns 1.15.0 vs 1.21.1, measured 2026-08-08).
+#
+# A lane whose only failure mode is silence needs an invariant, not review: the
+# cron is the single cadence authority, and the config states no window at all.
+# Textual and deliberately loose -- ANY top-level `schedule:` key fails,
+# including a `["at any time"]` that happens to be harmless, because the point
+# is that cadence lives in exactly one place.
+# ---------------------------------------------------------------------------
+check_renovate_schedule() {
+  cfg="$ROOT/renovate.json5"
+  cfg_rel="renovate.json5"
+
+  # A missing config is a real regression: the workflow runs with
+  # RENOVATE_REQUIRE_CONFIG=required, so it would fail outright -- but this
+  # check would otherwise pass silently by returning early.
+  if [ ! -f "$cfg" ]; then
+    emit "renovate" "$GLYPH_FAIL" "$C_RED" "$cfg_rel" "missing" "present" \
+      "renovate.json5 is gone but .github/workflows/renovate.yaml still runs with RENOVATE_REQUIRE_CONFIG=required" \
+      "restore renovate.json5, or delete the renovate workflow with it"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    return 0
+  fi
+
+  # Strip `//` line comments before matching, so the explanatory prose in the
+  # file (which necessarily quotes the old `schedule:` line) cannot trip this.
+  # Top-level only: a `schedule` nested inside a packageRule is indented, and
+  # would be the same bug, so match any indentation but require it to be a KEY
+  # (`schedule:` at the start of the stripped line's content).
+  if sed 's|//.*||' "$cfg" | grep -qE '^[[:space:]]*schedule[[:space:]]*:'; then
+    emit "renovate" "$GLYPH_FAIL" "$C_RED" "$cfg_rel" "schedule:" "no schedule" \
+      "a config-side time window silently no-ops every run GitHub delivers late (30-180min drift is normal) — the lane stays green and opens nothing" \
+      "delete the schedule/timezone keys; .github/workflows/renovate.yaml's cron is the only cadence control"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "renovate" "$GLYPH_OK" "$C_GREEN" "$cfg_rel" "no schedule" "no schedule" \
+      "cadence lives only in the workflow cron — a late-delivered run still does its work" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -1975,6 +2033,7 @@ check_no_local_paths
 check_ci_gate_lists_match
 check_deploy_sequencer_gate
 check_deploy_durable_base
+check_renovate_schedule
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -1997,6 +2056,7 @@ print_group "Release-unit guard (co-located <app>/infra/ must not bump the app v
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
+print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

@@ -56,10 +56,13 @@ name: renovate
 on:
   workflow_dispatch: {}
   schedule:
-    # Matches renovate.json5's own `schedule: ["before 6am on monday"]" — the
-    # workflow run and the config's PR-creation window line up, so a
-    # mid-week workflow_dispatch rerun finds nothing new to do instead of
-    # spamming a PR outside the intended cadence.
+    # THIS CRON IS THE ONLY CADENCE CONTROL. renovate.json5 deliberately carries
+    # no `schedule:` — see the comment there. A config-side time-of-day window
+    # cannot "line up" with a cron, because GitHub delivers scheduled runs
+    # 30-180 minutes late under load; a window narrower than that drift silently
+    # turns every delivered run into a no-op. That is exactly what the previous
+    # pairing (this cron + "before 6am on monday") did, for its entire life.
+    # Guarded by //tools/conformance:check (check_renovate_schedule).
     - cron: "0 5 * * 1" # 05:00 UTC Monday
 
 permissions:
