@@ -335,6 +335,34 @@ jobs:
       #
       # Retried because a freshly pushed package can take a moment to become
       # servable, and a race would otherwise fail a correct publish.
+      #
+      # WHAT A GREEN HERE DOES NOT MEAN (issue #1507). Every run we can foresee
+      # is a pass, so a reader who sees green learns less than it looks like:
+      #
+      #   - on `pull_request` the step is skipped outright by the `if:` below —
+      #     PR runs never push, so there is no digest to fetch;
+      #   - on `main` the `mcp-slack` package is already public, so the fetch
+      #     succeeds.
+      #
+      # The failure branch therefore has no foreseeable execution, and its green
+      # carries no information about whether it would fire correctly. That is
+      # NOT the same defect as #1501 — those rules cannot fail a build at all;
+      # this one can, and the discriminating half has been measured:
+      #
+      #   GET https://ghcr.io/token?scope=repository:vitruviansoftware/<pkg>:pull
+      #     vitruviansoftware/charts/whoami   403, empty token, curl -sf exit 56
+      #     vitruviansoftware/mcp-slack       200, token returned, curl -sf exit 0
+      #
+      # A real private package in this org yields a non-zero `curl -sf` exit and
+      # an empty token, so `[ -n "${token}" ]` is false, all three attempts fall
+      # through and the step exits 1. The gate CAN go red, without making
+      # anything private and without a credential.
+      #
+      # BOUND, because "it can fail" and "it fails for the right reason" are
+      # different claims and only the first has evidence: the control above
+      # exercises the TOKEN hop only. The manifest fetch on the line after it is
+      # unexercised in the negative. It can only be stricter than the token it
+      # depends on — the safe direction — but nobody has demonstrated that.
       - name: Verify the image is anonymously pullable
         if: github.event_name != 'pull_request'
         run: |
