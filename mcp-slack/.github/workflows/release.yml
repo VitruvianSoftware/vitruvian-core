@@ -43,7 +43,7 @@ jobs:
           token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
 
       - id: detect
-        name: Detect a new release from the exported manifest
+        name: Detect an UNPUBLISHED release from the exported manifest
         run: |
           if [ ! -f .release-please-manifest.json ]; then
             echo "No manifest yet -- monorepo release-please has not cut a release."
@@ -54,30 +54,82 @@ jobs:
             echo "No version in manifest."
             exit 0
           fi
-          if git rev-parse "v$V" >/dev/null 2>&1; then
-            echo "v$V already released -- nothing to do."
-          else
-            echo "version=$V" >> "$GITHUB_OUTPUT"
-            echo "Detected new release v$V."
-          fi
-
-      - name: Tag the exported release commit
-        if: steps.detect.outputs.version
-        run: |
-          V="${{ steps.detect.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$V" -m "Release v$V"
-          git push origin "v$V"
+          PKG="$(jq -r .name package.json)"
+          # Ask the REGISTRY, not git. A tag only proves an earlier run reached
+          # the tag step -- which used to run BEFORE the publish, so every failed
+          # publish left a tag behind and then permanently convinced this step
+          # there was nothing left to do. That is self-sustaining: v1.1.0 through
+          # v1.8.1 are all tagged with nothing published behind them, and npm
+          # `latest` sat at 1.0.3 (2026-05-07) for three months while every run
+          # reported "already released -- nothing to do".
+          #
+          # "Is this version published" is a question about the registry, so ask
+          # the registry. A tag is downstream state that can drift from it; the
+          # registry cannot drift from itself.
+          ENC="$(printf '%s' "$PKG" | sed 's|/|%2F|')"
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${ENC}/${V}")"
+          case "$CODE" in
+            200)
+              echo "$PKG@$V is already on npm -- nothing to do."
+              ;;
+            404)
+              # REFUSE BEFORE PUBLISHING, not after. `npm publish` is
+              # effectively irreversible -- unpublishing is manual and only
+              # possible inside a 72h window -- so a provenance problem has to
+              # stop the run here, while nothing has happened yet.
+              #
+              # The case: v1.1.0..v1.8.1 are tagged with nothing published
+              # behind them, from the old tag-before-publish ordering. The first
+              # run after this lands still reads 1.8.1 from the manifest, so
+              # without this we would publish today's tree as 1.8.1 while the
+              # v1.8.1 tag points at a different commit -- content on npm under
+              # a version whose tag means something else. A check in the tag
+              # step would only REPORT that, after the irreversible step.
+              #
+              # `^{commit}`: these tags are created by this workflow's own
+              # `git tag -a`, so they are annotated by construction and a bare
+              # rev-parse would yield the tag object and never compare equal.
+              # Aegis's finding on this PR, twice -- the guard and its position.
+              if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+                TAGGED="$(git rev-parse "refs/tags/v$V^{commit}")"
+                HEAD_SHA="$(git rev-parse HEAD)"
+                if [ "$TAGGED" != "$HEAD_SHA" ]; then
+                  echo "::error::$PKG@$V is unpublished, but tag v$V already exists and points at $TAGGED, not HEAD ($HEAD_SHA)."
+                  echo "::error::Publishing now would put this tree on npm under a version whose tag means something else."
+                  echo "::error::Resolve deliberately: delete the stale tag and re-run, or let release-please cut a new version."
+                  exit 1
+                fi
+              fi
+              echo "version=$V" >> "$GITHUB_OUTPUT"
+              echo "Detected UNPUBLISHED release v$V."
+              ;;
+            *)
+              # Fail loudly rather than guess. Treating an unexpected code as
+              # "not published" retries a publish npm may reject; treating it as
+              # "published" silently skips a real release -- which is the failure
+              # this whole step exists to stop repeating.
+              echo "::error::registry returned HTTP $CODE for $PKG@$V; refusing to guess whether it is published."
+              exit 1
+              ;;
+          esac
 
       - uses: actions/setup-node@v6
         if: steps.detect.outputs.version
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
-          cache: npm
+          # NO `cache: npm`. The cache key is the lockfile, and this repo's
+          # package-lock.json is `standalone_only` in copy.bara.sky -- it exists
+          # only here, is never regenerated by the export, and was last written
+          # 2026-05-07. Caching against it keys on a fossil.
 
-      - run: npm ci
+      # `npm install --no-package-lock`, NOT `npm ci`. `npm ci` requires the
+      # lockfile and package.json to agree; that lockfile has not been touched
+      # since 1.0.3 while the monorepo kept adding dependencies, so `npm ci` was
+      # guaranteed to fail the first time a dep changed -- and did, on every
+      # release commit from 1.1.0 onward. Nothing regenerates it, so depending
+      # on it at all is the defect. Resolve from package.json instead.
+      - run: npm install --no-package-lock
         if: steps.detect.outputs.version
 
       - run: npm run build
@@ -87,3 +139,46 @@ jobs:
         if: steps.detect.outputs.version
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_RELEASE_TOKEN }}
+
+      # TAG LAST, and only after a successful publish. This step used to run
+      # before install/build/publish, so a failed publish still left a tag --
+      # which is both how nine orphan tags accumulated and how the old
+      # git-based detect step then wedged itself shut. A tag on this repo now
+      # means "this version is on npm", which is what everyone already assumed
+      # it meant.
+      - name: Tag the published release commit
+        if: steps.detect.outputs.version
+        run: |
+          V="${{ steps.detect.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Idempotent, because the nine ORPHAN tags from the old ordering are
+          # still on this repo (v1.1.0..v1.8.1, none published). Reaching this
+          # step means the publish above succeeded, so an existing tag is a
+          # leftover from a run that failed AFTER tagging -- not a conflict, and
+          # `git tag -a` on an existing name is a hard error we do not want
+          # turning a successful publish into a failed release.
+          #
+          # But "leave it alone" is only safe when the tag describes what we
+          # just published, so the same comparison runs here as a BACKSTOP.
+          # The load-bearing copy is in `detect`, deliberately: this one can
+          # only report a provenance break, because by the time it runs the
+          # publish has already happened and npm is effectively irreversible.
+          # Kept anyway so the invariant is enforced on both sides of the
+          # publish rather than resting on one step staying correct.
+          PKG="$(jq -r .name package.json)"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            TAGGED="$(git rev-parse "refs/tags/v$V^{commit}")"
+            if [ "$TAGGED" = "$HEAD_SHA" ]; then
+              echo "Tag v$V already exists and points at $HEAD_SHA -- nothing to do."
+            else
+              echo "::error::Published $PKG@$V from $HEAD_SHA, but tag v$V points at $TAGGED."
+              echo "::error::That tag predates this publish (orphan from the pre-fix ordering)."
+              echo "::error::Resolve deliberately: delete the stale tag and re-tag, or cut a new version."
+              exit 1
+            fi
+          else
+            git tag -a "v$V" -m "Release v$V"
+            git push origin "v$V"
+          fi
