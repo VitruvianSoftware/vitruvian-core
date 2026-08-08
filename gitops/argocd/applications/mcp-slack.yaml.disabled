@@ -195,9 +195,11 @@ spec:
     path: mcp-slack/deploy/chart
     helm:
       values: |
-        # ALL FIVE ARE PLACEHOLDERS. The chart fails to render on any of them
-        # being empty — that is the intended behaviour, not an obstacle to
-        # work around. Fill them from the sources named in the header above.
+        # FIVE VALUES ARE RENDER-BLOCKING. Four are still empty placeholders below;
+        # `networkPolicy.enabled` is filled (#1497 — #1487 fixed the CNP, so `true`
+        # is now the correct value, see criterion 7). The chart fails to render on
+        # any of the five being empty/unset — that is the intended behaviour, not
+        # an obstacle to work around. Fill the rest from the sources named above.
         #
         # THIS BLOCK IS THE COMPLETE SET OF RENDER-BLOCKING VALUES, verified by
         # rendering the chart rather than by reading it: with all five present
@@ -206,7 +208,8 @@ spec:
         # block that is short by two looks exactly like a block that is short by
         # one — which is how this one carried three entries for eight commits
         # while the chart required five. If you add a `required` to the chart,
-        # add its placeholder here in the same commit.
+        # add its placeholder here in the same commit (#1491 adds a sixth,
+        # `oidc.clientId` — update this comment again when that lands).
         image:
           digest: ""            # sha256:... — REQUIRED
         oidc:
