@@ -128,9 +128,14 @@
 #
 #      The chart makes this a value rather than a warning: `networkPolicy.
 #      enabled` must be set explicitly to a boolean or the render aborts.
-#      Setting it false is a deliberate, typed decision to run without egress
-#      bounding — which is the honest state today. This criterion is met only
-#      when it can be set true.
+#      #1487 (merged 2026-08-08) fixed this: the CNP now pins DNS to kube-dns
+#      at L3/L4 with no `rules.dns` block, so it passes traffic without
+#      depending on the broken L7 DNS proxy. `true` is the correct value —
+#      it costs nothing against #1428 (no bound exists for :443/DNS-content
+#      exfil either way) and buys the entire lateral bound (apiserver, other
+#      namespaces, Postgres, Zitadel, the Buzz relay). `false` is now the
+#      dangerous choice: zero in-cluster containment on an internet-facing
+#      pod holding a Slack token. This criterion is met once it is set true.
 #
 #      Written as a numbered criterion rather than left in the template's
 #      header because criteria 1-8 are the list someone reads before
@@ -209,11 +214,11 @@ spec:
           channelIds: ""        # comma-separated channel IDs — REQUIRED
         networkPolicy:
           # REQUIRED, and a real boolean — a quoted "false" is refused, because
-          # Helm treats any non-empty string as true and that would enable the
-          # very policy this gate exists to keep off. See criterion 7: today the
-          # only honest value is false, and false means NOTHING constrains where
-          # the bot token can be sent.
-          enabled:
+          # Helm treats any non-empty string as true. See criterion 7: #1487
+          # fixed the CNP, so true is now the correct value — it costs nothing
+          # against #1428 and buys the entire lateral bound. false means NOTHING
+          # constrains where the bot token can be sent and is the choice to avoid.
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: mcp-slack
