@@ -68,10 +68,13 @@ async function main() {
    * `startHttpTransport` doc comment for why a shared pair is actively wrong
    * in stateless mode, not merely unnecessary.
    *
-   * Safe to call repeatedly: `client`, `advertisedToolNames` and
+   * Safe to call repeatedly today: `client`, `advertisedToolNames` and
    * `advertisedTools` above are immutable, derived once from `config`, and
    * hold no per-connection state, so every `Server` this returns behaves
-   * identically.
+   * identically. **Keep it that way** — anything this closure captures must
+   * hold no per-caller state. A cache keyed on anything caller-derived would
+   * reintroduce GHSA-345p's failure mode one layer up, in a place a
+   * per-request transport can no longer catch.
    */
   function createServer(): Server {
     const server = new Server(

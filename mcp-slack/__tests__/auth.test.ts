@@ -520,6 +520,29 @@ describe("client pinning", () => {
     expect.assertions(2);
   });
 
+  // Aegis's finding on #1499: a present-but-wrong-type client_id must not be
+  // reported as absent. ClientNotAllowedError branches on
+  // `presented.length > 0` to choose its message, so collapsing "wrong type"
+  // into "" would make the refusal assert a token carried no client_id when
+  // it carried one of the wrong shape — same trap the azp branch avoids with
+  // JSON.stringify.
+  it("stringifies a non-string client_id rather than reporting it as absent", async () => {
+    const token = await new SignJWT({ client_id: 987654321 })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(privateKey);
+
+    const error = await verifier()
+      .verify(token)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientNotAllowedError);
+    expect((error as ClientNotAllowedError).presented).toBe("987654321");
+  });
+
   it("rejects a token carrying azp at all, before client_id is even considered", async () => {
     // clientId is correctly pinned here on purpose: azp must be the reason
     // for the rejection, not a client mismatch riding along with it.

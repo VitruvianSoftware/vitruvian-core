@@ -515,7 +515,18 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     // check entirely.
     const clientId = payload["client_id"];
     if (clientId !== config.allowedClientId) {
-      throw new ClientNotAllowedError(typeof clientId === "string" ? clientId : "");
+      // Only a genuinely absent claim (undefined) reports as "". A present
+      // but wrong-type value is stringified, same as the azp branch above —
+      // otherwise "wrong type" collapses into "absent" and the refusal
+      // (and the alert annotation that tells an operator how to read it)
+      // asserts something false about what the token actually carried.
+      throw new ClientNotAllowedError(
+        clientId === undefined
+          ? ""
+          : typeof clientId === "string"
+            ? clientId
+            : JSON.stringify(clientId)
+      );
     }
 
     return { subject, claims: payload };
