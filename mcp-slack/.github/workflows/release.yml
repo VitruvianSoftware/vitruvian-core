@@ -128,13 +128,32 @@ jobs:
           # Idempotent, because the nine ORPHAN tags from the old ordering are
           # still on this repo (v1.1.0..v1.8.1, none published). Reaching this
           # step means the publish above succeeded, so an existing tag is a
-          # leftover from a run that failed AFTER tagging -- not a conflict.
-          # `git tag -a` on an existing name is a hard error, so guard it rather
-          # than let a successful publish report as a failed release. Not `-f`:
-          # the tag already points at the right commit in every real case, and
-          # force-moving tags is worse than leaving one alone.
+          # leftover from a run that failed AFTER tagging -- not a conflict, and
+          # `git tag -a` on an existing name is a hard error we do not want
+          # turning a successful publish into a failed release.
+          #
+          # But "leave it alone" is only safe when the tag describes what we
+          # just published. The FIRST run after this lands is exactly the case
+          # where it does not: the manifest still reads 1.8.1, so we publish
+          # today's tree as 1.8.1 while v1.8.1 points at whatever was HEAD when
+          # the old ordering tagged it. Silently keeping that tag would put
+          # content on npm under a version whose tag means something else --
+          # the same provenance break we refuse for image digests, one registry
+          # over. So compare and fail loudly instead. `^{commit}` because these
+          # are annotated tags and a bare rev-parse yields the tag object.
+          # Aegis's catch on this PR.
+          PKG="$(jq -r .name package.json)"
+          HEAD_SHA="$(git rev-parse HEAD)"
           if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
-            echo "Tag v$V already exists (orphan from the pre-fix ordering); published, leaving it."
+            TAGGED="$(git rev-parse "refs/tags/v$V^{commit}")"
+            if [ "$TAGGED" = "$HEAD_SHA" ]; then
+              echo "Tag v$V already exists and points at $HEAD_SHA -- nothing to do."
+            else
+              echo "::error::Published $PKG@$V from $HEAD_SHA, but tag v$V points at $TAGGED."
+              echo "::error::That tag predates this publish (orphan from the pre-fix ordering)."
+              echo "::error::Resolve deliberately: delete the stale tag and re-tag, or cut a new version."
+              exit 1
+            fi
           else
             git tag -a "v$V" -m "Release v$V"
             git push origin "v$V"
