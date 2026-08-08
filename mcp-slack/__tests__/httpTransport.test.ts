@@ -35,7 +35,7 @@ import {
 import { Agent, request } from "node:http";
 
 import { headerSafe, startHttpTransport } from "../src/httpTransport.js";
-import { SubjectNotAllowedError } from "../src/auth.js";
+import { ClientNotAllowedError, SubjectNotAllowedError } from "../src/auth.js";
 
 const CONFIG = {
   port: 0, // ephemeral; the OS picks a free one
@@ -44,6 +44,7 @@ const CONFIG = {
   // Required by HttpConfig; these tests inject their own verifier, so the
   // value is never consulted — but it cannot be omitted, which is the point.
   allowedSubjects: ["user-42"],
+  allowedClientId: "111222333",
 };
 
 /** A verifier whose behaviour each test controls. */
@@ -58,15 +59,18 @@ function verifierThat(behaviour: () => Promise<never> | Promise<void>): TokenVer
   };
 }
 
+function testServerFactory(): Server {
+  return new Server(
+    { name: "mcp-slack-test", version: "0.0.0" },
+    { capabilities: { tools: {} } }
+  );
+}
+
 async function withServer(
   verifier: TokenVerifier,
   assertions: (baseUrl: string) => Promise<void>
 ): Promise<void> {
-  const server = new Server(
-    { name: "mcp-slack-test", version: "0.0.0" },
-    { capabilities: { tools: {} } }
-  );
-  const handle = await startHttpTransport(server, CONFIG, verifier);
+  const handle = await startHttpTransport(testServerFactory, CONFIG, verifier);
   // startHttpTransport listens on CONFIG.port; port 0 means the real port is
   // only knowable after listen, so read it back off the underlying server.
   const address = handle.address();
@@ -214,11 +218,7 @@ describe("headerSafe", () => {
 // Terminating, and the kubelet SIGKILLs every other in-flight request.
 describe("close() bounds the wait on an active request", () => {
   it("forces the connection after the grace period instead of hanging", async () => {
-    const server = new Server(
-      { name: "mcp-slack-test", version: "0.0.0" },
-      { capabilities: { tools: {} } }
-    );
-    const listener = await startHttpTransport(server, CONFIG, {
+    const listener = await startHttpTransport(testServerFactory, CONFIG, {
       // Never resolves: models a handler wedged on a hung upstream call.
       verify: () => new Promise(() => {}),
       verifyAuthorizationHeader: () => new Promise(() => {}),
@@ -293,6 +293,34 @@ describe("refusals are recorded, not only answered", () => {
     expect(refusal).toContain("sub=379361013981513322");
   });
 
+  // The label is per-error (#1491), not hardcoded to "sub=" — a client-pinning
+  // refusal has no subject to be wrong about, and mislabeling it as one would
+  // send whoever reads the log looking for the wrong control.
+  it("labels a client-pinning refusal by client_id, not sub", async () => {
+    const err = captureStderr();
+    try {
+      await withServer(
+        verifierThat(() => {
+          throw new ClientNotAllowedError("777777777");
+        }),
+        async (baseUrl) => {
+          const res = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: { Authorization: "Bearer t", "Content-Type": "application/json" },
+            body: "{}",
+          });
+          expect(res.status).toBe(403);
+        }
+      );
+    } finally {
+      err.restore();
+    }
+    const refusal = err.lines.find((l) => l.includes("refused"));
+    expect(refusal).toBeDefined();
+    expect(refusal).toContain("client_id=777777777");
+    expect(refusal).not.toContain("sub=777777777");
+  });
+
   it("does not log 401s, which a public endpoint gets by the thousand", async () => {
     // Scanners produce these. Burying a 403 — which requires a validly-signed
     // token audienced for our project — under that noise would defeat the
@@ -312,5 +340,60 @@ describe("refusals are recorded, not only answered", () => {
       err.restore();
     }
     expect(err.lines.filter((l) => l.includes("refused"))).toEqual([]);
+  });
+});
+
+// #1491 / GHSA-345p-7cg4-v4c7 regression. `StreamableHTTPServerTransport` in
+// stateless mode (`sessionIdGenerator: undefined`) is single-use: the SDK
+// throws on a transport's *second* `handleRequest` call
+// (`_hasHandledRequest`, set unconditionally on the first, never reset). A
+// `Server`/transport pair built once and reused across every `/mcp` request —
+// this file's own shape before this fix — answers exactly one MCP request per
+// pod lifetime and throws on every one after, forever: nothing here restarts
+// the pod, because `/health` returns before ever touching the transport, so
+// both probes stay green on an endpoint that has already stopped answering.
+//
+// This exercises the actual regression rather than standing in for it: a real
+// `Server`, a real `StreamableHTTPServerTransport`, and a real
+// Accept/Content-Type-negotiated `initialize` call, sent twice. Both headers
+// are required — the SDK 406s ahead of the reuse guard if either is missing,
+// which would make this test pass identically whether or not the bug exists.
+// Revert the per-request construction in httpTransport.ts and this goes red.
+describe("a fresh Server and transport are used per request (#1491)", () => {
+  const initializeBody = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "regression-test-client", version: "0.0.0" },
+    },
+  });
+
+  async function postInitialize(baseUrl: string) {
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer t",
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body: initializeBody,
+    });
+    // Drains the body so the connection closes before the next request or
+    // test teardown, rather than leaving an SSE stream half-read.
+    await res.text();
+    return res;
+  }
+
+  it("answers a second sequential MCP request instead of latching after the first", async () => {
+    await withServer(okVerifier, async (baseUrl) => {
+      const first = await postInitialize(baseUrl);
+      expect(first.status).toBe(200);
+
+      const second = await postInitialize(baseUrl);
+      expect(second.status).toBe(200);
+    });
   });
 });

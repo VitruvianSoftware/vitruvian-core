@@ -26,6 +26,8 @@ import { SignJWT, errors, generateKeyPair, type CryptoKey } from "jose";
 
 import {
   AudienceMismatchError,
+  AuthorizedPartyPresentError,
+  ClientNotAllowedError,
   SubjectNotAllowedError,
   IdpUnavailableError,
   isIdpSideFailure,
@@ -42,6 +44,8 @@ import {
 const ISSUER = "https://auth.example.test";
 const PROJECT_ID = "123456789";
 const OTHER_PROJECT_ID = "987654321";
+const CLIENT_ID = "555555555555555555";
+const OTHER_CLIENT_ID = "666666666666666666";
 
 let privateKey: CryptoKey;
 let publicKey: CryptoKey;
@@ -50,19 +54,33 @@ beforeAll(async () => {
   ({ privateKey, publicKey } = await generateKeyPair("RS256"));
 });
 
-/** Mints a token the way Zitadel would, with overridable claims. */
+/**
+ * Mints a token the way Zitadel would, with overridable claims.
+ *
+ * `clientId` defaults to {@link CLIENT_ID} — matching `verifier()`'s default
+ * `allowedClientId` — so every existing call site that predates #1491 keeps
+ * minting a token that passes the new client-pinning check without having to
+ * know it exists. Pass `clientId: undefined` explicitly to omit the claim.
+ */
 async function mintToken({
   audience = PROJECT_ID,
   issuer = ISSUER,
   subject = "user-42",
   expiresIn = "5m",
+  clientId = CLIENT_ID,
+  azp,
 }: {
   audience?: string | string[];
   issuer?: string;
   subject?: string;
   expiresIn?: string;
+  clientId?: string | undefined;
+  azp?: string;
 } = {}): Promise<string> {
-  return new SignJWT({})
+  const claims: Record<string, unknown> = {};
+  if (clientId !== undefined) claims.client_id = clientId;
+  if (azp !== undefined) claims.azp = azp;
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256" })
     .setIssuer(issuer)
     .setAudience(audience)
@@ -72,11 +90,16 @@ async function mintToken({
     .sign(privateKey);
 }
 
-function verifier(projectId = PROJECT_ID, allowedSubjects = ["user-42"]) {
+function verifier(
+  projectId = PROJECT_ID,
+  allowedSubjects = ["user-42"],
+  allowedClientId = CLIENT_ID
+) {
   return createTokenVerifier({
     issuer: ISSUER,
     projectId,
     allowedSubjects,
+    allowedClientId,
     keySource: () => Promise.resolve(publicKey),
   });
 }
@@ -274,6 +297,7 @@ describe("IdP reachability is distinguished from token validity", () => {
     return createTokenVerifier({
       issuer: ISSUER,
       allowedSubjects: ["user-42"],
+      allowedClientId: CLIENT_ID,
       projectId: PROJECT_ID,
       jwksUri: "http://127.0.0.1:1/unreachable",
     });
@@ -314,6 +338,7 @@ describe("IdP reachability is distinguished from token validity", () => {
     const verifier = createTokenVerifier({
       issuer: ISSUER,
       allowedSubjects: ["user-42"],
+      allowedClientId: CLIENT_ID,
       projectId: PROJECT_ID,
       keySource: () => {
         throw new Error("something nobody anticipated");
@@ -343,6 +368,7 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
       const verifier = createTokenVerifier({
         issuer: ISSUER,
         allowedSubjects: ["user-42"],
+        allowedClientId: CLIENT_ID,
         projectId: PROJECT_ID,
         jwksUri: `http://127.0.0.1:${port}/jwks`,
         jwksTimeoutMs: 50,
@@ -450,5 +476,131 @@ describe("subject allow-list", () => {
     await expect(
       verifier(PROJECT_ID, ["379361013981513322"]).verify(wrongAudience)
     ).rejects.toBeInstanceOf(AudienceMismatchError);
+  });
+});
+
+// The last identity control (#1491): pins the caller to this server's own
+// OIDC client. OIDC_ALLOWED_SUBJECTS closes who; this closes which app they
+// came in through — a subject who can authenticate to some *other* client in
+// the instance and pick up this project's audience scope still cannot reach
+// here.
+describe("client pinning", () => {
+  it("accepts a token minted through the pinned client (positive control)", async () => {
+    // Without this, the rejection tests below prove nothing: they could be
+    // passing because every token is rejected, not because the wrong ones are.
+    const token = await mintToken({ clientId: CLIENT_ID });
+    await expect(verifier().verify(token)).resolves.toMatchObject({
+      subject: "user-42",
+    });
+  });
+
+  it("rejects a token minted through a different client", async () => {
+    const token = await mintToken({ clientId: OTHER_CLIENT_ID });
+    await expect(verifier().verify(token)).rejects.toBeInstanceOf(
+      ClientNotAllowedError
+    );
+  });
+
+  // Asserted explicitly, not inferred from the wrong-client test passing — an
+  // absent claim and a wrong claim are different failure shapes, and a guard
+  // written as `clientId && clientId !== expected` would let this one through
+  // while still failing the wrong-client test above.
+  //
+  // Signed directly rather than through mintToken({ clientId: undefined }):
+  // destructuring defaults in JS trigger on an explicit `undefined` exactly
+  // as they do on omission, so that call would have silently minted a token
+  // carrying the default CLIENT_ID — the opposite of what this test needs to
+  // assert, and the failure it produced (a resolved promise instead of a
+  // rejected one) is what caught it.
+  it("rejects a token where client_id is absent entirely", async () => {
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(privateKey);
+    await expect(verifier().verify(token)).rejects.toBeInstanceOf(
+      ClientNotAllowedError
+    );
+  });
+
+  it("rejects with 403 and names the presented client_id", async () => {
+    const token = await mintToken({ clientId: OTHER_CLIENT_ID });
+    await verifier()
+      .verify(token)
+      .catch((error: ClientNotAllowedError) => {
+        expect(error.status).toBe(403);
+        expect(error.presented).toBe(OTHER_CLIENT_ID);
+      });
+    expect.assertions(2);
+  });
+
+  // Aegis's finding on #1499: a present-but-wrong-type client_id must not be
+  // reported as absent. ClientNotAllowedError branches on
+  // `presented.length > 0` to choose its message, so collapsing "wrong type"
+  // into "" would make the refusal assert a token carried no client_id when
+  // it carried one of the wrong shape — same trap the azp branch avoids with
+  // JSON.stringify.
+  it("stringifies a non-string client_id rather than reporting it as absent", async () => {
+    const token = await new SignJWT({ client_id: 987654321 })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(privateKey);
+
+    const error = await verifier()
+      .verify(token)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientNotAllowedError);
+    expect((error as ClientNotAllowedError).presented).toBe("987654321");
+  });
+
+  it("rejects a token carrying azp at all, before client_id is even considered", async () => {
+    // clientId is correctly pinned here on purpose: azp must be the reason
+    // for the rejection, not a client mismatch riding along with it.
+    const token = await mintToken({ clientId: CLIENT_ID, azp: CLIENT_ID });
+    const error = await verifier()
+      .verify(token)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AuthorizedPartyPresentError);
+    expect((error as AuthorizedPartyPresentError).status).toBe(403);
+    expect((error as AuthorizedPartyPresentError).presented).toBe(CLIENT_ID);
+  });
+
+  it("checks the client pin only after signature, audience and subject", async () => {
+    // Ordering matters here too: an unpinned client on an otherwise-bad token
+    // must never be the reported reason.
+    const wrongAudience = await mintToken({
+      audience: "some-other-project",
+      clientId: OTHER_CLIENT_ID,
+    });
+    await expect(verifier().verify(wrongAudience)).rejects.toBeInstanceOf(
+      AudienceMismatchError
+    );
+
+    const unlistedSubject = await mintToken({
+      subject: "not-listed",
+      clientId: OTHER_CLIENT_ID,
+    });
+    await expect(
+      verifier(PROJECT_ID, ["user-42"]).verify(unlistedSubject)
+    ).rejects.toBeInstanceOf(SubjectNotAllowedError);
+  });
+
+  it("refuses to construct a verifier with an empty client pin", () => {
+    expect(() =>
+      createTokenVerifier({
+        issuer: ISSUER,
+        projectId: PROJECT_ID,
+        allowedSubjects: ["user-42"],
+        allowedClientId: "",
+        keySource: () => Promise.resolve(publicKey),
+      })
+    ).toThrow(/allowedClientId/);
   });
 });

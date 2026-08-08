@@ -59,6 +59,12 @@ export abstract class AuthError extends Error {
    * there is nothing trustworthy to record.
    */
   readonly presented?: string;
+  /**
+   * What {@link presented} represents — `"sub"`, `"azp"`, `"client_id"` — so
+   * the refusal log can label the value it is printing instead of assuming it
+   * is always a subject. Undefined wherever `presented` is.
+   */
+  readonly presentedLabel?: string;
 }
 
 /** No credentials presented at all. */
@@ -186,6 +192,7 @@ export class SubjectNotAllowedError extends AuthError {
   readonly code = "insufficient_scope";
   readonly subject: string;
   readonly presented: string;
+  readonly presentedLabel = "sub";
 
   constructor(subject: string) {
     super(
@@ -196,6 +203,86 @@ export class SubjectNotAllowedError extends AuthError {
     this.name = "SubjectNotAllowedError";
     this.subject = subject;
     this.presented = subject;
+  }
+}
+
+/**
+ * The token carries an `azp` claim at all.
+ *
+ * Zitadel puts `azp` on **id_tokens** and `client_id` on **access tokens** —
+ * confirmed against the installed `jose@6.2.4` and Zitadel's own token
+ * construction, rather than assumed, because the spec only guarantees `azp`
+ * is present when a token has multiple audiences. This endpoint is handed a
+ * bearer credential, which is meant to be an access token; a token carrying
+ * `azp` satisfying every other check is not evidence it was issued to the
+ * expected client, because `azp` is a different claim from `client_id` and
+ * this server never asked Zitadel to mint one for it. Rejecting outright,
+ * rather than comparing `azp` to an expected value, means a token of the
+ * wrong kind can never be mistaken for a correctly pinned one.
+ *
+ * Its own error class for the same reason {@link AudienceMismatchError} and
+ * {@link SubjectNotAllowedError} are already distinct classes at the same
+ * status: collapsing this into `ClientNotAllowedError` or
+ * `SubjectNotAllowedError` would make a client-pinning rejection
+ * indistinguishable from the other two, in both logs and the
+ * `McpSlackSustainedForbidden` alert — three different security events
+ * collapsing into one.
+ */
+export class AuthorizedPartyPresentError extends AuthError {
+  readonly status = 403;
+  readonly code = "insufficient_scope";
+  readonly presented: string;
+  readonly presentedLabel = "azp";
+
+  constructor(azp: string) {
+    super(
+      `Token carries an "azp" claim ("${azp}"), which this endpoint does ` +
+        `not accept. This looks like an id_token; only an access token ` +
+        `issued directly to this server's pinned OIDC client is accepted.`
+    );
+    this.name = "AuthorizedPartyPresentError";
+    this.presented = azp;
+  }
+}
+
+/**
+ * Raised when a valid, correctly-audienced, correctly-subjected token was not
+ * issued to the OIDC client this server pins itself to (#1491).
+ *
+ * This closes a gap `OIDC_ALLOWED_SUBJECTS` cannot: Zitadel documents the
+ * audience-granting scope as requestable by any client, without checking the
+ * requesting user's grants. So a token can carry a listed subject and this
+ * project's audience while having been minted for a client the operator never
+ * authorised to reach this endpoint — the audience and subject checks above
+ * both pass, and this is what actually narrows the caller to the intended
+ * app. Pinning `client_id` closes the class of caller rather than one
+ * instance of it, and — unlike the subject allow-list — needs no maintenance
+ * as people join or leave it.
+ *
+ * `clientId !== config.allowedClientId` is the whole check, deliberately: an
+ * absent, wrong-type or merely-different `client_id` all take the same
+ * branch. A guard shaped `clientId && clientId !== expected` would let an
+ * absent claim skip the check and pass — the same defect class as an
+ * unvalidated optional channel parameter, just in a new claim.
+ */
+export class ClientNotAllowedError extends AuthError {
+  readonly status = 403;
+  readonly code = "insufficient_scope";
+  readonly presented: string;
+  readonly presentedLabel = "client_id";
+
+  constructor(clientId: string) {
+    super(
+      clientId.length > 0
+        ? `Token is valid but was issued to client "${clientId}", which ` +
+          `this endpoint does not accept. Only this server's pinned OIDC ` +
+          `client may be used to reach it.`
+        : `Token is valid but carries no "client_id" claim. This endpoint ` +
+          `requires an access token issued directly to its pinned OIDC ` +
+          `client; a token minted for a different flow will not have one.`
+    );
+    this.name = "ClientNotAllowedError";
+    this.presented = clientId;
   }
 }
 
@@ -294,6 +381,13 @@ export interface TokenVerifierConfig {
    * because a working endpoint looks identical either way.
    */
   allowedSubjects: readonly string[];
+  /**
+   * The OIDC client this server pins itself to (#1491). Required, and
+   * deliberately not defaulted: an absent pin must mean "refuse to start",
+   * never "accept any client" — the same fail-closed treatment
+   * {@link allowedSubjects} gives an unset allow-list.
+   */
+  allowedClientId: string;
   /** Overridable for tests; defaults to the issuer's standard JWKS path. */
   jwksUri?: string;
   /**
@@ -345,6 +439,13 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
         "token to, which is not the same set as the people this endpoint serves."
     );
   }
+  if (!config.allowedClientId) {
+    throw new Error(
+      "createTokenVerifier requires allowedClientId. An empty value would " +
+        "accept a token minted for any OIDC client, which defeats the pin " +
+        "this check exists to enforce."
+    );
+  }
 
   async function verify(token: string): Promise<VerifiedCaller> {
     if (!looksLikeJwt(token)) throw new OpaqueTokenError();
@@ -391,6 +492,41 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     // never be the reason a forged token is accepted.
     if (!allowedSubjects.has(subject)) {
       throw new SubjectNotAllowedError(subject);
+    }
+
+    // Pins the caller to this server's own OIDC client (#1491). Checked last
+    // — after signature, issuer, audience and subject — so it only ever
+    // narrows an identity that has already been fully established, and can
+    // never be the reason a forged or misaudienced token is accepted.
+    //
+    // azp identifies an id_token's authorized party; access tokens carry
+    // client_id instead. A token carrying azp at all is not this server's
+    // expected shape, so it is rejected outright rather than compared.
+    const azp = payload["azp"];
+    if (azp !== undefined) {
+      throw new AuthorizedPartyPresentError(
+        typeof azp === "string" ? azp : JSON.stringify(azp)
+      );
+    }
+
+    // Fails closed on purpose: `!==` rejects an absent, wrong-type and
+    // wrong-value client_id in the same branch. A guard shaped
+    // `clientId && clientId !== expected` would let an absent claim skip the
+    // check entirely.
+    const clientId = payload["client_id"];
+    if (clientId !== config.allowedClientId) {
+      // Only a genuinely absent claim (undefined) reports as "". A present
+      // but wrong-type value is stringified, same as the azp branch above —
+      // otherwise "wrong type" collapses into "absent" and the refusal
+      // (and the alert annotation that tells an operator how to read it)
+      // asserts something false about what the token actually carried.
+      throw new ClientNotAllowedError(
+        clientId === undefined
+          ? ""
+          : typeof clientId === "string"
+            ? clientId
+            : JSON.stringify(clientId)
+      );
     }
 
     return { subject, claims: payload };

@@ -53,21 +53,38 @@ async function main() {
     throw error;
   }
 
-  const server = new Server(
-    { name: "mcp-slack", version: "2.0.0" },
-    { capabilities: { tools: {} } }
-  );
-
   const client = new SlackClient(config.slack, {
     channelGuard: config.channelGuard,
     writeToken: config.writeToken,
   });
 
-  // ── Tool handler ─────────────────────────────────────────────────────
-
   const advertisedToolNames = new Set<string>(toolsFor(config).map((t) => t.name));
+  const advertisedTools = toolsFor(config);
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  /**
+   * Builds a fresh `Server`. A factory rather than a shared instance because
+   * the HTTP transport needs a new `Server` (and a new
+   * `StreamableHTTPServerTransport`) per request — see httpTransport.ts's
+   * `startHttpTransport` doc comment for why a shared pair is actively wrong
+   * in stateless mode, not merely unnecessary.
+   *
+   * Safe to call repeatedly today: `client`, `advertisedToolNames` and
+   * `advertisedTools` above are immutable, derived once from `config`, and
+   * hold no per-connection state, so every `Server` this returns behaves
+   * identically. **Keep it that way** — anything this closure captures must
+   * hold no per-caller state. A cache keyed on anything caller-derived would
+   * reintroduce GHSA-345p's failure mode one layer up, in a place a
+   * per-request transport can no longer catch.
+   */
+  function createServer(): Server {
+    const server = new Server(
+      { name: "mcp-slack", version: "2.0.0" },
+      { capabilities: { tools: {} } }
+    );
+
+    // ── Tool handler ───────────────────────────────────────────────────
+
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
       // Dispatch consults the same set ListTools advertises. It previously did
@@ -247,14 +264,16 @@ async function main() {
         ],
       };
     }
-  });
+    });
 
-  // ── Tool listing ─────────────────────────────────────────────────────
+    // ── Tool listing ─────────────────────────────────────────────────────
 
-  const advertisedTools = toolsFor(config);
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: advertisedTools,
-  }));
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: advertisedTools,
+    }));
+
+    return server;
+  }
 
   // ── Start ────────────────────────────────────────────────────────────
 
@@ -278,7 +297,7 @@ async function main() {
       process.exit(1);
     }
 
-    const listener = await startHttpTransport(server, config.http!);
+    const listener = await startHttpTransport(createServer, config.http!);
 
     // A pod being rolled gets SIGTERM, and without a handler Node's default is
     // to exit immediately — every in-flight request dies mid-response. The
@@ -326,7 +345,7 @@ async function main() {
   }
 
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await createServer().connect(transport);
 
   // Note: All initialization logs must strictly use stderr to avoid violating the MCP stdio transport protocol.
   process.stderr.write(

@@ -182,6 +182,7 @@ failure mode.
 | `OIDC_ISSUER` | Issuer whose tokens are accepted, e.g. `https://auth.ipv1337.dev` |
 | `OIDC_PROJECT_ID` | Zitadel project that must appear in each token's `aud` |
 | `OIDC_ALLOWED_SUBJECTS` | Comma-separated `sub` values this endpoint serves |
+| `OIDC_ALLOWED_CLIENT_ID` | OIDC client this server pins itself to (#1491) |
 
 `SLACK_USER_TOKEN` must **not** be set here; the server refuses to start if it
 is. It posts as the authenticated human and can search their DMs, so a network
@@ -204,6 +205,12 @@ the 403, so the way to discover it is to attempt a connection and read the error
 rather than decode a token by hand. Startup prints the *count* it parsed — check
 it matches, since a quoting mistake that collapses several IDs into one string
 reads as `1 allowed subject(s)` here and as an inexplicable 403 an hour later.
+
+`OIDC_ALLOWED_CLIENT_ID` closes a different gap (#1491): it pins the caller to
+this server's own OIDC client, so a listed subject who authenticates to some
+*other* client in the instance and picks up this project's audience scope still
+cannot reach here. It is a stack output of `zitadel-apps-mcp-slack`, not
+something to hand-type.
 
 ### 4. Build & run
 

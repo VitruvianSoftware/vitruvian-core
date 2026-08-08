@@ -82,6 +82,15 @@ oidc:
   # refused render with this message, rather than as a CrashLoopBackOff that
   # reads like an application fault.
   allowedSubjects: ""
+  # REQUIRED — `pulumi stack output clientId` from zitadel-apps-mcp-slack
+  # (#1491). Pins the caller to this server's own OIDC client, which closes a
+  # gap allowedSubjects above cannot: Zitadel documents the audience-granting
+  # scope as requestable by any client, without checking the requesting
+  # user's grants. So a listed subject who authenticates to a DIFFERENT
+  # client in the instance can still satisfy the audience check and the
+  # subject check above — this is the control that actually narrows the
+  # caller to the intended app, not one instance of it.
+  clientId: ""
 
 slack:
   # REQUIRED — comma-separated channel IDs. This is the allow-list, and it is

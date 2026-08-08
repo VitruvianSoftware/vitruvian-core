@@ -55,6 +55,7 @@ const HTTP_ENV = {
   OIDC_ISSUER: "https://auth.example.test",
   OIDC_PROJECT_ID: "999",
   OIDC_ALLOWED_SUBJECTS: "379361013981513322",
+  OIDC_ALLOWED_CLIENT_ID: "111222333",
 };
 
 /**

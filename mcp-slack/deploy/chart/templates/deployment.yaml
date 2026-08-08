@@ -111,6 +111,14 @@ spec:
             # names the missing value instead of arriving as CrashLoopBackOff.
             - name: OIDC_ALLOWED_SUBJECTS
               value: {{ include "mcp-slack.allowedSubjects" . | quote }}
+            # Pins the caller to this server's own OIDC client (#1491). Closes
+            # what OIDC_ALLOWED_SUBJECTS above cannot: a listed subject who
+            # authenticates to a DIFFERENT client in the instance and picks up
+            # this project's audience scope still passes the audience and
+            # subject checks, so this is what actually narrows the caller to
+            # the intended app.
+            - name: OIDC_ALLOWED_CLIENT_ID
+              value: {{ include "mcp-slack.allowedClientId" . | quote }}
             - name: SLACK_CHANNEL_IDS
               value: {{ include "mcp-slack.channelIds" . | quote }}
             # Always emitted, even when empty. The deployed manifest should
