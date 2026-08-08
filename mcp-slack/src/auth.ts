@@ -192,6 +192,7 @@ export class SubjectNotAllowedError extends AuthError {
   readonly code = "insufficient_scope";
   readonly subject: string;
   readonly presented: string;
+  readonly presentedLabel = "sub";
 
   constructor(subject: string) {
     super(
@@ -202,7 +203,6 @@ export class SubjectNotAllowedError extends AuthError {
     this.name = "SubjectNotAllowedError";
     this.subject = subject;
     this.presented = subject;
-    this.presentedLabel = "sub";
   }
 }
 

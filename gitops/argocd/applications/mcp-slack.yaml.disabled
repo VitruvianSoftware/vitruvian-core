@@ -23,14 +23,14 @@
 # reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
 # mechanism tabula.yaml.disabled uses.
 #
-# It is NOT disabled because it is unfinished. It is disabled because four
+# It is NOT disabled because it is unfinished. It is disabled because five
 # required values do not exist yet, and every one of them is a security
 # boundary rather than a setting. The chart refuses to render without them
 # (see mcp-slack/deploy/chart/templates/_helpers.tpl), so enabling this early
 # would produce a failed sync rather than an exposed endpoint — but a failed
 # sync on a publicly-routed hostname is still not a state worth entering.
 #
-# A fifth, networkPolicy.enabled, is required in the same fail-closed sense but
+# A sixth, networkPolicy.enabled, is required in the same fail-closed sense but
 # is a DECISION rather than a lookup — see criterion 7. It has no placeholder
 # to fill from elsewhere; someone has to choose, and the render aborts until
 # they do.
@@ -165,6 +165,12 @@
 #      from Zitadel and can be read today. That makes it the cheapest of the
 #      eight, which is its own hazard — cheap items get assumed done.
 #
+# NOT YET A NUMBERED CRITERION: oidc.clientId (#1491) is also render-blocking
+# as of this file's "helm" values block below — work criteria 1-8 top to
+# bottom, satisfy all eight, still get a failed render. Full write-up is
+# item 4's job; this line exists so the header — "the list someone reads
+# before enabling" (criterion 7's own words) — doesn't silently omit it.
+#
 # The alert for this workload is NOT in the chart — it lives in
 # gitops/argocd/platform/prometheus/applicationset.yaml, group `mcp-slack`.
 # This cluster has no prometheus-operator, so a PrometheusRule would sync
@@ -206,11 +212,12 @@ spec:
         #
         # FIVE OF THE SIX were verified by rendering the chart rather than by
         # reading it: with those five present `helm template` succeeds, and
-        # removing any one of them fails with that value's own message. `helm`
-        # is denied in every agent session as of this comment, so the sixth
-        # (`oidc.clientId`) is a source read of `_helpers.tpl`, not yet a render
-        # — whoever runs the render next should fold it into the same pass
-        # rather than trust this line. Helm reports only the FIRST missing
+        # removing any one of them fails with that value's own message.
+        # `oidc.clientId` HAS NOT BEEN RENDER-VERIFIED — it is a source read of
+        # `_helpers.tpl`, not yet a render. Delete this sentence once #1502's
+        # `chart-render` CI job (or any render) includes it in its test values;
+        # until then, don't infer render-verification from the absence of this
+        # caveat elsewhere in the file. Helm reports only the FIRST missing
         # value, so a block that is short by two looks exactly like a block
         # that is short by one — which is how this one carried three entries
         # for eight commits while the chart required five. If you add a
