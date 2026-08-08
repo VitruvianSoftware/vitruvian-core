@@ -1,14 +1,19 @@
-# Per-agent GitHub App identities. NOT secret: app ids and installation ids are
-# public identifiers. The private keys are in Bitwarden (see
+# Per-agent GitHub App identities. NOT secret: app ids, installation ids and bot
+# user ids are all public identifiers. The private keys are in Bitwarden (see
 # //tools/sync-env-secrets:agent-keys-pull) and never in this repo.
 #
-# agent	app_id	installation_id
-beacon	4520098	152031070
-atlas	4521079	152054030
-ridge	4521089	152054236
-wren	4521094	152054411
-scout	4521103	152054588
-quill	4521110	152054783
-compass	4521117	152054955
-pace	4521124	152055117
-aegis	4521137	152055295
+# bot_user_id builds the commit-author address GitHub attributes to the bot:
+#   <bot_user_id>+<slug>[bot]@users.noreply.github.com
+# Without it, a commit PUSHED by the bot is still AUTHORED by whoever git config
+# names -- the push identity and the commit identity are separate mechanisms.
+#
+# agent	app_id	installation_id	bot_user_id
+beacon	4520098	152031070	314396166
+atlas	4521079	152054030	314428644
+ridge	4521089	152054236	314428976
+wren	4521094	152054411	314429222
+scout	4521103	152054588	314429511
+quill	4521110	152054783	314429702
+compass	4521117	152054955	314429946
+pace	4521124	152055117	314430173
+aegis	4521137	152055295	314430403

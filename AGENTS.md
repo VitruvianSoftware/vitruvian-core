@@ -32,17 +32,23 @@ surface. When an app's own docs conflict with `CONTRIBUTING.md`, CONTRIBUTING wi
 
 ## GitHub identity: act as yourself, not as James
 
-Every agent has its own GitHub App. **Mint a token for YOUR OWN identity at the
-start of any session that will touch GitHub**, so commits, PRs and reviews are
-attributed to you rather than to the repository owner:
+Every agent has its own GitHub App. **Set up your identity at the start of any
+session that will touch GitHub**, so commits, PRs and reviews are attributed to
+you rather than to the repository owner:
 
 ```sh
-export GH_TOKEN="$(bazel run //tools/agent-app -- login <your-agent-name>)"
+eval "$(bazel run //tools/agent-app -- env <your-agent-name>)"
 ```
+
+That sets `GH_TOKEN` **and** the git author/committer identity. Both are needed
+and they are separate mechanisms: `GH_TOKEN` changes who **pushes**, the
+`GIT_AUTHOR_*` variables change who **authored** the commit. With only the token,
+a commit pushed by your bot still carries the machine owner's name in the history
+— the PR looks right and the commit log is wrong.
 
 `gh` prefers `GH_TOKEN` over the stored keyring credential, and git already
 delegates to `gh` (`credential.https://github.com.helper = !gh auth
-git-credential`), so this one variable covers API calls **and** pushes.
+git-credential`), so the token covers API calls and pushes alike.
 
 Names and ids are in [`tools/agent-app/agents.tsv`](tools/agent-app/agents.tsv).
 If the key is missing, run `bazel run //tools/sync-env-secrets:agent-keys-pull`

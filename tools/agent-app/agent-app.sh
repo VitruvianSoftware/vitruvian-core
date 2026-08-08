@@ -31,7 +31,8 @@
 #   bazel run //tools/agent-app -- installations <app-id> <key.pem>
 #   bazel run //tools/agent-app -- repos <app-id> <key.pem> <installation-id>
 #   bazel run //tools/agent-app -- token <app-id> <key.pem> <installation-id>
-#   bazel run //tools/agent-app -- login <agent>      # the one agents actually use
+#   bazel run //tools/agent-app -- env <agent>        # the one agents actually use
+#   bazel run //tools/agent-app -- login <agent>      # token only
 #
 # See docs/guides/creating-an-agent-github-app.md for the SOP these implement,
 # and docs/guides/agent-github-identities.md for why per-agent Apps at all.
@@ -154,21 +155,52 @@ fi
 # name, and it gets a token for its OWN identity. The four-argument `token` form
 # stays for humans debugging, but an agent that has to look up two numeric ids
 # will eventually paste the wrong one and act as another agent without noticing.
+known_agents() { awk -F'\t' '!/^#/ && NF>=3 {printf "%s ", $1}' "$AGENT_REGISTRY"; }
+
 cmd_login() {
   local agent="${1:-}"
-  [ -n "$agent" ] || die "usage: login <agent>   (one of: $(awk -F'\t' '!/^#/ && NF==3 {printf "%s ", $1}' "$AGENT_REGISTRY"))"
+  [ -n "$agent" ] || die "usage: login <agent>   (one of: $(known_agents))"
   [ -r "$AGENT_REGISTRY" ] || die "cannot read agent registry: $AGENT_REGISTRY"
 
   local app_id inst_id
   app_id="$(awk -F'\t' -v a="$agent" '!/^#/ && $1==a {print $2}' "$AGENT_REGISTRY")"
   inst_id="$(awk -F'\t' -v a="$agent" '!/^#/ && $1==a {print $3}' "$AGENT_REGISTRY")"
   [ -n "$app_id" ] && [ -n "$inst_id" ] \
-    || die "unknown agent '$agent' -- known: $(awk -F'\t' '!/^#/ && NF==3 {printf "%s ", $1}' "$AGENT_REGISTRY")"
+    || die "unknown agent '$agent' -- known: $(known_agents)"
 
   local key="$AGENT_KEY_DIR/$agent.pem"
   [ -r "$key" ] || die "no key at $key -- run: bazel run //tools/sync-env-secrets:agent-keys-pull"
 
   cmd_token "$app_id" "$key" "$inst_id"
+}
+
+
+# cmd_env prints every export an agent needs, so session setup is one line:
+#
+#   eval "$(bazel run //tools/agent-app -- env beacon)"
+#
+# GH_TOKEN alone is NOT enough, and that is the trap this exists to close: it
+# changes who PUSHES, not who AUTHORED. A commit pushed by beacon[bot] with the
+# ambient git config still carries the machine owner's name in the history --
+# the PR looks right and the commit log is wrong.
+#
+# GIT_AUTHOR_*/GIT_COMMITTER_* are used rather than `git config` deliberately:
+# they are process-scoped, so they cannot leak into a shared checkout and
+# mis-attribute the next agent's work.
+cmd_env() {
+  local agent="${1:-}"
+  [ -n "$agent" ] || die "usage: env <agent>   (one of: $(known_agents))"
+  local slug="vitruvian-${agent}-agent"
+  local bot_id token
+  bot_id="$(awk -F'\t' -v a="$agent" '!/^#/ && $1==a {print $4}' "$AGENT_REGISTRY")"
+  [ -n "$bot_id" ] || die "no bot_user_id for '$agent' in $AGENT_REGISTRY"
+  token="$(cmd_login "$agent")" || exit 1
+
+  printf 'export GH_TOKEN=%s\n' "$token"
+  printf 'export GIT_AUTHOR_NAME=%s\n' "'${slug}[bot]'"
+  printf 'export GIT_AUTHOR_EMAIL=%s\n' "'${bot_id}+${slug}[bot]@users.noreply.github.com'"
+  printf 'export GIT_COMMITTER_NAME=%s\n' "'${slug}[bot]'"
+  printf 'export GIT_COMMITTER_EMAIL=%s\n' "'${bot_id}+${slug}[bot]@users.noreply.github.com'"
 }
 
 main() {
@@ -181,6 +213,7 @@ main() {
     repos) cmd_repos "$@" ;;
     token) cmd_token "$@" ;;
     login) cmd_login "$@" ;;
+    env) cmd_env "$@" ;;
     -h | --help | help) usage 0 ;;
     *) die "unknown command: $cmd (try --help)" ;;
   esac

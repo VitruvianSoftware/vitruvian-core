@@ -168,11 +168,33 @@ fi
 echo "== every registry row is well-formed =="
 # A row with a missing column would resolve to an empty id and produce a 404 that
 # reads like a permissions problem -- the exact confusion called out in the SOP.
-bad_rows="$(awk -F'\t' '!/^#/ && NF>0 && (NF!=3 || $2=="" || $3=="")' "$REGISTRY" | wc -l | tr -d ' ')"
+bad_rows="$(awk -F'\t' '!/^#/ && NF>0 && (NF!=4 || $2=="" || $3=="")' "$REGISTRY" | wc -l | tr -d ' ')"
 if [ "$bad_rows" = "0" ]; then
   ok "all registry rows have agent, app id and installation id"
 else
   bad "$bad_rows malformed row(s) in agents.tsv"
+fi
+
+
+echo "== env emits BOTH the token and the git identity =="
+# The whole point: GH_TOKEN alone leaves commits authored by the machine owner.
+# A regression here is silent -- pushes keep working, attribution quietly reverts.
+out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" env beacon 2>&1 || true)"
+if [[ "$out" == *"agent-keys-pull"* ]]; then
+  ok "env fails closed when the key is missing (cannot emit a half identity)"
+else
+  bad "env did not fail on a missing key: $out"
+fi
+
+echo "== every registry row carries a bot_user_id =="
+# A row missing column 4 would emit an author address like "+slug[bot]@..." --
+# syntactically valid, attributed to nobody, and invisible until someone reads
+# the commit log.
+missing="$(awk -F'\t' '!/^#/ && NF>0 && (NF!=4 || $4=="")' "$REGISTRY" | wc -l | tr -d ' ')"
+if [ "$missing" = "0" ]; then
+  ok "all registry rows carry a bot_user_id"
+else
+  bad "$missing row(s) missing bot_user_id -- commits would be attributed to nobody"
 fi
 
 if [ "$failures" -ne 0 ]; then

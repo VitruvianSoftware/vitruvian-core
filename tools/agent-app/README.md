@@ -10,13 +10,26 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `installations <app-id> <key.pem>` | Lists the App's installations, with their ids. |
 | `repos <app-id> <key.pem> <inst-id>` | Lists the repositories an installation can reach. |
 | `token <app-id> <key.pem> <inst-id>` | Mints a **1-hour** installation access token. |
-| `login <agent>` | The one agents use. Resolves ids from `agents.tsv`, finds the key, mints the token. |
+| `env <agent>` | **The one agents use.** Prints every export: token **and** git author identity. |
+| `login <agent>` | Token only. Not sufficient on its own — see below. |
 
 ```sh
-export GH_TOKEN="$(bazel run //tools/agent-app -- login beacon)"   # what an agent runs
+eval "$(bazel run //tools/agent-app -- env beacon)"   # what an agent runs
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app:agent_app_test
 ```
+
+## `login` alone is not enough
+
+`GH_TOKEN` changes who **pushes**; it does not change who **authored** the
+commit. Those are separate mechanisms. A commit pushed by `beacon[bot]` with the
+ambient git config still carries the machine owner's name — the PR looks right
+and the history is wrong. `env` sets both, which is why it is the documented
+entry point and `login` is for debugging.
+
+`GIT_AUTHOR_*`/`GIT_COMMITTER_*` are used rather than `git config` on purpose:
+they are process-scoped, so they cannot leak into a shared checkout and
+mis-attribute whichever agent runs next.
 
 ## Notes that cost time to learn
 
