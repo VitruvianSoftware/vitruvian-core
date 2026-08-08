@@ -505,8 +505,22 @@ describe("client pinning", () => {
   // absent claim and a wrong claim are different failure shapes, and a guard
   // written as `clientId && clientId !== expected` would let this one through
   // while still failing the wrong-client test above.
+  //
+  // Signed directly rather than through mintToken({ clientId: undefined }):
+  // destructuring defaults in JS trigger on an explicit `undefined` exactly
+  // as they do on omission, so that call would have silently minted a token
+  // carrying the default CLIENT_ID — the opposite of what this test needs to
+  // assert, and the failure it produced (a resolved promise instead of a
+  // rejected one) is what caught it.
   it("rejects a token where client_id is absent entirely", async () => {
-    const token = await mintToken({ clientId: undefined });
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(privateKey);
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
       ClientNotAllowedError
     );
