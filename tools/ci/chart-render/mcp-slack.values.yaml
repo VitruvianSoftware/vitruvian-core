@@ -1,0 +1,67 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# RENDER-GATE VALUES. NOT A DEPLOYMENT, AND NOTHING HERE IS REAL.
+#
+# tools/ci/chart-render.sh renders mcp-slack/deploy/chart with this file so the
+# TEMPLATES get an executed gate instead of a careful read. Every value below is
+# synthetic and deliberately implausible as a live setting.
+#
+# READ THIS BEFORE COPYING ANYTHING OUT OF IT: a green render here says the
+# chart's templates are correct. It says NOTHING about whether the deployment is
+# correct — the real values live in gitops/argocd/applications/mcp-slack.yaml,
+# they are still placeholders by design, and no gate can supply them because
+# they are exactly the decisions the placeholders exist to force.
+#
+# It lives in tools/ci/ rather than in the chart's own `ci/` directory on
+# purpose: `charts-publish.yml` triggers on `**/deploy/chart/**` and packages
+# that tree, so a values file inside the chart would both republish the chart on
+# every edit to it and ship these fake values inside the published artifact.
+#
+# NOT hand-maintained against the chart's `required` list. chart-render.sh
+# EXTRACTS that list from the templates and fails if any required value is
+# missing here — so a new `required` breaks the gate until it is added, rather
+# than silently going ungated. That is the same drift that produced today's
+# five-versus-six confusion.
+
+image:
+  # Syntactically a valid sha256 digest and intentionally not a real one. The
+  # chart only requires that it be present and digest-shaped; nothing pulls it.
+  digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+oidc:
+  # Zitadel ids are numeric strings. Quoted so YAML does not make them integers,
+  # which is what the chart's own values do.
+  projectId: "000000000000000000"
+  allowedSubjects: "000000000000000001"
+  clientId: "000000000000000002@render-gate"
+
+slack:
+  # Slack channel-id shape (C + 10 uppercase alphanumerics). Deliberately not
+  # C0B3H3X79F1, the real channel — a fake here cannot be pasted into a manifest
+  # by accident and then reach a real conversation.
+  channelIds: "C00000000RENDERGATE"
+  privateChannelIds: ""
+
+# A real boolean, which is the whole point of the type check in
+# templates/networkpolicy.yaml. chart-render.sh separately asserts that the
+# STRING "false" is REFUSED — see the negative controls there.
+networkPolicy:
+  enabled: true

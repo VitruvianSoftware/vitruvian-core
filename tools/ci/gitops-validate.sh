@@ -206,4 +206,79 @@ if [ -z "${VALID}" ] || [ "${VALID}" -eq 0 ]; then
   exit 1
 fi
 
+# --- 3. The .disabled manifests. ---------------------------------------------
+#
+# The find above globs '*.yaml', so a '*.yaml.disabled' manifest matches
+# NOTHING and is validated by nothing. There are nine of them, and the
+# consequence is the sharpest version of a shape this repo keeps producing: a
+# .disabled file's FIRST automated check would arrive at the moment it is
+# renamed to .yaml -- which is also the moment ArgoCD starts syncing it. The
+# first execution and the irreversible step were the same event.
+#
+# Staying out of ArgoCD's sync is the whole point of the convention and is not
+# in question here. But schema validation is not syncing: these are the exact
+# bytes the rename promotes, so validating them costs nothing and moves the
+# first check to before the decision instead of after it.
+#
+# COPIED to a temp tree with the suffix stripped rather than passed directly.
+# kubeconform selects its parser by file extension, so handing it a
+# '.yaml.disabled' path risks it declining to parse the file and SKIPPING it --
+# which, with -ignore-missing-schemas, exits 0. That would have produced a
+# validator that validates nothing while reporting green: the failure this whole
+# section exists to remove, reintroduced by the fix for it.
+DISABLED="$(find gitops/argocd -name '*.yaml.disabled' | sort)"
+if [ -n "${DISABLED}" ]; then
+  echo "gitops-validate: kubeconform over .disabled manifests ..."
+  DISABLED_TMP="$(mktemp -d)"
+  trap 'rm -rf "${DISABLED_TMP}"' EXIT
+  for f in ${DISABLED}; do
+    dest="${DISABLED_TMP}/${f#gitops/argocd/}"
+    dest="${dest%.disabled}"
+    mkdir -p "$(dirname "${dest}")"
+    cp "${f}" "${dest}"
+  done
+
+  DISABLED_SUMMARY="$(
+    find "${DISABLED_TMP}" -name '*.yaml' -not -name 'values.yaml' -print0 \
+      | xargs -0 kubeconform \
+          -strict \
+          -ignore-missing-schemas \
+          -skip ImageUpdater \
+          -schema-location "${SCHEMA_DIR}/${SCHEMA_CONE}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+          -schema-location "${CRD_CATALOG_DIR}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+          -summary
+  )" || { echo "${DISABLED_SUMMARY}"; exit 1; }
+  echo "${DISABLED_SUMMARY}"
+
+  # Stricter than the Valid > 0 guard used above, deliberately: assert
+  # Skipped == 0.
+  #
+  # A SKIP is the specific silent failure this section exists to catch. With
+  # -ignore-missing-schemas, a manifest kubeconform declines to parse -- the
+  # exact risk the temp-copy addresses -- is skipped and the run still exits 0.
+  # `Valid > 0` would be satisfied by eight of nine validating while the ninth
+  # silently did nothing, and the ninth is the SealedSecret, whose CRD is the
+  # one most likely to be absent from the catalog.
+  #
+  # Achievable rather than aspirational: measured Valid 9 / Skipped 0 across all
+  # nine. So a skip appearing later is a real change -- a new CRD outside the
+  # catalog, or a file kubeconform stopped parsing -- and should be looked at
+  # rather than absorbed. Aegis's suggestion on #1502.
+  DISABLED_COUNT="$(printf '%s\n' "${DISABLED}" | grep -c .)"
+  DISABLED_VALID="$(printf '%s\n' "${DISABLED_SUMMARY}" | sed -n 's/.*Valid: \([0-9]*\).*/\1/p')"
+  DISABLED_SKIPPED="$(printf '%s\n' "${DISABLED_SUMMARY}" | sed -n 's/.*Skipped: \([0-9]*\).*/\1/p')"
+  if [ -z "${DISABLED_VALID}" ] || [ "${DISABLED_VALID}" -eq 0 ]; then
+    echo "gitops-validate: found ${DISABLED_COUNT} .disabled manifest(s) but validated" >&2
+    echo "gitops-validate: none of them -- treating as a failure, not a pass." >&2
+    exit 1
+  fi
+  if [ -z "${DISABLED_SKIPPED}" ] || [ "${DISABLED_SKIPPED}" -ne 0 ]; then
+    echo "gitops-validate: ${DISABLED_SKIPPED:-?} .disabled manifest(s) were SKIPPED rather than" >&2
+    echo "gitops-validate: validated. A skip exits 0 under -ignore-missing-schemas, so this" >&2
+    echo "gitops-validate: would otherwise be a green check that checked less than it appears." >&2
+    echo "gitops-validate: Either a CRD is missing from the catalog, or a file stopped parsing." >&2
+    exit 1
+  fi
+fi
+
 echo "gitops-validate: OK"

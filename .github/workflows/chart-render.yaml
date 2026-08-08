@@ -1,0 +1,80 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Renders every co-located Helm chart and asserts its guards REFUSE, not just
+# that it parses. Logic lives in tools/ci/chart-render.sh so it is reviewable
+# and runnable locally (`bash tools/ci/chart-render.sh`, needs only helm).
+#
+# Until this existed, no CI job rendered a chart. Every statement about the
+# mcp-slack chart — which `required` calls fire, whether the boolean type-check
+# refuses a quoted "false" — was a source read by someone who could not run it.
+# Several of those reads disagreed before converging, which is the honest
+# argument for the job: not that people read carelessly, but that reading is not
+# the same instrument as running.
+#
+# NOT YET A REQUIRED CHECK, and the omission is deliberate rather than pending.
+# Promoting it means adding `chart-render` to mergeQueueRequiredChecks in
+# infrastructure/pulumi/platform/repo_config/main.go, and that should follow
+# evidence it is stable rather than precede it. This file is written so the
+# promotion is a one-line change there and needs NO edit here: there is no
+# workflow-level `paths:` filter on `pull_request`, so the check reports on
+# every PR — which is the property a required check must have and the one whose
+# absence wedged this repo once (see gitops-validate.yaml's `on:` block for the
+# incident). Rendering three local charts is ~2s; running it unconditionally is
+# cheaper than the bookkeeping of deciding when to.
+name: chart-render
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+# Per-commit keying on non-PR events. A ref-keyed group puts every push-to-main
+# run in one lane, where GitHub evicts a still-PENDING run when a newer one
+# queues behind the running one — so a burst of merges silently drops the middle
+# commits' verdicts. Same pattern, and the same reason, as gitops-validate.yaml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Job name = the check context, so promoting this to a required check needs no
+  # rename. Named `chart-render` rather than a bare `render` so the context is
+  # unambiguous in the ruleset.
+  chart-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Pinned by digest, matching charts-publish.yml — the other workflow in
+      # this repo that needs helm. Same action, same version, deliberately: two
+      # helm installs drifting apart is a difference nobody would look for when
+      # a chart renders in one job and not the other.
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Render charts and assert their guards refuse
+        run: bash tools/ci/chart-render.sh
