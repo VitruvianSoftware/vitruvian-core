@@ -388,3 +388,54 @@ jobs:
           exit 1
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
+
+      # ASSERTION 5 — the image's OWN dependency tree carries no known
+      # advisories (#1503). This is not a duplicate of `osv-scan`.
+      #
+      # `osv-scan` (required) reads the repo's committed LOCKFILES. This image
+      # does not install from them: mcp-slack/Dockerfile installs with
+      # `pnpm install --prod --no-frozen-lockfile` in a standalone Docker
+      # context, which explicitly permits a different resolution. Measured at
+      # digest sha256:63912eee... — the image resolved `jose@6.2.8` where the
+      # repo lockfile pins a different patch. So nothing PINNED the image's tree
+      # to the scanned tree, and nothing SCANNED the image's tree.
+      #
+      # #1504 attached the SBOM this reads. Attaching an SBOM is not scanning it.
+      #
+      # TWO ARMS, ONE BLOCKS — see tools/ci/image-sbom-scan.sh for the full
+      # reasoning. Briefly: the blocking arm covers /app/node_modules (clean at
+      # first measurement, 0 of 93 packages), the reporting arm covers everything
+      # else (the Debian base contributed 39 advisory instances on day one,
+      # mostly unfixed upstream — blocking on those would be red on arrival for
+      # reasons no PR author can fix, and a gate like that gets deleted).
+      #
+      # BOUND, stated because the green does not carry it: this cannot pre-empt a
+      # merge. PR runs build but never push, so there is no published index and
+      # no attestation to fetch — which is why the step carries the same
+      # `!= 'pull_request'` guard as the publish itself. It reddens the PUBLISH,
+      # after the merge. Making it a PR gate needs the SBOM read out of a local
+      # build rather than the registry, which is a different change.
+      - name: Install osv-scanner (pinned + checksum-verified)
+        if: github.event_name != 'pull_request'
+        env:
+          OSV_SCANNER_VERSION: v2.4.0
+        run: |
+          set -euo pipefail
+          # Same shape and same version pin as supply-chain.yaml's install step:
+          # one scanner version across the repo, so a finding here and a finding
+          # there are the same instrument. Keep the original filename so it
+          # matches its SHA256SUMS entry.
+          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          mkdir -p "${HOME}/.local/bin"
+          install -m 0755 osv-scanner_linux_amd64 "${HOME}/.local/bin/osv-scanner"
+          rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Scan the published image's SBOM for known advisories
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: bash tools/ci/image-sbom-scan.sh
