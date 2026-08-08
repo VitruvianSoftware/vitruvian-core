@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.0...mcp-slack-v1.8.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **mcp-slack:** make chart appVersion track the app, not drift from it ([#1489](https://github.com/VitruvianSoftware/vitruvian-core/issues/1489)) ([ea938b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea938b403799e8ab6ce6c2b08501279f1697814c))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.7.0...mcp-slack-v1.8.0) (2026-08-08)
 
 
