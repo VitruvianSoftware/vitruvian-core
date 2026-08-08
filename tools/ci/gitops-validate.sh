@@ -206,4 +206,58 @@ if [ -z "${VALID}" ] || [ "${VALID}" -eq 0 ]; then
   exit 1
 fi
 
+# --- 3. The .disabled manifests. ---------------------------------------------
+#
+# The find above globs '*.yaml', so a '*.yaml.disabled' manifest matches
+# NOTHING and is validated by nothing. There are nine of them, and the
+# consequence is the sharpest version of a shape this repo keeps producing: a
+# .disabled file's FIRST automated check would arrive at the moment it is
+# renamed to .yaml -- which is also the moment ArgoCD starts syncing it. The
+# first execution and the irreversible step were the same event.
+#
+# Staying out of ArgoCD's sync is the whole point of the convention and is not
+# in question here. But schema validation is not syncing: these are the exact
+# bytes the rename promotes, so validating them costs nothing and moves the
+# first check to before the decision instead of after it.
+#
+# COPIED to a temp tree with the suffix stripped rather than passed directly.
+# kubeconform selects its parser by file extension, so handing it a
+# '.yaml.disabled' path risks it declining to parse the file and SKIPPING it --
+# which, with -ignore-missing-schemas, exits 0. That would have produced a
+# validator that validates nothing while reporting green: the failure this whole
+# section exists to remove, reintroduced by the fix for it.
+DISABLED="$(find gitops/argocd -name '*.yaml.disabled' | sort)"
+if [ -n "${DISABLED}" ]; then
+  echo "gitops-validate: kubeconform over .disabled manifests ..."
+  DISABLED_TMP="$(mktemp -d)"
+  trap 'rm -rf "${DISABLED_TMP}"' EXIT
+  for f in ${DISABLED}; do
+    dest="${DISABLED_TMP}/${f#gitops/argocd/}"
+    dest="${dest%.disabled}"
+    mkdir -p "$(dirname "${dest}")"
+    cp "${f}" "${dest}"
+  done
+
+  DISABLED_SUMMARY="$(
+    find "${DISABLED_TMP}" -name '*.yaml' -not -name 'values.yaml' -print0 \
+      | xargs -0 kubeconform \
+          -strict \
+          -ignore-missing-schemas \
+          -skip ImageUpdater \
+          -schema-location "${SCHEMA_DIR}/${SCHEMA_CONE}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+          -schema-location "${CRD_CATALOG_DIR}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+          -summary
+  )" || { echo "${DISABLED_SUMMARY}"; exit 1; }
+  echo "${DISABLED_SUMMARY}"
+
+  # Same guard as above, and needed MORE here: the extension question means a
+  # silent zero-resource pass is the specific way this section could be wrong.
+  DISABLED_VALID="$(printf '%s\n' "${DISABLED_SUMMARY}" | sed -n 's/.*Valid: \([0-9]*\).*/\1/p')"
+  if [ -z "${DISABLED_VALID}" ] || [ "${DISABLED_VALID}" -eq 0 ]; then
+    echo "gitops-validate: found $(printf '%s\n' "${DISABLED}" | grep -c .) .disabled manifest(s)" >&2
+    echo "gitops-validate: but validated none of them -- treating as a failure." >&2
+    exit 1
+  fi
+fi
+
 echo "gitops-validate: OK"
