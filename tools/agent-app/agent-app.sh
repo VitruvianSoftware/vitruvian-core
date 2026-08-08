@@ -31,6 +31,7 @@
 #   bazel run //tools/agent-app -- installations <app-id> <key.pem>
 #   bazel run //tools/agent-app -- repos <app-id> <key.pem> <installation-id>
 #   bazel run //tools/agent-app -- token <app-id> <key.pem> <installation-id>
+#   bazel run //tools/agent-app -- login <agent>      # the one agents actually use
 #
 # See docs/guides/creating-an-agent-github-app.md for the SOP these implement,
 # and docs/guides/agent-github-identities.md for why per-agent Apps at all.
@@ -127,6 +128,49 @@ cmd_token() {
     jq -re '.token'
 }
 
+
+# AGENT_REGISTRY maps an agent name to its app id and installation id. Committed
+# and NOT secret -- both are public identifiers. The private key is not in it.
+# Under `bazel run`, BASH_SOURCE points at bazel-bin, not the runfiles tree, so
+# resolving the registry relative to the script finds nothing. It is a COMMITTED
+# file, so the workspace copy is authoritative either way.
+if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
+  AGENT_REGISTRY="${AGENT_REGISTRY:-$BUILD_WORKSPACE_DIRECTORY/tools/agent-app/agents.tsv}"
+else
+  AGENT_REGISTRY="${AGENT_REGISTRY:-$(dirname "${BASH_SOURCE[0]}")/agents.tsv}"
+fi
+# The keys are GITIGNORED workspace files, so they are NOT in bazel's runfiles.
+# Resolving them relative to this script works when run directly and silently
+# points into the read-only runfiles tree under `bazel run` -- where the key does
+# not exist. BUILD_WORKSPACE_DIRECTORY is bazel's pointer back to the real tree;
+# same reason //tools/sync-env-secrets does it.
+if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
+  AGENT_KEY_DIR="${AGENT_KEY_DIR:-$BUILD_WORKSPACE_DIRECTORY/tools/sync-env-secrets/agent-keys}"
+else
+  AGENT_KEY_DIR="${AGENT_KEY_DIR:-$(dirname "${BASH_SOURCE[0]}")/../sync-env-secrets/agent-keys}"
+fi
+
+# cmd_login is the whole point of this tool for an agent: one argument, its own
+# name, and it gets a token for its OWN identity. The four-argument `token` form
+# stays for humans debugging, but an agent that has to look up two numeric ids
+# will eventually paste the wrong one and act as another agent without noticing.
+cmd_login() {
+  local agent="${1:-}"
+  [ -n "$agent" ] || die "usage: login <agent>   (one of: $(awk -F'\t' '!/^#/ && NF==3 {printf "%s ", $1}' "$AGENT_REGISTRY"))"
+  [ -r "$AGENT_REGISTRY" ] || die "cannot read agent registry: $AGENT_REGISTRY"
+
+  local app_id inst_id
+  app_id="$(awk -F'\t' -v a="$agent" '!/^#/ && $1==a {print $2}' "$AGENT_REGISTRY")"
+  inst_id="$(awk -F'\t' -v a="$agent" '!/^#/ && $1==a {print $3}' "$AGENT_REGISTRY")"
+  [ -n "$app_id" ] && [ -n "$inst_id" ] \
+    || die "unknown agent '$agent' -- known: $(awk -F'\t' '!/^#/ && NF==3 {printf "%s ", $1}' "$AGENT_REGISTRY")"
+
+  local key="$AGENT_KEY_DIR/$agent.pem"
+  [ -r "$key" ] || die "no key at $key -- run: bazel run //tools/sync-env-secrets:agent-keys-pull"
+
+  cmd_token "$app_id" "$key" "$inst_id"
+}
+
 main() {
   local cmd="${1:-}"
   [ -n "$cmd" ] || usage 1
@@ -136,6 +180,7 @@ main() {
     installations) cmd_installations "$@" ;;
     repos) cmd_repos "$@" ;;
     token) cmd_token "$@" ;;
+    login) cmd_login "$@" ;;
     -h | --help | help) usage 0 ;;
     *) die "unknown command: $cmd (try --help)" ;;
   esac

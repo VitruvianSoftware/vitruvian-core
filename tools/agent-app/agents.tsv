@@ -1,0 +1,14 @@
+# Per-agent GitHub App identities. NOT secret: app ids and installation ids are
+# public identifiers. The private keys are in Bitwarden (see
+# //tools/sync-env-secrets:agent-keys-pull) and never in this repo.
+#
+# agent	app_id	installation_id
+beacon	4520098	152031070
+atlas	4521079	152054030
+ridge	4521089	152054236
+wren	4521094	152054411
+scout	4521103	152054588
+quill	4521110	152054783
+compass	4521117	152054955
+pace	4521124	152055117
+aegis	4521137	152055295
