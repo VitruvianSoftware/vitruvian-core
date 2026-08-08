@@ -250,12 +250,33 @@ if [ -n "${DISABLED}" ]; then
   )" || { echo "${DISABLED_SUMMARY}"; exit 1; }
   echo "${DISABLED_SUMMARY}"
 
-  # Same guard as above, and needed MORE here: the extension question means a
-  # silent zero-resource pass is the specific way this section could be wrong.
+  # Stricter than the Valid > 0 guard used above, deliberately: assert
+  # Skipped == 0.
+  #
+  # A SKIP is the specific silent failure this section exists to catch. With
+  # -ignore-missing-schemas, a manifest kubeconform declines to parse -- the
+  # exact risk the temp-copy addresses -- is skipped and the run still exits 0.
+  # `Valid > 0` would be satisfied by eight of nine validating while the ninth
+  # silently did nothing, and the ninth is the SealedSecret, whose CRD is the
+  # one most likely to be absent from the catalog.
+  #
+  # Achievable rather than aspirational: measured Valid 9 / Skipped 0 across all
+  # nine. So a skip appearing later is a real change -- a new CRD outside the
+  # catalog, or a file kubeconform stopped parsing -- and should be looked at
+  # rather than absorbed. Aegis's suggestion on #1502.
+  DISABLED_COUNT="$(printf '%s\n' "${DISABLED}" | grep -c .)"
   DISABLED_VALID="$(printf '%s\n' "${DISABLED_SUMMARY}" | sed -n 's/.*Valid: \([0-9]*\).*/\1/p')"
+  DISABLED_SKIPPED="$(printf '%s\n' "${DISABLED_SUMMARY}" | sed -n 's/.*Skipped: \([0-9]*\).*/\1/p')"
   if [ -z "${DISABLED_VALID}" ] || [ "${DISABLED_VALID}" -eq 0 ]; then
-    echo "gitops-validate: found $(printf '%s\n' "${DISABLED}" | grep -c .) .disabled manifest(s)" >&2
-    echo "gitops-validate: but validated none of them -- treating as a failure." >&2
+    echo "gitops-validate: found ${DISABLED_COUNT} .disabled manifest(s) but validated" >&2
+    echo "gitops-validate: none of them -- treating as a failure, not a pass." >&2
+    exit 1
+  fi
+  if [ -z "${DISABLED_SKIPPED}" ] || [ "${DISABLED_SKIPPED}" -ne 0 ]; then
+    echo "gitops-validate: ${DISABLED_SKIPPED:-?} .disabled manifest(s) were SKIPPED rather than" >&2
+    echo "gitops-validate: validated. A skip exits 0 under -ignore-missing-schemas, so this" >&2
+    echo "gitops-validate: would otherwise be a green check that checked less than it appears." >&2
+    echo "gitops-validate: Either a CRD is missing from the catalog, or a file stopped parsing." >&2
     exit 1
   fi
 fi
