@@ -90,9 +90,20 @@ RUN sed -i 's/"catalog:[^"]*"/"^30.4.2"/g' package.json; \
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 
+# Prune to production deps HERE, so the runtime stage can copy the tree instead
+# of rebuilding it — which is what lets pnpm stay out of the runtime image
+# entirely. It has to run AFTER `pnpm build`, because the compile needs the
+# devDependencies this removes.
+#
+# `--prod` is load-bearing and not a tidiness flag: the install above resolves
+# every dependency (2 prod, 8 dev), so copying that tree unpruned would move
+# jest and the rest of the toolchain into the runtime layer of an
+# internet-facing pod — trading a known advisory set for a larger one nothing
+# has scanned.
+RUN pnpm prune --prod
+
 # --- Runtime stage: production deps + compiled output only ----------------
 FROM node:${NODE_VERSION}-slim AS runtime
-ARG PNPM_VERSION
 WORKDIR /app
 
 # PORT is the chart's contract (deployment.yaml containerPort: 3000), defaulted
@@ -105,16 +116,35 @@ ENV NODE_ENV=production \
     MCP_TRANSPORT=http \
     HOME=/tmp
 
-RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
-COPY package.json ./
-# Same neutralization and same guard as the build stage: --prod skips
-# devDependencies but pnpm still PARSES every spec, `catalog:` included.
-RUN sed -i 's/"catalog:[^"]*"/"^30.4.2"/g' package.json; \
-    if grep -q '"catalog:' package.json; then \
-      echo "unresolved catalog: reference remains in package.json" >&2; \
-      exit 1; \
-    fi
-RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
+# NO PACKAGE MANAGER IN THE RUNTIME STAGE. This stage used to run `corepack
+# enable && corepack prepare pnpm@... --activate` and then `pnpm install
+# --prod`, which left pnpm resident in the shipped image for the sake of one
+# install. The file already refuses `curl` on exactly these grounds twelve
+# lines from the entrypoint (see the HEALTHCHECK note below) — and pnpm is the
+# stronger case, since it does network fetch AND executes lifecycle scripts.
+#
+# Measured on the image this replaced, at digest sha256:63912eee (Aegis, #1503):
+# 42 of 58 npm advisory instances came from the corepack pnpm payload under
+# /tmp/.cache, and 10 more from the base image's own bundled npm. Copying the
+# already-pruned tree from the build stage deletes the 42 from the artifact
+# rather than arguing they are unreachable — the pod's emptyDir over /tmp does
+# shadow them at runtime, but every scanner and compliance report still reads
+# the image.
+#
+# package.json comes from the build stage rather than the context because
+# `"type": "module"` is what makes `node dist/index.js` resolve as ESM at all;
+# dropping it with pnpm would CrashLoop on module resolution. The build stage's
+# copy is already catalog-neutralized, so the sed and its guard live there once
+# instead of being repeated here.
+#
+# ARCHITECTURE: this copy is only safe because neither stage pins
+# `--platform=$BUILDPLATFORM` — both build natively per-platform under buildx,
+# so node_modules is produced for the target architecture. If a future change
+# pins the build stage to the build platform for speed, this COPY silently
+# ships the wrong architecture's binaries and breaks the mixed-arch cluster
+# this image is multi-platform for.
+COPY --from=build /app/package.json ./
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
 # The pod overrides USER with `runAsUser: 10001` (deploy/chart deployment.yaml),
