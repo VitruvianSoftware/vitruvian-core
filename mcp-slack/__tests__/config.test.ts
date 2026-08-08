@@ -36,6 +36,7 @@ const HTTP_ENV = {
   OIDC_ISSUER: "https://auth.example.test",
   OIDC_PROJECT_ID: "999",
   OIDC_ALLOWED_SUBJECTS: "379361013981513322",
+  OIDC_ALLOWED_CLIENT_ID: "111222333",
 };
 
 describe("parseTransportMode", () => {
@@ -95,6 +96,7 @@ describe("http configuration", () => {
       issuer: "https://auth.example.test",
       projectId: "999",
       allowedSubjects: ["379361013981513322"],
+      allowedClientId: "111222333",
     });
     expect(config.channelGuard.allowed).toEqual(["C1", "C2"]);
   });
@@ -146,6 +148,20 @@ describe("http configuration", () => {
     expect(() =>
       resolveConfig({ ...HTTP_ENV, OIDC_ALLOWED_SUBJECTS: "  , ,, " })
     ).toThrow(ConfigError);
+  });
+
+  // Distinct from OIDC_PROJECT_ID: that one is the audience check, and `aud`
+  // is caller-authored, so it admits every account the instance will issue a
+  // token to. This pins the caller to this server's own OIDC client (#1491).
+  it("requires the OIDC client pin", () => {
+    const { OIDC_ALLOWED_CLIENT_ID: _c, ...noClientId } = HTTP_ENV;
+    expect(() => resolveConfig(noClientId)).toThrow(
+      /OIDC_ALLOWED_CLIENT_ID is required/
+    );
+  });
+
+  it("does not require the client pin on stdio", () => {
+    expect(() => resolveConfig(STDIO_ENV)).not.toThrow();
   });
 
   it("parses several subjects and drops duplicates", () => {

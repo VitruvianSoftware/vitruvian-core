@@ -31,7 +31,7 @@
 // This module is imported dynamically by index.ts only when MCP_TRANSPORT=http,
 // so the stdio path never loads it and its behaviour is untouched.
 
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -91,7 +91,9 @@ function writeAuthFailure(res: ServerResponse, error: AuthError): void {
   if (error.status === 403) {
     process.stderr.write(
       `mcp-slack: refused ${error.code}` +
-        (error.presented ? ` sub=${headerSafe(error.presented)}` : "") +
+        (error.presented
+          ? ` ${error.presentedLabel ?? "presented"}=${headerSafe(error.presented)}`
+          : "") +
         `: ${headerSafe(error.message)}\n`
     );
   }
@@ -136,32 +138,41 @@ function writeNotFound(res: ServerResponse): void {
 }
 
 /**
- * Starts the HTTP listener and binds the MCP server to it.
+ * Starts the HTTP listener.
+ *
+ * `createServer` is a **factory**, not a shared instance — deliberately.
+ * `StreamableHTTPServerTransport` in stateless mode (`sessionIdGenerator:
+ * undefined`) is documented as single-use: `handleRequest` throws on a
+ * transport's second call (`_hasHandledRequest`, set unconditionally on the
+ * first). A `Server`/`transport` pair built once at startup and reused across
+ * requests — the shape this function had before — answers exactly one MCP
+ * request per pod lifetime and throws on every one after, forever, because
+ * nothing here restarts the pod: `/health` returns before ever touching the
+ * transport, so both probes stay green on an endpoint that has already
+ * stopped answering. This is also the reuse shape GHSA-345p-7cg4-v4c7 names;
+ * `^1.30.0` carries the fix for the vulnerability, and enforcing it is what
+ * turns the old code from silently wrong into loudly broken instead of
+ * correct. A fresh `Server` and transport per `/mcp` call, matching the SDK's
+ * own stateless example (`examples/server/simpleStatelessStreamableHttp.ts`),
+ * is what stateless mode actually requires.
  *
  * `verifier` is injectable so the request-routing and rejection behaviour can
  * be tested without a live IdP.
  */
 export async function startHttpTransport(
-  server: Server,
+  createServer: () => Server,
   config: HttpConfig,
   verifier: TokenVerifier = createTokenVerifier({
     issuer: config.issuer,
     projectId: config.projectId,
     allowedSubjects: config.allowedSubjects,
+    allowedClientId: config.allowedClientId,
   })
 ): Promise<{
   address: () => { port: number };
   close: (gracePeriodMs?: number) => Promise<void>;
 }> {
-  // sessionIdGenerator: undefined puts the transport in stateless mode — every
-  // request is self-contained. That suits a single-tenant deployment behind an
-  // IdP: the bearer token, not a server-side session, is what carries identity.
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-  await server.connect(transport);
-
-  const httpServer = createServer(
+  const httpServer = createHttpServer(
     (req: IncomingMessage, res: ServerResponse) => {
       // Every rejection has to be caught here. `handle` is async and its
       // result is discarded, so anything it throws that isn't an AuthError —
@@ -233,6 +244,27 @@ export async function startHttpTransport(
       }
       throw error;
     }
+
+    // sessionIdGenerator: undefined puts the transport in stateless mode —
+    // every request is self-contained, which suits a single-tenant deployment
+    // behind an IdP where the bearer token, not a server-side session, is
+    // what carries identity. One request per instance is what that mode
+    // requires, not a limitation being worked around — see the function
+    // doc comment for why a shared instance is actively wrong here.
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    const requestServer = createServer();
+    await requestServer.connect(transport);
+    // Matches the SDK's own stateless example: cleanup rides the response's
+    // close event rather than a try/finally around handleRequest, because in
+    // SSE-streaming mode handleRequest can resolve while the stream is still
+    // open — closing on completion of the promise would tear down a
+    // connection still in use.
+    res.on("close", () => {
+      transport.close();
+      requestServer.close();
+    });
 
     await transport.handleRequest(req, res);
   }

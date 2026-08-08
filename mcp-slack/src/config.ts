@@ -67,6 +67,8 @@ export interface HttpConfig {
   projectId: string;
   /** The `sub` values this endpoint serves. Never empty on HTTP. */
   allowedSubjects: string[];
+  /** OIDC client this server pins itself to (#1491). Never empty on HTTP. */
+  allowedClientId: string;
 }
 
 export interface ServerConfig {
@@ -221,6 +223,18 @@ export function resolveConfig(env: Env): ServerConfig {
         "to check the token audience; it is a stack output of zitadel-apps-mcp-slack"
       ),
       allowedSubjects: parseSubjects(env.OIDC_ALLOWED_SUBJECTS),
+      // Distinct from OIDC_PROJECT_ID: that one is the audience check, which
+      // is not an identity check (`aud` is caller-authored). This pins the
+      // caller to this server's own OIDC client — see auth.ts's
+      // ClientNotAllowedError for why that closes a gap allowedSubjects
+      // cannot.
+      allowedClientId: required(
+        env,
+        "OIDC_ALLOWED_CLIENT_ID",
+        "to pin the caller to this server's own OIDC client (#1491); it is " +
+          "a stack output of zitadel-apps-mcp-slack, distinct from " +
+          "OIDC_PROJECT_ID"
+      ),
     },
   };
 }

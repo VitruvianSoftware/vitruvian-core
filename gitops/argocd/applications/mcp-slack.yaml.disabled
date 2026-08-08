@@ -215,6 +215,7 @@ spec:
         oidc:
           projectId: ""         # pulumi stack output projectId — REQUIRED
           allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
+          clientId: ""          # pulumi stack output clientId — REQUIRED (#1491)
         slack:
           channelIds: ""        # comma-separated channel IDs — REQUIRED
         networkPolicy:
