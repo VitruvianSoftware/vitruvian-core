@@ -9,7 +9,13 @@
       "release-type": "node",
       "package-name": "@vitruviansoftware/mcp-slack",
       "component": "mcp-slack",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "deploy/chart/Chart.yaml"
+        }
+      ]
     }
   }
 }

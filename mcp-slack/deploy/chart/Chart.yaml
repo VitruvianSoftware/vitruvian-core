@@ -25,5 +25,28 @@ description: >-
   of the Gemini Spark integration. The stdio/npx path is unaffected and is not
   deployed by this chart.
 type: application
+# The CHART's own packaging version, deliberately independent of the app's.
+# Nothing publishes this chart to a registry — ArgoCD reads it from a git path —
+# so this moves only when the chart's structure changes, not on every app
+# release. Do not wire it to release-please.
 version: 0.1.0
-appVersion: "0.1.0"
+# The APP version, and it must track mcp-slack/package.json or it lies about
+# what the chart ships. It said "0.1.0" while the app was on 1.7.0, because
+# release-please bumps package.json and had no reason to look in here.
+#
+# Cosmetic rather than dangerous, and worth saying why so nobody "fixes" it by
+# deploying from it: the image is pinned by DIGEST in values.yaml, so appVersion
+# selects nothing. It is metadata a human reads to answer "what is running?" —
+# which is exactly when a stale answer costs the most.
+#
+# The trailing marker below is what keeps it honest: release-please rewrites the
+# version on any line carrying that marker, so appVersion now moves with the
+# release instead of waiting for someone to notice. Wired via `extra-files` in
+# mcp-slack/release-please-config.json; same mechanism as the precedent at
+# nexus-agent/macos/Sources/NexusAgent/Version.swift.
+#
+# Deliberately NOT spelling the marker out anywhere in this comment block. The
+# updater matches any line containing it and rewrites a version found there, so
+# a comment that quotes the marker becomes a second, invisible substitution site
+# — a doc string the release tooling would edit.
+appVersion: "1.7.0" # x-release-please-version
