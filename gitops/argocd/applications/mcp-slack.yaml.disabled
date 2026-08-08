@@ -133,8 +133,10 @@
 #      depending on the broken L7 DNS proxy. `true` is the correct value —
 #      it costs nothing against #1428 (no bound exists for :443/DNS-content
 #      exfil either way) and buys the entire lateral bound (apiserver, other
-#      namespaces, Postgres, Zitadel, the Buzz relay). `false` is now the
-#      dangerous choice: zero in-cluster containment on an internet-facing
+#      namespaces, Postgres, the Buzz relay — NOT Zitadel: the `world` :443
+#      rule stays open deliberately so the pod can reach the IdP's JWKS on
+#      every token verification). `false` is now the dangerous choice: zero
+#      in-cluster containment on an internet-facing
 #      pod holding a Slack token. This criterion is met once it is set true.
 #
 #      Written as a numbered criterion rather than left in the template's
