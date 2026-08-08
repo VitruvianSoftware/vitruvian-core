@@ -1,0 +1,277 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Builds and publishes the mcp-slack container image to GHCR, and produces the
+# sha256 digest that gitops/argocd/applications/mcp-slack.yaml pins as
+# `image.digest`.
+#
+# WHY GHCR AND NOT ARTIFACT REGISTRY, since the repo's other image build
+# (oauth-user-inspector-deploy.yaml) uses AR: that one deploys to Cloud Run,
+# where the runtime has an ambient Google identity. This image is consumed by
+# the dev-local k3s homelab, which has no GCP credential — AR would make an
+# imagePullSecret mandatory, and that means a credential in the cluster to seal
+# and rotate forever. This repo is already in the `VitruvianSoftware` org, so
+# the workflow's own GITHUB_TOKEN can publish to ghcr.io/vitruviansoftware/*
+# with no new secret, and a public package needs no pull secret at all. That is
+# also the path `mcp-slack/deploy/chart/values.yaml:29` already points at, so
+# the chart needs no change.
+#
+# MULTI-PLATFORM IS NOT OPTIONAL HERE. The cluster is mixed-architecture —
+# `kubectl get nodes` reports four amd64 (fedora, james-mbp, nuc9i5, nuc9i9)
+# and three arm64 (james-macbook-pro, james-mbp16, james-mbp32) — and
+# deploy/chart/templates/deployment.yaml declares no nodeSelector, no affinity
+# and no tolerations, with replicas: 1. A single-platform image would therefore
+# survive roughly four first deploys in seven and then die with `exec format
+# error` on a later reschedule, presenting as a crash-looping pod that reads
+# like an application fault. Building both platforms removes the failure mode;
+# pinning the pod to a node class would be constraining scheduling to work
+# around a build defect.
+name: mcp-slack-image
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'mcp-slack/**'
+      - '.github/workflows/mcp-slack-image.yaml'
+  # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
+  # is exercised before it can reach a cluster, and it is deliberately not just
+  # a compile: it asserts the two properties that pass a build and fail a first
+  # sync (see the verify steps below).
+  #
+  # NB the `paths:` filters above and below are safe ONLY while this workflow is
+  # NOT in the merge-queue required set. A required check whose workflow carries
+  # a workflow-level pull_request `paths:` filter simply never reports on a PR
+  # outside those paths, which blocks that PR from ever becoming mergeable — it
+  # wedged this repo once already (see gitops-validate.yaml's `on:` block).
+  # DO NOT add `mcp-slack-image` to repo_config's mergeQueueRequiredChecks
+  # without deleting these filters and gating the work in a step instead.
+  pull_request:
+    paths:
+      - 'mcp-slack/**'
+      - '.github/workflows/mcp-slack-image.yaml'
+
+permissions:
+  contents: read
+  packages: write
+
+# Per-commit keying on non-PR events: a ref-keyed group puts every push-to-main
+# run in one lane, where GitHub evicts still-pending runs when a newer one
+# queues behind the running one — so a burst of merges silently drops the
+# middle commits' images. Same pattern and same reason as gitops-validate.yaml.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: ghcr.io/vitruviansoftware/mcp-slack
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # Single source for the Node major: the Dockerfile's ARG default exists so
+      # `docker build mcp-slack/` works standalone, and //tools/conformance:check
+      # asserts that default equals .nvmrc's major. Passing it explicitly here
+      # means CI tracks .nvmrc even in the window before conformance runs.
+      - name: Resolve the canonical Node major from .nvmrc
+        id: node
+        run: |
+          set -euo pipefail
+          major="$(cut -d. -f1 .nvmrc)"
+          if [ -z "$major" ]; then
+            echo "::error::could not read a Node major from .nvmrc"
+            exit 1
+          fi
+          echo "major=${major}" >> "$GITHUB_OUTPUT"
+
+      # binfmt handlers for the arm64 half of PLATFORMS. Without this the arm64
+      # build fails on the first RUN rather than at configuration time, which
+      # reads like a Dockerfile bug.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Native-arch single-platform build, loaded into the local daemon so the
+      # runtime assertions below can actually RUN the image. Multi-platform
+      # output cannot be --load'ed, so this is a separate invocation — it shares
+      # the buildx cache with the multi-platform build, so the amd64 layers are
+      # built once.
+      - name: Build (amd64, loaded for verification)
+        run: |
+          set -euo pipefail
+          docker buildx build --load \
+            --build-arg NODE_VERSION="${NODE_MAJOR}" \
+            --build-arg GIT_REVISION="${GITHUB_SHA}" \
+            --platform linux/amd64 \
+            --tag mcp-slack:verify \
+            mcp-slack/
+        env:
+          NODE_MAJOR: ${{ steps.node.outputs.major }}
+
+      # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
+      # a UID that exists in no image layer. If any file the process reads is not
+      # world-readable the pod CrashLoops on a MODULE_NOT_FOUND that reads like a
+      # build fault. Run as that exact UID, under the same read-only rootfs and
+      # single writable /tmp the chart imposes, and require the entrypoint and a
+      # runtime dependency to be readable.
+      #
+      # This deliberately does NOT start the server: doing so needs a real Slack
+      # token and a reachable IdP, and a start attempt that fails on config would
+      # not discriminate a permission fault from a missing variable.
+      - name: Verify UID 10001 can read the image's files
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user 10001:10001 \
+            --read-only --tmpfs /tmp \
+            --entrypoint node \
+            mcp-slack:verify \
+            -e "const fs=require('fs');
+                for (const p of ['/app/dist/index.js',
+                                 '/app/package.json',
+                                 '/app/node_modules/jose/package.json',
+                                 '/app/node_modules/@modelcontextprotocol/sdk/package.json']) {
+                  fs.accessSync(p, fs.constants.R_OK);
+                  console.log('readable as uid ' + process.getuid() + ': ' + p);
+                }"
+
+      # ASSERTION 2 — the provenance label. Nothing injects this automatically:
+      # the repo's other Dockerfile carries no LABEL at all and its buildx call
+      # passes no --label, so an absent label here would look identical to a
+      # correct one until someone tried to tie a running digest back to a commit.
+      # No AR or GHCR repository in this org sets immutable tags, so a :<sha> tag
+      # is not a substitute.
+      - name: Verify the revision label on the built image
+        run: |
+          set -euo pipefail
+          got="$(docker image inspect mcp-slack:verify \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          if [ "$got" != "${GITHUB_SHA}" ]; then
+            echo "::error::org.opencontainers.image.revision is '${got}', expected '${GITHUB_SHA}'"
+            exit 1
+          fi
+          echo "revision label = ${got}"
+
+      # Everything above runs on pull_request too. Everything below is the
+      # publish half and is skipped there — a PR must never be able to move the
+      # tag an internet-facing workload resolves.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push (multi-platform)
+        if: github.event_name != 'pull_request'
+        id: publish
+        run: |
+          set -euo pipefail
+          docker buildx build --push \
+            --build-arg NODE_VERSION="${NODE_MAJOR}" \
+            --build-arg GIT_REVISION="${GITHUB_SHA}" \
+            --platform "${PLATFORMS}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${IMAGE}:${GITHUB_SHA}" \
+            --tag "${IMAGE}:main" \
+            mcp-slack/
+          # Read the digest back FROM THE REGISTRY rather than from buildx's
+          # --metadata-file, whose shape varies by driver. This @sha256 ref is
+          # what the chart pins; the two tags above are human conveniences and
+          # are mutable, so nothing should ever deploy by tag.
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
+            --format '{{.Manifest.Digest}}')"
+          if [ -z "$digest" ]; then
+            echo "::error::could not resolve the pushed image digest"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+        env:
+          NODE_MAJOR: ${{ steps.node.outputs.major }}
+
+      # ASSERTION 3 — re-verify on the PUSHED index, not the local image. The
+      # local checks above prove the build was right; this proves what landed in
+      # the registry is the same thing. Both platforms must be present, or the
+      # mixed-architecture scheduling problem in this file's header is back.
+      - name: Verify the pushed manifest
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          ref="${IMAGE}@${DIGEST}"
+          # `.Image` on a multi-platform ref is a map keyed by platform, so one
+          # read answers both questions: an absent platform is a missing key,
+          # and the label lives on each per-platform image CONFIG rather than on
+          # the index — checking a single platform would leave the other
+          # unverified while reporting green.
+          img="$(docker buildx imagetools inspect "${ref}" --format '{{json .Image}}')"
+          for want in linux/amd64 linux/arm64; do
+            got="$(echo "$img" | jq -r --arg p "$want" \
+              '.[$p].config.Labels["org.opencontainers.image.revision"] // "ABSENT"')"
+            if [ "$got" = "null" ] || [ "$got" = "ABSENT" ]; then
+              echo "::error::pushed index has no ${want} image with a revision label — the cluster has nodes of that architecture"
+              exit 1
+            fi
+            if [ "$got" != "${GITHUB_SHA}" ]; then
+              echo "::error::${want} revision label is '${got}', expected '${GITHUB_SHA}'"
+              exit 1
+            fi
+            echo "${want}: revision=${got}"
+          done
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+
+      - name: Report the digest
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          {
+            echo "### mcp-slack image published"
+            echo
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo
+            echo "Pin this in \`gitops/argocd/applications/mcp-slack.yaml\` as \`image.digest\`."
+            echo "Tie it back to this commit via the \`org.opencontainers.image.revision\` label, never the tag —"
+            echo "no AR or GHCR repository in this org sets immutable tags."
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+
+      # A NEWLY CREATED GHCR PACKAGE IS PRIVATE, and the cluster pulls with no
+      # credential (the chart declares no imagePullSecrets), so the first sync
+      # after the first publish is ImagePullBackOff until this is run once.
+      # Echoed rather than executed: GITHUB_TOKEN cannot change package
+      # visibility, so running it here would fail every run. Same treatment, and
+      # the same command, as charts-publish.yml's "Visibility note".
+      - name: Visibility note
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "A new GHCR package starts PRIVATE. Make this one public ONCE:"
+          echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/mcp-slack -f visibility=public"
+          echo "Verify with an anonymous pull token (no credential, so it proves public):"
+          echo "  curl -s 'https://ghcr.io/token?scope=repository:vitruviansoftware/mcp-slack:pull&service=ghcr.io'"
