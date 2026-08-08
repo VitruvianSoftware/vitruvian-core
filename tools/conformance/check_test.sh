@@ -19,7 +19,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Regression guard for check.sh's `check_merge_queue` trigger-filter arm
+# Regression guard for the check.sh arms whose failure mode is SILENCE — today
+# `check_merge_queue`'s trigger-filter arm and `check_renovate_schedule`
 # (docs/engineering/application-development-principles.md:200-204 — a fix ships
 # with the test that fails without it).
 #
@@ -65,6 +66,10 @@ new_root() {
   printf '22\n' > "$root/.nvmrc"
   printf '{\n  "packageManager": "pnpm@10.20.0"\n}\n' > "$root/package.json"
   printf '# file\ttool\tpinned_value\treview_by\treason\n' > "$root/tools/conformance/version-pins.tsv"
+  # A conforming renovate.json5 (no `schedule:`), so check_renovate_schedule is
+  # neutral for every case that is not about it. The cases that ARE about it
+  # overwrite or remove this file.
+  printf '{\n  enabledManagers: ["argocd"],\n}\n' > "$root/renovate.json5"
   printf '%s' "$root"
 }
 
@@ -173,10 +178,76 @@ case_both_filters() {
   rm -rf "$root"
 }
 
+# --- case 5..8: check_renovate_schedule --------------------------------------
+# A config-side `schedule:` window is invisible in every signal the repo has: the
+# workflow goes green, Renovate logs `"result": "done"`, and no PR is ever
+# opened. The only way to notice is to compare pins against upstream by hand,
+# which nobody does — so the invariant has to be enforced, and the enforcement
+# has to be tested, or it is one more control that merely *looks* present.
+#
+# Same hermetic ROOT as above; only renovate.json5 varies.
+renovate_line() {
+  printf '%s\n' "$1" | awk '
+    /^Renovate cadence/ {in_s=1; next}
+    in_s && /^[A-Za-z]/ && !/^ / {in_s=0}
+    in_s && index($0, "renovate.json5") {print; exit}
+  '
+}
+
+# The broken state this whole change exists to kill.
+case_renovate_schedule_present() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  schedule: ["before 6am on monday"],\n  timezone: "UTC",\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a config-side schedule: window is reported as a failure" \
+    "$(renovate_line "$out")" "✗"
+  rm -rf "$root"
+}
+
+# The fixed state.
+case_renovate_no_schedule() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  prConcurrentLimit: 3,\n}\n' > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a config with no schedule passes" \
+    "$(renovate_line "$out")" "no schedule"
+  rm -rf "$root"
+}
+
+# The trap: the fixed config MUST explain why the key is absent, and that prose
+# necessarily contains the string `schedule:`. A naive grep would fail the very
+# file it is meant to bless — a green control turned red on correct input, which
+# is how this kind of guard gets deleted instead of fixed.
+case_renovate_schedule_in_comment() {
+  root="$(new_root)"
+  printf '{\n  enabledManagers: ["argocd"],\n  // NO `schedule`. This previously read\n  // schedule: ["before 6am on monday"], which no-opped every run.\n}\n' \
+    > "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "schedule: mentioned only inside a // comment does NOT trip the check" \
+    "$(renovate_line "$out")" "no schedule"
+  rm -rf "$root"
+}
+
+# Deleting the config while the workflow still requires one must be loud, not a
+# silent early return that reads as a pass.
+case_renovate_config_missing() {
+  root="$(new_root)"
+  rm -f "$root/renovate.json5"
+  out="$(run_check "$root")"
+  expect "a missing renovate.json5 fails rather than passing vacuously" \
+    "$(renovate_line "$out")" "missing"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
 case_both_filters
+case_renovate_schedule_present
+case_renovate_no_schedule
+case_renovate_schedule_in_comment
+case_renovate_config_missing
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1
