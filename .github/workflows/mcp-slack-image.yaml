@@ -290,16 +290,51 @@ jobs:
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
 
-      # A NEWLY CREATED GHCR PACKAGE IS PRIVATE, and the cluster pulls with no
-      # credential (the chart declares no imagePullSecrets), so the first sync
-      # after the first publish is ImagePullBackOff until this is run once.
-      # Echoed rather than executed: GITHUB_TOKEN cannot change package
-      # visibility, so running it here would fail every run. Same treatment, and
-      # the same command, as charts-publish.yml's "Visibility note".
-      - name: Visibility note
+      # ASSERTION 4 — the cluster pulls this image with NO credential. The chart
+      # declares no imagePullSecrets and the pod no serviceAccountName, so a
+      # package that is not anonymously pullable is ImagePullBackOff on first
+      # sync, presenting as a broken deploy rather than as a permissions
+      # setting.
+      #
+      # This step used to ECHO a warning that a new GHCR package starts private
+      # along with the `gh api ... -f visibility=public` command to fix it. That
+      # claim was carried from charts-publish.yml's note and never tested
+      # against a package this workflow had created: the first publish came out
+      # PUBLIC, most likely inheriting the publishing repository's visibility.
+      # So the note was advice for a state that did not exist, which is the same
+      # advisory-that-cannot-fail shape as issue #1501 — and worse than useless,
+      # because it sent people looking for a token scope nobody needed.
+      #
+      # Now it MEASURES the property instead of asserting its opposite, using
+      # the only instrument that can: an anonymous request. Authenticated checks
+      # cannot answer this — they succeed on a private package, and our tokens
+      # lack `read:packages` anyway (measured across three sessions; note that
+      # `admin:org` does NOT cover it).
+      #
+      # Retried because a freshly pushed package can take a moment to become
+      # servable, and a race would otherwise fail a correct publish.
+      - name: Verify the image is anonymously pullable
         if: github.event_name != 'pull_request'
         run: |
-          echo "A new GHCR package starts PRIVATE. Make this one public ONCE:"
-          echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/mcp-slack -f visibility=public"
-          echo "Verify with an anonymous pull token (no credential, so it proves public):"
-          echo "  curl -s 'https://ghcr.io/token?scope=repository:vitruviansoftware/mcp-slack:pull&service=ghcr.io'"
+          set -euo pipefail
+          ref="${IMAGE}@${DIGEST}"
+          for attempt in 1 2 3; do
+            token="$(curl -sf "https://ghcr.io/token?scope=repository:vitruviansoftware/mcp-slack:pull&service=ghcr.io" \
+              | jq -r '.token // empty' || true)"
+            if [ -n "${token}" ] && curl -sf -o /dev/null \
+                 -H "Authorization: Bearer ${token}" \
+                 -H "Accept: application/vnd.oci.image.index.v1+json" \
+                 "https://ghcr.io/v2/vitruviansoftware/mcp-slack/manifests/${DIGEST}"; then
+              echo "anonymous pull of ${ref} succeeded — the package is public"
+              exit 0
+            fi
+            echo "attempt ${attempt}: not yet anonymously pullable"
+            sleep 10
+          done
+          echo "::error::${ref} is NOT anonymously pullable. The cluster pulls with no credential"
+          echo "::error::(no imagePullSecrets in the chart), so this would be ImagePullBackOff on sync."
+          echo "::error::Fix with a token carrying write:packages — GITHUB_TOKEN cannot do this:"
+          echo "::error::  gh api -X PATCH /orgs/vitruviansoftware/packages/container/mcp-slack -f visibility=public"
+          exit 1
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
