@@ -142,10 +142,16 @@ jobs:
       # single writable /tmp the chart imposes, and require the entrypoint and a
       # runtime dependency to be readable.
       #
-      # This deliberately does NOT start the server: doing so needs a real Slack
-      # token and a reachable IdP, and a start attempt that fails on config would
-      # not discriminate a permission fault from a missing variable.
-      - name: Verify UID 10001 can read the image's files
+      # It IMPORTS the runtime dependencies rather than merely stat-ing them.
+      # Reading a path proves a permission bit; resolving and evaluating the
+      # module proves the dependency tree the image actually ships is intact —
+      # which is the property `--ignore-scripts` in the Dockerfile could
+      # plausibly break, and a file-existence check would not notice.
+      #
+      # It deliberately does NOT start the server: that needs a real Slack token
+      # and a reachable IdP, and a start attempt failing on config would not
+      # discriminate a permission fault from a missing variable.
+      - name: Verify UID 10001 can read and load the image
         run: |
           set -euo pipefail
           docker run --rm \
@@ -153,14 +159,13 @@ jobs:
             --read-only --tmpfs /tmp \
             --entrypoint node \
             mcp-slack:verify \
-            -e "const fs=require('fs');
-                for (const p of ['/app/dist/index.js',
-                                 '/app/package.json',
-                                 '/app/node_modules/jose/package.json',
-                                 '/app/node_modules/@modelcontextprotocol/sdk/package.json']) {
-                  fs.accessSync(p, fs.constants.R_OK);
-                  console.log('readable as uid ' + process.getuid() + ': ' + p);
-                }"
+            --input-type=module \
+            -e "import { accessSync, constants } from 'node:fs';
+                accessSync('/app/dist/index.js', constants.R_OK);
+                console.log('uid ' + process.getuid() + ' can read /app/dist/index.js');
+                await import('jose');
+                await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+                console.log('uid ' + process.getuid() + ' loaded jose and the MCP SDK');"
 
       # ASSERTION 2 — the provenance label. Nothing injects this automatically:
       # the repo's other Dockerfile carries no LABEL at all and its buildx call
@@ -178,6 +183,29 @@ jobs:
             exit 1
           fi
           echo "revision label = ${got}"
+
+      # The two assertions above run against amd64, because that is the only
+      # platform a runner can --load and execute. Without this step a PR would
+      # therefore validate exactly half of the reason this workflow is
+      # multi-platform at all: an arm64-only build failure — an unavailable base
+      # image, a dependency with a native component, a QEMU fault — would first
+      # appear on merge to main, on the architecture three of the seven cluster
+      # nodes actually run.
+      #
+      # No --push and no --load: the output is discarded and only the build is
+      # exercised. The amd64 half is a cache hit from the step above, so this
+      # costs roughly one arm64 compile.
+      - name: Build both platforms (PR only, output discarded)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --build-arg NODE_VERSION="${NODE_MAJOR}" \
+            --build-arg GIT_REVISION="${GITHUB_SHA}" \
+            --platform "${PLATFORMS}" \
+            mcp-slack/
+        env:
+          NODE_MAJOR: ${{ steps.node.outputs.major }}
 
       # Everything above runs on pull_request too. Everything below is the
       # publish half and is skipped there — a PR must never be able to move the

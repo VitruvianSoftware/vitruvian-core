@@ -42,10 +42,27 @@
 # against .nvmrc's major, so it cannot silently drift.
 ARG NODE_VERSION=22
 
+# Pinned to the repo canonical (root package.json `packageManager`). This is
+# NOT cosmetic: `corepack enable` alone resolves whatever pnpm is newest at
+# build time, so the first build of this file fetched pnpm 11.20.0 while the
+# monorepo builds everything else with 10.20.0 — a different package manager
+# major than the one CI tests with, chosen by the calendar. It failed the build
+# outright (pnpm 11 turns ERR_PNPM_IGNORED_BUILDS into an error), which was the
+# lucky outcome; the unlucky one is a silent resolution difference between the
+# image and the tree the tests ran against.
+#
+# //tools/conformance:check already warns about exactly this — "Dockerfile runs
+# pnpm but its dir has no package.json with a packageManager pin". Pinned here
+# rather than by adding `packageManager` to mcp-slack/package.json, because that
+# file is the npm-published manifest and a corepack pin in it changes the
+# mirror's release path.
+ARG PNPM_VERSION=10.20.0
+
 # --- Build stage: compile src/**/*.ts -> dist/ with tsc -------------------
 FROM node:${NODE_VERSION}-slim AS build
+ARG PNPM_VERSION
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 COPY package.json ./
 COPY tsconfig.json ./
 COPY src/ ./src/
@@ -75,6 +92,7 @@ RUN pnpm build
 
 # --- Runtime stage: production deps + compiled output only ----------------
 FROM node:${NODE_VERSION}-slim AS runtime
+ARG PNPM_VERSION
 WORKDIR /app
 
 # PORT is the chart's contract (deployment.yaml containerPort: 3000), defaulted
@@ -87,7 +105,7 @@ ENV NODE_ENV=production \
     MCP_TRANSPORT=http \
     HOME=/tmp
 
-RUN corepack enable
+RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 COPY package.json ./
 # Same neutralization and same guard as the build stage: --prod skips
 # devDependencies but pnpm still PARSES every spec, `catalog:` included.
