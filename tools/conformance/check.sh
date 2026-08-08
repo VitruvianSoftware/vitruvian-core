@@ -97,7 +97,21 @@ TODAY="$(date +%Y-%m-%d)"
 # entries — a top-level workspace dir, or a deeper path prefix for a standalone
 # artifact nested inside another tree (e.g. a CrossGuard policy pack that runs
 # its own `npm install` at `pulumi preview` time).
-CATALOG_EXEMPT="oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
+# mcp-slack added 2026-08-08: it is a one-way Copybara mirror
+# (tools/copybara/copy.bara.sky COMPONENTS, is_one_way) whose standalone repo
+# builds and publishes with npm and has no pnpm-workspace.yaml. It was missing
+# here, so `"jest": "catalog:"` was ACCEPTED as correct and exported verbatim —
+# `npm ci` in the mirror's release.yml then failed EUNSUPPORTEDPROTOCOL on every
+# release commit from 1.1.0 through 1.8.1, silently, because the tag step runs
+# first and the detect step short-circuits on non-release commits. Nine tags,
+# nothing published behind them; npm `latest` sat at 1.0.3 (2026-05-07) for three
+# months. Identical class to the oauth-user-inspector regression #391 named above.
+#
+# NOTE: `nexus-agent` is also a one-way mirror with a standalone package-lock.json
+# and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
+# broken — but the classification gap is the same and the first cataloged dep
+# added there reproduces this bug exactly.
+CATALOG_EXEMPT="mcp-slack oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
