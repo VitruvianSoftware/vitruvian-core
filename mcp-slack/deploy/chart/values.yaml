@@ -132,17 +132,20 @@ egress:
   idpHost: auth.ipv1337.dev
 
 # REQUIRED, and deliberately left unset so the render aborts until someone
-# decides. The CiliumNetworkPolicy is MEASURED BROKEN on this cluster (Cilium's
-# L7 DNS proxy never answers, so keeping `rules.dns` kills the pod's DNS and
-# dropping it makes `toFQDNs` match nothing — see templates/networkpolicy.yaml).
+# decides. Must be a real boolean — a quoted "false" is refused rather than
+# interpreted, because Helm treats a non-empty string as true and that would
+# silently enable the policy.
 #
-# false = deploy WITHOUT egress bounding. Say it plainly: nothing then
-#         constrains where the bot token can be sent.
-# true  = only after the DNS-proxy platform defect is fixed.
+# true  = apply the L3/L4 CiliumNetworkPolicy. Bounds LATERAL movement: the
+#         pod cannot reach the apiserver, other namespaces, Postgres or the
+#         relay. Measured on a live cluster by ablation.
+#         It does NOT bound egress to the internet on :443, so it does not
+#         prevent credential exfiltration — that gap is #1428.
+# false = no in-cluster containment at all, on an internet-facing pod holding
+#         a Slack bot token.
 #
-# Must be a real boolean. A quoted "false" is refused rather than interpreted,
-# because Helm treats a non-empty string as true and that would enable the very
-# policy this gate exists to keep off.
+# The meaning of `false` CHANGED when the policy started working: it used to
+# mean "without egress bounding" and now means "without the lateral bound".
 networkPolicy: {}
 
 # Bound on the only writable path in the container (readOnlyRootFilesystem is
