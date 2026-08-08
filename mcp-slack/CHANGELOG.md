@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.7.0...mcp-slack-v1.8.0) (2026-08-08)
+
+
+### Features
+
+* **mcp-slack:** L3/L4 egress policy — bounds lateral movement, not exfiltration ([#1487](https://github.com/VitruvianSoftware/vitruvian-core/issues/1487)) ([89229b6](https://github.com/VitruvianSoftware/vitruvian-core/commit/89229b67c326b2b1971d685cbffc4bcf4a713280))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.6.0...mcp-slack-v1.7.0) (2026-08-07)
 
 
