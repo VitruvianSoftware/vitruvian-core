@@ -128,9 +128,16 @@
 #
 #      The chart makes this a value rather than a warning: `networkPolicy.
 #      enabled` must be set explicitly to a boolean or the render aborts.
-#      Setting it false is a deliberate, typed decision to run without egress
-#      bounding — which is the honest state today. This criterion is met only
-#      when it can be set true.
+#      #1487 (merged 2026-08-08) fixed this: the CNP now pins DNS to kube-dns
+#      at L3/L4 with no `rules.dns` block, so it passes traffic without
+#      depending on the broken L7 DNS proxy. `true` is the correct value —
+#      it costs nothing against #1428 (no bound exists for :443/DNS-content
+#      exfil either way) and buys the entire lateral bound (apiserver, other
+#      namespaces, Postgres, the Buzz relay — NOT Zitadel: the `world` :443
+#      rule stays open deliberately so the pod can reach the IdP's JWKS on
+#      every token verification). `false` is now the dangerous choice: zero
+#      in-cluster containment on an internet-facing
+#      pod holding a Slack token. This criterion is met once it is set true.
 #
 #      Written as a numbered criterion rather than left in the template's
 #      header because criteria 1-8 are the list someone reads before
@@ -188,9 +195,11 @@ spec:
     path: mcp-slack/deploy/chart
     helm:
       values: |
-        # ALL FIVE ARE PLACEHOLDERS. The chart fails to render on any of them
-        # being empty — that is the intended behaviour, not an obstacle to
-        # work around. Fill them from the sources named in the header above.
+        # FIVE VALUES ARE RENDER-BLOCKING. Four are still empty placeholders below;
+        # `networkPolicy.enabled` is filled (#1497 — #1487 fixed the CNP, so `true`
+        # is now the correct value, see criterion 7). The chart fails to render on
+        # any of the five being empty/unset — that is the intended behaviour, not
+        # an obstacle to work around. Fill the rest from the sources named above.
         #
         # THIS BLOCK IS THE COMPLETE SET OF RENDER-BLOCKING VALUES, verified by
         # rendering the chart rather than by reading it: with all five present
@@ -199,7 +208,8 @@ spec:
         # block that is short by two looks exactly like a block that is short by
         # one — which is how this one carried three entries for eight commits
         # while the chart required five. If you add a `required` to the chart,
-        # add its placeholder here in the same commit.
+        # add its placeholder here in the same commit (#1491 adds a sixth,
+        # `oidc.clientId` — update this comment again when that lands).
         image:
           digest: ""            # sha256:... — REQUIRED
         oidc:
@@ -209,11 +219,11 @@ spec:
           channelIds: ""        # comma-separated channel IDs — REQUIRED
         networkPolicy:
           # REQUIRED, and a real boolean — a quoted "false" is refused, because
-          # Helm treats any non-empty string as true and that would enable the
-          # very policy this gate exists to keep off. See criterion 7: today the
-          # only honest value is false, and false means NOTHING constrains where
-          # the bot token can be sent.
-          enabled:
+          # Helm treats any non-empty string as true. See criterion 7: #1487
+          # fixed the CNP, so true is now the correct value — it costs nothing
+          # against #1428 and buys the entire lateral bound. false means NOTHING
+          # constrains where the bot token can be sent and is the choice to avoid.
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: mcp-slack
