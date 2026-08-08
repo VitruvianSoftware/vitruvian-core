@@ -297,6 +297,7 @@ describe("IdP reachability is distinguished from token validity", () => {
     return createTokenVerifier({
       issuer: ISSUER,
       allowedSubjects: ["user-42"],
+      allowedClientId: CLIENT_ID,
       projectId: PROJECT_ID,
       jwksUri: "http://127.0.0.1:1/unreachable",
     });
@@ -337,6 +338,7 @@ describe("IdP reachability is distinguished from token validity", () => {
     const verifier = createTokenVerifier({
       issuer: ISSUER,
       allowedSubjects: ["user-42"],
+      allowedClientId: CLIENT_ID,
       projectId: PROJECT_ID,
       keySource: () => {
         throw new Error("something nobody anticipated");
@@ -366,6 +368,7 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
       const verifier = createTokenVerifier({
         issuer: ISSUER,
         allowedSubjects: ["user-42"],
+        allowedClientId: CLIENT_ID,
         projectId: PROJECT_ID,
         jwksUri: `http://127.0.0.1:${port}/jwks`,
         jwksTimeoutMs: 50,

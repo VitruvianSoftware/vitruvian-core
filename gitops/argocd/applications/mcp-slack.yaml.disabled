@@ -210,18 +210,17 @@ spec:
         # intended behaviour, not an obstacle to work around. Fill the rest from
         # the sources named above.
         #
-        # FIVE OF THE SIX were verified by rendering the chart rather than by
-        # reading it: with those five present `helm template` succeeds, and
-        # removing any one of them fails with that value's own message.
-        # `oidc.clientId` HAS NOT BEEN RENDER-VERIFIED — it is a source read of
-        # `_helpers.tpl`, not yet a render. Delete this sentence once #1502's
-        # `chart-render` CI job (or any render) includes it in its test values;
-        # until then, don't infer render-verification from the absence of this
-        # caveat elsewhere in the file. Helm reports only the FIRST missing
-        # value, so a block that is short by two looks exactly like a block
-        # that is short by one — which is how this one carried three entries
-        # for eight commits while the chart required five. If you add a
-        # `required` to the chart, add its placeholder here in the same commit.
+        # ALL SIX ARE NOW RENDER-VERIFIED, not merely read: #1502's `chart-render`
+        # CI job nulls each required value in turn and asserts the render aborts
+        # naming that value — `oidc.clientId` included. That job runs on every
+        # PR, so this block cannot drift from `_helpers.tpl` silently again.
+        # Helm reports only the FIRST missing value, so a block that is short by
+        # two looks exactly like a block that is short by one — which is how
+        # this one carried three entries for eight commits while the chart
+        # required five. If you add a `required` to the chart, add its
+        # placeholder here in the same commit — `chart-render`'s negative
+        # controls are extracted from the templates, so a new one is
+        # automatically gated even if this comment is forgotten.
         image:
           digest: ""            # sha256:... — REQUIRED
         oidc:
