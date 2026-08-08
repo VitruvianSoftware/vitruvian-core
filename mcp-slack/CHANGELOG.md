@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.1...mcp-slack-v1.8.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **mcp-slack:** publish npm releases again — nine tags shipped nothing ([#1498](https://github.com/VitruvianSoftware/vitruvian-core/issues/1498)) ([150a8dd](https://github.com/VitruvianSoftware/vitruvian-core/commit/150a8ddef3cad8d8495ded0dd28ac667df55f124))
+
 ## [1.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.0...mcp-slack-v1.8.1) (2026-08-08)
 
 
