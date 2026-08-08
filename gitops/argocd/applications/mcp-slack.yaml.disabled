@@ -41,38 +41,65 @@
 #      its sha256 digest. Never a tag: an internet-facing workload must run
 #      the artifact that was reviewed, not whatever the tag moved to.
 #
-#      MET as of this commit. `sha256:63912eee…` is filled in below, and the
-#      thing that makes it the right digest rather than merely a recent one is
-#      that it CONTAINS #1499 — the per-request transport fix, without which
-#      the pod answers exactly one MCP request per lifetime. Four properties,
-#      all re-measured here rather than carried over from the thread that
-#      produced them:
+#      MET as of this commit, at `sha256:303c712c…`, whose
+#      org.opencontainers.image.revision is `2998affe` (#1514).
 #
-#        C := gh pr view 1499 --json mergeCommit --jq .mergeCommit.oid
-#             → 524d9217.  NOT the branch head (50c41b7f), NOT `git log
-#             --grep "(#1499)"`.  `main` is squash-only, so a PR's branch head
-#             is an ancestor of nothing on `main` and the ancestry test below
-#             would return false forever, for every digest, however new — a
-#             false negative in the dangerous direction: it reads as "the
-#             transport fix is missing from this image" and blocks a correct
-#             pin. `--grep` fails differently and just as quietly: a revert or
-#             a follow-up citing the PR also matches, and an empty result from
-#             a STALE local `origin/main` is indistinguishable from one that
-#             never landed. The API field cannot be stale-confounded.
-#        R := org.opencontainers.image.revision, read off the digest itself in
-#             the registry → 03cf6dab, on BOTH platform manifests separately.
-#        git merge-base --is-ancestor 524d9217 03cf6dab   → exit 0
-#             (and the reverse direction exits 1 — the test can say no).
-#        The index carries spdx.dev/Document alongside slsa.dev/provenance/v1
-#             on both platforms. Positive control: the pre-#1504 image
-#             de6e4203 carries provenance and NOTHING else, so this arm
-#             distinguishes rather than always agreeing.
+#      DO NOT WRITE A NEW PR NUMBER INTO THIS TEST. Earlier versions asserted
+#      "contains #1499's merge commit". That is true of every image built
+#      after #1499 landed, forever, so it passes against an arbitrarily stale
+#      digest and cannot express the property anyone actually cares about.
+#      This pin has been wrong once already for exactly that reason. The test
+#      below has no identifier in it and does not decay.
 #
-#      #1499 merged in the same merge group as #1505, so no `push` run fired
-#      on 524d9217 itself and only the batch tip 03cf6dab published. Looking
-#      for "#1499's image" finds nothing; that absence is the batch, not a
-#      failure. Which is the whole reason this criterion is an ancestry test
-#      on the revision label and not "the run that fired after the PR merged".
+#      TWO INDEPENDENT ASSERTIONS. The first binds the digest to a commit; the
+#      second says that commit is current. Both are needed — a correct
+#      artifact can be superseded, and a current commit says nothing about
+#      what was published from it.
+#
+#      A. ARTIFACT BINDING — read from the registry, anonymously, no build:
+#         - org.opencontainers.image.revision on BOTH platform manifests,
+#           read separately. They must agree and must name a commit on `main`.
+#         - `git merge-base --is-ancestor <that revision> origin/main` exits 0.
+#           Run the reverse direction too: it must exit 1. Exit 0 alone is
+#           also what a test that can never fail looks like.
+#         - the index carries spdx.dev/Document alongside
+#           slsa.dev/provenance/v1, on both platforms. Positive control: the
+#           pre-#1504 image de6e4203 carries provenance and NOTHING else, so
+#           this arm distinguishes rather than always agreeing.
+#
+#      B. CURRENCY — nothing newer has been published:
+#           paths := the `on.push.paths` list, read from
+#                    `git show origin/main:.github/workflows/mcp-slack-image.yaml`
+#                    — from the REF, never the working tree, which in a
+#                    worktree or a parked checkout is a third copy that can
+#                    disagree with both sides. Assert the list is non-empty.
+#           git rev-list --count <revision>..origin/main -- <paths>   == 0
+#         Build that argv directly (python `subprocess`), never via a shell.
+#         Every shell form of this has been measured wrong in some
+#         environment: a `$VAR` round-trip doesn't word-split in zsh; an
+#         inline `$(...)` gets glob-expanded by bash against the working tree,
+#         which silently drops `mcp-slack/.github/**` because `*` skips
+#         dotfiles. All of them fail toward 0, i.e. "nothing newer".
+#
+#      B IS VACUOUS IMMEDIATELY AFTER A RE-PIN AND THAT IS NOT A NIT. When the
+#      pinned revision IS `origin/main`, the range is empty before any filter
+#      applies, so B returns 0 for a working derivation, a dead one, a garbage
+#      pathspec, and no pathspec at all. It is asserting that a commit is not
+#      ahead of itself. B discriminates only while the pin is already stale —
+#      it goes blind at the exact moment someone re-pins and most wants to
+#      certify the result. **So run B against a known-stale revision in the
+#      same invocation as a live control** (`03cf6dab` returns 3 here, and 0
+#      under a bogus pathspec). Without that row, a broken derivation passes
+#      unnoticed and then keeps returning 0 after `main` moves, when 0 has
+#      become wrong.
+#
+#      WHY NOT "the publish that fired after the PR merged": the merge queue
+#      batches up to 5 entries (ruleset 17645603, `max_entries_to_merge: 5`,
+#      `min_entries_to_merge_wait_minutes: 5`), and only the batch TIP fires a
+#      `push`. Measured twice: #1499 published under #1505's commit, #1509
+#      under #1513's. Looking for "PR N's image" finds nothing and the absence
+#      is the batch, not a failure. Assertion A's revision label is the only
+#      reliable link from artifact back to commit.
 #
 #      PIN THE INDEX DIGEST, NOT A PLATFORM MANIFEST. `_helpers.tpl` emits
 #      `repository@digest` verbatim, and this cluster is mixed-arch; pinning
@@ -351,13 +378,13 @@ spec:
         # controls are extracted from the templates, so a new one is
         # automatically gated even if this comment is forgotten.
         image:
-          # FILLED — criterion 1. Index digest of ghcr.io/vitruviansoftware/
-          # mcp-slack, revision label 03cf6dab, which contains #1499's squashed
-          # merge commit 524d9217 (the per-request transport fix). Do not
-          # replace this with a platform manifest digest or a tag; do not
-          # replace it with a newer digest without re-running criterion 1's
-          # four assertions against the new one.
-          digest: "sha256:63912eee3f7f5b00114f9ea40701d8f6a984353eae766442e1367d62cc5833bb"
+          # FILLED — criterion 1. INDEX digest of ghcr.io/vitruviansoftware/
+          # mcp-slack, revision label 2998affe on both platform manifests.
+          # Not a platform manifest digest, not a tag. Replacing this means
+          # re-running criterion 1's assertions A and B against the new
+          # digest — including B's known-stale control row, without which B
+          # cannot tell a working check from a dead one.
+          digest: "sha256:303c712cc201da8dcda4ad3f42f063bc9cc0abf22f4e379b8bb72cc5550afd34"
         oidc:
           projectId: ""         # pulumi stack output projectId — REQUIRED
           allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
