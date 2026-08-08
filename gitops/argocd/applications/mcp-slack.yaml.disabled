@@ -79,12 +79,94 @@
 #      `sha256:a718e0be…` (amd64) would fail to schedule on arm64 nodes AND
 #      orphan the SBOM, because the attestations hang off the index.
 #
-#      NOT COVERED BY THIS CRITERION, and it has no owner in the chart: there
-#      are no `imagePullSecrets` anywhere in mcp-slack/deploy, so the pull is
-#      anonymous and works only because the GHCR package is public. That
-#      property is load-bearing in two independent places (this pull, and
-#      #1507's visibility gate), nothing asserts it, and flipping it is one
-#      click. Tracked on #1507.
+#      NOT COVERED BY THIS CRITERION: there are no `imagePullSecrets` anywhere
+#      in mcp-slack/deploy, so the pull is anonymous and works only because the
+#      GHCR package is public.
+#
+#      Everything below cites STEP NAMES and comment headers, never absolute
+#      line numbers. That is deliberate: a comment-only PR elsewhere in the
+#      tree shifts line numbers without changing behaviour, so nothing in
+#      review and no check flags it, and a durable comment quietly starts
+#      pointing at the wrong place. Not hypothetical: this paragraph was
+#      drafted citing the gate step by number, and #1509 — a comment-only PR,
+#      in flight at the same time — inserted 28 lines above it and moved it.
+#      Caught by Ridge before either landed. A step name survives exactly the
+#      edit that breaks a number.
+#
+#      CORRECTION to what #1510 landed here, which said "nothing asserts it".
+#      That was wrong, and wrong in the direction that costs a reader work: it
+#      invites building a control that already exists, or adding an
+#      imagePullSecret that this workload deliberately does not have.
+#
+#        - The absence is a DESIGN CHOICE, not an oversight.
+#          `.github/workflows/mcp-slack-image.yaml`, under the header "WHY GHCR
+#          AND NOT ARTIFACT REGISTRY", argues it: this image
+#          is consumed by the k3s homelab, which has no ambient cloud identity,
+#          so Artifact Registry would make a pull secret MANDATORY — a
+#          credential to seal and rotate forever. A public GHCR package needs
+#          none. Adding `imagePullSecrets` would put a registry credential on
+#          an internet-facing pod to protect against a state nobody has chosen.
+#        - The property IS asserted, by an anonymous request — the only
+#          instrument that can answer it, since an authenticated check succeeds
+#          on a private package. `mcp-slack-image.yaml`'s step "Verify the
+#          image is anonymously pullable" exits 1 with the `gh api … -f
+#          visibility=public` remedy, and the "ASSERTION 4" comment directly
+#          above that step names THIS chart's missing `imagePullSecrets` as
+#          the reason it matters.
+#
+#      The real gap is narrower and is about WHEN, not whether — see #1512.
+#      Assertion 4 reads `steps.publish.outputs.digest`, so it is bound to a
+#      publish: it asserts the package was public AT PUBLISH TIME, for the
+#      digest that publish created. ArgoCD pulls on every sync, restart,
+#      reschedule and node replacement, forever, off a digest pinned in git,
+#      and a visibility flip generates no publish event — so for an
+#      already-pinned digest that gate never runs again. Because this chart
+#      pins by digest, a healthy deployment can go a long time with no
+#      `mcp-slack/**` push at all.
+#
+#      `workflow_dispatch` IS NOT the re-check it looks like. Dispatch takes
+#      the same `!= 'pull_request'` branch as "Build and push" at
+#      mcp-slack-image.yaml's step "Build and push (multi-platform)", so it
+#      builds and pushes a NEW image and
+#      verifies that digest, moving `:main` in the process. Re-verifying the
+#      currently pinned digest is not expressible today without publishing a
+#      new one. Aegis's catch, and the reason "just dispatch the workflow" is
+#      the wrong answer under incident.
+#
+#      SO THE FIRST SIGNAL IS GENERIC AND ~15 MINUTES LATE. All three
+#      mcp-slack alerts are Envoy-traffic-derived, and a pod that never starts
+#      serves no requests, so none of them fires (they are at
+#      McpSlackSustained5xx, McpSlackIdpUnavailable and
+#      McpSlackSustainedForbidden, in platform/prometheus/applicationset.yaml).
+#      `PodNotReadyLong` in that same file (`for: 15m`, phase Pending|Unknown)
+#      does — an ImagePullBackOff pod is `Pending`.
+#      `NodeContainersStuckWaiting` needs >= 3 waiting
+#      containers on a node, so `replicas: 1` will not trip it. A
+#      registry-permissions change therefore presents as "has not reached
+#      Running for >15m", not as anything naming the registry.
+#
+#      IF YOU ARE HERE UNDER INCIDENT: the chart has no ServiceAccount template
+#      and no `serviceAccountName`, so the pod runs on the namespace default
+#      SA. That is a place a pull secret can be attached out-of-band, which
+#      means invisibly to GitOps — do not fix it there. Note that
+#      `automountServiceAccountToken: false` in the chart's deployment.yaml
+#      pod spec does NOT
+#      close that door: pull secrets are applied from the ServiceAccount by
+#      admission regardless of whether its token is mounted. #1512's remedy is an
+#      empty-default `imagePullSecrets` hook in the chart so the fix is a
+#      values change, plus a scheduled re-assertion that reads `image.digest`
+#      out of THIS file and runs the token+manifest check against that digest
+#      with no build and no push.
+#
+#      Adding a pull secret pre-emptively is explicitly NOT the remedy: the
+#      package is public, measured by three of us on two instruments, and a
+#      registry credential nobody needs on an internet-facing pod is its own
+#      liability.
+#
+#      Tracked on #1512 rather than #1507: that one is "the gate cannot fail
+#      because the package is public", this is "the pull only works because
+#      the package is public" — same property, opposite dependents, different
+#      remedies. Beacon's call on the split, and correct.
 #
 #   2. oidc.projectId — `pulumi stack output projectId` on the
 #      zitadel-apps-mcp-slack stack (PR #1417), which has not been applied.
