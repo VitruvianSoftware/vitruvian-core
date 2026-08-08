@@ -115,6 +115,18 @@ for chart in ${CHARTS}; do
     args+=(-f "${values}")
   fi
 
+  # NEVER MOVE THE NEGATIVE CONTROLS BELOW ONTO `helm lint`. Every assertion in
+  # this script that must FAIL uses `helm template` deliberately, because
+  # `required` does not fail under lint: helm's own engine special-cases it —
+  #
+  #   if e.LintMode { log.Printf("[INFO] Missing required value: %s", warn); return "", nil }
+  #
+  # — so under `lint` a missing required value is an INFO line and a SUCCESSFUL
+  # render. A gate rewritten to lint-only would pass on a chart with every guard
+  # deleted, which is the precise failure this job exists to detect, delivered
+  # by the tool rather than by the chart. `lint` is kept here only as a cheap
+  # sanity pass with better messages for a malformed Chart.yaml. Found by Aegis
+  # in helm/helm pkg/engine/engine.go.
   if ! lint_out="$(helm lint "${args[@]:1}" 2>&1)"; then
     fail "${reldir}: helm lint"
     printf '%s\n' "${lint_out}" >&2
