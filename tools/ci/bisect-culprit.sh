@@ -55,6 +55,27 @@ for rev in "$GOOD_SHA" "$BAD_SHA"; do
 done
 
 # Sanity: GOOD must be an ancestor of BAD or bisect degenerates.
+#
+# EQUALITY FIRST, because `--is-ancestor` CANNOT catch it: a commit is its own
+# ancestor, so `is-ancestor S S` exits 0 and the guard below never fires on the
+# one input its own comment says degenerates bisect.
+#
+# Measured, not assumed (bisect-culprit_test.sh pins it): without this guard the
+# run prints "bisecting 0 commit(s) in <sha>..<sha>", then `git bisect start`
+# refuses with "was both 'good' and 'bad'" and `set -e` kills the script THERE —
+# it never reaches the "did not converge" message below. It fails closed, so the
+# answer is never wrong. What is wrong is the exit code: this script's contract
+# is 2 for a caller/input error and 1 for "bisect could not identify a culprit",
+# and a same-commit range reports as the second. That sends whoever is chasing a
+# red sweep after flakiness in a range that never had two commits in it.
+#
+# Compared as resolved commit objects rather than as strings: the two may
+# arrive as a tag and a sha, or abbreviated and full, and still be one commit.
+if [ "$(git rev-parse "${GOOD_SHA}^{commit}")" = "$(git rev-parse "${BAD_SHA}^{commit}")" ]; then
+  echo "::error::bisect-culprit: GOOD_SHA and BAD_SHA are the same commit — nothing to bisect" >&2
+  exit 2
+fi
+
 if ! git merge-base --is-ancestor "$GOOD_SHA" "$BAD_SHA"; then
   echo "::error::bisect-culprit: GOOD_SHA is not an ancestor of BAD_SHA" >&2
   exit 2
