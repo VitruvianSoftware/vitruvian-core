@@ -180,9 +180,16 @@ jobs:
           #    Running it on `preview` too is the point, not a side effect.
           # ---------------------------------------------------------------
 
-          # An empty stack has no outputs; that is not a failure, it is a first
-          # preview. Probe one output rather than parsing `stack output` wholesale.
-          if ! pulumi stack output projectId >/dev/null 2>&1; then
+          # An empty stack has no outputs, and on `preview` that is not a failure,
+          # it is a first preview. But this probe CANNOT tell "no outputs" from
+          # "the command failed" — network, auth, a drifted `stack select` and a
+          # backend hiccup all exit non-zero too, and `2>&1` discards the reason.
+          # So it is only allowed to skip on `preview`. After an `up` the outputs
+          # exist by construction, which makes a probe failure there a real
+          # failure that must stay red: skipping would jump the refresh, the
+          # print AND the accessTokenType gate below and still `exit 0`, so the
+          # run would go green with nothing evaluated.
+          if [ "$ACTION" != "up" ] && ! pulumi stack output projectId >/dev/null 2>&1; then
             echo "stack has no outputs yet — nothing applied, skipping the report"
             exit 0
           fi
@@ -205,11 +212,30 @@ jobs:
               echo "::error::clientSecret is in the printed set while --show-secrets is on" >&2
               exit 1 ;;
           esac
+          # Read into a variable BEFORE printing. `printf ... "$(cmd)"` does not
+          # trip `set -e` when the substitution fails — the command substitution
+          # is not the command whose status the shell checks — so a failed read
+          # prints an empty field and the loop carries on. For clientId that is
+          # not cosmetic: a blank is indistinguishable from an empty value, and
+          # it is the string that gets pasted into the gitops manifest.
+          ATT=""
           for o in $OUTPUTS; do
-            printf '%-18s %s\n' "$o" "$(pulumi stack output "$o" --show-secrets)"
+            v="$(pulumi stack output "$o" --show-secrets)"
+            if [ -z "$v" ]; then
+              echo "::error::stack output $o read back empty — refusing to report a blank value" >&2
+              exit 1
+            fi
+            printf '%-18s %s\n' "$o" "$v"
+            if [ "$o" = "accessTokenType" ]; then ATT="$v"; fi
           done
 
-          ATT="$(pulumi stack output accessTokenType)"
+          # Gate on the value that was actually PRINTED, not on a second read, so
+          # the check cannot disagree with the report. Empty means accessTokenType
+          # left $OUTPUTS and the gate never saw a value — fail rather than pass.
+          if [ -z "$ATT" ]; then
+            echo "::error::accessTokenType was never read — it must stay in the printed set" >&2
+            exit 1
+          fi
           if [ "$ATT" != "OIDC_TOKEN_TYPE_JWT" ]; then
             echo "::error::accessTokenType is $ATT, not OIDC_TOKEN_TYPE_JWT — mcp-slack's auth model assumes JWT" >&2
             exit 1
