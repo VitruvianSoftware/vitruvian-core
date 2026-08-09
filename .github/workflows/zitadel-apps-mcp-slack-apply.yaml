@@ -161,26 +161,56 @@ jobs:
             pulumi preview --diff
           fi
 
-      # Outputs are only meaningful after an `up`. `refresh` first because
-      # accessTokenType is under IgnoreChanges: without it the output reports what
-      # Pulumi last WROTE, not what Zitadel currently HOLDS — so a server-side flip
-      # to BEARER would read as JWT forever while every request is rejected.
-      - name: Report the outputs mcp-slack needs
-        if: inputs.action == 'up'
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          GOWORK: off
-        working-directory: infrastructure/pulumi/platform/zitadel-apps-mcp-slack
-        run: |
-          set -euo pipefail
+          # ---------------------------------------------------------------
+          # REPORTING LIVES IN THIS STEP, DELIBERATELY, AND IS NOT GATED ON
+          # $ACTION. Both properties are fixes for how the first `up` failed.
+          #
+          # 1. In a separate step it could not work at all: the socat terminator
+          #    above is backgrounded and trapped on EXIT, so it dies when this
+          #    step ends and `refresh` got `dial tcp 127.0.0.1:443: connection
+          #    refused`. The comment above the socat line already said a
+          #    backgrounded process does not survive across steps; the reporting
+          #    step was written one step later anyway.
+          #
+          # 2. It used to carry `if: inputs.action == 'up'`, which meant the only
+          #    run that could ever execute it was the irreversible one. Every
+          #    safe rehearsal took the branch that skipped it, so its first
+          #    execution was necessarily the run that creates live resources. A
+          #    code path whose sole test is the dangerous path has no test.
+          #    Running it on `preview` too is the point, not a side effect.
+          # ---------------------------------------------------------------
+
+          # An empty stack has no outputs; that is not a failure, it is a first
+          # preview. Probe one output rather than parsing `stack output` wholesale.
+          if ! pulumi stack output projectId >/dev/null 2>&1; then
+            echo "stack has no outputs yet — nothing applied, skipping the report"
+            exit 0
+          fi
+
+          # refresh BEFORE reading: accessTokenType is under IgnoreChanges, so
+          # without it the output reports what Pulumi last WROTE, not what Zitadel
+          # currently HOLDS. A server-side flip to BEARER would read as JWT forever
+          # while every request is rejected.
           pulumi refresh --yes
-          # Named explicitly, one at a time. `pulumi stack output` with no argument
-          # would print clientSecret too — that value goes into Spark's connector
-          # config and must never reach a log or a channel.
-          for o in projectId clientId sparkScopes accessTokenType projectRoleCheck; do
-            printf '%-18s %s\n' "$o" "$(pulumi stack output "$o")"
+
+          # --show-secrets is REQUIRED here: the provider marks clientId secret, so
+          # the named call alone prints `[secret]`. clientId is a public OIDC
+          # identifier whose destination is a gitops manifest in this repo;
+          # clientSecret is the actual credential and is not in this list.
+          # The flag is only safe because every output is NAMED — a bare
+          # `pulumi stack output --show-secrets` would dump clientSecret too.
+          OUTPUTS="projectId clientId sparkScopes accessTokenType projectRoleCheck"
+          case " $OUTPUTS " in
+            *" clientSecret "*)
+              echo "::error::clientSecret is in the printed set while --show-secrets is on" >&2
+              exit 1 ;;
+          esac
+          for o in $OUTPUTS; do
+            printf '%-18s %s\n' "$o" "$(pulumi stack output "$o" --show-secrets)"
           done
-          if [ "$(pulumi stack output accessTokenType)" != "OIDC_TOKEN_TYPE_JWT" ]; then
-            echo "::error::accessTokenType is not OIDC_TOKEN_TYPE_JWT — mcp-slack's auth model assumes JWT" >&2
+
+          ATT="$(pulumi stack output accessTokenType)"
+          if [ "$ATT" != "OIDC_TOKEN_TYPE_JWT" ]; then
+            echo "::error::accessTokenType is $ATT, not OIDC_TOKEN_TYPE_JWT — mcp-slack's auth model assumes JWT" >&2
             exit 1
           fi
