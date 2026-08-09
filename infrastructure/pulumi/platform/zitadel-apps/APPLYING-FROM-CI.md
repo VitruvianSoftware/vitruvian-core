@@ -53,9 +53,29 @@ terminator)" step in the workflow sketch below.
 > subnet-router-forwarded packet to it is dropped by Cilium's datapath before
 > load-balancing; conntrack never sees it. `_zitadel-apps-apply.yaml` moved off
 > the VIP on 2026-07-20; its "Apply the Zitadel application stack (Pulumi)" step
-> carries the full reasoning inline, just above the `socat` line. **That workflow
-> is the source of truth for the target. This file is the argument for the
-> approach, not a copy of the command.**
+> carries the full reasoning inline, just above the `socat` line. **This file is
+> the argument for the approach, not a copy of the command.**
+>
+> **Neither half of that target is defined in a workflow.** The port is the
+> `http-80` `nodePort` pinned in the gateway `EnvoyProxy` patch
+> (`gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml`) — pinned
+> precisely so it cannot drift on a Service recreation. The host is *any* node's
+> tailscale device, because that Service sets `externalTrafficPolicy: Cluster`
+> so every node answers the NodePort. **The workflows hold copies of the port.**
+> So rather than name a workflow here and have that name go stale, list them:
+>
+> ```sh
+> EP=gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml
+> PORT=$(awk '$1=="nodePort:" {print $2}' "$EP")
+> git grep -lF ":$PORT" -- .github/workflows
+> ```
+>
+> Two things in that command are load-bearing. `$1=="nodePort:"` anchors on the
+> **field**, so a comment quoting this command does not match its own pattern.
+> And `-- .github/workflows` is not tidiness: unscoped, the grep also returns
+> this file (its `:38` evidence cell) and `oauth-user-inspector/docs/OPERATIONS.md`.
+> Measured 2026-08-09 — **1 workflow on `main`, 2 with #1519** — so it reports
+> the set instead of asserting it.
 >
 > **Why this row misled anyone reading it:** the fact is *true on a host that
 > holds the `10.44.86.0/24` subnet route* — a laptop on the tailnet reaches the
@@ -117,10 +137,10 @@ internal Envoy, transparently to the provider (which still uses
           # (Host: auth.ipv1337.dev is preserved end-to-end, so Envoy routes it)
           #
           # DO NOT target the LB VIP here — see the superseded-VIP note under
-          # "Verified facts", above. The live form is in
-          # `_zitadel-apps-apply.yaml`, step
-          # "Apply the Zitadel application stack (Pulumi)", which is the source
-          # of truth for the target — copy it from there, not from this sketch.
+          # "Verified facts", above. It carries the query that lists the
+          # workflows holding a working form; naming one of them here would go
+          # stale, because the port is defined in the gateway EnvoyProxy patch
+          # and the workflows only hold copies of it.
           socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
                 TCP:<a node's tailscale device>:<gateway NodePort> &
           echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts
