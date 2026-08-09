@@ -60,8 +60,16 @@
 #         - org.opencontainers.image.revision on BOTH platform manifests,
 #           read separately. They must agree and must name a commit on `main`.
 #         - `git merge-base --is-ancestor <that revision> origin/main` exits 0.
-#           Run the reverse direction too: it must exit 1. Exit 0 alone is
-#           also what a test that can never fail looks like.
+#           Exit 0 alone is also what a test that can never fail looks like, so
+#           show the test can say no — but run that control against a KNOWN-OLDER
+#           revision (`is-ancestor origin/main 03cf6dab` → 1), NOT by reversing
+#           the arguments on the pinned revision. When the pin is `main`'s tip —
+#           the normal state right after a re-pin — BOTH directions exit 0,
+#           because a commit is its own ancestor. Same degeneracy as B below,
+#           from the same trigger (`R == origin/main`), and it has to be checked
+#           separately for each arm: catching it in one says nothing about the
+#           other. Aegis's catch on the first draft of this very paragraph,
+#           which asserted the reverse "must exit 1" and did not reproduce.
 #         - the index carries spdx.dev/Document alongside
 #           slsa.dev/provenance/v1, on both platforms. Positive control: the
 #           pre-#1504 image de6e4203 carries provenance and NOTHING else, so
