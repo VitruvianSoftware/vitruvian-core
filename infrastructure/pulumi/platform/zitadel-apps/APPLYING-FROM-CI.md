@@ -36,14 +36,45 @@ Measured 2026-06-26 against the live cluster:
 | Fact | Evidence |
 | --- | --- |
 | The Envoy gateway LB is internal at **`10.44.86.211:80`** (HTTP only; TLS is terminated at Cloudflare) | `kubectl get svc -n envoy-gateway-system` → `envoy-…-platform` EXTERNAL-IP `10.44.86.211`, `80:30265/TCP` |
-| That IP is **reachable over tailnet** — the `fedora` node advertises `10.44.86.0/24` | `tailscale status --json` → fedora `PrimaryRoutes` includes `10.44.86.0/24` |
-| The **management API works over the internal path** (no Cloudflare) | `curl -H 'Host: auth.ipv1337.dev' http://10.44.86.211/management/v1/orgs/me` → 200 + the org |
+| ~~That IP is **reachable over tailnet** — the `fedora` node advertises `10.44.86.0/24`~~ **SUPERSEDED — see below** | `tailscale status --json` → fedora `PrimaryRoutes` includes `10.44.86.0/24` |
+| The **management API works over the internal path** (no Cloudflare) | `curl -H 'Host: auth.ipv1337.dev' http://10.44.86.211/management/v1/orgs/me` → **401** unauthenticated (200 + the org *with* a bearer token). Either way it is Zitadel answering, not Cloudflare — the public edge returns `403 … 1010`. See the caveat below. |
 | Zitadel requires the JWT-profile **audience = `https://auth.ipv1337.dev`** even over an HTTP connection — `http://…` audiences are **rejected** | minted tokens with each audience against the internal endpoint; only the `https` audience was accepted |
 
 **Consequence:** the *connection* can be internal HTTP, but the provider must be
 **presented HTTPS** so it signs the assertion with the `https://` audience. So the
 internal route needs a TLS front (a local terminator, or an internal Envoy HTTPS
 listener) — see step 2 below.
+
+> ### ⚠️ The VIP row above is superseded, and it fails toward "it works"
+>
+> **`10.44.86.211` is NOT reachable from an off-cluster tailnet client** — which
+> is what a GitHub runner is. It is a Cilium eBPF LB address, and a
+> subnet-router-forwarded packet to it is dropped by Cilium's datapath before
+> load-balancing; conntrack never sees it. `_zitadel-apps-apply.yaml` moved off
+> the VIP on 2026-07-20; its "Apply the Zitadel application stack (Pulumi)" step
+> carries the full reasoning inline, just above the `socat` line. **That workflow
+> is the source of truth for the target. This file is the argument for the
+> approach, not a copy of the command.**
+>
+> **Why this row misled anyone reading it:** the fact is *true on a host that
+> holds the `10.44.86.0/24` subnet route* — a laptop on the tailnet reaches the
+> VIP and gets a real answer from Zitadel. It is false on a runner. So the
+> measurement in the Evidence column reproduces for whoever checks it locally
+> and still doesn't transfer to CI. **A reachability result is bound to the host
+> that took it**, and neither the row nor the curl carries that stamp.
+>
+> The row is struck rather than deleted because the `PrimaryRoutes` measurement
+> is still accurate — it's the *conclusion drawn from it* that doesn't hold for
+> the CI case this document exists to describe.
+>
+> **The management-API row's evidence command was also under-specified.** It said
+> `→ 200 + the org`; run exactly as printed it returns **401**, because it carries
+> no bearer token. Measured from a subnet-routed host on 2026-08-09. The row's
+> *conclusion* is unaffected and the 401 is arguably the better evidence for it —
+> **a 401 proves Zitadel answered**, whereas the public edge returns
+> `403 error code: 1010` and never reaches Zitadel at all. Fixed above so the
+> command and its stated result agree; someone who runs it and sees 401 should
+> read that as the internal path working, not as it being broken.
 
 ---
 
@@ -83,8 +114,13 @@ internal Envoy, transparently to the provider (which still uses
           cat /tmp/c.pem /tmp/k.pem > /tmp/ck.pem
           # terminate TLS on :443, forward decrypted HTTP to the internal Envoy
           # (Host: auth.ipv1337.dev is preserved end-to-end, so Envoy routes it)
+          #
+          # DO NOT target the LB VIP here. See the note under "Verified facts"
+          # below; the live form is in `_zitadel-apps-apply.yaml`, step
+          # "Apply the Zitadel application stack (Pulumi)", which is the source
+          # of truth for the target — copy it from there, not from this sketch.
           socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
-                TCP:10.44.86.211:80 &
+                TCP:<a node's tailscale device>:<gateway NodePort> &
           echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts
 
       # the existing apply step is UNCHANGED — the provider still uses
