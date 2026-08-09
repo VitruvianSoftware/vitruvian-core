@@ -1,0 +1,186 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: zitadel-apps-mcp-slack-apply
+
+# Manual apply of the zitadel-apps-mcp-slack stack — the Zitadel project and
+# OIDC client that let Gemini Spark call mcp-slack. Its outputs fill two of the
+# six render-blocking values in
+# gitops/argocd/applications/mcp-slack.yaml.disabled: `oidc.projectId` and
+# `oidc.clientId`.
+#
+# WHY THIS EXISTS SEPARATELY FROM _zitadel-apps-apply.yaml: that one is the
+# oauth-user-inspector promotion chain — reusable, per-environment, and it syncs
+# the minted credential into that app's GCP Secret Manager. This stack has no
+# GCP target at all: main.go imports only the pulumi and zitadel SDKs, and every
+# resource it declares is a zitadel one. So the Google WIF auth step is
+# deliberately absent here rather than forgotten.
+#
+# main.go declares FOUR constructors, not two. Named rather than numbered
+# because a line citation in a comment decays silently; `grep -n 'zitadel\.New'`
+# on that file is the authority, not this list:
+#   NewProject          unconditional
+#   NewProjectRole      unconditional — created up front so enabling
+#                       projectRoleCheck later is a config flip, not a schema
+#                       change during an outage
+#   NewUserGrant        one per id in grantUserIds, which is currently ""
+#   NewApplicationOidc  unconditional
+# So the committed config produces three creates and zero grants. An earlier
+# draft of this comment said "two", and a reviewer pre-registered that as the
+# expected plan without opening main.go — which is why the count is spelled out
+# here with a pointer to the command that checks it.
+#
+# DEFAULTS TO PREVIEW, AND THAT IS THE CONTROL. The first apply CREATES a real
+# project and a real OIDC client in the live instance; unlike everything else in
+# this repo that is not reversible by reverting a commit. `up` therefore has to
+# be selected explicitly on the dispatch, so "post the plan before applying" is
+# a property of the workflow rather than a habit someone has to remember.
+#
+# NEVER RUN THE `:import` BAZEL TARGET AGAINST THIS STACK. The macro generates
+# one, but Zitadel's provider cannot read the client secret back, so an import
+# plans a REPLACEMENT — create-replacement then delete-original — which destroys
+# the live client. That is not hypothetical: it is how the sibling stack broke
+# on 2026-06-26 (`Errors.App.NotFound`). See the stack's README, "Never import
+# this client". This workflow only ever runs preview / refresh / up.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview (safe, default) | up (CREATES live Zitadel resources)"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, up]
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # checkout only. No `id-token: write` — that exists in the sibling for its
+    # GCP Secret Manager writes, and this stack has no GCP resources.
+    permissions:
+      contents: read
+    # Supplies TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET and ZITADEL_MACHINE_KEY_JSON,
+    # which are ENVIRONMENT secrets rather than repo secrets — this stack cannot
+    # authenticate without it. The name says oauth-user-inspector because that is
+    # where those three were first seeded; they are instance-wide credentials,
+    # not app-scoped. A dedicated environment would be tidier and would cost a
+    # human three secret copies, so it is deliberately not done here.
+    environment: oauth-user-inspector-development
+    env:
+      DEPLOY_ENV: development
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Join the tailnet (ephemeral, tag:ci)
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          # v4 already passes `--accept-routes`; don't add it in args.
+
+      - name: Prepare the internal TLS route to the Envoy gateway
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq socat
+          # Zitadel ties the JWT-profile audience to the connection scheme and only
+          # accepts the https issuer, so the provider must SEE https even though the
+          # internal hop is plain http. Terminate TLS locally with a self-signed cert
+          # for the host, trusted in the runner's store, forwarding to Envoy.
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem \
+            -days 1 -subj "/CN=auth.ipv1337.dev" -addext "subjectAltName=DNS:auth.ipv1337.dev"
+          sudo cp /tmp/c.pem /usr/local/share/ca-certificates/auth-internal.crt
+          sudo update-ca-certificates >/dev/null
+          cat /tmp/c.pem /tmp/k.pem | sudo tee /etc/auth-internal-ck.pem >/dev/null
+          echo "127.0.0.1 auth.ipv1337.dev" | sudo tee -a /etc/hosts >/dev/null
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: "Run Pulumi (${{ inputs.action }})"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
+          ACTION: ${{ inputs.action }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/platform/zitadel-apps-mcp-slack
+        run: |
+          set -euo pipefail
+          # The terminator must live inside THIS step — a backgrounded process does
+          # not survive across steps.
+          #
+          # Target a cluster node's TAILSCALE device on the gateway NodePort, NOT
+          # the LB VIP 10.44.86.211. The VIP is a Cilium eBPF LB address: a packet
+          # forwarded to it by the subnet router is dropped in Cilium's datapath
+          # before load-balancing, so conntrack never sees it. A node's tailscale IP
+          # is a first-class tailnet device and Cilium DOES load-balance NodePort for
+          # that traffic. Fixed in 7fea0b3f for the sibling workflow.
+          # NOTE: zitadel-apps/APPLYING-FROM-CI.md still documents the VIP form; it
+          # predates that fix and is stale on this point.
+          # :30265 is pinned in gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml
+          # precisely so this hardcoding cannot drift.
+          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+            TCP:nuc9i9.coati-koi.ts.net:30265 &
+          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
+
+          # Fail loudly on the route rather than letting Pulumi report a confusing
+          # provider error. This is also the positive control that the tunnel works:
+          # if healthz answers, the internal path is up.
+          for _ in $(seq 1 15); do
+            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
+          echo "internal route to auth.ipv1337.dev is up"
+
+          pulumi stack select "$DEPLOY_ENV" --create
+          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
+
+          if [ "$ACTION" = "up" ]; then
+            pulumi up --yes
+          else
+            pulumi preview --diff
+          fi
+
+      # Outputs are only meaningful after an `up`. `refresh` first because
+      # accessTokenType is under IgnoreChanges: without it the output reports what
+      # Pulumi last WROTE, not what Zitadel currently HOLDS — so a server-side flip
+      # to BEARER would read as JWT forever while every request is rejected.
+      - name: Report the outputs mcp-slack needs
+        if: inputs.action == 'up'
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/platform/zitadel-apps-mcp-slack
+        run: |
+          set -euo pipefail
+          pulumi refresh --yes
+          # Named explicitly, one at a time. `pulumi stack output` with no argument
+          # would print clientSecret too — that value goes into Spark's connector
+          # config and must never reach a log or a channel.
+          for o in projectId clientId sparkScopes accessTokenType projectRoleCheck; do
+            printf '%-18s %s\n' "$o" "$(pulumi stack output "$o")"
+          done
+          if [ "$(pulumi stack output accessTokenType)" != "OIDC_TOKEN_TYPE_JWT" ]; then
+            echo "::error::accessTokenType is not OIDC_TOKEN_TYPE_JWT — mcp-slack's auth model assumes JWT" >&2
+            exit 1
+          fi
