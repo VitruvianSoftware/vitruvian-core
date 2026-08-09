@@ -43,7 +43,8 @@ Measured 2026-06-26 against the live cluster:
 **Consequence:** the *connection* can be internal HTTP, but the provider must be
 **presented HTTPS** so it signs the assertion with the `https://` audience. So the
 internal route needs a TLS front (a local terminator, or an internal Envoy HTTPS
-listener) — see step 2 below.
+listener) — see the "Route auth.ipv1337.dev to the internal Envoy (TLS
+terminator)" step in the workflow sketch below.
 
 > ### ⚠️ The VIP row above is superseded, and it fails toward "it works"
 >
@@ -115,8 +116,9 @@ internal Envoy, transparently to the provider (which still uses
           # terminate TLS on :443, forward decrypted HTTP to the internal Envoy
           # (Host: auth.ipv1337.dev is preserved end-to-end, so Envoy routes it)
           #
-          # DO NOT target the LB VIP here. See the note under "Verified facts"
-          # below; the live form is in `_zitadel-apps-apply.yaml`, step
+          # DO NOT target the LB VIP here — see the superseded-VIP note under
+          # "Verified facts", above. The live form is in
+          # `_zitadel-apps-apply.yaml`, step
           # "Apply the Zitadel application stack (Pulumi)", which is the source
           # of truth for the target — copy it from there, not from this sketch.
           socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/tmp/ck.pem,verify=0 \
