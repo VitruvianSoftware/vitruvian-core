@@ -74,8 +74,11 @@ terminator)" step in the workflow sketch below.
 > **field**, so a comment quoting this command does not match its own pattern.
 > And `-- .github/workflows` is not tidiness: unscoped, the grep also returns
 > this file (its `:38` evidence cell) and `oauth-user-inspector/docs/OPERATIONS.md`.
-> Measured 2026-08-09 — **1 workflow on `main`, 2 with #1519** — so it reports
-> the set instead of asserting it.
+> Measured at two **immutable commits**, so the demonstration cannot itself go
+> stale: **1 workflow at `90c1f362`, 2 at `d17b7583`** — the latter added the
+> mcp-slack apply job as a second consumer. A count stated against `main` would
+> have been false within minutes of being written; this one reports the set at a
+> commit rather than asserting a number about a moving ref.
 >
 > **Why this row misled anyone reading it:** the fact is *true on a host that
 > holds the `10.44.86.0/24` subnet route* — a laptop on the tailnet reaches the
