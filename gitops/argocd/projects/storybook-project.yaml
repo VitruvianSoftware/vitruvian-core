@@ -35,7 +35,9 @@ spec:
   destinations:
     - namespace: storybook
       server: 'https://kubernetes.default.svc'
-  clusterResourceWhitelist: []
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
   namespaceResourceWhitelist:
     - group: apps
       kind: Deployment
