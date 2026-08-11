@@ -20,5 +20,6 @@
  * SOFTWARE.
  */
 
+@import "@vitruviansoftware/design-system/vitruvian.css";
 @import "tailwindcss";
 @config "./tailwind.config.js";
