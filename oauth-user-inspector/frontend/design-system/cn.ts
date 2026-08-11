@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 2026 VitruvianSoftware
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,7 +19,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-@import "./design-system/vitruvian.css";
-@import "tailwindcss";
-@config "./tailwind.config.js";
+export function cn(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(" ");
+}
