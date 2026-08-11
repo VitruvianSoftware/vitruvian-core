@@ -22,7 +22,7 @@
 
 import React, { useState } from "react";
 import { jwtDecode } from "jwt-decode";
-import { Button, Tag } from "@vitruviansoftware/design-system";
+import { Button, Tag } from "../design-system";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 
 interface TokenDisplayProps {

@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { Button } from "@vitruviansoftware/design-system";
+import { Button } from "../design-system";
 import { MenuIcon, HelpIcon, UploadIcon, LogoutIcon } from "./icons";
 
 interface TopMenuProps {
