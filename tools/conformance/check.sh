@@ -732,6 +732,51 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: standalone workspace dependencies. Packages listed in CATALOG_EXEMPT
+# (mcp-slack, oauth-user-inspector, etc.) build in standalone Docker context
+# where monorepo workspace packages (packages/*) are not present. Any
+# "workspace:*" dependency declared in an exempt package.json breaks `docker build`
+# post-merge -> ✗ FAIL.
+# ---------------------------------------------------------------------------
+check_standalone_workspace_deps() {
+  _list="$(discover "package.json")"
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    _rel="$(rel "$pkg")"
+    _ws="${_rel%%/*}"
+    _exempt=0
+    case " $CATALOG_EXEMPT " in *" $_ws "*) _exempt=1 ;; esac
+    for _ex in $CATALOG_EXEMPT; do
+      case "$_rel" in "$_ex"/*) _exempt=1; _ws="$_ex" ;; esac
+    done
+    [ "$_exempt" = "1" ] || continue
+
+    _ws_decls="$(
+      awk '
+        match($0, /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"workspace:[^"]*"/) {
+          name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*$/,"",name)
+          val=$0;  sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/,"",val); sub(/".*$/,"",val)
+          print name "\t" val
+        }
+      ' "$pkg"
+    )"
+    [ -n "$_ws_decls" ] || continue
+
+    while IFS="$(printf '\t')" read -r dep val; do
+      [ -n "$dep" ] || continue
+      emit "standalone-deps" "$GLYPH_FAIL" "$C_RED" "$_rel" "$val" "non-workspace" \
+        "'$dep' uses workspace: but $_ws builds standalone (no monorepo workspace packages in Docker context)" \
+        "vendor or inline \"$dep\" in $_rel — workspace: cannot resolve in standalone Docker build"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    done <<EOF
+$_ws_decls
+EOF
+  done <<EOF
+$_list
+EOF
+}
+
+# ---------------------------------------------------------------------------
 # CATALOG ORPHAN SWEEP. A catalog entry that NO workspace package.json declares
 # is dead config -> ✗ (mirrors the stale-pin sweep). Keeps the catalog honest:
 # it only carries deps actually in use.
@@ -2028,6 +2073,7 @@ stale_sweep
 doc_sync
 advisory_pnpm
 check_catalog
+check_standalone_workspace_deps
 catalog_orphan_sweep
 advisory_catalog
 check_app_visibility
