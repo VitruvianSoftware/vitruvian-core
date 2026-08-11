@@ -21,7 +21,7 @@
  */
 
 import React, { useState } from "react";
-import { Button, Tag, Card } from "@vitruviansoftware/design-system";
+import { Button, Tag, Card } from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,

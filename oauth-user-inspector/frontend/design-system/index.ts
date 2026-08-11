@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 2026 VitruvianSoftware
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,7 +19,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-@import "./design-system/vitruvian.css";
-@import "tailwindcss";
-@config "./tailwind.config.js";
+export { cn } from "./cn";
+export { Button } from "./Button";
+export type { ButtonProps, ButtonVariant } from "./Button";
+export { Tag, Label, Kbd } from "./Tag";
+export type { TagTone } from "./Tag";
+export { Card } from "./Card";
+export type { CardProps } from "./Card";
+export { Plate, RegistrationMarks, VMark, Rule, Glass } from "./Plate";
+export type { PlateProps } from "./Plate";

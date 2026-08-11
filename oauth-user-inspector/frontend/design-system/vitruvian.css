@@ -1,0 +1,91 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+/* The single stylesheet a consuming app imports.
+   Tailwind v4 (CSS-first config) + the Vitruvian token and component layer. */
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Expose the design language to Tailwind's utility generator under names that
+   read as the language, not as a generic palette: bg-ink, text-steel,
+   border-hairline. Aliased with @theme inline so theme switching keeps working
+   — the utilities resolve through the live custom properties, so flipping
+   [data-theme="light"] re-colours every utility with no rebuild. */
+@theme inline {
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --color-ink: var(--color-bg);
+  --color-ink-2: var(--color-surface);
+  --color-ink-3: var(--color-surface-2);
+  --color-paper: var(--color-text);
+  --color-paper-dim: var(--color-text-dim);
+  --color-hairline: var(--color-divider);
+  --color-rule: var(--color-line);
+
+  --color-steel: var(--color-accent);
+  --color-steel-text: var(--color-accent-text);
+  --color-steel-quiet: var(--color-accent-quiet);
+  --color-steel-100: var(--color-accent-100);
+  --color-steel-200: var(--color-accent-200);
+  --color-steel-300: var(--color-accent-300);
+  --color-steel-400: var(--color-accent-400);
+  --color-steel-500: var(--color-accent-500);
+  --color-steel-600: var(--color-accent-600);
+  --color-steel-700: var(--color-accent-700);
+  --color-steel-800: var(--color-accent-800);
+  --color-steel-900: var(--color-accent-900);
+
+  --color-sanguine: var(--color-sanguine);
+  --color-sanguine-text: var(--color-sanguine-text);
+  --color-ok: var(--color-ok);
+  --color-warn: var(--color-warn);
+  --color-crit: var(--color-crit);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* The spacing scale IS the Fibonacci sequence — p-4 is 13px, gap-5 is 21px.
+   This deliberately replaces Tailwind's 0.25rem ramp; the proportion is part
+   of the design language, so utilities and tokens cannot drift apart. */
+@theme {
+  --spacing-0: 0px;
+  --spacing-1: 3px;
+  --spacing-2: 5px;
+  --spacing-3: 8px;
+  --spacing-4: 13px;
+  --spacing-5: 21px;
+  --spacing-6: 34px;
+  --spacing-7: 55px;
+  --spacing-8: 89px;
+
+  /* Square by construction — rounded-* utilities are inert on purpose. */
+  --radius-none: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-full: 9999px;
+}

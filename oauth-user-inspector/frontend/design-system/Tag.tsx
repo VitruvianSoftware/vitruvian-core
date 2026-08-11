@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 2026 VitruvianSoftware
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,7 +19,35 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import * as React from "react";
+import { cn } from "./cn.js";
 
-@import "./design-system/vitruvian.css";
-@import "tailwindcss";
-@config "./tailwind.config.js";
+export type TagTone =
+  "accent" | "sanguine" | "neutral" | "outline" | "ok" | "warn";
+
+/** Small mono label. Tone carries meaning, never decoration. */
+export function Tag({
+  tone = "neutral",
+  className,
+  ...rest
+}: { tone?: TagTone } & React.HTMLAttributes<HTMLSpanElement>) {
+  return <span className={cn("tag", `tag-${tone}`, className)} {...rest} />;
+}
+
+/** The annotation voice: 10px mono, tracked, uppercase, dim. */
+export function Label({
+  accent,
+  className,
+  ...rest
+}: { accent?: boolean } & React.HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span
+      className={cn("label", accent && "label-accent", className)}
+      {...rest}
+    />
+  );
+}
+
+export function Kbd({ className, ...rest }: React.HTMLAttributes<HTMLElement>) {
+  return <kbd className={cn("kbd", className)} {...rest} />;
+}
