@@ -402,6 +402,7 @@ ROWS_GATE=""
 ROWS_DURABLE=""
 ROWS_PULUMI=""
 ROWS_RENOVATE=""
+ROWS_STANDALONE_DEPS=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -427,6 +428,7 @@ emit() {
     durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
+    standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -732,11 +734,13 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# CHECK: standalone workspace dependencies. Packages listed in CATALOG_EXEMPT
-# (mcp-slack, oauth-user-inspector, etc.) build in standalone Docker context
-# where monorepo workspace packages (packages/*) are not present. Any
-# "workspace:*" dependency declared in an exempt package.json breaks `docker build`
-# post-merge -> ✗ FAIL.
+# CHECK: standalone workspace dependencies. CATALOG_EXEMPT packages that ship a
+# Dockerfile build in an isolated Docker context where monorepo workspace packages
+# (packages/*) are not present. Any "workspace:*" dependency in such a package.json
+# breaks `docker build` post-merge -> ✗ FAIL.
+#
+# Exempt packages WITHOUT a Dockerfile (e.g. pulumi/examples/*) resolve workspace:
+# deps at monorepo install time and are not flagged.
 # ---------------------------------------------------------------------------
 check_standalone_workspace_deps() {
   _list="$(discover "package.json")"
@@ -750,6 +754,12 @@ check_standalone_workspace_deps() {
       case "$_rel" in "$_ex"/*) _exempt=1; _ws="$_ex" ;; esac
     done
     [ "$_exempt" = "1" ] || continue
+
+    # Only flag packages that actually build in Docker — the Dockerfile is the
+    # signal that workspace: deps cannot resolve in the isolated build context.
+    # Walk up to the exempt root to find a Dockerfile at the workspace level.
+    _ws_root="$ROOT/$_ws"
+    [ -f "$_ws_root/Dockerfile" ] || continue
 
     _ws_decls="$(
       awk '
@@ -2116,6 +2126,7 @@ print_group "Release-unit guard (co-located <app>/infra/ must not bump the app v
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
+print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
