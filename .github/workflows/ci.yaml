@@ -279,7 +279,7 @@ jobs:
       - name: Detect macOS-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           # merge_group: diff the queued commit against the base the queue is
           # merging onto (base_sha is reachable because fetch-depth: 0 fetched
@@ -476,7 +476,7 @@ jobs:
       - name: Detect ${{ matrix.module }}-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
@@ -532,7 +532,7 @@ jobs:
       - name: Detect IaC-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
@@ -635,7 +635,7 @@ jobs:
       - name: Detect Go changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
@@ -728,7 +728,7 @@ jobs:
       - name: Detect example/library changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
@@ -794,7 +794,7 @@ jobs:
       - name: Detect Butane-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
