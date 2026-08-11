@@ -117,6 +117,9 @@ importers:
       '@google-cloud/secret-manager':
         specifier: ^6.3.0
         version: 6.3.0
+      '@vitruviansoftware/design-system':
+        specifier: workspace:*
+        version: link:../packages/design-system
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2

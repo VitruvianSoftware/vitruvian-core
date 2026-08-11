@@ -21,6 +21,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { Button } from "@vitruviansoftware/design-system";
 import { MenuIcon, HelpIcon, UploadIcon, LogoutIcon } from "./icons";
 
 interface TopMenuProps {
@@ -122,12 +123,14 @@ const TopMenu: React.FC<TopMenuProps> = ({
 
   return (
     <div ref={containerRef} className="relative">
-      <button
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close menu" : "Open menu"}
         aria-expanded={open}
         aria-controls={panelId}
-        className="p-2 rounded-md border border-slate-600 text-slate-300 hover:bg-slate-700 inline-flex items-center gap-2 bg-slate-800/70 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+        className="inline-flex items-center gap-2"
       >
         <div className="relative">
           <MenuIcon className="w-5 h-5" />
@@ -139,7 +142,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
           )}
         </div>
         <span className="hidden sm:inline text-sm">Menu</span>
-      </button>
+      </Button>
       {open && (
         <div
           id={panelId}
@@ -147,29 +150,22 @@ const TopMenu: React.FC<TopMenuProps> = ({
           aria-label="Application actions"
           className="absolute right-0 mt-2 w-64 sm:w-72 origin-top-right animate-fadeIn border border-slate-700 rounded-lg bg-slate-900 p-4 shadow-xl flex flex-col gap-4 ring-1 ring-slate-800/60"
         >
-          {/**
-           * Shared class tokens for consistent button styling
-           */}
-          {(() => {
-            // No runtime effect; used to co-locate classnames for readability.
-            // itemBtn: unified neutral pill button style
-            // dangerBtn: red-accented diagnostic button
-            return null;
-          })()}
-
           <div
             className="flex flex-col gap-2"
             role="group"
             aria-label="Snapshot actions"
           >
-            <button
+            <Button
               ref={firstFocusable}
               data-focusable="true"
+              variant="secondary"
+              size="sm"
+              block
               onClick={triggerFileDialog}
-              className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-900/20 hover:bg-slate-800/40 text-center inline-flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+              className="inline-flex items-center justify-center gap-2"
             >
               <UploadIcon className="w-4 h-4" /> Import Snapshot
-            </button>
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -182,13 +178,16 @@ const TopMenu: React.FC<TopMenuProps> = ({
               }
             />
             {importedSnapshot && (
-              <button
+              <Button
                 data-focusable="true"
+                variant="secondary"
+                size="sm"
+                block
                 onClick={onClearSnapshot}
-                className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-900/20 hover:bg-slate-800/40 text-center inline-flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                className="inline-flex items-center justify-center gap-2"
               >
                 <UploadIcon className="w-4 h-4 rotate-180" /> Clear Snapshot
-              </button>
+              </Button>
             )}
           </div>
           {userLoggedIn && (
@@ -197,20 +196,25 @@ const TopMenu: React.FC<TopMenuProps> = ({
               role="group"
               aria-label="Session actions"
             >
-              <button
+              <Button
                 data-focusable="true"
+                variant={safeMode ? "primary" : "secondary"}
+                size="sm"
+                block
                 onClick={onToggleSafeMode}
-                className={`w-full px-3 py-1.5 text-xs rounded-md border font-medium text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${safeMode ? "bg-amber-500/20 border-amber-500/60 text-amber-300 hover:bg-amber-500/30" : "border-slate-600 text-slate-300 bg-slate-900/20 hover:bg-slate-800/40"}`}
               >
                 {safeMode ? "Safe Mode On" : "Safe Mode Off"}
-              </button>
-              <button
+              </Button>
+              <Button
                 data-focusable="true"
+                variant="secondary"
+                size="sm"
+                block
                 onClick={onLogout}
-                className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-900/20 hover:bg-slate-800/40 text-center inline-flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                className="inline-flex items-center justify-center gap-2"
               >
                 <LogoutIcon className="w-4 h-4" /> Logout
-              </button>
+              </Button>
             </div>
           )}
           <div
@@ -218,22 +222,27 @@ const TopMenu: React.FC<TopMenuProps> = ({
             role="group"
             aria-label="Help & diagnostics"
           >
-            <button
+            <Button
               data-focusable="true"
+              variant="ghost"
+              size="sm"
+              block
               onClick={onShowHelp}
-              className="w-full px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-900/20 hover:bg-slate-800/40 text-center inline-flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+              className="inline-flex items-center justify-center gap-2"
             >
               <HelpIcon className="w-4 h-4" /> Help & Shortcuts
-            </button>
+            </Button>
             {hasError && (
-              <button
+              <Button
                 data-focusable="true"
                 ref={lastFocusable}
+                variant="danger"
+                size="sm"
+                block
                 onClick={runDiagnostics}
-                className="w-full px-3 py-1.5 text-xs rounded-md border border-red-400/50 text-red-300 bg-red-900/20 hover:bg-red-900/30 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 Diagnose
-              </button>
+              </Button>
             )}
             {!hasError && <span ref={lastFocusable} tabIndex={-1} />}
           </div>
