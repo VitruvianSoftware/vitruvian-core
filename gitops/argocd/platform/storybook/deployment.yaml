@@ -19,6 +19,19 @@
 # SOFTWARE.
 #
 # Storybook Deployment — serves static Storybook UI assets via Nginx.
+#
+# imagePullPolicy: Always is explicit because the image is tagged `latest`,
+# a mutable tag: without it, kubelet may use a stale cached layer and miss
+# updates. Kubernetes defaults to Always for `latest` anyway, but writing it
+# out prevents the same ArgoCD "server defaults it, git doesn't declare it"
+# drift seen on whoami's containerPort.protocol (see rollout.yaml there).
+#
+# Image update strategy (follow-up): this deployment currently floats on
+# `latest`. A pod restart picks up a new push, but ArgoCD won't trigger one
+# automatically since the manifest in git hasn't changed. Setting up
+# argocd-image-updater with a digest-pinned write-back (the buzz pattern) is
+# the correct long-term fix; for a low-criticality internal tool, manual
+# `kubectl rollout restart` or a CI annotation-bump suffices initially.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,10 +57,25 @@ spec:
       containers:
         - name: storybook
           image: ghcr.io/vitruviansoftware/storybook:latest
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+          # tcpSocket, not httpGet: nginx-unprivileged has no dedicated health
+          # endpoint, and probing / would return the full index.html body on
+          # every check. A TCP connect to 8080 confirms the listener is up,
+          # same pattern as ntfy's deployment.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
           resources:
             requests:
               cpu: 5m
@@ -59,3 +87,4 @@ spec:
             readOnlyRootFilesystem: false
             capabilities:
               drop: ["ALL"]
+
