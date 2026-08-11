@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.4.0...oauth-user-inspector-v1.4.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** make design system components self-contained for standalone Docker build ([#1544](https://github.com/VitruvianSoftware/vitruvian-core/issues/1544)) ([67462c2](https://github.com/VitruvianSoftware/vitruvian-core/commit/67462c2758f05c1e3c272c117e18ed27b82f87c7))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.3.0...oauth-user-inspector-v1.4.0) (2026-08-11)
 
 
