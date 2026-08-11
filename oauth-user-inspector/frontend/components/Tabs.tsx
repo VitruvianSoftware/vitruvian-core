@@ -21,7 +21,7 @@
  */
 
 import React, { useState, ReactNode, useEffect } from "react";
-import { Button } from "@vitruviansoftware/design-system";
+import { Button } from "../design-system";
 
 interface TabProps {
   label: string;
