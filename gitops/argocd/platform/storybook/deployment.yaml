@@ -1,0 +1,90 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Storybook Deployment — serves static Storybook UI assets via Nginx.
+#
+# imagePullPolicy: Always is explicit because the image is tagged `latest`,
+# a mutable tag: without it, kubelet may use a stale cached layer and miss
+# updates. Kubernetes defaults to Always for `latest` anyway, but writing it
+# out prevents the same ArgoCD "server defaults it, git doesn't declare it"
+# drift seen on whoami's containerPort.protocol (see rollout.yaml there).
+#
+# Image update strategy (follow-up): this deployment currently floats on
+# `latest`. A pod restart picks up a new push, but ArgoCD won't trigger one
+# automatically since the manifest in git hasn't changed. Setting up
+# argocd-image-updater with a digest-pinned write-back (the buzz pattern) is
+# the correct long-term fix; for a low-criticality internal tool, manual
+# `kubectl rollout restart` or a CI annotation-bump suffices initially.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storybook
+  namespace: storybook
+  labels:
+    app: storybook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storybook
+  template:
+    metadata:
+      labels:
+        app: storybook
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: storybook
+          image: ghcr.io/vitruviansoftware/storybook:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # tcpSocket, not httpGet: nginx-unprivileged has no dedicated health
+          # endpoint, and probing / would return the full index.html body on
+          # every check. A TCP connect to 8080 confirms the listener is up,
+          # same pattern as ntfy's deployment.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+
