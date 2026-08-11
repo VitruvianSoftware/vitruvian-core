@@ -22,6 +22,7 @@
 
 import React, { useState } from "react";
 import { jwtDecode } from "jwt-decode";
+import { Button, Tag } from "@vitruviansoftware/design-system";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 
 interface TokenDisplayProps {
@@ -97,23 +98,28 @@ const TokenItem: React.FC<{
         </h5>
         <div className="flex gap-2 flex-shrink-0">
           {jwtDetails && (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setDecodedVisible(!decodedVisible)}
-              className="text-[10px] px-2 py-1 rounded bg-emerald-700/60 border border-emerald-600 text-emerald-200 hover:bg-emerald-700"
               title="Show decoded JWT header and payload"
             >
               {decodedVisible ? "Hide JWT" : "Decode JWT"}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setVisible(!visible)}
-            className="text-[10px] px-2 py-1 rounded bg-slate-700/60 border border-slate-600 text-slate-300 hover:bg-slate-700"
           >
             {visible ? "Hide" : "Show"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={copied ? "primary" : "secondary"}
+            size="sm"
+            done={copied}
             onClick={handleCopy}
-            className="flex items-center text-[10px] px-2 py-1 rounded bg-slate-700/60 border border-slate-600 text-slate-300 hover:bg-slate-700"
+            className="flex items-center gap-1"
           >
             {copied ? (
               <>
@@ -126,7 +132,7 @@ const TokenItem: React.FC<{
                 Copy
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 

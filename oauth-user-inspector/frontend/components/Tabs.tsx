@@ -21,6 +21,7 @@
  */
 
 import React, { useState, ReactNode, useEffect } from "react";
+import { Button } from "@vitruviansoftware/design-system";
 
 interface TabProps {
   label: string;
@@ -48,22 +49,20 @@ const Tabs: React.FC<TabsProps> = ({ children }) => {
 
   return (
     <div>
-      <div className="flex border-b border-slate-700 -mx-8 px-8">
+      <div className="flex gap-2 border-b border-hairline pb-2 -mx-8 px-8">
         {children.map((child, index) => (
-          <button
+          <Button
             key={index}
+            variant={activeTab === index ? "primary" : "ghost"}
+            size="sm"
             onClick={() => setActiveTab(index)}
-            className={`flex items-center px-4 py-3 text-sm font-medium transition-colors duration-200 ease-in-out focus:outline-none -mb-px ${
-              activeTab === index
-                ? "border-b-2 border-blue-400 text-white"
-                : "text-slate-400 hover:text-white border-b-2 border-transparent"
-            }`}
+            className="flex items-center gap-2"
           >
             {child.props.icon && (
-              <span className="mr-2 h-5 w-5">{child.props.icon}</span>
+              <span className="h-4 w-4">{child.props.icon}</span>
             )}
             {child.props.label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="pt-8">{children[activeTab]}</div>
