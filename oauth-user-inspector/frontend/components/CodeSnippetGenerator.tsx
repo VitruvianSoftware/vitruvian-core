@@ -336,7 +336,8 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               <Button
                 key={lang}
                 onClick={() => setSelectedLanguage(lang)}
-                variant={selectedLanguage === lang ? "primary" : "ghost"} size="sm"
+                variant={selectedLanguage === lang ? "primary" : "ghost"}
+                size="sm"
               >
                 {lang === "nodejs" ? "Node.js" : lang.toUpperCase()}
               </Button>
@@ -349,7 +350,8 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
           <label className="block text-xs text-slate-400 mb-1">Security</label>
           <Button
             onClick={() => setMaskToken(!maskToken)}
-            variant={maskToken ? "primary" : "ghost"} size="sm"
+            variant={maskToken ? "primary" : "ghost"}
+            size="sm"
           >
             {maskToken ? "🔒 Token Masked" : "👁️ Token Visible"}
           </Button>
@@ -400,7 +402,8 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                 </span>
               </div>
               <Button
-                variant="ghost" size="sm"
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   handleCopy(
                     `${currentEndpoint.id}-${selectedLanguage}`,

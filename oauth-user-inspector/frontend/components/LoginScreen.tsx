@@ -418,13 +418,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     className="w-full pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
                   />
                   <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowPat((v) => !v)}
-                      className="absolute right-2 top-1.5"
-                    >
-                      {showPat ? "Hide" : "Show"}
-                    </Button>
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowPat((v) => !v)}
+                    className="absolute right-2 top-1.5"
+                  >
+                    {showPat ? "Hide" : "Show"}
+                  </Button>
                 </div>
               </div>
               <div className="mt-6">

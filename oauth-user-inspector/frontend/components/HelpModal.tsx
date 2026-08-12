@@ -48,11 +48,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
           <h2 className="text-xl font-semibold text-slate-100">
             Help & Shortcuts
           </h2>
-          <Button
-            onClick={onClose}
-            variant="ghost"
-            size="sm"
-          >
+          <Button onClick={onClose} variant="ghost" size="sm">
             ✕
           </Button>
         </div>
@@ -131,11 +127,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
           </p>
         </div>
         <div className="flex justify-end">
-          <Button
-            onClick={onClose}
-            variant="ghost"
-            size="sm"
-          >
+          <Button onClick={onClose} variant="ghost" size="sm">
             Close
           </Button>
         </div>

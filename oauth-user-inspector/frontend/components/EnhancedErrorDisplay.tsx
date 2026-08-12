@@ -53,18 +53,10 @@ const EnhancedErrorDisplay: React.FC<EnhancedErrorDisplayProps> = ({
           <p>{errorMessage}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button
-            onClick={onDiagnose}
-            variant="danger"
-            size="sm"
-          >
+          <Button onClick={onDiagnose} variant="danger" size="sm">
             Diagnose
           </Button>
-          <Button
-            onClick={onDismiss}
-            variant="ghost"
-            size="sm"
-          >
+          <Button onClick={onDismiss} variant="ghost" size="sm">
             Dismiss
           </Button>
         </div>

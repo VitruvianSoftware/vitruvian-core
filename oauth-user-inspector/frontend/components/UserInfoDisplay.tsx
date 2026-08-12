@@ -412,7 +412,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                 {user.refreshToken && onTokenRefresh ? (
                   <div className="flex flex-col">
                     <Button
-                      variant="secondary" size="sm"
+                      variant="secondary"
+                      size="sm"
                       onClick={onTokenRefresh}
                       title="Use refresh token to get a new access token without re-authentication"
                     >
@@ -439,7 +440,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                 {onTokenRevocation && (
                   <div className="flex flex-col">
                     <Button
-                      variant="danger" size="sm"
+                      variant="danger"
+                      size="sm"
                       onClick={onTokenRevocation}
                       title="Revoke the access token immediately for security (will log you out)"
                     >
@@ -506,7 +508,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
           {(["both", "table", "json", "api", "snippets"] as const).map((m) => (
             <Button
               key={m}
-              variant={viewMode === m ? "primary" : "ghost"} size="sm"
+              variant={viewMode === m ? "primary" : "ghost"}
+              size="sm"
               onClick={() => updateViewMode(m)}
             >
               {m === "both"
@@ -522,7 +525,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
           ))}
           {importedSnapshot && (
             <Button
-              variant={diffEnabled ? "primary" : "ghost"} size="sm"
+              variant={diffEnabled ? "primary" : "ghost"}
+              size="sm"
               onClick={toggleDiff}
               title={
                 diffEnabled
@@ -534,7 +538,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             </Button>
           )}
           <Button
-            variant={showAllFields ? "primary" : "ghost"} size="sm"
+            variant={showAllFields ? "primary" : "ghost"}
+            size="sm"
             onClick={toggleShowAllFields}
             title={
               showAllFields
@@ -545,7 +550,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             Schema {showAllFields ? "On" : "Off"}
           </Button>
           <Button
-            variant="secondary" size="sm"
+            variant="secondary"
+            size="sm"
             onClick={exportSnapshot}
             className="ml-auto"
           >
@@ -725,7 +731,14 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                 </div>
                                 {!isSchemaField && (
                                   <Button
-                                    variant="ghost" size="sm" icon aria-label={status === "removed" ? "Copy previous value" : "Copy value"}
+                                    variant="ghost"
+                                    size="sm"
+                                    icon
+                                    aria-label={
+                                      status === "removed"
+                                        ? "Copy previous value"
+                                        : "Copy value"
+                                    }
                                     onClick={() =>
                                       navigator.clipboard.writeText(plainValue)
                                     }
@@ -802,7 +815,8 @@ const JsonViewToggle: React.FC<{
         {(["tree", "raw"] as const).map((m) => (
           <Button
             key={m}
-            variant={mode === m ? "primary" : "ghost"} size="sm"
+            variant={mode === m ? "primary" : "ghost"}
+            size="sm"
             onClick={() => setMode(m)}
             title={m === "tree" ? "Tree view" : "Raw JSON view"}
           >
@@ -810,10 +824,7 @@ const JsonViewToggle: React.FC<{
           </Button>
         ))}
       </div>
-      <Button
-        variant="ghost" size="sm"
-        onClick={copyHandler}
-      >
+      <Button variant="ghost" size="sm" onClick={copyHandler}>
         {isCopied ? (
           <>
             <ClipboardCheckIcon className="w-4 h-4 mr-1.5 text-green-400" />
