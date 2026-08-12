@@ -24,7 +24,15 @@ import React, { useState, useMemo, useEffect } from "react";
 import type { AppUser, ApiEndpoint } from "../types";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
-import { Button } from "../design-system";
+import {
+  Button,
+  Code,
+  Kbd,
+  Segmented,
+  Switch,
+  Field,
+  Select,
+} from "../design-system";
 
 interface CodeSnippetGeneratorProps {
   user: AppUser;
@@ -307,54 +315,50 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
         {/* Endpoint Selection (if not provided externally) */}
         {!selectedEndpoint && endpoints.length > 0 && (
           <div className="flex-1 min-w-0">
-            <label className="block text-xs text-slate-400 mb-1">
-              API Endpoint
-            </label>
-            <select
-              value={selectedEndpointLocal?.id || ""}
-              onChange={(e) =>
-                setSelectedEndpointLocal(
-                  endpoints.find((ep) => ep.id === e.target.value) || null,
-                )
-              }
-              className="w-full text-sm px-3 py-2 bg-slate-800 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-200"
-            >
-              {endpoints.map((endpoint) => (
-                <option key={endpoint.id} value={endpoint.id}>
-                  {endpoint.name} ({endpoint.method})
-                </option>
-              ))}
-            </select>
+            <Field label="API Endpoint">
+              <Select
+                value={selectedEndpointLocal?.id || ""}
+                onChange={(e) =>
+                  setSelectedEndpointLocal(
+                    endpoints.find((ep) => ep.id === e.target.value) || null,
+                  )
+                }
+                className="w-full"
+              >
+                {endpoints.map((endpoint) => (
+                  <option key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name} ({endpoint.method})
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
         )}
 
         {/* Language Selection */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Language</label>
-          <div className="flex bg-slate-800 border border-slate-600 rounded-md overflow-hidden">
-            {(["curl", "nodejs", "python", "go"] as const).map((lang) => (
-              <Button
-                key={lang}
-                onClick={() => setSelectedLanguage(lang)}
-                variant={selectedLanguage === lang ? "primary" : "ghost"}
-                size="sm"
-              >
-                {lang === "nodejs" ? "Node.js" : lang.toUpperCase()}
-              </Button>
-            ))}
-          </div>
+          <Field label="Language">
+            <Segmented
+              name="language"
+              options={(["curl", "nodejs", "python", "go"] as const).map(
+                (lang) => ({
+                  value: lang,
+                  label: lang === "nodejs" ? "Node.js" : lang.toUpperCase(),
+                }),
+              )}
+              value={selectedLanguage}
+              onValueChange={(val) => setSelectedLanguage(val as CodeLanguage)}
+            />
+          </Field>
         </div>
 
         {/* Token Masking Toggle */}
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Security</label>
-          <Button
-            onClick={() => setMaskToken(!maskToken)}
-            variant={maskToken ? "primary" : "ghost"}
-            size="sm"
-          >
-            {maskToken ? "🔒 Token Masked" : "👁️ Token Visible"}
-          </Button>
+        <div className="flex items-center">
+          <Switch
+            label="Mask sensitive values"
+            checked={maskToken}
+            onChange={() => setMaskToken(!maskToken)}
+          />
         </div>
       </div>
 
@@ -426,13 +430,11 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
             </div>
 
             <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
-              <pre className="p-4 text-xs text-slate-200 overflow-x-auto">
-                <code
-                  className={`language-${getLanguageExtension(selectedLanguage)}`}
-                >
-                  {generateSnippet(currentEndpoint, selectedLanguage)}
-                </code>
-              </pre>
+              <Code
+                className={`language-${getLanguageExtension(selectedLanguage)}`}
+              >
+                {generateSnippet(currentEndpoint, selectedLanguage)}
+              </Code>
             </div>
           </div>
 
@@ -451,19 +453,13 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               <li>• Add proper error handling for production use</li>
               {selectedLanguage === "python" && (
                 <li>
-                  • Install requests library:{" "}
-                  <code className="bg-slate-800 px-1 rounded">
-                    pip install requests
-                  </code>
+                  • Install requests library: <Kbd>pip install requests</Kbd>
                 </li>
               )}
               {selectedLanguage === "go" && (
                 <>
                   <li>
-                    • Run with:{" "}
-                    <code className="bg-slate-800 px-1 rounded">
-                      go run main.go
-                    </code>
+                    • Run with: <Kbd>go run main.go</Kbd>
                   </li>
                   <li>
                     • No external dependencies required (uses standard library)

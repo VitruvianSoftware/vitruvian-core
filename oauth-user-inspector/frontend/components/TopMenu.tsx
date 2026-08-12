@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { Button } from "../design-system";
+import { Button, Input } from "../design-system";
 import { MenuIcon, HelpIcon, UploadIcon, LogoutIcon } from "./icons";
 
 interface TopMenuProps {
@@ -166,7 +166,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
             >
               <UploadIcon className="w-4 h-4" /> Import Snapshot
             </Button>
-            <input
+            <Input
               ref={fileInputRef}
               type="file"
               accept="application/json"

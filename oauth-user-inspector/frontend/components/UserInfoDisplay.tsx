@@ -34,7 +34,7 @@ import TokenDisplay from "./TokenDisplay";
 import ApiExplorer from "./ApiExplorer";
 import CodeSnippetGenerator from "./CodeSnippetGenerator";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
-import { Button } from "../design-system";
+import { Button, Segmented, Field, Input, Code, Label } from "../design-system";
 
 interface UserInfoDisplayProps {
   user: AppUser;
@@ -399,9 +399,9 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
           {(user.accessToken || user.refreshToken) && !safeMode && (
             <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 space-y-2">
               <div className="w-full mb-2">
-                <h4 className="text-xs uppercase tracking-wide text-slate-400 mb-1">
+                <Label accent className="block mb-1">
                   Token Lifecycle Management
-                </h4>
+                </Label>
                 <p className="text-[10px] text-slate-500 leading-relaxed">
                   Demonstrates OAuth token refresh and revocation best practices
                   for secure application development.
@@ -461,9 +461,9 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             user.tokenExpiresAt ||
             user.jwtPayload) && (
             <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 text-left space-y-2">
-              <h4 className="text-xs uppercase tracking-wide text-slate-400">
+              <Label accent className="block">
                 Token Analysis
-              </h4>
+              </Label>
               <ul className="text-[10px] sm:text-xs space-y-1 text-slate-300">
                 {user.tokenType && (
                   <li>
@@ -502,53 +502,43 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
       {/* Body: table + JSON */}
       <div className="bg-slate-800/50 p-0 rounded-b-xl overflow-hidden">
         <div className="flex flex-wrap gap-2 p-4 border-b border-slate-700 bg-slate-900/40">
-          <span className="text-xs uppercase tracking-wide text-slate-400 self-center">
-            View Mode:
-          </span>
-          {(["both", "table", "json", "api", "snippets"] as const).map((m) => (
-            <Button
-              key={m}
-              variant={viewMode === m ? "primary" : "ghost"}
-              size="sm"
-              onClick={() => updateViewMode(m)}
-            >
-              {m === "both"
-                ? "Both"
-                : m === "table"
-                  ? "Table"
-                  : m === "json"
-                    ? "JSON"
-                    : m === "api"
-                      ? "API Explorer"
-                      : "Code Snippets"}
-            </Button>
-          ))}
+          <Label className="self-center">View Mode:</Label>
+          <Segmented
+            name="viewMode"
+            options={[
+              { value: "both", label: "Both" },
+              { value: "table", label: "Table" },
+              { value: "json", label: "JSON" },
+              { value: "api", label: "API Explorer" },
+              { value: "snippets", label: "Code Snippets" },
+            ]}
+            value={viewMode}
+            onValueChange={(val: any) => updateViewMode(val)}
+          />
           {importedSnapshot && (
-            <Button
-              variant={diffEnabled ? "primary" : "ghost"}
-              size="sm"
-              onClick={toggleDiff}
-              title={
-                diffEnabled
-                  ? "Disable diff highlighting"
-                  : "Enable visual diff vs imported snapshot"
-              }
-            >
-              Diff {diffEnabled ? "On" : "Off"}
-            </Button>
+            <Segmented
+              name="diffToggle"
+              options={[
+                { value: "on", label: "Diff On" },
+                { value: "off", label: "Diff Off" },
+              ]}
+              value={diffEnabled ? "on" : "off"}
+              onValueChange={(val) => {
+                if ((val === "on") !== diffEnabled) toggleDiff();
+              }}
+            />
           )}
-          <Button
-            variant={showAllFields ? "primary" : "ghost"}
-            size="sm"
-            onClick={toggleShowAllFields}
-            title={
-              showAllFields
-                ? "Show only fields present in current data"
-                : "Show all documented schema fields for this provider"
-            }
-          >
-            Schema {showAllFields ? "On" : "Off"}
-          </Button>
+          <Segmented
+            name="schemaToggle"
+            options={[
+              { value: "on", label: "Schema On" },
+              { value: "off", label: "Schema Off" },
+            ]}
+            value={showAllFields ? "on" : "off"}
+            onValueChange={(val) => {
+              if ((val === "on") !== showAllFields) toggleShowAllFields();
+            }}
+          />
           <Button
             variant="secondary"
             size="sm"
@@ -589,14 +579,16 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                   <h3 className="text-xl font-semibold text-slate-200">
                     Provider Data Dump
                   </h3>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Filter (key or value)"
-                    ref={searchInputRef}
-                    className="w-full sm:w-64 text-sm px-3 py-1.5 bg-slate-900/70 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-200 placeholder-slate-500"
-                  />
+                  <Field label="Filter">
+                    <Input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Filter (key or value)"
+                      ref={searchInputRef}
+                      className="w-full sm:w-64"
+                    />
+                  </Field>
                 </div>
                 {diffSummary && (
                   <div className="flex flex-wrap gap-3 mb-3 text-[11px] font-mono">
@@ -811,19 +803,15 @@ const JsonViewToggle: React.FC<{
   }, [mode]);
   return (
     <>
-      <div className="flex items-center bg-slate-700/40 border border-slate-600 rounded-md overflow-hidden text-[11px]">
-        {(["tree", "raw"] as const).map((m) => (
-          <Button
-            key={m}
-            variant={mode === m ? "primary" : "ghost"}
-            size="sm"
-            onClick={() => setMode(m)}
-            title={m === "tree" ? "Tree view" : "Raw JSON view"}
-          >
-            {m}
-          </Button>
-        ))}
-      </div>
+      <Segmented
+        name="jsonViewMode"
+        options={[
+          { value: "tree", label: "tree" },
+          { value: "raw", label: "raw" },
+        ]}
+        value={mode}
+        onValueChange={(val: any) => setMode(val)}
+      />
       <Button variant="ghost" size="sm" onClick={copyHandler}>
         {isCopied ? (
           <>
@@ -859,9 +847,7 @@ const JsonViewContainer: React.FC<{ data: any }> = ({ data }) => {
       {mode === "tree" ? (
         <JsonTree data={data} />
       ) : (
-        <pre className="text-xs text-slate-200 whitespace-pre-wrap break-all">
-          {JSON.stringify(data, null, 2)}
-        </pre>
+        <Code>{JSON.stringify(data, null, 2)}</Code>
       )}
     </div>
   );

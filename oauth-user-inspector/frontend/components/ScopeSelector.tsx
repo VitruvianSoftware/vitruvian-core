@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Button } from "../design-system";
+import { Button, Field, Input, Textarea, Label } from "../design-system";
 import { AuthProvider } from "../types";
 
 interface ScopeSelectorProps {
@@ -191,9 +191,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-slate-300">
-          OAuth Scopes
-        </label>
+        <Label accent>OAuth Scopes</Label>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -218,26 +216,26 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
         <div className="bg-slate-900/50 border border-slate-700 rounded-md p-3 max-h-48 overflow-y-auto">
           <div className="grid grid-cols-1 gap-2">
             {DEFAULT_SCOPES[provider].map((scope) => (
-              <label
+              <Field
                 key={scope}
-                className="flex items-center space-x-2 text-sm cursor-pointer hover:bg-slate-700/30 rounded px-2 py-1"
+                label={
+                  <span
+                    className={`font-mono text-xs ${
+                      selectedScopes.includes(scope)
+                        ? "text-slate-200"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    {scope}
+                  </span>
+                }
               >
-                <input
+                <Input
                   type="checkbox"
                   checked={selectedScopes.includes(scope)}
                   onChange={() => handleScopeToggle(scope)}
-                  className="rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
                 />
-                <span
-                  className={`font-mono text-xs ${
-                    selectedScopes.includes(scope)
-                      ? "text-slate-200"
-                      : "text-slate-400"
-                  }`}
-                >
-                  {scope}
-                </span>
-              </label>
+              </Field>
             ))}
           </div>
           <div className="mt-3 pt-2 border-t border-slate-700">
@@ -252,8 +250,16 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
           </div>
         </div>
       ) : (
-        <div>
-          <textarea
+        <Field
+          hint={
+            provider === "google" ||
+            provider === "zitadel" ||
+            provider === "linkedin"
+              ? "Separate scopes with spaces"
+              : "Separate scopes with commas or spaces"
+          }
+        >
+          <Textarea
             value={customInput}
             onChange={(e) => handleCustomInputChange(e.target.value)}
             placeholder={`Enter scopes separated by ${
@@ -263,17 +269,10 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
                 ? "spaces"
                 : "commas or spaces"
             }`}
-            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono text-sm"
+            className="w-full font-mono text-sm"
             rows={3}
           />
-          <p className="mt-1 text-xs text-slate-400">
-            {provider === "google" ||
-            provider === "zitadel" ||
-            provider === "linkedin"
-              ? "Separate scopes with spaces"
-              : "Separate scopes with commas or spaces"}
-          </p>
-        </div>
+        </Field>
       )}
 
       <div className="text-xs text-slate-500">

@@ -21,7 +21,16 @@
  */
 
 import React, { useState } from "react";
-import { Button } from "../design-system";
+import {
+  Button,
+  Field,
+  Input,
+  Tag,
+  Banner,
+  Code,
+  Rule,
+  Textarea,
+} from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,
@@ -175,9 +184,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
       onPaste={handleCardPaste}
     >
       {toast && (
-        <div className="mb-3 text-xs px-3 py-2 rounded-md border border-emerald-600 text-emerald-300 bg-emerald-900/20">
+        <Banner tone="info" className="mb-3">
           {toast}
-        </div>
+        </Banner>
       )}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-white tracking-tight">
@@ -258,9 +267,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -346,21 +353,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* GitHub PAT */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use a GitHub Token
               </h3>
               <div className="text-slate-400 space-y-2 text-sm bg-slate-900/50 p-4 rounded-lg border border-slate-700">
                 <p>
                   You can use a classic or fine-grained PAT. The token needs the{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    read:user
-                  </code>{" "}
-                  and{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    user:email
-                  </code>{" "}
-                  scopes.
+                  <Code>read:user</Code> and <Code>user:email</Code> scopes.
                   <Button
                     variant="ghost"
                     size="sm"
@@ -385,10 +386,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   Note: these tokens typically expire in one hour.
                 </p>
                 <p>
-                  Run the following command:{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    gh auth token
-                  </code>
+                  Run the following command: <Code>gh auth token</Code>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -442,7 +440,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted GitHub OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our GitHub App
               </h3>
@@ -510,9 +509,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -598,7 +595,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Google gcloud Token */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use a Google CLI Token
               </h3>
@@ -609,9 +607,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
                 <p>
                   Run the following command:{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    gcloud auth print-access-token
-                  </code>
+                  <Code>gcloud auth print-access-token</Code>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -657,7 +653,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted Google OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Google App
               </h3>
@@ -725,9 +722,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -813,7 +808,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted GitLab OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our GitLab App
               </h3>
@@ -881,9 +877,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -994,7 +988,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted Auth0 OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Auth0 App
               </h3>
@@ -1062,9 +1057,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1175,7 +1168,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted Zitadel OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Zitadel App
               </h3>
@@ -1243,9 +1237,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1333,7 +1325,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Hosted LinkedIn OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our LinkedIn App
               </h3>
