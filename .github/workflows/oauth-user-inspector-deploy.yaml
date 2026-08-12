@@ -189,9 +189,9 @@ jobs:
   build:
     needs: [gate]
     # `needs: [gate]` waits for gate to COMPLETE; gate's own `if` skips it
-    # (result: skipped, not failure) for release/dispatch events, which does
-    # not block this condition below -- mirrors tabula-deploy.yaml's build job.
-    if: ${{ !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    # (result: skipped, not failure) for release/dispatch events. `always()`
+    # ensures GitHub Actions evaluates this condition even when gate is skipped.
+    if: ${{ always() && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

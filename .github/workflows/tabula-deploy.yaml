@@ -165,7 +165,7 @@ jobs:
     # it the tabula image rebuilt on every unrelated component's release
     # (foundation-*, oauth-*, ...) — wasted compute, since deploy-nonprod/prod
     # below are already filtered to `tabula-api-v*`.
-    if: ${{ !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    if: ${{ always() && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
