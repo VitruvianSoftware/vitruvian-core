@@ -251,6 +251,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
         </div>
       ) : (
         <Field
+          label="Custom Scopes"
           hint={
             provider === "google" ||
             provider === "zitadel" ||
