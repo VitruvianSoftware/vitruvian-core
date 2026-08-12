@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.22...tabula-web-v0.1.23) (2026-08-12)
+
+
+### Features
+
+* **tabula:** migrate tabula/web to Vitruvian Design System ([#1570](https://github.com/VitruvianSoftware/vitruvian-core/issues/1570)) ([9a20e9f](https://github.com/VitruvianSoftware/vitruvian-core/commit/9a20e9fad3b53ed51eb20873cdd5735d6b59594a))
+
 ## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.21...tabula-web-v0.1.22) (2026-07-23)
 
 
