@@ -65,7 +65,7 @@ func ShortDigest(imageDigest string) (string, error) {
 // chrome-extension:// origin), and both are load-bearing for the extension
 // login flow. Empty means ABSENT rather than empty-string, so an unconfigured
 // env is a missing key instead of an empty one — and hashes differently.
-func EnvMap(project, apiURL, postMessageOrigin string) map[string]string {
+func EnvMap(project, apiURL, postMessageOrigin, corsOrigin string) map[string]string {
 	env := map[string]string{
 		"NODE_ENV":             "production",
 		"GOOGLE_CLOUD_PROJECT": project,
@@ -76,6 +76,9 @@ func EnvMap(project, apiURL, postMessageOrigin string) map[string]string {
 	}
 	if postMessageOrigin != "" {
 		env["AUTH_POSTMESSAGE_ORIGIN"] = postMessageOrigin
+	}
+	if corsOrigin != "" {
+		env["CORS_ORIGIN"] = corsOrigin
 	}
 	return env
 }

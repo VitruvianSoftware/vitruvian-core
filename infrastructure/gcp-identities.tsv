@@ -34,6 +34,7 @@ tabula/infra/build                                              james@vitruvians
 tabula/infra/data                                               james@vitruviansoftware.dev  prj-c-bu2-infra-pipeline-3d09  tabula stateful tier — per-env Neon Postgres + shared Upstash Redis (creds live in the infra-pipeline project)
 tabula/infra/identity                                           james@vitruviansoftware.dev  -  Per-env deploy/runtime SAs for tabula on the bu2 oss projects (foundation-pool WIF)
 tabula/infra/app                                                james@vitruviansoftware.dev  -  Per-env tabula Cloud Run app on the bu2 projects (digest deploys; CI runs as the per-env deploy SA)
+tabula/infra/web                                                james@vitruviansoftware.dev  -  Per-env tabula web Cloud Run app on the bu2 projects (digest deploys; CI runs as the per-env deploy SA)
 # --- foundation stages (vitruviansoftware.dev org) ---
 infrastructure/pulumi/foundation/org-folders        james@vitruviansoftware.dev    -                           Creates the fldr-foundation-1 umbrella folder at org root (feeds gcp-bootstrap parent_folder)
 infrastructure/pulumi/foundation/gcp-bootstrap      james@vitruviansoftware.dev    -                           GCP foundation bootstrap for vitruviansoftware.dev org (co-tenant under fldr-foundation-1); org/folder-scoped, no default project

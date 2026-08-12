@@ -141,14 +141,14 @@ jobs:
           # be resolved (empty is falsy in GH Actions expressions).
           BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-          DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip"
+          DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip" # + tabula/web/Dockerfile
           # `tools/deploy/` is a NON-GRAPH deploy input for this gate: the TD
           # universe below is DEPLOY_TARGETS (image_push/chrome_zip), which does
           # not depend on the rollout sequencer //tools/deploy:cloud-run.sh, and
           # tools/deploy/ is allowlisted out of the global-impact guard in
           # tools/ci/deploy-affected.sh. Listing it here keeps a change to the
           # candidate -> smoke -> promote sequence forcing a real deploy.
-          EXTRA_PATH_REGEX: "tabula/infra/app/|tools/deploy/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+          EXTRA_PATH_REGEX: "tabula/infra/app/|tabula/infra/web/|tabula/web/|tools/deploy/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
         run: bash tools/ci/deploy-affected.sh
 
   # BUILD ONCE into the shared bu2 Artifact Registry and capture the immutable
@@ -177,6 +177,7 @@ jobs:
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
     outputs:
       image-digest: ${{ steps.push.outputs.image-digest }}
+      web-image-digest: ${{ steps.web-image.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -212,6 +213,26 @@ jobs:
           fi
           echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
+      # ---- tabula/web (Docker, not Bazel) ----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push tabula-web image
+        id: web-image
+        run: |
+          set -euo pipefail
+          # Read the API URL for this environment from Pulumi config
+          API_URL=$(grep 'tabula-app:apiUrl' tabula/infra/app/Pulumi.development.yaml | awk '{print $2}')
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
+            -f tabula/web/Dockerfile \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}:latest"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:latest")
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
   # Promote THAT digest, unchanged, through the ladder. development is
   # automatic; nonproduction and production gate on their GitHub Environment.
   deploy-dev:
@@ -246,6 +267,29 @@ jobs:
       # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
       skip-if-unchanged: true
       smoke-url-path: /health
+    secrets: inherit
+
+  deploy-dev-web:
+    needs: [build]
+    # Development deploys on push (when the gate found it affected) or a
+    # single-env dispatch. Not on a release — that promotes nonprod/prod.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: development
+      image-digest: ${{ needs.build.outputs.web-image-digest }}
+      service-name: tabula-web
+      workload-migrated: false
+      pulumi-dir: tabula/infra/web
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
+      secret-prefix: TABULA_
+      pulumi-refresh: true
+      env-prefix: TABULA_WEB
+      default-region: us-central1
+      run-migrations: false
+      skip-if-unchanged: false
+      smoke-url-path: /
     secrets: inherit
 
   # ---- nonproduction (release-gated: promoted only on a tabula-api release) --

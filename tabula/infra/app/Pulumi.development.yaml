@@ -49,3 +49,4 @@ config:
   # (Applications -> Redirects); WorkOS rejects an unregistered redirect_uri.
   tabula-app:apiUrl: https://tabula-api.dev.vitruviansoftware.dev/api/v1
   tabula-app:authPostmessageOrigin: chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof
+  tabula-app:corsOrigin: https://tabula.dev.vitruviansoftware.dev
