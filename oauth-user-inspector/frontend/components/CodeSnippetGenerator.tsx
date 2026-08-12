@@ -301,10 +301,10 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-2">
+        <h3 className="text-lg font-semibold text-paper mb-2">
           Code Snippet Generator
         </h3>
-        <p className="text-sm text-slate-400 mb-4">
+        <p className="text-sm text-paper-dim mb-4">
           Generate ready-to-use code examples for integrating your OAuth token
           with {user.provider} APIs.
         </p>
@@ -366,23 +366,23 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
       {currentEndpoint && (
         <div className="space-y-4">
           {/* Endpoint Info */}
-          <div className="p-3 bg-slate-800/50 border border-slate-600 rounded-md">
+          <div className="p-3 bg-ink-2/50 border border-hairline rounded-md">
             <div className="flex items-center gap-2 mb-2">
-              <h4 className="text-sm font-medium text-slate-200">
+              <h4 className="text-sm font-medium text-paper">
                 {currentEndpoint.name}
               </h4>
-              <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">
+              <span className="text-xs bg-ink-3 text-paper-dim px-2 py-0.5 rounded">
                 {currentEndpoint.method}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mb-2">
+            <p className="text-xs text-paper-dim mb-2">
               {currentEndpoint.description}
             </p>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-paper-dim">
               <span className="font-medium">URL:</span> {currentEndpoint.url}
             </div>
             {currentEndpoint.requiredScopes && (
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-paper-dim">
                 <span className="font-medium">Required scopes:</span>{" "}
                 {currentEndpoint.requiredScopes.join(", ")}
               </div>
@@ -393,7 +393,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
           <div className="relative">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-200">
+                <span className="text-sm font-medium text-paper">
                   {selectedLanguage === "nodejs"
                     ? "Node.js"
                     : selectedLanguage === "go"
@@ -401,7 +401,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                       : selectedLanguage.toUpperCase()}{" "}
                   Example
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-paper-dim">
                   ({getLanguageExtension(selectedLanguage)})
                 </span>
               </div>
@@ -429,7 +429,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               </Button>
             </div>
 
-            <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
+            <div className="bg-ink-2 border border-hairline rounded-md overflow-hidden">
               <Code
                 className={`language-${getLanguageExtension(selectedLanguage)}`}
               >
@@ -478,8 +478,8 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
       )}
 
       {(!currentEndpoint || endpoints.length === 0) && (
-        <div className="p-8 border border-slate-700 rounded-md bg-slate-800/30 text-center">
-          <p className="text-slate-500">
+        <div className="p-8 border border-hairline rounded-md bg-ink-2/30 text-center">
+          <p className="text-paper-dim">
             No API endpoints available for code generation
           </p>
         </div>

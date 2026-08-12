@@ -145,7 +145,7 @@ const TokenItem: React.FC<{
 
       {/* JWT Decoded Display */}
       {jwtDetails && decodedVisible && (
-        <div className="space-y-3 bg-slate-900/70 p-3 rounded border border-slate-600 w-full overflow-hidden">
+        <div className="space-y-3 bg-ink-2/70 p-3 rounded border border-hairline w-full overflow-hidden">
           <div className="w-full overflow-hidden">
             <Label className="mb-2">JWT Header</Label>
             <Code className="w-full overflow-x-auto overflow-y-hidden whitespace-pre">
@@ -163,16 +163,16 @@ const TokenItem: React.FC<{
           {/* Key JWT Claims Summary */}
           <div className="w-full overflow-hidden">
             <Label className="mb-2">Key Claims</Label>
-            <div className="text-[10px] space-y-1 text-slate-300 w-full overflow-hidden">
+            <div className="text-[10px] space-y-1 text-paper-dim w-full overflow-hidden">
               {jwtDetails.payload.iss && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Issuer:</span>{" "}
+                  <span className="text-paper-dim">Issuer:</span>{" "}
                   <span className="break-words">{jwtDetails.payload.iss}</span>
                 </div>
               )}
               {jwtDetails.payload.aud && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Audience:</span>{" "}
+                  <span className="text-paper-dim">Audience:</span>{" "}
                   <span className="break-words">
                     {Array.isArray(jwtDetails.payload.aud)
                       ? jwtDetails.payload.aud.join(", ")
@@ -182,17 +182,17 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.sub && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Subject:</span>{" "}
+                  <span className="text-paper-dim">Subject:</span>{" "}
                   <span className="break-words">{jwtDetails.payload.sub}</span>
                 </div>
               )}
               {jwtDetails.payload.exp && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Expires:</span>{" "}
+                  <span className="text-paper-dim">Expires:</span>{" "}
                   <span className="break-words">
                     {new Date(jwtDetails.payload.exp * 1000).toLocaleString()}
                   </span>
-                  <span className="text-slate-400 ml-1">
+                  <span className="text-paper-dim ml-1">
                     (
                     {Math.max(
                       0,
@@ -206,7 +206,7 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.iat && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Issued At:</span>{" "}
+                  <span className="text-paper-dim">Issued At:</span>{" "}
                   <span className="break-words">
                     {new Date(jwtDetails.payload.iat * 1000).toLocaleString()}
                   </span>
@@ -214,7 +214,7 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.nbf && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Not Before:</span>{" "}
+                  <span className="text-paper-dim">Not Before:</span>{" "}
                   <span className="break-words">
                     {new Date(jwtDetails.payload.nbf * 1000).toLocaleString()}
                   </span>
@@ -222,7 +222,7 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.scope && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Scope:</span>{" "}
+                  <span className="text-paper-dim">Scope:</span>{" "}
                   <span className="break-words">
                     {jwtDetails.payload.scope}
                   </span>
@@ -230,7 +230,7 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.email && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Email:</span>{" "}
+                  <span className="text-paper-dim">Email:</span>{" "}
                   <span className="break-words">
                     {jwtDetails.payload.email}
                   </span>
@@ -238,7 +238,7 @@ const TokenItem: React.FC<{
               )}
               {jwtDetails.payload.name && (
                 <div className="w-full overflow-hidden">
-                  <span className="text-slate-500">Name:</span>{" "}
+                  <span className="text-paper-dim">Name:</span>{" "}
                   <span className="break-words">{jwtDetails.payload.name}</span>
                 </div>
               )}
@@ -261,10 +261,10 @@ const TokenDisplay: React.FC<TokenDisplayProps> = ({
   }
 
   return (
-    <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 space-y-4 w-full overflow-hidden">
+    <div className="mt-4 bg-ink-2/60 border border-hairline rounded-md p-3 space-y-4 w-full overflow-hidden">
       <div className="flex items-center justify-between">
         <Label accent>Raw Token Inspection</Label>
-        <div className="text-[10px] text-slate-500">
+        <div className="text-[10px] text-paper-dim">
           JWT tokens show decoded header & payload
         </div>
       </div>
