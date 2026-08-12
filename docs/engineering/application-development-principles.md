@@ -97,7 +97,7 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **Why:** The merge queue is the single enforcement authority; local merges bypass review and required checks.
 
-**In practice:** Work lands via PR through the merge queue, never a local merge to the default branch. Required checks are `license-check`, `tidy-check`, `build-test`, `build-macos` (path-gated), and `conformance-check`. Commits use Conventional Commit subjects and end with the `Co-Authored-By` trailer; a finished branch always becomes a PR. **(target):** `actionlint` is claimed as a check but not yet wired — add it when touching workflow YAML.
+**In practice:** Work lands via PR through the merge queue, never a local merge to the default branch. Required checks are `license-check`, `tidy-check`, `build-test`, `build-macos` (path-gated), `conformance-check`, `actionlint`, `migration-safety`, `go-race`, `osv-scan`, and `secret-scan`. Commits use Conventional Commit subjects and end with the `Co-Authored-By` trailer; a finished branch always becomes a PR.
 
 ### 2.10 Observability & health by default
 
@@ -328,7 +328,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Tech stack & build** | Bash + Starlark (Bazel) + Go. Lives in `tools/` and `.github/workflows/`. |
 | **Local dev** | `bazel run //:tidy` is the single hygiene/format gate; affected-target logic via `tools/ci/affected-targets.sh`. |
 | **Hosting & runtime** | Runs *in CI* and *in the build graph* — no managed runtime. |
-| **Deploy / CI** | This category *is* CI. The merge queue is the single enforcement authority; required checks are `license-check`, `tidy-check`, `build-test`, `build-macos`, `conformance-check`. **(target):** add `actionlint` (claimed but absent) and a license *content* gate; pin all third-party actions by SHA. `charts-publish.yml` ships OCI Helm charts to GHCR. |
+| **Deploy / CI** | This category *is* CI. The merge queue is the single enforcement authority; required checks are `license-check`, `tidy-check`, `build-test`, `build-macos`, `conformance-check`, `actionlint`, `migration-safety`, `go-race`, `osv-scan`, and `secret-scan`. `charts-publish.yml` ships OCI Helm charts to GHCR. |
 | **Environments & promotion** | N/A — changes ship by merge. |
 | **Secrets & config** | Only `PULUMI_ACCESS_TOKEN` + `BUILDBUDDY_API_KEY` on the deploy path. No secret in a committed config — including the repo-governance stack **(target)**. |
 | **Observability** | CI is the observability surface; keep workflows lint-clean and SHA-pinned. |
