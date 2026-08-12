@@ -124,6 +124,14 @@ fi
 echo "deploy-affected: changed files:"
 echo "${CHANGED_FILES}" | sed 's/^/  /'
 
+# Release-please version bump guard: release commits (chore(main): release ...)
+# bump version/changelog only — functional code already deployed to dev on feature PR merge.
+# Skip dev deploy here so the push lane does not race the release tag promotion lane.
+COMMIT_MSG="$(git log -1 --pretty=%s HEAD 2>/dev/null || true)"
+if echo "${COMMIT_MSG}" | grep -E '^chore\((main|release)\): release' >/dev/null 2>&1; then
+  emit false "release-please version-bump commit ('${COMMIT_MSG}') -- skipping dev deploy (promotes via release tag)"
+fi
+
 # --- 2. non-graph inputs (Pulumi program, workflow files), or the SOLE signal
 #        in path-only mode. -----------------------------------------------------
 if [ -n "${EXTRA_PATH_REGEX}" ]; then
