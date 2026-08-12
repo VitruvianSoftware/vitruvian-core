@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "oauth-user-inspector",
-  "version": "1.4.0",
+  "version": "1.6.1",
   "description": "OAuth User Inspector with a secure backend for token exchange.",
   "main": "dist-server/server.js",
   "scripts": {
@@ -28,6 +28,7 @@
     "jwt-decode": "^4.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "ts-morph": "^28.0.0",
     "uuid": "^14.0.1",
     "winston": "^3.11.0"
   },

@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+import { Button, Dialog, Kbd } from "../design-system";
 
 interface HelpModalProps {
   open: boolean;
@@ -35,49 +36,42 @@ const shortcuts = [
 ];
 
 const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-lg bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-6 space-y-4 animate-fade-in">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-semibold text-slate-100">
-            Help & Shortcuts
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-200"
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog
+      open={open}
+      title="Help & Shortcuts"
+      onDismiss={onClose}
+      actions={
+        <Button onClick={onClose} variant="ghost" size="sm">
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-4">
         <div>
-          <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
+          <h3 className="text-sm uppercase tracking-wide text-paper-dim mb-2">
             Keyboard Shortcuts
           </h3>
           <ul className="space-y-1 text-sm">
             {shortcuts.map(([combo, desc]) => (
               <li key={combo} className="flex justify-between gap-4">
-                <span className="font-mono text-slate-200">{combo}</span>
-                <span className="text-slate-400">{desc}</span>
+                <Kbd>{combo}</Kbd>
+                <span className="text-paper-dim">{desc}</span>
               </li>
             ))}
           </ul>
         </div>
 
         <div>
-          <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
+          <h3 className="text-sm uppercase tracking-wide text-paper-dim mb-2">
             Token Lifecycle Management
           </h3>
-          <div className="space-y-3 text-sm text-slate-300">
+          <div className="space-y-3 text-sm text-paper-dim">
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🔄 Token Refresh
               </h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-paper-dim leading-relaxed">
                 Use refresh tokens to obtain new access tokens without
                 re-authenticating. Refresh tokens typically have longer
                 lifespans and help maintain user sessions securely.
@@ -89,10 +83,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🚫 Token Revocation
               </h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-paper-dim leading-relaxed">
                 Revoke access tokens to immediately invalidate them for
                 security. This is important when tokens are compromised or users
                 want to revoke app access.
@@ -102,10 +96,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🔐 Security Guidelines
               </h4>
-              <ul className="text-xs text-slate-400 space-y-1 ml-3 list-disc">
+              <ul className="text-xs text-paper-dim space-y-1 ml-3 list-disc">
                 <li>
                   Store refresh tokens securely (encrypted, httpOnly cookies)
                 </li>
@@ -117,7 +111,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
             </div>
           </div>
         </div>
-        <div className="text-xs text-slate-400 leading-relaxed">
+        <div className="text-xs text-paper-dim leading-relaxed">
           <p>
             <strong>Snapshot Export</strong> downloads a masked JSON
             representation of the current provider response and view settings
@@ -128,16 +122,8 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
             exported snapshots are always masked regardless of Safe Mode.
           </p>
         </div>
-        <div className="flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm rounded-md border border-slate-500 text-slate-200"
-          >
-            Close
-          </button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 

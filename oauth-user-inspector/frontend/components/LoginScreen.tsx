@@ -21,7 +21,17 @@
  */
 
 import React, { useState } from "react";
-import { Button, Tag, Card } from "../design-system";
+import {
+  Button,
+  Field,
+  Input,
+  Tag,
+  Banner,
+  Code,
+  Rule,
+  Textarea,
+  Plate,
+} from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,
@@ -170,14 +180,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div
+    <Plate
       className="bg-slate-800 p-8 rounded-xl shadow-2xl ring-1 ring-white/10 w-full max-w-2xl mx-auto transition-all duration-300"
       onPaste={handleCardPaste}
     >
       {toast && (
-        <div className="mb-3 text-xs px-3 py-2 rounded-md border border-emerald-600 text-emerald-300 bg-emerald-900/20">
+        <Banner tone="info" className="mb-3">
           {toast}
-        </div>
+        </Banner>
       )}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-white tracking-tight">
@@ -200,20 +210,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             Custom Redirect URI (optional)
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
+              className="flex-1"
               type="text"
               value={customRedirectUri}
               onChange={(e) => onCustomRedirectUriChange?.(e.target.value)}
               placeholder={getRedirectUri()}
-              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => onCustomRedirectUriChange?.("")}
-              className="px-3 py-2 text-xs text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-md transition-colors"
             >
               Reset
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-slate-500">
             Current:{" "}
@@ -252,18 +262,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://github.com/settings/developers"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GithubIcon className="w-4 h-4" /> Open GitHub OAuth settings
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("github")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "github" ? (
@@ -271,57 +281,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="github-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitHub OAuth App Client ID
-                  </label>
-                  <input
+                <Field label="GitHub OAuth App Client ID">
+                  <Input
                     id="github-client-id"
                     type="text"
                     value={githubClientId}
                     onChange={(e) => setGithubClientId(e.target.value)}
                     placeholder="Enter your GitHub Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="github-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitHub OAuth App Client Secret
-                  </label>
+                </Field>
+                <Field label="GitHub OAuth App Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="github-client-secret"
                       type={showGithubSecret ? "text" : "password"}
                       value={githubClientSecret}
                       onChange={(e) => setGithubClientSecret(e.target.value)}
                       placeholder="Enter your GitHub Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGithubSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGithubSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="github"
                   onScopeChange={setGithubScopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "github",
@@ -332,39 +331,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!githubClientId || !githubClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Continue with GitHub
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* GitHub PAT */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use a GitHub Token
               </h3>
               <div className="text-slate-400 space-y-2 text-sm bg-slate-900/50 p-4 rounded-lg border border-slate-700">
                 <p>
                   You can use a classic or fine-grained PAT. The token needs the{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    read:user
-                  </code>{" "}
-                  and{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    user:email
-                  </code>{" "}
-                  scopes.
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  <Code>read:user</Code> and <Code>user:email</Code> scopes.
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText("read:user,user:email")
                     }
                   >
                     Copy scopes
-                  </button>
+                  </Button>
                 </p>
                 <a
                   href="https://github.com/settings/tokens"
@@ -379,60 +373,55 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   Note: these tokens typically expire in one hour.
                 </p>
                 <p>
-                  Run the following command:{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    gh auth token
-                  </code>
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  Run the following command: <Code>gh auth token</Code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText("gh auth token")
                     }
                   >
                     Copy
-                  </button>
+                  </Button>
                 </p>
               </div>
-              <div className="space-y-3 mt-4">
-                <label
-                  htmlFor="pat-input"
-                  className="block text-sm font-medium text-slate-300"
-                >
-                  Personal Access Token (PAT)
-                </label>
+              <Field label="Personal Access Token (PAT)">
                 <div className="relative">
-                  <input
+                  <Input
                     id="pat-input"
                     type={showPat ? "text" : "password"}
                     value={pat}
                     onChange={(e) => setPat(e.target.value)}
                     placeholder="ghp_..."
-                    className="w-full pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowPat((v) => !v)}
-                    className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
                   >
                     {showPat ? "Hide" : "Show"}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Field>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onPatLogin(pat)}
                   disabled={!pat || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Fetch with GitHub Token
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted GitHub OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our GitHub App
               </h3>
@@ -447,14 +436,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("github", githubScopes)}
                   disabled={isLoading || !isHostedAvailable("github")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted GitHub App
-                </button>
+                </Button>
                 {!isHostedAvailable("github") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -492,18 +483,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://console.developers.google.com/apis/credentials"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GoogleIcon className="w-4 h-4" /> Open Google Credentials
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("google")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "google" ? (
@@ -511,57 +502,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="google-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Google OAuth App Client ID
-                  </label>
-                  <input
+                <Field label="Google OAuth App Client ID">
+                  <Input
                     id="google-client-id"
                     type="text"
                     value={googleClientId}
                     onChange={(e) => setGoogleClientId(e.target.value)}
                     placeholder="Enter your Google Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="google-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Google OAuth App Client Secret
-                  </label>
+                </Field>
+                <Field label="Google OAuth App Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="google-client-secret"
                       type={showGoogleSecret ? "text" : "password"}
                       value={googleClientSecret}
                       onChange={(e) => setGoogleClientSecret(e.target.value)}
                       placeholder="Enter your Google Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGoogleSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGoogleSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="google"
                   onScopeChange={setGoogleScopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "google",
@@ -572,16 +552,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!googleClientId || !googleClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Continue with Google
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Google gcloud Token */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use a Google CLI Token
               </h3>
@@ -592,12 +573,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
                 <p>
                   Run the following command:{" "}
-                  <code className="text-xs bg-slate-700 p-1 rounded">
-                    gcloud auth print-access-token
-                  </code>
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  <Code>gcloud auth print-access-token</Code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText(
                         "gcloud auth print-access-token",
@@ -605,39 +585,35 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     }
                   >
                     Copy
-                  </button>
+                  </Button>
                 </p>
               </div>
-              <div className="space-y-3 mt-4">
-                <label
-                  htmlFor="gcloud-token-input"
-                  className="block text-sm font-medium text-slate-300"
-                >
-                  Google CLI Access Token
-                </label>
-                <textarea
+              <Field label="Google CLI Access Token">
+                <Textarea
                   id="gcloud-token-input"
                   rows={3}
                   value={gcloudToken}
                   onChange={(e) => setGcloudToken(e.target.value)}
                   placeholder="ya29..."
-                  className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono text-sm"
                 />
-              </div>
+              </Field>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onGcloudTokenLogin(gcloudToken)}
                   disabled={!gcloudToken || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Fetch with Google Token
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted Google OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Google App
               </h3>
@@ -652,14 +628,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("google", googleScopes)}
                   disabled={isLoading || !isHostedAvailable("google")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Google App
-                </button>
+                </Button>
                 {!isHostedAvailable("google") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -697,18 +675,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://gitlab.com/-/profile/applications"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GitLabIcon className="w-4 h-4" /> Open GitLab Applications
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("gitlab")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "gitlab" ? (
@@ -716,57 +694,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="gitlab-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitLab Application ID
-                  </label>
-                  <input
+                <Field label="GitLab Application ID">
+                  <Input
                     id="gitlab-client-id"
                     type="text"
                     value={gitlabClientId}
                     onChange={(e) => setGitlabClientId(e.target.value)}
                     placeholder="Enter your GitLab Application ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="gitlab-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitLab Secret
-                  </label>
+                </Field>
+                <Field label="GitLab Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="gitlab-client-secret"
                       type={showGitlabSecret ? "text" : "password"}
                       value={gitlabClientSecret}
                       onChange={(e) => setGitlabClientSecret(e.target.value)}
                       placeholder="Enter your GitLab Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGitlabSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGitlabSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="gitlab"
                   onScopeChange={setGitlabScopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "gitlab",
@@ -777,16 +744,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!gitlabClientId || !gitlabClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GitLabIcon className="h-5 w-5 mr-2" />
                   Continue with GitLab
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted GitLab OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our GitLab App
               </h3>
@@ -801,14 +769,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("gitlab", gitlabScopes)}
                   disabled={isLoading || !isHostedAvailable("gitlab")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GitLabIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted GitLab App
-                </button>
+                </Button>
                 {!isHostedAvailable("gitlab") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -846,18 +816,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://manage.auth0.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <Auth0Icon className="w-4 h-4" /> Open Auth0 Dashboard
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("auth0")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "auth0" ? (
@@ -865,77 +835,55 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="auth0-domain"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Domain
-                  </label>
-                  <input
+                <Field label="Auth0 Domain">
+                  <Input
                     id="auth0-domain"
                     type="text"
                     value={auth0Domain}
                     onChange={(e) => setAuth0Domain(e.target.value)}
                     placeholder="your-tenant.us.auth0.com"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Must be a public, internet-reachable domain. The hosted
-                    inspector cannot reach localhost or internal addresses.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="auth0-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Client ID
-                  </label>
-                  <input
+                </Field>
+                <Field label="Auth0 Client ID">
+                  <Input
                     id="auth0-client-id"
                     type="text"
                     value={auth0ClientId}
                     onChange={(e) => setAuth0ClientId(e.target.value)}
                     placeholder="Enter your Auth0 Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="auth0-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Client Secret
-                  </label>
+                </Field>
+                <Field label="Auth0 Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="auth0-client-secret"
                       type={showAuth0Secret ? "text" : "password"}
                       value={auth0ClientSecret}
                       onChange={(e) => setAuth0ClientSecret(e.target.value)}
                       placeholder="Enter your Auth0 Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowAuth0Secret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showAuth0Secret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="auth0"
                   onScopeChange={setAuth0Scopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "auth0",
@@ -951,16 +899,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     !auth0Domain ||
                     isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <Auth0Icon className="h-5 w-5 mr-2" />
                   Continue with Auth0
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted Auth0 OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Auth0 App
               </h3>
@@ -975,14 +924,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("auth0", auth0Scopes)}
                   disabled={isLoading || !isHostedAvailable("auth0")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <Auth0Icon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Auth0 App
-                </button>
+                </Button>
                 {!isHostedAvailable("auth0") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -1020,18 +971,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://auth.ipv1337.dev/ui/console"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <ZitadelIcon className="w-4 h-4" /> Open Zitadel Console
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("zitadel")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "zitadel" ? (
@@ -1039,80 +990,55 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="zitadel-domain"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Domain
-                  </label>
-                  <input
+                <Field label="Zitadel Domain">
+                  <Input
                     id="zitadel-domain"
                     type="text"
                     value={zitadelDomain}
                     onChange={(e) => setZitadelDomain(e.target.value)}
                     placeholder="auth.ipv1337.dev"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Defaults to our self-hosted instance. Leave as-is unless you
-                    run your own Zitadel. It must be a public,
-                    internet-reachable domain: the hosted inspector reaches it
-                    server-side, so a localhost or internal IdP only works if
-                    you run the inspector locally.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="zitadel-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Client ID
-                  </label>
-                  <input
+                </Field>
+                <Field label="Zitadel Client ID">
+                  <Input
                     id="zitadel-client-id"
                     type="text"
                     value={zitadelClientId}
                     onChange={(e) => setZitadelClientId(e.target.value)}
                     placeholder="Enter your Zitadel Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="zitadel-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Client Secret
-                  </label>
+                </Field>
+                <Field label="Zitadel Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="zitadel-client-secret"
                       type={showZitadelSecret ? "text" : "password"}
                       value={zitadelClientSecret}
                       onChange={(e) => setZitadelClientSecret(e.target.value)}
                       placeholder="Enter your Zitadel Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowZitadelSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showZitadelSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="zitadel"
                   onScopeChange={setZitadelScopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "zitadel",
@@ -1125,16 +1051,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   disabled={
                     !zitadelClientId || !zitadelClientSecret || isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <ZitadelIcon className="h-5 w-5 mr-2" />
                   Continue with Zitadel
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted Zitadel OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our Zitadel App
               </h3>
@@ -1149,14 +1076,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("zitadel", zitadelScopes)}
                   disabled={isLoading || !isHostedAvailable("zitadel")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <ZitadelIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Zitadel App
-                </button>
+                </Button>
                 {!isHostedAvailable("zitadel") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -1194,18 +1123,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://www.linkedin.com/developers/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <LinkedInIcon className="w-4 h-4" /> Open LinkedIn Apps
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <code className="text-xs text-slate-300 truncate">
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </code>
-                <button
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("linkedin")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "linkedin" ? (
@@ -1213,57 +1142,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="linkedin-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    LinkedIn Client ID
-                  </label>
-                  <input
+                <Field label="LinkedIn Client ID">
+                  <Input
                     id="linkedin-client-id"
                     type="text"
                     value={linkedinClientId}
                     onChange={(e) => setLinkedinClientId(e.target.value)}
                     placeholder="Enter your LinkedIn Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="linkedin-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    LinkedIn Client Secret
-                  </label>
+                </Field>
+                <Field label="LinkedIn Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="linkedin-client-secret"
                       type={showLinkedinSecret ? "text" : "password"}
                       value={linkedinClientSecret}
                       onChange={(e) => setLinkedinClientSecret(e.target.value)}
                       placeholder="Enter your LinkedIn Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowLinkedinSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showLinkedinSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="linkedin"
                   onScopeChange={setLinkedinScopes}
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "linkedin",
@@ -1276,16 +1194,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   disabled={
                     !linkedinClientId || !linkedinClientSecret || isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-700 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <LinkedInIcon className="h-5 w-5 mr-2" />
                   Continue with LinkedIn
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Hosted LinkedIn OAuth */}
-            <div className="mt-10 pt-8 border-t border-slate-700 space-y-4">
+            <div className="mt-10 pt-8 space-y-4">
+              <Rule className="mb-8" />
               <h3 className="text-center text-lg font-medium text-slate-300 mb-4">
                 Or use our LinkedIn App
               </h3>
@@ -1300,14 +1219,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("linkedin", linkedinScopes)}
                   disabled={isLoading || !isHostedAvailable("linkedin")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <LinkedInIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted LinkedIn App
-                </button>
+                </Button>
                 {!isHostedAvailable("linkedin") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -1318,7 +1239,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
         </Tab>
       </Tabs>
-    </div>
+    </Plate>
   );
 };
 

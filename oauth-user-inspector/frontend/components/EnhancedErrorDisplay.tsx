@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+import { Button } from "../design-system";
 import { EnhancedOAuthError } from "../types";
 
 interface EnhancedErrorDisplayProps {
@@ -52,18 +53,12 @@ const EnhancedErrorDisplay: React.FC<EnhancedErrorDisplayProps> = ({
           <p>{errorMessage}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button
-            onClick={onDiagnose}
-            className="px-3 py-1.5 text-xs rounded-md border border-red-400/40 bg-red-800/40 hover:bg-red-800/60 text-red-200"
-          >
+          <Button onClick={onDiagnose} variant="danger" size="sm">
             Diagnose
-          </button>
-          <button
-            onClick={onDismiss}
-            className="px-3 py-1.5 text-xs rounded-md border border-red-400/40 bg-red-800/40 hover:bg-red-800/60 text-red-200"
-          >
+          </Button>
+          <Button onClick={onDismiss} variant="ghost" size="sm">
             Dismiss
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -82,24 +77,28 @@ const EnhancedErrorDisplay: React.FC<EnhancedErrorDisplayProps> = ({
           <div>
             <h4 className="font-semibold text-red-200 mb-2">How to fix it:</h4>
             <ul className="space-y-1 text-sm text-red-300/90">
-              {enhancedError.guide.troubleshooting.map((tip, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="text-red-400 mt-1">•</span>
-                  <span>{tip}</span>
-                </li>
-              ))}
+              {enhancedError.guide.troubleshooting.map(
+                (tip: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-400 mt-1">•</span>
+                    <span>{tip}</span>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
 
           <div>
             <h4 className="font-semibold text-red-200 mb-2">Common causes:</h4>
             <ul className="space-y-1 text-sm text-red-300/80">
-              {enhancedError.guide.commonCauses.map((cause, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="text-red-400/70 mt-1">•</span>
-                  <span>{cause}</span>
-                </li>
-              ))}
+              {enhancedError.guide.commonCauses.map(
+                (cause: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-400/70 mt-1">•</span>
+                    <span>{cause}</span>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
 

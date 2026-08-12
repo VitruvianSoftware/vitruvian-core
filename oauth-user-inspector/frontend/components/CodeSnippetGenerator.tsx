@@ -24,6 +24,15 @@ import React, { useState, useMemo, useEffect } from "react";
 import type { AppUser, ApiEndpoint } from "../types";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
+import {
+  Button,
+  Code,
+  Kbd,
+  Segmented,
+  Switch,
+  Field,
+  Select,
+} from "../design-system";
 
 interface CodeSnippetGeneratorProps {
   user: AppUser;
@@ -292,10 +301,10 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-2">
+        <h3 className="text-lg font-semibold text-paper mb-2">
           Code Snippet Generator
         </h3>
-        <p className="text-sm text-slate-400 mb-4">
+        <p className="text-sm text-paper-dim mb-4">
           Generate ready-to-use code examples for integrating your OAuth token
           with {user.provider} APIs.
         </p>
@@ -306,60 +315,50 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
         {/* Endpoint Selection (if not provided externally) */}
         {!selectedEndpoint && endpoints.length > 0 && (
           <div className="flex-1 min-w-0">
-            <label className="block text-xs text-slate-400 mb-1">
-              API Endpoint
-            </label>
-            <select
-              value={selectedEndpointLocal?.id || ""}
-              onChange={(e) =>
-                setSelectedEndpointLocal(
-                  endpoints.find((ep) => ep.id === e.target.value) || null,
-                )
-              }
-              className="w-full text-sm px-3 py-2 bg-slate-800 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-200"
-            >
-              {endpoints.map((endpoint) => (
-                <option key={endpoint.id} value={endpoint.id}>
-                  {endpoint.name} ({endpoint.method})
-                </option>
-              ))}
-            </select>
+            <Field label="API Endpoint">
+              <Select
+                value={selectedEndpointLocal?.id || ""}
+                onChange={(e) =>
+                  setSelectedEndpointLocal(
+                    endpoints.find((ep) => ep.id === e.target.value) || null,
+                  )
+                }
+                className="w-full"
+              >
+                {endpoints.map((endpoint) => (
+                  <option key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name} ({endpoint.method})
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
         )}
 
         {/* Language Selection */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Language</label>
-          <div className="flex bg-slate-800 border border-slate-600 rounded-md overflow-hidden">
-            {(["curl", "nodejs", "python", "go"] as const).map((lang) => (
-              <button
-                key={lang}
-                onClick={() => setSelectedLanguage(lang)}
-                className={`px-3 py-2 text-xs font-medium transition-colors ${
-                  selectedLanguage === lang
-                    ? "bg-slate-600 text-white"
-                    : "text-slate-300 hover:bg-slate-700"
-                }`}
-              >
-                {lang === "nodejs" ? "Node.js" : lang.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          <Field label="Language">
+            <Segmented
+              name="language"
+              options={(["curl", "nodejs", "python", "go"] as const).map(
+                (lang) => ({
+                  value: lang,
+                  label: lang === "nodejs" ? "Node.js" : lang.toUpperCase(),
+                }),
+              )}
+              value={selectedLanguage}
+              onValueChange={(val) => setSelectedLanguage(val as CodeLanguage)}
+            />
+          </Field>
         </div>
 
         {/* Token Masking Toggle */}
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Security</label>
-          <button
-            onClick={() => setMaskToken(!maskToken)}
-            className={`px-3 py-2 text-xs font-medium rounded-md border transition-colors ${
-              maskToken
-                ? "bg-green-500/20 border-green-500/40 text-green-300"
-                : "bg-yellow-500/20 border-yellow-500/40 text-yellow-300"
-            }`}
-          >
-            {maskToken ? "🔒 Token Masked" : "👁️ Token Visible"}
-          </button>
+        <div className="flex items-center">
+          <Switch
+            label="Mask sensitive values"
+            checked={maskToken}
+            onChange={() => setMaskToken(!maskToken)}
+          />
         </div>
       </div>
 
@@ -367,23 +366,23 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
       {currentEndpoint && (
         <div className="space-y-4">
           {/* Endpoint Info */}
-          <div className="p-3 bg-slate-800/50 border border-slate-600 rounded-md">
+          <div className="p-3 bg-ink-2/50 border border-hairline rounded-md">
             <div className="flex items-center gap-2 mb-2">
-              <h4 className="text-sm font-medium text-slate-200">
+              <h4 className="text-sm font-medium text-paper">
                 {currentEndpoint.name}
               </h4>
-              <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">
+              <span className="text-xs bg-ink-3 text-paper-dim px-2 py-0.5 rounded">
                 {currentEndpoint.method}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mb-2">
+            <p className="text-xs text-paper-dim mb-2">
               {currentEndpoint.description}
             </p>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-paper-dim">
               <span className="font-medium">URL:</span> {currentEndpoint.url}
             </div>
             {currentEndpoint.requiredScopes && (
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-paper-dim">
                 <span className="font-medium">Required scopes:</span>{" "}
                 {currentEndpoint.requiredScopes.join(", ")}
               </div>
@@ -394,7 +393,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
           <div className="relative">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-200">
+                <span className="text-sm font-medium text-paper">
                   {selectedLanguage === "nodejs"
                     ? "Node.js"
                     : selectedLanguage === "go"
@@ -402,18 +401,19 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                       : selectedLanguage.toUpperCase()}{" "}
                   Example
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-paper-dim">
                   ({getLanguageExtension(selectedLanguage)})
                 </span>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   handleCopy(
                     `${currentEndpoint.id}-${selectedLanguage}`,
                     generateSnippet(currentEndpoint, selectedLanguage),
                   )
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-700/50 border border-slate-600 rounded-md text-slate-300 hover:bg-slate-700 transition-colors"
               >
                 {copyStates[`${currentEndpoint.id}-${selectedLanguage}`] ? (
                   <>
@@ -426,17 +426,15 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                     Copy
                   </>
                 )}
-              </button>
+              </Button>
             </div>
 
-            <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
-              <pre className="p-4 text-xs text-slate-200 overflow-x-auto">
-                <code
-                  className={`language-${getLanguageExtension(selectedLanguage)}`}
-                >
-                  {generateSnippet(currentEndpoint, selectedLanguage)}
-                </code>
-              </pre>
+            <div className="bg-ink-2 border border-hairline rounded-md overflow-hidden">
+              <Code
+                className={`language-${getLanguageExtension(selectedLanguage)}`}
+              >
+                {generateSnippet(currentEndpoint, selectedLanguage)}
+              </Code>
             </div>
           </div>
 
@@ -455,19 +453,13 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               <li>• Add proper error handling for production use</li>
               {selectedLanguage === "python" && (
                 <li>
-                  • Install requests library:{" "}
-                  <code className="bg-slate-800 px-1 rounded">
-                    pip install requests
-                  </code>
+                  • Install requests library: <Kbd>pip install requests</Kbd>
                 </li>
               )}
               {selectedLanguage === "go" && (
                 <>
                   <li>
-                    • Run with:{" "}
-                    <code className="bg-slate-800 px-1 rounded">
-                      go run main.go
-                    </code>
+                    • Run with: <Kbd>go run main.go</Kbd>
                   </li>
                   <li>
                     • No external dependencies required (uses standard library)
@@ -486,8 +478,8 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
       )}
 
       {(!currentEndpoint || endpoints.length === 0) && (
-        <div className="p-8 border border-slate-700 rounded-md bg-slate-800/30 text-center">
-          <p className="text-slate-500">
+        <div className="p-8 border border-hairline rounded-md bg-ink-2/30 text-center">
+          <p className="text-paper-dim">
             No API endpoints available for code generation
           </p>
         </div>
