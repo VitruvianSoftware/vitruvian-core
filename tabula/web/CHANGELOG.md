@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.23...tabula-web-v0.1.24) (2026-08-12)
+
+
+### Features
+
+* **tabula:** deploy tabula/web to Cloud Run ([#1573](https://github.com/VitruvianSoftware/vitruvian-core/issues/1573)) ([5203f4a](https://github.com/VitruvianSoftware/vitruvian-core/commit/5203f4a663d47190f427f878de527ddc5f353d19))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.22...tabula-web-v0.1.23) (2026-08-12)
 
 
