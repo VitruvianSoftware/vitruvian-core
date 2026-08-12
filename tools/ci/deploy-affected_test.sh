@@ -63,6 +63,19 @@ commit_file() {
   printf '%s' "$before"
 }
 
+commit_file_msg() {
+  local before
+  before="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo "")"
+  mkdir -p "$repo/$(dirname "$1")"
+  printf '%s\n' "$2" > "$repo/$1"
+  git -C "$repo" add "$1"
+  if ! git -C "$repo" commit -q -m "$3" >/dev/null 2>&1; then
+    echo "commit_file_msg: '$1' produced no change — reused path+content across two test cases?" >&2
+    exit 1
+  fi
+  printf '%s' "$before"
+}
+
 # seed the repo with a base commit so the very first real test commit has a
 # non-empty BEFORE_REV.
 commit_file "README.md" "seed" >/dev/null
@@ -150,6 +163,19 @@ expect "path-only mode: excluded-only match skips" "$sha10" false \
 sha11="$(commit_file "tools/randomdir/y.sh" "x")"
 expect "path-only mode: does NOT apply the global-impact guard" "$sha11" false \
   EXTRA_PATH_REGEX='oauth-user-inspector/'
+
+echo "--- release-please version-bump guard ---"
+sha_rp1="$(commit_file_msg "oauth-user-inspector/package.json" "{\"version\":\"1.7.2\"}" "chore(main): release oauth-user-inspector 1.7.2")"
+expect "release-please commit chore(main): release skips dev deploy" "$sha_rp1" false \
+  EXTRA_PATH_REGEX='oauth-user-inspector/' FAKE_TD_RC=1
+
+sha_rp2="$(commit_file_msg "tabula/package.json" "{\"version\":\"2.0.0\"}" "chore(release): release tabula 2.0.0")"
+expect "release-please commit chore(release): release skips dev deploy" "$sha_rp2" false \
+  EXTRA_PATH_REGEX='tabula/' FAKE_TD_RC=1
+
+sha_normal="$(commit_file_msg "oauth-user-inspector/app/foo.ts" "x" "feat(oauth): update login feature")"
+expect "normal feature commit matching path deploys" "$sha_normal" true \
+  EXTRA_PATH_REGEX='oauth-user-inspector/' FAKE_TD_RC=1
 
 echo "--- path-only mode with no signal at all: hard error, not a silent false ---"
 ( cd "$repo" && env GITHUB_OUTPUT="$work/out2" BEFORE_REV="$sha11" bash "$SCRIPT" ) >/dev/null 2>"$work/stderr2"
