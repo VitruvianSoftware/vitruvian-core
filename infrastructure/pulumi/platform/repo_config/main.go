@@ -569,9 +569,9 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 				return err
 			}
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
-				Repository:    repo.Name,
-				Environment:   envRes.Environment,
-				BranchPattern: pulumi.String("tabula-api-v*"),
+				Repository:  repo.Name,
+				Environment: envRes.Environment,
+				TagPattern:  pulumi.String("tabula-api-v*"),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
@@ -731,9 +731,9 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 		}
 		if e.tagPattern != "" {
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
-				Repository:    repo.Name,
-				Environment:   envRes.Environment,
-				BranchPattern: pulumi.String(e.tagPattern),
+				Repository:  repo.Name,
+				Environment: envRes.Environment,
+				TagPattern:  pulumi.String(e.tagPattern),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
