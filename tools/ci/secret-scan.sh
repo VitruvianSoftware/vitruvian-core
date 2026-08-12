@@ -93,7 +93,7 @@ else
   tarball="${BIN_DIR}/gitleaks.tar.gz"
   url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
   echo "secret-scan: fetching gitleaks v${GITLEAKS_VERSION}..."
-  curl -fsSL -o "${tarball}" "${url}"
+  curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --max-time 120 -o "${tarball}" "${url}"
   actual="$(sha256sum "${tarball}" | awk '{print $1}')"
   if [ "${actual}" != "${GITLEAKS_SHA256}" ]; then
     echo "::error::gitleaks checksum mismatch — expected ${GITLEAKS_SHA256}, got ${actual}" >&2
