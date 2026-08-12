@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Button, Field, Input, Textarea } from "../design-system";
+import { Button, Field, Input, Textarea, Label } from "../design-system";
 import { AuthProvider } from "../types";
 
 interface ScopeSelectorProps {
@@ -191,9 +191,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-slate-300">
-          OAuth Scopes
-        </label>
+        <Label accent>OAuth Scopes</Label>
         <div className="flex gap-2">
           <Button
             type="button"
