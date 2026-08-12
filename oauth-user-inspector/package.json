@@ -20,7 +20,7 @@
     "cleanup:untrack-builds": "git rm -r --cached dist dist-server && git add .gitignore && (git diff --cached --quiet || git commit -m \"chore: untrack build outputs\")"
   },
   "dependencies": {
-    "@google-cloud/logging-winston": "^6.0.1",
+    "@google-cloud/logging-winston": "^7.0.0",
     "@google-cloud/secret-manager": "^6.3.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
