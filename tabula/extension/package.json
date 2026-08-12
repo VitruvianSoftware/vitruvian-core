@@ -9,7 +9,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tabula/shared": "workspace:*",
-    "framer-motion": "^12.43.0",
+    "framer-motion": "^13.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
