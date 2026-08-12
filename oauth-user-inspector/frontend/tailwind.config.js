@@ -27,6 +27,7 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
     "./*.tsx",
     "./components/**/*.tsx",
+    "./design-system/**/*.tsx",
   ],
   theme: {
     extend: {},

@@ -77,24 +77,28 @@ const EnhancedErrorDisplay: React.FC<EnhancedErrorDisplayProps> = ({
           <div>
             <h4 className="font-semibold text-red-200 mb-2">How to fix it:</h4>
             <ul className="space-y-1 text-sm text-red-300/90">
-              {enhancedError.guide.troubleshooting.map((tip, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="text-red-400 mt-1">•</span>
-                  <span>{tip}</span>
-                </li>
-              ))}
+              {enhancedError.guide.troubleshooting.map(
+                (tip: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-400 mt-1">•</span>
+                    <span>{tip}</span>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
 
           <div>
             <h4 className="font-semibold text-red-200 mb-2">Common causes:</h4>
             <ul className="space-y-1 text-sm text-red-300/80">
-              {enhancedError.guide.commonCauses.map((cause, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="text-red-400/70 mt-1">•</span>
-                  <span>{cause}</span>
-                </li>
-              ))}
+              {enhancedError.guide.commonCauses.map(
+                (cause: string, index: number) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-400/70 mt-1">•</span>
+                    <span>{cause}</span>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
 

@@ -56,17 +56,17 @@ const JsonNode: React.FC<JsonTreeProps> = ({ data, level = 0, path = "" }) => {
       >
         {open ? "−" : "+"}
       </Button>
-      <span className="text-slate-400">
+      <span className="text-paper-dim">
         {Array.isArray(data) ? "Array" : "Object"}
       </span>
-      <span className="text-slate-500 ml-1">[{entries.length}]</span>
+      <span className="text-paper-dim ml-1">[{entries.length}]</span>
       {open && !isEmpty && (
-        <div className="ml-4 border-l border-slate-700 pl-3 mt-1 space-y-0.5">
+        <div className="ml-4 border-l border-hairline pl-3 mt-1 space-y-0.5">
           {entries.map(([k, v]: any) => {
             const childPath = path ? `${path}.${k}` : String(k);
             return (
               <div key={k} className="group">
-                <span className="text-slate-500 select-none">{k}:</span>{" "}
+                <span className="text-paper-dim select-none">{k}:</span>{" "}
                 {isObject(v) || Array.isArray(v) ? (
                   <JsonNode data={v} level={level + 1} path={childPath} />
                 ) : (
@@ -90,7 +90,7 @@ const JsonNode: React.FC<JsonTreeProps> = ({ data, level = 0, path = "" }) => {
           })}
         </div>
       )}
-      {open && isEmpty && <span className="text-slate-500 ml-2">(empty)</span>}
+      {open && isEmpty && <span className="text-paper-dim ml-2">(empty)</span>}
     </div>
   );
 };

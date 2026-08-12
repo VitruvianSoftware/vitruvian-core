@@ -106,16 +106,16 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
   const hasRequiredScopes = (endpoint: ApiEndpoint): boolean => {
     if (!endpoint.requiredScopes) return true;
     const userScopes = getUserScopes();
-    return endpoint.requiredScopes.some((scope) => userScopes.includes(scope));
+    return endpoint.requiredScopes.some((scope: string) =>
+      userScopes.includes(scope),
+    );
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-2">
-          API Explorer
-        </h3>
-        <p className="text-sm text-slate-400 mb-4">
+        <h3 className="text-lg font-semibold text-paper mb-2">API Explorer</h3>
+        <p className="text-sm text-paper-dim mb-4">
           Test your access token against common {user.provider} API endpoints.
           {user.scopes && user.scopes.length > 0 && (
             <span className="block mt-1">
@@ -128,7 +128,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Endpoints List */}
         <div>
-          <h4 className="text-md font-medium text-slate-300 mb-3">
+          <h4 className="text-md font-medium text-paper-dim mb-3">
             Available Endpoints
           </h4>
           <div className="space-y-2">
@@ -148,19 +148,19 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
                   <div className="flex items-start justify-between w-full">
                     <div className="flex-1 text-left">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-slate-200">
+                        <span className="font-medium text-paper">
                           {endpoint.name}
                         </span>
-                        <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-ink-3 text-paper-dim px-2 py-0.5 rounded">
                           {endpoint.method}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mb-2">
+                      <p className="text-xs text-paper-dim mb-2">
                         {endpoint.description}
                       </p>
                       {endpoint.requiredScopes && (
                         <div className="text-xs">
-                          <span className="text-slate-500">
+                          <span className="text-paper-dim">
                             Required scopes:{" "}
                           </span>
                           <span
@@ -185,11 +185,11 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
 
         {/* Response Display */}
         <div>
-          <h4 className="text-md font-medium text-slate-300 mb-3">Response</h4>
+          <h4 className="text-md font-medium text-paper-dim mb-3">Response</h4>
 
           {!selectedEndpoint && !response && !error && (
-            <div className="h-64 border border-slate-700 rounded-md bg-slate-800/30 flex items-center justify-center">
-              <p className="text-slate-500 text-center">
+            <div className="h-64 border border-hairline rounded-md bg-ink-2/30 flex items-center justify-center">
+              <p className="text-paper-dim text-center">
                 Select an endpoint to see the API response
               </p>
             </div>
@@ -205,11 +205,9 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
           {response && !error && (
             <div className="space-y-4">
               {/* Response metadata */}
-              <div className="p-3 border border-slate-600 bg-slate-800/50 rounded-md">
+              <div className="p-3 border border-hairline bg-ink-2/50 rounded-md">
                 <div className="flex items-center justify-between mb-2">
-                  <h5 className="font-medium text-slate-200">
-                    Response Details
-                  </h5>
+                  <h5 className="font-medium text-paper">Response Details</h5>
                   <span
                     className={`px-2 py-1 text-xs rounded ${
                       response.status && response.status < 300
@@ -221,7 +219,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
                   </span>
                 </div>
                 {selectedEndpoint && (
-                  <div className="text-xs text-slate-400 space-y-1">
+                  <div className="text-xs text-paper-dim space-y-1">
                     <div>
                       <span className="font-medium">URL:</span>{" "}
                       {selectedEndpoint.url}
@@ -236,11 +234,9 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
 
               {/* Response data */}
               {response.data && (
-                <div className="border border-slate-600 bg-slate-800/50 rounded-md">
-                  <div className="p-3 border-b border-slate-600">
-                    <h5 className="font-medium text-slate-200">
-                      Response Data
-                    </h5>
+                <div className="border border-hairline bg-ink-2/50 rounded-md">
+                  <div className="p-3 border-b border-hairline">
+                    <h5 className="font-medium text-paper">Response Data</h5>
                   </div>
                   <div className="p-3">
                     <JsonTree data={response.data} />

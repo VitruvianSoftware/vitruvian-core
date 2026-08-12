@@ -213,7 +213,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
       </div>
 
       {mode === "preset" ? (
-        <div className="bg-slate-900/50 border border-slate-700 rounded-md p-3 max-h-48 overflow-y-auto">
+        <div className="bg-ink-2 border border-hairline rounded-md p-3 max-h-48 overflow-y-auto">
           <div className="grid grid-cols-1 gap-2">
             {DEFAULT_SCOPES[provider].map((scope) => (
               <Field
@@ -222,8 +222,8 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
                   <span
                     className={`font-mono text-xs ${
                       selectedScopes.includes(scope)
-                        ? "text-slate-200"
-                        : "text-slate-400"
+                        ? "text-paper"
+                        : "text-paper-dim"
                     }`}
                   >
                     {scope}
@@ -238,7 +238,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
               </Field>
             ))}
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-700">
+          <div className="mt-3 pt-2 border-t border-hairline">
             <Button
               type="button"
               variant="ghost"
@@ -276,7 +276,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
         </Field>
       )}
 
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-paper-dim">
         Selected: {selectedScopes.length} scope
         {selectedScopes.length !== 1 ? "s" : ""}
       </div>

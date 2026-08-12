@@ -49,29 +49,29 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
     >
       <div className="space-y-4">
         <div>
-          <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
+          <h3 className="text-sm uppercase tracking-wide text-paper-dim mb-2">
             Keyboard Shortcuts
           </h3>
           <ul className="space-y-1 text-sm">
             {shortcuts.map(([combo, desc]) => (
               <li key={combo} className="flex justify-between gap-4">
                 <Kbd>{combo}</Kbd>
-                <span className="text-slate-400">{desc}</span>
+                <span className="text-paper-dim">{desc}</span>
               </li>
             ))}
           </ul>
         </div>
 
         <div>
-          <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
+          <h3 className="text-sm uppercase tracking-wide text-paper-dim mb-2">
             Token Lifecycle Management
           </h3>
-          <div className="space-y-3 text-sm text-slate-300">
+          <div className="space-y-3 text-sm text-paper-dim">
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🔄 Token Refresh
               </h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-paper-dim leading-relaxed">
                 Use refresh tokens to obtain new access tokens without
                 re-authenticating. Refresh tokens typically have longer
                 lifespans and help maintain user sessions securely.
@@ -83,10 +83,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🚫 Token Revocation
               </h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-paper-dim leading-relaxed">
                 Revoke access tokens to immediately invalidate them for
                 security. This is important when tokens are compromised or users
                 want to revoke app access.
@@ -96,10 +96,10 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-slate-200 mb-1">
+              <h4 className="font-semibold text-paper mb-1">
                 🔐 Security Guidelines
               </h4>
-              <ul className="text-xs text-slate-400 space-y-1 ml-3 list-disc">
+              <ul className="text-xs text-paper-dim space-y-1 ml-3 list-disc">
                 <li>
                   Store refresh tokens securely (encrypted, httpOnly cookies)
                 </li>
@@ -111,7 +111,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
             </div>
           </div>
         </div>
-        <div className="text-xs text-slate-400 leading-relaxed">
+        <div className="text-xs text-paper-dim leading-relaxed">
           <p>
             <strong>Snapshot Export</strong> downloads a masked JSON
             representation of the current provider response and view settings

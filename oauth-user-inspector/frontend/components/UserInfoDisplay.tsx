@@ -354,19 +354,19 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
   return (
     <div className="mt-8 w-full animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left bg-slate-800/50 p-6 rounded-t-xl border-b border-slate-700">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left bg-ink-2/50 p-6 rounded-t-xl border-b border-hairline">
         <img
           src={user.avatarUrl}
           alt={`${user.username}'s avatar`}
-          className="w-24 h-24 rounded-full border-4 border-slate-600 shadow-lg"
+          className="w-24 h-24 rounded-full border-4 border-hairline shadow-lg"
         />
         <div className="mt-4 sm:mt-0 sm:ml-6 w-full">
           <div className="flex items-center justify-center sm:justify-start gap-3 flex-wrap">
             <ProviderIcon
               provider={user.provider}
-              className="w-8 h-8 text-white"
+              className="w-8 h-8 text-paper"
             />
-            <h2 className="text-3xl font-bold text-white break-all">
+            <h2 className="text-3xl font-bold text-paper break-all">
               {safeMode ? "••••••" : user.name || user.username}
             </h2>
           </div>
@@ -380,7 +380,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
               @{safeMode ? "masked" : user.username}
             </a>
             {user.email && (
-              <p className="text-slate-400 break-all">
+              <p className="text-paper-dim break-all">
                 {safeMode ? "hidden@example.com" : user.email}
               </p>
             )}
@@ -397,12 +397,12 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
 
           {/* Token Management Actions */}
           {(user.accessToken || user.refreshToken) && !safeMode && (
-            <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 space-y-2">
+            <div className="mt-4 bg-ink-2/60 border border-hairline rounded-md p-3 space-y-2">
               <div className="w-full mb-2">
                 <Label accent className="block mb-1">
                   Token Lifecycle Management
                 </Label>
-                <p className="text-[10px] text-slate-500 leading-relaxed">
+                <p className="text-[10px] text-paper-dim leading-relaxed">
                   Demonstrates OAuth token refresh and revocation best practices
                   for secure application development.
                 </p>
@@ -419,17 +419,17 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                     >
                       🔄 Refresh Token
                     </Button>
-                    <div className="text-[9px] text-slate-500 mt-1 max-w-48">
+                    <div className="text-[9px] text-paper-dim mt-1 max-w-48">
                       Refresh tokens allow getting new access tokens without
                       re-authentication
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col">
-                    <div className="text-[10px] px-3 py-1.5 rounded bg-slate-700/40 border border-slate-600 text-slate-400">
+                    <div className="text-[10px] px-3 py-1.5 rounded bg-ink-3/40 border border-hairline text-paper-dim">
                       🔄 No Refresh Token
                     </div>
-                    <div className="text-[9px] text-slate-500 mt-1 max-w-48">
+                    <div className="text-[9px] text-paper-dim mt-1 max-w-48">
                       {user.provider === "github"
                         ? "GitHub OAuth Apps don't support refresh tokens (only GitHub Apps do)"
                         : "This session doesn't have a refresh token available"}
@@ -447,7 +447,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                     >
                       🚫 Revoke Token
                     </Button>
-                    <div className="text-[9px] text-slate-500 mt-1 max-w-48">
+                    <div className="text-[9px] text-paper-dim mt-1 max-w-48">
                       Immediately invalidates the token - important for security
                       when compromised
                     </div>
@@ -460,26 +460,26 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             user.tokenType ||
             user.tokenExpiresAt ||
             user.jwtPayload) && (
-            <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 text-left space-y-2">
+            <div className="mt-4 bg-ink-2/60 border border-hairline rounded-md p-3 text-left space-y-2">
               <Label accent className="block">
                 Token Analysis
               </Label>
-              <ul className="text-[10px] sm:text-xs space-y-1 text-slate-300">
+              <ul className="text-[10px] sm:text-xs space-y-1 text-paper-dim">
                 {user.tokenType && (
                   <li>
-                    <span className="text-slate-500">Type:</span>{" "}
+                    <span className="text-paper-dim">Type:</span>{" "}
                     {user.tokenType}
                   </li>
                 )}
                 {user.scopes && user.scopes.length > 0 && (
                   <li>
-                    <span className="text-slate-500">Scopes:</span>{" "}
+                    <span className="text-paper-dim">Scopes:</span>{" "}
                     {user.scopes.join(", ")}
                   </li>
                 )}
                 {user.tokenExpiresAt && (
                   <li>
-                    <span className="text-slate-500">Expires:</span>{" "}
+                    <span className="text-paper-dim">Expires:</span>{" "}
                     {new Date(user.tokenExpiresAt).toLocaleString()} (
                     {Math.max(
                       0,
@@ -490,7 +490,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                 )}
                 {user.jwtPayload && (
                   <li className="break-all">
-                    <span className="text-slate-500">JWT aud:</span>{" "}
+                    <span className="text-paper-dim">JWT aud:</span>{" "}
                     {user.jwtPayload.aud || "—"}
                   </li>
                 )}
@@ -500,8 +500,8 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
         </div>
       </div>
       {/* Body: table + JSON */}
-      <div className="bg-slate-800/50 p-0 rounded-b-xl overflow-hidden">
-        <div className="flex flex-wrap gap-2 p-4 border-b border-slate-700 bg-slate-900/40">
+      <div className="bg-ink-2/50 p-0 rounded-b-xl overflow-hidden">
+        <div className="flex flex-wrap gap-2 p-4 border-b border-hairline bg-ink-2/40">
           <Label className="self-center">View Mode:</Label>
           <Segmented
             name="viewMode"
@@ -573,10 +573,10 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             viewMode !== "api" &&
             viewMode !== "snippets" && (
               <div
-                className={`p-6 ${viewMode === "both" ? "border-b md:border-b-0 md:border-r" : ""} border-slate-700 overflow-x-auto`}
+                className={`p-6 ${viewMode === "both" ? "border-b md:border-b-0 md:border-r" : ""} border-hairline overflow-x-auto`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                  <h3 className="text-xl font-semibold text-slate-200">
+                  <h3 className="text-xl font-semibold text-paper">
                     Provider Data Dump
                   </h3>
                   <Field label="Filter">
@@ -605,7 +605,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                 )}
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr className="text-slate-400 text-xs uppercase tracking-wide">
+                    <tr className="text-paper-dim text-xs uppercase tracking-wide">
                       <th className="py-2 pr-3 font-medium">Field</th>
                       <th className="py-2 font-medium">Value</th>
                     </tr>
@@ -642,30 +642,30 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                   : "";
                         } else if (showAllFields && isSchemaField) {
                           statusClasses =
-                            "bg-slate-800/30 border-l-2 border-slate-500";
+                            "bg-ink-2/30 border-l-2 border-slate-500";
                         }
 
                         return (
                           <tr
                             key={key}
-                            className={`border-t border-slate-700/60 hover:bg-slate-700/30 ${statusClasses}`}
+                            className={`border-t border-hairline/60 hover:bg-ink-3/30 ${statusClasses}`}
                           >
-                            <td className="py-2 pr-3 align-top text-slate-300 font-mono text-[11px] sm:text-xs break-all">
+                            <td className="py-2 pr-3 align-top text-paper-dim font-mono text-[11px] sm:text-xs break-all">
                               <div className="flex items-start gap-1 group">
                                 <span
                                   className={
-                                    isSchemaField ? "text-slate-500" : ""
+                                    isSchemaField ? "text-paper-dim" : ""
                                   }
                                 >
                                   {key}
                                 </span>
                                 {diffEnabled && status !== "unchanged" && (
-                                  <span className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 bg-slate-600/60 text-slate-200">
+                                  <span className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 bg-slate-600/60 text-paper">
                                     {status}
                                   </span>
                                 )}
                                 {showAllFields && isSchemaField && (
-                                  <span className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 bg-slate-600/40 text-slate-400">
+                                  <span className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 bg-slate-600/40 text-paper-dim">
                                     schema
                                   </span>
                                 )}
@@ -687,14 +687,14 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                 <div className="flex-1 min-w-0">
                                   {status === "removed" ? (
                                     <span
-                                      className="line-through text-slate-500"
+                                      className="line-through text-paper-dim"
                                       title="Removed in current data"
                                     >
                                       {renderPrimitive(previousValue)}
                                     </span>
                                   ) : isSchemaField ? (
                                     <span
-                                      className="text-slate-500 italic"
+                                      className="text-paper-dim italic"
                                       title="Field documented but not present in current data"
                                     >
                                       (not present)
@@ -710,7 +710,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                     </a>
                                   ) : (
                                     display || (
-                                      <span className="text-slate-500">
+                                      <span className="text-paper-dim">
                                         (object)
                                       </span>
                                     )
@@ -754,7 +754,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                       <tr>
                         <td
                           colSpan={2}
-                          className="py-4 text-center text-slate-500 text-xs"
+                          className="py-4 text-center text-paper-dim text-xs"
                         >
                           No matching fields
                         </td>
@@ -770,7 +770,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             viewMode !== "snippets" && (
               <div className="p-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-semibold text-slate-200">
+                  <h3 className="text-xl font-semibold text-paper">
                     Raw JSON Data
                   </h3>
                   <div className="flex gap-2">
@@ -843,7 +843,7 @@ const JsonViewContainer: React.FC<{ data: any }> = ({ data }) => {
     return () => window.removeEventListener("storage", handler);
   }, []);
   return (
-    <div className="max-h-[50vh] overflow-y-auto bg-slate-900/70 p-4 rounded-lg border border-slate-700 font-mono">
+    <div className="max-h-[50vh] overflow-y-auto bg-ink-2/70 p-4 rounded-lg border border-hairline font-mono">
       {mode === "tree" ? (
         <JsonTree data={data} />
       ) : (

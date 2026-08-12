@@ -30,6 +30,7 @@ import {
   Code,
   Rule,
   Textarea,
+  Plate,
 } from "../design-system";
 import { AuthProvider } from "../types";
 import {
@@ -179,7 +180,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <div
+    <Plate
       className="bg-slate-800 p-8 rounded-xl shadow-2xl ring-1 ring-white/10 w-full max-w-2xl mx-auto transition-all duration-300"
       onPaste={handleCardPaste}
     >
@@ -209,12 +210,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             Custom Redirect URI (optional)
           </label>
           <div className="flex gap-2">
-            <input
+            <Input
+              className="flex-1"
               type="text"
               value={customRedirectUri}
               onChange={(e) => onCustomRedirectUriChange?.(e.target.value)}
               placeholder={getRedirectUri()}
-              className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <Button
               variant="ghost"
@@ -261,7 +262,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://github.com/settings/developers"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GithubIcon className="w-4 h-4" /> Open GitHub OAuth settings
                 </a>
@@ -283,48 +284,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="github-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitHub OAuth App Client ID
-                  </label>
-                  <input
+                <Field label="GitHub OAuth App Client ID">
+                  <Input
                     id="github-client-id"
                     type="text"
                     value={githubClientId}
                     onChange={(e) => setGithubClientId(e.target.value)}
                     placeholder="Enter your GitHub Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="github-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitHub OAuth App Client Secret
-                  </label>
+                </Field>
+                <Field label="GitHub OAuth App Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="github-client-secret"
                       type={showGithubSecret ? "text" : "password"}
                       value={githubClientSecret}
                       onChange={(e) => setGithubClientSecret(e.target.value)}
                       placeholder="Enter your GitHub Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowGithubSecret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGithubSecret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="github"
                   onScopeChange={setGithubScopes}
@@ -399,32 +386,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   </Button>
                 </p>
               </div>
-              <div className="space-y-3 mt-4">
-                <label
-                  htmlFor="pat-input"
-                  className="block text-sm font-medium text-slate-300"
-                >
-                  Personal Access Token (PAT)
-                </label>
+              <Field label="Personal Access Token (PAT)">
                 <div className="relative">
-                  <input
+                  <Input
                     id="pat-input"
                     type={showPat ? "text" : "password"}
                     value={pat}
                     onChange={(e) => setPat(e.target.value)}
                     placeholder="ghp_..."
-                    className="w-full pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
                   />
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowPat((v) => !v)}
-                    className="absolute right-2 top-1.5"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
                   >
                     {showPat ? "Hide" : "Show"}
                   </Button>
                 </div>
-              </div>
+              </Field>
               <div className="mt-6">
                 <Button
                   variant="primary"
@@ -503,7 +483,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://console.developers.google.com/apis/credentials"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GoogleIcon className="w-4 h-4" /> Open Google Credentials
                 </a>
@@ -525,48 +505,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="google-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Google OAuth App Client ID
-                  </label>
-                  <input
+                <Field label="Google OAuth App Client ID">
+                  <Input
                     id="google-client-id"
                     type="text"
                     value={googleClientId}
                     onChange={(e) => setGoogleClientId(e.target.value)}
                     placeholder="Enter your Google Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="google-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Google OAuth App Client Secret
-                  </label>
+                </Field>
+                <Field label="Google OAuth App Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="google-client-secret"
                       type={showGoogleSecret ? "text" : "password"}
                       value={googleClientSecret}
                       onChange={(e) => setGoogleClientSecret(e.target.value)}
                       placeholder="Enter your Google Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowGoogleSecret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGoogleSecret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="google"
                   onScopeChange={setGoogleScopes}
@@ -622,22 +588,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   </Button>
                 </p>
               </div>
-              <div className="space-y-3 mt-4">
-                <label
-                  htmlFor="gcloud-token-input"
-                  className="block text-sm font-medium text-slate-300"
-                >
-                  Google CLI Access Token
-                </label>
-                <textarea
+              <Field label="Google CLI Access Token">
+                <Textarea
                   id="gcloud-token-input"
                   rows={3}
                   value={gcloudToken}
                   onChange={(e) => setGcloudToken(e.target.value)}
                   placeholder="ya29..."
-                  className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-mono text-sm"
                 />
-              </div>
+              </Field>
               <div className="mt-6">
                 <Button
                   variant="primary"
@@ -716,7 +675,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://gitlab.com/-/profile/applications"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <GitLabIcon className="w-4 h-4" /> Open GitLab Applications
                 </a>
@@ -738,48 +697,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="gitlab-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitLab Application ID
-                  </label>
-                  <input
+                <Field label="GitLab Application ID">
+                  <Input
                     id="gitlab-client-id"
                     type="text"
                     value={gitlabClientId}
                     onChange={(e) => setGitlabClientId(e.target.value)}
                     placeholder="Enter your GitLab Application ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="gitlab-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    GitLab Secret
-                  </label>
+                </Field>
+                <Field label="GitLab Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="gitlab-client-secret"
                       type={showGitlabSecret ? "text" : "password"}
                       value={gitlabClientSecret}
                       onChange={(e) => setGitlabClientSecret(e.target.value)}
                       placeholder="Enter your GitLab Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowGitlabSecret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showGitlabSecret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="gitlab"
                   onScopeChange={setGitlabScopes}
@@ -871,7 +816,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://manage.auth0.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <Auth0Icon className="w-4 h-4" /> Open Auth0 Dashboard
                 </a>
@@ -893,68 +838,43 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="auth0-domain"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Domain
-                  </label>
-                  <input
+                <Field label="Auth0 Domain">
+                  <Input
                     id="auth0-domain"
                     type="text"
                     value={auth0Domain}
                     onChange={(e) => setAuth0Domain(e.target.value)}
                     placeholder="your-tenant.us.auth0.com"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Must be a public, internet-reachable domain. The hosted
-                    inspector cannot reach localhost or internal addresses.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="auth0-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Client ID
-                  </label>
-                  <input
+                </Field>
+                <Field label="Auth0 Client ID">
+                  <Input
                     id="auth0-client-id"
                     type="text"
                     value={auth0ClientId}
                     onChange={(e) => setAuth0ClientId(e.target.value)}
                     placeholder="Enter your Auth0 Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="auth0-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Auth0 Client Secret
-                  </label>
+                </Field>
+                <Field label="Auth0 Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="auth0-client-secret"
                       type={showAuth0Secret ? "text" : "password"}
                       value={auth0ClientSecret}
                       onChange={(e) => setAuth0ClientSecret(e.target.value)}
                       placeholder="Enter your Auth0 Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowAuth0Secret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showAuth0Secret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="auth0"
                   onScopeChange={setAuth0Scopes}
@@ -1051,7 +971,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://auth.ipv1337.dev/ui/console"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <ZitadelIcon className="w-4 h-4" /> Open Zitadel Console
                 </a>
@@ -1073,71 +993,43 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="zitadel-domain"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Domain
-                  </label>
-                  <input
+                <Field label="Zitadel Domain">
+                  <Input
                     id="zitadel-domain"
                     type="text"
                     value={zitadelDomain}
                     onChange={(e) => setZitadelDomain(e.target.value)}
                     placeholder="auth.ipv1337.dev"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
-                    Defaults to our self-hosted instance. Leave as-is unless you
-                    run your own Zitadel. It must be a public,
-                    internet-reachable domain: the hosted inspector reaches it
-                    server-side, so a localhost or internal IdP only works if
-                    you run the inspector locally.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="zitadel-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Client ID
-                  </label>
-                  <input
+                </Field>
+                <Field label="Zitadel Client ID">
+                  <Input
                     id="zitadel-client-id"
                     type="text"
                     value={zitadelClientId}
                     onChange={(e) => setZitadelClientId(e.target.value)}
                     placeholder="Enter your Zitadel Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="zitadel-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    Zitadel Client Secret
-                  </label>
+                </Field>
+                <Field label="Zitadel Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="zitadel-client-secret"
                       type={showZitadelSecret ? "text" : "password"}
                       value={zitadelClientSecret}
                       onChange={(e) => setZitadelClientSecret(e.target.value)}
                       placeholder="Enter your Zitadel Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowZitadelSecret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showZitadelSecret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="zitadel"
                   onScopeChange={setZitadelScopes}
@@ -1231,7 +1123,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   href="https://www.linkedin.com/developers/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-slate-800/70 hover:bg-slate-700"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-slate-600 text-slate-300 bg-ink-2/70 hover:bg-slate-700"
                 >
                   <LinkedInIcon className="w-4 h-4" /> Open LinkedIn Apps
                 </a>
@@ -1253,48 +1145,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </Button>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="linkedin-client-id"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    LinkedIn Client ID
-                  </label>
-                  <input
+                <Field label="LinkedIn Client ID">
+                  <Input
                     id="linkedin-client-id"
                     type="text"
                     value={linkedinClientId}
                     onChange={(e) => setLinkedinClientId(e.target.value)}
                     placeholder="Enter your LinkedIn Client ID"
-                    className="w-full mt-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="linkedin-client-secret"
-                    className="block text-sm font-medium text-slate-300"
-                  >
-                    LinkedIn Client Secret
-                  </label>
+                </Field>
+                <Field label="LinkedIn Client Secret">
                   <div className="relative">
-                    <input
+                    <Input
                       id="linkedin-client-secret"
                       type={showLinkedinSecret ? "text" : "password"}
                       value={linkedinClientSecret}
                       onChange={(e) => setLinkedinClientSecret(e.target.value)}
                       placeholder="Enter your LinkedIn Client Secret"
-                      className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowLinkedinSecret((v) => !v)}
-                      className="absolute right-2 top-1.5"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showLinkedinSecret ? "Hide" : "Show"}
                     </Button>
                   </div>
-                </div>
+                </Field>
                 <ScopeSelector
                   provider="linkedin"
                   onScopeChange={setLinkedinScopes}
@@ -1361,7 +1239,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
         </Tab>
       </Tabs>
-    </div>
+    </Plate>
   );
 };
 

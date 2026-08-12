@@ -24,7 +24,7 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { URLSearchParams } from "url";
 import fs from "fs";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "crypto";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import logger, { createRequestLogger, logTiming, logError } from "./logger.js";
 import { enhanceOAuthError } from "./oauth-error-guide.js";
