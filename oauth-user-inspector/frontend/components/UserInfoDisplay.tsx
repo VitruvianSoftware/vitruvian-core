@@ -34,6 +34,7 @@ import TokenDisplay from "./TokenDisplay";
 import ApiExplorer from "./ApiExplorer";
 import CodeSnippetGenerator from "./CodeSnippetGenerator";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
+import { Button } from "../design-system";
 
 interface UserInfoDisplayProps {
   user: AppUser;
@@ -410,13 +411,14 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
               <div className="flex flex-wrap gap-2">
                 {user.refreshToken && onTokenRefresh ? (
                   <div className="flex flex-col">
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={onTokenRefresh}
-                      className="text-[10px] px-3 py-1.5 rounded bg-blue-700/60 border border-blue-600 text-blue-200 hover:bg-blue-700 transition-colors"
                       title="Use refresh token to get a new access token without re-authentication"
                     >
                       🔄 Refresh Token
-                    </button>
+                    </Button>
                     <div className="text-[9px] text-slate-500 mt-1 max-w-48">
                       Refresh tokens allow getting new access tokens without
                       re-authentication
@@ -437,13 +439,14 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
 
                 {onTokenRevocation && (
                   <div className="flex flex-col">
-                    <button
+                    <Button
+                      variant="danger"
+                      size="sm"
                       onClick={onTokenRevocation}
-                      className="text-[10px] px-3 py-1.5 rounded bg-red-700/60 border border-red-600 text-red-200 hover:bg-red-700 transition-colors"
                       title="Revoke the access token immediately for security (will log you out)"
                     >
                       🚫 Revoke Token
-                    </button>
+                    </Button>
                     <div className="text-[9px] text-slate-500 mt-1 max-w-48">
                       Immediately invalidates the token - important for security
                       when compromised
@@ -503,10 +506,11 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             View Mode:
           </span>
           {(["both", "table", "json", "api", "snippets"] as const).map((m) => (
-            <button
+            <Button
               key={m}
+              variant={viewMode === m ? "primary" : "ghost"}
+              size="sm"
               onClick={() => updateViewMode(m)}
-              className={`text-xs px-3 py-1 rounded border transition-colors ${viewMode === m ? "bg-slate-600 border-slate-500 text-white" : "bg-slate-700/40 border-slate-600 text-slate-300 hover:bg-slate-700"}`}
             >
               {m === "both"
                 ? "Both"
@@ -517,12 +521,13 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                     : m === "api"
                       ? "API Explorer"
                       : "Code Snippets"}
-            </button>
+            </Button>
           ))}
           {importedSnapshot && (
-            <button
+            <Button
+              variant={diffEnabled ? "primary" : "ghost"}
+              size="sm"
               onClick={toggleDiff}
-              className={`text-xs px-3 py-1 rounded border transition-colors ${diffEnabled ? "bg-amber-600/70 border-amber-500 text-white" : "bg-slate-700/40 border-slate-600 text-slate-300 hover:bg-slate-700"}`}
               title={
                 diffEnabled
                   ? "Disable diff highlighting"
@@ -530,11 +535,12 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
               }
             >
               Diff {diffEnabled ? "On" : "Off"}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant={showAllFields ? "primary" : "ghost"}
+            size="sm"
             onClick={toggleShowAllFields}
-            className={`text-xs px-3 py-1 rounded border transition-colors ${showAllFields ? "bg-blue-600/70 border-blue-500 text-white" : "bg-slate-700/40 border-slate-600 text-slate-300 hover:bg-slate-700"}`}
             title={
               showAllFields
                 ? "Show only fields present in current data"
@@ -542,13 +548,15 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
             }
           >
             Schema {showAllFields ? "On" : "Off"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={exportSnapshot}
-            className="ml-auto text-xs px-3 py-1 rounded border bg-slate-700/40 border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors"
+            className="ml-auto"
           >
             Export Snapshot
-          </button>
+          </Button>
           {importedSnapshot && (
             <span className="text-[10px] text-emerald-300 self-center">
               Snapshot Loaded
@@ -722,11 +730,19 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                   )}
                                 </div>
                                 {!isSchemaField && (
-                                  <button
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    icon
+                                    aria-label={
+                                      status === "removed"
+                                        ? "Copy previous value"
+                                        : "Copy value"
+                                    }
                                     onClick={() =>
                                       navigator.clipboard.writeText(plainValue)
                                     }
-                                    className="shrink-0 p-1 rounded bg-slate-700/50 hover:bg-slate-600 text-slate-300 border border-slate-600"
+                                    className="shrink-0"
                                     title={
                                       status === "removed"
                                         ? "Copy previous value"
@@ -734,7 +750,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
                                     }
                                   >
                                     <ClipboardIcon className="w-3 h-3" />
-                                  </button>
+                                  </Button>
                                 )}
                               </div>
                             </td>
@@ -797,20 +813,18 @@ const JsonViewToggle: React.FC<{
     <>
       <div className="flex items-center bg-slate-700/40 border border-slate-600 rounded-md overflow-hidden text-[11px]">
         {(["tree", "raw"] as const).map((m) => (
-          <button
+          <Button
             key={m}
+            variant={mode === m ? "primary" : "ghost"}
+            size="sm"
             onClick={() => setMode(m)}
-            className={`px-2 py-1 ${mode === m ? "bg-slate-600 text-white" : "text-slate-300 hover:bg-slate-600/40"}`}
             title={m === "tree" ? "Tree view" : "Raw JSON view"}
           >
             {m}
-          </button>
+          </Button>
         ))}
       </div>
-      <button
-        onClick={copyHandler}
-        className="flex items-center px-3 py-1.5 bg-slate-700/50 border border-slate-600 rounded-md text-xs text-slate-300 hover:bg-slate-700 transition-all"
-      >
+      <Button variant="ghost" size="sm" onClick={copyHandler}>
         {isCopied ? (
           <>
             <ClipboardCheckIcon className="w-4 h-4 mr-1.5 text-green-400" />
@@ -822,7 +836,7 @@ const JsonViewToggle: React.FC<{
             Copy JSON
           </>
         )}
-      </button>
+      </Button>
     </>
   );
 };

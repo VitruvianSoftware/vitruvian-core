@@ -24,6 +24,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import type { AppUser, ApiEndpoint } from "../types";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
+import { Button } from "../design-system";
 
 interface CodeSnippetGeneratorProps {
   user: AppUser;
@@ -332,17 +333,14 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
           <label className="block text-xs text-slate-400 mb-1">Language</label>
           <div className="flex bg-slate-800 border border-slate-600 rounded-md overflow-hidden">
             {(["curl", "nodejs", "python", "go"] as const).map((lang) => (
-              <button
+              <Button
                 key={lang}
                 onClick={() => setSelectedLanguage(lang)}
-                className={`px-3 py-2 text-xs font-medium transition-colors ${
-                  selectedLanguage === lang
-                    ? "bg-slate-600 text-white"
-                    : "text-slate-300 hover:bg-slate-700"
-                }`}
+                variant={selectedLanguage === lang ? "primary" : "ghost"}
+                size="sm"
               >
                 {lang === "nodejs" ? "Node.js" : lang.toUpperCase()}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -350,16 +348,13 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
         {/* Token Masking Toggle */}
         <div>
           <label className="block text-xs text-slate-400 mb-1">Security</label>
-          <button
+          <Button
             onClick={() => setMaskToken(!maskToken)}
-            className={`px-3 py-2 text-xs font-medium rounded-md border transition-colors ${
-              maskToken
-                ? "bg-green-500/20 border-green-500/40 text-green-300"
-                : "bg-yellow-500/20 border-yellow-500/40 text-yellow-300"
-            }`}
+            variant={maskToken ? "primary" : "ghost"}
+            size="sm"
           >
             {maskToken ? "🔒 Token Masked" : "👁️ Token Visible"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -406,14 +401,15 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                   ({getLanguageExtension(selectedLanguage)})
                 </span>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   handleCopy(
                     `${currentEndpoint.id}-${selectedLanguage}`,
                     generateSnippet(currentEndpoint, selectedLanguage),
                   )
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-700/50 border border-slate-600 rounded-md text-slate-300 hover:bg-slate-700 transition-colors"
               >
                 {copyStates[`${currentEndpoint.id}-${selectedLanguage}`] ? (
                   <>
@@ -426,7 +422,7 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
                     Copy
                   </>
                 )}
-              </button>
+              </Button>
             </div>
 
             <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">

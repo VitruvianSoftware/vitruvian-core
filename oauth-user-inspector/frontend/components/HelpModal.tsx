@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+import { Button } from "../design-system";
 
 interface HelpModalProps {
   open: boolean;
@@ -47,12 +48,9 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
           <h2 className="text-xl font-semibold text-slate-100">
             Help & Shortcuts
           </h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-200"
-          >
+          <Button onClick={onClose} variant="ghost" size="sm">
             ✕
-          </button>
+          </Button>
         </div>
         <div>
           <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
@@ -129,12 +127,9 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
           </p>
         </div>
         <div className="flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm rounded-md border border-slate-500 text-slate-200"
-          >
+          <Button onClick={onClose} variant="ghost" size="sm">
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>

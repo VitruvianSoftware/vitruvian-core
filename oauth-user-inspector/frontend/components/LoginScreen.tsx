@@ -21,7 +21,7 @@
  */
 
 import React, { useState } from "react";
-import { Button, Tag, Card } from "../design-system";
+import { Button } from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,
@@ -207,13 +207,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               placeholder={getRedirectUri()}
               className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => onCustomRedirectUriChange?.("")}
-              className="px-3 py-2 text-xs text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-md transition-colors"
             >
               Reset
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-slate-500">
             Current:{" "}
@@ -261,9 +261,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("github")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "github" ? (
@@ -271,7 +273,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -306,13 +308,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your GitHub Client Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGithubSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showGithubSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -321,7 +324,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "github",
@@ -332,11 +337,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!githubClientId || !githubClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Continue with GitHub
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -356,15 +361,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     user:email
                   </code>{" "}
                   scopes.
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText("read:user,user:email")
                     }
                   >
                     Copy scopes
-                  </button>
+                  </Button>
                 </p>
                 <a
                   href="https://github.com/settings/tokens"
@@ -383,15 +389,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   <code className="text-xs bg-slate-700 p-1 rounded">
                     gh auth token
                   </code>
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText("gh auth token")
                     }
                   >
                     Copy
-                  </button>
+                  </Button>
                 </p>
               </div>
               <div className="space-y-3 mt-4">
@@ -410,24 +417,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholder="ghp_..."
                     className="w-full pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
                   />
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowPat((v) => !v)}
-                    className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                    className="absolute right-2 top-1.5"
                   >
                     {showPat ? "Hide" : "Show"}
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onPatLogin(pat)}
                   disabled={!pat || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Fetch with GitHub Token
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -447,14 +457,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("github", githubScopes)}
                   disabled={isLoading || !isHostedAvailable("github")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GithubIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted GitHub App
-                </button>
+                </Button>
                 {!isHostedAvailable("github") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -501,9 +513,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("google")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "google" ? (
@@ -511,7 +525,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -546,13 +560,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your Google Client Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGoogleSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showGoogleSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -561,7 +576,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "google",
@@ -572,11 +589,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!googleClientId || !googleClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Continue with Google
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -595,9 +612,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   <code className="text-xs bg-slate-700 p-1 rounded">
                     gcloud auth print-access-token
                   </code>
-                  <button
-                    type="button"
-                    className="ml-2 text-[11px] px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2"
                     onClick={() =>
                       navigator.clipboard.writeText(
                         "gcloud auth print-access-token",
@@ -605,7 +623,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     }
                   >
                     Copy
-                  </button>
+                  </Button>
                 </p>
               </div>
               <div className="space-y-3 mt-4">
@@ -625,14 +643,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onGcloudTokenLogin(gcloudToken)}
                   disabled={!gcloudToken || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Fetch with Google Token
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -652,14 +672,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("google", googleScopes)}
                   disabled={isLoading || !isHostedAvailable("google")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GoogleIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Google App
-                </button>
+                </Button>
                 {!isHostedAvailable("google") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -706,9 +728,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("gitlab")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "gitlab" ? (
@@ -716,7 +740,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -751,13 +775,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your GitLab Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowGitlabSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showGitlabSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -766,7 +791,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "gitlab",
@@ -777,11 +804,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     )
                   }
                   disabled={!gitlabClientId || !gitlabClientSecret || isLoading}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GitLabIcon className="h-5 w-5 mr-2" />
                   Continue with GitLab
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -801,14 +828,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("gitlab", gitlabScopes)}
                   disabled={isLoading || !isHostedAvailable("gitlab")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <GitLabIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted GitLab App
-                </button>
+                </Button>
                 {!isHostedAvailable("gitlab") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -855,9 +884,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("auth0")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "auth0" ? (
@@ -865,7 +896,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -920,13 +951,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your Auth0 Client Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowAuth0Secret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showAuth0Secret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -935,7 +967,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "auth0",
@@ -951,11 +985,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     !auth0Domain ||
                     isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <Auth0Icon className="h-5 w-5 mr-2" />
                   Continue with Auth0
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -975,14 +1009,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("auth0", auth0Scopes)}
                   disabled={isLoading || !isHostedAvailable("auth0")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <Auth0Icon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Auth0 App
-                </button>
+                </Button>
                 {!isHostedAvailable("auth0") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -1029,9 +1065,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("zitadel")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "zitadel" ? (
@@ -1039,7 +1077,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -1097,13 +1135,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your Zitadel Client Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowZitadelSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showZitadelSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -1112,7 +1151,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "zitadel",
@@ -1125,11 +1166,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   disabled={
                     !zitadelClientId || !zitadelClientSecret || isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-pink-600 hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <ZitadelIcon className="h-5 w-5 mr-2" />
                   Continue with Zitadel
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1149,14 +1190,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("zitadel", zitadelScopes)}
                   disabled={isLoading || !isHostedAvailable("zitadel")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <ZitadelIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted Zitadel App
-                </button>
+                </Button>
                 {!isHostedAvailable("zitadel") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.
@@ -1203,9 +1246,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 <code className="text-xs text-slate-300 truncate">
                   {getEffectiveRedirectUri(customRedirectUri)}
                 </code>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon
                   onClick={() => handleCopy("linkedin")}
-                  className="p-1 text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500 rounded transition-colors"
                   aria-label="Copy redirect URL"
                 >
                   {copiedProvider === "linkedin" ? (
@@ -1213,7 +1258,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   ) : (
                     <ClipboardIcon className="h-5 w-5" />
                   )}
-                </button>
+                </Button>
               </div>
               <div className="space-y-3">
                 <div>
@@ -1248,13 +1293,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholder="Enter your LinkedIn Client Secret"
                       className="w-full mt-1 pr-12 px-4 py-2 bg-slate-900 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowLinkedinSecret((v) => !v)}
-                      className="absolute right-2 top-1.5 text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+                      className="absolute right-2 top-1.5"
                     >
                       {showLinkedinSecret ? "Hide" : "Show"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <ScopeSelector
@@ -1263,7 +1309,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() =>
                     onOAuthLogin(
                       "linkedin",
@@ -1276,11 +1324,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   disabled={
                     !linkedinClientId || !linkedinClientSecret || isLoading
                   }
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-700 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-600/50 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <LinkedInIcon className="h-5 w-5 mr-2" />
                   Continue with LinkedIn
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -1300,14 +1348,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <div className="mt-6">
-                <button
+                <Button
+                  variant="primary"
+                  block
                   onClick={() => onHostedOAuthLogin("linkedin", linkedinScopes)}
                   disabled={isLoading || !isHostedAvailable("linkedin")}
-                  className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all"
+                  className="inline-flex items-center justify-center"
                 >
                   <LinkedInIcon className="h-5 w-5 mr-2" />
                   Sign in with Hosted LinkedIn App
-                </button>
+                </Button>
                 {!isHostedAvailable("linkedin") && (
                   <p className="mt-2 text-xs text-slate-400 text-center">
                     Hosted app coming later.

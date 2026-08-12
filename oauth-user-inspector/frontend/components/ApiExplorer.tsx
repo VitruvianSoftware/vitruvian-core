@@ -21,6 +21,7 @@
  */
 
 import React, { useState } from "react";
+import { Button } from "../design-system";
 import type { AppUser, ApiEndpoint, ApiExploreResponse } from "../types";
 import { Spinner } from "./icons";
 import JsonTree from "./JsonTree";
@@ -136,20 +137,16 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
               const isSelected = selectedEndpoint?.id === endpoint.id;
 
               return (
-                <button
+                <Button
                   key={endpoint.id}
                   onClick={() => handleEndpointCall(endpoint)}
                   disabled={isLoading || !hasScopes}
-                  className={`w-full text-left p-3 rounded-md border transition-colors ${
-                    isSelected
-                      ? "border-blue-500 bg-blue-500/10"
-                      : hasScopes
-                        ? "border-slate-600 bg-slate-800/50 hover:bg-slate-700/50 hover:border-slate-500"
-                        : "border-slate-700 bg-slate-800/30 opacity-50 cursor-not-allowed"
-                  }`}
+                  variant="ghost"
+                  block
+                  className="w-full text-left p-3 mb-2"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between w-full">
+                    <div className="flex-1 text-left">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-slate-200">
                           {endpoint.name}
@@ -180,7 +177,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
                       <Spinner className="w-4 h-4 text-blue-400" />
                     )}
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>

@@ -21,6 +21,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { Button } from "../design-system";
 import { AuthProvider } from "../types";
 
 interface ScopeSelectorProps {
@@ -194,28 +195,22 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
           OAuth Scopes
         </label>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => handleModeChange("preset")}
-            className={`px-2 py-1 text-xs rounded border transition-colors ${
-              mode === "preset"
-                ? "border-blue-400 bg-blue-500/20 text-blue-300"
-                : "border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
-            }`}
           >
             Select
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => handleModeChange("custom")}
-            className={`px-2 py-1 text-xs rounded border transition-colors ${
-              mode === "custom"
-                ? "border-blue-400 bg-blue-500/20 text-blue-300"
-                : "border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
-            }`}
           >
             Custom
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -246,13 +241,14 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
             ))}
           </div>
           <div className="mt-3 pt-2 border-t border-slate-700">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={resetToDefault}
-              className="text-xs px-2 py-1 rounded border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
             >
               Reset to Default
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
