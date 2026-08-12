@@ -56,12 +56,12 @@ type pulumiStackConfig struct {
 // is ../../main.go (cfg.Require/Get on the same names); keep them in sync — the
 // hashing itself is already shared via the revision package.
 const (
-	ns          = "tabula-app:"
-	keyProject  = ns + "project"
-	keyEnv      = ns + "environment"
-	keyAPIURL      = ns + "apiUrl"
-	keyPMOrigin    = ns + "authPostmessageOrigin"
-	keyCORSOrigin  = ns + "corsOrigin"
+	ns            = "tabula-app:"
+	keyProject    = ns + "project"
+	keyEnv        = ns + "environment"
+	keyAPIURL     = ns + "apiUrl"
+	keyPMOrigin   = ns + "authPostmessageOrigin"
+	keyCORSOrigin = ns + "corsOrigin"
 )
 
 // computeRevisionName renders the revision name from a Pulumi stack config file
