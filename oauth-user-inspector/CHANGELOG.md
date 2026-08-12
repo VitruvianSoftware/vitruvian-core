@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.5.0...oauth-user-inspector-v1.6.0) (2026-08-12)
+
+
+### Features
+
+* **oauth-user-inspector:** adopt full design system across all components ([#1551](https://github.com/VitruvianSoftware/vitruvian-core/issues/1551)) ([c973661](https://github.com/VitruvianSoftware/vitruvian-core/commit/c973661deee7df92f38a523af89b8665f2c2592a))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.4.1...oauth-user-inspector-v1.5.0) (2026-08-12)
 
 
