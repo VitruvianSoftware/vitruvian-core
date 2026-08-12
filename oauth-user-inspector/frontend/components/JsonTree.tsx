@@ -21,6 +21,7 @@
  */
 
 import React, { useState } from "react";
+import { Button } from "../design-system";
 
 interface JsonTreeProps {
   data: any;
@@ -46,14 +47,15 @@ const JsonNode: React.FC<JsonTreeProps> = ({ data, level = 0, path = "" }) => {
 
   return (
     <div className="font-mono text-[11px] leading-relaxed">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen((o) => !o)}
-        className="mr-1 text-xs text-blue-300 hover:text-blue-200"
+        className="mr-1"
         title={open ? "Collapse" : "Expand"}
       >
         {open ? "−" : "+"}
-      </button>
+      </Button>
       <span className="text-slate-400">
         {Array.isArray(data) ? "Array" : "Object"}
       </span>
@@ -70,17 +72,19 @@ const JsonNode: React.FC<JsonTreeProps> = ({ data, level = 0, path = "" }) => {
                 ) : (
                   <span className="text-emerald-200">{JSON.stringify(v)}</span>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() =>
                     navigator.clipboard.writeText(
                       String(isObject(v) ? JSON.stringify(v) : v),
                     )
                   }
-                  className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-[10px] px-1 py-0.5 rounded bg-slate-700/60 text-slate-300 border border-slate-600 hover:bg-slate-600"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity ml-2"
                   title="Copy value"
                 >
                   copy
-                </button>
+                </Button>
               </div>
             );
           })}
@@ -104,20 +108,22 @@ const JsonTree: React.FC<{ data: any }> = ({ data }) => {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <button
-          className="text-[11px] px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setExpandAllToggle((v) => v + 1)}
           title="Expand all"
         >
           Expand/Collapse
-        </button>
-        <button
-          className="text-[11px] px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleCopyAll}
           title="Copy JSON"
         >
           {copied ? "Copied" : "Copy all"}
-        </button>
+        </Button>
       </div>
       {/* re-mount node to reset open state on toggle */}
       <div key={expandAllToggle}>

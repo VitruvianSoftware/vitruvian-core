@@ -21,6 +21,7 @@
  */
 
 import React from "react";
+import { Button } from "../design-system";
 import { EnhancedOAuthError } from "../types";
 
 interface EnhancedErrorDisplayProps {
@@ -52,18 +53,20 @@ const EnhancedErrorDisplay: React.FC<EnhancedErrorDisplayProps> = ({
           <p>{errorMessage}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button
+          <Button
             onClick={onDiagnose}
-            className="px-3 py-1.5 text-xs rounded-md border border-red-400/40 bg-red-800/40 hover:bg-red-800/60 text-red-200"
+            variant="danger"
+            size="sm"
           >
             Diagnose
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onDismiss}
-            className="px-3 py-1.5 text-xs rounded-md border border-red-400/40 bg-red-800/40 hover:bg-red-800/60 text-red-200"
+            variant="ghost"
+            size="sm"
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       </div>
 
