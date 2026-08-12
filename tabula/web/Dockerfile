@@ -40,16 +40,18 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 RUN corepack enable
 
+# pnpm hoists all deps into the root node_modules/.pnpm virtual store;
+# workspace packages resolve via symlinks from there, so copying the
+# root node_modules is sufficient (and per-package node_modules may not
+# exist at all).
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/tabula/web/node_modules ./tabula/web/node_modules
-COPY --from=deps /app/tabula/shared/node_modules ./tabula/shared/node_modules
-COPY --from=deps /app/packages/design-system/node_modules ./packages/design-system/node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Copy source for all needed workspaces
 COPY tabula/shared/ tabula/shared/
 COPY packages/design-system/ packages/design-system/
 COPY tabula/web/ tabula/web/
-COPY package.json pnpm-workspace.yaml ./
 
 # Build-time env var (baked into the JS bundle by Next.js)
 ARG NEXT_PUBLIC_API_URL
