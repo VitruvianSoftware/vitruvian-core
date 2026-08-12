@@ -501,6 +501,9 @@ describe("Background Script", () => {
         "*://*.tabula-staging.com/*",
         "*://localhost/*",
         "*://127.0.0.1/*",
+        "https://tabula.dev.vitruviansoftware.dev/*",
+        "https://tabula.staging.vitruviansoftware.dev/*",
+        "https://tabula.vitruviansoftware.dev/*",
       ]);
       expect(matches).not.toContain("*://*/*");
       expect(matches).not.toContain("<all_urls>");
