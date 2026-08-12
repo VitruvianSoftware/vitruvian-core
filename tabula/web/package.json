@@ -4,8 +4,13 @@
   "private": true,
   "description": "Tabula web dashboard for workspace management, analytics, and data export",
   "license": "MIT",
+  "scripts": {
+    "build": "next build",
+    "test": "jest"
+  },
   "dependencies": {
     "@tabula/shared": "workspace:*",
+    "@vitruviansoftware/design-system": "workspace:*",
     "geist": "^1.5.0",
     "next": "16.3.0",
     "react": "^19.2.8",

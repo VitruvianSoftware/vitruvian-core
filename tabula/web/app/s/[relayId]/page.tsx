@@ -26,6 +26,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SharingService, ApiError, type RelayInfo } from "@/lib/sharing";
 import { AuthService } from "@/lib/auth";
+import { Button } from "@vitruviansoftware/design-system";
 
 // The installed extension's id + store listing. Until the extension publishes,
 // the id is empty and detection simply fails closed (→ the not-installed
@@ -124,42 +125,41 @@ export default function RelayLandingPage() {
       {info ? <RelayPreviewCard info={info} /> : null}
       <div className="mt-8 flex flex-col gap-3">
         {extensionInstalled ? (
-          <button
+          <Button
             type="button"
             onClick={openInTabula}
-            className="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
           >
             Open in Tabula
-          </button>
+          </Button>
         ) : (
           <a
             href={CHROME_STORE_URL}
-            className="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
+            className="bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-700"
           >
             Install Tabula
           </a>
         )}
         {loggedIn ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={openInBrowser}
             disabled={busy}
-            className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
           >
             {busy
               ? "Opening…"
               : canEdit
                 ? "Edit in browser"
                 : "View in browser"}
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={logIn}
-            className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200"
           >
             Log in to open in browser
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -168,14 +168,14 @@ export default function RelayLandingPage() {
 
 function RelayPreviewCard({ info }: { info: RelayInfo }) {
   return (
-    <div className="rounded-2xl border border-gray-200 p-6 text-center dark:border-gray-700">
-      <p className="text-sm text-gray-500">
+    <div className="border border-hairline p-6 text-center">
+      <p className="text-sm text-paper-dim">
         {info.ownerName} shared a space with you
       </p>
-      <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+      <h1 className="mt-2 text-2xl font-semibold text-paper">
         {info.workspaceName}
       </h1>
-      <p className="mt-1 text-xs uppercase tracking-wide text-gray-400">
+      <p className="mt-1 text-xs uppercase tracking-wide text-paper-dim">
         {info.role === "edit" ? "Can edit" : "View only"}
       </p>
     </div>
@@ -184,7 +184,7 @@ function RelayPreviewCard({ info }: { info: RelayInfo }) {
 
 function Centered({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4 text-center text-sm text-gray-500">
+    <div className="flex min-h-[60vh] items-center justify-center px-4 text-center text-sm text-paper-dim">
       {children}
     </div>
   );

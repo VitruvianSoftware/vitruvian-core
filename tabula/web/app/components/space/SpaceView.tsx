@@ -57,15 +57,15 @@ export function SpaceView({ space }: { space: Workspace }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+        <h1 className="text-2xl font-semibold text-paper">
           {space.name}
         </h1>
         {space.description ? (
-          <p className="mt-1 text-sm text-gray-500">{space.description}</p>
+          <p className="mt-1 text-sm text-paper-dim">{space.description}</p>
         ) : null}
       </header>
 
-      <nav className="mb-6 flex gap-1 border-b border-gray-200 dark:border-gray-700">
+      <nav className="mb-6 flex gap-1 border-b border-hairline">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -75,11 +75,11 @@ export function SpaceView({ space }: { space: Workspace }) {
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
               tab === t.key
                 ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-paper-dim hover:text-paper"
             }`}
           >
             {t.label}
-            <span className="ml-1.5 text-xs text-gray-400">{t.count}</span>
+            <span className="ml-1.5 text-xs text-paper-dim">{t.count}</span>
           </button>
         ))}
       </nav>
@@ -110,7 +110,7 @@ function ResourcesPanel({
       ) : null}
       {sections.map((section) => (
         <section key={section.id}>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-paper-dim">
             {section.title}
           </h2>
           <ResourceList resources={section.resources ?? []} />
@@ -133,7 +133,7 @@ function ResourceList({ resources }: { resources: Resource[] }) {
 function ResourceItem({ resource }: { resource: Resource }) {
   const href = safeHref(resource.url);
   return (
-    <li className="rounded-md px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+    <li className="px-3 py-2 hover:bg-ink-2">
       {href ? (
         <a
           href={href}
@@ -141,20 +141,20 @@ function ResourceItem({ resource }: { resource: Resource }) {
           rel="noopener noreferrer"
           className="block"
         >
-          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <span className="text-sm font-medium text-paper">
             {resource.title}
           </span>
-          <span className="block truncate text-xs text-gray-400">
+          <span className="block truncate text-xs text-paper-dim">
             {resource.url}
           </span>
         </a>
       ) : (
         // Non-http(s) URL: render inert so a javascript:/data: URL cannot run.
         <div>
-          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <span className="text-sm font-medium text-paper">
             {resource.title}
           </span>
-          <span className="block truncate text-xs text-gray-400">
+          <span className="block truncate text-xs text-paper-dim">
             {resource.url}
           </span>
         </div>
@@ -172,13 +172,13 @@ function NotesPanel({ notes }: { notes: Note[] }) {
       {notes.map((note) => (
         <article
           key={note.id}
-          className="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+          className="border border-hairline p-4"
         >
-          <h3 className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="mb-1 text-sm font-semibold text-paper">
             {note.title}
           </h3>
           {/* Escaped React text node — never dangerouslySetInnerHTML. */}
-          <p className="whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+          <p className="whitespace-pre-wrap text-sm text-paper-dim">
             {note.content}
           </p>
         </article>
@@ -205,8 +205,8 @@ function TasksPanel({ tasks }: { tasks: Task[] }) {
           <span
             className={`text-sm ${
               task.completed
-                ? "text-gray-400 line-through"
-                : "text-gray-900 dark:text-gray-100"
+                ? "text-paper-dim line-through"
+                : "text-paper"
             }`}
           >
             {task.title}
@@ -218,5 +218,5 @@ function TasksPanel({ tasks }: { tasks: Task[] }) {
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
-  return <p className="py-8 text-center text-sm text-gray-400">{children}</p>;
+  return <p className="py-8 text-center text-sm text-paper-dim">{children}</p>;
 }

@@ -57,6 +57,7 @@ jest_test(
         "tsconfig.json",
         "package.json",
         ":node_modules/@tabula/shared",
+        ":node_modules/@vitruviansoftware/design-system",
         ":node_modules/@testing-library/jest-dom",
         ":node_modules/@testing-library/react",
         ":node_modules/@types/jest",

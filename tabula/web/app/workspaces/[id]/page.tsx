@@ -28,6 +28,7 @@ import type { Workspace } from "@tabula/shared";
 import { SharingService, ApiError } from "@/lib/sharing";
 import { SpaceView } from "@/app/components/space/SpaceView";
 import { EditableSpace } from "@/app/components/space/EditableSpace";
+import { Button } from "@vitruviansoftware/design-system";
 
 type LoadError = "auth" | "notfound" | "error";
 
@@ -95,13 +96,14 @@ export default function SpaceDetailPage() {
     <div>
       {canEdit ? (
         <div className="mx-auto flex max-w-3xl justify-end px-4 pt-4">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setEditing((v) => !v)}
-            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200"
           >
             {editing ? "Done" : "Edit"}
-          </button>
+          </Button>
         </div>
       ) : null}
       {editing && canEdit ? (
@@ -115,7 +117,7 @@ export default function SpaceDetailPage() {
 
 function Centered({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[50vh] items-center justify-center px-4 text-center text-sm text-gray-500">
+    <div className="flex min-h-[50vh] items-center justify-center px-4 text-center text-sm text-paper-dim">
       {children}
     </div>
   );

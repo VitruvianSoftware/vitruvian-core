@@ -25,10 +25,10 @@
  */
 export default function Loading() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-ink">
       <div className="text-center">
         <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 mx-auto" />
-        <p className="text-lg text-gray-600">Loading Tabula...</p>
+        <p className="text-lg text-paper-dim">Loading Tabula...</p>
       </div>
     </div>
   );

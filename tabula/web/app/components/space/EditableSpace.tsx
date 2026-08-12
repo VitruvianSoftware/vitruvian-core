@@ -25,6 +25,7 @@
 import { useRef, useState } from "react";
 import type { Workspace } from "@tabula/shared";
 import { SharingService, ApiError } from "@/lib/sharing";
+import { Field, Textarea } from "@vitruviansoftware/design-system";
 
 type SaveStatus =
   "idle" | "saving" | "saved" | "conflict" | "forbidden" | "error";
@@ -97,36 +98,34 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+        <h1 className="text-2xl font-semibold text-paper">
           {space.name}
         </h1>
         <StatusPill status={status} />
       </header>
 
       <section className="mb-8">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-paper-dim">
           Notes
         </h2>
         {space.notes.length === 0 ? (
-          <p className="text-sm text-gray-400">No notes.</p>
+          <p className="text-sm text-paper-dim">No notes.</p>
         ) : (
           <div className="space-y-4">
             {space.notes.map((note) => (
               <div
                 key={note.id}
-                className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                className="border border-hairline p-3"
               >
-                <div className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {note.title}
-                </div>
-                <textarea
-                  aria-label={`Edit note ${note.title}`}
-                  value={note.content}
-                  disabled={locked}
-                  onChange={(e) => editNote(note.id, e.target.value)}
-                  className="w-full resize-y rounded border border-gray-200 p-2 text-sm dark:border-gray-700 dark:bg-gray-900"
-                  rows={3}
-                />
+                <Field label={note.title}>
+                  <Textarea
+                    aria-label={`Edit note ${note.title}`}
+                    value={note.content}
+                    disabled={locked}
+                    onChange={(e) => editNote(note.id, e.target.value)}
+                    rows={3}
+                  />
+                </Field>
               </div>
             ))}
           </div>
@@ -134,11 +133,11 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-paper-dim">
           Tasks
         </h2>
         {space.tasks.length === 0 ? (
-          <p className="text-sm text-gray-400">No tasks.</p>
+          <p className="text-sm text-paper-dim">No tasks.</p>
         ) : (
           <ul className="space-y-1">
             {space.tasks.map((task) => (
@@ -153,8 +152,8 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
                 <span
                   className={`text-sm ${
                     task.completed
-                      ? "text-gray-400 line-through"
-                      : "text-gray-900 dark:text-gray-100"
+                      ? "text-paper-dim line-through"
+                      : "text-paper"
                   }`}
                 >
                   {task.title}
@@ -183,7 +182,7 @@ function StatusPill({ status }: { status: SaveStatus }) {
     status === "saved"
       ? "text-green-600"
       : status === "saving"
-        ? "text-gray-400"
+        ? "text-paper-dim"
         : "text-amber-600";
   return (
     <span className={`text-xs font-medium ${tone}`} role="status">

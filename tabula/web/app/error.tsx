@@ -22,6 +22,8 @@
 
 "use client";
 
+import { Button } from "@vitruviansoftware/design-system";
+
 /**
  * Root error boundary for the application
  */
@@ -33,23 +35,22 @@ export default function Error({
   reset: () => void;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-ink">
       <div className="mx-auto max-w-md text-center">
         <div className="mb-4 text-6xl">⚠️</div>
-        <h2 className="mb-2 text-2xl font-bold text-gray-900">
+        <h2 className="mb-2 text-2xl font-bold text-paper">
           Something went wrong
         </h2>
-        <p className="mb-6 text-gray-600">
+        <p className="mb-6 text-paper-dim">
           {error.message ||
             "An unexpected error occurred while loading the dashboard."}
         </p>
-        <button
+        <Button
           type="button"
           onClick={reset}
-          className="rounded-md bg-blue-600 px-6 py-2 text-white hover:bg-blue-700 transition-colors"
         >
           Try Again
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useWorkspaceStore } from "@/lib/store";
 import type { Workspace } from "@/types";
+import { Button, Input } from "@vitruviansoftware/design-system";
 
 interface WorkspaceCardProps {
   workspace: Workspace;
@@ -45,16 +46,16 @@ function WorkspaceCard({ workspace }: WorkspaceCardProps) {
     workspace.tasks?.filter((t) => t.completed).length || 0;
 
   return (
-    <div className="rounded-lg bg-white p-6 shadow transition-shadow hover:shadow-lg">
+    <div className="bg-ink-2 p-6 shadow transition-shadow hover:shadow-lg">
       <div className="mb-4 flex items-start justify-between">
         <div className="flex items-center gap-3">
           {workspace.icon && <span className="text-2xl">{workspace.icon}</span>}
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-paper">
               {workspace.name}
             </h3>
             {workspace.description && (
-              <p className="mt-1 text-sm text-gray-600">
+              <p className="mt-1 text-sm text-paper-dim">
                 {workspace.description}
               </p>
             )}
@@ -64,20 +65,20 @@ function WorkspaceCard({ workspace }: WorkspaceCardProps) {
 
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Tabs:</span>
-          <span className="font-medium text-gray-900">{tabCount}</span>
+          <span className="text-paper-dim">Tabs:</span>
+          <span className="font-medium text-paper">{tabCount}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Resources:</span>
-          <span className="font-medium text-gray-900">{resourceCount}</span>
+          <span className="text-paper-dim">Resources:</span>
+          <span className="font-medium text-paper">{resourceCount}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Notes:</span>
-          <span className="font-medium text-gray-900">{noteCount}</span>
+          <span className="text-paper-dim">Notes:</span>
+          <span className="font-medium text-paper">{noteCount}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Tasks:</span>
-          <span className="font-medium text-gray-900">
+          <span className="text-paper-dim">Tasks:</span>
+          <span className="font-medium text-paper">
             {completedTasks}/{taskCount}
           </span>
         </div>
@@ -85,20 +86,20 @@ function WorkspaceCard({ workspace }: WorkspaceCardProps) {
 
       {workspace.tabs && workspace.tabs.length > 0 && (
         <div className="mt-4 border-t pt-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-gray-500">
+          <p className="mb-2 text-xs font-semibold uppercase text-paper-dim">
             Recent Tabs
           </p>
           <div className="space-y-1">
             {workspace.tabs.slice(0, 3).map((tab, index) => (
               <div
                 key={`${tab.url}-${index}`}
-                className="truncate text-sm text-gray-700"
+                className="truncate text-sm text-paper"
               >
                 • {tab.title || tab.url}
               </div>
             ))}
             {workspace.tabs.length > 3 && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-paper-dim">
                 +{workspace.tabs.length - 3} more tabs
               </div>
             )}
@@ -126,10 +127,10 @@ export default function WorkspacesPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 mx-auto" />
-          <p className="text-lg text-gray-600">Loading workspaces...</p>
+          <p className="text-lg text-paper-dim">Loading workspaces...</p>
         </div>
       </div>
     );
@@ -137,25 +138,25 @@ export default function WorkspacesPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <p className="text-lg text-red-600">{error}</p>
-          <button
+          <Button
             type="button"
             onClick={() => fetchWorkspaces()}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            className="mt-4"
           >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ink">
       {/* Header */}
-      <header className="border-b bg-white">
+      <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -165,7 +166,7 @@ export default function WorkspacesPage() {
               >
                 ← Back to Dashboard
               </Link>
-              <h1 className="text-3xl font-bold text-gray-900">Workspaces</h1>
+              <h1 className="text-3xl font-bold text-paper">Workspaces</h1>
             </div>
           </div>
         </div>
@@ -182,24 +183,23 @@ export default function WorkspacesPage() {
 
         {/* Search */}
         <div className="mb-6">
-          <input
+          <Input
             type="text"
             placeholder="Search workspaces..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
         {/* Workspaces Grid */}
         {filteredWorkspaces.length === 0 ? (
-          <div className="rounded-lg bg-white p-12 text-center shadow">
-            <p className="text-lg text-gray-600">
+          <div className="bg-ink-2 p-12 text-center shadow">
+            <p className="text-lg text-paper-dim">
               {searchQuery
                 ? "No workspaces found matching your search."
                 : "No workspaces yet."}
             </p>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-paper-dim">
               Create workspaces in the Tabula browser extension.
             </p>
           </div>

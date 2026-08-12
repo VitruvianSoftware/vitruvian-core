@@ -25,12 +25,12 @@
  */
 export default function AnalyticsLoading() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ink">
       {/* Header skeleton */}
-      <header className="border-b bg-white">
+      <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="h-4 w-32 animate-pulse rounded bg-gray-200 mb-2" />
-          <div className="h-8 w-32 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 w-32 animate-pulse bg-ink-3 mb-2" />
+          <div className="h-8 w-32 animate-pulse bg-ink-3" />
         </div>
       </header>
 
@@ -39,36 +39,36 @@ export default function AnalyticsLoading() {
         {/* Stats grid skeleton */}
         <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-lg bg-white p-6 shadow">
-              <div className="h-4 w-24 animate-pulse rounded bg-gray-200 mb-2" />
-              <div className="h-8 w-16 animate-pulse rounded bg-gray-200" />
+            <div key={i} className="bg-ink-2 p-6 shadow">
+              <div className="h-4 w-24 animate-pulse bg-ink-3 mb-2" />
+              <div className="h-8 w-16 animate-pulse bg-ink-3" />
             </div>
           ))}
         </div>
 
         {/* Charts skeleton */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="rounded-lg bg-white p-6 shadow">
-            <div className="h-6 w-48 animate-pulse rounded bg-gray-200 mb-4" />
+          <div className="bg-ink-2 p-6 shadow">
+            <div className="h-6 w-48 animate-pulse bg-ink-3 mb-4" />
             <div className="space-y-4">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i}>
                   <div className="flex justify-between mb-1">
-                    <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
-                    <div className="h-4 w-12 animate-pulse rounded bg-gray-200" />
+                    <div className="h-4 w-24 animate-pulse bg-ink-3" />
+                    <div className="h-4 w-12 animate-pulse bg-ink-3" />
                   </div>
-                  <div className="h-2 w-full animate-pulse rounded-full bg-gray-200" />
+                  <div className="h-2 w-full animate-pulse rounded-full bg-ink-3" />
                 </div>
               ))}
             </div>
           </div>
-          <div className="rounded-lg bg-white p-6 shadow">
-            <div className="h-6 w-24 animate-pulse rounded bg-gray-200 mb-4" />
+          <div className="bg-ink-2 p-6 shadow">
+            <div className="h-6 w-24 animate-pulse bg-ink-3 mb-4" />
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-lg bg-gray-100 p-4">
-                  <div className="h-5 w-32 animate-pulse rounded bg-gray-200 mb-2" />
-                  <div className="h-4 w-full animate-pulse rounded bg-gray-200" />
+                <div key={i} className="bg-ink-2 p-4">
+                  <div className="h-5 w-32 animate-pulse bg-ink-3 mb-2" />
+                  <div className="h-4 w-full animate-pulse bg-ink-3" />
                 </div>
               ))}
             </div>
