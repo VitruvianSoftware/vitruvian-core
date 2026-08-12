@@ -48,6 +48,7 @@ func TestComputeRevisionName(t *testing.T) {
   tabula-app:environment: "development"
   tabula-app:apiUrl: "https://tabula-api.dev.vitruviansoftware.dev/api/v1"
   tabula-app:authPostmessageOrigin: "chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof"
+  tabula-app:corsOrigin: "https://tabula.dev.vitruviansoftware.dev"
 `)
 
 	t.Run("matches what the revision package produces", func(t *testing.T) {
@@ -61,6 +62,7 @@ func TestComputeRevisionName(t *testing.T) {
 			"prj-d-bu2-oss-floating-c3d1",
 			"https://tabula-api.dev.vitruviansoftware.dev/api/v1",
 			"chrome-extension://eblknkhkhfolhecoobmpjhfejfcmfoof",
+			"https://tabula.dev.vitruviansoftware.dev",
 		)
 		want := revision.Name("tabula-api-development", "de662165", env)
 		if got != want {

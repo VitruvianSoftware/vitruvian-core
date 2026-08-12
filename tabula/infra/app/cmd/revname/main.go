@@ -59,8 +59,9 @@ const (
 	ns          = "tabula-app:"
 	keyProject  = ns + "project"
 	keyEnv      = ns + "environment"
-	keyAPIURL   = ns + "apiUrl"
-	keyPMOrigin = ns + "authPostmessageOrigin"
+	keyAPIURL      = ns + "apiUrl"
+	keyPMOrigin    = ns + "authPostmessageOrigin"
+	keyCORSOrigin  = ns + "corsOrigin"
 )
 
 // computeRevisionName renders the revision name from a Pulumi stack config file
@@ -93,7 +94,7 @@ func computeRevisionName(configPath, imageDigest string) (string, error) {
 	// Mirror main.go exactly: serviceName = tabula-api-<env>, env map from the
 	// two optional public config values (absent when unset).
 	serviceName := fmt.Sprintf("tabula-api-%s", env)
-	env2 := revision.EnvMap(project, sc.Config[keyAPIURL], sc.Config[keyPMOrigin])
+	env2 := revision.EnvMap(project, sc.Config[keyAPIURL], sc.Config[keyPMOrigin], sc.Config[keyCORSOrigin])
 	return revision.Name(serviceName, shortDigest, env2), nil
 }
 
