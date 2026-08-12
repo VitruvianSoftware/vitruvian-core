@@ -21,7 +21,7 @@
  */
 
 import React from "react";
-import { Button } from "../design-system";
+import { Button, Dialog, Kbd } from "../design-system";
 
 interface HelpModalProps {
   open: boolean;
@@ -36,22 +36,18 @@ const shortcuts = [
 ];
 
 const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-lg bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-6 space-y-4 animate-fade-in">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-semibold text-slate-100">
-            Help & Shortcuts
-          </h2>
-          <Button onClick={onClose} variant="ghost" size="sm">
-            ✕
-          </Button>
-        </div>
+    <Dialog
+      open={open}
+      title="Help & Shortcuts"
+      onDismiss={onClose}
+      actions={
+        <Button onClick={onClose} variant="ghost" size="sm">
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-4">
         <div>
           <h3 className="text-sm uppercase tracking-wide text-slate-400 mb-2">
             Keyboard Shortcuts
@@ -59,7 +55,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
           <ul className="space-y-1 text-sm">
             {shortcuts.map(([combo, desc]) => (
               <li key={combo} className="flex justify-between gap-4">
-                <span className="font-mono text-slate-200">{combo}</span>
+                <Kbd>{combo}</Kbd>
                 <span className="text-slate-400">{desc}</span>
               </li>
             ))}
@@ -126,13 +122,8 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
             exported snapshots are always masked regardless of Safe Mode.
           </p>
         </div>
-        <div className="flex justify-end">
-          <Button onClick={onClose} variant="ghost" size="sm">
-            Close
-          </Button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 

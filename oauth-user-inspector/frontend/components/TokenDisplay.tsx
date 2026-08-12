@@ -22,7 +22,7 @@
 
 import React, { useState } from "react";
 import { jwtDecode } from "jwt-decode";
-import { Button, Tag } from "../design-system";
+import { Button, Code, Label } from "../design-system";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 
 interface TokenDisplayProps {
@@ -93,9 +93,9 @@ const TokenItem: React.FC<{
   return (
     <div className="space-y-2 w-full overflow-hidden">
       <div className="flex items-center justify-between">
-        <h5 className="text-xs uppercase tracking-wide text-slate-400">
+        <Label>
           {title}
-        </h5>
+        </Label>
         <div className="flex gap-2 flex-shrink-0">
           {jwtDetails && (
             <Button
@@ -137,40 +137,40 @@ const TokenItem: React.FC<{
       </div>
 
       {/* Raw Token Display */}
-      <code className="block text-[10px] sm:text-xs break-all text-slate-300 select-all bg-slate-800 p-2 rounded border border-slate-700 w-full overflow-hidden">
+      <Code className="block w-full overflow-hidden">
         {visible
           ? token
           : safeMode
             ? "••••••••••••••••••••••••••••••••••••••••••••••••••••"
             : token.replace(/.(?=.{4})/g, "•")}
-      </code>
+      </Code>
 
       {/* JWT Decoded Display */}
       {jwtDetails && decodedVisible && (
         <div className="space-y-3 bg-slate-900/70 p-3 rounded border border-slate-600 w-full overflow-hidden">
           <div className="w-full overflow-hidden">
-            <h6 className="text-[10px] uppercase tracking-wide text-slate-400 mb-2">
+            <Label className="mb-2">
               JWT Header
-            </h6>
-            <pre className="text-[10px] text-slate-200 bg-slate-800 p-2 rounded w-full overflow-x-auto overflow-y-hidden whitespace-pre">
+            </Label>
+            <Code className="w-full overflow-x-auto overflow-y-hidden whitespace-pre">
               {JSON.stringify(jwtDetails.header, null, 2)}
-            </pre>
+            </Code>
           </div>
 
           <div className="w-full overflow-hidden">
-            <h6 className="text-[10px] uppercase tracking-wide text-slate-400 mb-2">
+            <Label className="mb-2">
               JWT Payload
-            </h6>
-            <pre className="text-[10px] text-slate-200 bg-slate-800 p-2 rounded w-full overflow-x-auto overflow-y-hidden whitespace-pre">
+            </Label>
+            <Code className="w-full overflow-x-auto overflow-y-hidden whitespace-pre">
               {JSON.stringify(jwtDetails.payload, null, 2)}
-            </pre>
+            </Code>
           </div>
 
           {/* Key JWT Claims Summary */}
           <div className="w-full overflow-hidden">
-            <h6 className="text-[10px] uppercase tracking-wide text-slate-400 mb-2">
+            <Label className="mb-2">
               Key Claims
-            </h6>
+            </Label>
             <div className="text-[10px] space-y-1 text-slate-300 w-full overflow-hidden">
               {jwtDetails.payload.iss && (
                 <div className="w-full overflow-hidden">
@@ -271,9 +271,9 @@ const TokenDisplay: React.FC<TokenDisplayProps> = ({
   return (
     <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 space-y-4 w-full overflow-hidden">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs uppercase tracking-wide text-slate-400">
+        <Label accent>
           Raw Token Inspection
-        </h4>
+        </Label>
         <div className="text-[10px] text-slate-500">
           JWT tokens show decoded header & payload
         </div>

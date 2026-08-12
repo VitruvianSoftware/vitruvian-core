@@ -24,7 +24,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import type { AppUser, ApiEndpoint } from "../types";
 import { ClipboardIcon, ClipboardCheckIcon } from "./icons";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
-import { Button } from "../design-system";
+import { Button, Code, Kbd, Segmented, Switch } from "../design-system";
 
 interface CodeSnippetGeneratorProps {
   user: AppUser;
@@ -331,30 +331,24 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
         {/* Language Selection */}
         <div>
           <label className="block text-xs text-slate-400 mb-1">Language</label>
-          <div className="flex bg-slate-800 border border-slate-600 rounded-md overflow-hidden">
-            {(["curl", "nodejs", "python", "go"] as const).map((lang) => (
-              <Button
-                key={lang}
-                onClick={() => setSelectedLanguage(lang)}
-                variant={selectedLanguage === lang ? "primary" : "ghost"}
-                size="sm"
-              >
-                {lang === "nodejs" ? "Node.js" : lang.toUpperCase()}
-              </Button>
-            ))}
-          </div>
+          <Segmented
+            name="language"
+            options={(["curl", "nodejs", "python", "go"] as const).map(lang => ({
+              value: lang,
+              label: lang === "nodejs" ? "Node.js" : lang.toUpperCase()
+            }))}
+            value={selectedLanguage}
+            onValueChange={(val) => setSelectedLanguage(val as CodeLanguage)}
+          />
         </div>
 
         {/* Token Masking Toggle */}
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Security</label>
-          <Button
-            onClick={() => setMaskToken(!maskToken)}
-            variant={maskToken ? "primary" : "ghost"}
-            size="sm"
-          >
-            {maskToken ? "🔒 Token Masked" : "👁️ Token Visible"}
-          </Button>
+        <div className="flex items-center">
+          <Switch
+            label="Mask sensitive values"
+            checked={maskToken}
+            onChange={() => setMaskToken(!maskToken)}
+          />
         </div>
       </div>
 
@@ -426,13 +420,9 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
             </div>
 
             <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
-              <pre className="p-4 text-xs text-slate-200 overflow-x-auto">
-                <code
-                  className={`language-${getLanguageExtension(selectedLanguage)}`}
-                >
-                  {generateSnippet(currentEndpoint, selectedLanguage)}
-                </code>
-              </pre>
+              <Code className={`language-${getLanguageExtension(selectedLanguage)}`}>
+                {generateSnippet(currentEndpoint, selectedLanguage)}
+              </Code>
             </div>
           </div>
 
@@ -452,18 +442,18 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               {selectedLanguage === "python" && (
                 <li>
                   • Install requests library:{" "}
-                  <code className="bg-slate-800 px-1 rounded">
+                  <Kbd>
                     pip install requests
-                  </code>
+                  </Kbd>
                 </li>
               )}
               {selectedLanguage === "go" && (
                 <>
                   <li>
                     • Run with:{" "}
-                    <code className="bg-slate-800 px-1 rounded">
+                    <Kbd>
                       go run main.go
-                    </code>
+                    </Kbd>
                   </li>
                   <li>
                     • No external dependencies required (uses standard library)

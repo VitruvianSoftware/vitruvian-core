@@ -23,7 +23,7 @@
 import React, { useState } from "react";
 import { Button } from "../design-system";
 import type { AppUser, ApiEndpoint, ApiExploreResponse } from "../types";
-import { Spinner } from "./icons";
+import { Spinner } from "../design-system";
 import JsonTree from "./JsonTree";
 import { getProviderEndpoints } from "../utils/apiEndpoints";
 
