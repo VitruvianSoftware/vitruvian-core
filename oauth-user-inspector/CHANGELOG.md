@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.7.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.0...oauth-user-inspector-v1.7.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** use Checkbox design system primitive in ScopeSelector ([#1560](https://github.com/VitruvianSoftware/vitruvian-core/issues/1560)) ([2a4122a](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a4122a78eb695917e13cec633533a3d41fb8f0b))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.6.1...oauth-user-inspector-v1.7.0) (2026-08-12)
 
 
