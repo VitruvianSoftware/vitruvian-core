@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.6.0...oauth-user-inspector-v1.6.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** resolve Rule className and Field label props for Docker build ([#1553](https://github.com/VitruvianSoftware/vitruvian-core/issues/1553)) ([b0649ee](https://github.com/VitruvianSoftware/vitruvian-core/commit/b0649ee275a858ffd6563d21862113fdc2ee4504))
+
 ## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.5.0...oauth-user-inspector-v1.6.0) (2026-08-12)
 
 
