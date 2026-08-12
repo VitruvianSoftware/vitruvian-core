@@ -87,6 +87,8 @@ The mapping of infrastructure → GCP account is in
   export GOOGLE_CLOUD_PROJECT=<gcp_project>
   ```
 
+- **GCP Project IDs:** Never infer or hardcode GCP Project IDs. They are generated with random 4-character suffixes (e.g., `prj-d-bu1-oss-floating-648a`). Always look up the exact project ID from `<app>/infra/app/Pulumi.<env>.yaml` (field `gcp:project`).
+
 > Adding a new Pulumi project that uses GCP? Add a row to the map **first** — the
 > wrapper silently skips injection (and falls back to the ambient account) for
 > projects not listed.
