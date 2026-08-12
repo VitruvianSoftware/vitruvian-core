@@ -49,7 +49,7 @@ const customJestConfig = {
     "^@/(.*)$": "<rootDir>/$1",
     "^geist/font/(.*)$": "<rootDir>/__mocks__/geistFont.js",
     "^@vitruviansoftware/design-system$": "<rootDir>/__mocks__/designSystem.js",
-    "\\.css$": "<rootDir>/__mocks__/geistFont.js"
+    "\\.css$": "<rootDir>/__mocks__/geistFont.js",
   },
 };
 
