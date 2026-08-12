@@ -333,10 +333,12 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
           <label className="block text-xs text-slate-400 mb-1">Language</label>
           <Segmented
             name="language"
-            options={(["curl", "nodejs", "python", "go"] as const).map(lang => ({
-              value: lang,
-              label: lang === "nodejs" ? "Node.js" : lang.toUpperCase()
-            }))}
+            options={(["curl", "nodejs", "python", "go"] as const).map(
+              (lang) => ({
+                value: lang,
+                label: lang === "nodejs" ? "Node.js" : lang.toUpperCase(),
+              }),
+            )}
             value={selectedLanguage}
             onValueChange={(val) => setSelectedLanguage(val as CodeLanguage)}
           />
@@ -420,7 +422,9 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
             </div>
 
             <div className="bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
-              <Code className={`language-${getLanguageExtension(selectedLanguage)}`}>
+              <Code
+                className={`language-${getLanguageExtension(selectedLanguage)}`}
+              >
                 {generateSnippet(currentEndpoint, selectedLanguage)}
               </Code>
             </div>
@@ -441,19 +445,13 @@ const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
               <li>• Add proper error handling for production use</li>
               {selectedLanguage === "python" && (
                 <li>
-                  • Install requests library:{" "}
-                  <Kbd>
-                    pip install requests
-                  </Kbd>
+                  • Install requests library: <Kbd>pip install requests</Kbd>
                 </li>
               )}
               {selectedLanguage === "go" && (
                 <>
                   <li>
-                    • Run with:{" "}
-                    <Kbd>
-                      go run main.go
-                    </Kbd>
+                    • Run with: <Kbd>go run main.go</Kbd>
                   </li>
                   <li>
                     • No external dependencies required (uses standard library)

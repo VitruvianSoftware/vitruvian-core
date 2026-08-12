@@ -21,7 +21,16 @@
  */
 
 import React, { useState } from "react";
-import { Button, Field, Input, Tag, Banner, Code, Rule, Textarea } from "../design-system";
+import {
+  Button,
+  Field,
+  Input,
+  Tag,
+  Banner,
+  Code,
+  Rule,
+  Textarea,
+} from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,
@@ -258,9 +267,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -354,14 +361,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               <div className="text-slate-400 space-y-2 text-sm bg-slate-900/50 p-4 rounded-lg border border-slate-700">
                 <p>
                   You can use a classic or fine-grained PAT. The token needs the{" "}
-                  <Code>
-                    read:user
-                  </Code>{" "}
-                  and{" "}
-                  <Code>
-                    user:email
-                  </Code>{" "}
-                  scopes.
+                  <Code>read:user</Code> and <Code>user:email</Code> scopes.
                   <Button
                     variant="ghost"
                     size="sm"
@@ -386,10 +386,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                   Note: these tokens typically expire in one hour.
                 </p>
                 <p>
-                  Run the following command:{" "}
-                  <Code>
-                    gh auth token
-                  </Code>
+                  Run the following command: <Code>gh auth token</Code>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -512,9 +509,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -612,9 +607,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
                 <p>
                   Run the following command:{" "}
-                  <Code>
-                    gcloud auth print-access-token
-                  </Code>
+                  <Code>gcloud auth print-access-token</Code>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -729,9 +722,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -886,9 +877,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1068,9 +1057,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1250,9 +1237,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </a>
               </div>
               <div className="flex items-center justify-between text-sm bg-slate-700 p-2 rounded-md mb-4">
-                <Code>
-                  {getEffectiveRedirectUri(customRedirectUri)}
-                </Code>
+                <Code>{getEffectiveRedirectUri(customRedirectUri)}</Code>
                 <Button
                   variant="ghost"
                   size="sm"

@@ -93,9 +93,7 @@ const TokenItem: React.FC<{
   return (
     <div className="space-y-2 w-full overflow-hidden">
       <div className="flex items-center justify-between">
-        <Label>
-          {title}
-        </Label>
+        <Label>{title}</Label>
         <div className="flex gap-2 flex-shrink-0">
           {jwtDetails && (
             <Button
@@ -149,18 +147,14 @@ const TokenItem: React.FC<{
       {jwtDetails && decodedVisible && (
         <div className="space-y-3 bg-slate-900/70 p-3 rounded border border-slate-600 w-full overflow-hidden">
           <div className="w-full overflow-hidden">
-            <Label className="mb-2">
-              JWT Header
-            </Label>
+            <Label className="mb-2">JWT Header</Label>
             <Code className="w-full overflow-x-auto overflow-y-hidden whitespace-pre">
               {JSON.stringify(jwtDetails.header, null, 2)}
             </Code>
           </div>
 
           <div className="w-full overflow-hidden">
-            <Label className="mb-2">
-              JWT Payload
-            </Label>
+            <Label className="mb-2">JWT Payload</Label>
             <Code className="w-full overflow-x-auto overflow-y-hidden whitespace-pre">
               {JSON.stringify(jwtDetails.payload, null, 2)}
             </Code>
@@ -168,9 +162,7 @@ const TokenItem: React.FC<{
 
           {/* Key JWT Claims Summary */}
           <div className="w-full overflow-hidden">
-            <Label className="mb-2">
-              Key Claims
-            </Label>
+            <Label className="mb-2">Key Claims</Label>
             <div className="text-[10px] space-y-1 text-slate-300 w-full overflow-hidden">
               {jwtDetails.payload.iss && (
                 <div className="w-full overflow-hidden">
@@ -271,9 +263,7 @@ const TokenDisplay: React.FC<TokenDisplayProps> = ({
   return (
     <div className="mt-4 bg-slate-900/60 border border-slate-700 rounded-md p-3 space-y-4 w-full overflow-hidden">
       <div className="flex items-center justify-between">
-        <Label accent>
-          Raw Token Inspection
-        </Label>
+        <Label accent>Raw Token Inspection</Label>
         <div className="text-[10px] text-slate-500">
           JWT tokens show decoded header & payload
         </div>

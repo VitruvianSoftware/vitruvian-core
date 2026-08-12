@@ -502,9 +502,7 @@ const UserInfoDisplay: React.FC<UserInfoDisplayProps> = ({
       {/* Body: table + JSON */}
       <div className="bg-slate-800/50 p-0 rounded-b-xl overflow-hidden">
         <div className="flex flex-wrap gap-2 p-4 border-b border-slate-700 bg-slate-900/40">
-          <Label className="self-center">
-            View Mode:
-          </Label>
+          <Label className="self-center">View Mode:</Label>
           <Segmented
             name="viewMode"
             options={[
@@ -849,9 +847,7 @@ const JsonViewContainer: React.FC<{ data: any }> = ({ data }) => {
       {mode === "tree" ? (
         <JsonTree data={data} />
       ) : (
-        <Code>
-          {JSON.stringify(data, null, 2)}
-        </Code>
+        <Code>{JSON.stringify(data, null, 2)}</Code>
       )}
     </div>
   );
