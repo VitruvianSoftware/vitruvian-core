@@ -24,7 +24,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { Button } from "@vitruviansoftware/design-system";
+import { Button, Card } from "@vitruviansoftware/design-system";
 import { useWorkspaceStore } from "@/lib/store";
 import { Section, Task } from "@/types";
 
@@ -34,14 +34,7 @@ interface MetricCardProps {
 }
 
 function MetricCard({ title, value }: MetricCardProps) {
-  return (
-    <div className=" bg-ink-2 p-6 shadow">
-      <h3 className="text-sm font-medium text-paper-dim">{title}</h3>
-      <div className="mt-2 flex items-baseline">
-        <p className="text-3xl font-semibold text-paper">{value}</p>
-      </div>
-    </div>
-  );
+  return <Card kicker={title} title={value} surface="fill" elevation="sm" />;
 }
 
 export default function AnalyticsPage() {

@@ -26,7 +26,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SharingService, ApiError, type RelayInfo } from "@/lib/sharing";
 import { AuthService } from "@/lib/auth";
-import { Button } from "@vitruviansoftware/design-system";
+import { Button, Plate, EmptyState } from "@vitruviansoftware/design-system";
 
 // The installed extension's id + store listing. Until the extension publishes,
 // the id is empty and detection simply fails closed (→ the not-installed
@@ -114,10 +114,24 @@ export default function RelayLandingPage() {
     setLoggedIn(Boolean(AuthService.getToken()));
   }
 
-  if (phase === "loading") return <Centered>Opening shared space…</Centered>;
+  if (phase === "loading")
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <EmptyState title="Opening shared space…" />
+      </div>
+    );
   if (phase === "invalid")
-    return <Centered>This link is invalid, revoked, or expired.</Centered>;
-  if (phase === "opening") return <Centered>Opening in Tabula…</Centered>;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <EmptyState title="This link is invalid, revoked, or expired." />
+      </div>
+    );
+  if (phase === "opening")
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <EmptyState title="Opening in Tabula…" />
+      </div>
+    );
 
   const canEdit = info?.role === "edit";
   return (
@@ -161,7 +175,7 @@ export default function RelayLandingPage() {
 
 function RelayPreviewCard({ info }: { info: RelayInfo }) {
   return (
-    <div className="border border-hairline p-6 text-center">
+    <Plate className="p-6 text-center">
       <p className="text-sm text-paper-dim">
         {info.ownerName} shared a space with you
       </p>
@@ -171,15 +185,7 @@ function RelayPreviewCard({ info }: { info: RelayInfo }) {
       <p className="mt-1 text-xs uppercase tracking-wide text-paper-dim">
         {info.role === "edit" ? "Can edit" : "View only"}
       </p>
-    </div>
-  );
-}
-
-function Centered({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4 text-center text-sm text-paper-dim">
-      {children}
-    </div>
+    </Plate>
   );
 }
 

@@ -22,7 +22,7 @@
 
 "use client";
 
-import { Button } from "@vitruviansoftware/design-system";
+import { Button, EmptyState } from "@vitruviansoftware/design-system";
 
 /**
  * Root error boundary for the application
@@ -36,19 +36,17 @@ export default function Error({
 }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink">
-      <div className="mx-auto max-w-md text-center">
-        <div className="mb-4 text-6xl">⚠️</div>
-        <h2 className="mb-2 text-2xl font-bold text-paper">
-          Something went wrong
-        </h2>
-        <p className="mb-6 text-paper-dim">
-          {error.message ||
-            "An unexpected error occurred while loading the dashboard."}
-        </p>
-        <Button type="button" onClick={reset}>
-          Try Again
-        </Button>
-      </div>
+      <EmptyState
+        title="Something went wrong"
+        actions={
+          <Button type="button" onClick={reset}>
+            Try again
+          </Button>
+        }
+      >
+        {error.message ||
+          "An unexpected error occurred while loading the dashboard."}
+      </EmptyState>
     </div>
   );
 }

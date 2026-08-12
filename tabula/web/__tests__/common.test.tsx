@@ -57,13 +57,13 @@ describe("Common Components", () => {
     it("should render analytics loading skeleton", () => {
       const { container } = render(<AnalyticsLoading />);
       expect(container.querySelector("main")).toBeInTheDocument();
-      expect(container.querySelector(".animate-pulse")).toBeInTheDocument();
+      expect(container.querySelector(".skeleton")).toBeInTheDocument();
     });
 
     it("should render workspaces loading skeleton", () => {
       const { container } = render(<WorkspacesLoading />);
       expect(container.querySelector("main")).toBeInTheDocument();
-      expect(container.querySelector(".animate-pulse")).toBeInTheDocument();
+      expect(container.querySelector(".skeleton")).toBeInTheDocument();
     });
   });
 
@@ -76,7 +76,7 @@ describe("Common Components", () => {
       expect(screen.getByText("Something went wrong")).toBeInTheDocument();
       expect(screen.getByText("Test Error Message")).toBeInTheDocument();
 
-      const btn = screen.getByText("Try Again");
+      const btn = screen.getByText("Try again");
       fireEvent.click(btn);
       expect(resetMock).toHaveBeenCalled();
     });

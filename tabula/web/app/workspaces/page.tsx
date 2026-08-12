@@ -26,7 +26,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useWorkspaceStore } from "@/lib/store";
 import type { Workspace } from "@/types";
-import { Button, Input } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  Input,
+  Plate,
+  EmptyState,
+} from "@vitruviansoftware/design-system";
 
 interface WorkspaceCardProps {
   workspace: Workspace;
@@ -46,7 +51,11 @@ function WorkspaceCard({ workspace }: WorkspaceCardProps) {
     workspace.tasks?.filter((t) => t.completed).length || 0;
 
   return (
-    <div className="bg-ink-2 p-6 shadow transition-shadow hover:shadow-lg">
+    <Plate
+      live
+      enter
+      className="bg-ink-2 p-6 shadow transition-shadow hover:shadow-lg"
+    >
       <div className="mb-4 flex items-start justify-between">
         <div className="flex items-center gap-3">
           {workspace.icon && <span className="text-2xl">{workspace.icon}</span>}
@@ -106,7 +115,7 @@ function WorkspaceCard({ workspace }: WorkspaceCardProps) {
           </div>
         </div>
       )}
-    </div>
+    </Plate>
   );
 }
 
@@ -193,16 +202,15 @@ export default function WorkspacesPage() {
 
         {/* Workspaces Grid */}
         {filteredWorkspaces.length === 0 ? (
-          <div className="bg-ink-2 p-12 text-center shadow">
-            <p className="text-lg text-paper-dim">
-              {searchQuery
+          <EmptyState
+            title={
+              searchQuery
                 ? "No workspaces found matching your search."
-                : "No workspaces yet."}
-            </p>
-            <p className="mt-2 text-sm text-paper-dim">
-              Create workspaces in the Tabula browser extension.
-            </p>
-          </div>
+                : "No workspaces yet."
+            }
+          >
+            Create workspaces in the Tabula browser extension.
+          </EmptyState>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filteredWorkspaces.map((workspace) => (

@@ -25,6 +25,7 @@
 import { useState, type ReactNode } from "react";
 import type { Workspace, Resource, Note, Task } from "@tabula/shared";
 import { safeHref } from "@/lib/safeHref";
+import { Plate, Tabs, EmptyState } from "@vitruviansoftware/design-system";
 
 type SpaceTab = "resources" | "notes" | "tasks";
 
@@ -63,24 +64,21 @@ export function SpaceView({ space }: { space: Workspace }) {
         ) : null}
       </header>
 
-      <nav className="mb-6 flex gap-1 border-b border-hairline">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            aria-pressed={tab === t.key}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-              tab === t.key
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-paper-dim hover:text-paper"
-            }`}
-          >
-            {t.label}
-            <span className="ml-1.5 text-xs text-paper-dim">{t.count}</span>
-          </button>
-        ))}
-      </nav>
+      <div className="mb-6">
+        <Tabs
+          tabs={tabs.map((t) => ({
+            id: t.key,
+            label: (
+              <>
+                {t.label}
+                <span className="ml-1.5 text-xs text-paper-dim">{t.count}</span>
+              </>
+            ),
+          }))}
+          active={tab}
+          onChange={(id) => setTab(id as SpaceTab)}
+        />
+      </div>
 
       {tab === "resources" ? (
         <ResourcesPanel sections={sections} looseResources={looseResources} />
@@ -99,7 +97,7 @@ function ResourcesPanel({
   looseResources: Resource[];
 }) {
   if (sections.length === 0 && looseResources.length === 0) {
-    return <EmptyState>No resources in this space yet.</EmptyState>;
+    return <EmptyState title="No resources in this space yet." />;
   }
   return (
     <div className="space-y-6">
@@ -163,12 +161,12 @@ function ResourceItem({ resource }: { resource: Resource }) {
 
 function NotesPanel({ notes }: { notes: Note[] }) {
   if (notes.length === 0) {
-    return <EmptyState>No notes in this space yet.</EmptyState>;
+    return <EmptyState title="No notes in this space yet." />;
   }
   return (
     <div className="space-y-4">
       {notes.map((note) => (
-        <article key={note.id} className="border border-hairline p-4">
+        <Plate as="article" key={note.id} className="p-4">
           <h3 className="mb-1 text-sm font-semibold text-paper">
             {note.title}
           </h3>
@@ -176,7 +174,7 @@ function NotesPanel({ notes }: { notes: Note[] }) {
           <p className="whitespace-pre-wrap text-sm text-paper-dim">
             {note.content}
           </p>
-        </article>
+        </Plate>
       ))}
     </div>
   );
@@ -184,7 +182,7 @@ function NotesPanel({ notes }: { notes: Note[] }) {
 
 function TasksPanel({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0) {
-    return <EmptyState>No tasks in this space yet.</EmptyState>;
+    return <EmptyState title="No tasks in this space yet." />;
   }
   return (
     <ul className="space-y-1">
@@ -208,8 +206,4 @@ function TasksPanel({ tasks }: { tasks: Task[] }) {
       ))}
     </ul>
   );
-}
-
-function EmptyState({ children }: { children: ReactNode }) {
-  return <p className="py-8 text-center text-sm text-paper-dim">{children}</p>;
 }

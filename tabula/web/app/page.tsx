@@ -25,7 +25,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useEffect } from "react";
 import Link from "next/link";
-import { Button } from "@vitruviansoftware/design-system";
+import { Button, Card, Plate } from "@vitruviansoftware/design-system";
 import { useWorkspaceStore } from "@/lib/store";
 import { exportWorkspaces, downloadFile, seedDemoData } from "@/lib/data";
 
@@ -37,29 +37,10 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, icon, color }: StatCardProps) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-100 text-blue-600",
-    purple: "bg-purple-100 text-purple-600",
-    green: "bg-green-100 text-green-600",
-    yellow: "bg-yellow-100 text-yellow-600",
-    indigo: "bg-indigo-100 text-indigo-600",
-    pink: "bg-pink-100 text-pink-600",
-  };
-
   return (
-    <div className=" bg-ink-2 p-6 shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-paper-dim">{title}</p>
-          <p className="mt-2 text-3xl font-semibold text-paper">{value}</p>
-        </div>
-        <div
-          className={`flex h-12 w-12 items-center justify-center ${colorClasses[color]}`}
-        >
-          <span className="text-2xl">{icon}</span>
-        </div>
-      </div>
-    </div>
+    <Card kicker={icon} title={value} surface="fill" elevation="sm">
+      {title}
+    </Card>
   );
 }
 
@@ -248,60 +229,68 @@ export default function Home() {
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Link
-              href="/workspaces"
-              className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-paper">View Workspaces</h3>
-                <p className="mt-1 text-sm text-paper-dim">
-                  Browse all your workspaces
-                </p>
-              </div>
-              <span className="text-2xl">→</span>
-            </Link>
+            <Plate live enter>
+              <Link
+                href="/workspaces"
+                className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">View Workspaces</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    Browse all your workspaces
+                  </p>
+                </div>
+                <span className="text-2xl">→</span>
+              </Link>
+            </Plate>
 
-            <Link
-              href="/analytics"
-              className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-paper">Analytics</h3>
-                <p className="mt-1 text-sm text-paper-dim">
-                  View detailed statistics
-                </p>
-              </div>
-              <span className="text-2xl">→</span>
-            </Link>
+            <Plate live enter>
+              <Link
+                href="/analytics"
+                className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">Analytics</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    View detailed statistics
+                  </p>
+                </div>
+                <span className="text-2xl">→</span>
+              </Link>
+            </Plate>
 
-            <button
-              type="button"
-              onClick={() => handleExport("json")}
-              className="flex items-center justify-between border border-hairline p-4 text-left transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-paper">Export Data</h3>
-                <p className="mt-1 text-sm text-paper-dim">
-                  Download your data
-                </p>
-              </div>
-              <span className="text-2xl">⬇</span>
-            </button>
+            <Plate live enter>
+              <button
+                type="button"
+                onClick={() => handleExport("json")}
+                className="w-full flex items-center justify-between border border-hairline p-4 text-left transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">Export Data</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    Download your data
+                  </p>
+                </div>
+                <span className="text-2xl">⬇</span>
+              </button>
+            </Plate>
           </div>
         </div>
 
         {/* Info Section */}
-        <div className="mt-8 bg-blue-50 p-6">
-          <h2 className="mb-2 text-lg font-semibold text-blue-900">
-            About Tabula Dashboard
-          </h2>
-          <p className="text-blue-800">
-            This web dashboard provides a centralized view of your Tabula
-            workspaces, with analytics and data export capabilities. Use the
-            navigation above to explore your workspaces and view detailed
-            statistics.
-          </p>
-        </div>
+        <Plate as="section">
+          <div className="mt-8 bg-blue-50 p-6">
+            <h2 className="mb-2 text-lg font-semibold text-blue-900">
+              About Tabula Dashboard
+            </h2>
+            <p className="text-blue-800">
+              This web dashboard provides a centralized view of your Tabula
+              workspaces, with analytics and data export capabilities. Use the
+              navigation above to explore your workspaces and view detailed
+              statistics.
+            </p>
+          </div>
+        </Plate>
       </main>
     </div>
   );

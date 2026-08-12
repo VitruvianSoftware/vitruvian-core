@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { Skeleton } from "@vitruviansoftware/design-system";
+
 /**
  * Loading state for analytics page
  */
@@ -29,8 +31,8 @@ export default function AnalyticsLoading() {
       {/* Header skeleton */}
       <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="h-4 w-32 animate-pulse bg-ink-3 mb-2" />
-          <div className="h-8 w-32 animate-pulse bg-ink-3" />
+          <Skeleton className="mb-2" width="8rem" height={16} />
+          <Skeleton width="8rem" height={32} />
         </div>
       </header>
 
@@ -40,8 +42,8 @@ export default function AnalyticsLoading() {
         <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-ink-2 p-6 shadow">
-              <div className="h-4 w-24 animate-pulse bg-ink-3 mb-2" />
-              <div className="h-8 w-16 animate-pulse bg-ink-3" />
+              <Skeleton className="mb-2" width="6rem" height={16} />
+              <Skeleton width="4rem" height={32} />
             </div>
           ))}
         </div>
@@ -49,26 +51,26 @@ export default function AnalyticsLoading() {
         {/* Charts skeleton */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="bg-ink-2 p-6 shadow">
-            <div className="h-6 w-48 animate-pulse bg-ink-3 mb-4" />
+            <Skeleton className="mb-4" width="12rem" height={24} />
             <div className="space-y-4">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i}>
                   <div className="flex justify-between mb-1">
-                    <div className="h-4 w-24 animate-pulse bg-ink-3" />
-                    <div className="h-4 w-12 animate-pulse bg-ink-3" />
+                    <Skeleton width="6rem" height={16} />
+                    <Skeleton width="3rem" height={16} />
                   </div>
-                  <div className="h-2 w-full animate-pulse rounded-full bg-ink-3" />
+                  <Skeleton width="100%" height={8} className="rounded-full" />
                 </div>
               ))}
             </div>
           </div>
           <div className="bg-ink-2 p-6 shadow">
-            <div className="h-6 w-24 animate-pulse bg-ink-3 mb-4" />
+            <Skeleton className="mb-4" width="6rem" height={24} />
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="bg-ink-2 p-4">
-                  <div className="h-5 w-32 animate-pulse bg-ink-3 mb-2" />
-                  <div className="h-4 w-full animate-pulse bg-ink-3" />
+                  <Skeleton className="mb-2" width="8rem" height={20} />
+                  <Skeleton width="100%" height={16} />
                 </div>
               ))}
             </div>

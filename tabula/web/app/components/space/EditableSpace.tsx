@@ -25,7 +25,7 @@
 import { useRef, useState } from "react";
 import type { Workspace } from "@tabula/shared";
 import { SharingService, ApiError } from "@/lib/sharing";
-import { Field, Textarea } from "@vitruviansoftware/design-system";
+import { Field, Textarea, Plate } from "@vitruviansoftware/design-system";
 
 type SaveStatus =
   "idle" | "saving" | "saved" | "conflict" | "forbidden" | "error";
@@ -111,7 +111,7 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
         ) : (
           <div className="space-y-4">
             {space.notes.map((note) => (
-              <div key={note.id} className="border border-hairline p-3">
+              <Plate key={note.id} className="p-3">
                 <Field label={note.title}>
                   <Textarea
                     aria-label={`Edit note ${note.title}`}
@@ -121,7 +121,7 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
                     rows={3}
                   />
                 </Field>
-              </div>
+              </Plate>
             ))}
           </div>
         )}
