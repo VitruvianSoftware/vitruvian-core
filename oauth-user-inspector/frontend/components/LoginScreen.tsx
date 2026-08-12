@@ -29,7 +29,9 @@ import {
   Banner,
   Code,
   Rule,
-  Textarea, Plate } from "../design-system";
+  Textarea,
+  Plate,
+} from "../design-system";
 import { AuthProvider } from "../types";
 import {
   GithubIcon,
@@ -208,7 +210,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             Custom Redirect URI (optional)
           </label>
           <div className="flex gap-2">
-            <Input className="flex-1" type="text" value={customRedirectUri} onChange={(e) => onCustomRedirectUriChange?.(e.target.value)} placeholder={getRedirectUri()} />
+            <Input
+              className="flex-1"
+              type="text"
+              value={customRedirectUri}
+              onChange={(e) => onCustomRedirectUriChange?.(e.target.value)}
+              placeholder={getRedirectUri()}
+            />
             <Button
               variant="ghost"
               size="sm"
@@ -277,8 +285,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="GitHub OAuth App Client ID">
-                                <Input id="github-client-id" type="text" value={githubClientId} onChange={(e) => setGithubClientId(e.target.value)} placeholder="Enter your GitHub Client ID" />
-                              </Field>
+                  <Input
+                    id="github-client-id"
+                    type="text"
+                    value={githubClientId}
+                    onChange={(e) => setGithubClientId(e.target.value)}
+                    placeholder="Enter your GitHub Client ID"
+                  />
+                </Field>
                 <Field label="GitHub OAuth App Client Secret">
                   <div className="relative">
                     <Input
@@ -492,8 +506,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="Google OAuth App Client ID">
-                                <Input id="google-client-id" type="text" value={googleClientId} onChange={(e) => setGoogleClientId(e.target.value)} placeholder="Enter your Google Client ID" />
-                              </Field>
+                  <Input
+                    id="google-client-id"
+                    type="text"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value)}
+                    placeholder="Enter your Google Client ID"
+                  />
+                </Field>
                 <Field label="Google OAuth App Client Secret">
                   <div className="relative">
                     <Input
@@ -569,8 +589,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 </p>
               </div>
               <Field label="Google CLI Access Token">
-                            <Textarea id="gcloud-token-input" rows={3} value={gcloudToken} onChange={(e) => setGcloudToken(e.target.value)} placeholder="ya29..." />
-                          </Field>
+                <Textarea
+                  id="gcloud-token-input"
+                  rows={3}
+                  value={gcloudToken}
+                  onChange={(e) => setGcloudToken(e.target.value)}
+                  placeholder="ya29..."
+                />
+              </Field>
               <div className="mt-6">
                 <Button
                   variant="primary"
@@ -672,8 +698,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="GitLab Application ID">
-                                <Input id="gitlab-client-id" type="text" value={gitlabClientId} onChange={(e) => setGitlabClientId(e.target.value)} placeholder="Enter your GitLab Application ID" />
-                              </Field>
+                  <Input
+                    id="gitlab-client-id"
+                    type="text"
+                    value={gitlabClientId}
+                    onChange={(e) => setGitlabClientId(e.target.value)}
+                    placeholder="Enter your GitLab Application ID"
+                  />
+                </Field>
                 <Field label="GitLab Secret">
                   <div className="relative">
                     <Input
@@ -807,11 +839,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="Auth0 Domain">
-                                <Input id="auth0-domain" type="text" value={auth0Domain} onChange={(e) => setAuth0Domain(e.target.value)} placeholder="your-tenant.us.auth0.com" />
-                              </Field>
+                  <Input
+                    id="auth0-domain"
+                    type="text"
+                    value={auth0Domain}
+                    onChange={(e) => setAuth0Domain(e.target.value)}
+                    placeholder="your-tenant.us.auth0.com"
+                  />
+                </Field>
                 <Field label="Auth0 Client ID">
-                                <Input id="auth0-client-id" type="text" value={auth0ClientId} onChange={(e) => setAuth0ClientId(e.target.value)} placeholder="Enter your Auth0 Client ID" />
-                              </Field>
+                  <Input
+                    id="auth0-client-id"
+                    type="text"
+                    value={auth0ClientId}
+                    onChange={(e) => setAuth0ClientId(e.target.value)}
+                    placeholder="Enter your Auth0 Client ID"
+                  />
+                </Field>
                 <Field label="Auth0 Client Secret">
                   <div className="relative">
                     <Input
@@ -950,11 +994,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="Zitadel Domain">
-                                <Input id="zitadel-domain" type="text" value={zitadelDomain} onChange={(e) => setZitadelDomain(e.target.value)} placeholder="auth.ipv1337.dev" />
-                              </Field>
+                  <Input
+                    id="zitadel-domain"
+                    type="text"
+                    value={zitadelDomain}
+                    onChange={(e) => setZitadelDomain(e.target.value)}
+                    placeholder="auth.ipv1337.dev"
+                  />
+                </Field>
                 <Field label="Zitadel Client ID">
-                                <Input id="zitadel-client-id" type="text" value={zitadelClientId} onChange={(e) => setZitadelClientId(e.target.value)} placeholder="Enter your Zitadel Client ID" />
-                              </Field>
+                  <Input
+                    id="zitadel-client-id"
+                    type="text"
+                    value={zitadelClientId}
+                    onChange={(e) => setZitadelClientId(e.target.value)}
+                    placeholder="Enter your Zitadel Client ID"
+                  />
+                </Field>
                 <Field label="Zitadel Client Secret">
                   <div className="relative">
                     <Input
@@ -1090,8 +1146,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
               <div className="space-y-3">
                 <Field label="LinkedIn Client ID">
-                                <Input id="linkedin-client-id" type="text" value={linkedinClientId} onChange={(e) => setLinkedinClientId(e.target.value)} placeholder="Enter your LinkedIn Client ID" />
-                              </Field>
+                  <Input
+                    id="linkedin-client-id"
+                    type="text"
+                    value={linkedinClientId}
+                    onChange={(e) => setLinkedinClientId(e.target.value)}
+                    placeholder="Enter your LinkedIn Client ID"
+                  />
+                </Field>
                 <Field label="LinkedIn Client Secret">
                   <div className="relative">
                     <Input

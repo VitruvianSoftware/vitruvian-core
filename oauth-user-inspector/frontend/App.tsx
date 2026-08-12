@@ -1090,11 +1090,31 @@ const App: React.FC = () => {
         <div className="mx-auto max-w-4xl px-4 py-6 text-center text-sm text-paper-dim flex flex-col items-center gap-2">
           <p>Built for demonstration and troubleshooting.</p>
           <div className="flex gap-2">
-            <Button onClick={() => setShowHelp(true)} variant="secondary" size="sm">Help & Shortcuts</Button>
+            <Button
+              onClick={() => setShowHelp(true)}
+              variant="secondary"
+              size="sm"
+            >
+              Help & Shortcuts
+            </Button>
             {process.env.NODE_ENV == "development" && (
               <>
-                <Button onClick={createSampleTokenDemo} title="Demo the enhanced token display with sample JWT tokens" variant="secondary" size="sm">Demo Token Display</Button>
-                <Button onClick={createEnhancedOAuthErrorDemo} title="Demo the enhanced OAuth error display with troubleshooting guidance" variant="danger" size="sm">Demo OAuth Error</Button>
+                <Button
+                  onClick={createSampleTokenDemo}
+                  title="Demo the enhanced token display with sample JWT tokens"
+                  variant="secondary"
+                  size="sm"
+                >
+                  Demo Token Display
+                </Button>
+                <Button
+                  onClick={createEnhancedOAuthErrorDemo}
+                  title="Demo the enhanced OAuth error display with troubleshooting guidance"
+                  variant="danger"
+                  size="sm"
+                >
+                  Demo OAuth Error
+                </Button>
               </>
             )}
           </div>

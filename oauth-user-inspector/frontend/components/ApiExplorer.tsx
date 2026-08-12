@@ -106,15 +106,15 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
   const hasRequiredScopes = (endpoint: ApiEndpoint): boolean => {
     if (!endpoint.requiredScopes) return true;
     const userScopes = getUserScopes();
-    return endpoint.requiredScopes.some((scope: string) => userScopes.includes(scope));
+    return endpoint.requiredScopes.some((scope: string) =>
+      userScopes.includes(scope),
+    );
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-paper mb-2">
-          API Explorer
-        </h3>
+        <h3 className="text-lg font-semibold text-paper mb-2">API Explorer</h3>
         <p className="text-sm text-paper-dim mb-4">
           Test your access token against common {user.provider} API endpoints.
           {user.scopes && user.scopes.length > 0 && (
@@ -207,9 +207,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
               {/* Response metadata */}
               <div className="p-3 border border-hairline bg-ink-2/50 rounded-md">
                 <div className="flex items-center justify-between mb-2">
-                  <h5 className="font-medium text-paper">
-                    Response Details
-                  </h5>
+                  <h5 className="font-medium text-paper">Response Details</h5>
                   <span
                     className={`px-2 py-1 text-xs rounded ${
                       response.status && response.status < 300
@@ -238,9 +236,7 @@ const ApiExplorer: React.FC<ApiExplorerProps> = ({ user }) => {
               {response.data && (
                 <div className="border border-hairline bg-ink-2/50 rounded-md">
                   <div className="p-3 border-b border-hairline">
-                    <h5 className="font-medium text-paper">
-                      Response Data
-                    </h5>
+                    <h5 className="font-medium text-paper">Response Data</h5>
                   </div>
                   <div className="p-3">
                     <JsonTree data={response.data} />
