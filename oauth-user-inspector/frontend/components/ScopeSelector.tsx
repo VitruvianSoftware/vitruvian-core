@@ -21,7 +21,14 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Button, Field, Input, Textarea, Label } from "../design-system";
+import {
+  Button,
+  Field,
+  Input,
+  Textarea,
+  Label,
+  Checkbox,
+} from "../design-system";
 import { AuthProvider } from "../types";
 
 interface ScopeSelectorProps {
@@ -216,8 +223,10 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
         <div className="bg-ink-2 border border-hairline rounded-md p-3 max-h-48 overflow-y-auto">
           <div className="grid grid-cols-1 gap-2">
             {DEFAULT_SCOPES[provider].map((scope) => (
-              <Field
+              <Checkbox
                 key={scope}
+                checked={selectedScopes.includes(scope)}
+                onChange={() => handleScopeToggle(scope)}
                 label={
                   <span
                     className={`font-mono text-xs ${
@@ -229,13 +238,7 @@ const ScopeSelector: React.FC<ScopeSelectorProps> = ({
                     {scope}
                   </span>
                 }
-              >
-                <Input
-                  type="checkbox"
-                  checked={selectedScopes.includes(scope)}
-                  onChange={() => handleScopeToggle(scope)}
-                />
-              </Field>
+              />
             ))}
           </div>
           <div className="mt-3 pt-2 border-t border-hairline">
