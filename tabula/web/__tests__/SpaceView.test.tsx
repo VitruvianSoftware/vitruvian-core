@@ -101,7 +101,7 @@ describe("SpaceView", () => {
         })}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Notes/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Notes/ }));
     // The raw string is shown verbatim (escaped); no <img> element is created.
     expect(
       screen.getByText("<img src=x onerror=alert(1)>"),
@@ -120,7 +120,7 @@ describe("SpaceView", () => {
         })}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Tasks/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Tasks/ }));
     const done = screen.getByLabelText("Done") as HTMLInputElement;
     expect(done.checked).toBe(true);
     expect(done.disabled).toBe(true);
@@ -136,7 +136,7 @@ describe("SpaceView", () => {
     );
     // Notes hidden until the tab is selected.
     expect(screen.queryByText("MyNote")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Notes/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Notes/ }));
     expect(screen.getByText("MyNote")).toBeInTheDocument();
   });
 

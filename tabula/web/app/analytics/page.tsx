@@ -24,6 +24,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { Button, Card } from "@vitruviansoftware/design-system";
 import { useWorkspaceStore } from "@/lib/store";
 import { Section, Task } from "@/types";
 
@@ -33,14 +34,7 @@ interface MetricCardProps {
 }
 
 function MetricCard({ title, value }: MetricCardProps) {
-  return (
-    <div className="rounded-lg bg-white p-6 shadow">
-      <h3 className="text-sm font-medium text-gray-600">{title}</h3>
-      <div className="mt-2 flex items-baseline">
-        <p className="text-3xl font-semibold text-gray-900">{value}</p>
-      </div>
-    </div>
-  );
+  return <Card kicker={title} title={value} surface="fill" elevation="sm" />;
 }
 
 export default function AnalyticsPage() {
@@ -53,10 +47,10 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 mx-auto" />
-          <p className="text-lg text-gray-600">Loading analytics...</p>
+          <p className="text-lg text-paper-dim">Loading analytics...</p>
         </div>
       </div>
     );
@@ -64,16 +58,12 @@ export default function AnalyticsPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <p className="text-lg text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={() => fetchWorkspaces()}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
+          <Button type="button" onClick={() => fetchWorkspaces()}>
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -135,9 +125,9 @@ export default function AnalyticsPage() {
   })[0];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ink">
       {/* Header */}
-      <header className="border-b bg-white">
+      <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div>
             <Link
@@ -146,7 +136,7 @@ export default function AnalyticsPage() {
             >
               ← Back to Dashboard
             </Link>
-            <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
+            <h1 className="text-3xl font-bold text-paper">Analytics</h1>
           </div>
         </div>
       </header>
@@ -155,7 +145,7 @@ export default function AnalyticsPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Data Source Info */}
         {dataSource && dataSource.type !== "chrome-storage" && (
-          <div className="mb-6 rounded-lg bg-yellow-50 p-4 text-yellow-800">
+          <div className="mb-6 bg-yellow-50 p-4 text-yellow-800">
             <p className="text-sm">{dataSource.message}</p>
           </div>
         )}
@@ -174,12 +164,12 @@ export default function AnalyticsPage() {
         {/* Detailed Analytics */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Workspace Distribution */}
-          <div className="rounded-lg bg-white p-6 shadow">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+          <div className=" bg-ink-2 p-6 shadow">
+            <h2 className="mb-4 text-lg font-semibold text-paper">
               Workspace Distribution
             </h2>
             {workspaces.length === 0 ? (
-              <p className="text-gray-500">No workspaces to display.</p>
+              <p className="text-paper-dim">No workspaces to display.</p>
             ) : (
               <div className="space-y-4">
                 {workspaces.slice(0, 5).map((workspace) => {
@@ -190,14 +180,14 @@ export default function AnalyticsPage() {
                   return (
                     <div key={workspace.id}>
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">
+                        <span className="text-sm font-medium text-paper">
                           {workspace.name}
                         </span>
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-paper-dim">
                           {tabCount} tabs
                         </span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-gray-200">
+                      <div className="h-2 w-full rounded-full bg-ink-3">
                         <div
                           className="h-2 rounded-full bg-blue-600"
                           style={{ width: `${percentage}%` }}
@@ -211,14 +201,12 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Insights */}
-          <div className="rounded-lg bg-white p-6 shadow">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">
-              Insights
-            </h2>
+          <div className=" bg-ink-2 p-6 shadow">
+            <h2 className="mb-4 text-lg font-semibold text-paper">Insights</h2>
             <div className="space-y-4">
               {mostActiveWorkspace &&
               (mostActiveWorkspace.tabs?.length || 0) > 0 ? (
-                <div className="rounded-lg bg-blue-50 p-4">
+                <div className=" bg-blue-50 p-4">
                   <h3 className="font-medium text-blue-900">
                     Most Active Workspace
                   </h3>
@@ -228,11 +216,11 @@ export default function AnalyticsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <h3 className="font-medium text-gray-700">
+                <div className=" bg-ink p-4">
+                  <h3 className="font-medium text-paper">
                     Most Active Workspace
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-paper-dim">
                     No tabs tracked yet
                   </p>
                 </div>
@@ -240,7 +228,7 @@ export default function AnalyticsPage() {
 
               {mostResourcedWorkspace &&
               (mostResourcedWorkspace.resources?.length || 0) > 0 ? (
-                <div className="rounded-lg bg-green-50 p-4">
+                <div className=" bg-green-50 p-4">
                   <h3 className="font-medium text-green-900">Most Resourced</h3>
                   <p className="mt-1 text-sm text-green-700">
                     <strong>{mostResourcedWorkspace.name}</strong> has the most
@@ -248,15 +236,15 @@ export default function AnalyticsPage() {
                   </p>
                 </div>
               ) : (
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <h3 className="font-medium text-gray-700">Most Resourced</h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                <div className=" bg-ink p-4">
+                  <h3 className="font-medium text-paper">Most Resourced</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
                     No resources saved yet
                   </p>
                 </div>
               )}
 
-              <div className="rounded-lg bg-purple-50 p-4">
+              <div className=" bg-purple-50 p-4">
                 <h3 className="font-medium text-purple-900">
                   Productivity Score
                 </h3>
@@ -276,8 +264,8 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Additional Stats */}
-        <div className="mt-8 rounded-lg bg-white p-6 shadow">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+        <div className="mt-8 bg-ink-2 p-6 shadow">
+          <h2 className="mb-4 text-lg font-semibold text-paper">
             Content Breakdown
           </h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
@@ -285,19 +273,19 @@ export default function AnalyticsPage() {
               <div className="text-3xl font-bold text-blue-600">
                 {totalNotes}
               </div>
-              <div className="mt-1 text-sm text-gray-600">Total Notes</div>
+              <div className="mt-1 text-sm text-paper-dim">Total Notes</div>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-green-600">
                 {totalResources}
               </div>
-              <div className="mt-1 text-sm text-gray-600">Total Resources</div>
+              <div className="mt-1 text-sm text-paper-dim">Total Resources</div>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-purple-600">
                 {totalTabs}
               </div>
-              <div className="mt-1 text-sm text-gray-600">Active Tabs</div>
+              <div className="mt-1 text-sm text-paper-dim">Active Tabs</div>
             </div>
           </div>
         </div>

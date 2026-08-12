@@ -25,6 +25,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useEffect } from "react";
 import Link from "next/link";
+import { Button, Card, Plate } from "@vitruviansoftware/design-system";
 import { useWorkspaceStore } from "@/lib/store";
 import { exportWorkspaces, downloadFile, seedDemoData } from "@/lib/data";
 
@@ -36,29 +37,10 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, icon, color }: StatCardProps) {
-  const colorClasses: Record<string, string> = {
-    blue: "bg-blue-100 text-blue-600",
-    purple: "bg-purple-100 text-purple-600",
-    green: "bg-green-100 text-green-600",
-    yellow: "bg-yellow-100 text-yellow-600",
-    indigo: "bg-indigo-100 text-indigo-600",
-    pink: "bg-pink-100 text-pink-600",
-  };
-
   return (
-    <div className="rounded-lg bg-white p-6 shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
-        </div>
-        <div
-          className={`flex h-12 w-12 items-center justify-center rounded-lg ${colorClasses[color]}`}
-        >
-          <span className="text-2xl">{icon}</span>
-        </div>
-      </div>
-    </div>
+    <Card kicker={icon} title={value} surface="fill" elevation="sm">
+      {title}
+    </Card>
   );
 }
 
@@ -83,10 +65,10 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 mx-auto" />
-          <p className="text-lg text-gray-600">Loading...</p>
+          <p className="text-lg text-paper-dim">Loading...</p>
         </div>
       </div>
     );
@@ -94,30 +76,24 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-ink">
         <div className="text-center">
           <p className="text-lg text-red-600">{error}</p>
-          <button
-            type="button"
-            onClick={() => fetchStats()}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
+          <Button type="button" onClick={() => fetchStats()}>
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ink">
       {/* Header */}
-      <header className="border-b bg-white">
+      <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Tabula Dashboard
-            </h1>
+            <h1 className="text-3xl font-bold text-paper">Tabula Dashboard</h1>
             <div className="flex gap-3">
               <div className="flex gap-3 items-center">
                 {user ? (
@@ -127,18 +103,18 @@ export default function Home() {
                         <img
                           src={user.picture}
                           alt={user.name}
-                          className="h-8 w-8 rounded-full border border-gray-200"
+                          className="h-8 w-8 rounded-full border border-hairline"
                         />
                       )}
                       <div className="text-sm">
-                        <p className="font-medium text-gray-900">{user.name}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
+                        <p className="font-medium text-paper">{user.name}</p>
+                        <p className="text-xs text-paper-dim">{user.email}</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => logout()}
-                      className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                      className="text-sm font-medium text-paper-dim hover:text-paper"
                     >
                       Logout
                     </button>
@@ -147,7 +123,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => login()}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                    className=" bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
                   >
                     Login
                   </button>
@@ -155,11 +131,11 @@ export default function Home() {
                 {/* Export buttons only visible if we have data */}
                 {(stats?.totalWorkspaces || 0) > 0 && (
                   <>
-                    <div className="h-6 w-px bg-gray-200 mx-2"></div>
+                    <div className="h-6 w-px bg-hairline mx-2"></div>
                     <button
                       type="button"
                       onClick={() => handleExport("json")}
-                      className="rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                      className=" bg-ink-2 border border-hairline px-3 py-1.5 text-sm font-medium text-paper hover:bg-ink transition-colors"
                     >
                       Export JSON
                     </button>
@@ -180,13 +156,13 @@ export default function Home() {
               "chrome-storage": "bg-green-50 text-green-800",
               "local-storage": "bg-yellow-50 text-yellow-800",
               api: "bg-blue-50 text-blue-800",
-              none: "bg-gray-50 text-gray-600",
+              none: "bg-ink text-paper-dim",
             };
             const style = bannerStyles[dataSource.type] || bannerStyles.none;
 
             return (
               <div
-                className={`mb-6 flex items-center justify-between rounded-lg p-4 ${style}`}
+                className={`mb-6 flex items-center justify-between p-4 ${style}`}
               >
                 <p className="text-sm">{dataSource.message}</p>
                 {(dataSource.type === "local-storage" ||
@@ -194,7 +170,7 @@ export default function Home() {
                   (stats?.totalWorkspaces === 0 || !stats) && (
                     <button
                       onClick={() => seedDemoData()}
-                      className="ml-4 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 border border-gray-200"
+                      className="ml-4 bg-ink-2 px-3 py-1.5 text-xs font-medium text-paper shadow-sm hover:bg-ink border border-hairline"
                     >
                       Load Demo Data
                     </button>
@@ -248,63 +224,73 @@ export default function Home() {
         </div>
 
         {/* Quick Actions */}
-        <div className="rounded-lg bg-white p-6 shadow">
-          <h2 className="mb-4 text-xl font-semibold text-gray-900">
+        <div className=" bg-ink-2 p-6 shadow">
+          <h2 className="mb-4 text-xl font-semibold text-paper">
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Link
-              href="/workspaces"
-              className="flex items-center justify-between rounded-lg border border-gray-200 p-4 transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-gray-900">View Workspaces</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Browse all your workspaces
-                </p>
-              </div>
-              <span className="text-2xl">→</span>
-            </Link>
+            <Plate live enter>
+              <Link
+                href="/workspaces"
+                className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">View Workspaces</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    Browse all your workspaces
+                  </p>
+                </div>
+                <span className="text-2xl">→</span>
+              </Link>
+            </Plate>
 
-            <Link
-              href="/analytics"
-              className="flex items-center justify-between rounded-lg border border-gray-200 p-4 transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-gray-900">Analytics</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  View detailed statistics
-                </p>
-              </div>
-              <span className="text-2xl">→</span>
-            </Link>
+            <Plate live enter>
+              <Link
+                href="/analytics"
+                className="flex items-center justify-between border border-hairline p-4 transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">Analytics</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    View detailed statistics
+                  </p>
+                </div>
+                <span className="text-2xl">→</span>
+              </Link>
+            </Plate>
 
-            <button
-              type="button"
-              onClick={() => handleExport("json")}
-              className="flex items-center justify-between rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-blue-500 hover:shadow-md"
-            >
-              <div>
-                <h3 className="font-medium text-gray-900">Export Data</h3>
-                <p className="mt-1 text-sm text-gray-500">Download your data</p>
-              </div>
-              <span className="text-2xl">⬇</span>
-            </button>
+            <Plate live enter>
+              <button
+                type="button"
+                onClick={() => handleExport("json")}
+                className="w-full flex items-center justify-between border border-hairline p-4 text-left transition-all hover:border-blue-500 hover:shadow-md"
+              >
+                <div>
+                  <h3 className="font-medium text-paper">Export Data</h3>
+                  <p className="mt-1 text-sm text-paper-dim">
+                    Download your data
+                  </p>
+                </div>
+                <span className="text-2xl">⬇</span>
+              </button>
+            </Plate>
           </div>
         </div>
 
         {/* Info Section */}
-        <div className="mt-8 rounded-lg bg-blue-50 p-6">
-          <h2 className="mb-2 text-lg font-semibold text-blue-900">
-            About Tabula Dashboard
-          </h2>
-          <p className="text-blue-800">
-            This web dashboard provides a centralized view of your Tabula
-            workspaces, with analytics and data export capabilities. Use the
-            navigation above to explore your workspaces and view detailed
-            statistics.
-          </p>
-        </div>
+        <Plate as="section">
+          <div className="mt-8 bg-blue-50 p-6">
+            <h2 className="mb-2 text-lg font-semibold text-blue-900">
+              About Tabula Dashboard
+            </h2>
+            <p className="text-blue-800">
+              This web dashboard provides a centralized view of your Tabula
+              workspaces, with analytics and data export capabilities. Use the
+              navigation above to explore your workspaces and view detailed
+              statistics.
+            </p>
+          </div>
+        </Plate>
       </main>
     </div>
   );
