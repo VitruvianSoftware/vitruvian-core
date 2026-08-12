@@ -21,6 +21,7 @@
  */
 
 import React, { useState } from "react";
+import { Button } from "../design-system";
 
 interface JsonTreeProps {
   data: any;
@@ -46,47 +47,50 @@ const JsonNode: React.FC<JsonTreeProps> = ({ data, level = 0, path = "" }) => {
 
   return (
     <div className="font-mono text-[11px] leading-relaxed">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen((o) => !o)}
-        className="mr-1 text-xs text-blue-300 hover:text-blue-200"
+        className="mr-1"
         title={open ? "Collapse" : "Expand"}
       >
         {open ? "−" : "+"}
-      </button>
-      <span className="text-slate-400">
+      </Button>
+      <span className="text-paper-dim">
         {Array.isArray(data) ? "Array" : "Object"}
       </span>
-      <span className="text-slate-500 ml-1">[{entries.length}]</span>
+      <span className="text-paper-dim ml-1">[{entries.length}]</span>
       {open && !isEmpty && (
-        <div className="ml-4 border-l border-slate-700 pl-3 mt-1 space-y-0.5">
+        <div className="ml-4 border-l border-hairline pl-3 mt-1 space-y-0.5">
           {entries.map(([k, v]: any) => {
             const childPath = path ? `${path}.${k}` : String(k);
             return (
               <div key={k} className="group">
-                <span className="text-slate-500 select-none">{k}:</span>{" "}
+                <span className="text-paper-dim select-none">{k}:</span>{" "}
                 {isObject(v) || Array.isArray(v) ? (
                   <JsonNode data={v} level={level + 1} path={childPath} />
                 ) : (
                   <span className="text-emerald-200">{JSON.stringify(v)}</span>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() =>
                     navigator.clipboard.writeText(
                       String(isObject(v) ? JSON.stringify(v) : v),
                     )
                   }
-                  className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 text-[10px] px-1 py-0.5 rounded bg-slate-700/60 text-slate-300 border border-slate-600 hover:bg-slate-600"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity ml-2"
                   title="Copy value"
                 >
                   copy
-                </button>
+                </Button>
               </div>
             );
           })}
         </div>
       )}
-      {open && isEmpty && <span className="text-slate-500 ml-2">(empty)</span>}
+      {open && isEmpty && <span className="text-paper-dim ml-2">(empty)</span>}
     </div>
   );
 };
@@ -104,20 +108,22 @@ const JsonTree: React.FC<{ data: any }> = ({ data }) => {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <button
-          className="text-[11px] px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setExpandAllToggle((v) => v + 1)}
           title="Expand all"
         >
           Expand/Collapse
-        </button>
-        <button
-          className="text-[11px] px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleCopyAll}
           title="Copy JSON"
         >
           {copied ? "Copied" : "Copy all"}
-        </button>
+        </Button>
       </div>
       {/* re-mount node to reset open state on toggle */}
       <div key={expandAllToggle}>

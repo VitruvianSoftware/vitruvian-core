@@ -402,6 +402,7 @@ ROWS_GATE=""
 ROWS_DURABLE=""
 ROWS_PULUMI=""
 ROWS_RENOVATE=""
+ROWS_STANDALONE_DEPS=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -427,6 +428,7 @@ emit() {
     durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
+    standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -725,6 +727,59 @@ check_catalog() {
       esac
     done <<EOF
 $_decls
+EOF
+  done <<EOF
+$_list
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# CHECK: standalone workspace dependencies. CATALOG_EXEMPT packages that ship a
+# Dockerfile build in an isolated Docker context where monorepo workspace packages
+# (packages/*) are not present. Any "workspace:*" dependency in such a package.json
+# breaks `docker build` post-merge -> ✗ FAIL.
+#
+# Exempt packages WITHOUT a Dockerfile (e.g. pulumi/examples/*) resolve workspace:
+# deps at monorepo install time and are not flagged.
+# ---------------------------------------------------------------------------
+check_standalone_workspace_deps() {
+  _list="$(discover "package.json")"
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    _rel="$(rel "$pkg")"
+    _ws="${_rel%%/*}"
+    _exempt=0
+    case " $CATALOG_EXEMPT " in *" $_ws "*) _exempt=1 ;; esac
+    for _ex in $CATALOG_EXEMPT; do
+      case "$_rel" in "$_ex"/*) _exempt=1; _ws="$_ex" ;; esac
+    done
+    [ "$_exempt" = "1" ] || continue
+
+    # Only flag packages that actually build in Docker — the Dockerfile is the
+    # signal that workspace: deps cannot resolve in the isolated build context.
+    # Walk up to the exempt root to find a Dockerfile at the workspace level.
+    _ws_root="$ROOT/$_ws"
+    [ -f "$_ws_root/Dockerfile" ] || continue
+
+    _ws_decls="$(
+      awk '
+        match($0, /^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"workspace:[^"]*"/) {
+          name=$0; sub(/^[[:space:]]*"/,"",name); sub(/".*$/,"",name)
+          val=$0;  sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/,"",val); sub(/".*$/,"",val)
+          print name "\t" val
+        }
+      ' "$pkg"
+    )"
+    [ -n "$_ws_decls" ] || continue
+
+    while IFS="$(printf '\t')" read -r dep val; do
+      [ -n "$dep" ] || continue
+      emit "standalone-deps" "$GLYPH_FAIL" "$C_RED" "$_rel" "$val" "non-workspace" \
+        "'$dep' uses workspace: but $_ws builds standalone (no monorepo workspace packages in Docker context)" \
+        "vendor or inline \"$dep\" in $_rel — workspace: cannot resolve in standalone Docker build"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    done <<EOF
+$_ws_decls
 EOF
   done <<EOF
 $_list
@@ -2028,6 +2083,7 @@ stale_sweep
 doc_sync
 advisory_pnpm
 check_catalog
+check_standalone_workspace_deps
 catalog_orphan_sweep
 advisory_catalog
 check_app_visibility
@@ -2070,6 +2126,7 @@ print_group "Release-unit guard (co-located <app>/infra/ must not bump the app v
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
+print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"

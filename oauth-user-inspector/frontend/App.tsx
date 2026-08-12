@@ -46,6 +46,7 @@ import HelpModal from "./components/HelpModal";
 import LoginScreen from "./components/LoginScreen";
 import EnhancedErrorDisplay from "./components/EnhancedErrorDisplay";
 import { buildUserinfoRequest } from "./utils/userinfoRequest";
+import { Button } from "./design-system";
 
 const getRedirectUri = () => window.location.origin + window.location.pathname;
 
@@ -1007,9 +1008,9 @@ const App: React.FC = () => {
     if (isLoading) {
       return (
         <div className="space-y-6" aria-label="Loading skeleton">
-          <div className="h-6 w-48 bg-slate-700/50 rounded animate-pulse" />
-          <div className="h-40 bg-slate-800/50 rounded border border-slate-700 animate-pulse" />
-          <div className="h-10 bg-slate-700/50 rounded animate-pulse" />
+          <div className="h-6 w-48 bg-ink-3/50 rounded animate-pulse" />
+          <div className="h-40 bg-ink-2/50 rounded border border-hairline animate-pulse" />
+          <div className="h-10 bg-ink-3/50 rounded animate-pulse" />
         </div>
       );
     }
@@ -1030,12 +1031,12 @@ const App: React.FC = () => {
     return (
       <div className="w-full">
         {importedSnapshot && (
-          <div className="mb-6 p-4 border border-slate-600 rounded-lg bg-slate-800/60 text-xs text-slate-300">
+          <div className="mb-6 p-4 border border-hairline rounded-lg bg-ink-2/60 text-xs text-paper-dim">
             <p className="font-semibold mb-2">Imported Snapshot Preview</p>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">
               {JSON.stringify(importedSnapshot, null, 2)}
             </pre>
-            <p className="mt-2 text-slate-400">
+            <p className="mt-2 text-paper-dim">
               Authenticate to compare snapshot with live user data.
             </p>
           </div>
@@ -1055,8 +1056,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-900 text-slate-200">
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800/60 bg-slate-900/70 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60/90">
+    <div className="min-h-screen flex flex-col bg-ink text-paper font-sans">
+      <header className="sticky top-0 z-40 w-full border-b border-hairline bg-ink-2/70 backdrop-blur supports-[backdrop-filter]:bg-ink-2/60/90">
         <div className="mx-auto max-w-full px-4 py-3 flex justify-end">
           <TopMenu
             userLoggedIn={!!user}
@@ -1085,32 +1086,35 @@ const App: React.FC = () => {
         )}
         <div className="mx-auto max-w-4xl px-4">{renderContent()}</div>
       </main>
-      <footer className="w-full border-t border-slate-800/60 mt-8">
-        <div className="mx-auto max-w-4xl px-4 py-6 text-center text-sm text-slate-600 flex flex-col items-center gap-2">
+      <footer className="w-full border-t border-hairline mt-8">
+        <div className="mx-auto max-w-4xl px-4 py-6 text-center text-sm text-paper-dim flex flex-col items-center gap-2">
           <p>Built for demonstration and troubleshooting.</p>
           <div className="flex gap-2">
-            <button
+            <Button
               onClick={() => setShowHelp(true)}
-              className="text-xs px-3 py-1.5 rounded-md border border-slate-600 text-slate-400 hover:text-slate-200 hover:bg-slate-700"
+              variant="secondary"
+              size="sm"
             >
               Help & Shortcuts
-            </button>
+            </Button>
             {process.env.NODE_ENV == "development" && (
               <>
-                <button
+                <Button
                   onClick={createSampleTokenDemo}
-                  className="text-xs px-3 py-1.5 rounded-md border border-emerald-600 text-emerald-400 hover:text-emerald-200 hover:bg-emerald-700/20"
                   title="Demo the enhanced token display with sample JWT tokens"
+                  variant="secondary"
+                  size="sm"
                 >
                   Demo Token Display
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={createEnhancedOAuthErrorDemo}
-                  className="text-xs px-3 py-1.5 rounded-md border border-red-600 text-red-400 hover:text-red-200 hover:bg-red-700/20"
                   title="Demo the enhanced OAuth error display with troubleshooting guidance"
+                  variant="danger"
+                  size="sm"
                 >
                   Demo OAuth Error
-                </button>
+                </Button>
               </>
             )}
           </div>

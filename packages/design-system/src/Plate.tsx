@@ -96,8 +96,14 @@ export function VMark({
 }
 
 /** A hairline rule, optionally carrying a registration cross. */
-export function Rule({ marked = false }: { marked?: boolean }) {
-  return <hr className={marked ? "rule-marked" : "rule"} />;
+export function Rule({
+  marked = false,
+  className,
+}: {
+  marked?: boolean;
+  className?: string;
+}) {
+  return <hr className={cn(marked ? "rule-marked" : "rule", className)} />;
 }
 
 /** Frosted glass. Elevation only — sticky bars, dialogs, popovers. */

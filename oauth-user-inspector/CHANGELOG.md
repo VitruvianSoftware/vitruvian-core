@@ -8,6 +8,34 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.6.0...oauth-user-inspector-v1.6.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** resolve Rule className and Field label props for Docker build ([#1553](https://github.com/VitruvianSoftware/vitruvian-core/issues/1553)) ([b0649ee](https://github.com/VitruvianSoftware/vitruvian-core/commit/b0649ee275a858ffd6563d21862113fdc2ee4504))
+
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.5.0...oauth-user-inspector-v1.6.0) (2026-08-12)
+
+
+### Features
+
+* **oauth-user-inspector:** adopt full design system across all components ([#1551](https://github.com/VitruvianSoftware/vitruvian-core/issues/1551)) ([c973661](https://github.com/VitruvianSoftware/vitruvian-core/commit/c973661deee7df92f38a523af89b8665f2c2592a))
+
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.4.1...oauth-user-inspector-v1.5.0) (2026-08-12)
+
+
+### Features
+
+* **oauth-user-inspector:** complete design system migration across all components ([#1548](https://github.com/VitruvianSoftware/vitruvian-core/issues/1548)) ([bb2dfc3](https://github.com/VitruvianSoftware/vitruvian-core/commit/bb2dfc38b85d39a4b8fed8a74e2738ab0b1313f3))
+
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.4.0...oauth-user-inspector-v1.4.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** make design system components self-contained for standalone Docker build ([#1544](https://github.com/VitruvianSoftware/vitruvian-core/issues/1544)) ([67462c2](https://github.com/VitruvianSoftware/vitruvian-core/commit/67462c2758f05c1e3c272c117e18ed27b82f87c7))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.3.0...oauth-user-inspector-v1.4.0) (2026-08-11)
 
 

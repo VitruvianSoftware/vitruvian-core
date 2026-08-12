@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { Button } from "../design-system";
+import { Button, Input } from "../design-system";
 import { MenuIcon, HelpIcon, UploadIcon, LogoutIcon } from "./icons";
 
 interface TopMenuProps {
@@ -148,7 +148,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
           id={panelId}
           role="menu"
           aria-label="Application actions"
-          className="absolute right-0 mt-2 w-64 sm:w-72 origin-top-right animate-fadeIn border border-slate-700 rounded-lg bg-slate-900 p-4 shadow-xl flex flex-col gap-4 ring-1 ring-slate-800/60"
+          className="absolute right-0 mt-2 w-64 sm:w-72 origin-top-right animate-fadeIn border border-hairline rounded-lg bg-ink-2 p-4 shadow-xl flex flex-col gap-4 ring-1 ring-slate-800/60"
         >
           <div
             className="flex flex-col gap-2"
@@ -166,7 +166,7 @@ const TopMenu: React.FC<TopMenuProps> = ({
             >
               <UploadIcon className="w-4 h-4" /> Import Snapshot
             </Button>
-            <input
+            <Input
               ref={fileInputRef}
               type="file"
               accept="application/json"
