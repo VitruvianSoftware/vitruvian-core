@@ -16,6 +16,9 @@ Pulumi.*.yaml
 !app/Pulumi.development.yaml
 !app/Pulumi.nonproduction.yaml
 !app/Pulumi.production.yaml
+!web/Pulumi.development.yaml
+!web/Pulumi.nonproduction.yaml
+!web/Pulumi.production.yaml
 !identity/Pulumi.development.yaml
 !identity/Pulumi.nonproduction.yaml
 !identity/Pulumi.production.yaml
@@ -30,3 +33,4 @@ Pulumi.*.yaml
 /identity/tabula-deploy-identity
 /build/tabula-build
 /data/data
+/web/web

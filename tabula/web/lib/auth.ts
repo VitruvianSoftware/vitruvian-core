@@ -34,7 +34,7 @@ export interface AuthResponse {
 }
 
 export class AuthService {
-  private static readonly API_URL = "http://localhost:8080/api/v1/auth";
+  private static readonly API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/auth`;
 
   /**
    * Open login popup and wait for token

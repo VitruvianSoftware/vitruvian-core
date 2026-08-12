@@ -32,7 +32,8 @@
 import type { Workspace } from "@tabula/shared";
 import { AuthService } from "./auth";
 
-const API_URL = "http://localhost:8080/api/v1";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 /** Role a logged-in user holds on a space (mirrors #139's lowercase GrantRole + owner). */
 export type SpaceRole = "owner" | "edit" | "view";

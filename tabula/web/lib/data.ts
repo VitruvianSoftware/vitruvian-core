@@ -32,7 +32,8 @@ import type { Workspace, WorkspaceStats, DataSourceInfo } from "@/types";
 
 // Storage key - must match extension
 const STORAGE_KEY = "tabula_workspaces";
-const API_URL = "http://localhost:8080/api/v1";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 /**
  * Get information about the current data source

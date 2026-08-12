@@ -33,18 +33,29 @@ import type { NextConfig } from "next";
 // tightening it away needs a per-request nonce pipeline (follow-up). 'unsafe-eval'
 // is NOT needed at runtime, so it is omitted. connect-src hardcodes the dev API
 // origin, matching the rest of the app (lib/data.ts / lib/auth.ts).
+const apiOrigin = (() => {
+  const url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+  try {
+    const u = new URL(url);
+    return u.origin;
+  } catch {
+    return "http://localhost:8080";
+  }
+})();
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
-  "connect-src 'self' http://localhost:8080",
+  `connect-src 'self' ${apiOrigin}`,
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // geist ships ESM-only; transpile it for both next build and next/jest
   // (next/jest derives its jest transformIgnorePatterns from this list).
   transpilePackages: ["geist"],

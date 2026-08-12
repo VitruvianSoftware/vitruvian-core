@@ -36,7 +36,7 @@ func TestEnvMap(t *testing.T) {
 	)
 
 	t.Run("carries the public auth config when set", func(t *testing.T) {
-		env := EnvMap(project, apiURL, extOrig)
+		env := EnvMap(project, apiURL, extOrig, "")
 
 		for key, want := range map[string]string{
 			"NODE_ENV":                "production",
@@ -56,9 +56,9 @@ func TestEnvMap(t *testing.T) {
 	// explicitly-empty Cloud Run env var is noise in the revision diff and
 	// hides which envs have been configured.
 	t.Run("omits unset optional keys rather than setting them empty", func(t *testing.T) {
-		env := EnvMap(project, "", "")
+		env := EnvMap(project, "", "", "")
 
-		for _, key := range []string{"API_URL", "AUTH_POSTMESSAGE_ORIGIN"} {
+		for _, key := range []string{"API_URL", "AUTH_POSTMESSAGE_ORIGIN", "CORS_ORIGIN"} {
 			if _, ok := env[key]; ok {
 				t.Errorf("env[%q] present (%q); want absent when unconfigured", key, env[key])
 			}

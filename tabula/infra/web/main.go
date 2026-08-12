@@ -18,41 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package main is the per-environment tabula app stack on the
-// vitruviansoftware.dev foundation (stage-5 "application stage", spec
-// docs/superpowers/specs/2026-07-10-oss-application-stage-design.md).
-//
-// Each stack (development / nonproduction / production) deploys the app into
-// the env's prj-{env}-bu2-oss-floating project as a Cloud Run v2 service,
-// composed from the published pkg/cloud_run primitive — mirroring the
-// serverless_space reference module's shape (runtime SA + SECRET_PREFIX env +
-// opt-in allUsers invoker) without depending on the example tree.
-//
-// Build-once, promote-by-digest: the image is built ONCE by the build job
-// (GitHub environment tabula-build) into the shared Artifact
-// Registry in the infra-pipeline project, and every env deploys the SAME
-// immutable @sha256 digest ref (never a mutable :tag). The digest arrives as
-// the per-invocation TABULA_IMAGE_DIGEST env var (or the
-// imageDigest config for a local break-glass run). The app's own Artifact
-// Registry repository is gone — the shared repo is owned by the
-// tabula-build stack.
-//
-// The allUsers run.invoker binding relies on the org's project-scoped
-// domain-restricted-sharing override on the oss projects (gcp-org
-// oss_public_invoker_projects, PR #867) — the app is a public demo tool.
-//
-// Runs as the per-env deploy SA (tabula-deploy@<oss project>,
-// minted by the sibling tabula-deploy-identity stack) via the
-// tabula-<env> GitHub Environment.
 package main
 
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula/revision"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
@@ -62,17 +33,12 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-// cfPreviewToken is the non-secret placeholder value pulumi-preview.yaml injects
-// as CLOUDFLARE_API_TOKEN for the advisory preview (matrix.cfPreviewToken).
-// It lets the default cloudflare provider CONFIGURE without a real credential;
-// the code treats it as "not a real token" so it never calls the Cloudflare API
-// with it. Keep this in sync with pulumi-preview.yaml.
 const cfPreviewToken = "preview-only-not-a-real-cloudflare-token"
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
-		cfg := config.New(ctx, "tabula-app")
-		project := cfg.Require("project") // the env's oss-floating project id
+		cfg := config.New(ctx, "tabula-web")
+		project := cfg.Require("project")
 		region := cfg.Get("region")
 		if region == "" {
 			region = "us-central1"
@@ -80,112 +46,40 @@ func main() {
 		env := cfg.Require("environment")
 		runtimeSA := cfg.Require("runtimeServiceAccount")
 
-		// Immutable digest ref into the SHARED build Artifact Registry, e.g.
-		//   us-central1-docker.pkg.dev/<infra-pipeline proj>/tabula/app@sha256:...
-		// There is deliberately no mutable-tag fallback: deploying anything but a
-		// pinned digest would break build-once/promote-digest.
-		imageDigest := envOrConfig("TABULA_IMAGE_DIGEST", cfg, "imageDigest")
+		// Image digest — simpler than API (no revision hashing needed).
+		imageDigest := os.Getenv("TABULA_WEB_IMAGE_DIGEST")
+		if imageDigest == "" {
+			imageDigest = cfg.Get("imageDigest")
+		}
 		if imageDigest == "" {
 			if !ctx.DryRun() {
-				return fmt.Errorf("an image digest ref is required: set TABULA_IMAGE_DIGEST (CI) or the imageDigest config to <ar>/app@sha256:...")
+				return fmt.Errorf("image digest required: set TABULA_WEB_IMAGE_DIGEST")
 			}
-			// Advisory PR previews (pulumi-preview.yaml) evaluate the program
-			// without a build having run, so no digest exists yet. Substitute an
-			// obviously-fake placeholder so the plan still renders (the image
-			// field shows as a diff — expected preview noise). A real
-			// `pulumi up` never takes this branch.
 			imageDigest = "preview-placeholder@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 		}
-		// Revision names must be stable + referenceable for blue-green promote;
-		// derive the suffix from the digest's short hash (a digest is not a legal
-		// revision name itself). Shared with the deploy preflight via revision.
-		shortDigest, err := revision.ShortDigest(imageDigest)
-		if err != nil {
-			return err
-		}
-		// Cloud Run REQUIRES a revision name to be prefixed with its service
-		// name; `tabula-<env>-<sha>` against service `tabula-api-<env>` is
-		// rejected with `spec.traffic.revision_name[0]: ... invalid`. Derive both
-		// from one serviceName so they cannot drift apart again.
-		serviceName := fmt.Sprintf("tabula-api-%s", env)
-		// The env is part of the revision's identity, not just the image — see
-		// revisionNameFor. Rendered once here so the name and the deployed
-		// container are hashed from the SAME map and cannot drift.
-		serviceEnv := revision.EnvMap(project, cfg.Get("apiUrl"), cfg.Get("authPostmessageOrigin"), cfg.Get("corsOrigin"))
-		revisionName := revision.Name(serviceName, shortDigest, serviceEnv)
 
-		promote := envOrConfigBool("TABULA_PROMOTE", cfg, "promote")
-		stableRevision := envOrConfig("TABULA_STABLE_REVISION", cfg, "stableRevision")
+		serviceName := fmt.Sprintf("tabula-web-%s", env)
 
-		// Blue-green: phase 1 (promote=false) keeps 100% pinned on the current
-		// stable revision and publishes the new revision at 0% behind the
-		// `candidate` tag (its dedicated URL is smoked before any shift); phase 2
-		// (promote=true, after the smoke) routes 100% to the new revision. On the
-		// first-ever deploy there is no stable revision, so traffic goes straight
-		// to the new one.
-		var traffics []cloud_run.TrafficTarget
-		if promote || stableRevision == "" {
-			traffics = []cloud_run.TrafficTarget{
-				{Revision: revisionName, Percent: 100},
-			}
-		} else {
-			traffics = []cloud_run.TrafficTarget{
-				{Revision: stableRevision, Percent: 100},
-				{Revision: revisionName, Percent: 0, Tag: "candidate"},
-			}
-		}
-
-		// Core-vs-application split: this app stack OWNS its Cloud Run service
-		// (the image-coupled workload); the foundation gcp-app-infra leaf is
-		// scaffolding-only and re-exports the stage-4 facts (project, region,
-		// deploy SA) this stack consumes but declares no workload
-		// (docs/engineering/core-vs-application-infrastructure.md).
-		// routeName feeds the DomainMapping and resolves to the service's name
-		// either way, so the mapping is unaffected by how the service is built.
-		var routeName pulumi.StringInput = pulumi.String(serviceName)
-
-		// App OWNS the Cloud Run workload (foundation gcp-app-infra is scaffolding-only).
-		app, err := cloud_run.NewCloudRun(ctx, "tabula", &cloud_run.CloudRunArgs{
+		// Cloud Run service — static site, no secrets, no migration.
+		app, err := cloud_run.NewCloudRun(ctx, "tabula-web", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
 			Region:              pulumi.String(region),
 			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
-			// NODE_ENV/GOOGLE_CLOUD_PROJECT/SECRET_PREFIX are all the app needs
-			// as plain config: every credential is resolved lazily from Secret
-			// Manager under SECRET_PREFIX (tabula/api/src/lib/secrets.ts), NOT
-			// injected via secretKeyRef — which is what lets a revision be
-			// created before its secrets exist.
-			//
-			// API_URL is the public base the app builds its WorkOS redirect URI
-			// from (auth.service.ts: `${API_URL}/auth/callback`), so it must
-			// match a URI registered in the WorkOS dashboard for this env —
-			// WorkOS rejects an unregistered redirect_uri outright. Unset, the
-			// app falls back to localhost, which fails loudly rather than
-			// silently authenticating against the wrong environment.
-			//
-			// AUTH_POSTMESSAGE_ORIGIN is the EXACT origin the auth callback
-			// page postMessages the token to (auth.routes.ts
-			// resolvePostMessageOrigin) — the extension's chrome-extension://
-			// origin, never '*', so the token is never delivered to an
-			// arbitrary opener. Unset, it falls back to http://localhost:3000
-			// and the extension's opener never receives the token at all.
-			//
-			// Both were set by the retired infrastructure/pulumi/apps/tabula
-			// stack and were dropped in the bu2 rewrite; neither is a secret.
-			Env:          serviceEnv,
-			MaxInstances: 10,
+			Env: map[string]string{
+				"NODE_ENV": "production",
+				"HOSTNAME": "0.0.0.0",
+			},
+			MaxInstances: 5,
 			Port:         8080,
-			RevisionName: revisionName,
-			Traffics:     traffics,
 		})
 		if err != nil {
 			return err
 		}
 
-		// Public demo tool: opt-in allUsers invoker (pkg/cloud_run leaves IAM to
-		// the caller). Permitted on the oss projects by the gcp-org DRS override.
-		if _, err := cloudrunv2.NewServiceIamMember(ctx, "tabula-public", &cloudrunv2.ServiceIamMemberArgs{
+		// Public: allUsers invoker.
+		if _, err := cloudrunv2.NewServiceIamMember(ctx, "tabula-web-public", &cloudrunv2.ServiceIamMemberArgs{
 			Project:  pulumi.String(project),
 			Location: pulumi.String(region),
 			Name:     app.Service.Name,
@@ -195,12 +89,12 @@ func main() {
 			return err
 		}
 
-		// Pre-migration the mapping targets the service resource; capture it.
-		routeName = app.Service.Name
 		ctx.Export("serviceUrl", app.Service.Uri)
 
+		var routeName pulumi.StringInput = app.Service.Name
+
 		// Optional per-env custom domain (config `customDomain`, e.g.
-		// tabula-api.vitruviansoftware.dev): a Cloud Run DomainMapping (v1 API —
+		// tabula.vitruviansoftware.dev): a Cloud Run DomainMapping (v1 API —
 		// there is no v2 equivalent; it binds by the run service's short name)
 		// plus a grey-cloud (DNS-only) Cloudflare CNAME pointing the hostname
 		// at Google's front end. Proxied MUST stay false: Google's managed
@@ -224,7 +118,7 @@ func main() {
 		// owners-list writes when an external token-verified owner is
 		// present). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
-			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-domain", &cloudrun.DomainMappingArgs{
+			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
 				Name:     pulumi.String(customDomain),
@@ -331,7 +225,7 @@ func main() {
 					zoneID = looked.Id
 				}
 			}
-			if _, err := cloudflare.NewRecord(ctx, "tabula-dns", &cloudflare.RecordArgs{
+			if _, err := cloudflare.NewRecord(ctx, "tabula-web-dns", &cloudflare.RecordArgs{
 				ZoneId:  pulumi.String(zoneID),
 				Name:    pulumi.String(customDomain),
 				Type:    pulumi.String("CNAME"),
@@ -346,25 +240,4 @@ func main() {
 		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})
-}
-
-// envOrConfig reads a per-invocation deploy input: the environment variable
-// wins (process-scoped, so concurrent invocations can't clobber each other).
-func envOrConfig(envName string, cfg *config.Config, cfgKey string) string {
-	if v := os.Getenv(envName); v != "" {
-		return v
-	}
-	return cfg.Get(cfgKey)
-}
-
-// envOrConfigBool is envOrConfig for booleans.
-func envOrConfigBool(envName string, cfg *config.Config, cfgKey string) bool {
-	if v := os.Getenv(envName); v != "" {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			panic(fmt.Sprintf("%s=%q is not a boolean", envName, v))
-		}
-		return b
-	}
-	return cfg.GetBool(cfgKey)
 }
