@@ -98,9 +98,7 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-paper">
-          {space.name}
-        </h1>
+        <h1 className="text-2xl font-semibold text-paper">{space.name}</h1>
         <StatusPill status={status} />
       </header>
 
@@ -113,10 +111,7 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
         ) : (
           <div className="space-y-4">
             {space.notes.map((note) => (
-              <div
-                key={note.id}
-                className="border border-hairline p-3"
-              >
+              <div key={note.id} className="border border-hairline p-3">
                 <Field label={note.title}>
                   <Textarea
                     aria-label={`Edit note ${note.title}`}

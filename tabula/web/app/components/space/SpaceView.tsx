@@ -57,9 +57,7 @@ export function SpaceView({ space }: { space: Workspace }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-paper">
-          {space.name}
-        </h1>
+        <h1 className="text-2xl font-semibold text-paper">{space.name}</h1>
         {space.description ? (
           <p className="mt-1 text-sm text-paper-dim">{space.description}</p>
         ) : null}
@@ -170,10 +168,7 @@ function NotesPanel({ notes }: { notes: Note[] }) {
   return (
     <div className="space-y-4">
       {notes.map((note) => (
-        <article
-          key={note.id}
-          className="border border-hairline p-4"
-        >
+        <article key={note.id} className="border border-hairline p-4">
           <h3 className="mb-1 text-sm font-semibold text-paper">
             {note.title}
           </h3>
@@ -204,9 +199,7 @@ function TasksPanel({ tasks }: { tasks: Task[] }) {
           />
           <span
             className={`text-sm ${
-              task.completed
-                ? "text-paper-dim line-through"
-                : "text-paper"
+              task.completed ? "text-paper-dim line-through" : "text-paper"
             }`}
           >
             {task.title}

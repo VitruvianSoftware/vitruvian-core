@@ -125,10 +125,7 @@ export default function RelayLandingPage() {
       {info ? <RelayPreviewCard info={info} /> : null}
       <div className="mt-8 flex flex-col gap-3">
         {extensionInstalled ? (
-          <Button
-            type="button"
-            onClick={openInTabula}
-          >
+          <Button type="button" onClick={openInTabula}>
             Open in Tabula
           </Button>
         ) : (
@@ -153,11 +150,7 @@ export default function RelayLandingPage() {
                 : "View in browser"}
           </Button>
         ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={logIn}
-          >
+          <Button type="button" variant="ghost" onClick={logIn}>
             Log in to open in browser
           </Button>
         )}

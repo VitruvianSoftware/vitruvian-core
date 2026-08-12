@@ -45,10 +45,7 @@ export default function Error({
           {error.message ||
             "An unexpected error occurred while loading the dashboard."}
         </p>
-        <Button
-          type="button"
-          onClick={reset}
-        >
+        <Button type="button" onClick={reset}>
           Try Again
         </Button>
       </div>
