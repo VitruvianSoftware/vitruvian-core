@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.27...tabula-api-v0.1.28) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** defer Prisma client construction until first use ([#1604](https://github.com/VitruvianSoftware/vitruvian-core/issues/1604)) ([34f917b](https://github.com/VitruvianSoftware/vitruvian-core/commit/34f917b67d604c5b0899bccd1d06428af0334e03))
+
 ## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.26...tabula-api-v0.1.27) (2026-08-13)
 
 
