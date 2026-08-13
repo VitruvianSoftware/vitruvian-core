@@ -547,6 +547,18 @@ jobs:
           (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         with:
           go-version-file: go.mod
+          # Cache module downloads across runs, keyed on every IaC module's own
+          # go.sum. Without this, setup-go's default cache-dependency-path
+          # assumes a single go.sum at the repo root (same gap go-lint above
+          # already had to work around) -- which isn't any of these ~40
+          # GOWORK=off modules, so the cache key never matched their actual
+          # dependencies and every run re-downloaded the full graph from
+          # proxy.golang.org from scratch. That's most of why a transient
+          # proxy hiccup shows up here so often (#1596): a cache hit skips the
+          # network entirely for a module whose deps haven't changed.
+          cache-dependency-path: |
+            infrastructure/pulumi/**/go.sum
+            */infra/**/go.sum
       - name: go test (IaC modules with tests)
         if: >-
           github.event_name == 'push' ||
@@ -554,6 +566,42 @@ jobs:
           (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         run: |
           set -euo pipefail
+
+          # Retry ONLY on recognizable transient module-proxy/network
+          # signatures -- a real compile or test failure is deterministic and
+          # would just fail identically on every attempt, so this never masks
+          # an actual bug. It exists for the residual case the cache above
+          # doesn't cover: a first run, a go.sum bump, or an evicted cache
+          # entry still hits the network raw. (Observed failure motivating
+          # this: a mid-download HTTP/2 "stream error" fetching
+          # pulumi-kubernetes/sdk/v4, unrelated to the PR that hit it.)
+          go_test_with_retry() {
+            local dir="$1" attempt out status
+            for attempt in 1 2 3; do
+              # The `else` is load-bearing, not style: under `set -e`, this `if`
+              # is the only thing shielding `go test` failing from killing the
+              # script outright -- but that same shielding makes plain `$?`
+              # right after `fi` read back 0 (the if-statement's OWN vacuous
+              # success), not go test's real code. Capturing it inside `else`
+              # is the one place it's still the failing command's status.
+              if out="$(cd "$dir" && go test ./... 2>&1)"; then
+                printf '%s\n' "$out"
+                return 0
+              else
+                status=$?
+              fi
+              printf '%s\n' "$out"
+              if [ "$attempt" -lt 3 ] && printf '%s' "$out" | grep -qiE \
+                'stream error|connection reset|unexpected EOF|TLS handshake timeout|i/o timeout|dial tcp.*(timeout|refused)|no such host'; then
+                echo "::warning::go test in ${dir} hit a transient network error (attempt ${attempt}/3) -- retrying in $((attempt * 10))s" >&2
+                sleep $((attempt * 10))
+                continue
+              fi
+              return "$status"
+            done
+            return "$status"
+          }
+
           ran=0
           while IFS= read -r mod; do
             dir="$(dirname "$mod")"
@@ -564,7 +612,7 @@ jobs:
             fi
             ran=$((ran + 1))
             echo "::group::go test $dir"
-            (cd "$dir" && go test ./...)
+            go_test_with_retry "$dir"
             echo "::endgroup::"
           done < <(find infrastructure/pulumi */infra -name go.mod -not -path '*/vendor/*' 2>/dev/null | sort)
           echo "ran go test in $ran IaC module(s)"
