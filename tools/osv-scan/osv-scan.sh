@@ -178,11 +178,49 @@ dep_manifests_changed() {
   # then takes the FALSE branch and this returns "unchanged" -- silently
   # downgrading a REQUIRED security gate to non-blocking on exactly the large
   # dependency changes it exists to catch. Fails OPEN, and looks green.
-  if grep -qE "${DEP_MANIFEST_RE}" <<<"${_files}"; then
-    echo "changed"
-  else
-    echo "unchanged"
-  fi
+  _matches="$(grep -E "${DEP_MANIFEST_RE}" <<<"${_files}" || true)"
+  [ -n "${_matches}" ] || { echo "unchanged"; return; }
+
+  # A manifest-shaped path changed, but that is not automatically "changed"
+  # for JSON manifests whose ONLY difference is the package's own top-level
+  # "version" field -- exactly what a pure release-please release PR does to
+  # package.json/composer.json, on every single release, for every
+  # release-please-managed npm/composer package in this repo (~70 components
+  # have a .release-please-manifest.json here). A version bump cannot alter
+  # what gets installed: it touches no dependencies/devDependencies/lockfile.
+  # Without this, EVERY release PR for one of those components is
+  # indistinguishable from "may have introduced a vulnerable dependency" and
+  # blocks on any pre-existing advisory anywhere in the repo -- the exact
+  # GO-2026-5841 failure mode, just triggered by release-please's own
+  # mechanical commits instead of a stale merge-base. Reproduced live: PR
+  # #1602 (a pure tabula-api 0.1.26 -> 0.1.27 bump, nothing else) failed this
+  # gate on a pre-existing nanoid advisory unrelated to the bump.
+  #
+  # jq -S del(.version), not a text diff: comparing the file verbatim would
+  # still flag the version-string line itself as a difference. Deleting that
+  # key and comparing the REST is what actually answers "did the dependency
+  # set change." A file that fails to parse on either side (added, removed,
+  # or genuinely malformed) compares unequal against the other side's real
+  # content and correctly falls through to "changed" -- jq has nothing to
+  # delete a version from in a file that does not exist at that revision.
+  while IFS= read -r _f; do
+    [ -n "${_f}" ] || continue
+    case "${_f}" in
+      */package.json | package.json | */composer.json | composer.json)
+        _old="$(git show "${_base}:${_f}" 2>/dev/null | jq -S 'del(.version)' 2>/dev/null || echo UNPARSEABLE_OLD)"
+        _new="$(git show "HEAD:${_f}" 2>/dev/null | jq -S 'del(.version)' 2>/dev/null || echo UNPARSEABLE_NEW)"
+        [ "${_old}" = "${_new}" ] || { echo "changed"; return; }
+        ;;
+      *)
+        # Any other manifest/lockfile match (go.sum, pnpm-lock.yaml, Cargo.toml,
+        # ...) is exactly the signal this check exists to catch -- unconditional.
+        echo "changed"
+        return
+        ;;
+    esac
+  done <<<"${_matches}"
+
+  echo "unchanged"
 }
 
 info() { printf '\033[36m→\033[0m %s\n' "$*"; }
