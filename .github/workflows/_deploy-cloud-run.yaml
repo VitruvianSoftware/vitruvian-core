@@ -309,9 +309,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEV_JOB_NAME: ${{ inputs.require-dev-soak-job }}
-          # WORKFLOW_FILE is deliberately unset: the script derives the CALLER's
-          # workflow from GITHUB_WORKFLOW_REF, which is the run history that
-          # actually holds the development deploy job.
+          # WORKFLOW_FILE is deliberately unset: the script resolves the CALLER's
+          # workflow from GITHUB_RUN_ID (a reusable workflow's jobs run inside
+          # the caller's run), so this works for every caller with no per-caller
+          # wiring.
           ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
         run: ./tools/ci/require-dev-soak.sh
 

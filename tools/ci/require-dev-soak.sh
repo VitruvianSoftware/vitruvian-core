@@ -61,8 +61,8 @@
 #   REPO            owner/repo (defaults to GITHUB_REPOSITORY)
 #   BRANCH          branch whose deploy history is authoritative (default main)
 #   WORKFLOW_FILE   workflow whose run history holds the dev deploy job.
-#                   Defaults to the CALLING workflow, derived from
-#                   GITHUB_WORKFLOW_REF (a reusable workflow sees its caller).
+#                   Optional: defaults to the workflow that owns the CURRENT
+#                   run (see the resolution note below).
 #   DEV_JOB_NAME    exact job name proving the dev deploy, e.g.
 #                   "deploy-dev / deploy" (per-SERVICE: tabula-api and
 #                   tabula-web have separate jobs, so one service's red
@@ -78,16 +78,6 @@ BRANCH="${BRANCH:-main}"
 SCAN_LIMIT="${SCAN_LIMIT:-20}"
 ALLOW_UNSOAKED="${ALLOW_UNSOAKED:-false}"
 DEV_JOB_NAME="${DEV_JOB_NAME:?DEV_JOB_NAME must name the development deploy job}"
-
-# Default to the caller's own workflow file. GITHUB_WORKFLOW_REF looks like
-# `owner/repo/.github/workflows/tabula-deploy.yaml@refs/heads/main`, and in a
-# REUSABLE workflow it still refers to the top-level caller -- exactly the run
-# history that holds the deploy-dev job.
-if [ -z "${WORKFLOW_FILE:-}" ]; then
-  _ref="${GITHUB_WORKFLOW_REF:-}"
-  _ref="${_ref%%@*}"      # strip @refs/heads/...
-  WORKFLOW_FILE="${_ref##*/}"  # basename
-fi
 
 pass() {
   echo "require-dev-soak[${DEV_JOB_NAME}]: PASS — $1"
@@ -110,7 +100,31 @@ if [ "${ALLOW_UNSOAKED}" = "true" ]; then
 fi
 
 [ -n "${REPO}" ] || unknown "REPO/GITHUB_REPOSITORY unset — cannot query run history"
-[ -n "${WORKFLOW_FILE}" ] || unknown "WORKFLOW_FILE unset and GITHUB_WORKFLOW_REF unparseable"
+
+# WHICH workflow's history holds the development deploy job? This script runs
+# inside the REUSABLE deploy workflow, but a reusable workflow's jobs execute
+# as part of the CALLER's run -- so GITHUB_RUN_ID is the caller's run, and
+# asking the API which workflow owns that run is exact for every caller
+# (tabula-deploy.yaml, oauth-user-inspector-deploy.yaml, ...) with no
+# per-caller wiring.
+#
+# Deliberately NOT derived from GITHUB_WORKFLOW_REF: whether that resolves to
+# the caller or the callee is a subtlety to depend on, and getting it wrong
+# would query the WRONG workflow's history, find no matching job, and fail
+# open -- leaving a gate that is silently a no-op, which is worse than no gate
+# because it looks like protection. An explicit WORKFLOW_FILE still wins, and
+# the ref-basename remains only as a last resort.
+if [ -z "${WORKFLOW_FILE:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+  WORKFLOW_FILE="$("${GH_BIN}" api "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}" \
+    --jq '.workflow_id' 2>/dev/null)"
+fi
+if [ -z "${WORKFLOW_FILE:-}" ]; then
+  _ref="${GITHUB_WORKFLOW_REF:-}"
+  _ref="${_ref%%@*}"           # strip @refs/heads/...
+  WORKFLOW_FILE="${_ref##*/}"  # basename
+fi
+[ -n "${WORKFLOW_FILE}" ] || unknown "could not determine which workflow's history to search (no WORKFLOW_FILE, no resolvable GITHUB_RUN_ID, no GITHUB_WORKFLOW_REF)"
+echo "require-dev-soak[${DEV_JOB_NAME}]: searching ${WORKFLOW_FILE} on ${BRANCH} (repo ${REPO})"
 
 # Newest-first completed push runs. Only `push` runs deploy development (a
 # release run never does), so this is the history that carries the signal.

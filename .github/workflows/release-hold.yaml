@@ -18,10 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Hold a tabula release PR out of the auto-merge flow while that component's
+# Hold a release PR out of the auto-merge flow while that component's
 # DEVELOPMENT deploy is red — the fast-feedback half of the dev→nonprod
-# interlock (the hard half is the require-dev-soak-job gate on deploy-nonprod
-# in tabula-deploy.yaml, which cannot be bypassed by any trigger).
+# interlock (the hard half is the require-dev-soak-job gate on each
+# deploy-nonprod job, which cannot be bypassed by any trigger).
+#
+# Covers every app on the release-gated ladder: tabula-api, tabula-web and
+# oauth-user-inspector all share the same exposure — a release PR opened on a
+# push (not on a green deploy), auto-merged on green PR CI, promoting into a
+# nonproduction that carries no reviewer.
 #
 # WHY BOTH. This one is advisory and early: it stops the release PR from
 # merging at all, so nothing is tagged, no release is published, and the
@@ -43,11 +48,12 @@
 # so re-enabling with it would leave the PR stuck in REVIEW_REQUIRED — a silent
 # regression of the automation #804 exists to provide.
 
-name: tabula-release-hold
+name: release-hold
 
 on:
   workflow_run:
-    workflows: [tabula-deploy]
+    # Matched by workflow NAME (the `name:` field), not filename.
+    workflows: [tabula-deploy, oauth-user-inspector-deploy]
     types: [completed]
 
 permissions:
@@ -76,10 +82,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - component: tabula-api
+          - source: tabula-deploy
+            component: tabula-api
             dev_job: deploy-dev / deploy
-          - component: tabula-web
+          - source: tabula-deploy
+            component: tabula-web
             dev_job: deploy-dev-web / deploy
+          - source: oauth-user-inspector-deploy
+            component: oauth-user-inspector
+            dev_job: deploy-dev / deploy
     steps:
       - name: Mint App token
         id: app-token
@@ -95,8 +106,19 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           DEV_JOB: ${{ matrix.dev_job }}
           COMPONENT: ${{ matrix.component }}
+          SOURCE: ${{ matrix.source }}
+          TRIGGERED_BY: ${{ github.event.workflow_run.name }}
         run: |
           set -uo pipefail
+
+          # One matrix covers every app, so drop the entries that belong to the
+          # OTHER deploy workflow. Filtered here rather than in a job-level
+          # `if:` to avoid depending on whether the matrix context is available
+          # during job-level condition evaluation.
+          if [ "$SOURCE" != "$TRIGGERED_BY" ]; then
+            echo "Triggered by '${TRIGGERED_BY}', this entry is for '${SOURCE}' — nothing to do."
+            exit 0
+          fi
 
           # release-please's branch name is deterministic and per-component
           # (verified on the real PRs, e.g.
