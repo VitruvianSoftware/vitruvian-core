@@ -1665,35 +1665,42 @@ check_deploy_durable_base() {
     has_resolver=0
     grep -qE '^[[:space:]]*run:[[:space:]]*bash tools/ci/resolve-deploy-base\.sh[[:space:]]*$' "$wf" 2>/dev/null && has_resolver=1
 
-    group="$(awk '
-      /^concurrency:[ \t]*$/ { in_c=1; next }
-      in_c && /^[A-Za-z_]/   { in_c=0 }
-      in_c && /^[ \t]*group:/ { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
+    # Collect EVERY concurrency group in this file, at ANY indentation --
+    # tabula-deploy.yaml carries one per deploy-* job rather than a single
+    # workflow-level block (GitHub rejects a job-level `concurrency:`
+    # declared INSIDE _deploy-cloud-run.yaml's own job when invoked via
+    # `uses:`, confirmed chasing this exact fix -- every dispatch failed
+    # instantly, no runner ever assigned -- so each CALLING job owns its own
+    # group instead). A workflow-level block (oauth-user-inspector-deploy.yaml,
+    # tabula-dev-latest.yaml) still matches: `concurrency:` at column 0 is
+    # just the shallowest indentation this scans.
+    groups="$(awk '
+      /^[ \t]*concurrency:[ \t]*$/  { in_c=1; next }
+      in_c && /^[ \t]*group:/       { sub(/^[ \t]*group:[ \t]*/, ""); print; in_c=0; next }
+      in_c && /^[ \t]*[A-Za-z_-]+:/ { in_c=0 }
     ' "$wf")"
+    group_count=0
+    [ -n "$groups" ] && group_count="$(printf '%s\n' "$groups" | grep -c .)"
+    sha_keyed_group="$(printf '%s\n' "$groups" | grep -m1 'github\.sha' || true)"
 
-    # A caller may declare NO workflow-level group and instead delegate
-    # serialization to _deploy-cloud-run.yaml's own job-level `concurrency:`
-    # (one group per app/environment/service, not per-commit -- see that
-    # file's `deploy` job). Same single-hop reusable-workflow edge as the
-    # continue-on-error check below: a job-level group missing or sha-keyed
-    # THERE leaves this lane exactly as unserialized as an absent or
-    # sha-keyed one here, so follow the hop before deciding.
-    group_source="$wf_rel"
-    if [ -z "$group" ] && grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$wf" 2>/dev/null; then
-      _callee="$WORKFLOWS_DIR/_deploy-cloud-run.yaml"
-      if [ -f "$_callee" ]; then
-        group="$(awk '
-          /^[ \t]+concurrency:[ \t]*$/   { in_c=1; next }
-          in_c && /^[ \t]*group:/        { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
-          in_c && /^[ \t]{0,5}[A-Za-z_]/ { in_c=0 }
-        ' "$_callee")"
-        group_source=".github/workflows/_deploy-cloud-run.yaml deploy job (delegated from $wf_rel)"
-      fi
-    fi
+    # KNOWN GAP: this only asserts "at least one coalescing group exists
+    # somewhere in the file" and "none are sha-keyed" -- it does NOT verify
+    # every deploy-* job with a `uses: .../_deploy-cloud-run.yaml` specifically
+    # HAS one. Deleting just one of tabula-deploy.yaml's six per-job groups
+    # (e.g. deploy-prod's -- the exact one a stuck approval actually stalls
+    # on) leaves 5 others behind and still passes. A fully precise per-job
+    # check would need to also accept the OTHER valid topology (one
+    # workflow-level block covering every calling job, still used by
+    # oauth-user-inspector-deploy.yaml) without false-failing it, which needs
+    # real job-boundary parsing (see check_job_timeouts's ind()-based scanner
+    # for the pattern) -- judged not worth the added fragility here for a
+    # conformance script, versus the two regressions this DOES catch
+    # (nothing serializes the lane at all; sha-keyed).
+
     unserialized=0
-    [ -z "$group" ] && unserialized=1
+    [ "$group_count" -eq 0 ] && unserialized=1
     sha_keyed=0
-    case "$group" in *github.sha*) sha_keyed=1 ;; esac
+    [ -n "$sha_keyed_group" ] && sha_keyed=1
 
     # Anchored to the real YAML key (any indentation), not a passing prose
     # mention of the term. Follows the ONE reusable-workflow edge the push
@@ -1719,26 +1726,26 @@ check_deploy_durable_base() {
 
     if [ "$has_resolver" -eq 1 ] && [ "$unserialized" -eq 0 ] && [ "$sha_keyed" -eq 0 ] && [ "$masked" -eq 0 ]; then
       emit "durable" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "durable base" "coalescing, unmasked" \
-        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes (${group_source}); no continue-on-error in the deploy chain to fake a success verdict" ""
+        "diffs from resolve-deploy-base.sh's durable base; ${group_count} concurrency group(s) found, all coalescing (non-sha); no continue-on-error in the deploy chain to fake a success verdict" ""
       OK_COUNT=$((OK_COUNT + 1))
       continue
     fi
 
     if [ "$has_resolver" -eq 0 ]; then
       emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "event.before" "resolve-deploy-base.sh" \
-        "runs deploy-affected.sh but never resolve-deploy-base.sh — BEFORE_REV traces back to github.event.before, which a run dropped by the constant concurrency group (#1311/#1335 eviction) can skip forever (#1351)" \
+        "runs deploy-affected.sh but never resolve-deploy-base.sh — BEFORE_REV traces back to github.event.before, which a run dropped by a coalescing concurrency group (#1311/#1335 eviction) can skip forever (#1351)" \
         "add a step running tools/ci/resolve-deploy-base.sh before the gate step and feed BEFORE_REV: \${{ steps.<id>.outputs.base_sha || github.event.before }}"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
     if [ "$unserialized" -eq 1 ]; then
       emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "no group" "coalescing" \
-        "no concurrency group serializes this deploy lane (checked ${group_source}) — two commits can deploy against the SAME live env + build Artifact Registry concurrently" \
-        "add a constant (non-sha) concurrency group at the workflow level, or -- if delegating to _deploy-cloud-run.yaml -- give its deploy job one keyed on app-name/environment/service-name"
+        "no concurrency group serializes this deploy lane — two commits can deploy against the SAME live env + build Artifact Registry concurrently" \
+        "add a constant (non-sha) concurrency group, either at the workflow level or on each deploy-* job that calls _deploy-cloud-run.yaml (job-level concurrency does not work INSIDE that reusable workflow's own job -- put it on the calling job)"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     elif [ "$sha_keyed" -eq 1 ]; then
       emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "sha-keyed" "coalescing" \
-        "concurrency group in ${group_source} keys on github.sha — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
-        "key the group on a constant string (e.g. group: ${wf_rel##*/}), or on app-name/environment/service-name if delegating to _deploy-cloud-run.yaml, and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
+        "a concurrency group in this file keys on github.sha ('${sha_keyed_group}') — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
+        "key the group on a constant string instead (e.g. group: deploy-\${{ inputs.app-name }}-\${{ inputs.environment }}-\${{ inputs.service-name }} on the calling job), and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
     if [ "$masked" -eq 1 ]; then

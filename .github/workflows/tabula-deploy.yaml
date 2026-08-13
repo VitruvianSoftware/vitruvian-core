@@ -70,12 +70,16 @@ permissions:
   contents: read
   id-token: write
 
-# No workflow-level concurrency group here (deliberately -- see history below).
-# Each deploy-* job below calls _deploy-cloud-run.yaml, which owns its OWN
-# per-(app, environment, service) concurrency group: that is the actual
-# granularity a `pulumi up` needs serialized against (one Cloud Run service,
-# one Pulumi stack), and it means a stuck production approval can only ever
-# block ANOTHER production deploy, never an unrelated development push.
+# No workflow-level concurrency group here (deliberately -- see history
+# below). Each deploy-* job below carries its OWN per-(app, environment,
+# service) concurrency group (on the CALLING job itself, not inside
+# _deploy-cloud-run.yaml -- GitHub rejects a job-level `concurrency:` declared
+# inside a reusable workflow's own job when invoked via `uses:`; confirmed
+# empirically chasing this exact fix). That is the actual granularity a
+# `pulumi up` needs serialized against (one Cloud Run service, one Pulumi
+# stack), so a stuck production approval can only ever block ANOTHER
+# production deploy of that same service, never an unrelated development
+# push or a different service's deploy.
 #
 # History: this used to be a single blanket `group: tabula-deploy` ("every
 # run touches the same shared build AR, serialize everything"). That traded
@@ -257,6 +261,18 @@ jobs:
   # automatic; nonproduction and production gate on their GitHub Environment.
   deploy-dev:
     needs: [build]
+    # Serialize deploys to THIS Cloud Run service/Pulumi stack only. Lives on
+    # the CALLING job, not inside _deploy-cloud-run.yaml's own job: GitHub
+    # rejects a job-level `concurrency:` declared THERE when invoked via
+    # `uses:` (confirmed empirically -- every dispatch failed instantly, no
+    # runner ever assigned, even with a fully static group string). Scoped to
+    # (app, environment, service) so a stuck approval on one only ever blocks
+    # ANOTHER deploy to that exact stack, never an unrelated one; cancel-in-
+    # progress stays false since aborting mid-rollout would abandon the stack
+    # straddled between two revisions instead of cleanly finishing.
+    concurrency:
+      group: deploy-tabula-development-tabula-api
+      cancel-in-progress: false
     # Development deploys on push (when the gate found it affected) or a
     # single-env dispatch. Not on a release — that promotes nonprod/prod.
     if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
@@ -291,6 +307,12 @@ jobs:
 
   deploy-dev-web:
     needs: [build]
+    # See deploy-dev above for why this lives here instead of inside
+    # _deploy-cloud-run.yaml. Different service-name => different group => a
+    # dev deploy of tabula-web never queues behind (or blocks) tabula-api's.
+    concurrency:
+      group: deploy-tabula-development-tabula-web
+      cancel-in-progress: false
     # Development deploys on push (when the gate found it affected) or a
     # single-env dispatch. Not on a release — that promotes nonprod/prod.
     if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
@@ -318,6 +340,11 @@ jobs:
   # single-env dispatch. The release merge is the gate, so this env carries no reviewer.
   deploy-nonprod:
     needs: [build]
+    # See deploy-dev above for why this lives here instead of inside
+    # _deploy-cloud-run.yaml.
+    concurrency:
+      group: deploy-tabula-nonproduction-tabula-api
+      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -350,6 +377,11 @@ jobs:
 
   deploy-nonprod-web:
     needs: [build]
+    # See deploy-dev above for why this lives here instead of inside
+    # _deploy-cloud-run.yaml.
+    concurrency:
+      group: deploy-tabula-nonproduction-tabula-web
+      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -374,6 +406,13 @@ jobs:
   # the production environment keeps its required reviewer.
   deploy-prod:
     needs: [build, deploy-nonprod]
+    # See deploy-dev above for why this lives here instead of inside
+    # _deploy-cloud-run.yaml. This is the group a stuck required-reviewer
+    # approval actually holds -- scoped to production+tabula-api only, so it
+    # can never starve development or nonproduction (or tabula-web's prod).
+    concurrency:
+      group: deploy-tabula-production-tabula-api
+      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -406,6 +445,11 @@ jobs:
 
   deploy-prod-web:
     needs: [build, deploy-nonprod-web]
+    # See deploy-dev above for why this lives here instead of inside
+    # _deploy-cloud-run.yaml.
+    concurrency:
+      group: deploy-tabula-production-tabula-web
+      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod-web.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
