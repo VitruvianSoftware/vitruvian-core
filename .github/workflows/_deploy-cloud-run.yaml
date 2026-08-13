@@ -216,7 +216,7 @@ jobs:
     # deployed, traffic not yet shifted) would abandon the stack straddled
     # between two revisions instead of cleanly finishing or being superseded.
     concurrency:
-      group: deploy-${{ inputs.app-name }}-${{ inputs.environment }}-${{ inputs.service-name }}
+      group: deploy-cloud-run-diagnostic-hardcoded
       cancel-in-progress: false
     # Explicit least-privilege floor for this reusable workflow. A called
     # workflow's permissions can only narrow the caller's grant, never widen it,
