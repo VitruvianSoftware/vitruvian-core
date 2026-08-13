@@ -146,7 +146,22 @@ dep_manifests_changed() {
   if [ -n "${BASE_REV:-}" ]; then
     _base="${BASE_REV}"
   elif [ -n "${BASE_REF:-}" ]; then
-    git fetch --quiet --depth=1 origin "${BASE_REF}" 2>/dev/null || true
+    # NOT --depth=1. The checkout step already fetched full history
+    # (fetch-depth: 0), so this fetch only needs to guarantee origin/<BASE_REF>
+    # is present -- but --depth=1 does that by writing a shallow-boundary
+    # marker for its tip, and that marker applies to the WHOLE repo, not just
+    # this ref. Verified: after it, `git merge-base HEAD FETCH_HEAD` (and the
+    # origin/${BASE_REF} fallback) fails outright, because HEAD's
+    # already-fetched deep history and the newly-shallow tip no longer share a
+    # common ancestor as far as git's graph walk is concerned. That silently
+    # takes the "no base" fail-closed path below on effectively every
+    # pull_request run, defeating the one thing this function exists to do —
+    # this is a duplicate of the exact incident (GO-2026-5841) the
+    # dep-manifest check above was written to prevent, just via a different
+    # mechanism (a broken base instead of a missing one). A depth-less fetch
+    # costs nothing extra here (the objects are already local from checkout)
+    # and never shallows the repo.
+    git fetch --quiet origin "${BASE_REF}" 2>/dev/null || true
     _base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null \
              || git merge-base HEAD "origin/${BASE_REF}" 2>/dev/null || true)"
   fi
