@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.24...tabula-web-v0.1.25) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** fix Dockerfile for pnpm workspace node_modules layout ([#1576](https://github.com/VitruvianSoftware/vitruvian-core/issues/1576)) ([8443ec1](https://github.com/VitruvianSoftware/vitruvian-core/commit/8443ec14e500d737794c603e5ac1232e4cf3470b))
+
 ## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.23...tabula-web-v0.1.24) (2026-08-12)
 
 
