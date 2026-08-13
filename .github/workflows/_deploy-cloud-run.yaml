@@ -195,15 +195,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # NOT a job-level `concurrency:` here (tried it, #1607 review): GitHub
-    # Actions rejects it outright on a reusable workflow's own job when that
-    # job is invoked via a caller's `uses:` -- every dispatch failed instantly
-    # (no runner ever assigned), reproducibly, even with a fully static,
-    # expression-free group string. Concurrency for a reusable-workflow call
-    # has to live on the CALLING job instead (the one with `uses:` pointing at
-    # this file) -- see each deploy-* job in tabula-deploy.yaml /
-    # oauth-user-inspector-deploy.yaml for the actual per (app, environment,
-    # service) groups.
+    # NOT a job-level `concurrency:` here, and NOT on the calling job either
+    # (both tried, #1607 review): GitHub Actions rejects `concurrency:` on
+    # ANY job that has `uses:` pointing at a reusable workflow, and equally
+    # rejects it declared inside that reusable workflow's own job -- every
+    # dispatch failed instantly (no runner ever assigned), reproducibly,
+    # confirmed both ways with fully static, expression-free group strings.
+    # The only placement that actually works is workflow-level on the
+    # CALLER (tabula-deploy.yaml / oauth-user-inspector-deploy.yaml), scoped
+    # by lane rather than the whole workflow -- see the comment above
+    # tabula-deploy.yaml's `concurrency:` block for the scheme and its
+    # accepted residual race (Pulumi's own per-stack locking is the
+    # backstop, since job-level scoping isn't available to lean on here).
     #
     # Explicit least-privilege floor for this reusable workflow. A called
     # workflow's permissions can only narrow the caller's grant, never widen it,

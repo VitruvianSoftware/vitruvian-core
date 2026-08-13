@@ -70,16 +70,33 @@ permissions:
   contents: read
   id-token: write
 
-# No workflow-level concurrency group here (deliberately -- see history
-# below). Each deploy-* job below carries its OWN per-(app, environment,
-# service) concurrency group (on the CALLING job itself, not inside
-# _deploy-cloud-run.yaml -- GitHub rejects a job-level `concurrency:` declared
-# inside a reusable workflow's own job when invoked via `uses:`; confirmed
-# empirically chasing this exact fix). That is the actual granularity a
-# `pulumi up` needs serialized against (one Cloud Run service, one Pulumi
-# stack), so a stuck production approval can only ever block ANOTHER
-# production deploy of that same service, never an unrelated development
-# push or a different service's deploy.
+# Concurrency is scoped per LANE, not the whole workflow, and lives HERE
+# (workflow level) rather than on individual jobs: GitHub Actions rejects a
+# `concurrency:` key on ANY job that also has `uses:` pointing at a reusable
+# workflow -- confirmed empirically both ways chasing this exact fix (inside
+# _deploy-cloud-run.yaml's own job, and on the calling job here), every
+# dispatch failed instantly with no runner ever assigned. Workflow-level is
+# the only placement that actually works, so per-service granularity is
+# achieved by keying the ONE group on which lane this run is in instead:
+#   - push                         -> "development"
+#   - release (nonprod->prod ladder) -> "promote"
+#   - workflow_dispatch            -> inputs.environment (development /
+#                                      nonproduction / production)
+# Concurrency serializes RUNS against each other, never jobs WITHIN one
+# already-running run -- deploy-dev and deploy-dev-web (same run, same
+# "development" group) still run in parallel; only a SECOND push run's
+# deploy-dev would queue behind the first's. So a stuck production approval
+# (lane "promote", or dispatch's "production") can only ever block another
+# run in that SAME lane, never an unrelated development push.
+#
+# A residual, narrower race: a manual workflow_dispatch(nonproduction) (its
+# own "nonproduction" group) is NOT serialized against a release run's
+# nonprod stage (group "promote") even though both could touch the SAME live
+# stack at once -- Pulumi's own per-stack state locking is the backstop
+# there (a real concurrent `pulumi up` fails cleanly on a lock conflict,
+# retry-able, rather than corrupting state). Accepted: still strictly safer
+# than the incident this fixes, and a lane-keyed group is the only shape
+# concurrency can take here at all.
 #
 # History: this used to be a single blanket `group: tabula-deploy` ("every
 # run touches the same shared build AR, serialize everything"). That traded
@@ -95,6 +112,9 @@ permissions:
 # API image already does) instead of papering over it with serialization --
 # once no step here writes a shared mutable reference, `build` (and `gate`,
 # `changelog`) need no cross-run serialization at all.
+concurrency:
+  group: deploy-tabula-${{ (github.event_name == 'push' && 'development') || (github.event_name == 'release' && 'promote') || inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
   # Render tabula's latest changelog into the run page before the deploy, so an
@@ -261,18 +281,6 @@ jobs:
   # automatic; nonproduction and production gate on their GitHub Environment.
   deploy-dev:
     needs: [build]
-    # Serialize deploys to THIS Cloud Run service/Pulumi stack only. Lives on
-    # the CALLING job, not inside _deploy-cloud-run.yaml's own job: GitHub
-    # rejects a job-level `concurrency:` declared THERE when invoked via
-    # `uses:` (confirmed empirically -- every dispatch failed instantly, no
-    # runner ever assigned, even with a fully static group string). Scoped to
-    # (app, environment, service) so a stuck approval on one only ever blocks
-    # ANOTHER deploy to that exact stack, never an unrelated one; cancel-in-
-    # progress stays false since aborting mid-rollout would abandon the stack
-    # straddled between two revisions instead of cleanly finishing.
-    concurrency:
-      group: deploy-tabula-development-tabula-api
-      cancel-in-progress: false
     # Development deploys on push (when the gate found it affected) or a
     # single-env dispatch. Not on a release — that promotes nonprod/prod.
     if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
@@ -307,12 +315,6 @@ jobs:
 
   deploy-dev-web:
     needs: [build]
-    # See deploy-dev above for why this lives here instead of inside
-    # _deploy-cloud-run.yaml. Different service-name => different group => a
-    # dev deploy of tabula-web never queues behind (or blocks) tabula-api's.
-    concurrency:
-      group: deploy-tabula-development-tabula-web
-      cancel-in-progress: false
     # Development deploys on push (when the gate found it affected) or a
     # single-env dispatch. Not on a release — that promotes nonprod/prod.
     if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')) }}
@@ -340,11 +342,6 @@ jobs:
   # single-env dispatch. The release merge is the gate, so this env carries no reviewer.
   deploy-nonprod:
     needs: [build]
-    # See deploy-dev above for why this lives here instead of inside
-    # _deploy-cloud-run.yaml.
-    concurrency:
-      group: deploy-tabula-nonproduction-tabula-api
-      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -377,11 +374,6 @@ jobs:
 
   deploy-nonprod-web:
     needs: [build]
-    # See deploy-dev above for why this lives here instead of inside
-    # _deploy-cloud-run.yaml.
-    concurrency:
-      group: deploy-tabula-nonproduction-tabula-web
-      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -406,13 +398,6 @@ jobs:
   # the production environment keeps its required reviewer.
   deploy-prod:
     needs: [build, deploy-nonprod]
-    # See deploy-dev above for why this lives here instead of inside
-    # _deploy-cloud-run.yaml. This is the group a stuck required-reviewer
-    # approval actually holds -- scoped to production+tabula-api only, so it
-    # can never starve development or nonproduction (or tabula-web's prod).
-    concurrency:
-      group: deploy-tabula-production-tabula-api
-      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -445,11 +430,6 @@ jobs:
 
   deploy-prod-web:
     needs: [build, deploy-nonprod-web]
-    # See deploy-dev above for why this lives here instead of inside
-    # _deploy-cloud-run.yaml.
-    concurrency:
-      group: deploy-tabula-production-tabula-web
-      cancel-in-progress: false
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod-web.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
