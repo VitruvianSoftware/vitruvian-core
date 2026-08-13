@@ -83,9 +83,12 @@ describe("getSecret", () => {
     await expect(getSecret("DATABASE_URL")).resolves.toBe(
       "postgres://from-sm/db",
     );
-    expect(accessSecretVersion).toHaveBeenCalledWith({
-      name: "projects/prj-d-bu2-oss-floating-test/secrets/TABULA_DATABASE_URL/versions/latest",
-    });
+    expect(accessSecretVersion).toHaveBeenCalledWith(
+      {
+        name: "projects/prj-d-bu2-oss-floating-test/secrets/TABULA_DATABASE_URL/versions/latest",
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("reads the bare name when no prefix is configured", async () => {
@@ -93,9 +96,12 @@ describe("getSecret", () => {
 
     await getSecret("JWT_SECRET");
 
-    expect(accessSecretVersion).toHaveBeenCalledWith({
-      name: "projects/prj-d-bu2-oss-floating-test/secrets/JWT_SECRET/versions/latest",
-    });
+    expect(accessSecretVersion).toHaveBeenCalledWith(
+      {
+        name: "projects/prj-d-bu2-oss-floating-test/secrets/JWT_SECRET/versions/latest",
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("caches by prefixed id, so repeat reads hit Secret Manager once", async () => {
