@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.25...tabula-api-v0.1.26) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** import pre-existing DomainMapping in Pulumi to prevent 409 creation conflicts ([#1590](https://github.com/VitruvianSoftware/vitruvian-core/issues/1590)) ([b69e502](https://github.com/VitruvianSoftware/vitruvian-core/commit/b69e50294145a00e23e1c286719ec1557749644f))
+* **tabula:** limit ioredis connection retries and disable offline queue to prevent 504 Gateway Timeouts ([#1591](https://github.com/VitruvianSoftware/vitruvian-core/issues/1591)) ([9a10f0e](https://github.com/VitruvianSoftware/vitruvian-core/commit/9a10f0e08c1eee08cb9fae4a869106dd81a08bad))
+
 ## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.24...tabula-api-v0.1.25) (2026-08-13)
 
 
