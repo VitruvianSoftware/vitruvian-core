@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.26...tabula-api-v0.1.27) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** stop a Redis outage from taking down the whole API ([#1600](https://github.com/VitruvianSoftware/vitruvian-core/issues/1600)) ([ba8acf0](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba8acf0d1e8461d1988aa6efc6594adc1307649d))
+
 ## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.25...tabula-api-v0.1.26) (2026-08-13)
 
 
