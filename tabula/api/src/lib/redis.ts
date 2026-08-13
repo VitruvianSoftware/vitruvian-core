@@ -41,10 +41,13 @@ console.log(`Connecting to Redis at ${redisUrl}`);
 
 export const redis = new Redis(redisUrl, {
   keyPrefix,
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 3,
+  enableOfflineQueue: false,
   retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
+    if (times > 3) {
+      return null;
+    }
+    return Math.min(times * 100, 1000);
   },
 });
 
