@@ -23,9 +23,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
+	"github.com/VitruvianSoftware/pulumi-library/go/pkg/revision"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrun"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrunv2"
@@ -60,6 +62,32 @@ func main() {
 
 		serviceName := fmt.Sprintf("tabula-web-%s", env)
 
+		serviceEnv := map[string]string{
+			"NODE_ENV": "production",
+			"HOSTNAME": "0.0.0.0",
+		}
+
+		shortDigest, err := revision.ShortDigest(imageDigest)
+		if err != nil {
+			return err
+		}
+		revisionName := revision.Name(serviceName, shortDigest, serviceEnv)
+
+		promote := envOrConfigBool("TABULA_WEB_PROMOTE", cfg, "promote")
+		stableRevision := envOrConfig("TABULA_WEB_STABLE_REVISION", cfg, "stableRevision")
+
+		var traffics []cloud_run.TrafficTarget
+		if promote || stableRevision == "" {
+			traffics = []cloud_run.TrafficTarget{
+				{Revision: revisionName, Percent: 100},
+			}
+		} else {
+			traffics = []cloud_run.TrafficTarget{
+				{Revision: stableRevision, Percent: 100},
+				{Revision: revisionName, Percent: 0, Tag: "candidate"},
+			}
+		}
+
 		// Cloud Run service — static site, no secrets, no migration.
 		app, err := cloud_run.NewCloudRun(ctx, "tabula-web", &cloud_run.CloudRunArgs{
 			ProjectID:           pulumi.String(project),
@@ -67,12 +95,11 @@ func main() {
 			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
-			Env: map[string]string{
-				"NODE_ENV": "production",
-				"HOSTNAME": "0.0.0.0",
-			},
-			MaxInstances: 5,
-			Port:         8080,
+			RevisionName:        pulumi.String(revisionName),
+			Env:                 serviceEnv,
+			Traffics:            traffics,
+			MaxInstances:        5,
+			Port:                8080,
 		})
 		if err != nil {
 			return err
@@ -241,4 +268,25 @@ func main() {
 		ctx.Export("serviceAccount", pulumi.String(runtimeSA))
 		return nil
 	})
+}
+
+// envOrConfig reads a per-invocation deploy input: the environment variable
+// wins (process-scoped, so concurrent invocations can't clobber each other).
+func envOrConfig(envName string, cfg *config.Config, cfgKey string) string {
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return cfg.Get(cfgKey)
+}
+
+// envOrConfigBool is envOrConfig for booleans.
+func envOrConfigBool(envName string, cfg *config.Config, cfgKey string) bool {
+	if v := os.Getenv(envName); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			panic(fmt.Sprintf("%s=%q is not a boolean", envName, v))
+		}
+		return b
+	}
+	return cfg.GetBool(cfgKey)
 }
