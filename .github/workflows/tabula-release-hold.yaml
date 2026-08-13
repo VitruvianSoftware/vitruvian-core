@@ -1,0 +1,163 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Hold a tabula release PR out of the auto-merge flow while that component's
+# DEVELOPMENT deploy is red — the fast-feedback half of the dev→nonprod
+# interlock (the hard half is the require-dev-soak-job gate on deploy-nonprod
+# in tabula-deploy.yaml, which cannot be bypassed by any trigger).
+#
+# WHY BOTH. This one is advisory and early: it stops the release PR from
+# merging at all, so nothing is tagged, no release is published, and the
+# changelog stays visible and readable while development is being fixed. The
+# promotion-time gate is the backstop that also covers a break-glass
+# workflow_dispatch and any release cut by other means.
+#
+# THE SUBTLETY THAT MAKES THE LABEL ALONE INSUFFICIENT. release-pr-automerge.yaml
+# enables auto-merge the moment the PR opens. Auto-merge is a PR SETTING, not a
+# per-check gate: adding `do-not-automerge` afterwards does NOT disable it, and
+# GitHub would still merge the PR the instant required checks pass. So a hold
+# must actually call `--disable-auto`; the label is applied alongside it as the
+# human-readable reason (and because release-pr-automerge.yaml's own `if:`
+# honours the label, keeping the hold sticky if that workflow re-fires).
+#
+# TOKEN CHOICE. Re-enabling auto-merge uses the same vitruvian-copybara-sync App
+# token release-pr-automerge.yaml uses, because that App is the bypass actor on
+# the merge queue's required-review rule (#804). The default GITHUB_TOKEN is not,
+# so re-enabling with it would leave the PR stuck in REVIEW_REQUIRED — a silent
+# regression of the automation #804 exists to provide.
+
+name: tabula-release-hold
+
+on:
+  workflow_run:
+    workflows: [tabula-deploy]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  hold:
+    # Only push-triggered deploys of the default branch carry the development
+    # signal: a `release` run never runs deploy-dev at all, and a
+    # workflow_dispatch is a deliberate single-env break-glass. Reacting to
+    # either would compare a release PR against a run that never deployed
+    # development and hold it for no reason.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    strategy:
+      # Independent per component: tabula-api's red development must never hold
+      # tabula-web's release PR. fail-fast off so one component's API hiccup
+      # does not skip the other's evaluation.
+      fail-fast: false
+      matrix:
+        include:
+          - component: tabula-api
+            dev_job: deploy-dev / deploy
+          - component: tabula-web
+            dev_job: deploy-dev-web / deploy
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Hold or release this component's open release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          DEV_JOB: ${{ matrix.dev_job }}
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          set -uo pipefail
+
+          # release-please's branch name is deterministic and per-component
+          # (verified on the real PRs, e.g.
+          # release-please--branches--main--components--tabula-api), so this
+          # targets exactly one PR and can never touch a human's branch.
+          BRANCH="release-please--branches--main--components--${COMPONENT}"
+
+          PR="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+            --json number --jq '.[0].number // empty' 2>/dev/null)"
+          if [ -z "$PR" ]; then
+            echo "No open release PR on ${BRANCH} — nothing to hold or release."
+            exit 0
+          fi
+
+          # Read the development job's conclusion off the run that triggered us.
+          # TSV + awk rather than interpolating DEV_JOB into a jq filter.
+          jobs="$(gh run view "$RUN_ID" --repo "$REPO" --json jobs \
+            --jq '.jobs[] | "\(.name)\t\(.conclusion)"' 2>&1)"
+          if [ $? -ne 0 ]; then
+            echo "::warning title=release-hold indeterminate::could not read jobs for run ${RUN_ID}: ${jobs} — leaving release PR #${PR} untouched"
+            exit 0
+          fi
+
+          CONCLUSION="$(printf '%s\n' "$jobs" | awk -F'\t' -v want="$DEV_JOB" \
+            '$1 == want { print $2; exit }')"
+
+          if [ -z "$CONCLUSION" ]; then
+            echo "Run ${RUN_ID} has no '${DEV_JOB}' job (nothing deployable changed) — leaving release PR #${PR} untouched."
+            exit 0
+          fi
+
+          echo "Development job '${DEV_JOB}' concluded '${CONCLUSION}' in run ${RUN_ID}; release PR is #${PR}."
+
+          case "$CONCLUSION" in
+            success | skipped)
+              # Clear a hold THIS workflow previously applied. Re-enabling
+              # auto-merge is idempotent and is what actually releases the PR;
+              # removing the label alone would not (see the header note).
+              if gh pr view "$PR" --repo "$REPO" --json labels \
+                   --jq '.labels[].name' 2>/dev/null | grep -qx 'do-not-automerge'; then
+                echo "Development is green again — releasing the hold on #${PR}."
+                gh pr edit "$PR" --repo "$REPO" --remove-label do-not-automerge || true
+                gh pr merge "$PR" --repo "$REPO" --squash --auto || \
+                  echo "::warning title=auto-merge not re-enabled::could not re-enable auto-merge on #${PR}; merge it manually or re-run this workflow"
+              else
+                echo "No hold in place on #${PR}; nothing to do."
+              fi
+              ;;
+            failure | cancelled | timed_out | action_required | startup_failure)
+              echo "::warning title=release PR held::${COMPONENT}'s development deploy concluded '${CONCLUSION}' — holding release PR #${PR} out of auto-merge"
+              gh pr edit "$PR" --repo "$REPO" --add-label do-not-automerge || true
+              # THE load-bearing call: the label documents the hold, this
+              # enforces it.
+              gh pr merge "$PR" --repo "$REPO" --disable-auto || \
+                echo "::warning title=auto-merge still enabled::could not disable auto-merge on #${PR} — it may merge despite the hold label"
+              gh pr comment "$PR" --repo "$REPO" --body \
+                "Held out of auto-merge: \`${COMPONENT}\`'s development deploy concluded **${CONCLUSION}** in [run ${RUN_ID}](https://github.com/${REPO}/actions/runs/${RUN_ID}).
+
+          Merging this release would promote an artifact whose development deploy is red, and nonproduction has no reviewer to catch it. This PR is released automatically once development is green again." || true
+              ;;
+            *)
+              echo "Unrecognised conclusion '${CONCLUSION}' — leaving #${PR} untouched."
+              ;;
+          esac

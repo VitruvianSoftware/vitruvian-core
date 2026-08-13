@@ -342,6 +342,13 @@ jobs:
   # single-env dispatch. The release merge is the gate, so this env carries no reviewer.
   deploy-nonprod:
     needs: [build]
+    # `actions: read` is what the require-dev-soak-job interlock below needs to
+    # read this workflow's own run history; the other two match the workflow
+    # default (declaring any permissions block replaces, not extends, it).
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -369,11 +376,18 @@ jobs:
       # Skip the whole migrate + blue-green when the live service already
       # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
       skip-if-unchanged: true
+      # Refuse to promote tabula-api while ITS development deploy is red.
+      require-dev-soak-job: deploy-dev / deploy
       smoke-url-path: /health
     secrets: inherit
 
   deploy-nonprod-web:
     needs: [build]
+    # See deploy-nonprod above — `actions: read` for the dev-soak interlock.
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -390,6 +404,9 @@ jobs:
       default-region: us-central1
       run-migrations: false
       skip-if-unchanged: false
+      # Refuse to promote tabula-web while ITS OWN development deploy is red
+      # (deploy-dev-web, not deploy-dev — the two services promote independently).
+      require-dev-soak-job: deploy-dev-web / deploy
       smoke-url-path: /
     secrets: inherit
 
