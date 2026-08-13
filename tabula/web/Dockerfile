@@ -43,6 +43,10 @@ COPY tabula/shared/ tabula/shared/
 COPY packages/design-system/ packages/design-system/
 COPY tabula/web/ tabula/web/
 
+# Build workspace dependencies before building Next.js app
+RUN pnpm --filter @tabula/shared build
+RUN pnpm --filter @vitruviansoftware/design-system build
+
 # Build-time env var (baked into the JS bundle by Next.js)
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
