@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.23...tabula-v0.1.24) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** build workspace packages and exclude test files in web Docker build ([#1580](https://github.com/VitruvianSoftware/vitruvian-core/issues/1580)) ([6ab395a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6ab395a3f898f8d040b6ada661c33193c4531ef2))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.22...tabula-v0.1.23) (2026-07-25)
 
 
