@@ -19,34 +19,24 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-#
-# Stage 1: Install dependencies
-FROM node:22-alpine AS deps
-WORKDIR /app
-RUN corepack enable
-
-# Copy workspace config and lockfile
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-# Copy package.json files for all relevant workspaces
-COPY tabula/web/package.json tabula/web/package.json
-COPY tabula/shared/package.json tabula/shared/package.json
-COPY packages/design-system/package.json packages/design-system/package.json
-
-# Install only production + build deps for the web workspace
-RUN pnpm install --frozen-lockfile
-
-# Stage 2: Build
+# Stage 1: Install + Build
+# pnpm uses a symlink-based node_modules layout (.pnpm virtual store).
+# Docker COPY resolves symlinks to their targets, which breaks pnpm's
+# workspace resolution when node_modules is copied between stages.
+# Keeping install and build in ONE stage preserves the symlink graph.
+# Layer caching still works: package.json/lockfile change less often
+# than source, so the install layer is cached across source-only rebuilds.
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN corepack enable
 
-# pnpm hoists all deps into the root node_modules/.pnpm virtual store;
-# workspace packages resolve via symlinks from there, so copying the
-# root node_modules is sufficient (and per-package node_modules may not
-# exist at all).
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package.json ./package.json
-COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+# Copy workspace config and lockfile (cached layer)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY tabula/web/package.json tabula/web/package.json
+COPY tabula/shared/package.json tabula/shared/package.json
+COPY packages/design-system/package.json packages/design-system/package.json
+
+RUN pnpm install --frozen-lockfile
 
 # Copy source for all needed workspaces
 COPY tabula/shared/ tabula/shared/
