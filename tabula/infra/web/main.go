@@ -95,7 +95,7 @@ func main() {
 			Name:                serviceName,
 			Image:               pulumi.String(imageDigest),
 			ServiceAccountEmail: pulumi.String(runtimeSA),
-			RevisionName:        pulumi.String(revisionName),
+			RevisionName:        revisionName,
 			Env:                 serviceEnv,
 			Traffics:            traffics,
 			MaxInstances:        5,
