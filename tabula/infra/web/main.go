@@ -118,7 +118,7 @@ func main() {
 		// owners-list writes when an external token-verified owner is
 		// present). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
-			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain", &cloudrun.DomainMappingArgs{
+			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain-v2", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
 				Name:     pulumi.String(customDomain),
