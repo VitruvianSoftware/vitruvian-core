@@ -70,16 +70,27 @@ permissions:
   contents: read
   id-token: write
 
-# One promotion chain at a time. Every run -- push OR dispatch -- walks the
-# whole development -> nonproduction -> production ladder (see the `environment`
-# input note above), so a group keyed on that input put two runs that touch the
-# SAME three env stacks and the SAME shared build AR into different groups: a
-# dispatch picking `production` raced a concurrent push run. Serialize the whole
-# workflow instead (matching oauth-user-inspector-deploy.yaml); queued pushes
-# coalesce onto the newest sha.
-concurrency:
-  group: tabula-deploy
-  cancel-in-progress: false
+# No workflow-level concurrency group here (deliberately -- see history below).
+# Each deploy-* job below calls _deploy-cloud-run.yaml, which owns its OWN
+# per-(app, environment, service) concurrency group: that is the actual
+# granularity a `pulumi up` needs serialized against (one Cloud Run service,
+# one Pulumi stack), and it means a stuck production approval can only ever
+# block ANOTHER production deploy, never an unrelated development push.
+#
+# History: this used to be a single blanket `group: tabula-deploy` ("every
+# run touches the same shared build AR, serialize everything"). That traded
+# one bug for a worse one -- a tabula-api release's deploy-prod sat on its
+# required-reviewer gate for the better part of an hour, and every push to
+# main in the meantime got queued behind it and then evicted by the NEXT
+# push (GitHub cancels a still-queued run when a newer one joins its group,
+# same mechanism as ci.yaml's GO-2026-5841), so NOTHING reached development
+# the whole time. The "shared build AR" concern that justified the blanket
+# group was real but narrower than the fix: the `build` job's web-image step
+# read its digest back via the mutable `:latest` tag, which two concurrent
+# builds really could race. Fixed at the source below (SHA-tag it, like the
+# API image already does) instead of papering over it with serialization --
+# once no step here writes a shared mutable reference, `build` (and `gate`,
+# `changelog`) need no cross-run serialization at all.
 
 jobs:
   # Render tabula's latest changelog into the run page before the deploy, so an
@@ -227,10 +238,19 @@ jobs:
           docker build \
             --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
             -f tabula/web/Dockerfile \
+            -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
             .
+          docker push "${IMAGE}:${GITHUB_SHA}"
           docker push "${IMAGE}:latest"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:latest")
+          # Resolve the digest via the immutable per-commit tag, NOT :latest --
+          # :latest is a shared mutable reference two concurrent builds (this
+          # job carries no cross-run concurrency guard, see the top-of-file
+          # note) can overwrite between each other's push and inspect, handing
+          # one run the OTHER run's digest. Matches the API image's push step
+          # above, which already reads back via ${GITHUB_SHA} for the same
+          # reason.
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
   # Promote THAT digest, unchanged, through the ladder. development is

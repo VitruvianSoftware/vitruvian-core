@@ -195,6 +195,29 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Serialize per Cloud Run service + Pulumi stack: app-name + environment +
+    # service-name is the exact identity of the one stack this job's
+    # `pulumi up` mutates (the same composite key as the `environment:` field
+    # below, reused here for the same reason). Two runs targeting the SAME
+    # stack must queue rather than race `pulumi up` concurrently -- but a
+    # stack this job does not touch must never wait on it.
+    #
+    # A caller-level group keyed on the whole workflow over-serializes: a
+    # production release stuck for hours on its required-reviewer approval
+    # holds that single slot and starves every unrelated development push
+    # behind it, even though development/nonproduction/production share no
+    # mutable state this job touches (each is an independent Pulumi stack).
+    # Callers should NOT add their own blanket `concurrency:` group for this
+    # reason -- it either duplicates this one (harmless but redundant) or, if
+    # it is broader (e.g. one group for the whole workflow), reintroduces
+    # exactly the starvation this is meant to prevent.
+    #
+    # cancel-in-progress stays false: aborting mid-rollout (candidate
+    # deployed, traffic not yet shifted) would abandon the stack straddled
+    # between two revisions instead of cleanly finishing or being superseded.
+    concurrency:
+      group: deploy-${{ inputs.app-name }}-${{ inputs.environment }}-${{ inputs.service-name }}
+      cancel-in-progress: false
     # Explicit least-privilege floor for this reusable workflow. A called
     # workflow's permissions can only narrow the caller's grant, never widen it,
     # so declaring them here makes the job self-documenting and robust against a

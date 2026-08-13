@@ -1670,6 +1670,28 @@ check_deploy_durable_base() {
       in_c && /^[A-Za-z_]/   { in_c=0 }
       in_c && /^[ \t]*group:/ { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
     ' "$wf")"
+
+    # A caller may declare NO workflow-level group and instead delegate
+    # serialization to _deploy-cloud-run.yaml's own job-level `concurrency:`
+    # (one group per app/environment/service, not per-commit -- see that
+    # file's `deploy` job). Same single-hop reusable-workflow edge as the
+    # continue-on-error check below: a job-level group missing or sha-keyed
+    # THERE leaves this lane exactly as unserialized as an absent or
+    # sha-keyed one here, so follow the hop before deciding.
+    group_source="$wf_rel"
+    if [ -z "$group" ] && grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$wf" 2>/dev/null; then
+      _callee="$WORKFLOWS_DIR/_deploy-cloud-run.yaml"
+      if [ -f "$_callee" ]; then
+        group="$(awk '
+          /^[ \t]+concurrency:[ \t]*$/   { in_c=1; next }
+          in_c && /^[ \t]*group:/        { sub(/^[ \t]*group:[ \t]*/, ""); print; exit }
+          in_c && /^[ \t]{0,5}[A-Za-z_]/ { in_c=0 }
+        ' "$_callee")"
+        group_source=".github/workflows/_deploy-cloud-run.yaml deploy job (delegated from $wf_rel)"
+      fi
+    fi
+    unserialized=0
+    [ -z "$group" ] && unserialized=1
     sha_keyed=0
     case "$group" in *github.sha*) sha_keyed=1 ;; esac
 
@@ -1695,9 +1717,9 @@ check_deploy_durable_base() {
       fi
     fi
 
-    if [ "$has_resolver" -eq 1 ] && [ "$sha_keyed" -eq 0 ] && [ "$masked" -eq 0 ]; then
+    if [ "$has_resolver" -eq 1 ] && [ "$unserialized" -eq 0 ] && [ "$sha_keyed" -eq 0 ] && [ "$masked" -eq 0 ]; then
       emit "durable" "$GLYPH_OK" "$C_GREEN" "$wf_rel" "durable base" "coalescing, unmasked" \
-        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes; no continue-on-error in the deploy chain to fake a success verdict" ""
+        "diffs from resolve-deploy-base.sh's durable base; group still coalesces queued pushes (${group_source}); no continue-on-error in the deploy chain to fake a success verdict" ""
       OK_COUNT=$((OK_COUNT + 1))
       continue
     fi
@@ -1708,10 +1730,15 @@ check_deploy_durable_base() {
         "add a step running tools/ci/resolve-deploy-base.sh before the gate step and feed BEFORE_REV: \${{ steps.<id>.outputs.base_sha || github.event.before }}"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
-    if [ "$sha_keyed" -eq 1 ]; then
+    if [ "$unserialized" -eq 1 ]; then
+      emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "no group" "coalescing" \
+        "no concurrency group serializes this deploy lane (checked ${group_source}) — two commits can deploy against the SAME live env + build Artifact Registry concurrently" \
+        "add a constant (non-sha) concurrency group at the workflow level, or -- if delegating to _deploy-cloud-run.yaml -- give its deploy job one keyed on app-name/environment/service-name"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    elif [ "$sha_keyed" -eq 1 ]; then
       emit "durable" "$GLYPH_FAIL" "$C_RED" "$wf_rel" "sha-keyed" "coalescing" \
-        "concurrency group keys on github.sha — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
-        "key the group on a constant string (e.g. group: ${wf_rel##*/}) and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
+        "concurrency group in ${group_source} keys on github.sha — that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize" \
+        "key the group on a constant string (e.g. group: ${wf_rel##*/}), or on app-name/environment/service-name if delegating to _deploy-cloud-run.yaml, and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
     if [ "$masked" -eq 1 ]; then
