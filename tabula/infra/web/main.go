@@ -145,7 +145,19 @@ func main() {
 		// owners-list writes when an external token-verified owner is
 		// present). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
-			mappingID := fmt.Sprintf("locations/%s/namespaces/%s/domainmappings/%s", region, project, customDomain)
+			// NOT pulumi.Import(...): that unconditionally tells Pulumi this
+			// DomainMapping already exists in GCP and to adopt it, which is
+			// only true for an env that has deployed before. It failed
+			// outright on nonproduction's first-ever deploy: "resource
+			// ...domainmappings/tabula.staging.vitruviansoftware.dev does not
+			// exist". A plain create is correct for every env -- ForceOverride
+			// below already handles "the domain exists but is mapped
+			// elsewhere" (same mechanism tabula/infra/app's DomainMapping
+			// relies on, which never used pulumi.Import at all). For
+			// development, where this WAS already imported into state before
+			// this fix, removing the option is safe: Pulumi's import is a
+			// one-time directive for a resource not yet in state, a no-op
+			// once it's already tracked there.
 			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
@@ -168,7 +180,7 @@ func main() {
 					// against any future re-map.
 					ForceOverride: pulumi.Bool(true),
 				},
-			}, pulumi.Import(pulumi.ID(mappingID)))
+			})
 			if err != nil {
 				return err
 			}
