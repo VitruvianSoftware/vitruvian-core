@@ -4,6 +4,9 @@
   "private": true,
   "description": "Shared types and utilities for Tabula packages",
   "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts"
 }
