@@ -69,6 +69,29 @@ pulumi_wrap() {
   bash "$wrap" "$PULUMI_DIR" "$@"
 }
 
+# Self-heal a brand-new environment instead of failing deploy_phase's `pulumi up
+# --stack "$ENV"` with "no stack named '$ENV' found". `stack select` is a safe
+# existence probe (local workspace bookkeeping only, no cloud state touched);
+# falling through to `stack init` only on a genuine miss registers an empty
+# stack and nothing more -- the very next `up` provisions it exactly like any
+# other deploy. Same idiom as _deploy-cloud-run.yaml's "Ensure Artifact
+# Registry repository" step (describe-then-create) for the same reason: the
+# FIRST deploy to a newly added environment shouldn't need a human to
+# pre-provision it by hand before the pipeline can run.
+#
+# Explicit --dry-run branch (rather than relying on pulumi_wrap's own): the
+# real path deliberately silences `stack select`'s stdout/stderr -- a "no
+# stack named X found" there is an expected, handled outcome, not a real
+# error worth alarming logs with -- and that redirect would just as silently
+# swallow pulumi_wrap's dry-run echo too.
+ensure_stack() {
+  if [ -n "$DRY_RUN" ]; then
+    echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select, or stack init on a miss)"
+    return 0
+  fi
+  pulumi_wrap stack select "$ENV" >/dev/null 2>&1 || pulumi_wrap stack init "$ENV"
+}
+
 deploy_phase() { # $1 = promote (true|false)
   local promote="$1" refresh=""
   # --refresh reconciles Pulumi state against the live cloud before the 0%-traffic
@@ -152,6 +175,7 @@ main() {
   fi
 
   SVC="${SERVICE}-${ENV}"
+  ensure_stack
 
   # Resolve the stable (currently-serving) revision, ONCE. Empty => first-ever
   # deploy (program routes 100% straight to the new revision). --stable-revision
