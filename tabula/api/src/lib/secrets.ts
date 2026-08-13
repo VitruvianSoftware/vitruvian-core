@@ -97,7 +97,10 @@ export async function getSecret(secretName: string): Promise<string> {
   const name = `projects/${projectId}/secrets/${fullName}/versions/latest`;
 
   try {
-    const [version] = await getClient().accessSecretVersion({ name });
+    const [version] = await getClient().accessSecretVersion(
+      { name },
+      { timeout: 5000 },
+    );
     const data = version?.payload?.data;
     if (!data) {
       throw new Error("secret version has no payload");

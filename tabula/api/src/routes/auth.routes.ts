@@ -92,14 +92,24 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.get<{ Querystring: { origin?: string } }>(
     "/login",
     async (request, reply) => {
-      const rawOrigin =
-        request.query.origin ||
-        (request.headers.referer
-          ? new URL(request.headers.referer).origin
-          : undefined);
-      const validated = validateOrigin(rawOrigin);
-      const url = await AuthService.getAuthorizationUrl(validated);
-      return reply.redirect(url);
+      try {
+        const rawOrigin =
+          request.query.origin ||
+          (request.headers.referer
+            ? new URL(request.headers.referer).origin
+            : undefined);
+        const validated = validateOrigin(rawOrigin);
+        const url = await AuthService.getAuthorizationUrl(validated);
+        return reply.redirect(url);
+      } catch (error) {
+        request.log.error(error);
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        return reply.code(500).send({
+          error: "Failed to initiate login",
+          message: errorMessage,
+        });
+      }
     },
   );
 
