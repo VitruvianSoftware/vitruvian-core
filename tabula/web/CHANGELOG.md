@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.25...tabula-web-v0.1.26) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** collapse Dockerfile to single install+build stage ([#1578](https://github.com/VitruvianSoftware/vitruvian-core/issues/1578)) ([454e597](https://github.com/VitruvianSoftware/vitruvian-core/commit/454e597f6520fc6efed5fbe12544547d68cefc6a))
+
 ## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.24...tabula-web-v0.1.25) (2026-08-13)
 
 
