@@ -165,7 +165,7 @@ jobs:
     # it the tabula image rebuilt on every unrelated component's release
     # (foundation-*, oauth-*, ...) — wasted compute, since deploy-nonprod/prod
     # below are already filtered to `tabula-api-v*`.
-    if: ${{ always() && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
+    if: ${{ always() && !cancelled() && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || github.event_name == 'workflow_dispatch' || needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -292,13 +292,13 @@ jobs:
       smoke-url-path: /
     secrets: inherit
 
-  # ---- nonproduction (release-gated: promoted only on a tabula-api release) --
-  # No longer cascades from a push. Triggers when the tabula-api release-please
-  # PR merges (release published, tag `tabula-api-v*`) or via a single-env
-  # dispatch. The release merge is the gate, so this env carries no reviewer.
+  # ---- nonproduction (release-gated: promoted on a tabula-api or tabula-web release) --
+  # No longer cascades from a push. Triggers when a tabula release-please
+  # PR merges (release published, tag `tabula-api-v*` or `tabula-web-v*`) or via a
+  # single-env dispatch. The release merge is the gate, so this env carries no reviewer.
   deploy-nonprod:
     needs: [build]
-    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
@@ -328,12 +328,33 @@ jobs:
       smoke-url-path: /health
     secrets: inherit
 
+  deploy-nonprod-web:
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: nonproduction
+      image-digest: ${{ needs.build.outputs.web-image-digest }}
+      service-name: tabula-web
+      workload-migrated: false
+      pulumi-dir: tabula/infra/web
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
+      secret-prefix: TABULA_
+      pulumi-refresh: true
+      env-prefix: TABULA_WEB
+      default-region: us-central1
+      run-migrations: false
+      skip-if-unchanged: false
+      smoke-url-path: /
+    secrets: inherit
+
   # ---- production (release-gated + reviewer-gated final checkpoint) ---------
   # Same release trigger as nonprod, LADDERED behind deploy-nonprod success, and
   # the production environment keeps its required reviewer.
   deploy-prod:
     needs: [build, deploy-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v') && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
@@ -361,4 +382,25 @@ jobs:
       # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
       skip-if-unchanged: true
       smoke-url-path: /health
+    secrets: inherit
+
+  deploy-prod-web:
+    needs: [build, deploy-nonprod-web]
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod-web.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: tabula
+      environment: production
+      image-digest: ${{ needs.build.outputs.web-image-digest }}
+      service-name: tabula-web
+      workload-migrated: false
+      pulumi-dir: tabula/infra/web
+      cloudflare-token-secret-project: prj-d-bu2-oss-floating-c3d1
+      secret-prefix: TABULA_
+      pulumi-refresh: true
+      env-prefix: TABULA_WEB
+      default-region: us-central1
+      run-migrations: false
+      skip-if-unchanged: false
+      smoke-url-path: /
     secrets: inherit
