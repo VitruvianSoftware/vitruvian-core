@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.24...tabula-api-v0.1.25) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** support dynamic postMessage origin + fail-fast secret resolution in auth ([#1588](https://github.com/VitruvianSoftware/vitruvian-core/issues/1588)) ([1993e2f](https://github.com/VitruvianSoftware/vitruvian-core/commit/1993e2f14cfbf28bac6744d8992458baac87bf96))
+
 ## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.23...tabula-api-v0.1.24) (2026-08-13)
 
 
