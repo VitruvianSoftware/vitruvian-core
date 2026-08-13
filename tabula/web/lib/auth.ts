@@ -46,8 +46,12 @@ export class AuthService {
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
+      const originParam =
+        typeof window !== "undefined"
+          ? `?origin=${encodeURIComponent(window.location.origin)}`
+          : "";
       const popup = window.open(
-        `${this.API_URL}/login`,
+        `${this.API_URL}/login${originParam}`,
         "Tabula Login",
         `width=${width},height=${height},left=${left},top=${top}`,
       );

@@ -40,15 +40,19 @@ export class AuthService {
   /**
    * Generate the WorkOS authorization URL
    */
-  static async getAuthorizationUrl() {
+  static async getAuthorizationUrl(stateOrigin?: string) {
     const [workos, clientId] = await Promise.all([
       getWorkOS(),
       getWorkOSClientId(),
     ]);
+    const state = stateOrigin
+      ? JSON.stringify({ origin: stateOrigin })
+      : undefined;
     return workos.userManagement.getAuthorizationUrl({
       clientId,
       provider: "authkit",
       redirectUri: `${process.env.API_URL || "http://localhost:8080/api/v1"}/auth/callback`,
+      state,
     });
   }
 

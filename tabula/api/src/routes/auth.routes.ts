@@ -48,14 +48,34 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/**
- * Origin the auth callback posts the token to. The extension's opener page is a
- * chrome-extension:// origin; the web app is configured via CORS_ORIGIN. We pick
- * a single explicit origin instead of '*' so the token is never delivered to an
- * arbitrary opener. AUTH_POSTMESSAGE_ORIGIN wins; otherwise the first
- * CORS_ORIGIN entry; otherwise localhost for dev.
- */
-function resolvePostMessageOrigin(): string {
+function getAllowedOrigins(): string[] {
+  const list: string[] = [];
+  if (process.env.AUTH_POSTMESSAGE_ORIGIN) {
+    list.push(process.env.AUTH_POSTMESSAGE_ORIGIN.trim());
+  }
+  const corsOrigins = (process.env.CORS_ORIGIN || "").split(",");
+  for (const o of corsOrigins) {
+    const trimmed = o.trim();
+    if (trimmed && trimmed !== "*" && !trimmed.includes("*")) {
+      list.push(trimmed);
+    }
+  }
+  if (!list.includes("http://localhost:3000"))
+    list.push("http://localhost:3000");
+  if (!list.includes("http://localhost:3001"))
+    list.push("http://localhost:3001");
+  return list;
+}
+
+function validateOrigin(candidate?: string): string | undefined {
+  if (!candidate) return undefined;
+  const allowed = getAllowedOrigins();
+  return allowed.includes(candidate) ? candidate : undefined;
+}
+
+function resolvePostMessageOrigin(requestOrigin?: string): string {
+  const valid = validateOrigin(requestOrigin);
+  if (valid) return valid;
   if (process.env.AUTH_POSTMESSAGE_ORIGIN)
     return process.env.AUTH_POSTMESSAGE_ORIGIN;
   const corsOrigin = (process.env.CORS_ORIGIN || "").split(",")[0]?.trim();
@@ -69,22 +89,43 @@ export async function authRoutes(fastify: FastifyInstance) {
    * GET /api/v1/auth/login
    * Redirect to WorkOS AuthKit
    */
-  fastify.get("/login", async (_request, reply) => {
-    const url = await AuthService.getAuthorizationUrl();
-    return reply.redirect(url);
-  });
+  fastify.get<{ Querystring: { origin?: string } }>(
+    "/login",
+    async (request, reply) => {
+      const rawOrigin =
+        request.query.origin ||
+        (request.headers.referer
+          ? new URL(request.headers.referer).origin
+          : undefined);
+      const validated = validateOrigin(rawOrigin);
+      const url = await AuthService.getAuthorizationUrl(validated);
+      return reply.redirect(url);
+    },
+  );
 
   /**
    * GET /api/v1/auth/callback
    * Handle WorkOS callback, sync user, issue JWT + refresh token
    */
-  fastify.get<{ Querystring: { code: string } }>(
+  fastify.get<{ Querystring: { code: string; state?: string } }>(
     "/callback",
     async (request, reply) => {
-      const { code } = request.query;
+      const { code, state } = request.query;
 
       if (!code) {
         return reply.code(400).send({ error: "Missing code parameter" });
+      }
+
+      let requestedOrigin: string | undefined;
+      if (state) {
+        try {
+          const parsed = JSON.parse(state);
+          if (typeof parsed.origin === "string") {
+            requestedOrigin = parsed.origin;
+          }
+        } catch {
+          // ignore malformed state json
+        }
       }
 
       try {
@@ -119,7 +160,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         // Check if request expects HTML (Browser navigation)
         const accept = request.headers.accept || "";
         if (accept.includes("text/html")) {
-          const targetOrigin = resolvePostMessageOrigin();
+          const targetOrigin = resolvePostMessageOrigin(requestedOrigin);
           // charset=utf-8 is REQUIRED: the profile (e.g. a name like "Nguyễn")
           // is emitted as raw UTF-8 bytes below. Without a declared charset the
           // browser falls back to a locale default (often windows-1252) and
