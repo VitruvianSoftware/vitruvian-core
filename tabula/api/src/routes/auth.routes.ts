@@ -60,8 +60,10 @@ function getAllowedOrigins(): string[] {
       list.push(trimmed);
     }
   }
-  if (!list.includes("http://localhost:3000")) list.push("http://localhost:3000");
-  if (!list.includes("http://localhost:3001")) list.push("http://localhost:3001");
+  if (!list.includes("http://localhost:3000"))
+    list.push("http://localhost:3000");
+  if (!list.includes("http://localhost:3001"))
+    list.push("http://localhost:3001");
   return list;
 }
 
@@ -87,14 +89,19 @@ export async function authRoutes(fastify: FastifyInstance) {
    * GET /api/v1/auth/login
    * Redirect to WorkOS AuthKit
    */
-  fastify.get<{ Querystring: { origin?: string } }>("/login", async (request, reply) => {
-    const rawOrigin =
-      request.query.origin ||
-      (request.headers.referer ? new URL(request.headers.referer).origin : undefined);
-    const validated = validateOrigin(rawOrigin);
-    const url = await AuthService.getAuthorizationUrl(validated);
-    return reply.redirect(url);
-  });
+  fastify.get<{ Querystring: { origin?: string } }>(
+    "/login",
+    async (request, reply) => {
+      const rawOrigin =
+        request.query.origin ||
+        (request.headers.referer
+          ? new URL(request.headers.referer).origin
+          : undefined);
+      const validated = validateOrigin(rawOrigin);
+      const url = await AuthService.getAuthorizationUrl(validated);
+      return reply.redirect(url);
+    },
+  );
 
   /**
    * GET /api/v1/auth/callback

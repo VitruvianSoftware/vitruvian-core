@@ -45,7 +45,9 @@ export class AuthService {
       getWorkOS(),
       getWorkOSClientId(),
     ]);
-    const state = stateOrigin ? JSON.stringify({ origin: stateOrigin }) : undefined;
+    const state = stateOrigin
+      ? JSON.stringify({ origin: stateOrigin })
+      : undefined;
     return workos.userManagement.getAuthorizationUrl({
       clientId,
       provider: "authkit",
