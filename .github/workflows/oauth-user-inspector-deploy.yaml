@@ -306,6 +306,13 @@ jobs:
 
   deploy-nonprod:
     needs: [build, zitadel-nonprod]
+    # `actions: read` is what the require-dev-soak-job interlock below needs to
+    # read this workflow's own run history; the other two match the workflow
+    # default (declaring any permissions block replaces, not extends, it).
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -330,6 +337,12 @@ jobs:
       # Single source of truth: the local `:deploy` target reads the same file
       # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
       custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
+      # Refuse to promote while development is red. Same exposure tabula has:
+      # apps-release.yml opens the release PR on a push (not on a green
+      # deploy), release-pr-automerge.yaml auto-merges it on green PR CI, and
+      # nonproduction carries no reviewer -- so without this a failed
+      # development deploy reaches nonproduction with no human in the loop.
+      require-dev-soak-job: deploy-dev / deploy
     secrets: inherit
 
   # ---- production (release-gated + reviewer-gated final checkpoint) ---------

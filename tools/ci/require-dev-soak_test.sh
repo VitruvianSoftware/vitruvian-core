@@ -30,6 +30,11 @@ cat >"$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 W="$GH_STUB_DIR"
 case "$1 $2" in
+  "api repos"*)
+    # Workflow resolution from the current run id. `api_workflow` holds the id
+    # to return; its absence simulates the lookup failing.
+    if [ -f "$W/api_workflow" ]; then cat "$W/api_workflow"; else exit 1; fi
+    ;;
   "run list")
     if [ -f "$W/list_rc" ]; then
       echo "simulated gh failure" >&2
@@ -57,14 +62,14 @@ export GH_STUB_DIR="$WORK"
 run_gate() { # runs the script with a clean env; echoes output, returns its rc
   GH_BIN="$WORK/bin/gh" \
   REPO="acme/repo" \
-  WORKFLOW_FILE="tabula-deploy.yaml" \
+  WORKFLOW_FILE="${WORKFLOW_FILE-tabula-deploy.yaml}" \
   DEV_JOB_NAME="deploy-dev / deploy" \
   ALLOW_UNSOAKED="${ALLOW_UNSOAKED:-false}" \
   SCAN_LIMIT=20 \
     bash "$SCRIPT" 2>&1
 }
 
-reset() { rm -f "$WORK"/runs.txt "$WORK"/jobs.* "$WORK"/list_rc; }
+reset() { rm -f "$WORK"/runs.txt "$WORK"/jobs.* "$WORK"/list_rc "$WORK"/api_workflow; }
 
 # --- the core case this gate exists for: development is RED ----------------
 reset
@@ -149,6 +154,37 @@ out="$(ALLOW_UNSOAKED=true run_gate)"; rc=$?
   || bad "expected the override to pass, got $rc:\n$out"
 echo "$out" | grep -q '::warning' \
   && ok "the override is logged loudly as a ::warning" || bad "expected ::warning on override:\n$out"
+
+# --- workflow resolution: derived from the CURRENT run, not a ref basename ---
+# A reusable workflow's jobs run inside the CALLER's run, so GITHUB_RUN_ID
+# identifies the caller. Getting this wrong would query the wrong history and
+# silently fail open -- a gate that is a no-op while looking like protection.
+reset
+echo "oauth-user-inspector-deploy.yaml" >"$WORK/api_workflow"
+printf '900\n' >"$WORK/runs.txt"
+printf 'deploy-dev / deploy\tfailure\n' >"$WORK/jobs.900"
+out="$(WORKFLOW_FILE= GITHUB_RUN_ID=4242 run_gate)"; rc=$?
+[ "$rc" -eq 1 ] && ok "resolves the workflow from GITHUB_RUN_ID and still blocks on red" \
+  || bad "expected the run-id-resolved workflow to be searched, got $rc:\n$out"
+echo "$out" | grep -q 'searching oauth-user-inspector-deploy.yaml' \
+  && ok "logs which workflow history it searched" || bad "expected the searched workflow to be logged:\n$out"
+
+# An explicit WORKFLOW_FILE still wins over run-id resolution.
+reset
+echo "wrong-workflow.yaml" >"$WORK/api_workflow"
+printf '900\n' >"$WORK/runs.txt"
+printf 'deploy-dev / deploy\tfailure\n' >"$WORK/jobs.900"
+out="$(run_gate)"; rc=$?
+echo "$out" | grep -q 'searching tabula-deploy.yaml' \
+  && ok "an explicit WORKFLOW_FILE overrides run-id resolution" || bad "expected the explicit override to win:\n$out"
+
+# Resolution failing entirely (no run id, no ref) fails OPEN, never a false block.
+reset
+printf '900\n' >"$WORK/runs.txt"
+printf 'deploy-dev / deploy\tfailure\n' >"$WORK/jobs.900"
+out="$(WORKFLOW_FILE= GITHUB_RUN_ID= GITHUB_WORKFLOW_REF= run_gate)"; rc=$?
+[ "$rc" -eq 0 ] && ok "unresolvable workflow fails OPEN (never a false block)" \
+  || bad "expected exit 0 when the workflow cannot be resolved, got $rc:\n$out"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS (all require-dev-soak checks)"; exit 0; fi
