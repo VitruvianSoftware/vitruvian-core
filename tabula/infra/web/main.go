@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run"
-	"github.com/VitruvianSoftware/pulumi-library/go/pkg/revision"
+	"github.com/VitruvianSoftware/vitruvian-core/tabula/infra/web/revision"
 	"github.com/pulumi/pulumi-cloudflare/sdk/v5/go/cloudflare"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrun"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudrunv2"
