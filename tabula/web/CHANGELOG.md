@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.27...tabula-web-v0.1.28) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** support dynamic postMessage origin in auth callback for web app login ([#1585](https://github.com/VitruvianSoftware/vitruvian-core/issues/1585)) ([58ef515](https://github.com/VitruvianSoftware/vitruvian-core/commit/58ef5156fa3ea16969c18a7961a0bb6ec82c66a3))
+
 ## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.26...tabula-web-v0.1.27) (2026-08-13)
 
 
