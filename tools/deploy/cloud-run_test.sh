@@ -83,6 +83,92 @@ bash "$SCRIPT" "${common[@]}" --phase bogus >/dev/null 2>&1
 bash "$SCRIPT" --pulumi-dir d --service s --env e --env-prefix P --project p --region r --dry-run >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "missing image ref exits 2" || bad "missing --image-* should exit 2"
 
+# --- ensure_stack: self-heals a brand-new environment's missing stack -------
+# A NEW environment (no `pulumi stack init` ever run for it) must not need a
+# human to pre-provision it before the first deploy can run; deploy_phase's
+# `pulumi up --stack "$ENV"` would otherwise fail outright with
+# "no stack named '$ENV' found".
+
+# --dry-run: pulumi_wrap's own dry-run branch always reports success, so the
+# probe is shown and `stack init` is never reached.
+out="$(bash "$SCRIPT" "${common[@]}" --phase candidate --env nonproduction 2>&1)"
+echo "$out" | grep -q "DRYRUN pulumi: (dir=tabula/infra/app) ensure stack 'nonproduction' exists" \
+  && ok "dry-run shows the ensure_stack probe" || bad "dry-run should probe the stack:\n$out"
+echo "$out" | grep -q "pulumi stack init" \
+  && bad "dry-run must never reach a real 'pulumi stack init' invocation:\n$out" \
+  || ok "dry-run never falls through to a real stack init"
+
+# Real (non-dry-run) branching: stub `pulumi` + the pulumi_cmd.sh wrapper it
+# goes through, entirely self-contained (no real gcloud/pulumi/network) --
+# same "no real backend needed" bar as the rest of this file.
+stack_test_root="$(mktemp -d)"
+trap 'rm -rf "$stack_test_root"' EXIT
+mkdir -p "$stack_test_root/fakebin" "$stack_test_root/ws/tools/pulumi"
+created_stacks="$stack_test_root/created-stacks.txt"
+: >"$created_stacks"
+
+cat >"$stack_test_root/fakebin/pulumi" <<FAKEPULUMI
+#!/usr/bin/env bash
+STATE="$created_stacks"
+case "\$1 \$2" in
+  "stack select")
+    grep -qx "\$3" "\$STATE" && exit 0
+    echo "error: no stack named '\$3' found" >&2
+    exit 6
+    ;;
+  "stack init")
+    echo "\$3" >>"\$STATE"
+    exit 0
+    ;;
+  *) echo "unexpected fake pulumi invocation: \$*" >&2; exit 99 ;;
+esac
+FAKEPULUMI
+chmod +x "$stack_test_root/fakebin/pulumi"
+
+# Minimal stand-in for tools/pulumi/pulumi_cmd.sh: ensure_stack only relies on
+# pulumi_wrap's calling contract (dir as $1, subcommand+args after) -- the real
+# wrapper's GCP-identity/backend-pin logic has its own coverage elsewhere.
+cat >"$stack_test_root/ws/tools/pulumi/pulumi_cmd.sh" <<'FAKEWRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+shift  # PROJECT_DIR, unused by the stub
+SUBCMD="$1"; shift
+exec pulumi "$SUBCMD" "$@"
+FAKEWRAP
+
+(
+  # Reset: `fails` is inherited from the parent shell (a subshell copies
+  # variables, not references), so counting from 0 here and reporting it via
+  # the exit code is what lets the parent's tally see failures from inside
+  # this subshell at all -- a bare `bad` in here would otherwise only ever
+  # increment a copy that vanishes when the subshell exits.
+  fails=0
+  PATH="$stack_test_root/fakebin:$PATH"
+  BUILD_WORKSPACE_DIRECTORY="$stack_test_root/ws"
+  PULUMI_DIR=tabula/infra/app DRY_RUN= ENV=nonproduction
+  export PATH BUILD_WORKSPACE_DIRECTORY PULUMI_DIR DRY_RUN ENV
+
+  ensure_stack
+  [ "$(cat "$created_stacks")" = "nonproduction" ] \
+    && ok "missing stack gets created on first ensure_stack" \
+    || bad "expected 'nonproduction' created, got: $(cat "$created_stacks")"
+
+  before="$(cat "$created_stacks")"
+  ensure_stack
+  [ "$(cat "$created_stacks")" = "$before" ] \
+    && ok "already-existing stack: select succeeds, no spurious re-init" \
+    || bad "ensure_stack should be idempotent, state changed to: $(cat "$created_stacks")"
+
+  ENV=production ensure_stack
+  [ "$(cat "$created_stacks")" = "$(printf 'nonproduction\nproduction')" ] \
+    && ok "a second, still-missing env is created independently" \
+    || bad "expected both stacks created, got: $(cat "$created_stacks")"
+
+  exit "$fails"
+)
+subshell_fails=$?
+fails=$((fails + subshell_fails))
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS (all cloud-run sequencer checks)"; exit 0; fi
 echo "FAIL ($fails check(s))"; exit 1
