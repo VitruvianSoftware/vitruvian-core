@@ -40,6 +40,36 @@ function createClient(): PrismaClient {
   });
 }
 
-export const prisma = globalForPrisma.prisma || createClient();
+// Resolved lazily, NOT at module load -- same reasoning as lib/workos.ts's
+// getWorkOS(). This module is imported (transitively, via every
+// *.service.ts) from app.ts's top-level `import { authRoutes } ...` chain,
+// which Node fully evaluates before start()'s body ever runs
+// bootstrapSecrets(). A top-level `export const prisma = createClient()`
+// therefore captures process.env.DATABASE_URL at import time -- undefined,
+// since Secret Manager hasn't been consulted yet -- baking that into the
+// PrismaPg adapter permanently. The pg driver then silently falls back to
+// ITS OWN default (127.0.0.1:5432) instead of the real database, for the
+// life of the process: "Can't reach database server at 127.0.0.1:5432" on
+// every query, no matter how correctly DATABASE_URL later resolves.
+//
+// A Proxy keeps every existing call site (`prisma.user.upsert(...)`,
+// `prisma.$transaction(...)`) unchanged while deferring the actual
+// PrismaClient construction to first property access, which happens well
+// after bootstrapSecrets() has populated the real environment. Tests are
+// unaffected: jest's setupFilesAfterEnv (tests/setup.ts) already sets
+// DATABASE_URL before any test file's imports run, so first access there
+// already saw the right value either way.
+let _client: PrismaClient | undefined;
+function getClient(): PrismaClient {
+  if (!_client) {
+    _client = globalForPrisma.prisma || createClient();
+    if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = _client;
+  }
+  return _client;
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getClient(), prop, receiver);
+  },
+});
