@@ -79,10 +79,24 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
   // per debounced tab event, per window), and the per-IP key means users
   // behind a shared NAT (offices) pool into one bucket. 1000/min still stops
   // abusive clients; tighten per-route later if needed.
+  //
+  // skipOnError is NOT optional: without it, a Redis-store error (e.g. the
+  // client unreachable, which lib/redis's enableOfflineQueue:false makes an
+  // IMMEDIATE rejection rather than a hang) throws inside rate-limit's
+  // onRequest hook. That throw happens before any route handler runs -- for
+  // EVERY route registered through a prefixed plugin (auth, users, workspaces,
+  // sync, backups, sharing, relay: the entire real API surface) -- bypassing
+  // even a route's own try/catch and landing on the generic 500 from
+  // errorHandler.ts. Only the two bare top-level routes (/health, /) are
+  // exempt, so /health kept reporting "ok" while the rest of the API was
+  // completely down. Verified by reproducing this exact failure (and its fix)
+  // against the real fastify/@fastify/rate-limit/ioredis versions in
+  // isolation, pointed at an unreachable Redis.
   app.register(rateLimit, {
     max: parseInt(process.env.RATE_LIMIT_MAX || "1000", 10),
     timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || "60000", 10),
     redis: redis || undefined, // Use Redis for rate limiting if available
+    skipOnError: true, // A rate-limiter outage must never take down the API.
   });
 
   // Resolve the JWT secret. Throws (crash-loops the deploy) when JWT_SECRET is
