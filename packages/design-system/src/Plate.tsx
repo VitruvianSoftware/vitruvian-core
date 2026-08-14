@@ -44,6 +44,7 @@ export interface PlateProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Marks draw themselves in clockwise on mount. Once per view. */
   enter?: boolean;
   as?: "div" | "section" | "article" | "aside";
+  children?: React.ReactNode;
 }
 
 /**

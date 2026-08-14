@@ -20,23 +20,12 @@
  * SOFTWARE.
  */
 
-/**
- * Feature flags for the Tabula extension.
- *
- * Flip a flag to `true` to enable an in-progress capability across the UI.
- * Gated JSX is left in place (rather than deleted), so re-enabling is a
- * one-line change.
- */
-export const FEATURE_FLAGS = {
-  /**
-   * Space/workspace sharing: share links, permissions, and collaboration.
-   * Disabled until the M2 "Sync & Sharing Foundation" lands — backend
-   * permissions (#139) and the web companion / relay (#140). Tracking: #137.
-   */
-  SHARING_ENABLED: false,
-  /**
-   * Vitruvian Design System migration (Preview).
-   * Replaces Workona-style UI with the new system.
-   */
-  USE_DESIGN_SYSTEM: "use-design-system",
-} as const;
+const React = require("react");
+
+module.exports = {
+  Button: (props) => React.createElement("button", props, props.children),
+  Plate: (props) => React.createElement("div", props, props.children),
+  Textarea: (props) => React.createElement("textarea", props),
+  EmptyState: (props) => React.createElement("div", props, props.children),
+  Modal: (props) => React.createElement("div", props, props.children),
+};

@@ -23,6 +23,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { parseMarkdown } from "../utils/markdown";
 import { Icon } from "./icons";
+import { Plate, Button, Textarea } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface NoteEditorProps {
   value: string;
@@ -44,6 +47,10 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Auto-resize textarea
   useEffect(() => {
@@ -81,89 +88,193 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     setIsFullscreen(!isFullscreen);
   };
 
+  const Container = useDesignSystem ? Plate : "div";
+
   return (
-    <div className={`note-editor ${isFullscreen ? "fullscreen" : ""}`}>
+    <Container className={`note-editor ${isFullscreen ? "fullscreen" : ""}`}>
       {/* Toolbar */}
       <div className="note-toolbar">
         <div className="toolbar-group">
-          <button
-            className={`btn-icon btn-xs ${mode === "write" ? "active" : ""}`}
-            onClick={() => setMode("write")}
-            title="Edit"
-          >
-            <Icon name="edit" size="sm" />
-          </button>
-          <button
-            className={`btn-icon btn-xs ${mode === "preview" ? "active" : ""}`}
-            onClick={() => setMode("preview")}
-            title="Preview"
-          >
-            <Icon name="visibility" size="sm" />
-          </button>
+          {useDesignSystem ? (
+            <>
+              <Button
+                variant={mode === "write" ? "secondary" : "ghost"}
+                size="small"
+                onClick={() => setMode("write")}
+                title="Edit"
+              >
+                <Icon name="edit" size="sm" />
+              </Button>
+              <Button
+                variant={mode === "preview" ? "secondary" : "ghost"}
+                size="small"
+                onClick={() => setMode("preview")}
+                title="Preview"
+              >
+                <Icon name="visibility" size="sm" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <button
+                className={`btn-icon btn-xs ${mode === "write" ? "active" : ""}`}
+                onClick={() => setMode("write")}
+                title="Edit"
+              >
+                <Icon name="edit" size="sm" />
+              </button>
+              <button
+                className={`btn-icon btn-xs ${mode === "preview" ? "active" : ""}`}
+                onClick={() => setMode("preview")}
+                title="Preview"
+              >
+                <Icon name="visibility" size="sm" />
+              </button>
+            </>
+          )}
         </div>
 
         {mode === "write" && (
           <div className="toolbar-group">
-            <button
-              className="btn-icon btn-xs"
-              onClick={() => insertSyntax("**", "**")}
-              title="Bold"
-            >
-              <span style={{ fontWeight: "bold" }}>B</span>
-            </button>
-            <button
-              className="btn-icon btn-xs"
-              onClick={() => insertSyntax("*", "*")}
-              title="Italic"
-            >
-              <span style={{ fontStyle: "italic" }}>I</span>
-            </button>
-            <button
-              className="btn-icon btn-xs"
-              onClick={() => insertSyntax("- ", "")}
-              title="List"
-            >
-              <Icon name="format_list_bulleted" size="sm" />
-            </button>
+            {useDesignSystem ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => insertSyntax("**", "**")}
+                  title="Bold"
+                >
+                  <span style={{ fontWeight: "bold" }}>B</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => insertSyntax("*", "*")}
+                  title="Italic"
+                >
+                  <span style={{ fontStyle: "italic" }}>I</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => insertSyntax("- ", "")}
+                  title="List"
+                >
+                  <Icon name="format_list_bulleted" size="sm" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn-icon btn-xs"
+                  onClick={() => insertSyntax("**", "**")}
+                  title="Bold"
+                >
+                  <span style={{ fontWeight: "bold" }}>B</span>
+                </button>
+                <button
+                  className="btn-icon btn-xs"
+                  onClick={() => insertSyntax("*", "*")}
+                  title="Italic"
+                >
+                  <span style={{ fontStyle: "italic" }}>I</span>
+                </button>
+                <button
+                  className="btn-icon btn-xs"
+                  onClick={() => insertSyntax("- ", "")}
+                  title="List"
+                >
+                  <Icon name="format_list_bulleted" size="sm" />
+                </button>
+              </>
+            )}
           </div>
         )}
 
         <div className="toolbar-group ml-auto">
-          {onPopout && (
-            <button
-              className="btn-icon btn-xs"
-              onClick={onPopout}
-              title="Open in new window"
-            >
-              <Icon name="open_in_new" size="sm" />
-            </button>
+          {useDesignSystem ? (
+            <>
+              {onPopout && (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={onPopout}
+                  title="Open in new window"
+                >
+                  <Icon name="open_in_new" size="sm" />
+                </Button>
+              )}
+              <Button
+                variant={isFullscreen ? "secondary" : "ghost"}
+                size="small"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                <Icon
+                  name={isFullscreen ? "fullscreen_exit" : "fullscreen"}
+                  size="sm"
+                />
+              </Button>
+            </>
+          ) : (
+            <>
+              {onPopout && (
+                <button
+                  className="btn-icon btn-xs"
+                  onClick={onPopout}
+                  title="Open in new window"
+                >
+                  <Icon name="open_in_new" size="sm" />
+                </button>
+              )}
+              <button
+                className={`btn-icon btn-xs ${isFullscreen ? "active" : ""}`}
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                <Icon
+                  name={isFullscreen ? "fullscreen_exit" : "fullscreen"}
+                  size="sm"
+                />
+              </button>
+            </>
           )}
-          <button
-            className={`btn-icon btn-xs ${isFullscreen ? "active" : ""}`}
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          >
-            <Icon
-              name={isFullscreen ? "fullscreen_exit" : "fullscreen"}
-              size="sm"
-            />
-          </button>
         </div>
       </div>
 
       {/* Editor / Preview Area */}
       <div className="note-editor-content">
         {mode === "write" ? (
-          <textarea
-            ref={textareaRef}
-            className="input note-content-input"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            autoFocus={autoFocus}
-            rows={minRows}
-            style={{ minHeight: isFullscreen ? "calc(100vh - 100px)" : "auto" }}
-          />
+          useDesignSystem ? (
+            <Textarea
+              ref={textareaRef}
+              className="input note-content-input"
+              value={value}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                onChange(e.target.value)
+              }
+              placeholder={placeholder}
+              autoFocus={autoFocus}
+              rows={minRows}
+              style={{
+                minHeight: isFullscreen ? "calc(100vh - 100px)" : "auto",
+                resize: "none",
+              }}
+            />
+          ) : (
+            <textarea
+              ref={textareaRef}
+              className="input note-content-input"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder={placeholder}
+              autoFocus={autoFocus}
+              rows={minRows}
+              style={{
+                minHeight: isFullscreen ? "calc(100vh - 100px)" : "auto",
+              }}
+            />
+          )
         ) : (
           <div
             className="markdown-preview"
@@ -175,6 +286,6 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
           />
         )}
       </div>
-    </div>
+    </Container>
   );
 };

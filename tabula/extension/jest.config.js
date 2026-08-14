@@ -73,5 +73,6 @@ module.exports = {
   coverageReporters: ["text", "lcov", "json", "json-summary", "html"],
   moduleNameMapper: {
     "\\.(css|less|scss|sass)$": "<rootDir>/tests/styleMock.js",
+    "^@vitruviansoftware/design-system$": "<rootDir>/tests/designSystemMock.js",
   },
 };

@@ -20,23 +20,22 @@
  * SOFTWARE.
  */
 
-/**
- * Feature flags for the Tabula extension.
- *
- * Flip a flag to `true` to enable an in-progress capability across the UI.
- * Gated JSX is left in place (rather than deleted), so re-enabling is a
- * one-line change.
- */
-export const FEATURE_FLAGS = {
-  /**
-   * Space/workspace sharing: share links, permissions, and collaboration.
-   * Disabled until the M2 "Sync & Sharing Foundation" lands — backend
-   * permissions (#139) and the web companion / relay (#140). Tracking: #137.
-   */
-  SHARING_ENABLED: false,
-  /**
-   * Vitruvian Design System migration (Preview).
-   * Replaces Workona-style UI with the new system.
-   */
+import { OpenFeature } from "@openfeature/web-sdk";
+import { ChromeStorageProvider } from "./chrome-storage-provider";
+
+export const FLAGS = {
   USE_DESIGN_SYSTEM: "use-design-system",
 } as const;
+
+let initialized = false;
+
+export async function initFeatureFlags() {
+  if (initialized) return OpenFeature.getClient();
+  await OpenFeature.setProviderAndWait(new ChromeStorageProvider());
+  initialized = true;
+  return OpenFeature.getClient();
+}
+
+export function getFeatureFlagClient() {
+  return OpenFeature.getClient();
+}
