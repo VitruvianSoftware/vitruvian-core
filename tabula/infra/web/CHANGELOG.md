@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-infra-v1.0.2...tabula-web-infra-v1.0.3) (2026-08-14)
+
+
+### Bug Fixes
+
+* **tabula:** alias old tabula-web-domain resource to prevent 409 conflict ([#1644](https://github.com/VitruvianSoftware/vitruvian-core/issues/1644)) ([1c03286](https://github.com/VitruvianSoftware/vitruvian-core/commit/1c03286382e2a80c716454d0cf70433210cd37e3))
+
 ## [1.0.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-infra-v1.0.1...tabula-web-infra-v1.0.2) (2026-08-14)
 
 
