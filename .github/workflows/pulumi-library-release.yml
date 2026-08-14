@@ -110,6 +110,10 @@ jobs:
       matrix:
         package: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@v7.0.1
+
       - name: Mint App token for the release PR
         id: app-token
         uses: ./.github/actions/mint-sync-app-token
