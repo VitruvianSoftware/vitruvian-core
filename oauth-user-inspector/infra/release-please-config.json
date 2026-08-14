@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "go",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "bootstrap-sha": "d7f97a3b8b3e8dda2217d822e423185acb1790af",
+  "packages": {
+    "oauth-user-inspector/infra": {
+      "package-name": "oauth-user-inspector-infra",
+      "component": "oauth-user-inspector-infra",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
