@@ -1,0 +1,75 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Reusable "render CHANGELOG.md onto the run's step summary before a gated
+# deploy" job, deduped from four near-identical copies (foundation-app-deploy,
+# foundation-net-deploy, foundation-proj-deploy, tabula-deploy). The caller
+# controls WHEN this runs via its own job-level `if:` on the `uses:` call --
+# this workflow has no opinion on that, it only renders.
+#
+# oauth-user-inspector-deploy.yaml's changelog job is NOT migrated here: it
+# renders a `git log <before>..<sha>` push-range digest via --range/--path,
+# a genuinely different shape (fetch-depth: 0 for history, no working-directory
+# home for a single CHANGELOG.md). foundation-release.yaml's changelog job is
+# also NOT migrated here: it fans in over 6 sibling release jobs' outputs with
+# a bespoke `cl()` helper, not a single directory's changelog.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: >-
+          Directory containing CHANGELOG.md. Also the source for the default
+          digest label (this directory's basename) and default changelog path
+          (working-directory/CHANGELOG.md) -- override either below if the
+          directory name doesn't match the label/path convention.
+        required: true
+        type: string
+      changelog-path:
+        description: >-
+          Full path to CHANGELOG.md, overriding the default
+          "<working-directory>/CHANGELOG.md". Leave empty to use the default.
+        required: false
+        type: string
+        default: ""
+      label:
+        description: >-
+          Digest label, overriding the default (working-directory's
+          basename). Leave empty to use the default.
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Changelog → step summary
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          CHANGELOG_PATH: ${{ inputs.changelog-path }}
+          LABEL: ${{ inputs.label }}
+        run: |
+          set -euo pipefail
+          path="${CHANGELOG_PATH:-${WORKING_DIRECTORY}/CHANGELOG.md}"
+          label="${LABEL:-$(basename "${WORKING_DIRECTORY}")}"
+          bash tools/ci/changelog-summary.sh "${path}" "" "${label}"

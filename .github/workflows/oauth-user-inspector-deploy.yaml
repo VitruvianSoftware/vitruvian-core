@@ -146,42 +146,23 @@ jobs:
   # mode never reaches the TD graph step. FAIL-OPEN: any uncertainty deploys.
   gate:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
-      # `actions: read` is the ONLY new grant this gate needs -- it lets
-      # resolve-deploy-base.sh query this workflow's own run history via the
-      # GitHub Actions API. No GCP IAM change: this job never talks to Cloud Run.
       actions: read
-    outputs:
-      affected: ${{ steps.decide.outputs.affected }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Resolve the durable deploy base (#1351)
-        id: durable-base
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: oauth-user-inspector-deploy.yaml
-        run: bash tools/ci/resolve-deploy-base.sh
-      - name: Decide whether the deploy artifacts are affected
-        id: decide
-        env:
-          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
-          FORCED_PUSH: ${{ github.event.forced }}
-          # NOTE: "oauth-user-inspector/" already covers the co-located app
-          # stack (oauth-user-inspector/infra/app). The identity stack is
-          # carved out via EXCLUDE_PATH_REGEX below to preserve the pre-#1351
-          # trigger set: identity changes never triggered a deploy when the
-          # stack lived under infrastructure/pulumi/apps/.
-          #
-          # tools/deploy/ is the rollout sequencer this app's deploy actually
-          # executes (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`).
-          EXTRA_PATH_REGEX: "oauth-user-inspector/|infrastructure/pulumi/platform/zitadel-apps/|tools/deploy/|\\.github/workflows/oauth-user-inspector-deploy\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml|\\.github/workflows/_zitadel-apps-apply\\.yaml"
-          EXCLUDE_PATH_REGEX: "oauth-user-inspector/infra/identity/"
-        run: bash tools/ci/deploy-affected.sh
+    uses: ./.github/workflows/_deploy-gate.yaml
+    with:
+      workflow-file: oauth-user-inspector-deploy.yaml
+      # NOTE: "oauth-user-inspector/" already covers the co-located app
+      # stack (oauth-user-inspector/infra/app). The identity stack is
+      # carved out via exclude-path-regex below to preserve the pre-#1351
+      # trigger set: identity changes never triggered a deploy when the
+      # stack lived under infrastructure/pulumi/apps/.
+      #
+      # tools/deploy/ is the rollout sequencer this app's deploy actually
+      # executes (_deploy-cloud-run.yaml runs `bazel run //tools/deploy:cloud-run`).
+      extra-path-regex: "oauth-user-inspector/|infrastructure/pulumi/platform/zitadel-apps/|tools/deploy/|\\.github/workflows/oauth-user-inspector-deploy\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml|\\.github/workflows/_zitadel-apps-apply\\.yaml"
+      exclude-path-regex: "oauth-user-inspector/infra/identity/"
+    secrets: inherit
 
   # BUILD ONCE: push the image to the shared AR in the infra-pipeline project
   # (owned by the oauth-user-inspector-build stack) and capture the immutable

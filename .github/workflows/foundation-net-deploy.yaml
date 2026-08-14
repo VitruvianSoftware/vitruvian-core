@@ -84,14 +84,9 @@ jobs:
   # deploy. Ungated + independent of `deploy`, so it never delays the rollout.
   changelog:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Changelog → step summary
-        env:
-          WORKDIR: ${{ inputs.working_directory }}
-        run: bash tools/ci/changelog-summary.sh "$WORKDIR/CHANGELOG.md" "" "$(basename "$WORKDIR")"
+    uses: ./.github/workflows/_changelog-summary.yaml
+    with:
+      working-directory: ${{ inputs.working_directory }}
 
   deploy:
     # Serialize per (stack dir + environment): a newer promotion run waits for an

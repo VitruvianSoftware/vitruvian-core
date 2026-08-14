@@ -1593,9 +1593,10 @@ check_deploy_sequencer_gate() {
     [ -f "$_wf" ] || continue
     # Only the CALLERS of the reusable rollout workflow actually deploy.
     grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$_wf" 2>/dev/null || continue
-    # Must appear in a real trigger (EXTRA_PATH_REGEX or a paths: glob) -- a
-    # passing mention in a comment must NOT satisfy this.
-    if ! grep -qE '^[[:space:]]*(EXTRA_PATH_REGEX:.*tools/deploy/|-[[:space:]]*"tools/deploy/)' "$_wf" 2>/dev/null; then
+    # Must appear in a real trigger (EXTRA_PATH_REGEX / the reusable
+    # _deploy-gate.yaml's kebab-case extra-path-regex: input, or a paths:
+    # glob) -- a passing mention in a comment must NOT satisfy this.
+    if ! grep -qEi '^[[:space:]]*(extra[_-]path[_-]regex:.*tools/deploy/|-[[:space:]]*"tools/deploy/)' "$_wf" 2>/dev/null; then
       _missing="${_missing} $(basename "$_wf")"
     fi
   done
