@@ -51,7 +51,11 @@ ts_project(
     # tsc-emitted declarations. Currently latent here (only type-only imports
     # of @tabula/shared get bundled today), but identical to a break that
     # surfaced for real in @vitruviansoftware/design-system.
-    transpiler = partial.make(swc, out_dir = "dist", root_dir = "src"),
+    transpiler = partial.make(
+        swc,
+        out_dir = "dist",
+        root_dir = "src",
+    ),
     tsconfig = "tsconfig.json",
 )
 

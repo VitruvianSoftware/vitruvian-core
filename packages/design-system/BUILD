@@ -85,7 +85,11 @@ ts_project(
     # pnpm/tsc-built consumer but not for anything Bazel bundles. partial.make
     # passes the same out_dir/root_dir straight through to swc so both build
     # paths agree on one layout.
-    transpiler = partial.make(swc, out_dir = "dist", root_dir = "src"),
+    transpiler = partial.make(
+        swc,
+        out_dir = "dist",
+        root_dir = "src",
+    ),
     tsconfig = "tsconfig.json",
     deps = [
         ":node_modules/@types/react",
