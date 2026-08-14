@@ -62,10 +62,15 @@ func main() {
 
 		serviceName := fmt.Sprintf("tabula-web-%s", env)
 
-		serviceEnv := map[string]string{
-			"NODE_ENV": "production",
-			"HOSTNAME": "0.0.0.0",
-		}
+		// The public base the client uses to call the API (tabula-api-<env>),
+		// AND the origin proxy.ts allows via CSP connect-src. Injected as
+		// a plain (non-NEXT_PUBLIC_) runtime env var -- see revision.EnvMap for
+		// why this MUST be runtime, not a build-time NEXT_PUBLIC_ constant:
+		// this app's image is built once and promoted unchanged across
+		// dev/nonprod/prod. Mirrors tabula/infra/app's own apiUrl config (same
+		// value, same env, read by main.go there too).
+		apiURL := cfg.Get("apiUrl")
+		serviceEnv := revision.EnvMap(apiURL)
 
 		shortDigest, err := revision.ShortDigest(imageDigest)
 		if err != nil {

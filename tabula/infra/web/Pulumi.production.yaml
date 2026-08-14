@@ -27,3 +27,8 @@ config:
   tabula-web:customDomain: tabula.vitruviansoftware.dev
   tabula-web:cloudflareZone: vitruviansoftware.dev
   tabula-web:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+  # Public base the client fetches from (see main.go / revision.EnvMap) and
+  # the origin middleware.ts allows via CSP connect-src. Same value as this
+  # env's tabula-api apiUrl (tabula/infra/app/Pulumi.production.yaml) — the
+  # web app and the browser it serves both need to reach the SAME API host.
+  tabula-web:apiUrl: https://tabula-api.vitruviansoftware.dev/api/v1

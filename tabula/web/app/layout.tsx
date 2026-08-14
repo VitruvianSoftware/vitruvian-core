@@ -25,6 +25,8 @@ import type { Metadata } from "next";
 // Fonts route downloads the font at build time, which breaks hermetic builds.
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
+import { RUNTIME_CONFIG_ELEMENT_ID } from "@/lib/runtime-config";
+import { escapeJsonForScript } from "@/lib/json-script";
 
 const geistSans = GeistSans;
 
@@ -33,6 +35,14 @@ export const metadata: Metadata = {
   description: "Web dashboard for Tabula workspace management",
 };
 
+// Forces this layout (and everything under it) to render per-request rather
+// than be statically optimized at `next build` time. Required for the
+// runtime-config script tag below to carry THIS container's own API_URL —
+// without it, Next may prerender the HTML once at build and freeze whatever
+// value was present then, reintroducing the exact bug this file exists to
+// fix (see lib/runtime-config.ts).
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,6 +50,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        {/* Read by lib/runtime-config.ts. Populated fresh per request from
+            the plain (non-NEXT_PUBLIC_) API_URL Cloud Run env var, so the
+            SAME built image promoted unchanged across dev/nonprod/prod
+            (tabula-deploy.yaml) still resolves each environment's own API
+            host client-side. */}
+        <script
+          id={RUNTIME_CONFIG_ELEMENT_ID}
+          type="application/json"
+          dangerouslySetInnerHTML={{
+            __html: escapeJsonForScript({
+              apiUrl: process.env.API_URL || null,
+            }),
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} antialiased`}
         suppressHydrationWarning

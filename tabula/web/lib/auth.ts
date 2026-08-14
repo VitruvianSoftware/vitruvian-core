@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { getApiUrl } from "./runtime-config";
+
 export interface User {
   id: string;
   email: string;
@@ -34,7 +36,13 @@ export interface AuthResponse {
 }
 
 export class AuthService {
-  private static readonly API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/auth`;
+  // Resolved at call time, not baked in at build time — see runtime-config.ts
+  // for why: the same built web image is promoted unchanged across
+  // dev/nonprod/prod, so a NEXT_PUBLIC_ constant can only ever hold one
+  // environment's API host.
+  private static get API_URL(): string {
+    return `${getApiUrl()}/auth`;
+  }
 
   /**
    * Open login popup and wait for token

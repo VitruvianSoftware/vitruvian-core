@@ -235,10 +235,13 @@ npm run start --workspace=@tabula/web
 
 ## Environment Variables
 
-Currently, the web dashboard does not require environment variables. Future versions may include:
-
-- `NEXT_PUBLIC_API_URL`: API endpoint for backend integration
-- `NEXT_PUBLIC_AUTH_DOMAIN`: Authentication provider domain
+- `API_URL`: base URL of the Tabula API (e.g. `https://tabula-api.vitruviansoftware.dev/api/v1`).
+  Deliberately a plain runtime env var, not `NEXT_PUBLIC_API_URL`: the web image is built once
+  and promoted unchanged across dev/nonprod/prod, and a `NEXT_PUBLIC_` var is inlined into the
+  client bundle at `next build` time — it can only ever hold one environment's value. The server
+  reads `API_URL` fresh on every request and hands it to the client via `app/layout.tsx`'s
+  runtime-config script tag; see `tabula/web/lib/runtime-config.ts` for the full mechanism.
+  Defaults to `http://localhost:8080/api/v1` when unset (local dev).
 
 ## Future Enhancements
 

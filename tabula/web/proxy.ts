@@ -20,21 +20,26 @@
  * SOFTWARE.
  */
 
-import type { NextConfig } from "next";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getApiUrl } from "./lib/runtime-config";
+import { securityHeaders } from "./lib/security-headers";
 
-// Security headers (CSP included) are NOT set here. `headers()` is evaluated
-// by `next build` and frozen into routes-manifest.json, which made the old
-// CSP's connect-src a build-time constant — exactly the class of bug that
-// broke prod login (a single built image, promoted unchanged across
-// dev/nonprod/prod, can only ever bake in ONE environment's API host). They
-// now live in proxy.ts (lib/security-headers.ts), which runs as real
-// per-request server code and reads the per-environment API_URL Cloud Run env
-// var fresh on every request. See lib/runtime-config.ts for the full story.
-const nextConfig: NextConfig = {
-  output: "standalone",
-  // geist ships ESM-only; transpile it for both next build and next/jest
-  // (next/jest derives its jest transformIgnorePatterns from this list).
-  transpilePackages: ["geist"],
+// Security headers (including CSP's connect-src) are set here, per request,
+// rather than via next.config.ts's `headers()` — that config is evaluated by
+// `next build` and frozen into routes-manifest.json, so it can't reflect the
+// per-environment API_URL Cloud Run env var when the same built image is
+// promoted unchanged across dev/nonprod/prod (see lib/runtime-config.ts).
+// Middleware runs as real per-request server code, so getApiUrl()'s server
+// branch (process.env.API_URL) is read fresh on every request.
+export function proxy(_request: NextRequest) {
+  const response = NextResponse.next();
+  for (const [key, value] of securityHeaders(getApiUrl())) {
+    response.headers.set(key, value);
+  }
+  return response;
+}
+
+export const config = {
+  matcher: "/:path*",
 };
-
-export default nextConfig;

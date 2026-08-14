@@ -256,11 +256,18 @@ jobs:
         id: web-image
         run: |
           set -euo pipefail
-          # Read the API URL for this environment from Pulumi config
-          API_URL=$(grep 'tabula-app:apiUrl' tabula/infra/app/Pulumi.development.yaml | awk '{print $2}')
+          # NO --build-arg NEXT_PUBLIC_API_URL here, deliberately: this image
+          # is built ONCE and promoted unchanged across dev/nonprod/prod
+          # below, and NEXT_PUBLIC_ vars are inlined into the client bundle
+          # at `next build` time — a single build can only ever bake in ONE
+          # environment's API host (this broke prod login: the shared image
+          # shipped everywhere with development's API URL frozen into it).
+          # The API URL is now a plain runtime env var (API_URL, injected per
+          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that tabula/web/lib/runtime-config.ts and proxy.ts
+          # read fresh on every request instead.
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
           docker build \
-            --build-arg NEXT_PUBLIC_API_URL="${API_URL}" \
             -f tabula/web/Dockerfile \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
