@@ -68,6 +68,10 @@ jobs:
             oauth-user-inspector/infra,
           ]
     steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@v7.0.1
+
       # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
       # PR triggers the merge queue's required checks -- same as tabula-release.
       - name: Mint App token for the release PR

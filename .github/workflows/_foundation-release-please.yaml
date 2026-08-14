@@ -64,6 +64,10 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs[format('infrastructure/pulumi/foundation/{0}--release_created', inputs.phase)] }}
     steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@v7.0.1
+
       - name: Mint App token
         id: app-token
         uses: ./.github/actions/mint-sync-app-token

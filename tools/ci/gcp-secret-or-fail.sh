@@ -58,7 +58,14 @@ main() {
   local secret_id="${1:?secret id required}" project="${2:?project required}" context="${3:-}"
   local stderr_file value rc
   stderr_file="$(mktemp)"
-  trap 'rm -f "${stderr_file}"' EXIT
+  # No cleanup trap: a `trap '...${stderr_file}...' EXIT` registered here
+  # references a LOCAL variable, but when secret_or_fail (below) returns 1,
+  # `set -e` unwinds the whole script -- by the time the EXIT trap actually
+  # fires, main()'s local scope is gone, so ${stderr_file} is unbound and the
+  # trap itself crashes with "unbound variable", masking the real ::error::
+  # this function already printed (this took down two real deploy runs in
+  # production before being caught). CI runners are ephemeral; an unremoved
+  # mktemp file needs no explicit cleanup.
 
   # +e: capture gcloud's real exit code instead of letting -e abort here.
   set +e

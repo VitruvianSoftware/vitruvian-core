@@ -77,5 +77,8 @@ jobs:
       NTFY_PASSWORD: ${{ secrets.NTFY_GITHUB_ACTIONS_PASSWORD }}
       REPO: ${{ github.repository }}
     steps:
+      # tools/ci/notify-ci-issues.sh must physically exist on the runner.
+      - uses: actions/checkout@v7.0.1
+
       - name: Check for stuck approvals and main-branch failures, notify
         run: bash tools/ci/notify-ci-issues.sh

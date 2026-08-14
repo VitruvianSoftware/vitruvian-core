@@ -20,8 +20,17 @@
 # SOFTWARE.
 
 # Unit tests for tools/ci/gcp-secret-or-fail.sh's pure secret_or_fail()
-# decision function. Sourced, not executed with gcloud -- hermetic, no
-# network, no credentials.
+# decision function, PLUS end-to-end tests that actually execute main() (a
+# fake `gcloud` on PATH -- hermetic, no network, no real credentials). The
+# end-to-end tests exist specifically because the pure-function tests alone
+# already missed a real bug once: a `trap '...${stderr_file}...' EXIT`
+# registered inside main() referenced a `local` variable, but by the time the
+# EXIT trap actually fired -- after main() had already returned, on EITHER
+# the success or the failure path -- main()'s local scope was gone, so the
+# trap itself crashed with "unbound variable" under `set -u`, silently
+# swallowing the real ::error:: and taking down two production deploys before
+# being caught. Sourcing the script and calling secret_or_fail() directly
+# never exercises main() at all, so it could not have caught this.
 
 set -uo pipefail
 
@@ -68,6 +77,36 @@ if secret_or_fail 0 "value-with-trailing-noise" "some warning printed to stderr 
   ok "rc=0 always wins regardless of stderr content (matches gcloud's own success signal)"
 else
   bad "rc=0 should not fail even if stderr has content"
+fi
+
+# --- end-to-end via main() with a fake gcloud on PATH -----------------------
+
+fake_bin="$(mktemp -d)"
+cleanup_fake_bin() { rm -rf "$fake_bin"; }
+trap cleanup_fake_bin EXIT
+
+cat > "$fake_bin/gcloud" << 'FAKE_GCLOUD'
+#!/usr/bin/env bash
+if [ "${FAKE_GCLOUD_MODE:-}" = "fail" ]; then
+  echo "ERROR: (gcloud.secrets.versions.access) PERMISSION_DENIED: caller lacks permission" >&2
+  exit 1
+fi
+echo "the-actual-secret-value"
+FAKE_GCLOUD
+chmod +x "$fake_bin/gcloud"
+
+out="$(PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "the-actual-secret-value" ] \
+  && ok "main(): success path returns the value with rc=0, no trap crash" \
+  || bad "main() success path wrong (rc=$rc): $out"
+
+out="$(FAKE_GCLOUD_MODE=fail PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+rc=$?
+if [ "$rc" -eq 1 ] && echo "$out" | grep -q "::error::secret DATABASE_URL" && ! echo "$out" | grep -qi "unbound variable"; then
+  ok "main(): failure path prints the real ::error:: with rc=1, no trap crash"
+else
+  bad "main() failure path wrong (rc=$rc): $out"
 fi
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails" >&2; exit 1; fi

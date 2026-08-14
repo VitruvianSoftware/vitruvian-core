@@ -133,6 +133,11 @@ jobs:
       matrix:
         package: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
+      # `mint-sync-app-token` (next) is a LOCAL composite action; GitHub can't
+      # resolve `uses: ./...` without the repo already checked out onto the
+      # runner.
+      - uses: actions/checkout@v7.0.1
+
       # Mint a GitHub App token so the release PR is authored by the App, not by
       # GITHUB_TOKEN. main has required status checks (the merge queue, #83), and
       # a PR opened with GITHUB_TOKEN never triggers workflow runs — so a

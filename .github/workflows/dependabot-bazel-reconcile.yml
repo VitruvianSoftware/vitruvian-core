@@ -93,6 +93,13 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 45
         steps:
+            # Bare checkout first: `mint-sync-app-token` (next) is a LOCAL
+            # composite action, and GitHub can't resolve `uses: ./...` without
+            # the repo already checked out onto the runner. The real checkout
+            # -- the PR's head ref, with the minted token for an elevated push
+            # -- follows once that token exists.
+            - uses: actions/checkout@v7.0.1
+
             - name: Mint App token
               id: app-token
               uses: ./.github/actions/mint-sync-app-token
