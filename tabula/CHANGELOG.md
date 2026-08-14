@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.25...tabula-shared-v0.1.26) (2026-08-14)
+
+
+### Features
+
+* **devx:** dogfood devx.yaml, add local-dev index, fix agent-skill links ([#1154](https://github.com/VitruvianSoftware/vitruvian-core/issues/1154)) ([4e3d73d](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e3d73da5270f30e538db165917c8403428cad4c))
+* **tabula:** release the 5 packages independently, not as a linked group ([#1099](https://github.com/VitruvianSoftware/vitruvian-core/issues/1099)) ([f5d40fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/f5d40fbe781b6d58ef695769bb246f329b081da5))
+
+
+### Bug Fixes
+
+* **tabula:** build workspace packages and exclude test files in web Docker build ([#1580](https://github.com/VitruvianSoftware/vitruvian-core/issues/1580)) ([6ab395a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6ab395a3f898f8d040b6ada661c33193c4531ef2))
+* **tabula:** unbreak the design-system package entry so tabula/web and tabula/extension actually build ([#1614](https://github.com/VitruvianSoftware/vitruvian-core/issues/1614)) ([c8c2746](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8c27462933f0c071d85dfc817fc2bc009191b14))
+
 ## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.24...tabula-v0.1.25) (2026-08-14)
 
 
