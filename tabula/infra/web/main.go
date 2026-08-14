@@ -204,7 +204,7 @@ func main() {
 					// against any future re-map.
 					ForceOverride: pulumi.Bool(true),
 				},
-			}, pulumi.DeleteBeforeReplace(true))
+			}, pulumi.Aliases([]pulumi.Alias{{Name: pulumi.String("tabula-web-domain")}}), pulumi.DeleteBeforeReplace(true))
 			if err != nil {
 				return err
 			}
