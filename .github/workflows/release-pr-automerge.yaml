@@ -71,9 +71,22 @@ jobs:
       !contains(github.event.pull_request.labels.*.name, 'do-not-automerge')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # cancel-in-progress: false, deliberately. release-please fires TWO
+    # pull_request events on a release PR within about a second of each other
+    # (opened, then an immediate labeled) -- both trigger this job, and with
+    # cancel-in-progress: true the second event killed whichever run the
+    # first started, every single time, showing as a spurious "cancelled"
+    # check that needed a manual re-run to go green (it usually didn't
+    # actually need one: the surviving sibling run had already enabled
+    # auto-merge -- the cancellation was cosmetic, but still read as a
+    # failure and forced action). The job is fast (seconds) and genuinely
+    # idempotent (see the enabled-check below), so queuing instead of
+    # cancelling is free: the second run just observes auto-merge already on
+    # and exits cleanly, with no race, since the group still caps this at one
+    # execution at a time.
     concurrency:
       group: release-automerge-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     steps:
       - name: Mint App token
         id: app-token
