@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.23...tabula-extension-v0.1.24) (2026-08-14)
+
+
+### Features
+
+* **tabula:** migrate extension to design system behind OpenFeature flag ([#1612](https://github.com/VitruvianSoftware/vitruvian-core/issues/1612)) ([eca1367](https://github.com/VitruvianSoftware/vitruvian-core/commit/eca13674cbf4d8e35c0fd6205ead5d938298a6eb))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.22...tabula-extension-v0.1.23) (2026-08-12)
 
 
