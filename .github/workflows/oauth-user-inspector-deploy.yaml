@@ -333,7 +333,14 @@ jobs:
 
   deploy-nonprod:
     needs: [build, zitadel-nonprod, require-dev-soak]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    # needs.require-dev-soak.result MUST be checked explicitly: an `if:`
+    # replaces the default success()-of-all-needs check entirely rather than
+    # ANDing with it, so a RED require-dev-soak (development is broken)
+    # otherwise still let this job run — the promotion interlock the job
+    # exists for was silently a no-op. require-dev-soak's own `if:` matches
+    # this job's own trigger condition below, so it has always already run
+    # (never skipped) whenever this line is reached.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && needs.require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: oauth-user-inspector

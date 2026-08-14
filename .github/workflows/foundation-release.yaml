@@ -434,6 +434,12 @@ jobs:
 
   deploy-env-nonproduction:
     needs: deploy-env-development
+    # Without this, a SKIPPED deploy-env-development (the common case when
+    # this release cycle didn't touch gcp-environments) is treated as
+    # success by the implicit default -- letting this stage run, and the
+    # ladder below it, with no development deploy having actually happened
+    # this cycle. Mirrors tabula-identity-stack.yaml's ladder pattern.
+    if: ${{ !cancelled() && needs.deploy-env-development.result == 'success' }}
     uses: ./.github/workflows/foundation-env-deploy.yaml
     with:
       environment: nonproduction
@@ -441,6 +447,7 @@ jobs:
 
   deploy-env-production:
     needs: deploy-env-nonproduction
+    if: ${{ !cancelled() && needs.deploy-env-nonproduction.result == 'success' }}
     uses: ./.github/workflows/foundation-env-deploy.yaml
     with:
       environment: production
@@ -501,6 +508,11 @@ jobs:
 
   deploy-net-development:
     needs: deploy-net-shared
+    # Without this, a SKIPPED deploy-net-shared (common when this release
+    # cycle didn't touch gcp-networks) is treated as success by the
+    # implicit default, letting this stage -- and the ladder below it --
+    # run unattended with no shared-hub apply having actually happened.
+    if: ${{ !cancelled() && needs.deploy-net-shared.result == 'success' }}
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: development
@@ -508,6 +520,7 @@ jobs:
 
   deploy-net-nonproduction:
     needs: deploy-net-development
+    if: ${{ !cancelled() && needs.deploy-net-development.result == 'success' }}
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: nonproduction
@@ -515,6 +528,7 @@ jobs:
 
   deploy-net-production:
     needs: deploy-net-nonproduction
+    if: ${{ !cancelled() && needs.deploy-net-nonproduction.result == 'success' }}
     uses: ./.github/workflows/foundation-net-deploy.yaml
     with:
       environment: production
@@ -575,6 +589,12 @@ jobs:
 
   deploy-proj-development:
     needs: deploy-proj-shared
+    # Without this, a SKIPPED deploy-proj-shared is treated as success by
+    # the implicit default, letting this stage -- and the whole ladder
+    # below it, including the bu2 chain and app-infra stage that key off
+    # the LAST job here -- run unattended with no shared apply having
+    # actually happened this cycle.
+    if: ${{ !cancelled() && needs.deploy-proj-shared.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: development
@@ -583,6 +603,7 @@ jobs:
 
   deploy-proj-nonproduction:
     needs: deploy-proj-development
+    if: ${{ !cancelled() && needs.deploy-proj-development.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: nonproduction
@@ -591,6 +612,7 @@ jobs:
 
   deploy-proj-production:
     needs: deploy-proj-nonproduction
+    if: ${{ !cancelled() && needs.deploy-proj-nonproduction.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: production
@@ -604,6 +626,10 @@ jobs:
   # releasing. bu2 is floating-only (no -sample-floating, no shared VPC).
   deploy-proj-bu2-shared:
     needs: deploy-proj-production
+    # Crosses from the bu1 ladder into the bu2 one: without this, a SKIPPED
+    # deploy-proj-production (bu1 didn't run this cycle) still lets the ENTIRE
+    # bu2 chain proceed unattended.
+    if: ${{ !cancelled() && needs.deploy-proj-production.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: shared
@@ -612,6 +638,7 @@ jobs:
 
   deploy-proj-bu2-development:
     needs: deploy-proj-bu2-shared
+    if: ${{ !cancelled() && needs.deploy-proj-bu2-shared.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: development
@@ -620,6 +647,7 @@ jobs:
 
   deploy-proj-bu2-nonproduction:
     needs: deploy-proj-bu2-development
+    if: ${{ !cancelled() && needs.deploy-proj-bu2-development.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: nonproduction
@@ -628,6 +656,7 @@ jobs:
 
   deploy-proj-bu2-production:
     needs: deploy-proj-bu2-nonproduction
+    if: ${{ !cancelled() && needs.deploy-proj-bu2-nonproduction.result == 'success' }}
     uses: ./.github/workflows/foundation-proj-deploy.yaml
     with:
       environment: production
@@ -652,6 +681,12 @@ jobs:
   # "must specify exactly one of workload_identity_provider".
   deploy-app-development:
     needs: deploy-proj-bu2-production
+    # Crosses from the projects ladder into stage-5 app-infra: without this,
+    # a SKIPPED deploy-proj-bu2-production still lets this stage -- and the
+    # ladder below it -- run unattended with the stage-4 prerequisite this
+    # stage depends on (see the FIRST-RUN PREREQUISITES note above) not
+    # actually having been applied this cycle.
+    if: ${{ !cancelled() && needs.deploy-proj-bu2-production.result == 'success' }}
     uses: ./.github/workflows/foundation-app-deploy.yaml
     with:
       environment: development
@@ -660,6 +695,7 @@ jobs:
 
   deploy-app-nonproduction:
     needs: deploy-app-development
+    if: ${{ !cancelled() && needs.deploy-app-development.result == 'success' }}
     uses: ./.github/workflows/foundation-app-deploy.yaml
     with:
       environment: nonproduction
@@ -668,6 +704,7 @@ jobs:
 
   deploy-app-production:
     needs: deploy-app-nonproduction
+    if: ${{ !cancelled() && needs.deploy-app-nonproduction.result == 'success' }}
     uses: ./.github/workflows/foundation-app-deploy.yaml
     with:
       environment: production
