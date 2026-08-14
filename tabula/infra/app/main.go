@@ -224,6 +224,18 @@ func main() {
 		// owners-list writes when an external token-verified owner is
 		// present). No manual Search Console step.
 		if customDomain := cfg.Get("customDomain"); customDomain != "" {
+			// DeleteBeforeReplace(true): defensive, currently a no-op (this
+			// resource hasn't been renamed and isn't mid-replace). Kept in
+			// lockstep with tabula/infra/web's identical DomainMapping,
+			// which DID need this: a Pulumi resource-name change here
+			// (e.g. a future tabula-domain -> -v2 rename, mirroring web's)
+			// defaults to create-new-then-delete-old, but Cloud Run
+			// DomainMapping is keyed globally by hostname, not by Pulumi
+			// resource identity -- the create is rejected with "Error 409:
+			// Resource '<hostname>' already exists" because the old,
+			// still-tracked resource hasn't been deleted yet. That blocked
+			// every tabula-web deploy for ~8 hours until fixed; setting this
+			// here now avoids repeating it on this resource.
 			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-domain", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
@@ -246,7 +258,7 @@ func main() {
 					// against any future re-map.
 					ForceOverride: pulumi.Bool(true),
 				},
-			})
+			}, pulumi.DeleteBeforeReplace(true))
 			if err != nil {
 				return err
 			}
