@@ -254,7 +254,7 @@ jobs:
 
   # Promote THAT digest, unchanged, through the ladder. development is
   # automatic; nonproduction and production gate on their GitHub Environment.
-  deploy-dev:
+  deploy-dev-api:
     needs: [build]
     # Development deploys on push (when the gate found it affected) or a
     # single-env dispatch. Not on a release — that promotes nonprod/prod.
@@ -329,7 +329,7 @@ jobs:
   # fully understood; moving the check outside the reusable workflow entirely
   # sidesteps it rather than depending on it.
   #
-  # Same event/environment condition as deploy-nonprod itself: no point
+  # Same event/environment condition as deploy-nonprod-api itself: no point
   # running the check for a promotion that wouldn't attempt to run anyway.
   require-dev-soak-api:
     if: ${{ !cancelled() && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
@@ -342,11 +342,11 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEV_JOB_NAME: deploy-dev / deploy
+          DEV_JOB_NAME: deploy-dev-api / deploy
           ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
         run: ./tools/ci/require-dev-soak.sh
 
-  deploy-nonprod:
+  deploy-nonprod-api:
     needs: [build, require-dev-soak-api]
     # needs.require-dev-soak-api.result MUST be checked explicitly: an `if:`
     # replaces the default success()-of-all-needs check entirely, it doesn't
@@ -386,7 +386,7 @@ jobs:
     secrets: inherit
 
   # See require-dev-soak-api above — tabula-web promotes independently and
-  # checks its OWN development job (deploy-dev-web, not deploy-dev).
+  # checks its OWN development job (deploy-dev-web, not deploy-dev-api).
   require-dev-soak-web:
     if: ${{ !cancelled() && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     runs-on: ubuntu-latest
@@ -404,7 +404,7 @@ jobs:
 
   deploy-nonprod-web:
     needs: [build, require-dev-soak-web]
-    # See deploy-nonprod's identical comment above: an `if:` replaces the
+    # See deploy-nonprod-api's identical comment above: an `if:` replaces the
     # default needs-success check rather than ANDing with it, so
     # require-dev-soak-web's result must be checked explicitly or its
     # verdict is silently ignored. Its `if:` matches this job's own trigger
@@ -429,11 +429,11 @@ jobs:
     secrets: inherit
 
   # ---- production (release-gated + reviewer-gated final checkpoint) ---------
-  # Same release trigger as nonprod, LADDERED behind deploy-nonprod success, and
+  # Same release trigger as nonprod, LADDERED behind deploy-nonprod-api success, and
   # the production environment keeps its required reviewer.
-  deploy-prod:
-    needs: [build, deploy-nonprod]
-    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
+  deploy-prod-api:
+    needs: [build, deploy-nonprod-api]
+    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v')) && needs.deploy-nonprod-api.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
