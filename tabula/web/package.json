@@ -1,6 +1,6 @@
 {
   "name": "@tabula/web",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "private": true,
   "description": "Tabula web dashboard for workspace management, analytics, and data export",
   "license": "MIT",
