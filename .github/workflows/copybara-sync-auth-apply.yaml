@@ -74,9 +74,9 @@ jobs:
             # monorepo (this is the key difference from the repo_config apply).
             - name: Mint a GitHub App token for the Pulumi GitHub provider
               id: app-token
-              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              uses: ./.github/actions/mint-pulumi-app-token
               with:
-                  client-id: ${{ vars.PULUMI_APP_CLIENT_ID || 'Iv23lijyULMNaNPFbaQZ' }} # vitruviansoftware-pulumi; var wins so //tools/pulumi:create-app can rebootstrap
+                  client-id: ${{ vars.PULUMI_APP_CLIENT_ID }} # var wins so //tools/pulumi:create-app can rebootstrap; empty falls back to the composite's default id
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
                   owner: ${{ github.repository_owner }}
 
