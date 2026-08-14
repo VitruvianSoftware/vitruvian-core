@@ -104,13 +104,13 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
       <div className="flex gap-sm">
         {useDesignSystem ? (
           <>
-            <Button onClick={onSaveTabs} variant="secondary" size="small">
+            <Button onClick={onSaveTabs} variant="secondary" size="sm">
               Save Tabs
             </Button>
             <Button
               onClick={onRestoreTabs}
               variant="secondary"
-              size="small"
+              size="sm"
               disabled={workspace.tabs.length === 0}
             >
               Restore
@@ -119,17 +119,17 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
               <Button
                 onClick={onSwitch}
                 variant="primary"
-                size="small"
+                size="sm"
                 disabled={workspace.tabs.length === 0}
               >
                 Switch
               </Button>
             )}
             <div style={{ flex: 1 }}></div>
-            <Button onClick={onEdit} variant="secondary" size="small">
+            <Button onClick={onEdit} variant="secondary" size="sm">
               Edit
             </Button>
-            <Button onClick={onDelete} variant="danger" size="small">
+            <Button onClick={onDelete} variant="danger" size="sm">
               Delete
             </Button>
           </>

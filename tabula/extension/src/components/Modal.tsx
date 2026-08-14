@@ -85,7 +85,7 @@ export const Modal: React.FC<ModalProps> = ({
         {useDesignSystem ? (
           <Button
             variant="ghost"
-            size="small"
+            size="sm"
             onClick={onClose}
             style={{ padding: "4px" }}
           >
