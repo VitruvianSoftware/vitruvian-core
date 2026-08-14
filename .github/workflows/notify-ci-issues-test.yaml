@@ -1,0 +1,53 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Regression guard for tools/ci/notify-ci-issues.sh — the three polling loops
+# (stuck approvals, stuck run-start approvals, main-branch failures) feeding
+# the shared ntfy notify() helper. Hermetic: fake `gh api` (canned JSON, real
+# jq does the actual filtering/grouping) and fake `curl` (captures the POST
+# body instead of sending it) — no network, no credentials.
+
+name: Notify CI Issues Test
+
+on:
+  pull_request:
+    paths:
+      - "tools/ci/notify-ci-issues.sh"
+      - "tools/ci/notify-ci-issues_test.sh"
+      - ".github/workflows/notify-ci-issues-test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/ci/notify-ci-issues.sh"
+      - "tools/ci/notify-ci-issues_test.sh"
+      - ".github/workflows/notify-ci-issues-test.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Run the notify-ci-issues script tests
+        run: bash tools/ci/notify-ci-issues_test.sh
