@@ -89,26 +89,19 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
+      # actionlint.yaml, supply-chain.yaml, mcp-slack-image.yaml — see that
+      # script's header for why this was deduped).
       - name: Install kubeconform (pinned + checksum-verified)
         env:
           KUBECONFORM_VERSION: v0.6.7
         run: |
-          set -euo pipefail
-          base="https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}"
-          # Keep the ORIGINAL filename (-O) so it matches the entry in CHECKSUMS
-          # that `sha256sum -c` verifies against.
-          # --retry: this is a REQUIRED check, so one transient GitHub-releases
-          # blip reddens the merge queue for a reason unrelated to the change
-          # under test. Retry transport errors AND HTTP 5xx/429
-          # (--retry-all-errors), and bound each attempt with --max-time so a
-          # hung CDN connection fails fast instead of burning the job timeout.
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/kubeconform-linux-amd64.tar.gz"
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -o CHECKSUMS "${base}/CHECKSUMS"
-          grep 'kubeconform-linux-amd64.tar.gz' CHECKSUMS | sha256sum -c -
-          mkdir -p "${HOME}/.local/bin"
-          tar -xzf kubeconform-linux-amd64.tar.gz -C "${HOME}/.local/bin" kubeconform
-          rm -f kubeconform-linux-amd64.tar.gz CHECKSUMS
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          bash tools/ci/install-pinned-tool.sh \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}" \
+            kubeconform-linux-amd64.tar.gz \
+            CHECKSUMS \
+            kubeconform-linux-amd64.tar.gz \
+            kubeconform --tar
 
       - name: Validate gitops manifests
         run: bash tools/ci/gitops-validate.sh

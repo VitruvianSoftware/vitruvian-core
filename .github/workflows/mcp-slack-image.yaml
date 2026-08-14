@@ -415,24 +415,22 @@ jobs:
       # `!= 'pull_request'` guard as the publish itself. It reddens the PUBLISH,
       # after the merge. Making it a PR gate needs the SBOM read out of a local
       # build rather than the registry, which is a different change.
+      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
+      # actionlint.yaml, gitops-validate.yaml, supply-chain.yaml — same shape
+      # and same version pin as supply-chain.yaml's install step: one scanner
+      # version across the repo, so a finding here and a finding there are the
+      # same instrument. See that script's header for why this was deduped.
       - name: Install osv-scanner (pinned + checksum-verified)
         if: github.event_name != 'pull_request'
         env:
           OSV_SCANNER_VERSION: v2.4.0
         run: |
-          set -euo pipefail
-          # Same shape and same version pin as supply-chain.yaml's install step:
-          # one scanner version across the repo, so a finding here and a finding
-          # there are the same instrument. Keep the original filename so it
-          # matches its SHA256SUMS entry.
-          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_linux_amd64"
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_SHA256SUMS"
-          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
-          mkdir -p "${HOME}/.local/bin"
-          install -m 0755 osv-scanner_linux_amd64 "${HOME}/.local/bin/osv-scanner"
-          rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          bash tools/ci/install-pinned-tool.sh \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}" \
+            osv-scanner_linux_amd64 \
+            osv-scanner_SHA256SUMS \
+            ' osv-scanner_linux_amd64$' \
+            osv-scanner --raw
 
       - name: Scan the published image's SBOM for known advisories
         if: github.event_name != 'pull_request'
