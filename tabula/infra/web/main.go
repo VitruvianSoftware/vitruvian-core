@@ -163,6 +163,25 @@ func main() {
 			// this fix, removing the option is safe: Pulumi's import is a
 			// one-time directive for a resource not yet in state, a no-op
 			// once it's already tracked there.
+			//
+			// DeleteBeforeReplace(true) is REQUIRED whenever this resource's
+			// Pulumi name changes (as it just did: tabula-web-domain -> -v2,
+			// to force a recreate and unstick SSL cert provisioning).
+			// Pulumi's default replace order is create-new-then-delete-old,
+			// but Cloud Run DomainMapping is keyed globally by hostname, not
+			// by Pulumi resource identity -- the create of the new logical
+			// resource was rejected with "Error 409: Resource '<hostname>'
+			// already exists" because the OLD logical resource (still
+			// tracked in state, still live in GCP under the same hostname)
+			// hadn't been deleted yet. ForceOverride below only helps when
+			// the CONFLICTING mapping belongs to a DIFFERENT, Pulumi-unaware
+			// resource; it does nothing when the conflict is with a resource
+			// Pulumi itself is mid-way through replacing in the SAME apply.
+			// This blocked every tabula-web deploy to every environment from
+			// the rename that introduced it until this fix (dev soak gates
+			// nonprod/prod, so the whole ladder was stuck). ForceOverride
+			// stays regardless: a real "someone else's mapping" conflict
+			// (unrelated project/region) can still occur independently.
 			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain-v2", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
@@ -185,7 +204,7 @@ func main() {
 					// against any future re-map.
 					ForceOverride: pulumi.Bool(true),
 				},
-			})
+			}, pulumi.DeleteBeforeReplace(true))
 			if err != nil {
 				return err
 			}
