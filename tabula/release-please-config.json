@@ -9,7 +9,7 @@
   "packages": {
     "tabula": {
       "package-name": "tabula",
-      "component": "tabula",
+      "component": "tabula-shared",
       "changelog-path": "CHANGELOG.md",
       "exclude-paths": [
         "tabula/infra",
