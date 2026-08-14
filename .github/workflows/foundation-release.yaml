@@ -69,91 +69,22 @@ jobs:
   # Only the intra-phase `deploy-*` jobs should be chained sequentially.
 
   release-gcp-org:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-gcp-org
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-org--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/gcp-org/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/gcp-org/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: gcp-org
+    secrets: inherit
 
   release-org-folders:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-org-folders
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/org-folders--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/org-folders/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/org-folders/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: org-folders
+    secrets: inherit
 
   release-gcp-bootstrap:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-gcp-bootstrap
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-bootstrap--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/gcp-bootstrap/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/gcp-bootstrap/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: gcp-bootstrap
+    secrets: inherit
 
   # Surface each just-released component's changelog on the run page BEFORE the
   # gated deploy jobs, so an approver can read WHAT is shipping before approving
@@ -356,33 +287,10 @@ jobs:
   # the reusable workflow maps the environment name onto the leaf dir.
 
   release-gcp-environments:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-gcp-environments
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-environments--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/gcp-environments/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/gcp-environments/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: gcp-environments
+    secrets: inherit
 
   deploy-env-development:
     needs: release-gcp-environments
@@ -426,33 +334,10 @@ jobs:
   # the production spoke (hub changes land before the prod spoke consumes them).
 
   release-gcp-networks:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-gcp-networks
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-networks--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/gcp-networks/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/gcp-networks/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: gcp-networks
+    secrets: inherit
 
   # shared holds the hub VPC the spokes peer into, so it MUST apply first —
   # dev/nonprod/prod depend on it (upstream 3-networks README). Then the standard
@@ -506,33 +391,10 @@ jobs:
   # nonproduction's soak and its own approval gate, ahead of production.
 
   release-gcp-projects:
-    # Serialize release-please for this component: two rapid merges to main
-    # start overlapping runs that would otherwise drive the same release PR
-    # and tag concurrently. Non-cancelling -- a cancelled release-please run
-    # can drop a release (#461). Per-component, so components stay parallel.
-    # Group has no ${{ github.ref }} because this workflow is main-only, and
-    # that matches the deploy-* groups already in this file.
-    concurrency:
-      group: foundation-release-gcp-projects
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      release_created: ${{ steps.release.outputs['infrastructure/pulumi/foundation/gcp-projects--release_created'] }}
-    steps:
-      - name: Mint App token
-        id: app-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          config-file: infrastructure/pulumi/foundation/gcp-projects/release-please-config.json
-          manifest-file: infrastructure/pulumi/foundation/gcp-projects/.release-please-manifest.json
-          target-branch: main
+    uses: ./.github/workflows/_foundation-release-please.yaml
+    with:
+      phase: gcp-projects
+    secrets: inherit
 
   # shared holds the BU infra-pipeline project; apply it first, then the standard
   # dev → nonprod → prod promotion (mirrors the networks chain + upstream ordering).

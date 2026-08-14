@@ -1,0 +1,79 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Reusable per-phase release-please invocation for foundation-release.yaml,
+# deduped from 6 byte-identical copies (release-gcp-org, release-org-folders,
+# release-gcp-bootstrap, release-gcp-environments, release-gcp-networks,
+# release-gcp-projects) that differed only in the phase directory name.
+#
+# DELIBERATE: release-please tracks each STAGE ROOT (e.g. .../gcp-networks),
+# not the per-leaf Pulumi projects under it. All stage logic lives in the
+# shared modules/ package; a per-leaf package split would fail to attribute
+# modules/-only commits to any package and silently stop cutting releases
+# (and therefore deploys) for the very changes that affect every leaf.
+#
+# 🤖 AI AGENT WARNING: every caller of this workflow MUST run in parallel and
+# independently. Do NOT add `needs:` pointing a caller at a previous phase's
+# deploy job -- see foundation-release.yaml's own warning comment.
+
+on:
+  workflow_call:
+    inputs:
+      phase:
+        description: >-
+          The foundation phase directory name under
+          infrastructure/pulumi/foundation/ (e.g. "gcp-org"). Drives the
+          concurrency group, the release-please config/manifest paths, and
+          the release_created output key.
+        required: true
+        type: string
+    outputs:
+      release_created:
+        value: ${{ jobs.release.outputs.release_created }}
+
+jobs:
+  release:
+    # Serialize release-please for this component: two rapid merges to main
+    # start overlapping runs that would otherwise drive the same release PR
+    # and tag concurrently. Non-cancelling -- a cancelled release-please run
+    # can drop a release (#461). Per-component, so components stay parallel.
+    # Group has no ${{ github.ref }} because this workflow is main-only, and
+    # that matches the deploy-* groups already in the caller.
+    concurrency:
+      group: foundation-release-${{ inputs.phase }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs[format('infrastructure/pulumi/foundation/{0}--release_created', inputs.phase)] }}
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: infrastructure/pulumi/foundation/${{ inputs.phase }}/release-please-config.json
+          manifest-file: infrastructure/pulumi/foundation/${{ inputs.phase }}/.release-please-manifest.json
+          target-branch: main
