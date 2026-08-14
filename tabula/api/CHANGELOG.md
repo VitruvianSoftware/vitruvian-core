@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.28...tabula-api-v0.1.29) (2026-08-14)
+
+
+### Bug Fixes
+
+* **tabula:** fail-open isTombstoned on Redis connection errors ([#1647](https://github.com/VitruvianSoftware/vitruvian-core/issues/1647)) ([cf19287](https://github.com/VitruvianSoftware/vitruvian-core/commit/cf192878f7e7a2d5827f9df8b25eb206e3855d08))
+
 ## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.27...tabula-api-v0.1.28) (2026-08-13)
 
 
