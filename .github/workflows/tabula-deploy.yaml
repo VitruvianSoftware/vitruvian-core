@@ -380,7 +380,14 @@ jobs:
 
   deploy-nonprod:
     needs: [build, require-dev-soak-api]
-    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    # needs.require-dev-soak-api.result MUST be checked explicitly: an `if:`
+    # replaces the default success()-of-all-needs check entirely, it doesn't
+    # AND with it. Without this, a RED require-dev-soak-api (development is
+    # broken) still let this job run -- the promotion interlock the job
+    # exists for was silently a no-op. require-dev-soak-api's own `if:` is
+    # identical to this job's own trigger condition below, so it has always
+    # already run (never skipped) whenever this line is reached.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.require-dev-soak-api.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
@@ -429,7 +436,12 @@ jobs:
 
   deploy-nonprod-web:
     needs: [build, require-dev-soak-web]
-    if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    # See deploy-nonprod's identical comment above: an `if:` replaces the
+    # default needs-success check rather than ANDing with it, so
+    # require-dev-soak-web's result must be checked explicitly or its
+    # verdict is silently ignored. Its `if:` matches this job's own trigger
+    # condition, so it has always already run whenever this line is reached.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.require-dev-soak-web.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
       app-name: tabula
