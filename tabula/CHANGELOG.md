@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.24...tabula-v0.1.25) (2026-08-14)
+
+
+### Bug Fixes
+
+* **tabula:** unbreak the design-system package entry so tabula/web and tabula/extension actually build ([#1614](https://github.com/VitruvianSoftware/vitruvian-core/issues/1614)) ([c8c2746](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8c27462933f0c071d85dfc817fc2bc009191b14))
+
 ## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-v0.1.23...tabula-v0.1.24) (2026-08-13)
 
 
