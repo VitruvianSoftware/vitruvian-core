@@ -21,6 +21,7 @@
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@bazel_skylib//lib:partial.bzl", "partial")
 
 # @tabula/shared: types + utilities consumed by //tabula/extension and
 # //tabula/web as a pnpm workspace package (main: dist/index.js).
@@ -43,7 +44,14 @@ ts_project(
     resolve_json_module = True,
     root_dir = "src",
     source_map = True,
-    transpiler = swc,
+    # Bare `swc` does not inherit this target's own out_dir/root_dir (custom
+    # transpilers aren't passed them -- see packages/design-system/BUILD for
+    # the full explanation), so SWC would otherwise land real JS output
+    # mirroring root_dir in place instead of under dist/, alongside only the
+    # tsc-emitted declarations. Currently latent here (only type-only imports
+    # of @tabula/shared get bundled today), but identical to a break that
+    # surfaced for real in @vitruviansoftware/design-system.
+    transpiler = partial.make(swc, out_dir = "dist", root_dir = "src"),
     tsconfig = "tsconfig.json",
 )
 

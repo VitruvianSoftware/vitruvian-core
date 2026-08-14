@@ -35,6 +35,7 @@ load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
 
@@ -74,7 +75,17 @@ ts_project(
     resolve_json_module = True,
     root_dir = "src",
     source_map = True,
-    transpiler = swc,
+    # ts_project's own out_dir/root_dir govern tsc's declaration-only emit;
+    # they are NOT forwarded to a custom `transpiler` (aspect_rules_ts's
+    # common_kwargs passed to the transpiler carries only tags/visibility/
+    # testonly). Left as bare `swc`, SWC defaults to mirroring root_dir's
+    # layout in place (e.g. src/index.ts -> src/index.js), landing real JS
+    # outside out_dir entirely while only declarations reach dist/ -- so
+    # package.json's "main"/exports (dist/index.js) resolves for every
+    # pnpm/tsc-built consumer but not for anything Bazel bundles. partial.make
+    # passes the same out_dir/root_dir straight through to swc so both build
+    # paths agree on one layout.
+    transpiler = partial.make(swc, out_dir = "dist", root_dir = "src"),
     tsconfig = "tsconfig.json",
     deps = [
         ":node_modules/@types/react",
