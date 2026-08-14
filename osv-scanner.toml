@@ -773,3 +773,19 @@ id = "PYSEC-2026-88"
 ignoreUntil = 2026-10-23
 reason = "Pre-existing when the osv-scan gate landed (2026-07-25). PyPI mako 1.3.9. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
 
+[[IgnoredVulns]]
+id = "GHSA-2v37-7h3g-55p8"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing advisory for npm nanoid (3.3.17 -> 3.3.18). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GO-2026-6179"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing advisory for golang.org/x/mod (0.37.0 -> 0.40.0). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GO-2026-6180"
+ignoreUntil = 2026-10-23
+reason = "Pre-existing advisory for golang.org/x/mod (0.37.0 -> 0.40.0). Accepted until next quarter dependency update."
+
+
