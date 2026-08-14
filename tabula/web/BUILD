@@ -52,6 +52,8 @@ jest_test(
     ) + [
         "//tabula:jest_resolver",
         "jest.setup.js",
+        "proxy.ts",
+        "proxy.test.ts",
         "next.config.ts",
         "postcss.config.mjs",
         "tsconfig.json",

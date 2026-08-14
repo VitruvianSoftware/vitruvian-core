@@ -31,9 +31,7 @@
  */
 import type { Workspace } from "@tabula/shared";
 import { AuthService } from "./auth";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+import { getApiUrl } from "./runtime-config";
 
 /** Role a logged-in user holds on a space (mirrors #139's lowercase GrantRole + owner). */
 export type SpaceRole = "owner" | "edit" | "view";
@@ -97,7 +95,7 @@ async function unwrap<T>(res: Response): Promise<T> {
 export const SharingService = {
   /** GET a full space the user has at least VIEW access to. 404 = no access / not found. */
   async getSpace(id: string): Promise<Workspace> {
-    const res = await fetch(`${API_URL}/workspaces/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${getApiUrl()}/workspaces/${encodeURIComponent(id)}`, {
       headers: authHeaders(),
     });
     return unwrap<Workspace>(res);
@@ -113,7 +111,7 @@ export const SharingService = {
     workspace: Partial<Workspace>,
     baseVersion?: number,
   ): Promise<Workspace> {
-    const res = await fetch(`${API_URL}/workspaces/${encodeURIComponent(id)}`, {
+    const res = await fetch(`${getApiUrl()}/workspaces/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: authHeaders(),
       body: JSON.stringify({ ...workspace, baseVersion }),
@@ -127,7 +125,7 @@ export const SharingService = {
 
   /** Spaces shared WITH the current user (not owned), with their effective role. */
   async getSharedWithMe(): Promise<SharedSpace[]> {
-    const res = await fetch(`${API_URL}/workspaces/shared-with-me`, {
+    const res = await fetch(`${getApiUrl()}/workspaces/shared-with-me`, {
       headers: authHeaders(),
     });
     return unwrap<SharedSpace[]>(res);
@@ -138,7 +136,7 @@ export const SharingService = {
    * a grant for the current user. Idempotent server-side; never downgrades.
    */
   async acceptShareLink(token: string): Promise<AcceptResult> {
-    const res = await fetch(`${API_URL}/share-links/accept`, {
+    const res = await fetch(`${getApiUrl()}/share-links/accept`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ token }),
@@ -153,7 +151,7 @@ export const SharingService = {
    */
   async getRelayInfo(relayId: string): Promise<RelayInfo> {
     const res = await fetch(
-      `${API_URL}/share-links/relay/${encodeURIComponent(relayId)}/info`,
+      `${getApiUrl()}/share-links/relay/${encodeURIComponent(relayId)}/info`,
     );
     return unwrap<RelayInfo>(res);
   },
@@ -161,7 +159,7 @@ export const SharingService = {
   /** Redeem a relay link (requires login) → materializes the caller's grant. */
   async acceptRelay(relayId: string): Promise<AcceptResult> {
     const res = await fetch(
-      `${API_URL}/share-links/relay/${encodeURIComponent(relayId)}/accept`,
+      `${getApiUrl()}/share-links/relay/${encodeURIComponent(relayId)}/accept`,
       { method: "POST", headers: authHeaders() },
     );
     return unwrap<AcceptResult>(res);

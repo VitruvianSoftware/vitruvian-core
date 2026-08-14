@@ -43,6 +43,30 @@ func ShortDigest(imageDigest string) (string, error) {
 	return imageDigest[i+len(digestMarker) : i+len(digestMarker)+8], nil
 }
 
+// EnvMap builds the plain (non-secret) environment for the web service.
+//
+// apiURL is PUBLIC (it's the same host the browser is told to allow via CSP
+// connect-src) but is deliberately NOT NEXT_PUBLIC_-prefixed: this app's
+// image is built ONCE and promoted unchanged across dev/nonprod/prod
+// (tabula-deploy.yaml), and a NEXT_PUBLIC_ var is inlined into the client
+// bundle at `next build` time — it can only ever hold one environment's
+// value. Plain API_URL is read at request time instead (tabula/web/lib/
+// runtime-config.ts, tabula/web/proxy.ts), so each environment's own
+// Cloud Run revision correctly resolves its own API host from the SAME
+// built image. Empty means ABSENT rather than empty-string, matching
+// tabula/infra/app/revision.EnvMap, so an unconfigured env is a missing key
+// instead of an empty one — and hashes differently.
+func EnvMap(apiURL string) map[string]string {
+	env := map[string]string{
+		"NODE_ENV": "production",
+		"HOSTNAME": "0.0.0.0",
+	}
+	if apiURL != "" {
+		env["API_URL"] = apiURL
+	}
+	return env
+}
+
 // Name derives the Cloud Run revision name from the image digest AND the rendered environment.
 func Name(serviceName, shortDigest string, env map[string]string) string {
 	keys := make([]string, 0, len(env))

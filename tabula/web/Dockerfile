@@ -47,9 +47,13 @@ COPY tabula/web/ tabula/web/
 RUN pnpm --filter @tabula/shared build
 RUN pnpm --filter @vitruviansoftware/design-system build
 
-# Build-time env var (baked into the JS bundle by Next.js)
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# No NEXT_PUBLIC_API_URL build arg: this image is built once and promoted
+# unchanged across dev/nonprod/prod, and a NEXT_PUBLIC_ var would be baked
+# into the JS bundle here and frozen for every environment it's promoted to.
+# The API URL is a plain API_URL env var instead, injected per-environment by
+# Cloud Run at deploy time (tabula/infra/web/main.go), not baked into this
+# image at all. tabula/web/lib/runtime-config.ts and middleware.ts read it
+# fresh on every request.
 
 WORKDIR /app/tabula/web
 RUN npx next build

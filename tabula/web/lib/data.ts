@@ -28,12 +28,11 @@
  */
 
 import type { Workspace, WorkspaceStats, DataSourceInfo } from "@/types";
+import { getApiUrl } from "./runtime-config";
 // import { AuthService } from './auth';
 
 // Storage key - must match extension
 const STORAGE_KEY = "tabula_workspaces";
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 /**
  * Get information about the current data source
@@ -100,7 +99,7 @@ export async function getWorkspaces(): Promise<Workspace[]> {
     const token = localStorage.getItem("tabula_token");
     if (token) {
       try {
-        const res = await fetch(`${API_URL}/workspaces`, {
+        const res = await fetch(`${getApiUrl()}/workspaces`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
