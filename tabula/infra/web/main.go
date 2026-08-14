@@ -158,7 +158,7 @@ func main() {
 			// this fix, removing the option is safe: Pulumi's import is a
 			// one-time directive for a resource not yet in state, a no-op
 			// once it's already tracked there.
-			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain", &cloudrun.DomainMappingArgs{
+			mapping, err := cloudrun.NewDomainMapping(ctx, "tabula-web-domain-v2", &cloudrun.DomainMappingArgs{
 				Project:  pulumi.String(project),
 				Location: pulumi.String(region),
 				Name:     pulumi.String(customDomain),
