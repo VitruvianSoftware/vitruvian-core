@@ -121,12 +121,10 @@ jobs:
   # approver reads what is shipping (the pulumi digest only renders after the
   # gate). Ungated + independent of the deploy, so it never delays a rollout.
   changelog:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Changelog → step summary
-        run: bash tools/ci/changelog-summary.sh tabula/api/CHANGELOG.md "" tabula-api
+    uses: ./.github/workflows/_changelog-summary.yaml
+    with:
+      working-directory: tabula/api
+      label: tabula-api
 
   # Graph gate (#498): on push, deploy iff the diff affects a DEPLOYABLE
   # artifact. The universe is the union of both stamped artifacts -- the API
@@ -139,52 +137,22 @@ jobs:
   # (idempotent blue-green); only a confidently-unaffected diff skips.
   gate:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
     permissions:
       contents: read
-      # `actions: read` is the ONLY new grant this gate needs (#1351) -- it
-      # lets resolve-deploy-base.sh query this workflow's own run history via
-      # the GitHub Actions API. No GCP IAM change: this job never talks to
-      # Cloud Run. It also does not need id-token: write (no GCP auth here).
       actions: read
-    outputs:
-      affected: ${{ steps.decide.outputs.affected }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          # TD diffs the pre-push tip; full history keeps it + the object
-          # graph reachable (same invariant as ci.yaml's build-test).
-          fetch-depth: 0
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-      - name: Resolve the durable deploy base (#1351)
-        id: durable-base
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_FILE: tabula-deploy.yaml
-        run: bash tools/ci/resolve-deploy-base.sh
-      - name: Decide whether the deploy artifacts are affected
-        id: decide
-        env:
-          # A dropped run (constant concurrency group, #1311/#1335 eviction)
-          # makes github.event.before alone unsafe -- it is the EVICTED run's
-          # own push tip, a range no successor run ever re-diffs. Prefer the
-          # durable base; fall back to today's behavior only when it could not
-          # be resolved (empty is falsy in GH Actions expressions).
-          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
-          FORCED_PUSH: ${{ github.event.forced }}
-          DEPLOY_TARGETS: "//tabula/api:image_push //tabula/extension:chrome_zip" # + tabula/web/Dockerfile
-          # `tools/deploy/` is a NON-GRAPH deploy input for this gate: the TD
-          # universe below is DEPLOY_TARGETS (image_push/chrome_zip), which does
-          # not depend on the rollout sequencer //tools/deploy:cloud-run.sh, and
-          # tools/deploy/ is allowlisted out of the global-impact guard in
-          # tools/ci/deploy-affected.sh. Listing it here keeps a change to the
-          # candidate -> smoke -> promote sequence forcing a real deploy.
-          EXTRA_PATH_REGEX: "tabula/infra/app/|tabula/infra/web/|tabula/web/|tools/deploy/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
-        run: bash tools/ci/deploy-affected.sh
+    uses: ./.github/workflows/_deploy-gate.yaml
+    with:
+      workflow-file: tabula-deploy.yaml
+      timeout-minutes: 20
+      deploy-targets: "//tabula/api:image_push //tabula/extension:chrome_zip" # + tabula/web/Dockerfile
+      # `tools/deploy/` is a NON-GRAPH deploy input for this gate: the TD
+      # universe below is deploy-targets (image_push/chrome_zip), which does
+      # not depend on the rollout sequencer //tools/deploy:cloud-run.sh, and
+      # tools/deploy/ is allowlisted out of the global-impact guard in
+      # tools/ci/deploy-affected.sh. Listing it here keeps a change to the
+      # candidate -> smoke -> promote sequence forcing a real deploy.
+      extra-path-regex: "tabula/infra/app/|tabula/infra/web/|tabula/web/|tools/deploy/|\\.github/workflows/tabula-deploy\\.yaml|\\.github/workflows/tabula-dev-latest\\.yaml|\\.github/workflows/_deploy-cloud-run\\.yaml"
+    secrets: inherit
 
   # BUILD ONCE into the shared bu2 Artifact Registry and capture the immutable
   # digest every environment promotes. Ungated: pushing an image touches no live
