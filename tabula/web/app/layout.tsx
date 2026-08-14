@@ -60,7 +60,9 @@ export default function RootLayout({
           id={RUNTIME_CONFIG_ELEMENT_ID}
           type="application/json"
           dangerouslySetInnerHTML={{
-            __html: escapeJsonForScript({ apiUrl: process.env.API_URL || null }),
+            __html: escapeJsonForScript({
+              apiUrl: process.env.API_URL || null,
+            }),
           }}
         />
       </head>

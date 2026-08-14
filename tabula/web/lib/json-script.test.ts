@@ -24,14 +24,18 @@ import { escapeJsonForScript } from "./json-script";
 
 describe("escapeJsonForScript", () => {
   it("round-trips a plain value unchanged in meaning", () => {
-    const out = escapeJsonForScript({ apiUrl: "https://tabula-api.vitruviansoftware.dev/api/v1" });
+    const out = escapeJsonForScript({
+      apiUrl: "https://tabula-api.vitruviansoftware.dev/api/v1",
+    });
     expect(JSON.parse(out)).toEqual({
       apiUrl: "https://tabula-api.vitruviansoftware.dev/api/v1",
     });
   });
 
   it("neutralizes a </script> breakout attempt", () => {
-    const out = escapeJsonForScript({ apiUrl: "</script><script>alert(1)</script>" });
+    const out = escapeJsonForScript({
+      apiUrl: "</script><script>alert(1)</script>",
+    });
     expect(out).not.toContain("</script>");
     expect(out).not.toContain("<script>");
     expect(JSON.parse(out)).toEqual({
@@ -42,10 +46,14 @@ describe("escapeJsonForScript", () => {
   it("escapes raw U+2028/U+2029 so they can't act as illegal line terminators", () => {
     const lineSep = String.fromCharCode(0x2028);
     const paraSep = String.fromCharCode(0x2029);
-    const out = escapeJsonForScript({ apiUrl: `before${lineSep}mid${paraSep}after` });
+    const out = escapeJsonForScript({
+      apiUrl: `before${lineSep}mid${paraSep}after`,
+    });
     expect(out).not.toContain(lineSep);
     expect(out).not.toContain(paraSep);
-    expect(JSON.parse(out)).toEqual({ apiUrl: `before${lineSep}mid${paraSep}after` });
+    expect(JSON.parse(out)).toEqual({
+      apiUrl: `before${lineSep}mid${paraSep}after`,
+    });
   });
 
   it("passes through null cleanly", () => {

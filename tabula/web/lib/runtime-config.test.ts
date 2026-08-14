@@ -50,7 +50,9 @@ describe("getApiUrl", () => {
 
   it("reads the value injected by the server into the runtime-config script tag", () => {
     renderConfigScript(
-      JSON.stringify({ apiUrl: "https://tabula-api.vitruviansoftware.dev/api/v1" }),
+      JSON.stringify({
+        apiUrl: "https://tabula-api.vitruviansoftware.dev/api/v1",
+      }),
     );
     expect(getApiUrl()).toBe("https://tabula-api.vitruviansoftware.dev/api/v1");
   });
@@ -71,11 +73,15 @@ describe("getApiUrl", () => {
   });
 
   it("caches the resolved value across calls, ignoring later DOM changes", () => {
-    renderConfigScript(JSON.stringify({ apiUrl: "https://first.example/api/v1" }));
+    renderConfigScript(
+      JSON.stringify({ apiUrl: "https://first.example/api/v1" }),
+    );
     expect(getApiUrl()).toBe("https://first.example/api/v1");
 
     document.body.innerHTML = "";
-    renderConfigScript(JSON.stringify({ apiUrl: "https://second.example/api/v1" }));
+    renderConfigScript(
+      JSON.stringify({ apiUrl: "https://second.example/api/v1" }),
+    );
     expect(getApiUrl()).toBe("https://first.example/api/v1");
   });
 

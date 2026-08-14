@@ -39,8 +39,11 @@ describe("getApiUrl (server / no window)", () => {
   });
 
   it("reads directly from process.env.API_URL, re-evaluated per call — not cached like the client branch", () => {
-    process.env.API_URL = "https://tabula-api.staging.vitruviansoftware.dev/api/v1";
-    expect(getApiUrl()).toBe("https://tabula-api.staging.vitruviansoftware.dev/api/v1");
+    process.env.API_URL =
+      "https://tabula-api.staging.vitruviansoftware.dev/api/v1";
+    expect(getApiUrl()).toBe(
+      "https://tabula-api.staging.vitruviansoftware.dev/api/v1",
+    );
   });
 
   it("falls back to the local default when API_URL is unset", () => {

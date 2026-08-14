@@ -95,9 +95,12 @@ async function unwrap<T>(res: Response): Promise<T> {
 export const SharingService = {
   /** GET a full space the user has at least VIEW access to. 404 = no access / not found. */
   async getSpace(id: string): Promise<Workspace> {
-    const res = await fetch(`${getApiUrl()}/workspaces/${encodeURIComponent(id)}`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(
+      `${getApiUrl()}/workspaces/${encodeURIComponent(id)}`,
+      {
+        headers: authHeaders(),
+      },
+    );
     return unwrap<Workspace>(res);
   },
 
@@ -111,11 +114,14 @@ export const SharingService = {
     workspace: Partial<Workspace>,
     baseVersion?: number,
   ): Promise<Workspace> {
-    const res = await fetch(`${getApiUrl()}/workspaces/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify({ ...workspace, baseVersion }),
-    });
+    const res = await fetch(
+      `${getApiUrl()}/workspaces/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ ...workspace, baseVersion }),
+      },
+    );
     if (res.status === 409) {
       const json = (await res.json()) as { data: Workspace };
       throw new ApiError(409, "Space changed elsewhere", json.data);

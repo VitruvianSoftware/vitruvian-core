@@ -37,11 +37,15 @@ describe("proxy", () => {
   it("sets a CSP scoped to this environment's own API_URL", () => {
     process.env.API_URL = "https://tabula-api.vitruviansoftware.dev/api/v1";
 
-    const request = new NextRequest(new URL("https://tabula.vitruviansoftware.dev/"));
+    const request = new NextRequest(
+      new URL("https://tabula.vitruviansoftware.dev/"),
+    );
     const response = proxy(request);
 
     const csp = response.headers.get("Content-Security-Policy");
-    expect(csp).toContain("connect-src 'self' https://tabula-api.vitruviansoftware.dev");
+    expect(csp).toContain(
+      "connect-src 'self' https://tabula-api.vitruviansoftware.dev",
+    );
     expect(response.headers.get("X-Frame-Options")).toBe("DENY");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
   });

@@ -28,9 +28,9 @@ import {
 
 describe("apiOriginFor", () => {
   it("extracts the origin from a full API URL", () => {
-    expect(apiOriginFor("https://tabula-api.vitruviansoftware.dev/api/v1")).toBe(
-      "https://tabula-api.vitruviansoftware.dev",
-    );
+    expect(
+      apiOriginFor("https://tabula-api.vitruviansoftware.dev/api/v1"),
+    ).toBe("https://tabula-api.vitruviansoftware.dev");
   });
 
   it("falls back to the local default on an unparsable URL", () => {
@@ -53,7 +53,9 @@ describe("buildContentSecurityPolicy", () => {
   });
 
   it("still forbids framing and restricts other directives", () => {
-    const csp = buildContentSecurityPolicy("https://tabula-api.vitruviansoftware.dev/api/v1");
+    const csp = buildContentSecurityPolicy(
+      "https://tabula-api.vitruviansoftware.dev/api/v1",
+    );
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("default-src 'self'");
@@ -65,7 +67,9 @@ describe("securityHeaders", () => {
     const headers = Object.fromEntries(
       securityHeaders("https://tabula-api.vitruviansoftware.dev/api/v1"),
     );
-    expect(headers["Content-Security-Policy"]).toContain("tabula-api.vitruviansoftware.dev");
+    expect(headers["Content-Security-Policy"]).toContain(
+      "tabula-api.vitruviansoftware.dev",
+    );
     expect(headers["X-Frame-Options"]).toBe("DENY");
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");
     expect(headers["Referrer-Policy"]).toBe("no-referrer");
