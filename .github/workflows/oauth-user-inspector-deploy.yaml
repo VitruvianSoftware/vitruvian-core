@@ -91,11 +91,19 @@ permissions:
   contents: read
   id-token: write
 
-# One promotion chain at a time. All three envs now live in ONE run (the old
-# per-env group let two runs race the shared build AR), so serialize the whole
-# workflow; queued pushes coalesce onto the newest sha.
+# Lane-keyed, not one blanket group: a blanket group meant a production
+# approval sitting pending for hours queued EVERY push behind it, and GitHub
+# evicts (not just queues) a PENDING run when a newer one joins the same
+# group -- so an unrelated stuck prod approval silently stopped ALL
+# development deploys until someone approved it (the exact incident
+# tabula-deploy.yaml's own concurrency comment documents and was fixed the
+# same way; mirrored here). The shared-build-AR race the old per-env
+# grouping was trying to prevent is independently handled at the source
+# (the build step resolves its digest via the immutable ${GITHUB_SHA} tag,
+# never the mutable :latest one — see the "Resolve the pushed image digest"
+# step below), so lane-keying doesn't reintroduce it.
 concurrency:
-  group: oauth-user-inspector-deploy
+  group: oauth-user-inspector-deploy-${{ (github.event_name == 'push' && 'development') || (github.event_name == 'release' && 'promote') || inputs.environment }}
   cancel-in-progress: false
 
 jobs:

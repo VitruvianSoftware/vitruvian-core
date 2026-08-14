@@ -58,8 +58,15 @@ permissions:
     contents: read
 
 concurrency:
-    group: copybara-config-smoketest-${{ github.ref }}
-    cancel-in-progress: true
+    # ref-only key (no sha/event_name) meant a push run and an unrelated
+    # trigger sharing this ref could evict each other. Matches the pattern
+    # already used correctly by ci.yaml, gitops-validate.yaml,
+    # migration-safety.yaml, and others in this repo: key on event_name +
+    # (ref for pull_request, sha for push), and only cancel in-progress for
+    # PR runs (a superseded PR preview is safe to cancel; a push run on
+    # main is not).
+    group: copybara-config-smoketest-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     validate:
