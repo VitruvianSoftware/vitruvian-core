@@ -46,10 +46,34 @@ inputs:
     required: false
     default: ""
 
+outputs:
+  created:
+    description: Count of resources pulumi would create/created. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.created }}
+  updated:
+    description: Count of resources pulumi would update/updated. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.updated }}
+  replaced:
+    description: Count of resources pulumi would replace/replaced. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.replaced }}
+  deleted:
+    description: Count of resources pulumi would delete/deleted. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.deleted }}
+  unchanged:
+    description: Count of resources left unchanged. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.unchanged }}
+  errored:
+    description: Count of resources that errored. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.errored }}
+  destructive:
+    description: deleted + replaced -- a caller's single "is this plan destructive?" check. "" if the log was empty (skipped stack).
+    value: ${{ steps.digest.outputs.destructive }}
+
 runs:
   using: composite
   steps:
     - name: Build the pulumi digest
+      id: digest
       shell: bash
       env:
         LABEL: ${{ inputs.label }}

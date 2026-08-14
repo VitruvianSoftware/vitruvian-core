@@ -179,23 +179,15 @@ jobs:
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
         if: steps.changes.outputs.stack == 'true' && steps.creds.outputs.available == 'true'
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: preview
+          stack: ${{ matrix.stack }}
+          working-directory: ${{ matrix.dir }}
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           # Empty for apps without a cloudflare provider (e.g. tabula); a
           # non-secret placeholder for oauth-user-inspector (see matrix note).
-          CLOUDFLARE_API_TOKEN: ${{ matrix.cfPreviewToken }}
-        working-directory: ${{ matrix.dir }}
-        run: |
-          # Disable -e so a failing preview does not abort before we capture its
-          # exit code. Advisory: never fail the PR on a diff, but DO fail visibly
-          # if the preview itself errors (the program no longer evaluates).
-          set +e -u -o pipefail
-          { pulumi stack select -c "${{ matrix.stack }}" \
-              && pulumi preview --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+          cloudflare-api-token: ${{ matrix.cfPreviewToken }}
 
       # Structured digest (creates/updates/replaces/deletes, destructive flagged)
       # → step summary + the same sticky PR comment, replacing the prior raw-dump
