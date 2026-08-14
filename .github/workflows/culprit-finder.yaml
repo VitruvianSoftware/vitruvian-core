@@ -72,15 +72,10 @@ jobs:
           # Bisect needs the full history + object graph of the range.
           fetch-depth: 0
 
+      # Free disk BEFORE any Bazel work -- see the free-disk-space composite
+      # for the rationale.
       - name: Free up runner disk space
-        run: |
-          echo "Disk before cleanup:" && df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:" && df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel

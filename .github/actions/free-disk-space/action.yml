@@ -1,0 +1,73 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Free disk BEFORE any Bazel work. PR #404 hit "No space left on device"
+# fetching the LLVM/clang-format toolchain (//tools/format) during a full
+# //... sweep; #374 saw the same. Reclaim large preinstalled SDKs a
+# Bazel-based CI lane never touches (~13GB on the base set), so lanes that can
+# fall back to a full //... sweep (global-impact changes, any affected-
+# selection uncertainty) have headroom. Runs on every event.
+#
+# Do NOT remove /usr/local/lib/android, or the Node/Python toolcache:
+# rules_android (in the module graph for //tabula) fetches an
+# android_sdk_repository at analysis time and aborts the build if the SDK is
+# gone ("No Android SDK apis found"), even when no Android target is built in
+# the calling lane; Node/Python are used by other steps in some lanes (e.g.
+# `npx playwright`). Only CodeQL is pruned from the toolcache. `|| true` on
+# the removal so a missing path is never fatal to a required check.
+name: Free up runner disk space
+description: >-
+  Reclaim large preinstalled SDKs (dotnet, ghc, the CodeQL toolcache, plus any
+  caller-supplied extras) that a Bazel-based CI lane never touches, before any
+  Bazel work runs.
+
+inputs:
+  extra-paths:
+    description: >-
+      Extra newline-separated paths to remove in addition to the 4 common
+      ones. tabula-e2e.yaml's jobs pass /usr/local/share/powershell and
+      /usr/share/swift here -- its hermetic Bazel stack (Postgres, Redis, the
+      JDK toolchain, Chromium) plus coverage instrumentation is tighter on
+      disk than the other lanes.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Free up runner disk space
+      shell: bash
+      env:
+        EXTRA_PATHS: ${{ inputs.extra-paths }}
+      run: |
+        echo "Disk before cleanup:" && df -h /
+        paths=(
+          /usr/share/dotnet
+          /opt/ghc
+          /usr/local/.ghcup
+          /opt/hostedtoolcache/CodeQL
+        )
+        if [ -n "$EXTRA_PATHS" ]; then
+          while IFS= read -r p; do
+            [ -n "$p" ] && paths+=("$p")
+          done <<< "$EXTRA_PATHS"
+        fi
+        sudo rm -rf "${paths[@]}" || true
+        echo "Disk after cleanup:" && df -h /

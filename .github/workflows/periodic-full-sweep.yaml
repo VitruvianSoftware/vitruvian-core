@@ -65,19 +65,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # Free disk BEFORE any Bazel work — same reclaim set and rationale as
-      # ci.yaml's build-test (full //... sweeps hit "No space left on device"
-      # fetching the LLVM toolchain; PR #404/#374). Android SDK is kept:
-      # rules_android aborts analysis without it.
+      # Free disk BEFORE any Bazel work -- see the free-disk-space composite
+      # for the rationale (full //... sweeps hit "No space left on device"
+      # fetching the LLVM toolchain; PR #404/#374).
       - name: Free up runner disk space
-        run: |
-          echo "Disk before cleanup:" && df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:" && df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel

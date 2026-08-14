@@ -85,21 +85,13 @@ jobs:
           BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: bash tools/ci/relevant-paths.sh
 
-      # Free disk BEFORE any Bazel work — same reclaim set + rationale as
-      # ci.yaml's build-test (#404/#374 hit "No space left on device" fetching
-      # the LLVM toolchain; this lane hit the identical failure extracting
-      # LLVM-19.1.7 once the resynced npm lock grew the fetch set). Android
-      # SDK is kept: rules_android aborts analysis without it.
+      # Free disk BEFORE any Bazel work -- see the free-disk-space composite
+      # for the rationale (#404/#374 hit "No space left on device"; this lane
+      # hit the identical failure extracting LLVM-19.1.7 once the resynced npm
+      # lock grew the fetch set).
       - name: Free up runner disk space
         if: steps.gate.outputs.relevant != 'false'
-        run: |
-          echo "Disk before cleanup:" && df -h /
-          sudo rm -rf \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/.ghcup \
-            /opt/hostedtoolcache/CodeQL || true
-          echo "Disk after cleanup:" && df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Install Bazel
         if: steps.gate.outputs.relevant != 'false'
@@ -117,19 +109,21 @@ jobs:
       # post step, on a key miss), and the entry already exists at 2.2GB. Reading
       # it here therefore adds NOTHING to the repo's 10GB Actions cache budget --
       # which matters, because that budget is why the entry caches only llvm's
-      # content-hash subtree rather than the whole 3.81GB contents tree.
+      # content-hash subtree rather than the whole 3.81GB contents tree. The
+      # llvm-cache-restore composite's `restore-only` input keeps this lane a
+      # pure reader (actions/cache/restore) while ci.yaml's jobs stay the
+      # read+write owner -- same path and key either way, from one file, so this
+      # can never drift from ci.yaml's copy the way an inline duplicate could.
       #
-      # Path and key must stay identical to ci.yaml's copy or this silently
-      # reverts to uncached extraction; the tripwire below makes that loud. On a
-      # miss (e.g. a MODULE.bazel bump before build-test has re-saved) the lane
-      # just extracts as it does today -- slower, never broken.
+      # On a miss (e.g. a MODULE.bazel bump before build-test has re-saved) the
+      # lane just extracts as it does today -- slower, never broken. The check
+      # below makes a stale-pin restore (an empty tree) loud instead of quiet.
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
         if: steps.gate.outputs.relevant != 'false'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: ./.github/actions/llvm-cache-restore
         with:
-          path: /home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
-          key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+          restore-only: "true"
 
       # Tripwire: a cache HIT that restored an empty tree means the content-hash
       # pin above has gone stale (llvm bumped in MODULE.bazel), and the only
@@ -137,10 +131,11 @@ jobs:
       # Warn, never fail -- being slow is not a reason to redden a required check.
       - name: Check the LLVM cache pin is still live
         if: steps.gate.outputs.relevant != 'false' && steps.llvm-contents.outputs.cache-hit == 'true'
+        env:
+          PIN: ${{ steps.llvm-contents.outputs.pin-path }}
         run: |
-          PIN=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513
           if [ "$(find "$PIN" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')" = "0" ]; then
-            echo "::warning title=llvm-contents pin stale::restored an empty tree; re-pin the content hash in tidy-check.yaml AND ci.yaml (this lane is back to uncached LLVM extraction, ~150s)"
+            echo "::warning title=llvm-contents pin stale::restored an empty tree; re-pin the content hash in .github/actions/llvm-cache-restore/action.yml (this lane is back to uncached LLVM extraction, ~150s)"
           fi
 
       - name: Run //:tidy and verify the tree is clean
