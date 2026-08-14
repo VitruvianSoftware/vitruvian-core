@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.26...tabula-shared-v0.1.27) (2026-08-14)
+
+
+### Bug Fixes
+
+* **tabula:** resolve tabula/web's API URL at runtime, not build time ([#1624](https://github.com/VitruvianSoftware/vitruvian-core/issues/1624)) ([bec5063](https://github.com/VitruvianSoftware/vitruvian-core/commit/bec5063933820c8a4caa1cc0a246185ff65aeec0))
+
 ## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.25...tabula-shared-v0.1.26) (2026-08-14)
 
 
