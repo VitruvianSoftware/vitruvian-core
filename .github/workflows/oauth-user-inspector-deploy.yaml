@@ -304,15 +304,35 @@ jobs:
       environment: nonproduction
     secrets: inherit
 
-  deploy-nonprod:
-    needs: [build, zitadel-nonprod]
-    # `actions: read` is what the require-dev-soak-job interlock below needs to
-    # read this workflow's own run history; the other two match the workflow
-    # default (declaring any permissions block replaces, not extends, it).
+  # Promotion interlock: refuse to promote while development is red
+  # (tools/ci/require-dev-soak.sh). A regular top-level job, deliberately NOT
+  # a step inside _deploy-cloud-run.yaml's reusable `deploy` job -- granting
+  # that job's OWN permissions block `actions: read` (needed for the script's
+  # `gh run list`/`gh run view` calls) makes GitHub Actions reject the ENTIRE
+  # calling workflow at startup with no jobs ever instantiated, confirmed
+  # empirically by bisection on tabula-deploy.yaml (see its
+  # require-dev-soak-api job for the full writeup). The identical
+  # `actions: read` on this ordinary top-level job is fine.
+  #
+  # Same event/environment condition as deploy-nonprod itself: no point
+  # running the check for a promotion that wouldn't attempt to run anyway.
+  require-dev-soak:
+    if: ${{ !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
-      id-token: write
       actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_JOB_NAME: deploy-dev / deploy
+          ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
+        run: ./tools/ci/require-dev-soak.sh
+
+  deploy-nonprod:
+    needs: [build, zitadel-nonprod, require-dev-soak]
     if: ${{ !cancelled() && needs.build.result == 'success' && needs.zitadel-nonprod.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -337,12 +357,6 @@ jobs:
       # Single source of truth: the local `:deploy` target reads the same file
       # (oauth-user-inspector/infra/app/BUILD custom_smoke_script_file).
       custom-smoke-script-file: oauth-user-inspector/infra/app/smoke.sh
-      # Refuse to promote while development is red. Same exposure tabula has:
-      # apps-release.yml opens the release PR on a push (not on a green
-      # deploy), release-pr-automerge.yaml auto-merges it on green PR CI, and
-      # nonproduction carries no reviewer -- so without this a failed
-      # development deploy reaches nonproduction with no human in the loop.
-      require-dev-soak-job: deploy-dev / deploy
     secrets: inherit
 
   # ---- production (release-gated + reviewer-gated final checkpoint) ---------
