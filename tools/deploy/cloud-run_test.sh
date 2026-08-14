@@ -40,6 +40,42 @@ got="$(resolve_smoke_url "null" "true" "https://live.example")"
 [ "$got" = "https://live.example" ] && ok "literal 'null' candidate treated as unresolved" \
   || bad "'null' candidate should be unresolved (got '$got')"
 
+# --- pure resolve_stable_revision -------------------------------------------
+# A transient/real gcloud failure must NEVER be silently treated as "first
+# deploy" (that skips the whole blue-green rollout and routes 100% traffic
+# to an unsmoked revision). Only a confirmed NOT_FOUND -- the service
+# resource genuinely doesn't exist yet -- may resolve to "no stable revision".
+
+got="$(resolve_stable_revision 0 "" "tabula-api-development-abc123" "tabula-api-development")"
+[ "$got" = "tabula-api-development-abc123" ] && ok "rc=0 returns the described revision" \
+  || bad "clean describe should return the revision (got '$got')"
+
+got="$(resolve_stable_revision 0 "" "" "tabula-api-development")"
+[ "$got" = "" ] && ok "rc=0 with an empty value is treated as first deploy" \
+  || bad "rc=0 empty should resolve to empty (got '$got')"
+
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) NOT_FOUND: Requested entity was not found." "" "tabula-api-development")"
+[ "$got" = "" ] && ok "NOT_FOUND on a nonzero rc is a genuine first deploy" \
+  || bad "NOT_FOUND should resolve to empty (got '$got')"
+
+if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
+  bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
+else
+  ok "PERMISSION_DENIED (or any other real error) fails closed rather than guessing first-deploy"
+fi
+
+if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) There was a problem refreshing your current auth tokens" "" "tabula-api-development" >/dev/null 2>&1; then
+  bad "an auth/reauth failure MUST fail closed, not be treated as first deploy"
+else
+  ok "auth reauthentication failure fails closed rather than guessing first-deploy"
+fi
+
+if resolve_stable_revision 0 "ERROR: some warning printed to stderr despite rc=0" "" "tabula-api-development" >/dev/null 2>&1; then
+  ok "rc=0 always wins regardless of stderr content (matches gcloud's own success signal)"
+else
+  bad "rc=0 should not fail even if stderr has content"
+fi
+
 # --- phase planning via --dry-run ------------------------------------------
 common=(--pulumi-dir tabula/infra/app --service tabula-api --env development \
   --env-prefix TABULA --project prj-x --region us-central1 \

@@ -58,6 +58,37 @@ resolve_smoke_url() {
   return 1
 }
 
+# PURE + unit-tested: interpret a `gcloud run services describe` result for
+# the currently-serving revision. Distinguishes a GENUINE first-ever deploy
+# (the Cloud Run service doesn't exist yet -- gcloud fails with NOT_FOUND)
+# from any OTHER failure (auth hiccup, transient API 5xx, wrong
+# project/region, IAM propagation lag, ...), which must NOT be silently
+# treated as first-deploy: on a service that already has live traffic, that
+# skips the entire candidate->smoke->promote sequence and routes 100% of
+# traffic straight to a brand-new, unsmoked revision (the exact thing #808's
+# false-green guard exists to prevent on the smoke side -- this is the same
+# failure mode on the OTHER side of the same rollout). Mirrors
+# tools/ci/tabula-deploy-preflight.sh's identical awareness that "gcloud can
+# exit 0 while printing ERROR... on stderr", generalized to also cover a
+# non-zero exit. Echoes the revision name (empty string for a confirmed
+# first deploy) on success, or logs why and returns 1.
+resolve_stable_revision() {
+  local rc="$1" stderr_content="$2" stdout_value="$3" svc="$4"
+  if [ "$rc" -eq 0 ]; then
+    echo "$stdout_value"
+    return 0
+  fi
+  if echo "$stderr_content" | grep -q "NOT_FOUND"; then
+    # The service resource itself doesn't exist yet: a genuine first deploy.
+    echo ""
+    return 0
+  fi
+  echo "cloud-run: could not read the live/stable revision for ${svc}:" >&2
+  echo "$stderr_content" | sed 's/^/  /' >&2
+  echo "cloud-run: refusing to guess -- treating this as a first deploy would skip the blue-green rollout and route 100% of traffic to an unsmoked revision. Failing closed (rc=${rc})." >&2
+  return 1
+}
+
 # Invoke the shared pulumi wrapper for THIS app's project dir. Extra args are
 # forwarded to pulumi verbatim. Honors --dry-run (prints instead of running).
 pulumi_wrap() {
@@ -185,8 +216,12 @@ main() {
   if [ -n "$STABLE_OVERRIDE" ]; then
     STABLE="$STABLE_OVERRIDE"
   elif [ -z "$DRY_RUN" ]; then
-    STABLE="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" \
-      --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
+    _gerr="$(mktemp)"
+    _stable_raw="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" \
+      --format='value(status.traffic[0].revisionName)' 2>"$_gerr")"
+    _grc=$?
+    STABLE="$(resolve_stable_revision "$_grc" "$(cat "$_gerr")" "$_stable_raw" "$SVC")" || exit 1
+    rm -f "$_gerr"
   fi
   FIRST_DEPLOY=false
   [ -z "$STABLE" ] && FIRST_DEPLOY=true
