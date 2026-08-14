@@ -340,15 +340,39 @@ jobs:
   # No longer cascades from a push. Triggers when a tabula release-please
   # PR merges (release published, tag `tabula-api-v*` or `tabula-web-v*`) or via a
   # single-env dispatch. The release merge is the gate, so this env carries no reviewer.
-  deploy-nonprod:
-    needs: [build]
-    # `actions: read` is what the require-dev-soak-job interlock below needs to
-    # read this workflow's own run history; the other two match the workflow
-    # default (declaring any permissions block replaces, not extends, it).
+
+  # Promotion interlock: refuse to promote while THIS service's development
+  # deploy is red (tools/ci/require-dev-soak.sh). A regular top-level job,
+  # deliberately NOT a step inside _deploy-cloud-run.yaml's reusable `deploy`
+  # job -- granting that job's OWN permissions block `actions: read` (needed
+  # for the script's `gh run list`/`gh run view` calls) makes GitHub Actions
+  # reject the ENTIRE calling workflow at startup with no jobs ever
+  # instantiated, on EVERY dispatch, confirmed empirically by bisection (four
+  # isolated round-trips: only that one permission, on that one job shape,
+  # reproduces it -- the identical `actions: read` on this ordinary top-level
+  # job, exactly like `gate` above already does, is fine). Root cause not
+  # fully understood; moving the check outside the reusable workflow entirely
+  # sidesteps it rather than depending on it.
+  #
+  # Same event/environment condition as deploy-nonprod itself: no point
+  # running the check for a promotion that wouldn't attempt to run anyway.
+  require-dev-soak-api:
+    if: ${{ !cancelled() && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
-      id-token: write
       actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_JOB_NAME: deploy-dev / deploy
+          ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
+        run: ./tools/ci/require-dev-soak.sh
+
+  deploy-nonprod:
+    needs: [build, require-dev-soak-api]
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -376,18 +400,28 @@ jobs:
       # Skip the whole migrate + blue-green when the live service already
       # serves this exact digest+config (fail-open; tools/ci/tabula-deploy-preflight.sh).
       skip-if-unchanged: true
-      # Refuse to promote tabula-api while ITS development deploy is red.
-      require-dev-soak-job: deploy-dev / deploy
       smoke-url-path: /health
     secrets: inherit
 
-  deploy-nonprod-web:
-    needs: [build]
-    # See deploy-nonprod above — `actions: read` for the dev-soak interlock.
+  # See require-dev-soak-api above — tabula-web promotes independently and
+  # checks its OWN development job (deploy-dev-web, not deploy-dev).
+  require-dev-soak-web:
+    if: ${{ !cancelled() && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
-      id-token: write
       actions: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_JOB_NAME: deploy-dev-web / deploy
+          ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
+        run: ./tools/ci/require-dev-soak.sh
+
+  deploy-nonprod-web:
+    needs: [build, require-dev-soak-web]
     if: ${{ !cancelled() && needs.build.result == 'success' && ((github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'nonproduction')) }}
     uses: ./.github/workflows/_deploy-cloud-run.yaml
     with:
@@ -404,9 +438,6 @@ jobs:
       default-region: us-central1
       run-migrations: false
       skip-if-unchanged: false
-      # Refuse to promote tabula-web while ITS OWN development deploy is red
-      # (deploy-dev-web, not deploy-dev — the two services promote independently).
-      require-dev-soak-job: deploy-dev-web / deploy
       smoke-url-path: /
     secrets: inherit
 

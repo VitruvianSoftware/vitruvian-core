@@ -173,29 +173,6 @@ on:
         required: false
         type: string
         default: ""
-      require-dev-soak-job:
-        description: >-
-          Opt-in PROMOTION interlock. Set to the CALLER's development deploy
-          job name (e.g. "deploy-dev / deploy") on a nonproduction/production
-          job, and this deploy refuses to run when that job is currently RED
-          on the default branch.
-
-          Closes the gap that the promotion ladder otherwise assumes rather
-          than enforces: release-please opens a release PR on any push to
-          main, release-pr-automerge.yaml auto-merges it on green PR CI (which
-          says nothing about the DEPLOYMENT), and nonproduction has no
-          reviewer -- so a commit whose development deploy failed could reach
-          nonproduction with no human in the loop.
-
-          Per-SERVICE by design: tabula-api and tabula-web have separate
-          development jobs, so one service's red development never blocks the
-          other's promotion. Blocks only on a definitive red; an
-          indeterminate answer warns and allows (see
-          tools/ci/require-dev-soak.sh). Empty (the default) disables it, so
-          every existing caller is unaffected.
-        required: false
-        type: string
-        default: ""
       cloudflare-token-secret-project:
         description: >-
           GCP project whose Secret Manager holds the CLOUDFLARE_API_TOKEN
@@ -240,13 +217,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      # Only exercised when `require-dev-soak-job` is set: that gate reads THIS
-      # workflow's own run history via the Actions API. A called workflow's
-      # permissions can only NARROW the caller's grant, never widen it, so
-      # declaring it here grants nothing on its own -- a caller that does not
-      # also grant `actions: read` simply leaves the gate unable to read, which
-      # it treats as indeterminate (warn + allow), never as a false block.
-      actions: read
     environment: ${{ inputs.app-name }}-${{ inputs.environment }}
     env:
       DEPLOY_ENV: ${{ inputs.environment }}
@@ -298,23 +268,6 @@ jobs:
           CONFIG_FILE: Pulumi.${{ inputs.environment }}.yaml
           GOWORK: off
         run: ./tools/ci/tabula-deploy-preflight.sh
-
-      # PROMOTION INTERLOCK (opt-in, see the input's description). Placed after
-      # the skip-if-unchanged preflight so a no-op redeploy is never blocked --
-      # if the live service already IS the desired state there is nothing being
-      # promoted to gate. Runs before the image push / migrations / rollout, so
-      # a block costs nothing and changes nothing.
-      - name: Require development to be green before promoting
-        if: ${{ inputs.require-dev-soak-job != '' && steps.preflight.outputs.unchanged != 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEV_JOB_NAME: ${{ inputs.require-dev-soak-job }}
-          # WORKFLOW_FILE is deliberately unset: the script resolves the CALLER's
-          # workflow from GITHUB_RUN_ID (a reusable workflow's jobs run inside
-          # the caller's run), so this works for every caller with no per-caller
-          # wiring.
-          ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
-        run: ./tools/ci/require-dev-soak.sh
 
       - name: Configure docker for Artifact Registry
         if: ${{ inputs.image-digest == '' }}
