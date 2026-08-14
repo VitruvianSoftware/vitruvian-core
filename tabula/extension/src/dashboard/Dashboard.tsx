@@ -74,6 +74,7 @@ import { OnboardingModal } from "../components/onboarding/OnboardingModal";
 import { shouldShowOnboarding } from "../components/onboarding/shouldShowOnboarding";
 import { StorageService } from "../services/storage";
 import { useSettingsStore } from "../stores/settings";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 
 export const Dashboard: React.FC = () => {
   useEffect(() => {
@@ -102,6 +103,10 @@ export const Dashboard: React.FC = () => {
 
   // Theme management
   const { theme, setTheme } = useTheme();
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // First-run onboarding (#138)
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -742,6 +747,7 @@ export const Dashboard: React.FC = () => {
       return (
         <div
           className="dashboard-container"
+          data-design-system={useDesignSystem ? "true" : "false"}
           style={{ alignItems: "center", justifyContent: "center" }}
         >
           <div className="text-secondary">Loading note...</div>
@@ -755,6 +761,7 @@ export const Dashboard: React.FC = () => {
       return (
         <div
           className="dashboard-container"
+          data-design-system={useDesignSystem ? "true" : "false"}
           style={{ alignItems: "center", justifyContent: "center" }}
         >
           <div className="text-secondary">Note not found.</div>
@@ -765,6 +772,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div
         className="dashboard-container"
+        data-design-system={useDesignSystem ? "true" : "false"}
         style={{
           display: "block",
           overflow: "auto",
@@ -825,7 +833,10 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="dashboard-container">
+    <div
+      className="dashboard-container"
+      data-design-system={useDesignSystem ? "true" : "false"}
+    >
       {/* Sidebar */}
       <div className="sidebar">
         {/* Header Row: Logo + Avatar - Now using extracted SidebarHeader + UserMenu */}

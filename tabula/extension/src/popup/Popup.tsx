@@ -34,6 +34,8 @@ import type { Workspace, WorkspaceCreateInput } from "../types";
 import { Icon } from "../components/icons";
 import { useTheme } from "../hooks/useTheme";
 import { ConfirmModal } from "../dashboard/ConfirmModal";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 // Import styles
 import "../styles/global.css";
@@ -78,6 +80,10 @@ const Popup: React.FC = () => {
   const [ownershipNotice, setOwnershipNotice] = useState<string | null>(null);
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const { theme, setTheme } = useTheme();
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Check auth status on mount
   useEffect(() => {
@@ -431,6 +437,7 @@ const Popup: React.FC = () => {
   if (authView === "login") {
     return (
       <div
+        data-design-system={useDesignSystem ? "true" : "false"}
         style={{
           padding: "24px",
           width: "360px",
@@ -455,6 +462,7 @@ const Popup: React.FC = () => {
   return (
     <div
       className="bg-page text-main"
+      data-design-system={useDesignSystem ? "true" : "false"}
       style={{
         width: "400px",
         minHeight: "400px",

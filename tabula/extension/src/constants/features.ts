@@ -34,4 +34,9 @@ export const FEATURE_FLAGS = {
    * permissions (#139) and the web companion / relay (#140). Tracking: #137.
    */
   SHARING_ENABLED: false,
+  /**
+   * Vitruvian Design System migration (Preview).
+   * Replaces Workona-style UI with the new system.
+   */
+  USE_DESIGN_SYSTEM: "use-design-system",
 } as const;

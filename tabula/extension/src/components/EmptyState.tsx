@@ -21,6 +21,9 @@
  */
 
 import React from "react";
+import { EmptyState as VitruvianEmptyState } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 interface EmptyStateProps {
   illustration: React.ReactNode;
@@ -43,6 +46,21 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   className = "",
   style,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
+  if (useDesignSystem) {
+    return (
+      <div className={className} style={style}>
+        <VitruvianEmptyState title={title} mark={illustration} actions={action}>
+          {description}
+        </VitruvianEmptyState>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`empty-state-container ${className}`}
@@ -63,8 +81,6 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         style={{
           marginBottom: "16px",
           color: "var(--color-text-muted)",
-          // Utilize the primary accent color for a touch of brand identity if needed,
-          // but usually illustrations are subtle. We'll stick to props/SVG colors.
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

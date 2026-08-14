@@ -31,6 +31,8 @@ import { Icon } from "./icons";
 import { Modal } from "./Modal";
 import { UpdateCheckService } from "../services/updateCheck";
 import type { Channel } from "../services/updateCheck";
+import { useFeatureFlag, setFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 interface AccountSettingsProps {
   onClose: () => void;
@@ -66,6 +68,10 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   } | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -965,6 +971,63 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   </button>
                 </div>
               )}
+
+            <div
+              style={{
+                marginTop: "16px",
+                paddingTop: "16px",
+                borderTop: "1px solid var(--color-border)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: "13px" }}>
+                    Vitruvian Design System (Preview)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    Replaces Workona-style UI with the new system.
+                  </div>
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={useDesignSystem}
+                    onChange={(e) =>
+                      setFeatureFlag(
+                        FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+                        e.target.checked,
+                      )
+                    }
+                    style={{ marginRight: "8px" }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    {useDesignSystem ? "On" : "Off"}
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
         </section>
       )}

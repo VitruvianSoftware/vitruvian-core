@@ -22,6 +22,9 @@
 
 import React from "react";
 import type { Workspace } from "../types";
+import { Plate, Button } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 interface WorkspaceCardProps {
   workspace: Workspace;
@@ -42,17 +45,13 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
   onEdit,
   onDelete,
 }) => {
-  return (
-    <div
-      className="card"
-      style={{
-        marginBottom: "8px",
-        border: isActive ? "2px solid var(--color-primary)" : undefined,
-        backgroundColor: isActive
-          ? "var(--color-bg-card-hover)"
-          : "var(--color-bg-card)",
-      }}
-    >
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
+  const content = (
+    <>
       <div className="flex items-center" style={{ marginBottom: "12px" }}>
         <span style={{ fontSize: "24px", marginRight: "12px" }}>
           {workspace.icon}
@@ -103,47 +102,111 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
       )}
 
       <div className="flex gap-sm">
-        <button
-          type="button"
-          onClick={onSaveTabs}
-          className="btn btn-secondary btn-sm"
-        >
-          Save Tabs
-        </button>
-        <button
-          type="button"
-          onClick={onRestoreTabs}
-          className="btn btn-secondary btn-sm"
-          disabled={workspace.tabs.length === 0}
-        >
-          Restore
-        </button>
-        {!isActive && (
-          <button
-            type="button"
-            onClick={onSwitch}
-            className="btn btn-primary btn-sm"
-            disabled={workspace.tabs.length === 0}
-          >
-            Switch
-          </button>
+        {useDesignSystem ? (
+          <>
+            <Button onClick={onSaveTabs} variant="secondary" size="small">
+              Save Tabs
+            </Button>
+            <Button
+              onClick={onRestoreTabs}
+              variant="secondary"
+              size="small"
+              disabled={workspace.tabs.length === 0}
+            >
+              Restore
+            </Button>
+            {!isActive && (
+              <Button
+                onClick={onSwitch}
+                variant="primary"
+                size="small"
+                disabled={workspace.tabs.length === 0}
+              >
+                Switch
+              </Button>
+            )}
+            <div style={{ flex: 1 }}></div>
+            <Button onClick={onEdit} variant="secondary" size="small">
+              Edit
+            </Button>
+            <Button onClick={onDelete} variant="danger" size="small">
+              Delete
+            </Button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onSaveTabs}
+              className="btn btn-secondary btn-sm"
+            >
+              Save Tabs
+            </button>
+            <button
+              type="button"
+              onClick={onRestoreTabs}
+              className="btn btn-secondary btn-sm"
+              disabled={workspace.tabs.length === 0}
+            >
+              Restore
+            </button>
+            {!isActive && (
+              <button
+                type="button"
+                onClick={onSwitch}
+                className="btn btn-primary btn-sm"
+                disabled={workspace.tabs.length === 0}
+              >
+                Switch
+              </button>
+            )}
+            <div style={{ flex: 1 }}></div>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="btn btn-secondary btn-sm"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="btn btn-danger btn-sm"
+            >
+              Delete
+            </button>
+          </>
         )}
-        <div style={{ flex: 1 }}></div>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="btn btn-secondary btn-sm"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="btn btn-danger btn-sm"
-        >
-          Delete
-        </button>
       </div>
+    </>
+  );
+
+  const style = {
+    marginBottom: "8px",
+    border: isActive ? "2px solid var(--color-primary)" : undefined,
+    backgroundColor: isActive
+      ? "var(--color-bg-card-hover)"
+      : "var(--color-bg-card)",
+  };
+
+  if (useDesignSystem) {
+    return (
+      <Plate
+        live
+        enter
+        {...({
+          className: "card",
+          style: style,
+        } as any)}
+      >
+        {content}
+      </Plate>
+    );
+  }
+
+  return (
+    <div className="card" style={style}>
+      {content}
     </div>
   );
 };

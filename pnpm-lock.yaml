@@ -905,9 +905,15 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
+      '@openfeature/web-sdk':
+        specifier: ^1.1.0
+        version: 1.10.0(@openfeature/core@1.12.0)
       '@tabula/shared':
         specifier: workspace:*
         version: link:../shared
+      '@vitruviansoftware/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       framer-motion:
         specifier: ^13.0.0
         version: 13.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2279,6 +2285,14 @@ packages:
   '@npmcli/run-script@10.0.4':
     resolution: {integrity: sha512-mGUWr1uMnf0le2TwfOZY4SFxZGXGfm4Jtay/nwAa2FLNAKXUoUwaGwBMNH36UHPtinWfTSJ3nqFQr0091CxVGg==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  '@openfeature/core@1.12.0':
+    resolution: {integrity: sha512-7PCPzyd1OC19begz30+CRknFB0ChtyaZUhk7YWrk+Bov1fpVw0HYkTXtoxxsvPfDZB9P9WsT7uixN+Z8f9+bcA==}
+
+  '@openfeature/web-sdk@1.10.0':
+    resolution: {integrity: sha512-qf+JmJSnaslhegNwoDDLn2Cf72P6cIobuAQPUb61MSkzJOZuVLU6f9pv/90FlLcK6UDtp6od//xZHW712rBrmg==}
+    peerDependencies:
+      '@openfeature/core': ^1.12.0
 
   '@opentelemetry/api-logs@0.220.0':
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
@@ -10654,6 +10668,12 @@ snapshots:
       '@npmcli/promise-spawn': 9.0.1
       node-gyp: 12.4.0
       proc-log: 6.1.0
+
+  '@openfeature/core@1.12.0': {}
+
+  '@openfeature/web-sdk@1.10.0(@openfeature/core@1.12.0)':
+    dependencies:
+      '@openfeature/core': 1.12.0
 
   '@opentelemetry/api-logs@0.220.0':
     dependencies:

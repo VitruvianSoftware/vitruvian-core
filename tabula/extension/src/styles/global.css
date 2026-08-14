@@ -140,6 +140,29 @@
   --ambient-bloom-3: rgba(34, 211, 238, 0.05);
 }
 
+[data-design-system="true"] {
+  --color-bg-page: var(--color-paper);
+  --color-bg-sidebar: var(--color-paper);
+  --color-bg-card: var(--color-paper);
+  --color-bg-card-hover: var(--color-paper);
+  
+  --color-text-primary: var(--color-ink);
+  --color-text-secondary: var(--color-ink-2);
+  --color-text-muted: var(--color-ink-2);
+  --color-text-sidebar: var(--color-ink);
+  --color-text-sidebar-secondary: var(--color-ink-2);
+  
+  --color-border: var(--color-hairline);
+  --color-border-sidebar: var(--color-hairline);
+  
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-pill: 0;
+  --radius-circle: 50%;
+}
+
 /* Ambient backdrop — a whisper-subtle aurora painted on the page behind the
    content, giving the floating glass overlays something with a little life to
    refract. Painted once: no background-attachment: fixed (which would force a
