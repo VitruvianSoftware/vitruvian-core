@@ -148,43 +148,38 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
+      # --refresh mirrors the apply below EXACTLY. A preview computed without it
+      # can differ from what the apply then does, which would make this gate
+      # worse than useless: reassuring but wrong.
       - name: Pulumi preview (${{ inputs.environment }})
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          ENVIRONMENT: ${{ inputs.environment }}
-        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
-        run: |
-          set +e -u -o pipefail
-          echo "::group::pulumi preview --diff --refresh (${ENVIRONMENT} leaf / production stack)"
-          # --refresh mirrors the apply below EXACTLY. A preview computed
-          # without it can differ from what the apply then does, which would
-          # make this gate worse than useless: reassuring but wrong.
-          { pulumi stack select -c "production" \
-              && pulumi preview --diff --refresh --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: preview
+          stack: production
+          refresh: "true"
+          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Same renderer as the apply, so the plan the approver reads and the
       # receipt they get afterwards are produced by one parser and cannot drift.
       # It also exports the counts this job gates on.
+      - name: Compute the pulumi digest label
+        if: always()
+        id: label
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working_directory }}
+          BUSINESS_UNIT: ${{ inputs.business_unit }}
+        run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }} (plan)" >> "${GITHUB_OUTPUT}"
+
       - name: Pulumi plan → step summary
         id: summary
         if: always()
-        env:
-          WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          ENVIRONMENT: ${{ inputs.environment }}
-          BUSINESS_UNIT: ${{ inputs.business_unit }}
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${ENVIRONMENT} (plan)" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: ${{ steps.label.outputs.value }}
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
 
       # FAIL CLOSED on a destructive plan. gcp projects/serviceaccount IAMMember
       # are non-authoritative: a delete REMOVES the member, revoking live access
@@ -244,49 +239,42 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
+      # Upstream-leaf layout: the environment selects the business-unit leaf
+      # Pulumi project dir; every leaf has exactly one stack, `production`.
+      #
+      # --refresh makes this stage SELF-HEALING for non-authoritative IAM.
+      # gcp.projects/serviceaccount IAMMember are additive: create = add
+      # member, delete = REMOVE member. Several app deploy-identity grants
+      # are currently dual-declared here and in the app's own identity stack
+      # during the §4.1 migration, so if the app stack ever drops a member,
+      # this stack's state still claims to own it and would never re-add it
+      # — a permanent silent revocation that breaks the app's CI. Refreshing
+      # first reconciles state with reality so the member is restored.
       - name: Pulumi up (${{ inputs.environment }})
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          ENVIRONMENT: ${{ inputs.environment }}
-        # Upstream-leaf layout: the environment selects the business-unit leaf
-        # Pulumi project dir; every leaf has exactly one stack, `production`.
-        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff --refresh (${ENVIRONMENT} leaf / production stack)"
-          # --refresh makes this stage SELF-HEALING for non-authoritative IAM.
-          # gcp.projects/serviceaccount IAMMember are additive: create = add
-          # member, delete = REMOVE member. Several app deploy-identity grants
-          # are currently dual-declared here and in the app's own identity stack
-          # during the §4.1 migration, so if the app stack ever drops a member,
-          # this stack's state still claims to own it and would never re-add it
-          # — a permanent silent revocation that breaks the app's CI. Refreshing
-          # first reconciles state with reality so the member is restored.
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --refresh --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          refresh: "true"
+          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-      # Render the pulumi output digest onto the run's step-summary page. Runs
-      # even when the deploy fails so the failure — and what it touched — is
-      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
-      # destructive replace/delete, and tucks the raw log into a <details>.
-      - name: Pulumi digest → step summary
+      # Render the pulumi output digest onto the run's step-summary page via the
+      # shared composite (.github/actions/pulumi-summary). Runs even when the
+      # deploy fails so the failure — and what it touched — is surfaced.
+      - name: Compute the pulumi digest label
         if: always()
+        id: label
         env:
           WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          ENVIRONMENT: ${{ inputs.environment }}
           BUSINESS_UNIT: ${{ inputs.business_unit }}
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${ENVIRONMENT}" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Pulumi digest → step summary
+        if: always()
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: ${{ steps.label.outputs.value }}
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}

@@ -193,41 +193,32 @@ jobs:
           fi
           echo "digest guard: OK"
 
+      # Upstream-leaf layout: the environment selects the business-unit leaf
+      # Pulumi project dir; every leaf has exactly one stack, `production`.
       - name: Pulumi up (${{ inputs.environment }})
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          ENVIRONMENT: ${{ inputs.environment }}
-        # Upstream-leaf layout: the environment selects the business-unit leaf
-        # Pulumi project dir; every leaf has exactly one stack, `production`.
-        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (${ENVIRONMENT} leaf / production stack)"
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-      # Render the pulumi output digest onto the run's step-summary page. Runs
-      # even when the deploy fails so the failure — and what it touched — is
-      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
-      # destructive replace/delete, and tucks the raw log into a <details>.
-      - name: Pulumi digest → step summary
+      # Render the pulumi output digest onto the run's step-summary page via the
+      # shared composite (.github/actions/pulumi-summary). Runs even when the
+      # deploy fails so the failure — and what it touched — is surfaced.
+      - name: Compute the pulumi digest label
         if: always()
+        id: label
         env:
           WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          ENVIRONMENT: ${{ inputs.environment }}
           BUSINESS_UNIT: ${{ inputs.business_unit }}
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${ENVIRONMENT}" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Pulumi digest → step summary
+        if: always()
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: ${{ steps.label.outputs.value }}
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}

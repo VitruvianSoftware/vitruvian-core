@@ -1,0 +1,120 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Pulumi run (captured)
+description: >-
+  Select a Pulumi stack (creating it if missing) and run `pulumi preview` or
+  `pulumi up` with --diff --non-interactive, teeing the full output to a log
+  file and exposing the command's REAL exit code as `exit_code`. GitHub runs
+  steps with `bash -eo pipefail`, so a bare `pulumi ... | tee log` step would
+  either abort early (with -e, before the log is complete) or report tee's own
+  exit status instead of pulumi's (masking a failure as success) -- this
+  captures PIPESTATUS explicitly instead. Feed the resulting log + exit code to
+  .github/actions/pulumi-summary for the step-summary digest.
+
+inputs:
+  command:
+    description: pulumi subcommand to run (preview | up).
+    required: true
+  stack:
+    description: Pulumi stack to select (created with `-c` if it does not exist).
+    required: true
+  working-directory:
+    description: Directory containing the Pulumi project (Pulumi.yaml).
+    required: true
+  pulumi-access-token:
+    description: >-
+      Value for the PULUMI_ACCESS_TOKEN env var pulumi reads for state-backend
+      auth. Passed explicitly rather than relying on ambient env, since
+      composite actions do not automatically inherit the calling workflow's
+      secrets context.
+    required: true
+  cloudflare-api-token:
+    description: >-
+      Value for the CLOUDFLARE_API_TOKEN env var, for stacks with a Cloudflare
+      provider. Leave empty for stacks that don't need it.
+    required: false
+    default: ""
+  refresh:
+    description: When "true", add --refresh (reconcile state before diffing).
+    required: false
+    default: "false"
+  out-file:
+    description: >-
+      Path to write the teed output log to. Defaults to
+      "$RUNNER_TEMP/pulumi-out.txt" (composite action inputs cannot default to
+      an expression, so the fallback is applied inside the step instead).
+    required: false
+    default: ""
+
+outputs:
+  exit_code:
+    description: The pulumi command's real exit code (captured via PIPESTATUS).
+    value: ${{ steps.run.outputs.exit_code }}
+  out-file:
+    description: Path to the teed output log (echoes out-file, or its computed default).
+    value: ${{ steps.run.outputs.out_file }}
+
+runs:
+  using: composite
+  steps:
+    - name: pulumi ${{ inputs.command }} --diff
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PULUMI_COMMAND: ${{ inputs.command }}
+        STACK: ${{ inputs.stack }}
+        REFRESH: ${{ inputs.refresh }}
+        OUT_FILE_INPUT: ${{ inputs.out-file }}
+        PULUMI_ACCESS_TOKEN: ${{ inputs.pulumi-access-token }}
+        CLOUDFLARE_API_TOKEN_INPUT: ${{ inputs.cloudflare-api-token }}
+      run: |
+        # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
+        # pipeline does not abort here and we capture pulumi's real exit code.
+        set +e -u -o pipefail
+        out_file="${OUT_FILE_INPUT:-${RUNNER_TEMP}/pulumi-out.txt}"
+        echo "out_file=${out_file}" >> "${GITHUB_OUTPUT}"
+
+        # Only export CLOUDFLARE_API_TOKEN when a caller actually supplies one --
+        # most callers don't, and leaving it fully absent (rather than present
+        # but empty) matches their pre-composite behavior exactly, avoiding any
+        # risk that a Cloudflare provider treats an explicitly-empty credential
+        # differently from a credential that was never configured.
+        if [ -n "${CLOUDFLARE_API_TOKEN_INPUT:-}" ]; then
+          export CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_INPUT}"
+        fi
+
+        args=()
+        # --yes only applies to `up` (an unattended preview never mutates
+        # anything, so it has no confirmation prompt to skip).
+        [ "${PULUMI_COMMAND}" = "up" ] && args+=(--yes)
+        args+=(--diff)
+        [ "${REFRESH}" = "true" ] && args+=(--refresh)
+        args+=(--non-interactive)
+
+        echo "::group::pulumi ${PULUMI_COMMAND} ${args[*]} (${STACK})"
+        { pulumi stack select -c "${STACK}" \
+            && pulumi "${PULUMI_COMMAND}" "${args[@]}"; } \
+          2>&1 | tee "${out_file}"
+        ec="${PIPESTATUS[0]}"
+        echo "::endgroup::"
+        echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+        exit "${ec}"

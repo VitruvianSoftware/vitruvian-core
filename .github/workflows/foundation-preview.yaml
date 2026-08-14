@@ -243,54 +243,26 @@ jobs:
       - name: Pulumi preview (${{ matrix.app }} / ${{ matrix.stack }})
         if: steps.changes.outputs.stack == 'true'
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          STACK: ${{ matrix.stack }}
-        working-directory: ${{ matrix.dir }}
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi preview --diff (${STACK})"
-          { pulumi stack select -c "${STACK}" \
-              && pulumi preview --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: preview
+          stack: ${{ matrix.stack }}
+          working-directory: ${{ matrix.dir }}
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # One digest feeds BOTH the step-summary page and the sticky PR comment, so
-      # the two can never drift. This replaces the previous plain advisory block;
-      # the sticky-comment marker (header:) is preserved so the comment updates in
-      # place on each push. tools/ci/pulumi-summary.sh parses the counts, flags
-      # any destructive replace/delete, and tucks the raw log into a <details>.
-      - name: Build the pulumi digest
+      # the two can never drift; the sticky-comment marker (header:) is preserved
+      # so the comment updates in place on each push. When this stack was
+      # unchanged in the PR, vet/test/preview were skipped (no pulumi-out.txt),
+      # and the composite's own empty-log branch renders a "skipped" digest
+      # instead of misreading the missing file as a failure -- note its wording
+      # ("No pulumi output — preview/apply was skipped for this stack.") differs
+      # cosmetically from this job's previous bespoke message.
+      - name: Pulumi digest → step summary + sticky PR comment
         if: always()
-        env:
-          LABEL: ${{ matrix.app }}
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-          STACK_CHANGED: ${{ steps.changes.outputs.stack }}
-        run: |
-          set -euo pipefail
-          # When this stack was unchanged in the PR, vet/test/preview were skipped
-          # (no pulumi-out.txt, empty exit_code) -- emit an "unchanged" digest rather
-          # than running pulumi-summary.sh on a missing log (which would read as a
-          # false failure). The sticky comment still posts, showing the leg is clean.
-          if [ "${STACK_CHANGED}" != "true" ]; then
-            # shellcheck disable=SC2016 # the backticks are markdown code spans, not expansion
-            printf '### %s\n\n_No changes to `%s` in this PR — preview skipped._\n' \
-              "${LABEL}" "${LABEL}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
-            exit 0
-          fi
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "${LABEL}" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Post the sticky PR comment
-        if: always()
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        uses: ./.github/actions/pulumi-summary
         with:
-          header: foundation-preview-${{ matrix.app }}
-          path: ${{ runner.temp }}/pulumi-digest.md
+          label: ${{ matrix.app }}
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          sticky-header: foundation-preview-${{ matrix.app }}

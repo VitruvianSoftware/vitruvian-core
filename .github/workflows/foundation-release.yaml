@@ -232,37 +232,25 @@ jobs:
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
+      # Upstream-leaf layout: 1-org's Pulumi project root is the envs/shared
+      # leaf (stack ipv1337/foundation-org-shared/production); the stage logic
+      # lives in the sibling modules/.
       - name: Pulumi up (gcp-org / envs/shared / production)
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        # Upstream-leaf layout: 1-org's Pulumi project root is the envs/shared
-        # leaf (stack ipv1337/foundation-org-shared/production); the stage logic
-        # lives in the sibling modules/.
-        working-directory: infrastructure/pulumi/foundation/gcp-org/envs/shared
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (production)"
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          working-directory: infrastructure/pulumi/foundation/gcp-org/envs/shared
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi digest → step summary
         if: always()
-        env:
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "gcp-org" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: gcp-org
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
 
   deploy-org-folders:
     # Serialize deploys of this org stack; never cancel an in-flight pulumi up.
@@ -297,32 +285,20 @@ jobs:
 
       - name: Pulumi up (org-folders / production)
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/foundation/org-folders
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (production)"
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          working-directory: infrastructure/pulumi/foundation/org-folders
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi digest → step summary
         if: always()
-        env:
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "org-folders" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: org-folders
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
 
   deploy-gcp-bootstrap:
     # Serialize deploys of this org stack; never cancel an in-flight pulumi up.
@@ -357,32 +333,20 @@ jobs:
 
       - name: Pulumi up (gcp-bootstrap / production)
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (production)"
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          working-directory: infrastructure/pulumi/foundation/gcp-bootstrap
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi digest → step summary
         if: always()
-        env:
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "gcp-bootstrap" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: gcp-bootstrap
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
 
   # ── Phase 2: Environments ────────────────────────────────────────────────
   # The environments stage uses a chained promotion workflow:

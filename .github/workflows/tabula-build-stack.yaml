@@ -93,33 +93,20 @@ jobs:
 
       - name: Pulumi up (tabula-build / production)
         id: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-        working-directory: tabula/infra/build
-        run: |
-          # GitHub runs steps with `bash -eo pipefail`; disable -e so the failing
-          # pipeline does not abort here and we capture pulumi's real exit code.
-          set +e -u -o pipefail
-          echo "::group::pulumi up --diff (production)"
-          { pulumi stack select -c "production" \
-              && pulumi up --yes --diff --non-interactive; } \
-            2>&1 | tee "${RUNNER_TEMP}/pulumi-out.txt"
-          ec="${PIPESTATUS[0]}"
-          echo "::endgroup::"
-          echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
-          exit "${ec}"
+        uses: ./.github/actions/pulumi-run-captured
+        with:
+          command: up
+          stack: production
+          working-directory: tabula/infra/build
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-      # Render the pulumi output digest onto the run's step-summary page. Runs
-      # even when the deploy fails so the failure — and what it touched — is
-      # surfaced. tools/ci/pulumi-summary.sh parses the counts, flags any
-      # destructive replace/delete, and tucks the raw log into a <details>.
+      # Render the pulumi output digest onto the run's step-summary page via the
+      # shared composite (.github/actions/pulumi-summary). Runs even when the
+      # deploy fails so the failure — and what it touched — is surfaced.
       - name: Pulumi digest → step summary
         if: always()
-        env:
-          PULUMI_EXIT: ${{ steps.pulumi.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
-            "tabula-build" \
-            "${RUNNER_TEMP}/pulumi-out.txt" \
-            "${PULUMI_EXIT:-1}" >> "${GITHUB_STEP_SUMMARY}"
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: tabula-build
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs.exit_code }}
