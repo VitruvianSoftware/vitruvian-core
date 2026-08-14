@@ -1,0 +1,147 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Cache the EXTRACTED llvm toolchain (#1039) -- the dominant variance source in
+# Bazel-graph CI lanes (uncached extraction measured 98-264s/run; build-test's
+# spread is 336-545s).
+#
+# Why none of the generic layers ever cover it (all verified):
+#  - repository-cache caches DOWNLOADS; extraction lands in the Bazel 9 repo
+#    contents cache (~/.cache/bazel-repo/contents) and the shared "repository"
+#    entry is immutable + won by whichever job saves first -- a cheap lane
+#    that never fetched llvm (169MB entry, dated pre-#1297).
+#  - setup-bazel's external-cache sizes $output_base/external/* entries; the
+#    llvm entry there is a SYMLINK into the contents cache (du: 4.0K apparent
+#    vs 8.2G real), so it always falls under the 10MB floor and is silently
+#    skipped (#1302, closed).
+#  - caching the whole contents tree is 3.81GB compressed -- too fat for the
+#    10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this caches
+#    exactly that content-hash dir and nothing else.
+#
+# The path pins llvm's content hash below. It changes ONLY when the llvm
+# archive changes (a bump of llvm_versions in MODULE.bazel); the
+# llvm-cache-tripwire composite (fed by this action's outputs) turns a stale
+# pin, or the restore step silently not running at all, into a loud signal
+# instead of a quiet regression to uncached extraction -- exactly the bug that
+# shipped once already (a lane paid full extraction while looking green).
+#
+# THE CONTENT-HASH PIN LIVES HERE AND ONLY HERE. Update it in this one file
+# (not per-workflow) when llvm_versions bumps in MODULE.bazel.
+#
+# Requires the repo to be checked out and Bazel set up (./.github/actions/
+# setup-bazel) first, so the bazel-repo contents-cache directory exists.
+name: Restore extracted LLVM toolchain
+description: >-
+  Restore the extracted LLVM toolchain's pinned content-hash directory from
+  the Actions cache, and record the pre-build candidate count the
+  llvm-cache-tripwire composite needs.
+
+inputs:
+  restore-only:
+    description: >-
+      When 'true', restore without ever saving (actions/cache/restore) -- for
+      a lane that reuses another job's cache entry without owning writes to
+      it (tidy-check.yaml loads the same 64k-target graph as ci.yaml's
+      build-test and relies on THAT job to save; a second writer would just
+      waste upload budget on a redundant save). When 'false' (the default),
+      use full read+write actions/cache, which also saves a fresh extraction
+      in its post step on a cache miss.
+    required: false
+    default: "false"
+
+outputs:
+  pin-path:
+    description: >-
+      Absolute path to the pinned LLVM content-hash directory (the sole
+      definition of the content-hash pin -- see the file header). Callers that
+      need to inspect the restored tree directly (e.g. tidy-check.yaml's own
+      stale-pin check) should read this output rather than re-hardcoding the
+      path.
+    value: ${{ steps.paths.outputs.pin }}
+  cache-hit:
+    description: Whether the LLVM contents cache was an exact-key hit (`true`/`false`).
+    value: ${{ steps.resolve.outputs.cache-hit }}
+  outcome:
+    description: >-
+      The restore step's own recorded outcome (`success`, `failure`, ...).
+      The llvm-cache-tripwire composite fails loudly if this is ever anything
+      but `success` -- that means the restore step did not run in this job at
+      all, which is the exact placement bug that shipped once already.
+    value: ${{ steps.resolve.outputs.outcome }}
+  pre-count:
+    description: >-
+      Number of candidate dirs materialized under the pinned content hash
+      BEFORE the build runs. The llvm-cache-tripwire composite compares this
+      to the post-build count to catch a cache hit that Bazel rejected and
+      re-extracted anyway (dead-weight cache).
+    value: ${{ steps.pre-count.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    # The ONLY place the content-hash pin is written. Every other step in this
+    # file, and every caller that needs the path, reads it from here via
+    # `steps.paths.outputs.pin` / this action's `pin-path` output.
+    - name: Resolve LLVM cache path
+      id: paths
+      shell: bash
+      run: |
+        echo "pin=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the extracted LLVM toolchain
+      id: restore-rw
+      if: inputs.restore-only != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.paths.outputs.pin }}
+        key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+
+    - name: Restore the extracted LLVM toolchain (read-only)
+      id: restore-ro
+      if: inputs.restore-only == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.paths.outputs.pin }}
+        key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+
+    # Exactly one of the two steps above ran (mutually exclusive `if:`); fold
+    # their outputs into one place so callers don't need to know which mode
+    # was used. `steps.<id>.outcome` is populated even for a skipped step
+    # (`skipped`), so it can't be string-concatenated like a normal output --
+    # branch on the same input instead.
+    - name: Resolve restore outcome
+      id: resolve
+      shell: bash
+      run: |
+        if [ "${{ inputs.restore-only }}" = "true" ]; then
+          echo "outcome=${{ steps.restore-ro.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "cache-hit=${{ steps.restore-ro.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "outcome=${{ steps.restore-rw.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "cache-hit=${{ steps.restore-rw.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Record LLVM candidate count (pre-build)
+      id: pre-count
+      shell: bash
+      env:
+        PIN: ${{ steps.paths.outputs.pin }}
+      run: |
+        echo "count=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
