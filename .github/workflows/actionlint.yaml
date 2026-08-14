@@ -85,23 +85,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
+      # gitops-validate.yaml, supply-chain.yaml, mcp-slack-image.yaml — see
+      # that script's header for why this was deduped).
       - name: Install actionlint (pinned + checksum-verified)
         run: |
-          set -euo pipefail
-          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
-          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          # --retry: this is a REQUIRED check, so one transient GitHub-releases
-          # blip reddens the merge queue for a reason unrelated to the change
-          # under test. Retry transport errors AND HTTP 5xx/429
-          # (--retry-all-errors), and bound each attempt with --max-time so a
-          # hung CDN connection fails fast instead of burning the job timeout.
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/${asset}"
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
-          grep "${asset}" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
-          mkdir -p "${HOME}/.local/bin"
-          tar -xzf "${asset}" -C "${HOME}/.local/bin" actionlint
-          rm -f "${asset}" "actionlint_${ACTIONLINT_VERSION}_checksums.txt"
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          bash tools/ci/install-pinned-tool.sh \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}" \
+            "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            "actionlint_${ACTIONLINT_VERSION}_checksums.txt" \
+            "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            actionlint --tar
 
       # actionlint auto-discovers .github/workflows/*.{yml,yaml} when run at the
       # repo root; shellcheck is preinstalled on the runner.

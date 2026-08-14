@@ -117,27 +117,21 @@ jobs:
           # block-vs-report when advisories are found. See tools/osv-scan.
           fetch-depth: 0
 
+      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
+      # actionlint.yaml, gitops-validate.yaml, mcp-slack-image.yaml — see that
+      # script's header for why this was deduped).
+      # NOTE: this hardens fetching the SCANNER BINARY only. #1192 tracks the
+      # separate deps.dev resolution SPOF *inside* the scan itself.
       - name: Install osv-scanner (pinned + checksum-verified)
         env:
           OSV_SCANNER_VERSION: v2.4.0
         run: |
-          set -euo pipefail
-          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
-          # Keep the ORIGINAL filename so it matches its entry in SHA256SUMS.
-          # --retry: this is a REQUIRED check, so one transient GitHub-releases
-          # blip reddens the merge queue for a reason unrelated to the change
-          # under test. Retry transport errors AND HTTP 5xx/429
-          # (--retry-all-errors), and bound each attempt with --max-time so a
-          # hung CDN connection fails fast instead of burning the job timeout.
-          # NOTE: this hardens fetching the SCANNER BINARY only. #1192 tracks the
-          # separate deps.dev resolution SPOF *inside* the scan itself.
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_linux_amd64"
-          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${base}/osv-scanner_SHA256SUMS"
-          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
-          mkdir -p "${HOME}/.local/bin"
-          install -m 0755 osv-scanner_linux_amd64 "${HOME}/.local/bin/osv-scanner"
-          rm -f osv-scanner_linux_amd64 osv-scanner_SHA256SUMS
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          bash tools/ci/install-pinned-tool.sh \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}" \
+            osv-scanner_linux_amd64 \
+            osv-scanner_SHA256SUMS \
+            ' osv-scanner_linux_amd64$' \
+            osv-scanner --raw
 
       # The scan itself is always full-tree. BASE_REF/BASE_REV are used ONLY to
       # decide whether found advisories block or report: a change that touches no
