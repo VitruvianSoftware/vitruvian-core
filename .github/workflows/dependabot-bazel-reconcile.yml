@@ -47,8 +47,19 @@ permissions:
     contents: read
 
 concurrency:
+    # false, deliberately: this job runs up to 45 minutes of bazel work
+    # (gomod tidy, mod tidy, gazelle, a hermetic pnpm install, //:tidy).
+    # Dependabot frequently re-pushes/rebases its own PR shortly after
+    # opening it, firing a second `synchronize` while the first reconcile
+    # is still deep in that graph; cancel-in-progress:true killed the
+    # in-flight run every time this happened, and if pushes arrived faster
+    # than one reconcile cycle completes, the job could be repeatedly
+    # restarted and never reach its own final `git push` — the exact
+    # backlog this workflow exists to prevent. Queuing instead of
+    # cancelling costs one extra run at worst; killing costs the whole
+    # partial cycle.
     group: dependabot-reconcile-${{ github.event.pull_request.number }}
-    cancel-in-progress: true
+    cancel-in-progress: false
 
 jobs:
     reconcile:
