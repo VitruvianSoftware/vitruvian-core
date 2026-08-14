@@ -92,12 +92,9 @@ jobs:
                       "UPSTASH_API_KEY:UPSTASH_API_KEY" \
                       "UPSTASH_EMAIL:UPSTASH_EMAIL"; do
             secret="${pair%%:*}"; var="${pair##*:}"
-            if ! value="$(gcloud secrets versions access latest \
-                  --secret="${secret}" --project="${CRED_PROJECT}" 2>/dev/null)"; then
-              echo "::error::${secret} has no value in ${CRED_PROJECT}." \
-                   "Seed it with: bazel run //tools/gcp-secrets:seed -- tabula/infra/build"
-              exit 1
-            fi
+            value="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+              "${secret}" "${CRED_PROJECT}" \
+              "seed it with: bazel run //tools/gcp-secrets:seed -- tabula/infra/build")"
             echo "::add-mask::${value}"
             echo "${var}=${value}" >> "${GITHUB_ENV}"
           done

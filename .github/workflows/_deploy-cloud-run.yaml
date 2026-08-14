@@ -335,18 +335,14 @@ jobs:
           # `DATABASE_URL`. Falls back to the bare name for callers that have no
           # prefix, keeping pre-existing single-tenant deploys working.
           #
-          # NB: a secret that does not exist returns PERMISSION_DENIED, not
-          # NOT_FOUND — so reading the WRONG id is indistinguishable from an IAM
-          # gap. Reading the wrong id here cost three rounds of IAM debugging on
-          # the tabula bu2 migration; the message below now names the id.
+          # gcp-secret-or-fail.sh surfaces the raw gcloud stderr on failure:
+          # reading the WRONG secret id here (PERMISSION_DENIED, not NOT_FOUND
+          # -- indistinguishable from an IAM gap otherwise) cost three rounds
+          # of IAM debugging on the tabula bu2 migration.
           SECRET_ID="${SECRET_PREFIX}DATABASE_URL"
-          # Plain assignment (not `export VAR=$(...)`): export would swallow
-          # the gcloud exit status and hand Prisma an empty DATABASE_URL.
-          DATABASE_URL="$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$GCP_PROJECT_ID")"
-          if [ -z "$DATABASE_URL" ]; then
-            echo "::error::secret ${SECRET_ID} read returned empty in ${GCP_PROJECT_ID} — check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET (a missing secret reports PERMISSION_DENIED)"
-            exit 1
-          fi
+          DATABASE_URL="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+            "$SECRET_ID" "$GCP_PROJECT_ID" \
+            "check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET")"
           export DATABASE_URL
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
@@ -360,15 +356,9 @@ jobs:
         if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         run: |
           set -euo pipefail
-          # Plain assignment (not `export VAR=$(...)`): export would swallow
-          # the gcloud exit status and hand Pulumi an empty token.
-          CF_TOKEN="$(gcloud secrets versions access latest \
-            --secret=CLOUDFLARE_API_TOKEN \
-            --project="${{ inputs.cloudflare-token-secret-project }}")"
-          if [ -z "$CF_TOKEN" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN secret read returned empty (deploy SA needs secretAccessor on it in ${{ inputs.cloudflare-token-secret-project }})"
-            exit 1
-          fi
+          CF_TOKEN="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+            CLOUDFLARE_API_TOKEN "${{ inputs.cloudflare-token-secret-project }}" \
+            "deploy SA needs secretAccessor on it")"
           echo "::add-mask::$CF_TOKEN"
           echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
 

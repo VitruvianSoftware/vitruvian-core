@@ -164,34 +164,7 @@ jobs:
         env:
           APP_IMAGE_DIGESTS: ${{ inputs.app_image_digests }}
         working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
-        run: |
-          set -euo pipefail
-          # Export each "<app>=<digest>" as <APP>_IMAGE_DIGEST for the program.
-          if [ -n "${APP_IMAGE_DIGESTS}" ]; then
-            IFS=',' read -ra pairs <<< "${APP_IMAGE_DIGESTS}"
-            for pair in "${pairs[@]}"; do
-              app="${pair%%=*}"; digest="${pair#*=}"
-              [ -n "${app}" ] && [ -n "${digest}" ] || continue
-              var="$(printf '%s' "${app}" | tr '[:lower:]-' '[:upper:]_')_IMAGE_DIGEST"
-              echo "${var}=${digest}" >> "${GITHUB_ENV}"
-              echo "exporting ${var}"
-            done
-          fi
-          # Fail closed: any app with the cutover switch ON must have a digest.
-          missing=""
-          while IFS= read -r line; do
-            app="$(printf '%s' "${line}" | sed -E 's/.*:([a-z0-9-]+)_workload_enabled:.*/\1/')"
-            [ -n "${app}" ] || continue
-            case ",${APP_IMAGE_DIGESTS}," in
-              *",${app}="*) ;;
-              *) missing="${missing} ${app}" ;;
-            esac
-          done < <(grep -E '_workload_enabled: *"true"' Pulumi.production.yaml || true)
-          if [ -n "${missing}" ]; then
-            echo "::error::workload enabled but no image digest supplied for:${missing} — deploying would render an EMPTY image and strip it off the live service. Pass app_image_digests as '<app>=<ref>'."
-            exit 1
-          fi
-          echo "digest guard: OK"
+        run: bash "${GITHUB_WORKSPACE}/tools/ci/foundation-app-digest-guard.sh" "${APP_IMAGE_DIGESTS}" Pulumi.production.yaml
 
       - name: Pulumi up (${{ inputs.environment }})
         id: pulumi
