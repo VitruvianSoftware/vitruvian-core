@@ -74,6 +74,15 @@ on:
 jobs:
   gate:
     if: github.event_name == 'push'
+    # Coalescing (non-sha), keyed per caller so two apps' gates never
+    # serialize against each other. Two rapid pushes to the SAME app must not
+    # race this decision concurrently; if GitHub evicts the older run (a
+    # PENDING run in a coalescing group is evicted, not queued, when a newer
+    # one joins -- #1311/#1335), resolve-deploy-base.sh's durable base (above)
+    # is what recovers the skipped range rather than losing it forever (#1351).
+    concurrency:
+      group: deploy-gate-${{ inputs.workflow-file }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
