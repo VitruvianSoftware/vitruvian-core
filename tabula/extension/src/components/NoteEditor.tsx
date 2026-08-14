@@ -99,7 +99,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
             <>
               <Button
                 variant={mode === "write" ? "secondary" : "ghost"}
-                size="small"
+                size="sm"
                 onClick={() => setMode("write")}
                 title="Edit"
               >
@@ -107,7 +107,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
               </Button>
               <Button
                 variant={mode === "preview" ? "secondary" : "ghost"}
-                size="small"
+                size="sm"
                 onClick={() => setMode("preview")}
                 title="Preview"
               >
@@ -140,7 +140,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
               <>
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="sm"
                   onClick={() => insertSyntax("**", "**")}
                   title="Bold"
                 >
@@ -148,7 +148,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
                 </Button>
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="sm"
                   onClick={() => insertSyntax("*", "*")}
                   title="Italic"
                 >
@@ -156,7 +156,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
                 </Button>
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="sm"
                   onClick={() => insertSyntax("- ", "")}
                   title="List"
                 >
@@ -197,7 +197,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
               {onPopout && (
                 <Button
                   variant="ghost"
-                  size="small"
+                  size="sm"
                   onClick={onPopout}
                   title="Open in new window"
                 >
@@ -206,7 +206,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
               )}
               <Button
                 variant={isFullscreen ? "secondary" : "ghost"}
-                size="small"
+                size="sm"
                 onClick={toggleFullscreen}
                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
               >
