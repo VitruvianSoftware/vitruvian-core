@@ -27,6 +27,11 @@
  * Redis for 30 days. PUT-as-upsert (and /sync/push) consult the tombstone so a
  * stale offline client replaying a full snapshot cannot resurrect the entity.
  * Creates of never-seen ids are unaffected (no tombstone -> allowed).
+ *
+ * All Redis operations here FAIL-OPEN: if Redis is temporarily offline,
+ * reconnecting, or throws ("Connection is closed"), tombstone checks log a
+ * warning and return false so temporary Redis outages never fail workspace
+ * writes or block sync requests.
  */
 import { redis } from "./redis";
 
@@ -44,45 +49,64 @@ function tombstoneKey(
 
 /**
  * Record a tombstone for a deleted entity.
+ * Fail-safe: logs on error instead of throwing.
  */
 export async function setTombstone(
   userId: string,
   type: TombstoneEntityType,
   entityId: string,
 ): Promise<void> {
-  await redis.set(
-    tombstoneKey(userId, type, entityId),
-    new Date().toISOString(),
-    "EX",
-    TOMBSTONE_TTL_SECONDS,
-  );
+  try {
+    await redis.set(
+      tombstoneKey(userId, type, entityId),
+      new Date().toISOString(),
+      "EX",
+      TOMBSTONE_TTL_SECONDS,
+    );
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn("Failed to record tombstone in Redis:", error);
+  }
 }
 
 /**
  * Returns true when the entity was deleted recently (tombstone present).
+ * Fail-open: returns false if Redis is unreachable or throws.
  */
 export async function isTombstoned(
   userId: string,
   type: TombstoneEntityType,
   entityId: string,
 ): Promise<boolean> {
-  const value = await redis.get(tombstoneKey(userId, type, entityId));
-  return value !== null && value !== undefined;
+  try {
+    const value = await redis.get(tombstoneKey(userId, type, entityId));
+    return value !== null && value !== undefined;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn("Failed to check tombstone in Redis (failing open):", error);
+    return false;
+  }
 }
 
 /**
  * Delete the per-entity sync bookkeeping keys (version/state) so a deleted
  * entity does not keep a stale version counter around forever.
+ * Fail-safe: logs on error instead of throwing.
  */
 export async function clearSyncKeys(
   userId: string,
   type: TombstoneEntityType,
   entityId: string,
 ): Promise<void> {
-  await redis.del(
-    `sync:version:${userId}:${type}:${entityId}`,
-    `sync:state:${userId}:${type}:${entityId}`,
-  );
+  try {
+    await redis.del(
+      `sync:version:${userId}:${type}:${entityId}`,
+      `sync:state:${userId}:${type}:${entityId}`,
+    );
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn("Failed to clear sync keys in Redis:", error);
+  }
 }
 
 /**
