@@ -1,0 +1,69 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Canonical GCP WIF auth for the monorepo's CI lanes: the pinned
+# google-github-actions/auth action, in one place so the 18 inline copies
+# (more than setup-bazel's ~14 before it was extracted) don't drift on a
+# security-relevant step. The action pin is bumped here once (Dependabot
+# tracks action.yml files in the github-actions ecosystem).
+#
+# token-format/access-token-scopes are optional passthroughs for the one
+# caller (_deploy-cloud-run.yaml) that mints a scoped access token for Site
+# Verification; every other caller leaves them empty, matching the
+# underlying action's own default (mint nothing beyond the ambient
+# credentials). The access_token output only has a value when a caller
+# actually requested one via token-format.
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace).
+name: Authenticate to GCP (WIF, keyless)
+description: Authenticate to Google Cloud via Workload Identity Federation, no long-lived key.
+
+inputs:
+  workload-identity-provider:
+    description: Full WIF provider resource name (vars.GCP_WORKLOAD_IDENTITY_PROVIDER at the call site).
+    required: true
+  service-account:
+    description: Service account email to impersonate.
+    required: true
+  token-format:
+    description: Passed through to google-github-actions/auth's token_format. Empty (default) mints no extra token.
+    required: false
+    default: ""
+  access-token-scopes:
+    description: Passed through to google-github-actions/auth's access_token_scopes. Only meaningful when token-format is set.
+    required: false
+    default: ""
+
+outputs:
+  access_token:
+    description: The minted access token, only populated when token-format was set.
+    value: ${{ steps.auth.outputs.access_token }}
+
+runs:
+  using: composite
+  steps:
+    - id: auth
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        workload_identity_provider: ${{ inputs.workload-identity-provider }}
+        service_account: ${{ inputs.service-account }}
+        token_format: ${{ inputs.token-format }}
+        access_token_scopes: ${{ inputs.access-token-scopes }}

@@ -128,9 +128,8 @@ jobs:
               # selected repos. Token is scoped to ONLY this leg's component plus
               # the monorepo, and expires ~1h later. Same App + pinned SHA the
               # dependabot workflows already use.
-              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              uses: ./.github/actions/mint-sync-app-token
               with:
-                client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
                 owner: VitruvianSoftware
                 repositories: |

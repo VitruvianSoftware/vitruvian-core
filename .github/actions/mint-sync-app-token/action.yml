@@ -1,0 +1,69 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Canonical vitruvian-copybara-sync App token mint: the pinned
+# create-github-app-token action + this App's public client-id, in one place
+# so the 17 inline copies (more than setup-bazel's ~14 before extraction)
+# don't drift on a credential-minting step. A future App-ID/key rotation now
+# means editing one file instead of 17 call sites by hand.
+#
+# private-key MUST still be passed by the caller: composite actions do not
+# automatically inherit the calling workflow's `secrets` context (only
+# `github`/`runner` are ambient) — every caller passes
+# `secrets.SYNC_APP_PRIVATE_KEY` explicitly, same as before.
+#
+# owner/repositories are optional narrowing inputs used by 3 of the 17
+# original call sites (copybara-import-pr.yaml, copybara-import-pr-close.yaml,
+# image-updates-buzz-pr.yaml) to scope the grant to specific repos rather than
+# the whole org; empty (default) matches every other caller's org-wide grant.
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace).
+name: Mint App token
+description: Mint a short-lived vitruvian-copybara-sync GitHub App installation token.
+
+inputs:
+  private-key:
+    description: The App's private key (secrets.SYNC_APP_PRIVATE_KEY at the call site).
+    required: true
+  owner:
+    description: Optional — narrow the grant to this owner instead of the App's full installation.
+    required: false
+    default: ""
+  repositories:
+    description: Optional — narrow the grant to these repos (newline-separated) instead of owner-wide.
+    required: false
+    default: ""
+
+outputs:
+  token:
+    description: The minted installation token.
+    value: ${{ steps.mint.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - id: mint
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: Iv23li2K1dcn4V98uOW3 # vitruvian-copybara-sync — public App client ID
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
