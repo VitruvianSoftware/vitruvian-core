@@ -21,7 +21,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { getFeatureFlagClient } from "./index";
+import { getFeatureFlagClient, initFeatureFlags } from "./index";
 import { ProviderEvents } from "@openfeature/web-sdk";
 
 export function useFeatureFlag(
@@ -34,15 +34,24 @@ export function useFeatureFlag(
   );
 
   useEffect(() => {
-    // Initial sync
-    setValue(client.getBooleanValue(flagKey, defaultValue));
+    let mounted = true;
+
+    // Ensure provider has initialized and sync initial value
+    initFeatureFlags().then(() => {
+      if (mounted) {
+        setValue(client.getBooleanValue(flagKey, defaultValue));
+      }
+    });
 
     const handler = () => {
-      setValue(client.getBooleanValue(flagKey, defaultValue));
+      if (mounted) {
+        setValue(client.getBooleanValue(flagKey, defaultValue));
+      }
     };
 
     client.addHandler(ProviderEvents.ConfigurationChanged, handler);
     return () => {
+      mounted = false;
       client.removeHandler(ProviderEvents.ConfigurationChanged, handler);
     };
   }, [client, flagKey, defaultValue]);

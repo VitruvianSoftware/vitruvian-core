@@ -41,19 +41,29 @@ export class ChromeStorageProvider implements Provider {
     if (
       typeof chrome !== "undefined" &&
       chrome.storage &&
-      chrome.storage.local
+      chrome.storage.local &&
+      typeof chrome.storage.local.get === "function"
     ) {
-      // Read initial state
-      const data = await chrome.storage.local.get(this.storageKey);
-      this.cache = data[this.storageKey] || {};
+      try {
+        // Read initial state
+        const data = await chrome.storage.local.get(this.storageKey);
+        this.cache = (data && data[this.storageKey]) || {};
 
-      // Subscribe to changes
-      chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === "local" && changes[this.storageKey]) {
-          this.cache = changes[this.storageKey].newValue || {};
-          this.events.emit(ProviderEvents.ConfigurationChanged);
+        // Subscribe to changes
+        if (
+          chrome.storage.onChanged &&
+          typeof chrome.storage.onChanged.addListener === "function"
+        ) {
+          chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName === "local" && changes && changes[this.storageKey]) {
+              this.cache = changes[this.storageKey].newValue || {};
+              this.events.emit(ProviderEvents.ConfigurationChanged);
+            }
+          });
         }
-      });
+      } catch {
+        this.cache = {};
+      }
     } else {
       // Fallback for non-extension environment
       this.cache = {};

@@ -38,6 +38,11 @@ jest.mock("./Dashboard", () => ({
   Dashboard: () => <div>Dashboard Mock</div>,
 }));
 
+// Mock flags
+jest.mock("../lib/flags", () => ({
+  initFeatureFlags: jest.fn().mockResolvedValue(undefined),
+}));
+
 describe("Dashboard Index", () => {
   const originalGetElementById = document.getElementById;
 
@@ -49,7 +54,7 @@ describe("Dashboard Index", () => {
     document.getElementById = originalGetElementById;
   });
 
-  it("should render Dashboard into root element", () => {
+  it("should render Dashboard into root element", async () => {
     // Mock document.getElementById
     const mockRoot = document.createElement("div");
     mockRoot.id = "root";
@@ -57,16 +62,16 @@ describe("Dashboard Index", () => {
 
     // Require the index file to trigger execution
     require("./index");
+    await Promise.resolve();
 
     expect(createRoot).toHaveBeenCalledWith(mockRoot);
-    // Checking render call is tricky because createRoot returns an object,
-    // but we verify createRoot is called with the correct element.
   });
 
-  it("should not crash if root element is missing", () => {
+  it("should not crash if root element is missing", async () => {
     document.getElementById = jest.fn().mockReturnValue(null);
 
     require("./index");
+    await Promise.resolve();
 
     expect(createRoot).not.toHaveBeenCalled();
   });

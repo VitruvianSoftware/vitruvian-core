@@ -23,15 +23,18 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Dashboard } from "./Dashboard";
+import { initFeatureFlags } from "../lib/flags";
 import "../styles/global.css";
 import "../styles/components.css";
 
-const container = document.getElementById("root");
-if (container) {
-  const root = createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <Dashboard />
-    </React.StrictMode>,
-  );
-}
+initFeatureFlags().finally(() => {
+  const container = document.getElementById("root");
+  if (container) {
+    const root = createRoot(container);
+    root.render(
+      <React.StrictMode>
+        <Dashboard />
+      </React.StrictMode>,
+    );
+  }
+});
