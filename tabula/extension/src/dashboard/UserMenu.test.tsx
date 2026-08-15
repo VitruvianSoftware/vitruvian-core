@@ -28,8 +28,13 @@
 
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { UserMenu } from "./UserMenu";
 import type { User } from "../services/auth";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 describe("UserMenu", () => {
   const mockUser: User = {
@@ -59,6 +64,7 @@ describe("UserMenu", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("avatar rendering", () => {
@@ -156,6 +162,26 @@ describe("UserMenu", () => {
     it("should handle null user gracefully", () => {
       render(<UserMenu {...defaultProps} user={null} />);
       expect(screen.getByText("Sign in")).toBeInTheDocument();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render design system sign-in buttons when signed out", () => {
+      render(<UserMenu {...defaultProps} user={null} />);
+      expect(screen.getByText("Sign in")).toBeInTheDocument();
+      expect(screen.getByTitle("Settings")).toBeInTheDocument();
+    });
+
+    it("should render design system user menu dropdown", () => {
+      render(<UserMenu {...defaultProps} showUserMenu={true} />);
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+      expect(screen.getByText("test@example.com")).toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByText("Log out")).toBeInTheDocument();
     });
   });
 });

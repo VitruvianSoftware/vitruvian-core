@@ -27,10 +27,19 @@
  */
 
 import { render, screen } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { SidebarHeader } from "./SidebarHeader";
 
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
 describe("SidebarHeader", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
+  });
+
   it("should render the Tabula title", () => {
     render(
       <SidebarHeader>
@@ -72,5 +81,27 @@ describe("SidebarHeader", () => {
     // The Icon component renders an i tag with material-icons class
     const icon = document.querySelector(".material-icons");
     expect(icon).toBeInTheDocument();
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render Tabula title with design system styling", () => {
+      render(
+        <SidebarHeader>
+          <div data-testid="user-menu-ds">User Menu</div>
+        </SidebarHeader>,
+      );
+      const title = screen.getByText("Tabula");
+      expect(title).toBeInTheDocument();
+      expect(title).toHaveStyle({
+        fontWeight: "700",
+        fontSize: "15px",
+        textTransform: "uppercase",
+      });
+      expect(screen.getByTestId("user-menu-ds")).toBeInTheDocument();
+    });
   });
 });

@@ -25,6 +25,7 @@ import { MenuOverlay } from "./MenuOverlay";
 import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 import type { SpaceGroup } from "../types";
 
@@ -66,6 +67,10 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const colorItemRef = useRef<HTMLDivElement>(null);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   return (
     <div
@@ -75,8 +80,9 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        color: "#9AA0A6",
-        fontSize: "12px",
+        color: useDesignSystem ? "var(--paper-dim, #736d64)" : "#9AA0A6",
+        fontFamily: useDesignSystem ? "var(--font-mono, monospace)" : undefined,
+        fontSize: "11px",
         fontWeight: "600",
         padding: "4px 12px",
         position: "relative",
@@ -98,7 +104,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
               width: "3px",
               height: "16px",
               backgroundColor: group.color,
-              borderRadius: "2px",
+              borderRadius: useDesignSystem ? "0" : "2px",
               marginRight: "6px",
             }}
             data-testid="group-color-indicator"
@@ -110,7 +116,13 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
           }
           size="sm"
         />
-        <span style={{ marginLeft: "4px", textTransform: "uppercase" }}>
+        <span
+          style={{
+            marginLeft: "4px",
+            textTransform: "uppercase",
+            letterSpacing: useDesignSystem ? "0.06em" : undefined,
+          }}
+        >
           {group.title}
         </span>
       </div>
@@ -141,11 +153,26 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
         {/* Dropdown Menu */}
         {isMenuOpen && (
           <div
-            className="dropdown-menu"
-            style={{ right: 0, top: "100%", minWidth: "160px", zIndex: 20 }}
+            className={useDesignSystem ? undefined : "dropdown-menu"}
+            style={{
+              right: 0,
+              top: "100%",
+              minWidth: "160px",
+              zIndex: 20,
+              position: "absolute",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : undefined,
+              border: useDesignSystem
+                ? "1px solid var(--ink, #1f1d1a)"
+                : undefined,
+              boxShadow: useDesignSystem
+                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                : undefined,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Share with team — hidden until sharing ships (M2: #139/#140). See #137. */}
+            {/* Share with team — hidden until sharing ships */}
             {FEATURE_FLAGS.SHARING_ENABLED && (
               <>
                 <div
@@ -161,16 +188,45 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
             )}
 
             {/* Rename */}
-            <div className="dropdown-item" onClick={onRename}>
+            <div
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={
+                useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : undefined
+              }
+              onClick={onRename}
+            >
               <Icon name="edit" size="sm" />
               Rename
             </div>
 
             {/* Change color */}
             <div
-              className="dropdown-item"
+              className={useDesignSystem ? undefined : "dropdown-item"}
               ref={colorItemRef}
-              style={{ position: "relative" }}
+              style={{
+                position: "relative",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleColorPicker();
@@ -205,7 +261,10 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                         style={{
                           width: "12px",
                           height: "12px",
-                          borderRadius: "50%",
+                          borderRadius: useDesignSystem ? "0" : "50%",
+                          border: useDesignSystem
+                            ? "1px solid var(--ink, #1f1d1a)"
+                            : undefined,
                           backgroundColor: color.value,
                         }}
                       />
@@ -217,12 +276,35 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                 ))}
               </SubmenuFlyout>
             </div>
-            <div className="dropdown-divider" />
+            <div
+              className={useDesignSystem ? undefined : "dropdown-divider"}
+              style={
+                useDesignSystem
+                  ? {
+                      borderBottom:
+                        "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                      margin: "4px 0",
+                    }
+                  : undefined
+              }
+            />
 
             {/* Delete */}
             <div
-              className="dropdown-item"
-              style={{ color: "var(--color-accent-danger)" }}
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={{
+                color: "var(--accent, #991b1b)",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }
+                  : {}),
+              }}
               onClick={onDelete}
             >
               <Icon name="delete" size="sm" />

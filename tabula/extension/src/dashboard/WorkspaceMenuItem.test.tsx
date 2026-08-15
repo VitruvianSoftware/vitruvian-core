@@ -28,8 +28,13 @@
 
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { WorkspaceMenuItem } from "./WorkspaceMenuItem";
 import type { Workspace, SpaceGroup } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 describe("WorkspaceMenuItem", () => {
   const now = Date.now();
@@ -86,6 +91,7 @@ describe("WorkspaceMenuItem", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -362,6 +368,35 @@ describe("WorkspaceMenuItem", () => {
       const navItem = screen.getByText("Test Workspace").closest(".nav-item");
       // Should use workspace color, not group color
       expect(navItem).toHaveStyle({ "--workspace-accent-color": "#8B5CF6" });
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render active and inactive workspace items with design system styling", () => {
+      render(
+        <WorkspaceMenuItem
+          {...defaultProps}
+          isActive={true}
+          isMenuOpen={true}
+        />,
+      );
+
+      expect(screen.getByText("Test Workspace")).toBeInTheDocument();
+      expect(screen.getByText("Rename")).toBeInTheDocument();
+      expect(screen.getByText("Change color")).toBeInTheDocument();
+      expect(screen.getByText("Move to section")).toBeInTheDocument();
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+
+      const navItem = screen.getByText("Test Workspace").closest(".nav-item");
+      expect(navItem).toHaveClass("active");
+      expect(navItem).toHaveStyle({
+        fontWeight: "600",
+        color: "var(--ink, #1f1d1a)",
+      });
     });
   });
 });

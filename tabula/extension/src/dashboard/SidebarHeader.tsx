@@ -22,12 +22,56 @@
 
 import React from "react";
 import { Icon } from "../components/icons";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface SidebarHeaderProps {
   children: React.ReactNode; // UserMenu component
 }
 
 export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ children }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
+  if (useDesignSystem) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "14px 16px",
+          position: "relative",
+          borderBottom: "1px solid var(--border-hairline, rgba(0,0,0,0.08))",
+        }}
+      >
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ color: "var(--ink, #1f1d1a)" }}>
+            <Icon name="dashboard" size="md" />
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-mono, monospace)",
+              fontWeight: 700,
+              fontSize: "15px",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "var(--ink, #1f1d1a)",
+            }}
+          >
+            Tabula
+          </span>
+        </div>
+
+        {/* User Menu (passed as children) */}
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{

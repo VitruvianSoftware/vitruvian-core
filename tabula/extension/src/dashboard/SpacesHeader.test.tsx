@@ -28,7 +28,12 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { SpacesHeader } from "./SpacesHeader";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 describe("SpacesHeader", () => {
   const defaultProps = {
@@ -40,6 +45,7 @@ describe("SpacesHeader", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -91,6 +97,19 @@ describe("SpacesHeader", () => {
       render(<SpacesHeader {...defaultProps} />);
       const label = screen.getByText("Spaces");
       expect(label).toHaveStyle({ textTransform: "uppercase" });
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render Spaces label and options with design system styling", () => {
+      render(<SpacesHeader {...defaultProps} spacesMenuOpen={true} />);
+      expect(screen.getByText("Spaces")).toBeInTheDocument();
+      expect(screen.getByText("New space")).toBeInTheDocument();
+      expect(screen.getByText("New section")).toBeInTheDocument();
     });
   });
 });

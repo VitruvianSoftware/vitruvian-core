@@ -23,6 +23,8 @@
 import React from "react";
 import { MenuOverlay } from "./MenuOverlay";
 import { Icon } from "../components/icons";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface SpacesHeaderProps {
   spacesMenuOpen: boolean;
@@ -37,14 +39,24 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
   onNewSpace,
   onNewSection,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
   return (
     <div className="spaces-header">
       <span
         style={{
           textTransform: "uppercase",
+          fontFamily: useDesignSystem
+            ? "var(--font-mono, monospace)"
+            : undefined,
           fontSize: "11px",
           fontWeight: 600,
-          color: "var(--color-text-muted)",
+          color: useDesignSystem
+            ? "var(--paper-dim, #736d64)"
+            : "var(--color-text-muted)",
           letterSpacing: "0.05em",
         }}
       >
@@ -62,7 +74,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
           style={{
             position: "relative",
             zIndex: 20,
-            color: "#9AA0A6",
+            color: useDesignSystem ? "var(--ink, #1f1d1a)" : "#9AA0A6",
             padding: "2px",
           }}
         >
@@ -70,15 +82,73 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
         </button>
         {spacesMenuOpen && (
           <div
-            className="dropdown-menu"
-            style={{ zIndex: 20, right: 0, top: "100%", minWidth: "150px" }}
+            className={useDesignSystem ? undefined : "dropdown-menu"}
+            style={{
+              zIndex: 20,
+              right: 0,
+              top: "100%",
+              minWidth: "150px",
+              position: "absolute",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : undefined,
+              border: useDesignSystem
+                ? "1px solid var(--ink, #1f1d1a)"
+                : undefined,
+              boxShadow: useDesignSystem
+                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                : undefined,
+            }}
           >
-            <div className="dropdown-item" onClick={onNewSpace}>
+            <div
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={
+                useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : undefined
+              }
+              onClick={onNewSpace}
+            >
               <Icon name="folder" size="sm" />
               New space
             </div>
-            <div className="dropdown-divider" />
-            <div className="dropdown-item" onClick={onNewSection}>
+            <div
+              className={useDesignSystem ? undefined : "dropdown-divider"}
+              style={
+                useDesignSystem
+                  ? {
+                      borderBottom:
+                        "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                      margin: "4px 0",
+                    }
+                  : undefined
+              }
+            />
+            <div
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={
+                useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : undefined
+              }
+              onClick={onNewSection}
+            >
               <Icon name="folder_open" size="sm" />
               New section
             </div>
