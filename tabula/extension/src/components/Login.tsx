@@ -55,18 +55,16 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
   return (
     <div
-      className={useDesignSystem ? undefined : "card"}
+      className={useDesignSystem ? "card glass-panel" : "card"}
       style={
         useDesignSystem
           ? {
               maxWidth: "320px",
               margin: "0 auto",
               textAlign: "center",
-              backgroundColor: "var(--color-bg, #fbf7ee)",
-              border: "2px solid var(--color-text, #1f1d1a)",
-              boxShadow: "4px 4px 0 0 var(--color-text, #1f1d1a)",
+              borderRadius: "0",
+              border: "1px solid var(--glass-border)",
               padding: "24px",
-              color: "var(--color-text, #1f1d1a)",
             }
           : { maxWidth: "320px", margin: "0 auto", textAlign: "center" }
       }
@@ -80,7 +78,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 fontWeight: 700,
                 fontFamily: "var(--font-mono, monospace)",
                 letterSpacing: "-0.02em",
-                color: "var(--color-text, #1f1d1a)",
+                color: "var(--color-text-primary)",
               }
             : {
                 marginBottom: "16px",
@@ -96,7 +94,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           useDesignSystem
             ? {
                 marginBottom: "20px",
-                color: "var(--color-text-dim, #736d64)",
+                color: "var(--color-text-secondary)",
                 fontSize: "13px",
                 lineHeight: "1.4",
               }
@@ -157,7 +155,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
             ? {
                 fontSize: "11px",
                 fontFamily: "var(--font-mono, monospace)",
-                color: "var(--color-text-dim, #736d64)",
+                color: "var(--color-text-secondary)",
                 margin: 0,
               }
             : { fontSize: "12px", color: "var(--color-text-secondary)" }

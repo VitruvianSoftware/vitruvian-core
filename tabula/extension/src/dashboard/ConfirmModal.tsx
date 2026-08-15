@@ -56,11 +56,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     <AnimatePresence>
       {open && (
         <motion.div
-          className={
-            useDesignSystem
-              ? "modal-overlay"
-              : "modal-overlay glassmorphic-overlay"
-          }
+          className="modal-overlay glassmorphic-overlay"
           style={{
             position: "fixed",
             top: 0,
@@ -70,10 +66,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: useDesignSystem
-              ? "rgba(31, 29, 26, 0.4)"
-              : undefined,
             backdropFilter: "blur(4px)",
+            WebkitBackdropFilter: "blur(4px)",
             zIndex: 9999,
           }}
           onClick={onCancel}
@@ -84,14 +78,14 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         >
           {useDesignSystem ? (
             <motion.div
+              className="glassmorphic-modal"
               style={{
                 minWidth: "320px",
                 maxWidth: "420px",
                 width: "90%",
                 padding: "24px",
-                backgroundColor: "var(--color-bg, #fbf7ee)",
-                border: "1px solid var(--color-text, #1f1d1a)",
-                boxShadow: "4px 4px 0px 0px var(--color-text, #1f1d1a)",
+                borderRadius: "0",
+                border: "1px solid var(--glass-border)",
               }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -99,7 +93,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
             >
-              <Plate marks enter>
+              <Plate live enter>
                 <div
                   style={{
                     display: "flex",
@@ -114,8 +108,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                       fontWeight: 700,
                       textTransform: "uppercase",
                       letterSpacing: "0.08em",
-                      color: "var(--accent, #991b1b)",
-                      border: "1px solid var(--accent, #991b1b)",
+                      color: "var(--color-accent-danger)",
+                      border: "1px solid var(--color-accent-danger)",
                       padding: "1px 4px",
                     }}
                   >
@@ -126,7 +120,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                       margin: 0,
                       fontSize: "16px",
                       fontWeight: 600,
-                      color: "var(--color-text, #1f1d1a)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      color: "var(--color-text-primary)",
                     }}
                   >
                     {title}
@@ -136,7 +131,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 <p
                   style={{
                     margin: "12px 0 16px 0",
-                    color: "var(--color-text-dim, #736d64)",
+                    color: "var(--color-text-secondary)",
                     fontSize: "13px",
                     lineHeight: 1.5,
                   }}
@@ -155,16 +150,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                   <Button variant="ghost" size="sm" onClick={onCancel}>
                     Cancel
                   </Button>
-                  <Button
-                    variant="solid"
-                    size="sm"
-                    style={{
-                      backgroundColor: "var(--accent, #991b1b)",
-                      borderColor: "var(--accent, #991b1b)",
-                      color: "#ffffff",
-                    }}
-                    onClick={onConfirm}
-                  >
+                  <Button variant="danger" size="sm" onClick={onConfirm}>
                     Delete
                   </Button>
                 </div>
