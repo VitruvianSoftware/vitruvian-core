@@ -31,6 +31,12 @@ import {
   WindowOwnershipService,
   WindowOwnershipRecord,
 } from "../services/windowOwnership";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
+// Mock feature flag
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Mock the WindowOwnershipService
 jest.mock("../services/windowOwnership", () => ({
@@ -88,6 +94,7 @@ describe("TabConflictPopover", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
     (WindowOwnershipService.getOwnerWindowTabs as jest.Mock).mockResolvedValue(
       mockTabs,
     );
@@ -299,6 +306,32 @@ describe("TabConflictPopover", () => {
     await waitFor(() => {
       const moveButton = screen.getByText("Move 0 tabs here");
       expect(moveButton).toBeDisabled();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render design system tab conflict popover", async () => {
+      render(
+        <TabConflictPopover
+          ownerRecord={mockOwnerRecord}
+          currentWindowId={2}
+          onIgnore={mockOnIgnore}
+          onMoveComplete={mockOnMoveComplete}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Tabs from another window"),
+        ).toBeInTheDocument();
+        expect(screen.getByText("Go to window")).toBeInTheDocument();
+        expect(screen.getByText("Google")).toBeInTheDocument();
+        expect(screen.getByText("Move 3 tabs here")).toBeInTheDocument();
+      });
     });
   });
 });

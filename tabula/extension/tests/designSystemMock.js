@@ -38,7 +38,14 @@ module.exports = {
     ),
   Status: (props) => React.createElement("span", props, props.children),
   Tag: (props) => React.createElement("span", props, props.children),
-  Label: (props) => React.createElement("span", props, props.children),
-  EmptyState: (props) => React.createElement("div", props, props.children),
+  EmptyState: (props) =>
+    React.createElement(
+      "div",
+      { className: props.className },
+      props.mark ? React.createElement("div", null, props.mark) : null,
+      props.title ? React.createElement("h4", null, props.title) : null,
+      props.children ? React.createElement("p", null, props.children) : null,
+      props.actions ? React.createElement("div", null, props.actions) : null,
+    ),
   Modal: (props) => React.createElement("div", props, props.children),
 };

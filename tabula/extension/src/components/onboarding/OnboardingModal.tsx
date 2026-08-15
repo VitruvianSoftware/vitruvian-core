@@ -26,6 +26,9 @@ import { EmptyState } from "../EmptyState";
 import { EmptySpacesIllustration } from "../illustrations/EmptySpaces";
 import { EmptyResourcesIllustration } from "../illustrations/EmptyResources";
 import { EmptyTabsIllustration } from "../illustrations/EmptyTabs";
+import { Button, Input } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../../constants/features";
 
 export interface OnboardingModalProps {
   isOpen: boolean;
@@ -73,6 +76,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [resTitle, setResTitle] = useState("");
   const [resUrl, setResUrl] = useState("");
   const [tabsSaved, setTabsSaved] = useState(false);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Reset to the first step whenever the flow is (re)opened — e.g. replayed
   // from Settings after it was already completed.
@@ -106,7 +113,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       description:
         "Spaces keep each project's tabs, resources, notes, and tasks together. Start with your first one.",
       illustration: <EmptySpacesIllustration />,
-      body: (
+      body: useDesignSystem ? (
+        <Input
+          placeholder="Space name"
+          aria-label="Space name"
+          value={spaceName}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setSpaceName(e.target.value)
+          }
+          style={{ width: "100%" }}
+        />
+      ) : (
         <input
           type="text"
           placeholder="Space name"
@@ -134,22 +151,46 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             width: "100%",
           }}
         >
-          <input
-            type="text"
-            placeholder="Title"
-            aria-label="Resource title"
-            value={resTitle}
-            onChange={(e) => setResTitle(e.target.value)}
-            style={inputStyle}
-          />
-          <input
-            type="url"
-            placeholder="https://..."
-            aria-label="Resource URL"
-            value={resUrl}
-            onChange={(e) => setResUrl(e.target.value)}
-            style={inputStyle}
-          />
+          {useDesignSystem ? (
+            <>
+              <Input
+                placeholder="Title"
+                aria-label="Resource title"
+                value={resTitle}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setResTitle(e.target.value)
+                }
+              />
+              <Input
+                type="url"
+                placeholder="https://..."
+                aria-label="Resource URL"
+                value={resUrl}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setResUrl(e.target.value)
+                }
+              />
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Title"
+                aria-label="Resource title"
+                value={resTitle}
+                onChange={(e) => setResTitle(e.target.value)}
+                style={inputStyle}
+              />
+              <input
+                type="url"
+                placeholder="https://..."
+                aria-label="Resource URL"
+                value={resUrl}
+                onChange={(e) => setResUrl(e.target.value)}
+                style={inputStyle}
+              />
+            </>
+          )}
         </div>
       ),
       primaryLabel: "Add resource",
@@ -165,7 +206,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       description:
         "Snapshot the tabs you have open into this space — reopen them anytime, on any device.",
       illustration: <EmptyTabsIllustration />,
-      body: (
+      body: useDesignSystem ? (
+        <Button
+          variant="secondary"
+          onClick={() =>
+            run(
+              () => onSaveTabs(),
+              () => setTabsSaved(true),
+            )
+          }
+          disabled={busy || tabsSaved}
+        >
+          {tabsSaved ? "Tabs saved" : "Save my current tabs"}
+        </Button>
+      ) : (
         <button
           type="button"
           className="btn btn-secondary"
@@ -203,43 +257,75 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           <span
             key={i}
             style={{
-              width: "7px",
-              height: "7px",
-              borderRadius: "50%",
+              width: useDesignSystem ? "8px" : "7px",
+              height: useDesignSystem ? "8px" : "7px",
+              borderRadius: useDesignSystem ? "0" : "50%",
               background:
                 i === step
-                  ? "var(--color-primary, var(--color-accent-primary))"
-                  : "var(--color-border)",
+                  ? useDesignSystem
+                    ? "var(--ink, #1f1d1a)"
+                    : "var(--color-primary, var(--color-accent-primary))"
+                  : useDesignSystem
+                    ? "var(--border-hairline, rgba(0,0,0,0.15))"
+                    : "var(--color-border)",
             }}
           />
         ))}
       </div>
       <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={onSkip}
-        >
-          Skip
-        </button>
-        {step > 0 && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={back}
-            disabled={busy}
-          >
-            Back
-          </button>
+        {useDesignSystem ? (
+          <>
+            <Button variant="ghost" size="sm" onClick={onSkip}>
+              Skip
+            </Button>
+            {step > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={back}
+                disabled={busy}
+              >
+                Back
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={current.onPrimary}
+              disabled={current.primaryDisabled || busy}
+            >
+              {current.primaryLabel}
+            </Button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onSkip}
+            >
+              Skip
+            </button>
+            {step > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={back}
+                disabled={busy}
+              >
+                Back
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={current.onPrimary}
+              disabled={current.primaryDisabled || busy}
+            >
+              {current.primaryLabel}
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={current.onPrimary}
-          disabled={current.primaryDisabled || busy}
-        >
-          {current.primaryLabel}
-        </button>
       </div>
     </div>
   );

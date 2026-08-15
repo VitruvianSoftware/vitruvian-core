@@ -23,6 +23,11 @@
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { OnboardingModal, OnboardingModalProps } from "./OnboardingModal";
+import { useFeatureFlag } from "../../lib/flags/use-feature-flag";
+
+jest.mock("../../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 const setup = (overrides: Partial<OnboardingModalProps> = {}) => {
   const mocks = {
@@ -58,23 +63,40 @@ const addResource = async (title = "Docs", url = "https://example.com") => {
 };
 
 describe("OnboardingModal (#138)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
+  });
 
-  it("renders nothing when closed", () => {
+  it("renders the first step when open", () => {
+    setup();
+    expect(screen.getByText("Create a space")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Spaces keep each project's tabs/),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Space name")).toBeInTheDocument();
+  });
+
+  it("does not render when closed", () => {
     setup({ isOpen: false });
     expect(screen.queryByText("Create a space")).not.toBeInTheDocument();
   });
 
-  it("opens on the create-a-space step", () => {
-    setup();
-    expect(screen.getByText("Create a space")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Space name")).toBeInTheDocument();
-  });
-
-  it("Skip dismisses the flow", () => {
+  it("Skip button calls onSkip", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(props.onSkip).toHaveBeenCalledTimes(1);
+  });
+
+  it("primary button is disabled until a name is typed", () => {
+    setup();
+    const btn = screen.getByRole("button", { name: "Create space" });
+    expect(btn).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("Space name"), {
+      target: { value: "Work" },
+    });
+    expect(btn).toBeEnabled();
   });
 
   it("creating a space calls onCreateSpace and advances to the resource step", async () => {
@@ -120,5 +142,22 @@ describe("OnboardingModal (#138)", () => {
     await addResource();
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
     expect(props.onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("renders design system onboarding modal", () => {
+      setup();
+      expect(
+        screen.getByText(/Spaces keep each project's tabs/),
+      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Space name")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Create space" }),
+      ).toBeInTheDocument();
+    });
   });
 });

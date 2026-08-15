@@ -25,6 +25,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { Login } from "./Login";
 import { AuthService } from "../services/auth";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 
 jest.mock("../services/auth", () => ({
   AuthService: {
@@ -32,11 +33,16 @@ jest.mock("../services/auth", () => ({
   },
 }));
 
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
 describe("Login", () => {
   const mockOnSuccess = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   it("should render login form", () => {
@@ -136,6 +142,18 @@ describe("Login", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Login failed")).toBeInTheDocument();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render design system login card", () => {
+      render(<Login onSuccess={mockOnSuccess} />);
+      expect(screen.getByText("Welcome to Tabula")).toBeInTheDocument();
+      expect(screen.getByText("Continue with SSO")).toBeInTheDocument();
     });
   });
 });

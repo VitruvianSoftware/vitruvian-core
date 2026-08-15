@@ -20,37 +20,63 @@
  * SOFTWARE.
  */
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   WindowOwnershipRecord,
   WindowOwnershipService,
 } from "../services/windowOwnership";
 import { getFaviconSrc } from "../utils/favicon";
+import { Button } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 interface TabItemProps {
   tab: chrome.tabs.Tab;
   selected: boolean;
   onToggle: () => void;
+  useDesignSystem?: boolean;
 }
 
-function TabItem({ tab, selected, onToggle }: TabItemProps) {
+function TabItem({ tab, selected, onToggle, useDesignSystem }: TabItemProps) {
   return (
     <motion.div
       onClick={onToggle}
-      whileHover={{ backgroundColor: "rgba(255, 255, 255, 0.05)" }}
-      whileTap={{ scale: 0.99 }}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        padding: "10px 16px",
-        cursor: "pointer",
-        backgroundColor: selected ? "rgba(51, 112, 255, 0.15)" : "transparent",
-        borderRadius: "12px",
-        margin: "2px 8px",
-        transition: "background-color 0.2s ease",
+      whileHover={{
+        backgroundColor: useDesignSystem
+          ? "var(--paper-hover, rgba(0, 0, 0, 0.04))"
+          : "rgba(255, 255, 255, 0.05)",
       }}
+      whileTap={{ scale: 0.99 }}
+      style={
+        useDesignSystem
+          ? {
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "8px 12px",
+              cursor: "pointer",
+              backgroundColor: selected
+                ? "var(--paper-hover, rgba(0, 0, 0, 0.06))"
+                : "transparent",
+              border: "1px solid var(--border-hairline, rgba(0,0,0,0.08))",
+              borderRadius: "0",
+              margin: "4px 8px",
+            }
+          : {
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "10px 16px",
+              cursor: "pointer",
+              backgroundColor: selected
+                ? "rgba(51, 112, 255, 0.15)"
+                : "transparent",
+              borderRadius: "12px",
+              margin: "2px 8px",
+              transition: "background-color 0.2s ease",
+            }
+      }
       role="checkbox"
       aria-checked={selected}
       tabIndex={0}
@@ -63,23 +89,47 @@ function TabItem({ tab, selected, onToggle }: TabItemProps) {
     >
       {/* Checkbox */}
       <div
-        style={{
-          width: "20px",
-          height: "20px",
-          border: `2px solid ${selected ? "var(--color-primary)" : "rgba(255, 255, 255, 0.2)"}`,
-          borderRadius: "6px",
-          backgroundColor: selected ? "var(--color-primary)" : "transparent",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s ease",
-        }}
+        style={
+          useDesignSystem
+            ? {
+                width: "16px",
+                height: "16px",
+                border: "1px solid var(--ink, #1f1d1a)",
+                borderRadius: "0",
+                backgroundColor: selected
+                  ? "var(--ink, #1f1d1a)"
+                  : "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }
+            : {
+                width: "20px",
+                height: "20px",
+                border: `2px solid ${selected ? "var(--color-primary)" : "rgba(255, 255, 255, 0.2)"}`,
+                borderRadius: "6px",
+                backgroundColor: selected
+                  ? "var(--color-primary)"
+                  : "transparent",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                flexShrink: 0,
+              }
+        }
       >
         {selected && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+          <svg
+            width={useDesignSystem ? "10" : "12"}
+            height={useDesignSystem ? "10" : "12"}
+            viewBox="0 0 12 12"
+            fill={useDesignSystem ? "var(--paper, #fbf7ee)" : "white"}
+          >
             <path
               d="M10 3L4.5 8.5L2 6"
-              stroke="white"
+              stroke={useDesignSystem ? "var(--paper, #fbf7ee)" : "white"}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -92,9 +142,13 @@ function TabItem({ tab, selected, onToggle }: TabItemProps) {
       <img
         src={getFaviconSrc(tab)}
         alt=""
-        style={{ width: "18px", height: "18px", borderRadius: "4px" }}
+        style={{
+          width: "18px",
+          height: "18px",
+          borderRadius: useDesignSystem ? "0" : "4px",
+          flexShrink: 0,
+        }}
         onError={(e) => {
-          // Swap to the domain fallback once; clearing onerror prevents a loop
           const img = e.currentTarget;
           img.onerror = null;
           img.src = getFaviconSrc({ favIconUrl: null, url: tab.url });
@@ -103,15 +157,27 @@ function TabItem({ tab, selected, onToggle }: TabItemProps) {
 
       {/* Title */}
       <span
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          fontSize: "14px",
-          fontWeight: 400,
-          color: selected ? "white" : "rgba(255, 255, 255, 0.8)",
-        }}
+        style={
+          useDesignSystem
+            ? {
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "13px",
+                fontWeight: 500,
+                color: "var(--ink, #1f1d1a)",
+              }
+            : {
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "14px",
+                fontWeight: 400,
+                color: selected ? "white" : "rgba(255, 255, 255, 0.8)",
+              }
+        }
       >
         {tab.title || "Untitled"}
       </span>
@@ -141,6 +207,10 @@ export function TabConflictPopover({
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([]);
   const [selectedTabIds, setSelectedTabIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Load tabs from the owner window
   useEffect(() => {
@@ -178,9 +248,6 @@ export function TabConflictPopover({
   const handleMoveTabs = async () => {
     const tabIds = Array.from(selectedTabIds);
 
-    // 1. Take ownership FIRST to prevent race condition where the old window
-    // syncs "empty state" when it detects tabs leaving.
-    // By claiming ownership first, the old window's useTabSync guard will kick in.
     const currentTab = await chrome.tabs.getCurrent();
     if (currentTab?.id) {
       await WindowOwnershipService.registerWorkspaceOwnership(
@@ -190,7 +257,6 @@ export function TabConflictPopover({
       );
     }
 
-    // 2. Move tabs to this window
     if (tabIds.length > 0) {
       await WindowOwnershipService.moveTabsToCurrentWindow(
         tabIds,
@@ -198,20 +264,22 @@ export function TabConflictPopover({
       );
     }
 
-    // 3. Trigger Adopt Mode switch to save the new state
     onMoveComplete();
   };
 
   const renderTabList = () => {
-    // eslint-disable-next-line no-console
-    console.log("Rendering", { loading, tabs: tabs.length });
     if (loading) {
       return (
         <div
           style={{
             padding: "32px",
             textAlign: "center",
-            color: "rgba(255, 255, 255, 0.5)",
+            color: useDesignSystem
+              ? "var(--paper-dim, #736d64)"
+              : "rgba(255, 255, 255, 0.5)",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
           }}
         >
           Loading tabs...
@@ -224,7 +292,12 @@ export function TabConflictPopover({
           style={{
             padding: "32px",
             textAlign: "center",
-            color: "rgba(255, 255, 255, 0.5)",
+            color: useDesignSystem
+              ? "var(--paper-dim, #736d64)"
+              : "rgba(255, 255, 255, 0.5)",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
           }}
         >
           No tabs to move
@@ -237,6 +310,7 @@ export function TabConflictPopover({
         tab={tab}
         selected={selectedTabIds.has(tab.id!)}
         onToggle={() => toggleTabSelection(tab.id!)}
+        useDesignSystem={useDesignSystem}
       />
     ));
   };
@@ -254,7 +328,9 @@ export function TabConflictPopover({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: "rgba(10, 14, 30, 0.32)",
+          backgroundColor: useDesignSystem
+            ? "rgba(0, 0, 0, 0.4)"
+            : "rgba(10, 14, 30, 0.32)",
           backdropFilter: "blur(4px)",
           zIndex: 9999,
           display: "flex",
@@ -264,78 +340,129 @@ export function TabConflictPopover({
         onClick={onIgnore}
       >
         <motion.div
-          className="tab-conflict-popover glass-menu"
+          className={
+            useDesignSystem ? undefined : "tab-conflict-popover glass-menu"
+          }
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          style={{
-            width: "400px",
-            // Dark-pinned surface so the popover's white text stays legible
-            // regardless of theme (the dashboard is light-themed; .glass-menu's
-            // --glass-bg-strong would otherwise resolve light here). The class
-            // still supplies the blur, border, and tinted shadow.
-            backgroundColor: "rgba(20, 23, 30, 0.62)",
-            borderRadius: "18px", // Workona Pill Radius
-            overflow: "hidden",
-          }}
+          style={
+            useDesignSystem
+              ? {
+                  width: "420px",
+                  backgroundColor: "var(--paper, #fbf7ee)",
+                  border: "2px solid var(--ink, #1f1d1a)",
+                  boxShadow: "6px 6px 0 0 var(--ink, #1f1d1a)",
+                  borderRadius: "0",
+                  overflow: "hidden",
+                  color: "var(--ink, #1f1d1a)",
+                }
+              : {
+                  width: "400px",
+                  backgroundColor: "rgba(20, 23, 30, 0.62)",
+                  borderRadius: "18px",
+                  overflow: "hidden",
+                }
+          }
           role="dialog"
           aria-label="Tabs from another window"
         >
           {/* Header */}
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "20px 24px",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-            }}
+            style={
+              useDesignSystem
+                ? {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "16px 20px",
+                    borderBottom: "1px solid var(--ink, #1f1d1a)",
+                  }
+                : {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "20px 24px",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                  }
+            }
           >
             <div
               style={{ display: "flex", flexDirection: "column", gap: "4px" }}
             >
               <span
-                style={{ fontWeight: 600, fontSize: "16px", color: "white" }}
+                style={
+                  useDesignSystem
+                    ? {
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        color: "var(--ink, #1f1d1a)",
+                      }
+                    : { fontWeight: 600, fontSize: "16px", color: "white" }
+                }
               >
                 Tabs from another window
               </span>
               <span
-                style={{ fontSize: "12px", color: "rgba(255, 255, 255, 0.5)" }}
+                style={
+                  useDesignSystem
+                    ? {
+                        fontSize: "11px",
+                        fontFamily: "var(--font-mono, monospace)",
+                        color: "var(--paper-dim, #736d64)",
+                      }
+                    : {
+                        fontSize: "12px",
+                        color: "rgba(255, 255, 255, 0.5)",
+                      }
+                }
               >
                 Select tabs to move to this window
               </span>
             </div>
 
-            <button
-              onClick={handleGoToWindow}
-              style={{
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "none",
-                borderRadius: "8px",
-                padding: "6px 10px",
-                color: "rgba(255, 255, 255, 0.7)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "12px",
-                fontWeight: 500,
-                transition: "background 0.2s",
-              }}
-              title="Focus the other window"
-            >
-              Go to window
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="currentColor"
+            {useDesignSystem ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleGoToWindow}
+                title="Focus the other window"
               >
-                <path d="M10 2v5h-1V3.7l-5.6 5.6-.7-.7L8.3 3H5V2h5z" />
-              </svg>
-            </button>
+                Go to window
+              </Button>
+            ) : (
+              <button
+                onClick={handleGoToWindow}
+                style={{
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "6px 10px",
+                  color: "rgba(255, 255, 255, 0.7)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  transition: "background 0.2s",
+                }}
+                title="Focus the other window"
+              >
+                Go to window
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="currentColor"
+                >
+                  <path d="M10 2v5h-1V3.7l-5.6 5.6-.7-.7L8.3 3H5V2h5z" />
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* Tab list */}
@@ -351,50 +478,81 @@ export function TabConflictPopover({
 
           {/* Footer */}
           <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "12px",
-              padding: "16px 24px",
-              borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-              backgroundColor: "rgba(0, 0, 0, 0.2)",
-            }}
+            style={
+              useDesignSystem
+                ? {
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "8px",
+                    padding: "12px 20px",
+                    borderTop: "1px solid var(--ink, #1f1d1a)",
+                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.02))",
+                  }
+                : {
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "12px",
+                    padding: "16px 24px",
+                    borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+                    backgroundColor: "rgba(0, 0, 0, 0.2)",
+                  }
+            }
           >
-            <button
-              onClick={onIgnore}
-              style={{
-                padding: "10px 20px",
-                background: "transparent",
-                border: "none",
-                color: "rgba(255, 255, 255, 0.7)",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: 500,
-              }}
-            >
-              Ignore
-            </button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleMoveTabs}
-              disabled={selectedTabIds.size === 0}
-              style={{
-                padding: "10px 24px",
-                border: "none",
-                borderRadius: "18px", // Workona Pill Radius
-                background: "var(--color-primary)",
-                color: "white",
-                cursor: selectedTabIds.size === 0 ? "not-allowed" : "pointer",
-                fontSize: "14px",
-                fontWeight: 600,
-                opacity: selectedTabIds.size === 0 ? 0.5 : 1,
-                boxShadow: "0 4px 12px rgba(51, 112, 255, 0.3)",
-              }}
-            >
-              Move {selectedTabIds.size} tab
-              {selectedTabIds.size !== 1 ? "s" : ""} here
-            </motion.button>
+            {useDesignSystem ? (
+              <>
+                <Button variant="ghost" size="sm" onClick={onIgnore}>
+                  Ignore
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleMoveTabs}
+                  disabled={selectedTabIds.size === 0}
+                >
+                  Move {selectedTabIds.size} tab
+                  {selectedTabIds.size !== 1 ? "s" : ""} here
+                </Button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={onIgnore}
+                  style={{
+                    padding: "10px 20px",
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255, 255, 255, 0.7)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                  }}
+                >
+                  Ignore
+                </button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleMoveTabs}
+                  disabled={selectedTabIds.size === 0}
+                  style={{
+                    padding: "10px 24px",
+                    border: "none",
+                    borderRadius: "18px",
+                    background: "var(--color-primary)",
+                    color: "white",
+                    cursor:
+                      selectedTabIds.size === 0 ? "not-allowed" : "pointer",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    opacity: selectedTabIds.size === 0 ? 0.5 : 1,
+                    boxShadow: "0 4px 12px rgba(51, 112, 255, 0.3)",
+                  }}
+                >
+                  Move {selectedTabIds.size} tab
+                  {selectedTabIds.size !== 1 ? "s" : ""} here
+                </motion.button>
+              </>
+            )}
           </div>
         </motion.div>
       </motion.div>
