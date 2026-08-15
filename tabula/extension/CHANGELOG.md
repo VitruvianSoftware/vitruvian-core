@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.32...tabula-extension-v0.1.33) (2026-08-15)
+
+
+### Bug Fixes
+
+* **tabula-extension:** restore dark mode colors and frosted glass styling ([#1665](https://github.com/VitruvianSoftware/vitruvian-core/issues/1665)) ([6df332a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6df332a0c1123362e97825d31b041f011ebf2aec))
+
 ## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.31...tabula-extension-v0.1.32) (2026-08-15)
 
 
