@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.27...tabula-extension-v0.1.28) (2026-08-15)
+
+
+### Features
+
+* **tabula-extension:** migrate dashboard sidebar and navigation to design system ([#1655](https://github.com/VitruvianSoftware/vitruvian-core/issues/1655)) ([269dd9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/269dd9e5a08a1825c0a03b9a1da34209feebef0a))
+
 ## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.26...tabula-extension-v0.1.27) (2026-08-15)
 
 
