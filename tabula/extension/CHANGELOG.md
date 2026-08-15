@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.33...tabula-extension-v0.1.34) (2026-08-15)
+
+
+### Features
+
+* **tabula-extension:** migrate to first-class design system foundations, components, and patterns ([#1667](https://github.com/VitruvianSoftware/vitruvian-core/issues/1667)) ([5b95019](https://github.com/VitruvianSoftware/vitruvian-core/commit/5b950195460671abce16f88c453b3ebd8bd2c03e))
+
 ## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.32...tabula-extension-v0.1.33) (2026-08-15)
 
 
