@@ -26,6 +26,19 @@ module.exports = {
   Button: (props) => React.createElement("button", props, props.children),
   Plate: (props) => React.createElement("div", props, props.children),
   Textarea: (props) => React.createElement("textarea", props),
+  Input: (props) => React.createElement("input", props),
+  Field: (props) =>
+    React.createElement(
+      "div",
+      { className: props.className },
+      props.label ? React.createElement("label", null, props.label) : null,
+      props.children,
+      props.hint ? React.createElement("div", null, props.hint) : null,
+      props.error ? React.createElement("div", null, props.error) : null,
+    ),
+  Status: (props) => React.createElement("span", props, props.children),
+  Tag: (props) => React.createElement("span", props, props.children),
+  Label: (props) => React.createElement("span", props, props.children),
   EmptyState: (props) => React.createElement("div", props, props.children),
   Modal: (props) => React.createElement("div", props, props.children),
 };

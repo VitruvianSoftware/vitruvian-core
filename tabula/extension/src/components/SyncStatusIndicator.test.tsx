@@ -31,6 +31,12 @@ jest.mock("../stores/sync", () => ({
   useSyncStore: jest.fn(),
 }));
 
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
 describe("SyncStatusIndicator", () => {
   const mockRetrySync = jest.fn();
   const mockInitialize = jest.fn();
@@ -48,6 +54,7 @@ describe("SyncStatusIndicator", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useSyncStore as unknown as jest.Mock).mockReturnValue(getDefaultState());
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   it("should render synced state", () => {
@@ -127,5 +134,45 @@ describe("SyncStatusIndicator", () => {
 
     render(<SyncStatusIndicator />);
     expect(screen.getByText("cloud_upload")).toBeInTheDocument();
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render synced state with design system components", () => {
+      render(<SyncStatusIndicator />);
+      expect(screen.getByText("check_circle")).toBeInTheDocument();
+    });
+
+    it("should render error state with discard button in DS mode", () => {
+      const mockDiscardFailed = jest.fn();
+      (useSyncStore as unknown as jest.Mock).mockReturnValue({
+        ...getDefaultState(),
+        status: "error",
+        lastError: "Failed to reach server",
+        discardFailed: mockDiscardFailed,
+      });
+
+      render(<SyncStatusIndicator />);
+      expect(screen.getByText("error")).toBeInTheDocument();
+      expect(screen.getByText("Sync failed")).toBeInTheDocument();
+
+      const discardBtn = screen.getByText("Discard");
+      expect(discardBtn).toBeInTheDocument();
+      fireEvent.click(discardBtn);
+      expect(mockDiscardFailed).toHaveBeenCalled();
+    });
+
+    it("should render pending tag in DS mode", () => {
+      (useSyncStore as unknown as jest.Mock).mockReturnValue({
+        ...getDefaultState(),
+        pendingCount: 4,
+      });
+
+      render(<SyncStatusIndicator />);
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
   });
 });

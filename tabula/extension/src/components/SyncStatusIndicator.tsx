@@ -33,6 +33,9 @@
 import React, { useEffect } from "react";
 import { useSyncStore } from "../stores/sync";
 import { Icon } from "./icons";
+import { Status, type Signal, Tag } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export const SyncStatusIndicator: React.FC = () => {
   const {
@@ -45,6 +48,10 @@ export const SyncStatusIndicator: React.FC = () => {
     discardFailed,
     initialize,
   } = useSyncStore();
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Initialize sync store on mount (subscribes to SyncService state changes)
   useEffect(() => {
@@ -69,14 +76,30 @@ export const SyncStatusIndicator: React.FC = () => {
   const getStatusColor = (): string => {
     switch (status) {
       case "syncing":
-        return "var(--color-accent-primary)";
+        return useDesignSystem
+          ? "var(--accent-2, #1d4ed8)"
+          : "var(--color-accent-primary)";
       case "error":
-        return "var(--color-accent-danger)";
+        return useDesignSystem
+          ? "var(--accent, #991b1b)"
+          : "var(--color-accent-danger)";
       case "offline":
-        return "var(--color-text-secondary)";
+        return useDesignSystem
+          ? "var(--paper-dim, #736d64)"
+          : "var(--color-text-secondary)";
       default:
-        return "var(--color-accent-success, #22c55e)";
+        return useDesignSystem
+          ? "var(--accent-success, #166534)"
+          : "var(--color-accent-success, #22c55e)";
     }
+  };
+
+  const getSignal = (): Signal => {
+    if (!isOnline || status === "offline") return "idle";
+    if (status === "error") return "crit";
+    if (status === "syncing") return "run";
+    if (pendingCount > 0) return "warn";
+    return "ok";
   };
 
   // Get tooltip text
@@ -97,6 +120,98 @@ export const SyncStatusIndicator: React.FC = () => {
       retrySync();
     }
   };
+
+  if (useDesignSystem) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "3px 6px",
+          border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+          backgroundColor: "var(--ink-2, #ffffff)",
+          cursor: status === "error" ? "pointer" : "default",
+          fontSize: "11px",
+          fontFamily: "var(--font-mono, monospace)",
+        }}
+        onClick={handleClick}
+        title={getTooltip()}
+      >
+        <Status signal={getSignal()}>
+          {/* Status Icon */}
+          <div
+            style={{
+              width: "14px",
+              height: "14px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: getStatusColor(),
+              marginRight: "4px",
+            }}
+          >
+            {status === "syncing" && (
+              <div style={{ animation: "spin 1s linear infinite" }}>
+                <Icon name="sync" size="sm" />
+              </div>
+            )}
+            {status === "idle" && pendingCount === 0 && (
+              <Icon name="check_circle" size="sm" />
+            )}
+            {status === "idle" && pendingCount > 0 && (
+              <Icon name="cloud_upload" size="sm" />
+            )}
+            {status === "error" && <Icon name="error" size="sm" />}
+            {status === "offline" && <Icon name="cloud_off" size="sm" />}
+          </div>
+
+          {(status === "syncing" || status === "error") && (
+            <span>
+              {status === "syncing" && "Syncing..."}
+              {status === "error" && "Sync failed"}
+            </span>
+          )}
+        </Status>
+
+        {status === "error" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              discardFailed();
+            }}
+            title="Discard the failed changes so the rest of the queue can sync"
+            style={{
+              fontSize: "9px",
+              fontFamily: "var(--font-mono, monospace)",
+              background: "transparent",
+              border: "1px solid var(--accent, #991b1b)",
+              color: "var(--accent, #991b1b)",
+              padding: "1px 4px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Discard
+          </button>
+        )}
+
+        {pendingCount > 0 && status !== "syncing" && (
+          <Tag tone="warn">{pendingCount}</Tag>
+        )}
+
+        <style>
+          {`
+            @keyframes spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+          `}
+        </style>
+      </div>
+    );
+  }
 
   return (
     <div

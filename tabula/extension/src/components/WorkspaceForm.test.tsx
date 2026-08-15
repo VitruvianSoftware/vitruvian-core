@@ -23,8 +23,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { WorkspaceForm } from "./WorkspaceForm";
 import type { Workspace } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { WorkspaceForm } from "./WorkspaceForm";
 
 describe("WorkspaceForm", () => {
   const mockOnSubmit = jest.fn();
@@ -32,6 +38,7 @@ describe("WorkspaceForm", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   it("should render empty form for new workspace", () => {
@@ -147,5 +154,30 @@ describe("WorkspaceForm", () => {
     expect(screen.getByText("💼")).toBeInTheDocument();
     expect(screen.getByText("🎨")).toBeInTheDocument();
     expect(screen.getByText("🔬")).toBeInTheDocument();
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render and submit correctly with design system components", () => {
+      render(<WorkspaceForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+
+      fireEvent.change(screen.getByLabelText("Name *"), {
+        target: { value: "Design System Space" },
+      });
+      fireEvent.change(screen.getByLabelText("Description"), {
+        target: { value: "Modern design system workspace" },
+      });
+      fireEvent.click(screen.getByText("Create"));
+
+      expect(mockOnSubmit).toHaveBeenCalledWith({
+        name: "Design System Space",
+        description: "Modern design system workspace",
+        icon: "📁",
+        color: "#4F46E5",
+      });
+    });
   });
 });
