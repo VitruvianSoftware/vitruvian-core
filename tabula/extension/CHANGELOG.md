@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.26...tabula-extension-v0.1.27) (2026-08-15)
+
+
+### Features
+
+* **tabula-extension:** migrate WorkspaceForm, ConfirmModal, and SyncStatusIndicator to design system ([#1653](https://github.com/VitruvianSoftware/vitruvian-core/issues/1653)) ([f0e87dc](https://github.com/VitruvianSoftware/vitruvian-core/commit/f0e87dc68c644689211ca344f4165c1692e9b6d0))
+
 ## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.25...tabula-extension-v0.1.26) (2026-08-15)
 
 
