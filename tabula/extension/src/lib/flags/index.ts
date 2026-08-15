@@ -27,15 +27,24 @@ export const FLAGS = {
   USE_DESIGN_SYSTEM: "use-design-system",
 } as const;
 
-let initialized = false;
+let initPromise: Promise<any> | null = null;
 
-export async function initFeatureFlags() {
-  if (initialized) return OpenFeature.getClient();
-  await OpenFeature.setProviderAndWait(new ChromeStorageProvider());
-  initialized = true;
-  return OpenFeature.getClient();
+export function initFeatureFlags(): Promise<any> {
+  if (!initPromise) {
+    initPromise = OpenFeature.setProviderAndWait(
+      new ChromeStorageProvider(),
+    ).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "Failed to initialize ChromeStorageProvider for OpenFeature:",
+        err,
+      );
+    });
+  }
+  return initPromise;
 }
 
 export function getFeatureFlagClient() {
+  initFeatureFlags();
   return OpenFeature.getClient();
 }

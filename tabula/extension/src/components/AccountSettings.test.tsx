@@ -78,11 +78,16 @@ jest.mock("../services/tabs", () => ({
 
 // Mock chrome.storage.local
 const mockChromeStorage = {
+  get: jest.fn().mockResolvedValue({}),
   set: jest.fn().mockResolvedValue(undefined),
 };
 (globalThis as any).chrome = {
   storage: {
     local: mockChromeStorage,
+    onChanged: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+    },
   },
 };
 
