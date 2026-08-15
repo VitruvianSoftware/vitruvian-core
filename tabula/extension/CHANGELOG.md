@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.29...tabula-extension-v0.1.30) (2026-08-15)
+
+
+### Features
+
+* **tabula:** migrate popup, popovers, and onboarding to vitruvian design system ([#1659](https://github.com/VitruvianSoftware/vitruvian-core/issues/1659)) ([24345c8](https://github.com/VitruvianSoftware/vitruvian-core/commit/24345c88e1bd87a82a6501c0eb09923f34de228d))
+
 ## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.28...tabula-extension-v0.1.29) (2026-08-15)
 
 
