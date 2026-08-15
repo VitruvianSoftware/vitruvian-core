@@ -33,6 +33,7 @@ import { UpdateCheckService } from "../services/updateCheck";
 import type { Channel } from "../services/updateCheck";
 import { useFeatureFlag, setFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Button, Input, Tag } from "@vitruviansoftware/design-system";
 
 interface AccountSettingsProps {
   onClose: () => void;
@@ -102,12 +103,6 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      // Only show the signed-out prompt when there is NO session at all. Gate on
-      // hasSession (access OR persisted refresh token), not getToken alone — the
-      // access token is wiped on browser restart, so gating on it made Settings
-      // read "not signed in" while the header/popup (backed by the cached user)
-      // still showed the account. getUserProfile() refreshes the access token
-      // from the refresh token on its 401.
       if (!(await AuthService.hasSession())) {
         setUser(null);
         setError(null);
@@ -158,7 +153,6 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
 
     try {
       const resetUrl = await ApiService.getPasswordResetUrl(user.email);
-      // Open password reset in new window
       window.open(resetUrl, "_blank", "width=600,height=700");
     } catch (err) {
       setError(
@@ -172,7 +166,6 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       setLoading(true);
       await ApiService.deleteUserAccount();
       await AuthService.logout();
-      // Reload to show login screen
       window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete account");
@@ -196,17 +189,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     }
   };
 
-  // Track if we've already attempted to load backups to prevent infinite retry loop
   const hasAttemptedBackupsLoad = React.useRef(false);
 
-  // Load backups when backups tab is selected (only once per tab visit).
-  // Signed out the tab shows a sign-in prompt, so there is nothing to load.
   useEffect(() => {
     if (activeTab === "backups" && user && !hasAttemptedBackupsLoad.current) {
       hasAttemptedBackupsLoad.current = true;
       loadBackups();
     }
-    // Reset when leaving backups tab so it reloads on next visit
     if (activeTab !== "backups") {
       hasAttemptedBackupsLoad.current = false;
     }
@@ -227,37 +216,26 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     try {
       setBackupsLoading(true);
 
-      // Suppress tab sync and LWW merging BEFORE anything changes — if the
-      // flag were set only after tabs open (as before), a tab-sync firing
-      // mid-restore would capture transitional state and clobber the restore.
-      const forceRemoteUntil = Date.now() + 30000; // 30 seconds from now
+      const forceRemoteUntil = Date.now() + 30000;
       await chrome.storage.local.set({
         tabula_force_remote_until: forceRemoteUntil,
       });
 
-      // Drop every queued (pre-restore) sync op: replaying them after the
-      // restore would overwrite the restored server state with stale data.
       await SyncService.clearQueue();
 
       await ApiService.restoreBackup(backupId);
 
-      // CRITICAL: Immediately fetch restored workspaces and save to local storage
-      // This ensures local storage has the restored data BEFORE we reload
       const restoredWorkspaces = await ApiService.getWorkspaces();
       await StorageService.saveWorkspaces(restoredWorkspaces);
 
-      // Get current browser tabs to determine which restored tabs need to be opened
       const currentBrowserTabs = await TabService.getCurrentTabs();
       const currentUrls = new Set(currentBrowserTabs.map((t) => t.url));
 
-      // Find tabs from restored workspaces that aren't currently open in the browser
-      // Try active workspace first, then fallback to first workspace with tabs
       const activeStoredWorkspace = await StorageService.getActiveWorkspaceId();
       let restoredWorkspace = restoredWorkspaces.find(
         (ws) => ws.id === activeStoredWorkspace,
       );
 
-      // Fallback: if no matching workspace or it has no tabs, use first workspace with tabs
       if (!restoredWorkspace?.tabs || restoredWorkspace.tabs.length === 0) {
         restoredWorkspace = restoredWorkspaces.find(
           (ws) => ws.tabs && ws.tabs.length > 0,
@@ -265,28 +243,22 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       }
 
       if (restoredWorkspace?.tabs && restoredWorkspace.tabs.length > 0) {
-        // Filter to tabs not already open (by URL)
         const tabsToOpen: Tab[] = restoredWorkspace.tabs.filter(
           (tab) => tab.url && !currentUrls.has(tab.url),
         );
 
         if (tabsToOpen.length > 0) {
           await TabService.openTabs(tabsToOpen);
-          // Wait for tabs to open before reload
           await new Promise<void>((resolve) => {
             setTimeout(resolve, 500);
           });
         }
       }
 
-      // Refresh the force-remote window now that tabs are open (the original
-      // 30s started before the restore; give the post-reload merge full
-      // headroom too)
       await chrome.storage.local.set({
         tabula_force_remote_until: Date.now() + 30000,
       });
 
-      // Reload page to reflect restored data
       window.location.reload();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -307,7 +279,6 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     }
   };
 
-  // Wrapper component based on variant
   const Wrapper: React.FC<{
     children: React.ReactNode;
     title?: string;
@@ -332,6 +303,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
           }}
         >
           <p>Loading...</p>
@@ -341,37 +315,49 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
   }
 
   if (error && !user) {
-    // A token exists but the profile fetch failed (e.g. expired session) —
-    // offer a fresh sign-in alongside retry so this isn't a dead end.
     return (
       <Wrapper title="Account Settings">
         <div style={{ padding: "24px" }}>
           <div
             style={{
               padding: "12px",
-              backgroundColor: "#FEE2E2",
+              backgroundColor: useDesignSystem
+                ? "rgba(185, 28, 28, 0.08)"
+                : "#FEE2E2",
               color: "#991B1B",
-              borderRadius: "4px",
+              borderRadius: useDesignSystem ? "0" : "4px",
+              border: useDesignSystem ? "1px solid #b91c1c" : undefined,
               marginBottom: "16px",
             }}
           >
             {error}
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
-            <button className="btn btn-primary" onClick={handleSignIn}>
-              Sign in again
-            </button>
-            <button className="btn btn-secondary" onClick={loadUserProfile}>
-              Retry
-            </button>
+            {useDesignSystem ? (
+              <>
+                <Button variant="primary" onClick={handleSignIn}>
+                  Sign in again
+                </Button>
+                <Button variant="secondary" onClick={loadUserProfile}>
+                  Retry
+                </Button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-primary" onClick={handleSignIn}>
+                  Sign in again
+                </button>
+                <button className="btn btn-secondary" onClick={loadUserProfile}>
+                  Retry
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Wrapper>
     );
   }
 
-  // Signed out (no token): the modal still renders — Preferences are local
-  // and must stay usable — while the account-bound tabs show this prompt.
   const renderSignedOutPrompt = (message: string) => (
     <section>
       <p style={{ fontWeight: 600, marginBottom: "8px" }}>
@@ -379,15 +365,23 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       </p>
       <p
         style={{
-          color: "var(--color-text-secondary)",
+          color: useDesignSystem
+            ? "var(--paper-dim, #736d64)"
+            : "var(--color-text-secondary)",
           marginBottom: "16px",
         }}
       >
         {message}
       </p>
-      <button className="btn btn-primary" onClick={handleSignIn}>
-        Sign in
-      </button>
+      {useDesignSystem ? (
+        <Button variant="primary" onClick={handleSignIn}>
+          Sign in
+        </Button>
+      ) : (
+        <button className="btn btn-primary" onClick={handleSignIn}>
+          Sign in
+        </button>
+      )}
     </section>
   );
 
@@ -402,6 +396,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 fontSize: "18px",
                 fontWeight: "bold",
                 marginBottom: "24px",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
               }}
             >
               Account
@@ -423,6 +420,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: "18px",
               fontWeight: "bold",
               marginBottom: "24px",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
             }}
           >
             Account
@@ -438,7 +438,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              textTransform: useDesignSystem ? "uppercase" : undefined,
             }}
           >
             User Information
@@ -452,19 +458,27 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               marginBottom: "16px",
             }}
           >
-            {/* Avatar Placeholder */}
+            {/* Avatar */}
             <div
               style={{
                 width: variant === "popup" ? "48px" : "64px",
                 height: variant === "popup" ? "48px" : "64px",
-                borderRadius: "50%",
-                backgroundColor: "var(--color-primary)",
+                borderRadius: useDesignSystem ? "0" : "50%",
+                backgroundColor: useDesignSystem
+                  ? "var(--ink, #1f1d1a)"
+                  : "var(--color-primary)",
+                border: useDesignSystem
+                  ? "1px solid var(--ink, #1f1d1a)"
+                  : "none",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: variant === "popup" ? "18px" : "24px",
                 fontWeight: "bold",
-                color: "white",
+                color: useDesignSystem ? "var(--paper, #fbf7ee)" : "white",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
                 flexShrink: 0,
               }}
             >
@@ -477,44 +491,82 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   style={{
                     display: "block",
                     fontSize: "11px",
-                    color: "var(--color-text-secondary)",
+                    color: useDesignSystem
+                      ? "var(--paper-dim, #736d64)"
+                      : "var(--color-text-secondary)",
                     marginBottom: "2px",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   Name
                 </label>
                 {isEditing ? (
                   <div style={{ display: "flex", gap: "6px" }}>
-                    <input
-                      type="text"
-                      value={editedName}
-                      onChange={(e) => setEditedName(e.target.value)}
-                      style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: "4px",
-                        fontSize: "13px",
-                        minWidth: 0,
-                      }}
-                    />
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={handleSaveName}
-                      disabled={loading}
-                    >
-                      Save
-                    </button>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => {
-                        setIsEditing(false);
-                        setEditedName(user.name);
-                      }}
-                      disabled={loading}
-                    >
-                      Cancel
-                    </button>
+                    {useDesignSystem ? (
+                      <>
+                        <Input
+                          value={editedName}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                            setEditedName(e.target.value)
+                          }
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveName}
+                          disabled={loading}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setIsEditing(false);
+                            setEditedName(user.name);
+                          }}
+                          disabled={loading}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={editedName}
+                          onChange={(e) => setEditedName(e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: "4px 8px",
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "4px",
+                            fontSize: "13px",
+                            minWidth: 0,
+                          }}
+                        />
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={handleSaveName}
+                          disabled={loading}
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => {
+                            setIsEditing(false);
+                            setEditedName(user.name);
+                          }}
+                          disabled={loading}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -530,6 +582,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                         fontSize: "13px",
                         fontWeight: "500",
                         maxWidth: "150px",
+                        fontFamily: useDesignSystem
+                          ? "var(--font-mono, monospace)"
+                          : undefined,
                       }}
                     >
                       {user.name}
@@ -550,15 +605,26 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   style={{
                     display: "block",
                     fontSize: "11px",
-                    color: "var(--color-text-secondary)",
+                    color: useDesignSystem
+                      ? "var(--paper-dim, #736d64)"
+                      : "var(--color-text-secondary)",
                     marginBottom: "2px",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   Email
                 </label>
                 <span
                   className="text-ellipsis"
-                  style={{ fontSize: "13px", display: "block" }}
+                  style={{
+                    fontSize: "13px",
+                    display: "block",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
+                  }}
                 >
                   {user.email}
                 </span>
@@ -571,26 +637,37 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               style={{
                 display: "block",
                 fontSize: "11px",
-                color: "var(--color-text-secondary)",
+                color: useDesignSystem
+                  ? "var(--paper-dim, #736d64)"
+                  : "var(--color-text-secondary)",
                 marginBottom: "4px",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
               }}
             >
               Plan
             </label>
-            <span
-              style={{
-                display: "inline-block",
-                padding: "2px 10px",
-                backgroundColor: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-                borderRadius: "12px",
-                fontSize: "11px",
-                fontWeight: "600",
-                textTransform: "capitalize",
-              }}
-            >
-              {user.tier}
-            </span>
+            {useDesignSystem ? (
+              <Tag size="sm">
+                <span style={{ textTransform: "capitalize" }}>{user.tier}</span>
+              </Tag>
+            ) : (
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "2px 10px",
+                  backgroundColor: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  borderRadius: "12px",
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  textTransform: "capitalize",
+                }}
+              >
+                {user.tier}
+              </span>
+            )}
           </div>
         </section>
 
@@ -603,29 +680,49 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
               marginBottom: variant === "popup" ? "8px" : "16px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              textTransform: useDesignSystem ? "uppercase" : undefined,
             }}
           >
             Password
           </h3>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={handleChangePassword}
-            style={{ fontSize: "12px" }}
-          >
-            Change Password
-          </button>
+          {useDesignSystem ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleChangePassword}
+            >
+              Change Password
+            </Button>
+          ) : (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleChangePassword}
+              style={{ fontSize: "12px" }}
+            >
+              Change Password
+            </button>
+          )}
         </section>
 
-        {/* Danger Zone - Hidden in popup for space, only show in modal */}
+        {/* Danger Zone */}
         {variant === "modal" && (
           <section
             style={{
               marginTop: "48px",
               padding: "16px",
-              border: "1px solid #FCA5A5",
-              borderRadius: "8px",
-              backgroundColor: "#FEF2F2",
+              border: useDesignSystem
+                ? "2px solid #b91c1c"
+                : "1px solid #FCA5A5",
+              borderRadius: useDesignSystem ? "0" : "8px",
+              backgroundColor: useDesignSystem
+                ? "rgba(185, 28, 28, 0.04)"
+                : "#FEF2F2",
             }}
           >
             <h3
@@ -634,6 +731,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 fontWeight: "600",
                 marginBottom: "8px",
                 color: "#991B1B",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
               }}
             >
               Danger Zone
@@ -647,13 +747,23 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             >
               Once you delete your account, there is no going back.
             </p>
-            <button
-              className="btn btn-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={loading}
-            >
-              Delete Account
-            </button>
+            {useDesignSystem ? (
+              <Button
+                variant="danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={loading}
+              >
+                Delete Account
+              </Button>
+            ) : (
+              <button
+                className="btn btn-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={loading}
+              >
+                Delete Account
+              </button>
+            )}
           </section>
         )}
       </div>
@@ -665,7 +775,14 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
     <div>
       {variant === "modal" && (
         <h2
-          style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "24px" }}
+          style={{
+            fontSize: "18px",
+            fontWeight: "bold",
+            marginBottom: "24px",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
+          }}
         >
           Preferences
         </h2>
@@ -680,7 +797,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              textTransform: useDesignSystem ? "uppercase" : undefined,
             }}
           >
             Getting started
@@ -691,8 +814,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               alignItems: "center",
               justifyContent: "space-between",
               padding: variant === "popup" ? "10px" : "12px",
-              border: "1px solid var(--color-border)",
-              borderRadius: "8px",
+              border: useDesignSystem
+                ? "1px solid var(--ink, #1f1d1a)"
+                : "1px solid var(--color-border)",
+              borderRadius: useDesignSystem ? "0" : "8px",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : undefined,
               gap: "12px",
             }}
           >
@@ -702,6 +830,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   fontWeight: "500",
                   fontSize: variant === "popup" ? "13px" : "14px",
                   marginBottom: "2px",
+                  fontFamily: useDesignSystem
+                    ? "var(--font-mono, monospace)"
+                    : undefined,
                 }}
               >
                 Replay onboarding
@@ -709,22 +840,37 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               <div
                 style={{
                   fontSize: "11px",
-                  color: "var(--color-text-secondary)",
+                  color: useDesignSystem
+                    ? "var(--paper-dim, #736d64)"
+                    : "var(--color-text-secondary)",
                 }}
               >
                 Walk through creating a space, adding a resource, and saving
                 tabs.
               </div>
             </div>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                onReplayOnboarding();
-                onClose();
-              }}
-            >
-              Show me
-            </button>
+            {useDesignSystem ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  onReplayOnboarding();
+                  onClose();
+                }}
+              >
+                Show me
+              </Button>
+            ) : (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  onReplayOnboarding();
+                  onClose();
+                }}
+              >
+                Show me
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -735,7 +881,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             fontSize: variant === "popup" ? "12px" : "14px",
             fontWeight: "600",
             marginBottom: variant === "popup" ? "12px" : "16px",
-            color: "var(--color-text-secondary)",
+            color: useDesignSystem
+              ? "var(--paper-dim, #736d64)"
+              : "var(--color-text-secondary)",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
+            textTransform: useDesignSystem ? "uppercase" : undefined,
           }}
         >
           Appearance
@@ -747,8 +899,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             alignItems: "center",
             justifyContent: "space-between",
             padding: variant === "popup" ? "10px" : "12px",
-            border: "1px solid var(--color-border)",
-            borderRadius: "8px",
+            border: useDesignSystem
+              ? "1px solid var(--ink, #1f1d1a)"
+              : "1px solid var(--color-border)",
+            borderRadius: useDesignSystem ? "0" : "8px",
+            backgroundColor: useDesignSystem
+              ? "var(--paper, #fbf7ee)"
+              : undefined,
             gap: "12px",
           }}
         >
@@ -758,6 +915,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 fontWeight: "500",
                 fontSize: variant === "popup" ? "13px" : "14px",
                 marginBottom: "2px",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
               }}
             >
               Theme
@@ -765,7 +925,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             <div
               style={{
                 fontSize: "11px",
-                color: "var(--color-text-secondary)",
+                color: useDesignSystem
+                  ? "var(--paper-dim, #736d64)"
+                  : "var(--color-text-secondary)",
                 textTransform: "capitalize",
               }}
             >
@@ -777,9 +939,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             style={{
               display: "flex",
               gap: "4px",
-              backgroundColor: "var(--color-btn-shaded-bg)",
+              backgroundColor: useDesignSystem
+                ? "transparent"
+                : "var(--color-btn-shaded-bg)",
               padding: "3px",
-              borderRadius: "6px",
+              borderRadius: useDesignSystem ? "0" : "6px",
               flexShrink: 0,
             }}
           >
@@ -789,17 +953,35 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 onClick={() => setTheme(t)}
                 style={{
                   padding: "4px 10px",
-                  border: "none",
-                  borderRadius: "4px",
+                  border: useDesignSystem
+                    ? theme === t
+                      ? "1px solid var(--ink, #1f1d1a)"
+                      : "1px solid transparent"
+                    : "none",
+                  borderRadius: useDesignSystem ? "0" : "4px",
                   fontSize: "12px",
                   cursor: "pointer",
+                  fontFamily: useDesignSystem
+                    ? "var(--font-mono, monospace)"
+                    : undefined,
                   backgroundColor:
-                    theme === t ? "var(--color-bg-card)" : "transparent",
+                    theme === t
+                      ? useDesignSystem
+                        ? "var(--ink, #1f1d1a)"
+                        : "var(--color-bg-card)"
+                      : "transparent",
                   color:
                     theme === t
-                      ? "var(--color-primary)"
-                      : "var(--color-text-secondary)",
-                  boxShadow: theme === t ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+                      ? useDesignSystem
+                        ? "var(--paper, #fbf7ee)"
+                        : "var(--color-primary)"
+                      : useDesignSystem
+                        ? "var(--ink, #1f1d1a)"
+                        : "var(--color-text-secondary)",
+                  boxShadow:
+                    !useDesignSystem && theme === t
+                      ? "0 1px 2px rgba(0,0,0,0.1)"
+                      : "none",
                   fontWeight: theme === t ? 500 : 400,
                   textTransform: "capitalize",
                 }}
@@ -818,7 +1000,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              textTransform: useDesignSystem ? "uppercase" : undefined,
             }}
           >
             Developer
@@ -827,8 +1015,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           <div
             style={{
               padding: variant === "popup" ? "10px" : "12px",
-              border: "1px solid var(--color-border)",
-              borderRadius: "8px",
+              border: useDesignSystem
+                ? "1px solid var(--ink, #1f1d1a)"
+                : "1px solid var(--color-border)",
+              borderRadius: useDesignSystem ? "0" : "8px",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : undefined,
             }}
           >
             <div
@@ -845,6 +1038,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     fontWeight: "500",
                     fontSize: variant === "popup" ? "13px" : "14px",
                     marginBottom: "2px",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   Release channel
@@ -852,7 +1048,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 <div
                   style={{
                     fontSize: "11px",
-                    color: "var(--color-text-secondary)",
+                    color: useDesignSystem
+                      ? "var(--paper-dim, #736d64)"
+                      : "var(--color-text-secondary)",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   {devIdentity.channel} · v{devIdentity.version} ·{" "}
@@ -864,9 +1065,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 style={{
                   display: "flex",
                   gap: "4px",
-                  backgroundColor: "var(--color-btn-shaded-bg)",
+                  backgroundColor: useDesignSystem
+                    ? "transparent"
+                    : "var(--color-btn-shaded-bg)",
                   padding: "3px",
-                  borderRadius: "6px",
+                  borderRadius: useDesignSystem ? "0" : "6px",
                   flexShrink: 0,
                 }}
               >
@@ -883,18 +1086,32 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     style={{
                       padding: "4px 10px",
                       fontSize: "12px",
-                      border: "none",
-                      borderRadius: "4px",
+                      border: useDesignSystem
+                        ? (selectedChannel ?? devIdentity.channel) === ch
+                          ? "1px solid var(--ink, #1f1d1a)"
+                          : "1px solid transparent"
+                        : "none",
+                      borderRadius: useDesignSystem ? "0" : "4px",
                       cursor: "pointer",
+                      fontFamily: useDesignSystem
+                        ? "var(--font-mono, monospace)"
+                        : undefined,
                       backgroundColor:
                         (selectedChannel ?? devIdentity.channel) === ch
-                          ? "var(--color-bg-card)"
+                          ? useDesignSystem
+                            ? "var(--ink, #1f1d1a)"
+                            : "var(--color-bg-card)"
                           : "transparent",
                       color:
                         (selectedChannel ?? devIdentity.channel) === ch
-                          ? "var(--color-primary)"
-                          : "var(--color-text-secondary)",
+                          ? useDesignSystem
+                            ? "var(--paper, #fbf7ee)"
+                            : "var(--color-primary)"
+                          : useDesignSystem
+                            ? "var(--ink, #1f1d1a)"
+                            : "var(--color-text-secondary)",
                       boxShadow:
+                        !useDesignSystem &&
                         (selectedChannel ?? devIdentity.channel) === ch
                           ? "0 1px 2px rgba(0,0,0,0.1)"
                           : "none",
@@ -915,7 +1132,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 style={{
                   marginTop: "10px",
                   fontSize: "12px",
-                  color: "var(--color-text-secondary)",
+                  color: useDesignSystem
+                    ? "var(--paper-dim, #736d64)"
+                    : "var(--color-text-secondary)",
                 }}
               >
                 The stable channel arrives with the Web Store listing (M3).
@@ -938,37 +1157,60 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       flex: 1,
                       fontSize: "12px",
                       padding: "6px 8px",
-                      backgroundColor: "var(--color-bg-card-hover)",
-                      borderRadius: "4px",
+                      backgroundColor: useDesignSystem
+                        ? "var(--paper-hover, rgba(0,0,0,0.04))"
+                        : "var(--color-bg-card-hover)",
+                      border: useDesignSystem
+                        ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
+                        : "none",
+                      borderRadius: useDesignSystem ? "0" : "4px",
                       overflowX: "auto",
                       whiteSpace: "nowrap",
+                      fontFamily: "var(--font-mono, monospace)",
                     }}
                   >
                     tabcli ext update --channel {selectedChannel}
                   </code>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard
-                        ?.writeText(
-                          `tabcli ext update --channel ${selectedChannel}`,
-                        )
-                        .then(() => setCopiedCommand(true))
-                        .catch(() => undefined);
-                    }}
-                    style={{
-                      padding: "4px 10px",
-                      fontSize: "12px",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      backgroundColor: "transparent",
-                      color: "var(--color-text-primary)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {copiedCommand ? "Copied!" : "Copy"}
-                  </button>
+                  {useDesignSystem ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard
+                          ?.writeText(
+                            `tabcli ext update --channel ${selectedChannel}`,
+                          )
+                          .then(() => setCopiedCommand(true))
+                          .catch(() => undefined);
+                      }}
+                    >
+                      {copiedCommand ? "Copied!" : "Copy"}
+                    </Button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard
+                          ?.writeText(
+                            `tabcli ext update --channel ${selectedChannel}`,
+                          )
+                          .then(() => setCopiedCommand(true))
+                          .catch(() => undefined);
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "12px",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        backgroundColor: "transparent",
+                        color: "var(--color-text-primary)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {copiedCommand ? "Copied!" : "Copy"}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -976,7 +1218,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               style={{
                 marginTop: "16px",
                 paddingTop: "16px",
-                borderTop: "1px solid var(--color-border)",
+                borderTop: useDesignSystem
+                  ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
+                  : "1px solid var(--color-border)",
               }}
             >
               <div
@@ -987,13 +1231,23 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 500, fontSize: "13px" }}>
+                  <div
+                    style={{
+                      fontWeight: 500,
+                      fontSize: "13px",
+                      fontFamily: useDesignSystem
+                        ? "var(--font-mono, monospace)"
+                        : undefined,
+                    }}
+                  >
                     Vitruvian Design System (Preview)
                   </div>
                   <div
                     style={{
                       fontSize: "11px",
-                      color: "var(--color-text-secondary)",
+                      color: useDesignSystem
+                        ? "var(--paper-dim, #736d64)"
+                        : "var(--color-text-secondary)",
                     }}
                   >
                     Replaces Workona-style UI with the new system.
@@ -1020,7 +1274,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   <span
                     style={{
                       fontSize: "12px",
-                      color: "var(--color-text-secondary)",
+                      color: useDesignSystem
+                        ? "var(--ink, #1f1d1a)"
+                        : "var(--color-text-secondary)",
+                      fontFamily: useDesignSystem
+                        ? "var(--font-mono, monospace)"
+                        : undefined,
                     }}
                   >
                     {useDesignSystem ? "On" : "Off"}
@@ -1045,6 +1304,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 fontSize: "18px",
                 fontWeight: "bold",
                 marginBottom: "24px",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
               }}
             >
               Backups
@@ -1066,6 +1328,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: "18px",
               fontWeight: "bold",
               marginBottom: "24px",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
             }}
           >
             Backups
@@ -1090,20 +1355,33 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 flex: 1,
                 minWidth: "120px",
                 padding: "12px",
-                backgroundColor: "var(--color-btn-shaded-bg)",
-                borderRadius: "8px",
+                backgroundColor: useDesignSystem
+                  ? "var(--paper, #fbf7ee)"
+                  : "var(--color-btn-shaded-bg)",
+                border: useDesignSystem
+                  ? "1px solid var(--ink, #1f1d1a)"
+                  : "none",
+                borderRadius: useDesignSystem ? "0" : "8px",
               }}
             >
               <div
                 data-testid="backup-count"
-                style={{ fontSize: "24px", fontWeight: "bold" }}
+                style={{
+                  fontSize: "24px",
+                  fontWeight: "bold",
+                  fontFamily: useDesignSystem
+                    ? "var(--font-mono, monospace)"
+                    : undefined,
+                }}
               >
                 {backupStats?.totalBackups || 0}
               </div>
               <div
                 style={{
                   fontSize: "12px",
-                  color: "var(--color-text-secondary)",
+                  color: useDesignSystem
+                    ? "var(--paper-dim, #736d64)"
+                    : "var(--color-text-secondary)",
                 }}
               >
                 Total Backups
@@ -1115,13 +1393,24 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 flex: 1,
                 minWidth: "120px",
                 padding: "12px",
-                backgroundColor: "var(--color-btn-shaded-bg)",
-                borderRadius: "8px",
+                backgroundColor: useDesignSystem
+                  ? "var(--paper, #fbf7ee)"
+                  : "var(--color-btn-shaded-bg)",
+                border: useDesignSystem
+                  ? "1px solid var(--ink, #1f1d1a)"
+                  : "none",
+                borderRadius: useDesignSystem ? "0" : "8px",
               }}
             >
               <div
                 data-testid="storage-used"
-                style={{ fontSize: "24px", fontWeight: "bold" }}
+                style={{
+                  fontSize: "24px",
+                  fontWeight: "bold",
+                  fontFamily: useDesignSystem
+                    ? "var(--font-mono, monospace)"
+                    : undefined,
+                }}
               >
                 {backupStats
                   ? `${(backupStats.totalSizeBytes / 1024).toFixed(1)} KB`
@@ -1130,7 +1419,9 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               <div
                 style={{
                   fontSize: "12px",
-                  color: "var(--color-text-secondary)",
+                  color: useDesignSystem
+                    ? "var(--paper-dim, #736d64)"
+                    : "var(--color-text-secondary)",
                 }}
               >
                 Storage Used
@@ -1138,14 +1429,25 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             </div>
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={handleCreateBackup}
-            disabled={backupsLoading}
-            style={{ marginBottom: "16px" }}
-          >
-            {backupsLoading ? "Creating..." : "Create Backup Now"}
-          </button>
+          {useDesignSystem ? (
+            <Button
+              variant="primary"
+              onClick={handleCreateBackup}
+              disabled={backupsLoading}
+              style={{ marginBottom: "16px" }}
+            >
+              {backupsLoading ? "Creating..." : "Create Backup Now"}
+            </Button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={handleCreateBackup}
+              disabled={backupsLoading}
+              style={{ marginBottom: "16px" }}
+            >
+              {backupsLoading ? "Creating..." : "Create Backup Now"}
+            </button>
+          )}
         </section>
 
         {/* Backup List */}
@@ -1155,7 +1457,13 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontSize: variant === "popup" ? "12px" : "14px",
               fontWeight: "600",
               marginBottom: "12px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              textTransform: useDesignSystem ? "uppercase" : undefined,
             }}
           >
             Recent Backups
@@ -1168,7 +1476,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   style={{
                     textAlign: "center",
                     padding: "20px",
-                    color: "var(--color-text-secondary)",
+                    color: useDesignSystem
+                      ? "var(--paper-dim, #736d64)"
+                      : "var(--color-text-secondary)",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   Loading backups...
@@ -1181,7 +1494,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   style={{
                     textAlign: "center",
                     padding: "20px",
-                    color: "var(--color-text-secondary)",
+                    color: useDesignSystem
+                      ? "var(--paper-dim, #736d64)"
+                      : "var(--color-text-secondary)",
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
+                      : undefined,
                   }}
                 >
                   No backups yet. Create your first backup to protect your
@@ -1200,19 +1518,34 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       display: "flex",
                       alignItems: "center",
                       padding: "12px",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "8px",
+                      border: useDesignSystem
+                        ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
+                        : "1px solid var(--color-border)",
+                      borderRadius: useDesignSystem ? "0" : "8px",
+                      backgroundColor: useDesignSystem
+                        ? "var(--paper, #fbf7ee)"
+                        : undefined,
                       gap: "12px",
                     }}
                   >
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: "13px", fontWeight: "500" }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: "500",
+                          fontFamily: useDesignSystem
+                            ? "var(--font-mono, monospace)"
+                            : undefined,
+                        }}
+                      >
                         {backup.workspaceName || "All Workspaces"}
                       </div>
                       <div
                         style={{
                           fontSize: "11px",
-                          color: "var(--color-text-secondary)",
+                          color: useDesignSystem
+                            ? "var(--paper-dim, #736d64)"
+                            : "var(--color-text-secondary)",
                         }}
                       >
                         {new Date(backup.createdAt).toLocaleString()} •{" "}
@@ -1221,23 +1554,49 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                           : "N/A"}
                       </div>
                     </div>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleRestoreBackup(backup.id)}
-                      disabled={backupsLoading}
-                      title="Restore this backup"
-                    >
-                      Restore
-                    </button>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDeleteBackup(backup.id)}
-                      disabled={backupsLoading}
-                      title="Delete this backup"
-                      style={{ padding: "4px 8px" }}
-                    >
-                      <Icon name="delete" size="sm" />
-                    </button>
+                    {useDesignSystem ? (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleRestoreBackup(backup.id)}
+                          disabled={backupsLoading}
+                          title="Restore this backup"
+                        >
+                          Restore
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteBackup(backup.id)}
+                          disabled={backupsLoading}
+                          title="Delete this backup"
+                          style={{ padding: "4px 8px" }}
+                        >
+                          <Icon name="delete" size="sm" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => handleRestoreBackup(backup.id)}
+                          disabled={backupsLoading}
+                          title="Restore this backup"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDeleteBackup(backup.id)}
+                          disabled={backupsLoading}
+                          title="Delete this backup"
+                          style={{ padding: "4px 8px" }}
+                        >
+                          <Icon name="delete" size="sm" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1250,10 +1609,17 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           <div
             style={{
               padding: "12px",
-              backgroundColor: "var(--color-btn-shaded-bg)",
-              borderRadius: "8px",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : "var(--color-btn-shaded-bg)",
+              border: useDesignSystem
+                ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
+                : "none",
+              borderRadius: useDesignSystem ? "0" : "8px",
               fontSize: "12px",
-              color: "var(--color-text-secondary)",
+              color: useDesignSystem
+                ? "var(--paper-dim, #736d64)"
+                : "var(--color-text-secondary)",
             }}
           >
             <strong>Backup Retention:</strong>{" "}
@@ -1280,19 +1646,44 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             alignItems: "center",
             gap: "8px",
             paddingBottom: "12px",
-            borderBottom: "1px solid var(--color-border)",
+            borderBottom: useDesignSystem
+              ? "1px solid var(--ink, #1f1d1a)"
+              : "1px solid var(--color-border)",
             marginBottom: "12px",
           }}
         >
-          <button
-            onClick={onClose}
-            className="btn btn-secondary"
-            style={{ padding: "4px 8px", borderRadius: "6px" }}
-            title="Back"
+          {useDesignSystem ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onClose}
+              title="Back"
+              style={{ padding: "4px 8px" }}
+            >
+              <Icon name="arrow_back" size="sm" />
+            </Button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="btn btn-secondary"
+              style={{ padding: "4px 8px", borderRadius: "6px" }}
+              title="Back"
+            >
+              <Icon name="arrow_back" size="sm" />
+            </button>
+          )}
+          <h2
+            style={{
+              fontSize: "16px",
+              fontWeight: "600",
+              flex: 1,
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
+                : undefined,
+              color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
+              margin: 0,
+            }}
           >
-            <Icon name="arrow_back" size="sm" />
-          </button>
-          <h2 style={{ fontSize: "16px", fontWeight: "600", flex: 1 }}>
             Settings
           </h2>
         </div>
@@ -1303,98 +1694,67 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             display: "flex",
             gap: "4px",
             marginBottom: "16px",
-            backgroundColor: "var(--color-bg-card-hover)",
-            padding: "3px",
-            borderRadius: "8px",
+            backgroundColor: useDesignSystem
+              ? "transparent"
+              : "var(--color-bg-card-hover)",
+            padding: useDesignSystem ? "0" : "3px",
+            borderRadius: useDesignSystem ? "0" : "8px",
           }}
         >
-          <button
-            onClick={() => setActiveTab("account")}
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              border: "none",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: "500",
-              cursor: "pointer",
-              backgroundColor:
-                activeTab === "account"
-                  ? "var(--color-bg-card)"
-                  : "transparent",
-              color:
-                activeTab === "account"
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-              boxShadow:
-                activeTab === "account" ? "var(--shadow-card)" : "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-            }}
-          >
-            <Icon name="person" size="sm" />
-            Account
-          </button>
-          <button
-            onClick={() => setActiveTab("preferences")}
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              border: "none",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: "500",
-              cursor: "pointer",
-              backgroundColor:
-                activeTab === "preferences"
-                  ? "var(--color-bg-card)"
-                  : "transparent",
-              color:
-                activeTab === "preferences"
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-              boxShadow:
-                activeTab === "preferences" ? "var(--shadow-card)" : "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-            }}
-          >
-            <Icon name="settings" size="sm" />
-            Preferences
-          </button>
-          <button
-            onClick={() => setActiveTab("backups")}
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              border: "none",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: "500",
-              cursor: "pointer",
-              backgroundColor:
-                activeTab === "backups"
-                  ? "var(--color-bg-card)"
-                  : "transparent",
-              color:
-                activeTab === "backups"
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-              boxShadow:
-                activeTab === "backups" ? "var(--shadow-card)" : "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-            }}
-          >
-            <Icon name="backup" size="sm" />
-            Backups
-          </button>
+          {(
+            [
+              { id: "account", label: "Account", icon: "person" },
+              { id: "preferences", label: "Preferences", icon: "settings" },
+              { id: "backups", label: "Backups", icon: "backup" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                border: useDesignSystem
+                  ? activeTab === tab.id
+                    ? "1px solid var(--ink, #1f1d1a)"
+                    : "1px solid transparent"
+                  : "none",
+                borderRadius: useDesignSystem ? "0" : "6px",
+                fontSize: "12px",
+                fontWeight: "500",
+                cursor: "pointer",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
+                textTransform: useDesignSystem ? "uppercase" : undefined,
+                backgroundColor:
+                  activeTab === tab.id
+                    ? useDesignSystem
+                      ? "var(--ink, #1f1d1a)"
+                      : "var(--color-bg-card)"
+                    : "transparent",
+                color:
+                  activeTab === tab.id
+                    ? useDesignSystem
+                      ? "var(--paper, #fbf7ee)"
+                      : "var(--color-text-primary)"
+                    : useDesignSystem
+                      ? "var(--ink, #1f1d1a)"
+                      : "var(--color-text-secondary)",
+                boxShadow:
+                  !useDesignSystem && activeTab === tab.id
+                    ? "var(--shadow-card)"
+                    : "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+            >
+              <Icon name={tab.icon} size="sm" />
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Error Display */}
@@ -1402,9 +1762,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           <div
             style={{
               padding: "8px 12px",
-              backgroundColor: "#FEE2E2",
+              backgroundColor: useDesignSystem
+                ? "rgba(185, 28, 28, 0.08)"
+                : "#FEE2E2",
               color: "#991B1B",
-              borderRadius: "6px",
+              borderRadius: useDesignSystem ? "0" : "6px",
+              border: useDesignSystem ? "1px solid #b91c1c" : undefined,
               marginBottom: "12px",
               fontSize: "12px",
             }}
@@ -1438,20 +1801,41 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   justifyContent: "flex-end",
                 }}
               >
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-danger"
-                  onClick={handleDeleteAccount}
-                  disabled={loading}
-                >
-                  {loading ? "Deleting..." : "Delete"}
-                </button>
+                {useDesignSystem ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={loading}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={handleDeleteAccount}
+                      disabled={loading}
+                    >
+                      {loading ? "Deleting..." : "Delete"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={loading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={handleDeleteAccount}
+                      disabled={loading}
+                    >
+                      {loading ? "Deleting..." : "Delete"}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </Modal>
@@ -1468,79 +1852,63 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
         <div
           style={{
             width: "200px",
-            borderRight: "1px solid var(--color-border)",
+            borderRight: useDesignSystem
+              ? "1px solid var(--ink, #1f1d1a)"
+              : "1px solid var(--color-border)",
             padding: "16px",
-            backgroundColor: "var(--color-btn-shaded-bg)",
+            backgroundColor: useDesignSystem
+              ? "transparent"
+              : "var(--color-btn-shaded-bg)",
           }}
         >
           <nav>
-            <button
-              className={`nav-item ${activeTab === "account" ? "active" : ""}`}
-              onClick={() => setActiveTab("account")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                padding: "8px 12px",
-                border: "none",
-                background:
-                  activeTab === "account"
-                    ? "var(--color-primary-light)"
-                    : "transparent",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "14px",
-                marginBottom: "4px",
-              }}
-            >
-              <Icon name="person" size="sm" />
-              Account
-            </button>
-            <button
-              className={`nav-item ${activeTab === "preferences" ? "active" : ""}`}
-              onClick={() => setActiveTab("preferences")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                padding: "8px 12px",
-                border: "none",
-                background:
-                  activeTab === "preferences"
-                    ? "var(--color-primary-light)"
-                    : "transparent",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
-            >
-              <Icon name="settings" size="sm" />
-              Preferences
-            </button>
-            <button
-              className={`nav-item ${activeTab === "backups" ? "active" : ""}`}
-              onClick={() => setActiveTab("backups")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                width: "100%",
-                padding: "8px 12px",
-                border: "none",
-                background:
-                  activeTab === "backups"
-                    ? "var(--color-primary-light)"
-                    : "transparent",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
-            >
-              <Icon name="backup" size="sm" />
-              Backups
-            </button>
+            {(
+              [
+                { id: "account", label: "Account", icon: "person" },
+                { id: "preferences", label: "Preferences", icon: "settings" },
+                { id: "backups", label: "Backups", icon: "backup" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                className={`nav-item ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  width: "100%",
+                  padding: "8px 12px",
+                  border: useDesignSystem
+                    ? activeTab === tab.id
+                      ? "1px solid var(--ink, #1f1d1a)"
+                      : "1px solid transparent"
+                    : "none",
+                  background:
+                    activeTab === tab.id
+                      ? useDesignSystem
+                        ? "var(--ink, #1f1d1a)"
+                        : "var(--color-primary-light)"
+                      : "transparent",
+                  color:
+                    activeTab === tab.id
+                      ? useDesignSystem
+                        ? "var(--paper, #fbf7ee)"
+                        : undefined
+                      : undefined,
+                  borderRadius: useDesignSystem ? "0" : "4px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontFamily: useDesignSystem
+                    ? "var(--font-mono, monospace)"
+                    : undefined,
+                  marginBottom: "4px",
+                }}
+              >
+                <Icon name={tab.icon} size="sm" />
+                {tab.label}
+              </button>
+            ))}
           </nav>
         </div>
 
@@ -1550,9 +1918,12 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             <div
               style={{
                 padding: "12px",
-                backgroundColor: "#FEE2E2",
+                backgroundColor: useDesignSystem
+                  ? "rgba(185, 28, 28, 0.08)"
+                  : "#FEE2E2",
                 color: "#991B1B",
-                borderRadius: "4px",
+                borderRadius: useDesignSystem ? "0" : "4px",
+                border: useDesignSystem ? "1px solid #b91c1c" : undefined,
                 marginBottom: "16px",
                 fontSize: "14px",
               }}
@@ -1596,20 +1967,41 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 justifyContent: "flex-end",
               }}
             >
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={loading}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-danger"
-                onClick={handleDeleteAccount}
-                disabled={loading}
-              >
-                {loading ? "Deleting..." : "Delete My Account"}
-              </button>
+              {useDesignSystem ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteAccount}
+                    disabled={loading}
+                  >
+                    {loading ? "Deleting..." : "Delete My Account"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={handleDeleteAccount}
+                    disabled={loading}
+                  >
+                    {loading ? "Deleting..." : "Delete My Account"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </Modal>

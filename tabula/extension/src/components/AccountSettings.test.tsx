@@ -30,6 +30,12 @@ import { TabService } from "../services/tabs";
 import { AuthService } from "../services/auth";
 import { UpdateCheckService } from "../services/updateCheck";
 import { mockLocationReload } from "../testUtils/jsdomLocation";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+  setFeatureFlag: jest.fn(),
+}));
 
 jest.mock("../services/updateCheck", () => ({
   UpdateCheckService: {
@@ -123,6 +129,7 @@ describe("AccountSettings", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
     (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
     (AuthService.hasSession as jest.Mock).mockResolvedValue(true);
     (ApiService.getUserProfile as jest.Mock).mockResolvedValue(mockUser);
@@ -1288,6 +1295,56 @@ describe("AccountSettings", () => {
         ).toBeInTheDocument(),
       );
       expect(screen.queryByText(/--channel stable/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render account settings with design system components", async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+          variant="modal"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Test User")).toBeInTheDocument();
+        expect(screen.getByText("test@example.com")).toBeInTheDocument();
+        expect(screen.getByText("free")).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "Change Password" }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("should render popup variant with design system horizontal tabs", async () => {
+      render(
+        <AccountSettings
+          onClose={mockOnClose}
+          theme="light"
+          setTheme={mockSetTheme}
+          variant="popup"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Settings")).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /Account/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /Preferences/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /Backups/ }),
+        ).toBeInTheDocument();
+      });
     });
   });
 });
