@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.28...tabula-extension-v0.1.29) (2026-08-15)
+
+
+### Features
+
+* **tabula-extension:** migrate dashboard main panels and command palette to design system ([#1657](https://github.com/VitruvianSoftware/vitruvian-core/issues/1657)) ([95503ad](https://github.com/VitruvianSoftware/vitruvian-core/commit/95503ad217eb9dd57ab4f3b2c2564968d84bd563))
+
 ## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.27...tabula-extension-v0.1.28) (2026-08-15)
 
 
