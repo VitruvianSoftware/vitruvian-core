@@ -27,12 +27,17 @@
 
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { ResourceSection, ResourceSectionProps } from "./ResourceSection";
 import { WorkspaceService } from "../services/workspace";
 import { TabService } from "../services/tabs";
 import type { Workspace, Section } from "../types";
 
 // Mocks
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
 jest.mock("../components/icons", () => ({
   Icon: ({ name }: { name: string }) => (
     <span data-testid={`icon-${name}`}>{name}</span>
@@ -384,6 +389,19 @@ describe("ResourceSection", () => {
         );
         expect(defaultProps.setActiveWorkspaceData).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render section with design system buttons and typography", () => {
+      render(<ResourceSection {...defaultProps} />);
+      expect(screen.getByText("Test Section")).toBeInTheDocument();
+      expect(screen.getByTitle("Open all resources")).toBeInTheDocument();
+      expect(screen.getByTitle("Add resource")).toBeInTheDocument();
     });
   });
 });

@@ -22,8 +22,14 @@
 
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { CommandPalette } from "./CommandPalette";
 import { useWorkspaceStore } from "../stores/workspace";
+
+// Mock the feature flag
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Mock the workspace store
 jest.mock("../stores/workspace");
@@ -102,6 +108,7 @@ describe("CommandPalette", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
     (useWorkspaceStore as unknown as jest.Mock).mockReturnValue({
       workspaces: mockWorkspaces,
       switchWorkspace: mockSwitchWorkspace,
@@ -243,5 +250,24 @@ describe("CommandPalette", () => {
     fireEvent.click(overlay!);
 
     expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render command palette with design system layout and filter tags", () => {
+      render(<CommandPalette isOpen={true} onClose={mockOnClose} />);
+      expect(
+        screen.getByPlaceholderText(/Search workspaces/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText("All")).toBeInTheDocument();
+      expect(screen.getByText("Workspace")).toBeInTheDocument();
+      expect(screen.getByText("Resource")).toBeInTheDocument();
+      expect(screen.getByText("Tab")).toBeInTheDocument();
+      expect(screen.getByText("Note")).toBeInTheDocument();
+      expect(screen.getByText("Task")).toBeInTheDocument();
+    });
   });
 });

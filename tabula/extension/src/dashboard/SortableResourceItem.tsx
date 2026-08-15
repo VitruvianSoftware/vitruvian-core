@@ -25,6 +25,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Resource } from "../types";
 import { Icon } from "../components/icons";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface SortableResourceItemProps {
   resource: Resource;
@@ -39,6 +41,10 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
   onEdit,
   onActivate,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
   const {
     attributes,
     listeners,
@@ -51,18 +57,30 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
     data: { resource },
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     cursor: "pointer",
+    ...(useDesignSystem
+      ? {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 12px",
+          marginBottom: "4px",
+          backgroundColor: "var(--paper, #fbf7ee)",
+          border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+          borderRadius: "0",
+        }
+      : {}),
   };
 
   return (
     <div
       ref={setNodeRef}
       style={{ ...style, cursor: "grab" }}
-      className="list-item"
+      className={useDesignSystem ? undefined : "list-item"}
       data-testid="resource-item"
     >
       {/* Draggable area */}
@@ -76,18 +94,85 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             resource.faviconUrl ||
             `https://www.google.com/s2/favicons?domain=${resource.url}`
           }
-          className="item-icon"
+          className={useDesignSystem ? undefined : "item-icon"}
+          style={
+            useDesignSystem
+              ? {
+                  width: "16px",
+                  height: "16px",
+                  marginRight: "10px",
+                  flexShrink: 0,
+                }
+              : undefined
+          }
           alt=""
         />
-        <div className="item-content">
-          <div className="item-title">{resource.title}</div>
-          <div className="item-subtitle">{resource.url}</div>
+        <div
+          className={useDesignSystem ? undefined : "item-content"}
+          style={
+            useDesignSystem
+              ? { flex: 1, minWidth: 0, overflow: "hidden" }
+              : undefined
+          }
+        >
+          <div
+            className={useDesignSystem ? undefined : "item-title"}
+            style={
+              useDesignSystem
+                ? {
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "var(--ink, #1f1d1a)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }
+                : undefined
+            }
+          >
+            {resource.title}
+          </div>
+          <div
+            className={useDesignSystem ? undefined : "item-subtitle"}
+            style={
+              useDesignSystem
+                ? {
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "var(--paper-dim, #736d64)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }
+                : undefined
+            }
+          >
+            {resource.url}
+          </div>
         </div>
       </div>
       {/* Action buttons */}
-      <div className="item-actions">
+      <div
+        className={useDesignSystem ? undefined : "item-actions"}
+        style={
+          useDesignSystem
+            ? { display: "flex", alignItems: "center", gap: "4px" }
+            : undefined
+        }
+      >
         <button
-          className="btn-icon"
+          className={useDesignSystem ? "btn-icon" : "btn-icon"}
+          style={
+            useDesignSystem
+              ? {
+                  padding: "4px",
+                  color: "var(--ink, #1f1d1a)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }
+              : undefined
+          }
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -98,7 +183,18 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
           <Icon name="open_in_new" size="sm" />
         </button>
         <button
-          className="btn-icon"
+          className={useDesignSystem ? "btn-icon" : "btn-icon"}
+          style={
+            useDesignSystem
+              ? {
+                  padding: "4px",
+                  color: "var(--ink, #1f1d1a)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }
+              : undefined
+          }
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -109,7 +205,18 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
           <Icon name="edit" size="sm" />
         </button>
         <button
-          className="btn-icon danger"
+          className={useDesignSystem ? "btn-icon danger" : "btn-icon danger"}
+          style={
+            useDesignSystem
+              ? {
+                  padding: "4px",
+                  color: "var(--accent, #991b1b)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }
+              : undefined
+          }
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onRemove}
           title="Remove"

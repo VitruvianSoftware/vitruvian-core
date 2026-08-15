@@ -34,6 +34,8 @@ import { Icon } from "../components/icons";
 import { TabService } from "../services/tabs";
 import { EmptyState } from "../components/EmptyState";
 import { EmptyTabsIllustration } from "../components/illustrations/EmptyTabs";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 /**
  * Chrome tab group color mapping to CSS colors
@@ -94,6 +96,10 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
   isFirst,
   onToggleCollapse,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
   const {
     attributes,
     listeners,
@@ -121,21 +127,30 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
         alignItems: "center",
         padding: "8px 12px",
         cursor: "grab",
-        borderRadius: "6px",
+        borderRadius: useDesignSystem ? "0" : "6px",
         marginBottom: "4px",
         marginTop: isFirst ? 0 : "8px",
-        backgroundColor: "var(--color-bg-tertiary)",
+        backgroundColor: useDesignSystem
+          ? "var(--paper, #fbf7ee)"
+          : "var(--color-bg-tertiary)",
+        border: useDesignSystem
+          ? "1px solid var(--border-hairline, rgba(0,0,0,0.1))"
+          : undefined,
         transition: "background-color 0.15s ease",
       }}
       {...attributes}
       {...listeners}
       onMouseEnter={(e) => {
         if (!isDragging) {
-          e.currentTarget.style.backgroundColor = "var(--color-bg-hover)";
+          e.currentTarget.style.backgroundColor = useDesignSystem
+            ? "var(--paper-hover, rgba(0,0,0,0.04))"
+            : "var(--color-bg-hover)";
         }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+        e.currentTarget.style.backgroundColor = useDesignSystem
+          ? "var(--paper, #fbf7ee)"
+          : "var(--color-bg-tertiary)";
       }}
     >
       <button
@@ -165,7 +180,9 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
           style={{
             marginRight: "6px",
             opacity: 0.7,
-            color: "var(--color-text-muted)",
+            color: useDesignSystem
+              ? "var(--ink, #1f1d1a)"
+              : "var(--color-text-muted)",
           }}
         />
       </button>
@@ -173,7 +190,7 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
         style={{
           width: "10px",
           height: "10px",
-          borderRadius: "50%",
+          borderRadius: useDesignSystem ? "0" : "50%",
           backgroundColor:
             GROUP_COLORS[group.color || "grey"] || GROUP_COLORS.grey,
           marginRight: "8px",
@@ -183,9 +200,14 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
       <span
         style={{
           flex: 1,
-          fontWeight: 500,
-          fontSize: "var(--font-size-sm)",
-          color: "var(--color-text-primary)",
+          fontWeight: 600,
+          fontFamily: useDesignSystem
+            ? "var(--font-mono, monospace)"
+            : undefined,
+          fontSize: "12px",
+          color: useDesignSystem
+            ? "var(--ink, #1f1d1a)"
+            : "var(--color-text-primary)",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -195,8 +217,13 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
       </span>
       <span
         style={{
-          fontSize: "var(--font-size-xs)",
-          color: "var(--color-text-muted)",
+          fontSize: "11px",
+          fontFamily: useDesignSystem
+            ? "var(--font-mono, monospace)"
+            : undefined,
+          color: useDesignSystem
+            ? "var(--paper-dim, #736d64)"
+            : "var(--color-text-muted)",
           marginLeft: "8px",
         }}
       >
@@ -213,24 +240,17 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
   onEditTab,
   onActivateTab,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
   // Build a map of groupId -> TabGroup for quick lookup
   const groupMap = useMemo(() => {
     const map = new Map<string, TabGroup>();
     tabGroups.forEach((g) => map.set(g.id, g));
-
-    // eslint-disable-next-line no-console
-    console.log("[OpenTabsPanel] Received data:", {
-      tabsCount: activeTabs.length,
-      tabGroupsCount: tabGroups.length,
-      tabsWithGroupId: activeTabs.filter((t) => t.groupId).length,
-      groupIds: tabGroups.map((g) => g.id),
-      sampleTabGroupIds: activeTabs
-        .slice(0, 3)
-        .map((t) => ({ title: t.title?.substring(0, 15), groupId: t.groupId })),
-    });
-
     return map;
-  }, [tabGroups, activeTabs]);
+  }, [tabGroups]);
 
   // Build render items preserving original tab order
   // Insert group headers when we first encounter a tab from that group
@@ -238,70 +258,84 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
     const items: RenderItem[] = [];
     const seenGroups = new Set<string>();
 
-    // Count tabs per group and collect tab IDs for the header
-    const groupTabCounts = new Map<string, number>();
-    const groupTabIds = new Map<string, number[]>();
     activeTabs.forEach((tab) => {
-      if (tab.groupId && groupMap.has(tab.groupId) && tab.id) {
-        groupTabCounts.set(
-          tab.groupId,
-          (groupTabCounts.get(tab.groupId) || 0) + 1,
-        );
-        const ids = groupTabIds.get(tab.groupId) || [];
-        ids.push(tab.id);
-        groupTabIds.set(tab.groupId, ids);
-      }
-    });
+      if (tab.groupId && groupMap.has(tab.groupId)) {
+        const group = groupMap.get(tab.groupId)!;
 
-    activeTabs.forEach((tab) => {
-      const { groupId } = tab;
-      const group = groupId ? groupMap.get(groupId) : undefined;
+        // If first time seeing this group, add the group header first
+        if (!seenGroups.has(tab.groupId)) {
+          seenGroups.add(tab.groupId);
 
-      // If this tab belongs to a group we haven't seen yet, insert the header
-      if (group && !seenGroups.has(group.id)) {
-        seenGroups.add(group.id);
+          // Get all tab IDs in this group
+          const groupTabs = activeTabs.filter((t) => t.groupId === tab.groupId);
+          const tabIds = groupTabs
+            .map((t) => t.id)
+            .filter((id): id is number => id !== undefined);
+
+          items.push({
+            type: "group-header",
+            group,
+            tabCount: groupTabs.length,
+            tabIds,
+            chromeGroupId: group.chromeGroupId,
+            isCollapsed: group.collapsed || false,
+          });
+        }
+
+        // Add the tab itself
         items.push({
-          type: "group-header",
-          group,
-          tabCount: groupTabCounts.get(group.id) || 0,
-          tabIds: groupTabIds.get(group.id) || [],
-          chromeGroupId: group.chromeGroupId,
-          isCollapsed: group.collapsed || false,
+          type: "tab",
+          tab,
+          groupId: tab.groupId,
+          isGroupCollapsed: group.collapsed || false,
+        });
+      } else {
+        // Ungrouped tab
+        items.push({
+          type: "tab",
+          tab,
+          isGroupCollapsed: false,
         });
       }
-
-      items.push({
-        type: "tab",
-        tab,
-        groupId: group?.id,
-        isGroupCollapsed: group?.collapsed || false,
-      });
     });
 
     return items;
   }, [activeTabs, groupMap]);
 
-  // Build sortable items list (tab IDs + group IDs)
+  // IDs for SortableContext - only items that are visible
   const sortableItems = useMemo(() => {
-    const items: string[] = [];
-    const seenGroups = new Set<string>();
-
-    activeTabs.forEach((tab) => {
-      const group = tab.groupId ? groupMap.get(tab.groupId) : undefined;
-      if (group && !seenGroups.has(group.id)) {
-        seenGroups.add(group.id);
-        items.push(`group-${group.id}`);
-      }
-      items.push(`tab-${tab.id}`);
-    });
-
-    return items;
-  }, [activeTabs, groupMap]);
+    return renderItems
+      .filter((item) =>
+        item.type === "group-header"
+          ? !item.isCollapsed
+          : !item.isGroupCollapsed,
+      )
+      .map((item) =>
+        item.type === "group-header"
+          ? `group-${item.group.id}`
+          : `tab-${item.tab.id}`,
+      );
+  }, [renderItems]);
 
   return (
     <div className="card-section">
       <div className="section-header">
-        <h3>Active Tabs</h3>
+        <h3
+          style={
+            useDesignSystem
+              ? {
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "12px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: "var(--paper-dim, #736d64)",
+                  margin: 0,
+                }
+              : undefined
+          }
+        >
+          Active Tabs
+        </h3>
       </div>
 
       {/* Empty State */}
@@ -328,10 +362,6 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
             const renderItem = (item: RenderItem, index: number) => {
               if (item.type === "group-header") {
                 const { group, tabCount, tabIds, isCollapsed } = item;
-                // Since we are in a container, isFirst logic might be relative to the container.
-                // But for visual consistency we can keep checking global index if needed,
-                // or just rely on CSS.
-                // Assuming isFirst logic is mainly for top margin.
                 return (
                   <DraggableGroupHeader
                     key={`header-${group.id}`}
@@ -342,7 +372,7 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
                     isCollapsed={isCollapsed}
                     isFirst={index === 0}
                     onToggleCollapse={() => {
-                      // No-op - TabService is called in DraggableGroupHeader
+                      // Handled inside DraggableGroupHeader
                     }}
                   />
                 );
@@ -359,15 +389,6 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
                 return null;
               }
 
-              // Check if last in its logical group (for visual spacing)
-              // In the chunked list, the container handles grouping.
-              // We might still want margin at the bottom of the chunk items.
-              // But DroppableContainer usually has padding/gap?
-              // The original logic:
-              // const nextItem = renderItems[index + 1];
-              // const isLastInGroup = ...
-              // We'll simplisticly preserve marginBottom for the last item in a group chunk if needed.
-              // But for now, let's render standard.
               return (
                 <div
                   key={tab.url || tab.id}
@@ -376,8 +397,6 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
                       isGrouped && groupColor
                         ? `4px solid ${groupColor}`
                         : "4px solid transparent",
-                    // marginBottom handled by container or flex gap? Original used marginBottom='12px'.
-                    // We'll keep it simple for now.
                   }}
                 >
                   <DraggableTabItem
@@ -397,14 +416,13 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
               items: RenderItem[];
             }[] = [];
             let currentChunk: RenderItem[] = [];
-            let currentGroupId: string | null = null; // null = ungrouped
+            let currentGroupId: string | null = null;
 
             renderItems.forEach((item) => {
               const itemGroupId =
                 item.type === "group-header" ? item.group.id : item.groupId;
 
               const isNewGroupHeader = item.type === "group-header";
-              // If we hit a header, it's ALWAYS a start of a new group chunk.
               if (isNewGroupHeader) {
                 if (currentChunk.length > 0) {
                   chunks.push({
@@ -418,10 +436,7 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
                 return;
               }
 
-              // Normal tab
-              // If group ID matches current, continue.
-              // If group ID differs (e.g. switching from group to ungrouped), split.
-              const effectiveGroupId = itemGroupId || null; // treat undefined as null
+              const effectiveGroupId = itemGroupId || null;
 
               if (effectiveGroupId === currentGroupId) {
                 currentChunk.push(item);
@@ -448,36 +463,36 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
 
             return chunks.map((chunk, chunkIndex) => {
               const isLastChunk = chunkIndex === chunks.length - 1;
-              const marginBottom = isLastChunk ? 0 : "24px";
 
-              if (chunk.type === "group" && chunk.groupId) {
+              if (chunk.type === "group") {
+                const group = chunk.groupId
+                  ? groupMap.get(chunk.groupId)
+                  : undefined;
+                const isCollapsed = group?.collapsed || false;
+
                 return (
                   <DroppableContainer
-                    key={chunk.groupId}
-                    id={chunk.groupId}
+                    key={`group-chunk-${chunk.groupId}-${chunkIndex}`}
+                    id={`group-drop-${chunk.groupId}`}
                     containerType="group"
-                    className="group-cluster tab-list"
+                    className="tab-group-container"
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "var(--spacing-xs, 8px)",
-                      marginBottom,
+                      marginBottom: isLastChunk ? 0 : "8px",
+                      minHeight: isCollapsed ? "auto" : "40px",
                     }}
                   >
                     {chunk.items.map((item, i) => renderItem(item, i))}
                   </DroppableContainer>
                 );
               }
-              // Ungrouped
+
               return (
                 <div
-                  key={`ungrouped-${chunkIndex}`}
-                  className="ungrouped-cluster tab-list"
+                  key={`ungrouped-chunk-${chunkIndex}`}
                   style={{
+                    marginBottom: isLastChunk ? 0 : "8px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "var(--spacing-xs, 8px)",
-                    marginBottom,
                   }}
                 >
                   {chunk.items.map((item, i) => renderItem(item, i))}

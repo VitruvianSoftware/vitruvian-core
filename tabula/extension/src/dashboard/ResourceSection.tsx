@@ -20,13 +20,6 @@
  * SOFTWARE.
  */
 
-/**
- * ResourceSection Component
- *
- * Renders a single resource section with its header, actions, and list of resources.
- * Handles drag and drop context for resources within the section.
- */
-
 import React, { useRef } from "react";
 import {
   SortableContext,
@@ -41,6 +34,9 @@ import { TabService } from "../services/tabs";
 import { MenuOverlay } from "./MenuOverlay";
 import { EmptyState } from "../components/EmptyState";
 import { EmptyResourcesIllustration } from "../components/illustrations/EmptyResources";
+import { Button } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface ResourceSectionProps {
   section: Workspace["sections"][0];
@@ -49,15 +45,7 @@ export interface ResourceSectionProps {
   toggleSectionCollapse: (id: string) => void;
   openSectionMenuId: string | null;
   setOpenSectionMenuId: (id: string | null) => void;
-  // Add onToggleSectionMenu prop if it's missing from interface but passed from parent, or map it.
-  // Wait, the parent uses setOpenSectionMenuId.
-  // In Dashboard.tsx:
-  // onToggleSectionMenu={(id) => setOpenSectionMenuId(id)}
-  // Check typical usage.
-  // The error said `onToggleSectionMenu` is missing.
-  // I need to add it to props and destructuring.
   onToggleSectionMenu: (id: string | null) => void;
-
   editingSectionId: string | null;
   setEditingSectionId: (id: string | null) => void;
   editingSectionName: string;
@@ -84,7 +72,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
   collapsedSections,
   toggleSectionCollapse,
   openSectionMenuId,
-  setOpenSectionMenuId, // Still enabling this just in case, but favouring onToggleSectionMenu
+  setOpenSectionMenuId,
   onToggleSectionMenu,
   editingSectionId,
   setEditingSectionId,
@@ -101,49 +89,83 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
   loadWorkspaces,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   return (
     <DroppableContainer
-      key={section.id}
       id={section.id}
-      className={`section-container ${collapsedSections[section.id] ? "collapsed" : ""}`}
+      containerType="section"
+      className="card-section"
+      data-testid="resource-section"
     >
-      <div style={{ marginBottom: "16px" }}>
+      <div
+        className="section-content"
+        style={{ width: "100%", overflow: "visible" }}
+      >
         <div
-          className="collapsible-header"
+          className="section-header"
+          style={{
+            cursor: "pointer",
+            userSelect: "none",
+            display: "flex",
+            alignItems: "center",
+          }}
           onClick={() => toggleSectionCollapse(section.id)}
         >
-          <div
-            className={`collapse-icon ${collapsedSections[section.id] ? "collapsed" : ""}`}
-          >
-            <Icon name="expand_more" size="sm" />
-          </div>
+          <Icon
+            name={
+              collapsedSections[section.id] ? "chevron_right" : "expand_more"
+            }
+            size="sm"
+            style={{
+              marginRight: "8px",
+              color: useDesignSystem
+                ? "var(--ink, #1f1d1a)"
+                : "var(--color-text-muted)",
+            }}
+          />
           {editingSectionId === section.id ? (
             <input
-              autoFocus
-              className="section-title-input"
+              type="text"
+              className={useDesignSystem ? undefined : "input input-sm"}
+              style={
+                useDesignSystem
+                  ? {
+                      flex: 1,
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      padding: "4px 8px",
+                      border: "1px solid var(--ink, #1f1d1a)",
+                      backgroundColor: "var(--paper, #fbf7ee)",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : { flex: 1 }
+              }
               value={editingSectionName}
-              onChange={(e) => setEditingSectionName(e.target.value)}
+              autoFocus
               onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setEditingSectionName(e.target.value)}
               onBlur={async () => {
                 if (editingSectionName.trim()) {
-                  // Optimistic update
-                  const updatedSections = activeWorkspace.sections?.map((s) =>
-                    s.id === section.id
-                      ? { ...s, title: editingSectionName }
-                      : s,
-                  );
+                  const updatedSections = activeWorkspace.sections?.map((s) => {
+                    if (s.id === section.id) {
+                      return { ...s, title: editingSectionName.trim() };
+                    }
+                    return s;
+                  });
                   setActiveWorkspaceData({
                     ...activeWorkspace,
                     sections: updatedSections,
                   });
-
                   await WorkspaceService.renameSection(
                     activeWorkspace.id,
                     section.id,
-                    editingSectionName,
+                    editingSectionName.trim(),
                   );
-                  // loadWorkspaces();
                 }
                 setEditingSectionId(null);
               }}
@@ -155,13 +177,21 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
             />
           ) : (
             <span
-              className="section-title"
+              className={useDesignSystem ? undefined : "section-title"}
               onClick={(e) => {
                 e.stopPropagation();
                 setEditingSectionName(section.title);
                 setEditingSectionId(section.id);
               }}
-              style={{ cursor: "pointer" }}
+              style={{
+                cursor: "pointer",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
+                fontSize: useDesignSystem ? "13px" : undefined,
+                fontWeight: useDesignSystem ? 600 : undefined,
+                color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
+              }}
               title="Click to rename"
             >
               {section.title}
@@ -173,36 +203,57 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             {/* OPEN ALL Button */}
-            {section.resources.length > 0 && (
-              <button
-                className="btn btn-xxs btn-shaded"
-                title="Open all resources"
-                onClick={async () => {
-                  // Create tab objects from resources
-                  const tabsToOpen: Tab[] = section.resources.map((res) => ({
-                    id: 0, // Placeholder
-                    url: res.url,
-                    title: res.title,
-                    active: false,
-                    pinned: false,
-                    index: 0,
-                  }));
-
-                  // Open them
-                  await TabService.openTabs(tabsToOpen);
-
-                  // Force sync to capture the new tabs
-                  if (activeWorkspace) {
-                    await WorkspaceService.saveCurrentTabsToWorkspace(
-                      activeWorkspace.id,
-                    );
-                    if (loadWorkspaces) loadWorkspaces();
-                  }
-                }}
-              >
-                OPEN ALL
-              </button>
-            )}
+            {section.resources.length > 0 &&
+              (useDesignSystem ? (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  title="Open all resources"
+                  onClick={async () => {
+                    const tabsToOpen: Tab[] = section.resources.map((res) => ({
+                      id: 0,
+                      url: res.url,
+                      title: res.title,
+                      active: false,
+                      pinned: false,
+                      index: 0,
+                    }));
+                    await TabService.openTabs(tabsToOpen);
+                    if (activeWorkspace) {
+                      await WorkspaceService.saveCurrentTabsToWorkspace(
+                        activeWorkspace.id,
+                      );
+                      if (loadWorkspaces) loadWorkspaces();
+                    }
+                  }}
+                >
+                  OPEN ALL
+                </Button>
+              ) : (
+                <button
+                  className="btn btn-xxs btn-shaded"
+                  title="Open all resources"
+                  onClick={async () => {
+                    const tabsToOpen: Tab[] = section.resources.map((res) => ({
+                      id: 0,
+                      url: res.url,
+                      title: res.title,
+                      active: false,
+                      pinned: false,
+                      index: 0,
+                    }));
+                    await TabService.openTabs(tabsToOpen);
+                    if (activeWorkspace) {
+                      await WorkspaceService.saveCurrentTabsToWorkspace(
+                        activeWorkspace.id,
+                      );
+                      if (loadWorkspaces) loadWorkspaces();
+                    }
+                  }}
+                >
+                  OPEN ALL
+                </button>
+              ))}
             {/* Add Resource */}
             <button
               className="btn-icon"
@@ -215,6 +266,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                   setOpenSectionMenuId(section.id);
                 }
               }}
+              style={
+                useDesignSystem ? { color: "var(--ink, #1f1d1a)" } : undefined
+              }
             >
               <Icon name="add" size="sm" />
             </button>
@@ -236,7 +290,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                 style={{
                   position: "relative",
                   zIndex: 20,
-                  color: "#9AA0A6",
+                  color: useDesignSystem ? "var(--ink, #1f1d1a)" : "#9AA0A6",
                   padding: "2px",
                 }}
               >
@@ -244,38 +298,67 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               </button>
               {openSectionMenuId === section.id && (
                 <div
-                  className="dropdown-menu"
-                  style={{ right: 0, top: "100%", zIndex: 20 }}
+                  className={useDesignSystem ? undefined : "dropdown-menu"}
+                  style={{
+                    right: 0,
+                    top: "100%",
+                    zIndex: 20,
+                    position: "absolute",
+                    backgroundColor: useDesignSystem
+                      ? "var(--paper, #fbf7ee)"
+                      : undefined,
+                    border: useDesignSystem
+                      ? "1px solid var(--ink, #1f1d1a)"
+                      : undefined,
+                    boxShadow: useDesignSystem
+                      ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                      : undefined,
+                  }}
                 >
                   <div
-                    className="dropdown-item"
+                    className={useDesignSystem ? undefined : "dropdown-item"}
+                    style={
+                      useDesignSystem
+                        ? {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "8px 12px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            color: "var(--ink, #1f1d1a)",
+                          }
+                        : undefined
+                    }
                     onClick={() => {
-                      // eslint-disable-next-line no-console
-                      console.log("[DEBUG] Add resource dropdown item clicked");
                       setTargetSectionId(section.id);
-                      // eslint-disable-next-line no-console
-                      console.log("[DEBUG] setTargetSectionId done");
                       setShowAddResource(true);
-                      // eslint-disable-next-line no-console
-                      console.log("[DEBUG] setShowAddResource done");
                       setOpenSectionMenuId(null);
-                      // eslint-disable-next-line no-console
-                      console.log("[DEBUG] setOpenSectionMenuId done");
                     }}
                   >
                     <Icon name="add" size="sm" />
                     Add resource
                   </div>
-                  <div className="dropdown-divider" />
                   <div
-                    className="dropdown-item"
+                    className={useDesignSystem ? undefined : "dropdown-divider"}
+                    style={
+                      useDesignSystem
+                        ? {
+                            borderBottom:
+                              "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                            margin: "4px 0",
+                          }
+                        : undefined
+                    }
+                  />
+                  <div
+                    className={useDesignSystem ? undefined : "dropdown-item"}
                     onClick={() => {
                       setOpenSectionMenuId(null);
                       showConfirm(
                         "Delete Section",
                         `Delete section "${section.title}" and its resources?`,
                         async () => {
-                          // Optimistic update
                           const updatedSections =
                             activeWorkspace.sections?.filter(
                               (s) => s.id !== section.id,
@@ -289,12 +372,23 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                             activeWorkspace.id,
                             section.id,
                           );
-                          // loadWorkspaces();
                           closeConfirm();
                         },
                       );
                     }}
-                    style={{ color: "var(--color-accent-danger)" }}
+                    style={{
+                      color: "var(--accent, #991b1b)",
+                      ...(useDesignSystem
+                        ? {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "8px 12px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                          }
+                        : {}),
+                    }}
                   >
                     <Icon name="delete" size="sm" />
                     Delete section
@@ -327,7 +421,6 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                   }
                   onRemove={async (e) => {
                     e.stopPropagation();
-                    // Optimistic update
                     const updatedSections = activeWorkspace.sections?.map(
                       (s) => {
                         if (s.id === section.id) {
@@ -351,7 +444,6 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                       section.id,
                       res.id,
                     );
-                    // loadWorkspaces(); // Rely on storage listener
                   }}
                 />
               ))}
@@ -361,21 +453,40 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                   title="No resources yet"
                   description="Save links, docs, and files here to keep your project organized."
                   action={
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        setTargetSectionId(section.id);
-                        setShowAddResource(true);
-                        setOpenSectionMenuId(null);
-                      }}
-                    >
-                      <Icon
-                        name="add"
+                    useDesignSystem ? (
+                      <Button
+                        variant="solid"
                         size="sm"
-                        style={{ marginRight: "6px" }}
-                      />
-                      Add Resource
-                    </button>
+                        onClick={() => {
+                          setTargetSectionId(section.id);
+                          setShowAddResource(true);
+                          setOpenSectionMenuId(null);
+                        }}
+                      >
+                        <Icon
+                          name="add"
+                          size="sm"
+                          style={{ marginRight: "6px" }}
+                        />
+                        Add Resource
+                      </Button>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setTargetSectionId(section.id);
+                          setShowAddResource(true);
+                          setOpenSectionMenuId(null);
+                        }}
+                      >
+                        <Icon
+                          name="add"
+                          size="sm"
+                          style={{ marginRight: "6px" }}
+                        />
+                        Add Resource
+                      </button>
+                    )
                   }
                 />
               )}

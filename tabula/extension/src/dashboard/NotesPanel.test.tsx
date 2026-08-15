@@ -28,8 +28,13 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { NotesPanel } from "./NotesPanel";
 import type { Note } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 describe("NotesPanel", () => {
   const mockNotes: Note[] = [
@@ -63,6 +68,7 @@ describe("NotesPanel", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -197,6 +203,20 @@ describe("NotesPanel", () => {
       const deleteButtons = screen.getAllByText("×");
       fireEvent.click(deleteButtons[0]);
       expect(defaultProps.onDeleteNote).toHaveBeenCalledWith("1");
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render design system buttons and add note interface", () => {
+      render(<NotesPanel {...defaultProps} showAddNote={true} />);
+      expect(screen.getByText("+ New Note")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Note Title")).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
     });
   });
 });

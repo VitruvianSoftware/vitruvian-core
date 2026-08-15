@@ -28,8 +28,13 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { TasksPanel } from "./TasksPanel";
 import type { Task } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 describe("TasksPanel", () => {
   const now = Date.now();
@@ -49,6 +54,7 @@ describe("TasksPanel", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -144,6 +150,21 @@ describe("TasksPanel", () => {
       const deleteButtons = screen.getAllByText("×");
       fireEvent.click(deleteButtons[0]);
       expect(defaultProps.onDeleteTask).toHaveBeenCalledWith("1");
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render tasks input and task list with design system styling", () => {
+      render(<TasksPanel {...defaultProps} />);
+      expect(
+        screen.getByPlaceholderText("Add a new task..."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("First Task")).toBeInTheDocument();
+      expect(screen.getByText("Second Task")).toBeInTheDocument();
     });
   });
 });

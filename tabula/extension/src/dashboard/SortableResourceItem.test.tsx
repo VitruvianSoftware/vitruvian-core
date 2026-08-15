@@ -33,8 +33,13 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { SortableResourceItem } from "./SortableResourceItem";
 import type { Resource } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Wrap component with required contexts for testing
 const renderWithContexts = (
@@ -68,6 +73,7 @@ describe("SortableResourceItem", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -181,6 +187,21 @@ describe("SortableResourceItem", () => {
         "src",
         "https://www.google.com/s2/favicons?domain=https://example.com",
       );
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render resource item with design system structure", () => {
+      renderWithContexts(<SortableResourceItem {...defaultProps} />);
+      expect(screen.getByText("Test Resource")).toBeInTheDocument();
+      expect(screen.getByText("https://example.com")).toBeInTheDocument();
+      expect(screen.getByTitle("Open Link")).toBeInTheDocument();
+      expect(screen.getByTitle("Edit")).toBeInTheDocument();
+      expect(screen.getByTitle("Remove")).toBeInTheDocument();
     });
   });
 });
