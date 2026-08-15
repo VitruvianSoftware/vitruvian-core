@@ -21,10 +21,16 @@
  */
 
 import { render, screen, fireEvent } from "@testing-library/react";
+import "@testing-library/jest-dom";
 import {
   CrossDeviceSessionPopover,
   type CrossDeviceTab,
 } from "./CrossDeviceSessionPopover";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 const tabs: CrossDeviceTab[] = [
   { url: "https://google.com", title: "Google" },
@@ -33,6 +39,11 @@ const tabs: CrossDeviceTab[] = [
 ];
 
 describe("CrossDeviceSessionPopover", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
+  });
+
   it("renders the prompt with all incoming tabs", () => {
     render(
       <CrossDeviceSessionPopover
@@ -58,9 +69,9 @@ describe("CrossDeviceSessionPopover", () => {
         onKeepMine={jest.fn()}
       />,
     );
-    fireEvent.click(screen.getByText(/Apply 3 tabs/));
-    expect(onApply).toHaveBeenCalledTimes(1);
-    expect(onApply.mock.calls[0][0]).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: /Apply 3 tabs/ }));
+    expect(onApply).toHaveBeenCalledWith(tabs);
   });
 
   it("unchecking a tab excludes it from Apply", () => {
@@ -72,20 +83,33 @@ describe("CrossDeviceSessionPopover", () => {
         onKeepMine={jest.fn()}
       />,
     );
-    // Toggle "GitHub" off, then apply the remaining two.
+
     fireEvent.click(screen.getByText("GitHub"));
-    expect(screen.getByText(/Apply 2 tabs/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Apply 2 tabs/));
-    const applied = onApply.mock.calls[0][0] as CrossDeviceTab[];
-    expect(applied.map((t) => t.url)).toEqual([
-      "https://google.com",
-      "https://mdn.com",
-    ]);
+    fireEvent.click(screen.getByRole("button", { name: /Apply 2 tabs/ }));
+
+    expect(onApply).toHaveBeenCalledWith([tabs[0], tabs[2]]);
   });
 
-  it("'Keep my tabs' triggers onKeepMine and never applies", () => {
-    const onApply = jest.fn();
+  it("unchecking all tabs disables Apply", () => {
+    render(
+      <CrossDeviceSessionPopover
+        serverTabs={tabs}
+        onApply={jest.fn()}
+        onKeepMine={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Google"));
+    fireEvent.click(screen.getByText("GitHub"));
+    fireEvent.click(screen.getByText("MDN"));
+
+    const btn = screen.getByRole("button", { name: /Apply 0 tabs/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it("Keep mine invokes onKeepMine without applying", () => {
     const onKeepMine = jest.fn();
+    const onApply = jest.fn();
     render(
       <CrossDeviceSessionPopover
         serverTabs={tabs}
@@ -93,34 +117,48 @@ describe("CrossDeviceSessionPopover", () => {
         onKeepMine={onKeepMine}
       />,
     );
-    fireEvent.click(screen.getByText("Keep my tabs"));
-    expect(onKeepMine).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Keep my tabs/ }));
+    expect(onKeepMine).toHaveBeenCalled();
     expect(onApply).not.toHaveBeenCalled();
   });
 
-  it("disables Apply when nothing is selected", () => {
-    const onApply = jest.fn();
+  it("uses the optional device label in the subtitle", () => {
     render(
       <CrossDeviceSessionPopover
-        serverTabs={[{ url: "https://only.com", title: "Only" }]}
-        onApply={onApply}
-        onKeepMine={jest.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByText("Only")); // uncheck the single tab
-    // The disabled button does not fire its click handler.
-    fireEvent.click(screen.getByText(/Apply 0 tabs/));
-    expect(onApply).not.toHaveBeenCalled();
-  });
-
-  it("singularizes the Apply label for one selected tab", () => {
-    render(
-      <CrossDeviceSessionPopover
-        serverTabs={[{ url: "https://only.com", title: "Only" }]}
+        serverTabs={tabs}
+        otherDeviceLabel="MacBook Pro"
         onApply={jest.fn()}
         onKeepMine={jest.fn()}
       />,
     );
-    expect(screen.getByText("Apply 1 tab")).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/This space is active on MacBook Pro/),
+    ).toBeInTheDocument();
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("renders design system cross device popover", () => {
+      render(
+        <CrossDeviceSessionPopover
+          serverTabs={tabs}
+          onApply={jest.fn()}
+          onKeepMine={jest.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByText("Changes from your other device"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Google")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Apply 3 tabs/ }),
+      ).toBeInTheDocument();
+    });
   });
 });

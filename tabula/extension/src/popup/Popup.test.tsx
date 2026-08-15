@@ -27,6 +27,12 @@ import Popup from "./Popup";
 import { useWorkspaceStore } from "../stores/workspace";
 import { AuthService } from "../services/auth";
 import { ApiService } from "../services/api";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
+// Mock feature flag
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Mock stores
 jest.mock("../stores/workspace", () => ({
@@ -144,6 +150,8 @@ describe("Popup", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
+    (ApiService.refreshCachedUser as jest.Mock).mockResolvedValue(null);
     (useWorkspaceStore as unknown as jest.Mock).mockReturnValue(
       getDefaultStoreState(),
     );
@@ -678,6 +686,34 @@ describe("Popup", () => {
     // Should not throw, error handled by store
     await waitFor(() => {
       expect(mockDeleteWorkspace).toHaveBeenCalledWith("ws1");
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render popup with design system typography and buttons", async () => {
+      (AuthService.getUser as jest.Mock).mockResolvedValue({
+        id: "user1",
+        name: "Test User",
+      });
+      (useWorkspaceStore as unknown as jest.Mock).mockReturnValue({
+        ...getDefaultStoreState(),
+        workspaces: [{ id: "ws1", name: "Work", tabs: [] }],
+      });
+
+      render(<Popup />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Tabula")).toBeInTheDocument();
+        expect(screen.getByText("Test User")).toBeInTheDocument();
+        expect(screen.getByText("Dashboard")).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /\+.*New Space/ }),
+        ).toBeInTheDocument();
+      });
     });
   });
 });

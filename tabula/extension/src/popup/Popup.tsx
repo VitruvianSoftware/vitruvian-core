@@ -36,6 +36,7 @@ import { useTheme } from "../hooks/useTheme";
 import { ConfirmModal } from "../dashboard/ConfirmModal";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Button } from "@vitruviansoftware/design-system";
 
 // Import styles
 import "../styles/global.css";
@@ -176,9 +177,11 @@ const Popup: React.FC = () => {
     <div
       className="popup-header"
       style={{
-        marginBottom: "20px",
+        marginBottom: "16px",
         paddingBottom: "16px",
-        borderBottom: "1px solid var(--color-border)",
+        borderBottom: useDesignSystem
+          ? "1px solid var(--ink, #1f1d1a)"
+          : "1px solid var(--color-border)",
       }}
     >
       {/* Top row: Branding and User Info */}
@@ -188,12 +191,23 @@ const Popup: React.FC = () => {
       >
         <div className="flex items-center gap-sm">
           <h1
-            className="text-primary"
-            style={{
-              fontSize: "20px",
-              fontWeight: "700",
-              letterSpacing: "-0.3px",
-            }}
+            className={useDesignSystem ? undefined : "text-primary"}
+            style={
+              useDesignSystem
+                ? {
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                    letterSpacing: "-0.02em",
+                    color: "var(--ink, #1f1d1a)",
+                    margin: 0,
+                  }
+                : {
+                    fontSize: "20px",
+                    fontWeight: "700",
+                    letterSpacing: "-0.3px",
+                  }
+            }
           >
             Tabula
           </h1>
@@ -202,20 +216,32 @@ const Popup: React.FC = () => {
         {user && (
           <div
             className="flex items-center gap-xs"
-            style={{
-              padding: "4px 10px",
-              borderRadius: "16px",
-              backgroundColor: "var(--color-bg-card-hover)",
-              border: "1px solid var(--color-border)",
-              maxWidth: "140px",
-            }}
+            style={
+              useDesignSystem
+                ? {
+                    padding: "3px 8px",
+                    borderRadius: "0",
+                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.04))",
+                    border: "1px solid var(--ink, #1f1d1a)",
+                    maxWidth: "140px",
+                  }
+                : {
+                    padding: "4px 10px",
+                    borderRadius: "16px",
+                    backgroundColor: "var(--color-bg-card-hover)",
+                    border: "1px solid var(--color-border)",
+                    maxWidth: "140px",
+                  }
+            }
           >
             <span
               style={{
                 width: "6px",
                 height: "6px",
-                borderRadius: "50%",
-                backgroundColor: "var(--color-accent-success)",
+                borderRadius: useDesignSystem ? "0" : "50%",
+                backgroundColor: useDesignSystem
+                  ? "var(--ink, #1f1d1a)"
+                  : "var(--color-accent-success)",
                 flexShrink: 0,
               }}
             />
@@ -223,7 +249,12 @@ const Popup: React.FC = () => {
               className="text-ellipsis"
               style={{
                 fontSize: "11px",
-                color: "var(--color-text-secondary)",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
+                color: useDesignSystem
+                  ? "var(--ink, #1f1d1a)"
+                  : "var(--color-text-secondary)",
                 fontWeight: "500",
               }}
             >
@@ -235,65 +266,115 @@ const Popup: React.FC = () => {
 
       {/* Bottom row: Actions */}
       <div className="flex justify-between items-center">
-        <button
-          className="btn btn-secondary"
-          style={{
-            fontSize: "12px",
-            padding: "6px 12px",
-            borderRadius: "6px",
-          }}
-          onClick={() =>
-            chrome.tabs.create({
-              url: "dashboard.html",
-              pinned: true,
-              active: true,
-            })
-          }
-        >
-          <Icon name="dashboard" size="sm" />
-          <span style={{ marginLeft: "6px" }}>Dashboard</span>
-        </button>
+        {useDesignSystem ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              chrome.tabs.create({
+                url: "dashboard.html",
+                pinned: true,
+                active: true,
+              })
+            }
+          >
+            <Icon name="dashboard" size="sm" />
+            <span style={{ marginLeft: "6px" }}>Dashboard</span>
+          </Button>
+        ) : (
+          <button
+            className="btn btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "6px 12px",
+              borderRadius: "6px",
+            }}
+            onClick={() =>
+              chrome.tabs.create({
+                url: "dashboard.html",
+                pinned: true,
+                active: true,
+              })
+            }
+          >
+            <Icon name="dashboard" size="sm" />
+            <span style={{ marginLeft: "6px" }}>Dashboard</span>
+          </button>
+        )}
 
         <div className="flex items-center gap-xs">
-          {view === "list" && (
-            <button
-              type="button"
-              onClick={() => setView("create")}
-              className="btn btn-primary"
-              disabled={workspaces.length >= 10}
-              style={{
-                fontSize: "12px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-              }}
-            >
-              <span style={{ marginRight: "4px" }}>+</span> New Space
-            </button>
+          {view === "list" &&
+            (useDesignSystem ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setView("create")}
+                disabled={workspaces.length >= 10}
+              >
+                <span style={{ marginRight: "4px" }}>+</span> New Space
+              </Button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setView("create")}
+                className="btn btn-primary"
+                disabled={workspaces.length >= 10}
+                style={{
+                  fontSize: "12px",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                }}
+              >
+                <span style={{ marginRight: "4px" }}>+</span> New Space
+              </button>
+            ))}
+          {useDesignSystem ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowAccountSettings(true)}
+                title="Settings"
+              >
+                <Icon name="settings" size="sm" />
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleLogout}
+                title="Sign out"
+              >
+                <Icon name="logout" size="sm" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAccountSettings(true)}
+                className="btn btn-secondary"
+                title="Settings"
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "6px",
+                }}
+              >
+                <Icon name="settings" size="sm" />
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="btn btn-secondary"
+                title="Sign out"
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "6px",
+                }}
+              >
+                <Icon name="logout" size="sm" />
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => setShowAccountSettings(true)}
-            className="btn btn-secondary"
-            title="Settings"
-            style={{
-              padding: "6px 8px",
-              borderRadius: "6px",
-            }}
-          >
-            <Icon name="settings" size="sm" />
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="btn btn-secondary"
-            title="Sign out"
-            style={{
-              padding: "6px 8px",
-              borderRadius: "6px",
-            }}
-          >
-            <Icon name="logout" size="sm" />
-          </button>
         </div>
       </div>
     </div>
@@ -350,8 +431,14 @@ const Popup: React.FC = () => {
       <div
         style={{
           marginBottom: "12px",
-          fontSize: "12px",
-          color: "var(--color-text-secondary)",
+          fontSize: "11px",
+          fontFamily: useDesignSystem
+            ? "var(--font-mono, monospace)"
+            : undefined,
+          color: useDesignSystem
+            ? "var(--paper-dim, #736d64)"
+            : "var(--color-text-secondary)",
+          textTransform: useDesignSystem ? "uppercase" : undefined,
         }}
       >
         {workspaces.length} / 10 workspaces used
@@ -375,13 +462,24 @@ const Popup: React.FC = () => {
 
       {workspaces.length === 0 ? (
         <div
-          className="card bg-card-hover"
-          style={{
-            textAlign: "center",
-            padding: "40px 24px",
-            color: "var(--color-text-secondary)",
-            borderStyle: "dashed",
-          }}
+          className={useDesignSystem ? undefined : "card bg-card-hover"}
+          style={
+            useDesignSystem
+              ? {
+                  textAlign: "center",
+                  padding: "36px 20px",
+                  color: "var(--paper-dim, #736d64)",
+                  border: "1px dashed var(--ink, #1f1d1a)",
+                  backgroundColor: "var(--paper, #fbf7ee)",
+                  fontFamily: "var(--font-mono, monospace)",
+                }
+              : {
+                  textAlign: "center",
+                  padding: "40px 24px",
+                  color: "var(--color-text-secondary)",
+                  borderStyle: "dashed",
+                }
+          }
         >
           <p
             className="text-main"
@@ -441,13 +539,21 @@ const Popup: React.FC = () => {
         style={{
           padding: "24px",
           width: "360px",
+          backgroundColor: useDesignSystem
+            ? "var(--paper, #fbf7ee)"
+            : undefined,
           fontFamily: "var(--font-family)",
         }}
       >
         <h1
           style={{
             textAlign: "center",
-            color: "var(--color-primary)",
+            color: useDesignSystem
+              ? "var(--ink, #1f1d1a)"
+              : "var(--color-primary)",
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
+              : undefined,
             marginBottom: "24px",
           }}
         >
@@ -461,13 +567,15 @@ const Popup: React.FC = () => {
   // App View
   return (
     <div
-      className="bg-page text-main"
+      className={useDesignSystem ? undefined : "bg-page text-main"}
       data-design-system={useDesignSystem ? "true" : "false"}
       style={{
         width: "400px",
         minHeight: "400px",
         maxHeight: "600px",
         padding: "20px",
+        backgroundColor: useDesignSystem ? "var(--paper, #fbf7ee)" : undefined,
+        color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
         fontFamily: "var(--font-family)",
       }}
     >
