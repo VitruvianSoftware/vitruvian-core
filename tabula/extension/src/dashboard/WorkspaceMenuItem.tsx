@@ -25,6 +25,7 @@ import { MenuOverlay } from "./MenuOverlay";
 import { SubmenuFlyout } from "./SubmenuFlyout";
 import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 import type { Workspace, SpaceGroup } from "../types";
 
@@ -79,6 +80,10 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const colorItemRef = useRef<HTMLDivElement>(null);
   const sectionItemRef = useRef<HTMLDivElement>(null);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Compute effective accent color: workspace color > group color > default
   const groupColor = spaceGroups.find((g) => g.id === workspace.groupId)?.color;
@@ -93,9 +98,24 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
           justifyContent: "space-between",
           alignItems: "center",
           position: "relative",
-          // Apply workspace accent color as CSS custom property
-          "--workspace-accent-color":
-            effectiveColor || "var(--color-accent-primary)",
+          ...(useDesignSystem
+            ? {
+                borderLeft: isActive
+                  ? "3px solid var(--ink, #1f1d1a)"
+                  : "3px solid transparent",
+                backgroundColor: isActive
+                  ? "var(--paper-hover, rgba(0,0,0,0.04))"
+                  : "transparent",
+                color: isActive
+                  ? "var(--ink, #1f1d1a)"
+                  : "var(--paper-dim, #736d64)",
+                fontWeight: isActive ? 600 : 400,
+                borderRadius: "0",
+              }
+            : {
+                "--workspace-accent-color":
+                  effectiveColor || "var(--color-accent-primary)",
+              }),
           ...style,
         } as React.CSSProperties
       }
@@ -134,14 +154,42 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
         {/* Workspace Menu */}
         {isMenuOpen && (
           <div
-            className="dropdown-menu"
-            style={{ right: 0, top: "100%", minWidth: "180px", zIndex: 20 }}
+            className={useDesignSystem ? undefined : "dropdown-menu"}
+            style={{
+              right: 0,
+              top: "100%",
+              minWidth: "180px",
+              zIndex: 20,
+              position: "absolute",
+              backgroundColor: useDesignSystem
+                ? "var(--paper, #fbf7ee)"
+                : undefined,
+              border: useDesignSystem
+                ? "1px solid var(--ink, #1f1d1a)"
+                : undefined,
+              boxShadow: useDesignSystem
+                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                : undefined,
+            }}
           >
-            {/* Share — hidden until sharing ships (M2: #139/#140). See #137. */}
+            {/* Share — hidden until sharing ships */}
             {FEATURE_FLAGS.SHARING_ENABLED && (
               <div
-                className="dropdown-item"
-                style={{ opacity: 0.5, cursor: "not-allowed" }}
+                className={useDesignSystem ? undefined : "dropdown-item"}
+                style={{
+                  opacity: 0.5,
+                  cursor: "not-allowed",
+                  ...(useDesignSystem
+                    ? {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 12px",
+                        fontSize: "12px",
+                        color: "var(--ink, #1f1d1a)",
+                      }
+                    : {}),
+                }}
                 title="Coming soon"
               >
                 <Icon name="share" size="sm" />
@@ -151,19 +199,56 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
 
             {/* Add a description (placeholder) */}
             <div
-              className="dropdown-item"
-              style={{ opacity: 0.5, cursor: "not-allowed" }}
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={{
+                opacity: 0.5,
+                cursor: "not-allowed",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               title="Coming soon"
             >
               <Icon name="description" size="sm" />
               Add a description
             </div>
-            <div className="dropdown-divider" />
+            <div
+              className={useDesignSystem ? undefined : "dropdown-divider"}
+              style={
+                useDesignSystem
+                  ? {
+                      borderBottom:
+                        "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                      margin: "4px 0",
+                    }
+                  : undefined
+              }
+            />
 
             {/* Duplicate (placeholder) */}
             <div
-              className="dropdown-item"
-              style={{ opacity: 0.5, cursor: "not-allowed" }}
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={{
+                opacity: 0.5,
+                cursor: "not-allowed",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               title="Coming soon"
             >
               <Icon name="content_copy" size="sm" />
@@ -171,16 +256,45 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
             </div>
 
             {/* Rename */}
-            <div className="dropdown-item" onClick={onRename}>
+            <div
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={
+                useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : undefined
+              }
+              onClick={onRename}
+            >
               <Icon name="edit" size="sm" />
               Rename
             </div>
 
             {/* Change color */}
             <div
-              className="dropdown-item"
+              className={useDesignSystem ? undefined : "dropdown-item"}
               ref={colorItemRef}
-              style={{ position: "relative" }}
+              style={{
+                position: "relative",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleColorPicker();
@@ -218,7 +332,10 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                         style={{
                           width: "12px",
                           height: "12px",
-                          borderRadius: "50%",
+                          borderRadius: useDesignSystem ? "0" : "50%",
+                          border: useDesignSystem
+                            ? "1px solid var(--ink, #1f1d1a)"
+                            : undefined,
                           backgroundColor: color.value,
                         }}
                       />
@@ -233,9 +350,22 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
 
             {/* Move to section */}
             <div
-              className="dropdown-item"
+              className={useDesignSystem ? undefined : "dropdown-item"}
               ref={sectionItemRef}
-              style={{ position: "relative" }}
+              style={{
+                position: "relative",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleSectionPicker();
@@ -287,7 +417,10 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                         style={{
                           width: "8px",
                           height: "8px",
-                          borderRadius: "50%",
+                          borderRadius: useDesignSystem ? "0" : "50%",
+                          border: useDesignSystem
+                            ? "1px solid var(--ink, #1f1d1a)"
+                            : undefined,
                           backgroundColor: group.color,
                         }}
                       />
@@ -297,12 +430,36 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                 ))}
               </SubmenuFlyout>
             </div>
-            <div className="dropdown-divider" />
+            <div
+              className={useDesignSystem ? undefined : "dropdown-divider"}
+              style={
+                useDesignSystem
+                  ? {
+                      borderBottom:
+                        "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                      margin: "4px 0",
+                    }
+                  : undefined
+              }
+            />
 
             {/* Archive (placeholder) */}
             <div
-              className="dropdown-item"
-              style={{ opacity: 0.5, cursor: "not-allowed" }}
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={{
+                opacity: 0.5,
+                cursor: "not-allowed",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      color: "var(--ink, #1f1d1a)",
+                    }
+                  : {}),
+              }}
               title="Coming soon"
             >
               <Icon name="archive" size="sm" />
@@ -311,8 +468,20 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
 
             {/* Delete */}
             <div
-              className="dropdown-item"
-              style={{ color: "var(--color-accent-danger)" }}
+              className={useDesignSystem ? undefined : "dropdown-item"}
+              style={{
+                color: "var(--accent, #991b1b)",
+                ...(useDesignSystem
+                  ? {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "8px 12px",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                    }
+                  : {}),
+              }}
               onClick={onDelete}
             >
               <Icon name="delete" size="sm" />

@@ -26,6 +26,7 @@
 
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent } from "@testing-library/react";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import {
   SidebarGroupHeader,
   SidebarGroupHeaderProps,
@@ -37,6 +38,10 @@ jest.mock("../components/icons", () => ({
   Icon: ({ name }: { name: string }) => (
     <span data-testid={`icon-${name}`}>{name}</span>
   ),
+}));
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
 }));
 
 describe("SidebarGroupHeader", () => {
@@ -65,6 +70,7 @@ describe("SidebarGroupHeader", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -203,6 +209,27 @@ describe("SidebarGroupHeader", () => {
       );
       fireEvent.click(screen.getByText("None"));
       expect(defaultProps.onChangeColor).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render group header with design system styling", () => {
+      render(
+        <SidebarGroupHeader
+          {...defaultProps}
+          isMenuOpen={true}
+          colorPickerOpen={true}
+        />,
+      );
+      expect(screen.getByText("Test Group")).toBeInTheDocument();
+      expect(screen.getByText("Rename")).toBeInTheDocument();
+      expect(screen.getByText("Change color")).toBeInTheDocument();
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.getByText("Red")).toBeInTheDocument();
     });
   });
 });
