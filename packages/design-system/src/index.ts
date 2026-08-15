@@ -53,6 +53,6 @@ export {
 export type { Signal, LogLevel } from "./DataDisplay.js";
 export { Terminal, Code } from "./Terminal.js";
 export type { TermLine } from "./Terminal.js";
-export { Dialog, Banner } from "./Overlay.js";
+export { Dialog, Banner, Menu, MenuItem, MenuDivider } from "./Overlay.js";
 export type { DialogProps } from "./Overlay.js";
 export { EmptyState, Skeleton, Spinner } from "./States.js";

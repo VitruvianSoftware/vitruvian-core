@@ -89,3 +89,53 @@ export function Banner({
     </div>
   );
 }
+
+export function Menu({
+  children,
+  className,
+  style,
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("dropdown-menu glass-menu", className)}
+      style={{
+        borderRadius: "0",
+        border: "1px solid var(--glass-border)",
+        fontFamily: "var(--font-mono, monospace)",
+        ...style,
+      }}
+      {...rest}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function MenuItem({
+  children,
+  className,
+  destructive,
+  style,
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement> & { destructive?: boolean }) {
+  return (
+    <div
+      className={cn("dropdown-item", className)}
+      style={{
+        ...(destructive ? { color: "var(--color-accent-danger)" } : {}),
+        ...style,
+      }}
+      {...rest}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function MenuDivider({
+  className,
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("dropdown-divider", className)} {...rest} />;
+}

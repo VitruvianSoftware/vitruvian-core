@@ -35,6 +35,7 @@ import { Modal } from "../components/Modal";
 import { Icon } from "../components/icons";
 import { useTheme } from "../hooks/useTheme";
 import { useTabSync } from "../hooks/useTabSync";
+import { Button } from "@vitruviansoftware/design-system";
 import { useLiveTabs } from "../hooks/useLiveTabs";
 import { useLatest } from "../hooks/useLatest";
 import { SortableNavItem } from "./SortableNavItem";
@@ -917,19 +918,35 @@ export const Dashboard: React.FC = () => {
                 >
                   Create your first space to organize tabs
                 </div>
-                <button
-                  className="btn-primary"
-                  style={{ fontSize: "var(--font-size-sm)" }}
-                  onClick={() => {
-                    setModalType("create");
-                    setModalInputValue("");
-                    setModalOpen(true);
-                  }}
-                  data-testid="empty-state-new-space-button"
-                >
-                  <Icon name="add" size="sm" style={{ marginRight: "4px" }} />
-                  Get Started
-                </button>
+                {useDesignSystem ? (
+                  <Button
+                    variant="primary"
+                    style={{ fontSize: "var(--font-size-sm)" }}
+                    onClick={() => {
+                      setModalType("create");
+                      setModalInputValue("");
+                      setModalOpen(true);
+                    }}
+                    data-testid="empty-state-new-space-button"
+                  >
+                    <Icon name="add" size="sm" style={{ marginRight: "4px" }} />
+                    Create Space
+                  </Button>
+                ) : (
+                  <button
+                    className="btn-primary"
+                    style={{ fontSize: "var(--font-size-sm)" }}
+                    onClick={() => {
+                      setModalType("create");
+                      setModalInputValue("");
+                      setModalOpen(true);
+                    }}
+                    data-testid="empty-state-new-space-button"
+                  >
+                    <Icon name="add" size="sm" style={{ marginRight: "4px" }} />
+                    Get Started
+                  </button>
+                )}
               </div>
             ) : (
               <DroppableContainer id="ungrouped-list" containerType="section">
@@ -1316,9 +1333,12 @@ export const Dashboard: React.FC = () => {
                 style={{ minWidth: "80px", justifyContent: "flex-end" }}
               >
                 {/* Share — hidden until sharing ships (M2: #139/#140). See #137. */}
-                {FEATURE_FLAGS.SHARING_ENABLED && (
-                  <button className="btn btn-primary">Share</button>
-                )}
+                {FEATURE_FLAGS.SHARING_ENABLED &&
+                  (useDesignSystem ? (
+                    <Button variant="primary">Share</Button>
+                  ) : (
+                    <button className="btn btn-primary">Share</button>
+                  ))}
               </div>
             </div>
 
@@ -1376,18 +1396,63 @@ export const Dashboard: React.FC = () => {
                             }}
                           />
                           <div className="flex gap-sm">
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={handleCreateSection}
-                            >
-                              Save
-                            </button>
-                            <button
-                              className="btn btn-sm btn-secondary"
-                              onClick={() => setShowAddSection(false)}
-                            >
-                              Cancel
-                            </button>
+                            {useDesignSystem ? (
+                              <>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={handleCreateSection}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setShowAddSection(false)}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <>
+                                  {useDesignSystem ? (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={handleCreateSection}
+                                    >
+                                      Save
+                                    </Button>
+                                  ) : (
+                                    <button
+                                      className="btn btn-sm btn-primary"
+                                      onClick={handleCreateSection}
+                                    >
+                                      Save
+                                    </button>
+                                  )}
+                                </>
+                                <>
+                                  {useDesignSystem ? (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => setShowAddSection(false)}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  ) : (
+                                    <button
+                                      className="btn btn-sm btn-secondary"
+                                      onClick={() => setShowAddSection(false)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
+                                </>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1428,19 +1493,66 @@ export const Dashboard: React.FC = () => {
                             onChange={(e) => setNewResourceUrl(e.target.value)}
                           />
                           <div className="flex gap-sm justify-end">
-                            <button
-                              className="btn btn-sm btn-secondary"
-                              onClick={() => setShowAddResource(false)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              className="btn btn-sm btn-primary"
-                              disabled={!newResourceUrl}
-                              onClick={handleAddResource}
-                            >
-                              Save
-                            </button>
+                            {useDesignSystem ? (
+                              <>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setShowAddResource(false)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  disabled={!newResourceUrl}
+                                  onClick={handleAddResource}
+                                >
+                                  Save
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <>
+                                  {useDesignSystem ? (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => setShowAddResource(false)}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  ) : (
+                                    <button
+                                      className="btn btn-sm btn-secondary"
+                                      onClick={() => setShowAddResource(false)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
+                                </>
+                                <>
+                                  {useDesignSystem ? (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      disabled={!newResourceUrl}
+                                      onClick={handleAddResource}
+                                    >
+                                      Save
+                                    </Button>
+                                  ) : (
+                                    <button
+                                      className="btn btn-sm btn-primary"
+                                      disabled={!newResourceUrl}
+                                      onClick={handleAddResource}
+                                    >
+                                      Save
+                                    </button>
+                                  )}
+                                </>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1493,16 +1605,27 @@ export const Dashboard: React.FC = () => {
                       </SortableContext>
 
                       {/* Add Section Button at Bottom */}
-                      {!showAddSection && (
-                        <button
-                          className="btn btn-sm btn-shaded"
-                          style={{ width: "100%", marginTop: "8px" }}
-                          onClick={() => setShowAddSection(true)}
-                        >
-                          <Icon name="add" size="sm" />
-                          RESOURCE SECTION
-                        </button>
-                      )}
+                      {!showAddSection &&
+                        (useDesignSystem ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            style={{ width: "100%", marginTop: "8px" }}
+                            onClick={() => setShowAddSection(true)}
+                          >
+                            <Icon name="add" size="sm" />
+                            RESOURCE SECTION
+                          </Button>
+                        ) : (
+                          <button
+                            className="btn btn-sm btn-shaded"
+                            style={{ width: "100%", marginTop: "8px" }}
+                            onClick={() => setShowAddSection(true)}
+                          >
+                            <Icon name="add" size="sm" />
+                            RESOURCE SECTION
+                          </button>
+                        ))}
 
                       <GhostOverlay
                         activeId={activeId}
@@ -1602,71 +1725,145 @@ export const Dashboard: React.FC = () => {
         title={getModalTitle()}
         footer={
           <>
-            <button
-              className="btn btn-secondary"
-              onClick={() => setModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={async () => {
-                if (!modalInputValue.trim()) return;
+            {useDesignSystem ? (
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setModalOpen(false)}
+              >
+                Cancel
+              </button>
+            )}
+            {useDesignSystem ? (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  if (!modalInputValue.trim()) return;
 
-                if (modalType === "create") {
-                  // Use store action which handles deduplication
-                  const newWs = await createWorkspaceAction({
-                    name: modalInputValue,
-                  });
-                  // Optionally set active if needed, though most users might want to stay on current
-                  if (!activeWorkspaceId) {
-                    setActiveWorkspaceAction(newWs.id);
-                  }
-                } else if (
-                  modalType === "rename-tab" &&
-                  editingTabId &&
-                  activeWorkspace
-                ) {
-                  const newTabs = activeWorkspace.tabs.map((t) =>
-                    t.id === editingTabId
-                      ? { ...t, title: modalInputValue, url: modalUrlValue }
-                      : t,
-                  );
-                  setActiveWorkspaceData({ ...activeWorkspace, tabs: newTabs });
-                  await WorkspaceService.updateWorkspace(activeWorkspace.id, {
-                    tabs: newTabs,
-                  });
-                } else if (
-                  modalType === "rename-resource" &&
-                  editingResourceId &&
-                  activeWorkspace
-                ) {
-                  if (editingResourceId.sectionId) {
-                    await WorkspaceService.updateResourceInSection(
-                      activeWorkspace.id,
-                      editingResourceId.sectionId,
-                      editingResourceId.id,
-                      { title: modalInputValue, url: modalUrlValue },
+                  if (modalType === "create") {
+                    // Use store action which handles deduplication
+                    const newWs = await createWorkspaceAction({
+                      name: modalInputValue,
+                    });
+                    // Optionally set active if needed, though most users might want to stay on current
+                    if (!activeWorkspaceId) {
+                      setActiveWorkspaceAction(newWs.id);
+                    }
+                  } else if (
+                    modalType === "rename-tab" &&
+                    editingTabId &&
+                    activeWorkspace
+                  ) {
+                    const newTabs = activeWorkspace.tabs.map((t) =>
+                      t.id === editingTabId
+                        ? { ...t, title: modalInputValue, url: modalUrlValue }
+                        : t,
                     );
-                  }
-                  loadWorkspaces();
-                } else if (modalType === "create-section") {
-                  if (modalInputValue) {
-                    await createSpaceGroup(modalInputValue);
+                    setActiveWorkspaceData({
+                      ...activeWorkspace,
+                      tabs: newTabs,
+                    });
+                    await WorkspaceService.updateWorkspace(activeWorkspace.id, {
+                      tabs: newTabs,
+                    });
+                  } else if (
+                    modalType === "rename-resource" &&
+                    editingResourceId &&
+                    activeWorkspace
+                  ) {
+                    if (editingResourceId.sectionId) {
+                      await WorkspaceService.updateResourceInSection(
+                        activeWorkspace.id,
+                        editingResourceId.sectionId,
+                        editingResourceId.id,
+                        { title: modalInputValue, url: modalUrlValue },
+                      );
+                    }
+                    loadWorkspaces();
+                  } else if (modalType === "create-section") {
+                    if (modalInputValue) {
+                      await createSpaceGroup(modalInputValue);
+                    }
+                    setModalOpen(false);
+                  } else if (activeWorkspace) {
+                    await updateWorkspaceAction(activeWorkspace.id, {
+                      name: modalInputValue,
+                    });
                   }
                   setModalOpen(false);
-                } else if (activeWorkspace) {
-                  await updateWorkspaceAction(activeWorkspace.id, {
-                    name: modalInputValue,
-                  });
-                }
-                setModalOpen(false);
-              }}
-            >
-              {modalType === "create" || modalType === "create-section"
-                ? "Create"
-                : "Save"}
-            </button>
+                }}
+              >
+                {modalType === "create" || modalType === "create-section"
+                  ? "Create"
+                  : "Save"}
+              </Button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  if (!modalInputValue.trim()) return;
+
+                  if (modalType === "create") {
+                    // Use store action which handles deduplication
+                    const newWs = await createWorkspaceAction({
+                      name: modalInputValue,
+                    });
+                    // Optionally set active if needed, though most users might want to stay on current
+                    if (!activeWorkspaceId) {
+                      setActiveWorkspaceAction(newWs.id);
+                    }
+                  } else if (
+                    modalType === "rename-tab" &&
+                    editingTabId &&
+                    activeWorkspace
+                  ) {
+                    const newTabs = activeWorkspace.tabs.map((t) =>
+                      t.id === editingTabId
+                        ? { ...t, title: modalInputValue, url: modalUrlValue }
+                        : t,
+                    );
+                    setActiveWorkspaceData({
+                      ...activeWorkspace,
+                      tabs: newTabs,
+                    });
+                    await WorkspaceService.updateWorkspace(activeWorkspace.id, {
+                      tabs: newTabs,
+                    });
+                  } else if (
+                    modalType === "rename-resource" &&
+                    editingResourceId &&
+                    activeWorkspace
+                  ) {
+                    if (editingResourceId.sectionId) {
+                      await WorkspaceService.updateResourceInSection(
+                        activeWorkspace.id,
+                        editingResourceId.sectionId,
+                        editingResourceId.id,
+                        { title: modalInputValue, url: modalUrlValue },
+                      );
+                    }
+                    loadWorkspaces();
+                  } else if (modalType === "create-section") {
+                    if (modalInputValue) {
+                      await createSpaceGroup(modalInputValue);
+                    }
+                    setModalOpen(false);
+                  } else if (activeWorkspace) {
+                    await updateWorkspaceAction(activeWorkspace.id, {
+                      name: modalInputValue,
+                    });
+                  }
+                  setModalOpen(false);
+                }}
+              >
+                {modalType === "create" || modalType === "create-section"
+                  ? "Create"
+                  : "Save"}
+              </button>
+            )}
           </>
         }
       >
@@ -1713,28 +1910,56 @@ export const Dashboard: React.FC = () => {
         title="Delete Workspace"
         footer={
           <>
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setModalOpen(false);
-                setDeletingWorkspaceId(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="btn btn-primary"
-              style={{ backgroundColor: "#dc2626" }}
-              onClick={async () => {
-                if (deletingWorkspaceId) {
-                  await deleteWorkspaceAction(deletingWorkspaceId);
-                  setDeletingWorkspaceId(null);
+            {useDesignSystem ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
                   setModalOpen(false);
-                }
-              }}
-            >
-              Delete
-            </button>
+                  setDeletingWorkspaceId(null);
+                }}
+              >
+                Cancel
+              </Button>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setModalOpen(false);
+                  setDeletingWorkspaceId(null);
+                }}
+              >
+                Cancel
+              </button>
+            )}
+            {useDesignSystem ? (
+              <Button
+                variant="danger"
+                style={{ backgroundColor: "#dc2626" }}
+                onClick={async () => {
+                  if (deletingWorkspaceId) {
+                    await deleteWorkspaceAction(deletingWorkspaceId);
+                    setDeletingWorkspaceId(null);
+                    setModalOpen(false);
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{ backgroundColor: "#dc2626" }}
+                onClick={async () => {
+                  if (deletingWorkspaceId) {
+                    await deleteWorkspaceAction(deletingWorkspaceId);
+                    setDeletingWorkspaceId(null);
+                    setModalOpen(false);
+                  }
+                }}
+              >
+                Delete
+              </button>
+            )}
           </>
         }
       >

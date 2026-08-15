@@ -36,7 +36,10 @@ import { useTheme } from "../hooks/useTheme";
 import { ConfirmModal } from "../dashboard/ConfirmModal";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
-import { Button } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  EmptyState as DesignEmptyState,
+} from "@vitruviansoftware/design-system";
 
 // Import styles
 import "../styles/global.css";
@@ -355,18 +358,33 @@ const Popup: React.FC = () => {
               >
                 <Icon name="settings" size="sm" />
               </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="btn btn-secondary"
-                title="Sign out"
-                style={{
-                  padding: "6px 8px",
-                  borderRadius: "6px",
-                }}
-              >
-                <Icon name="logout" size="sm" />
-              </button>
+              <>
+                {useDesignSystem ? (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={handleLogout}
+                    title="Sign out"
+                    style={{ padding: "6px 8px", borderRadius: "6px" }}
+                  >
+                    {" "}
+                    <Icon name="logout" size="sm" />{" "}
+                  </Button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="btn btn-secondary"
+                    title="Sign out"
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                    }}
+                  >
+                    <Icon name="logout" size="sm" />
+                  </button>
+                )}
+              </>
             </>
           )}
         </div>
@@ -455,40 +473,35 @@ const Popup: React.FC = () => {
       )}
 
       {workspaces.length === 0 ? (
-        <div
-          className={useDesignSystem ? undefined : "card bg-card-hover"}
-          style={
-            useDesignSystem
-              ? {
-                  textAlign: "center",
-                  padding: "36px 20px",
-                  color: "var(--color-text-secondary)",
-                  border: "1px dashed var(--color-border)",
-                  backgroundColor: "var(--color-bg-card)",
-                  fontFamily: "var(--font-mono, monospace)",
-                }
-              : {
-                  textAlign: "center",
-                  padding: "40px 24px",
-                  color: "var(--color-text-secondary)",
-                  borderStyle: "dashed",
-                }
-          }
-        >
-          <p
-            className="text-main"
+        useDesignSystem ? (
+          <DesignEmptyState title="No workspaces yet" framed>
+            Create a space to organize your tabs!
+          </DesignEmptyState>
+        ) : (
+          <div
+            className="card bg-card-hover"
             style={{
-              marginBottom: "8px",
-              fontWeight: "500",
-              color: "var(--color-text-primary)",
+              textAlign: "center",
+              padding: "40px 24px",
+              color: "var(--color-text-secondary)",
+              borderStyle: "dashed",
             }}
           >
-            No workspaces yet
-          </p>
-          <p style={{ fontSize: "12px" }}>
-            Create a space to organize your tabs!
-          </p>
-        </div>
+            <p
+              className="text-main"
+              style={{
+                marginBottom: "8px",
+                fontWeight: "500",
+                color: "var(--color-text-primary)",
+              }}
+            >
+              No workspaces yet
+            </p>
+            <p style={{ fontSize: "12px" }}>
+              Create a space to organize your tabs!
+            </p>
+          </div>
+        )
       ) : (
         <div style={{ maxHeight: "420px", overflowY: "auto" }}>
           {workspaces.map((workspace) => (

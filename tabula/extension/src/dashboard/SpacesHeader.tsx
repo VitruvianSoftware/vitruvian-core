@@ -25,6 +25,7 @@ import { MenuOverlay } from "./MenuOverlay";
 import { Icon } from "../components/icons";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Menu, MenuItem, MenuDivider } from "@vitruviansoftware/design-system";
 
 export interface SpacesHeaderProps {
   spacesMenuOpen: boolean;
@@ -80,35 +81,49 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
         >
           <Icon name="add" size="sm" />
         </button>
-        {spacesMenuOpen && (
-          <div
-            className="dropdown-menu glass-menu"
-            style={{
-              zIndex: 20,
-              right: 0,
-              top: "100%",
-              minWidth: "150px",
-              position: "absolute",
-              borderRadius: useDesignSystem ? "0" : undefined,
-              border: useDesignSystem
-                ? "1px solid var(--glass-border)"
-                : undefined,
-              fontFamily: useDesignSystem
-                ? "var(--font-mono, monospace)"
-                : undefined,
-            }}
-          >
-            <div className="dropdown-item" onClick={onNewSpace}>
-              <Icon name="folder" size="sm" />
-              New space
+        {spacesMenuOpen &&
+          (useDesignSystem ? (
+            <Menu
+              style={{
+                zIndex: 20,
+                right: 0,
+                top: "100%",
+                minWidth: "150px",
+                position: "absolute",
+              }}
+            >
+              <MenuItem onClick={onNewSpace}>
+                <Icon name="folder" size="sm" />
+                New space
+              </MenuItem>
+              <MenuDivider />
+              <MenuItem onClick={onNewSection}>
+                <Icon name="create_new_folder" size="sm" />
+                New section
+              </MenuItem>
+            </Menu>
+          ) : (
+            <div
+              className="dropdown-menu"
+              style={{
+                zIndex: 20,
+                right: 0,
+                top: "100%",
+                minWidth: "150px",
+                position: "absolute",
+              }}
+            >
+              <div className="dropdown-item" onClick={onNewSpace}>
+                <Icon name="folder" size="sm" />
+                New space
+              </div>
+              <div className="dropdown-divider" />
+              <div className="dropdown-item" onClick={onNewSection}>
+                <Icon name="create_new_folder" size="sm" />
+                New section
+              </div>
             </div>
-            <div className="dropdown-divider" />
-            <div className="dropdown-item" onClick={onNewSection}>
-              <Icon name="create_new_folder" size="sm" />
-              New section
-            </div>
-          </div>
-        )}
+          ))}
       </div>
     </div>
   );

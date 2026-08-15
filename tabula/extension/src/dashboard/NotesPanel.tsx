@@ -23,7 +23,11 @@
 import React from "react";
 import type { Note } from "../types";
 import { NoteEditor } from "../components/NoteEditor";
-import { Button, Input } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  Input,
+  EmptyState as DesignEmptyState,
+} from "@vitruviansoftware/design-system";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 
@@ -179,22 +183,17 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
         ))}
 
       <div className="notes-list">
-        {notes.length === 0 && !showAddNote && (
-          <div
-            className="empty-state"
-            style={
-              useDesignSystem
-                ? {
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "12px",
-                    color: "var(--color-text-secondary)",
-                  }
-                : undefined
-            }
-          >
-            No notes yet. Create one to keep track of ideas.
-          </div>
-        )}
+        {notes.length === 0 &&
+          !showAddNote &&
+          (useDesignSystem ? (
+            <DesignEmptyState title="No notes yet.">
+              Create one to keep track of ideas.
+            </DesignEmptyState>
+          ) : (
+            <div className="empty-state">
+              No notes yet. Create one to keep track of ideas.
+            </div>
+          ))}
         {notes.map((note) =>
           useDesignSystem ? (
             <div

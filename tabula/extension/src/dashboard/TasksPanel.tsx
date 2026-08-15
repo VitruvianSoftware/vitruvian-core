@@ -22,7 +22,10 @@
 
 import React from "react";
 import type { Task } from "../types";
-import { Input } from "@vitruviansoftware/design-system";
+import {
+  Input,
+  EmptyState as DesignEmptyState,
+} from "@vitruviansoftware/design-system";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 
@@ -83,22 +86,16 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
       </div>
 
       <div className="tasks-list" style={{ marginTop: "16px" }}>
-        {tasks.length === 0 && (
-          <div
-            className="empty-state"
-            style={
-              useDesignSystem
-                ? {
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "12px",
-                    color: "var(--color-text-secondary)",
-                  }
-                : undefined
-            }
-          >
-            No tasks yet. Stay organized by adding tasks here.
-          </div>
-        )}
+        {tasks.length === 0 &&
+          (useDesignSystem ? (
+            <DesignEmptyState title="No tasks yet.">
+              Stay organized by adding tasks here.
+            </DesignEmptyState>
+          ) : (
+            <div className="empty-state">
+              No tasks yet. Stay organized by adding tasks here.
+            </div>
+          ))}
 
         {tasks.map((task) =>
           useDesignSystem ? (

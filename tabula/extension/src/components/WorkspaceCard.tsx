@@ -135,46 +135,118 @@ export const WorkspaceCard: React.FC<WorkspaceCardProps> = ({
           </>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={onSaveTabs}
-              className="btn btn-secondary btn-sm"
-            >
-              Save Tabs
-            </button>
-            <button
-              type="button"
-              onClick={onRestoreTabs}
-              className="btn btn-secondary btn-sm"
-              disabled={workspace.tabs.length === 0}
-            >
-              Restore
-            </button>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={onSaveTabs}
+                >
+                  {" "}
+                  Save Tabs{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSaveTabs}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Save Tabs
+                </button>
+              )}
+            </>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={onRestoreTabs}
+                  disabled={workspace.tabs.length === 0}
+                >
+                  {" "}
+                  Restore{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onRestoreTabs}
+                  className="btn btn-secondary btn-sm"
+                  disabled={workspace.tabs.length === 0}
+                >
+                  Restore
+                </button>
+              )}
+            </>
             {!isActive && (
-              <button
-                type="button"
-                onClick={onSwitch}
-                className="btn btn-primary btn-sm"
-                disabled={workspace.tabs.length === 0}
-              >
-                Switch
-              </button>
+              <>
+                {useDesignSystem ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    type="button"
+                    onClick={onSwitch}
+                    disabled={workspace.tabs.length === 0}
+                  >
+                    {" "}
+                    Switch{" "}
+                  </Button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onSwitch}
+                    className="btn btn-primary btn-sm"
+                    disabled={workspace.tabs.length === 0}
+                  >
+                    Switch
+                  </button>
+                )}
+              </>
             )}
             <div style={{ flex: 1 }}></div>
-            <button
-              type="button"
-              onClick={onEdit}
-              className="btn btn-secondary btn-sm"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="btn btn-danger btn-sm"
-            >
-              Delete
-            </button>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={onEdit}
+                >
+                  {" "}
+                  Edit{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Edit
+                </button>
+              )}
+            </>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  type="button"
+                  onClick={onDelete}
+                >
+                  {" "}
+                  Delete{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="btn btn-danger btn-sm"
+                >
+                  Delete
+                </button>
+              )}
+            </>
           </>
         )}
       </div>

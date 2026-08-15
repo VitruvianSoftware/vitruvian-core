@@ -27,6 +27,7 @@ import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Menu, MenuItem, MenuDivider } from "@vitruviansoftware/design-system";
 import type { Workspace, SpaceGroup } from "../types";
 
 // Color options for workspace
@@ -152,26 +153,198 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
         </Tooltip>
 
         {/* Workspace Menu */}
-        {isMenuOpen && (
-          <div
-            className="dropdown-menu glass-menu"
-            style={{
-              right: 0,
-              top: "100%",
-              minWidth: "180px",
-              zIndex: 20,
-              position: "absolute",
-              borderRadius: useDesignSystem ? "0" : undefined,
-              border: useDesignSystem
-                ? "1px solid var(--glass-border)"
-                : undefined,
-              fontFamily: useDesignSystem
-                ? "var(--font-mono, monospace)"
-                : undefined,
-            }}
-          >
-            {/* Share — hidden until sharing ships */}
-            {FEATURE_FLAGS.SHARING_ENABLED && (
+        {isMenuOpen &&
+          (useDesignSystem ? (
+            <Menu
+              style={{
+                right: 0,
+                top: "100%",
+                minWidth: "180px",
+                zIndex: 20,
+                position: "absolute",
+              }}
+            >
+              {FEATURE_FLAGS.SHARING_ENABLED && (
+                <MenuItem
+                  style={{ opacity: 0.5, cursor: "not-allowed" }}
+                  title="Coming soon"
+                >
+                  <Icon name="share" size="sm" />
+                  Share
+                </MenuItem>
+              )}
+              <MenuItem
+                style={{ opacity: 0.5, cursor: "not-allowed" }}
+                title="Coming soon"
+              >
+                <Icon name="description" size="sm" />
+                Add a description
+              </MenuItem>
+              <MenuDivider />
+              <MenuItem
+                style={{ opacity: 0.5, cursor: "not-allowed" }}
+                title="Coming soon"
+              >
+                <Icon name="content_copy" size="sm" />
+                Duplicate
+              </MenuItem>
+              <MenuItem onClick={onRename}>
+                <Icon name="edit" size="sm" />
+                Rename
+              </MenuItem>
+              <MenuItem
+                ref={colorItemRef}
+                style={{ position: "relative" }}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onToggleColorPicker();
+                }}
+              >
+                <Icon name="palette" size="sm" />
+                Change color
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                <SubmenuFlyout
+                  anchorRef={colorItemRef}
+                  open={colorPickerOpen}
+                  minWidth={120}
+                >
+                  {SPACE_GROUP_COLORS.map((color) => (
+                    <div
+                      key={color.name}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await onChangeColor(color.value);
+                      }}
+                    >
+                      {color.value ? (
+                        <div
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "0",
+                            border: "1px solid var(--color-border)",
+                            backgroundColor: color.value,
+                          }}
+                        />
+                      ) : (
+                        <Icon name="block" size="sm" />
+                      )}
+                      {color.name}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </MenuItem>
+              <MenuItem
+                ref={sectionItemRef}
+                style={{ position: "relative" }}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onToggleSectionPicker();
+                }}
+              >
+                <Icon name="drive_file_move" size="sm" />
+                Move to section
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                <SubmenuFlyout
+                  anchorRef={sectionItemRef}
+                  open={sectionPickerOpen}
+                  minWidth={140}
+                >
+                  <div
+                    className="dropdown-item"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await onMoveToSection(null);
+                    }}
+                  >
+                    <Icon name="block" size="sm" />
+                    No section
+                  </div>
+                  <div className="dropdown-divider" />
+                  {spaceGroups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await onMoveToSection(group.id);
+                      }}
+                    >
+                      {group.color && (
+                        <div
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "0",
+                            border: "1px solid var(--color-border)",
+                            backgroundColor: group.color,
+                          }}
+                        />
+                      )}
+                      {group.title}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </MenuItem>
+              <MenuDivider />
+              <MenuItem
+                style={{ opacity: 0.5, cursor: "not-allowed" }}
+                title="Coming soon"
+              >
+                <Icon name="archive" size="sm" />
+                Archive
+              </MenuItem>
+              <MenuItem destructive onClick={onDelete}>
+                <Icon name="delete" size="sm" />
+                Delete
+              </MenuItem>
+            </Menu>
+          ) : (
+            <div
+              className="dropdown-menu"
+              style={{
+                right: 0,
+                top: "100%",
+                minWidth: "180px",
+                zIndex: 20,
+                position: "absolute",
+              }}
+            >
+              {/* Share — hidden until sharing ships */}
+              {FEATURE_FLAGS.SHARING_ENABLED && (
+                <div
+                  className="dropdown-item"
+                  style={{
+                    opacity: 0.5,
+                    cursor: "not-allowed",
+                  }}
+                  title="Coming soon"
+                >
+                  <Icon name="share" size="sm" />
+                  Share
+                </div>
+              )}
+
+              {/* Add a description (placeholder) */}
               <div
                 className="dropdown-item"
                 style={{
@@ -180,203 +353,183 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                 }}
                 title="Coming soon"
               >
-                <Icon name="share" size="sm" />
-                Share
+                <Icon name="description" size="sm" />
+                Add a description
               </div>
-            )}
+              <div className="dropdown-divider" />
 
-            {/* Add a description (placeholder) */}
-            <div
-              className="dropdown-item"
-              style={{
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-              title="Coming soon"
-            >
-              <Icon name="description" size="sm" />
-              Add a description
-            </div>
-            <div className="dropdown-divider" />
-
-            {/* Duplicate (placeholder) */}
-            <div
-              className="dropdown-item"
-              style={{
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-              title="Coming soon"
-            >
-              <Icon name="content_copy" size="sm" />
-              Duplicate
-            </div>
-
-            {/* Rename */}
-            <div className="dropdown-item" onClick={onRename}>
-              <Icon name="edit" size="sm" />
-              Rename
-            </div>
-
-            {/* Change color */}
-            <div
-              className="dropdown-item"
-              ref={colorItemRef}
-              style={{
-                position: "relative",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleColorPicker();
-              }}
-            >
-              <Icon name="palette" size="sm" />
-              Change color
-              <Icon
-                name="keyboard_arrow_right"
-                size="sm"
-                style={{ marginLeft: "auto" }}
-              />
-              {/* Color picker submenu (portaled beside this item) */}
-              <SubmenuFlyout
-                anchorRef={colorItemRef}
-                open={colorPickerOpen}
-                minWidth={120}
+              {/* Duplicate (placeholder) */}
+              <div
+                className="dropdown-item"
+                style={{
+                  opacity: 0.5,
+                  cursor: "not-allowed",
+                }}
+                title="Coming soon"
               >
-                {SPACE_GROUP_COLORS.map((color) => (
-                  <div
-                    key={color.name}
-                    className="dropdown-item"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      await onChangeColor(color.value);
-                    }}
-                  >
-                    {color.value ? (
-                      <div
-                        style={{
-                          width: "12px",
-                          height: "12px",
-                          borderRadius: useDesignSystem ? "0" : "50%",
-                          border: useDesignSystem
-                            ? "1px solid var(--color-border)"
-                            : undefined,
-                          backgroundColor: color.value,
-                        }}
-                      />
-                    ) : (
-                      <Icon name="block" size="sm" />
-                    )}
-                    {color.name}
-                  </div>
-                ))}
-              </SubmenuFlyout>
-            </div>
+                <Icon name="content_copy" size="sm" />
+                Duplicate
+              </div>
 
-            {/* Move to section */}
-            <div
-              className="dropdown-item"
-              ref={sectionItemRef}
-              style={{
-                position: "relative",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSectionPicker();
-              }}
-            >
-              <Icon name="drive_file_move" size="sm" />
-              Move to section
-              <Icon
-                name="keyboard_arrow_right"
-                size="sm"
-                style={{ marginLeft: "auto" }}
-              />
-              {/* Section picker submenu (portaled beside this item) */}
-              <SubmenuFlyout
-                anchorRef={sectionItemRef}
-                open={sectionPickerOpen}
-                minWidth={140}
+              {/* Rename */}
+              <div className="dropdown-item" onClick={onRename}>
+                <Icon name="edit" size="sm" />
+                Rename
+              </div>
+
+              {/* Change color */}
+              <div
+                className="dropdown-item"
+                ref={colorItemRef}
+                style={{
+                  position: "relative",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleColorPicker();
+                }}
               >
-                {/* No section option */}
-                <div
-                  className="dropdown-item"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await onMoveToSection(null);
-                  }}
+                <Icon name="palette" size="sm" />
+                Change color
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                {/* Color picker submenu (portaled beside this item) */}
+                <SubmenuFlyout
+                  anchorRef={colorItemRef}
+                  open={colorPickerOpen}
+                  minWidth={120}
                 >
-                  <Icon name="block" size="sm" />
-                  No section
-                </div>
-                <div className="dropdown-divider" />
+                  {SPACE_GROUP_COLORS.map((color) => (
+                    <div
+                      key={color.name}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await onChangeColor(color.value);
+                      }}
+                    >
+                      {color.value ? (
+                        <div
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            backgroundColor: color.value,
+                          }}
+                        />
+                      ) : (
+                        <Icon name="block" size="sm" />
+                      )}
+                      {color.name}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </div>
 
-                {/* List all sections */}
-                {spaceGroups.map((group) => (
+              {/* Move to section */}
+              <div
+                className="dropdown-item"
+                ref={sectionItemRef}
+                style={{
+                  position: "relative",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSectionPicker();
+                }}
+              >
+                <Icon name="drive_file_move" size="sm" />
+                Move to section
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                {/* Section picker submenu (portaled beside this item) */}
+                <SubmenuFlyout
+                  anchorRef={sectionItemRef}
+                  open={sectionPickerOpen}
+                  minWidth={140}
+                >
+                  {/* No section option */}
                   <div
-                    key={group.id}
                     className="dropdown-item"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await onMoveToSection(group.id);
+                      await onMoveToSection(null);
                     }}
                   >
-                    {group.color && (
-                      <div
-                        style={{
-                          width: "8px",
-                          height: "8px",
-                          borderRadius: useDesignSystem ? "0" : "50%",
-                          border: useDesignSystem
-                            ? "1px solid var(--color-border)"
-                            : undefined,
-                          backgroundColor: group.color,
-                        }}
-                      />
-                    )}
-                    {group.title}
+                    <Icon name="block" size="sm" />
+                    No section
                   </div>
-                ))}
-              </SubmenuFlyout>
-            </div>
-            <div className="dropdown-divider" />
+                  <div className="dropdown-divider" />
 
-            {/* Archive (placeholder) */}
-            <div
-              className="dropdown-item"
-              style={{
-                opacity: 0.5,
-                cursor: "not-allowed",
-              }}
-              title="Coming soon"
-            >
-              <Icon name="archive" size="sm" />
-              Archive
-            </div>
+                  {/* List all sections */}
+                  {spaceGroups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await onMoveToSection(group.id);
+                      }}
+                    >
+                      {group.color && (
+                        <div
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            backgroundColor: group.color,
+                          }}
+                        />
+                      )}
+                      {group.title}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </div>
+              <div className="dropdown-divider" />
 
-            {/* Delete */}
-            <div
-              className="dropdown-item"
-              style={{
-                color: "var(--color-accent-danger)",
-              }}
-              onClick={onDelete}
-            >
-              <Icon name="delete" size="sm" />
-              Delete
+              {/* Archive (placeholder) */}
+              <div
+                className="dropdown-item"
+                style={{
+                  opacity: 0.5,
+                  cursor: "not-allowed",
+                }}
+                title="Coming soon"
+              >
+                <Icon name="archive" size="sm" />
+                Archive
+              </div>
+
+              {/* Delete */}
+              <div
+                className="dropdown-item"
+                style={{
+                  color: "var(--color-accent-danger)",
+                }}
+                onClick={onDelete}
+              >
+                <Icon name="delete" size="sm" />
+                Delete
+              </div>
             </div>
-          </div>
-        )}
+          ))}
       </div>
     </div>
   );

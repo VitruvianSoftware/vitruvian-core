@@ -27,6 +27,7 @@ import { Icon } from "../components/icons";
 import { Tooltip } from "../components/Tooltip";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Menu, MenuItem, MenuDivider } from "@vitruviansoftware/design-system";
 import type { SpaceGroup } from "../types";
 
 // Color options for space groups
@@ -151,117 +152,185 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
         </Tooltip>
 
         {/* Dropdown Menu */}
-        {isMenuOpen && (
-          <div
-            className="dropdown-menu glass-menu"
-            style={{
-              right: 0,
-              top: "100%",
-              minWidth: "160px",
-              zIndex: 20,
-              position: "absolute",
-              borderRadius: useDesignSystem ? "0" : undefined,
-              border: useDesignSystem
-                ? "1px solid var(--glass-border)"
-                : undefined,
-              fontFamily: useDesignSystem
-                ? "var(--font-mono, monospace)"
-                : undefined,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Share with team — hidden until sharing ships */}
-            {FEATURE_FLAGS.SHARING_ENABLED && (
-              <>
-                <div
-                  className="dropdown-item"
-                  style={{ opacity: 0.5, cursor: "not-allowed" }}
-                  title="Coming soon"
-                >
-                  <Icon name="group" size="sm" />
-                  Share with team
-                </div>
-                <div className="dropdown-divider" />
-              </>
-            )}
-
-            {/* Rename */}
-            <div className="dropdown-item" onClick={onRename}>
-              <Icon name="edit" size="sm" />
-              Rename
-            </div>
-
-            {/* Change color */}
-            <div
-              className="dropdown-item"
-              ref={colorItemRef}
+        {isMenuOpen &&
+          (useDesignSystem ? (
+            <Menu
               style={{
-                position: "relative",
+                right: 0,
+                top: "100%",
+                minWidth: "160px",
+                zIndex: 20,
+                position: "absolute",
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleColorPicker();
-              }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
-              <Icon name="palette" size="sm" />
-              Change color
-              <Icon
-                name="keyboard_arrow_right"
-                size="sm"
-                style={{ marginLeft: "auto" }}
-              />
-              {/* Color picker submenu (portaled beside this item) */}
-              <SubmenuFlyout
-                anchorRef={colorItemRef}
-                open={colorPickerOpen}
-                minWidth={120}
-              >
-                {SPACE_GROUP_COLORS.map((color) => (
-                  <div
-                    key={color.name}
-                    className="dropdown-item"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                    onClick={() => onChangeColor(color.value)}
+              {FEATURE_FLAGS.SHARING_ENABLED && (
+                <>
+                  <MenuItem
+                    style={{ opacity: 0.5, cursor: "not-allowed" }}
+                    title="Coming soon"
                   >
-                    {color.value ? (
-                      <div
-                        style={{
-                          width: "12px",
-                          height: "12px",
-                          borderRadius: useDesignSystem ? "0" : "50%",
-                          border: useDesignSystem
-                            ? "1px solid var(--color-border)"
-                            : undefined,
-                          backgroundColor: color.value,
-                        }}
-                      />
-                    ) : (
-                      <Icon name="block" size="sm" />
-                    )}
-                    {color.name}
-                  </div>
-                ))}
-              </SubmenuFlyout>
-            </div>
-            <div className="dropdown-divider" />
-
-            {/* Delete */}
+                    <Icon name="group" size="sm" />
+                    Share with team
+                  </MenuItem>
+                  <MenuDivider />
+                </>
+              )}
+              <MenuItem onClick={onRename}>
+                <Icon name="edit" size="sm" />
+                Rename
+              </MenuItem>
+              <MenuItem
+                ref={colorItemRef}
+                style={{ position: "relative" }}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  onToggleColorPicker();
+                }}
+              >
+                <Icon name="palette" size="sm" />
+                Change color
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                <SubmenuFlyout
+                  anchorRef={colorItemRef}
+                  open={colorPickerOpen}
+                  minWidth={120}
+                >
+                  {SPACE_GROUP_COLORS.map((color) => (
+                    <div
+                      key={color.name}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={() => onChangeColor(color.value)}
+                    >
+                      {color.value ? (
+                        <div
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "0",
+                            border: "1px solid var(--color-border)",
+                            backgroundColor: color.value,
+                          }}
+                        />
+                      ) : (
+                        <Icon name="block" size="sm" />
+                      )}
+                      {color.name}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </MenuItem>
+              <MenuDivider />
+              <MenuItem destructive onClick={onDelete}>
+                <Icon name="delete" size="sm" />
+                Delete
+              </MenuItem>
+            </Menu>
+          ) : (
             <div
-              className="dropdown-item"
+              className="dropdown-menu"
               style={{
-                color: "var(--color-accent-danger)",
+                right: 0,
+                top: "100%",
+                minWidth: "160px",
+                zIndex: 20,
+                position: "absolute",
               }}
-              onClick={onDelete}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
-              <Icon name="delete" size="sm" />
-              Delete
+              {FEATURE_FLAGS.SHARING_ENABLED && (
+                <>
+                  <div
+                    className="dropdown-item"
+                    style={{ opacity: 0.5, cursor: "not-allowed" }}
+                    title="Coming soon"
+                  >
+                    <Icon name="group" size="sm" />
+                    Share with team
+                  </div>
+                  <div className="dropdown-divider" />
+                </>
+              )}
+
+              <div className="dropdown-item" onClick={onRename}>
+                <Icon name="edit" size="sm" />
+                Rename
+              </div>
+
+              <div
+                className="dropdown-item"
+                ref={colorItemRef}
+                style={{
+                  position: "relative",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleColorPicker();
+                }}
+              >
+                <Icon name="palette" size="sm" />
+                Change color
+                <Icon
+                  name="keyboard_arrow_right"
+                  size="sm"
+                  style={{ marginLeft: "auto" }}
+                />
+                <SubmenuFlyout
+                  anchorRef={colorItemRef}
+                  open={colorPickerOpen}
+                  minWidth={120}
+                >
+                  {SPACE_GROUP_COLORS.map((color) => (
+                    <div
+                      key={color.name}
+                      className="dropdown-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                      onClick={() => onChangeColor(color.value)}
+                    >
+                      {color.value ? (
+                        <div
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            backgroundColor: color.value,
+                          }}
+                        />
+                      ) : (
+                        <Icon name="block" size="sm" />
+                      )}
+                      {color.name}
+                    </div>
+                  ))}
+                </SubmenuFlyout>
+              </div>
+              <div className="dropdown-divider" />
+
+              <div
+                className="dropdown-item"
+                style={{
+                  color: "var(--color-accent-danger)",
+                }}
+                onClick={onDelete}
+              >
+                <Icon name="delete" size="sm" />
+                Delete
+              </div>
             </div>
-          </div>
-        )}
+          ))}
       </div>
     </div>
   );
