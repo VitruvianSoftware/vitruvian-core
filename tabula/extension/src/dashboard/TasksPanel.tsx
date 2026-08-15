@@ -22,6 +22,9 @@
 
 import React from "react";
 import type { Task } from "../types";
+import { Input } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface TasksPanelProps {
   tasks: Task[];
@@ -40,60 +43,142 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
   onToggleTask,
   onDeleteTask,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
   return (
     <>
       <div className="section-header">
-        <input
-          className="input"
-          style={{ width: "100%" }}
-          placeholder="Add a new task..."
-          value={newTaskTitle}
-          onChange={(e) => onNewTaskTitleChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              onAddTask();
-            }
-          }}
-        />
+        {useDesignSystem ? (
+          <div style={{ width: "100%" }}>
+            <Input
+              placeholder="Add a new task..."
+              value={newTaskTitle}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                onNewTaskTitleChange(e.target.value)
+              }
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") {
+                  onAddTask();
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <input
+            className="input"
+            style={{ width: "100%" }}
+            placeholder="Add a new task..."
+            value={newTaskTitle}
+            onChange={(e) => onNewTaskTitleChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                onAddTask();
+              }
+            }}
+          />
+        )}
       </div>
 
       <div className="tasks-list" style={{ marginTop: "16px" }}>
         {tasks.length === 0 && (
-          <div className="empty-state">
+          <div
+            className="empty-state"
+            style={
+              useDesignSystem
+                ? {
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "12px",
+                    color: "var(--paper-dim, #736d64)",
+                  }
+                : undefined
+            }
+          >
             No tasks yet. Stay organized by adding tasks here.
           </div>
         )}
 
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            className="list-item"
-            style={{ alignItems: "center" }}
-          >
-            <input
-              type="checkbox"
-              checked={task.completed}
-              onChange={() => onToggleTask(task.id)}
-              style={{ marginRight: "12px" }}
-            />
+        {tasks.map((task) =>
+          useDesignSystem ? (
             <div
+              key={task.id}
+              className="list-item"
               style={{
-                flex: 1,
-                textDecoration: task.completed ? "line-through" : "none",
-                color: task.completed ? "#999" : "inherit",
+                display: "flex",
+                alignItems: "center",
+                padding: "8px 12px",
+                marginBottom: "4px",
+                backgroundColor: "var(--paper, #fbf7ee)",
+                border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
               }}
             >
-              {task.title}
+              <input
+                type="checkbox"
+                checked={task.completed}
+                onChange={() => onToggleTask(task.id)}
+                style={{ marginRight: "12px", cursor: "pointer" }}
+              />
+              <div
+                style={{
+                  flex: 1,
+                  textDecoration: task.completed ? "line-through" : "none",
+                  color: task.completed
+                    ? "var(--paper-dim, #736d64)"
+                    : "var(--ink, #1f1d1a)",
+                  fontSize: "13px",
+                }}
+              >
+                {task.title}
+              </div>
+              <button
+                className="btn-icon danger"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--accent, #991b1b)",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  padding: "0 4px",
+                }}
+                onClick={() => onDeleteTask(task.id)}
+                title="Delete task"
+              >
+                ×
+              </button>
             </div>
-            <button
-              className="btn-icon danger"
-              style={{ opacity: 0.5 }}
-              onClick={() => onDeleteTask(task.id)}
+          ) : (
+            <div
+              key={task.id}
+              className="list-item"
+              style={{ alignItems: "center" }}
             >
-              ×
-            </button>
-          </div>
-        ))}
+              <input
+                type="checkbox"
+                checked={task.completed}
+                onChange={() => onToggleTask(task.id)}
+                style={{ marginRight: "12px" }}
+              />
+              <div
+                style={{
+                  flex: 1,
+                  textDecoration: task.completed ? "line-through" : "none",
+                  color: task.completed ? "#999" : "inherit",
+                }}
+              >
+                {task.title}
+              </div>
+              <button
+                className="btn-icon danger"
+                style={{ opacity: 0.5 }}
+                onClick={() => onDeleteTask(task.id)}
+              >
+                ×
+              </button>
+            </div>
+          ),
+        )}
       </div>
     </>
   );

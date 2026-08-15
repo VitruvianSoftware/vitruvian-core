@@ -23,6 +23,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useWorkspaceStore } from "../stores/workspace";
 import { Icon } from "../components/icons";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 import "../styles/command-palette.css";
 
 // Constants
@@ -79,6 +81,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   // Build searchable index from workspace data
   const searchIndex = useMemo(() => {
@@ -98,30 +104,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       if (workspace.tabs && Array.isArray(workspace.tabs)) {
         workspace.tabs.forEach((tab) => {
           // Use a stable ID: prefer tab.id, but ensure consistent fallback
-          const stableId = tab.id
-            ? `tab-${tab.id}`
-            : `tab-url-${btoa(tab.url).substring(0, 16)}`;
+          const tabId =
+            tab.id !== undefined
+              ? `tab-${tab.id}`
+              : `tab-${tab.url}-${tab.title}`;
           results.push({
-            id: `${workspace.id}-${stableId}`,
+            id: tabId,
             type: "tab",
-            title: tab.title,
+            title: tab.title || "Untitled Tab",
             subtitle: tab.url,
             url: tab.url,
-            workspaceId: workspace.id,
-            workspaceName: workspace.name,
-          });
-        });
-      }
-
-      // Index resources (root level) (with safety check)
-      if (workspace.resources && Array.isArray(workspace.resources)) {
-        workspace.resources.forEach((resource) => {
-          results.push({
-            id: `${workspace.id}-resource-${resource.id}`,
-            type: "resource",
-            title: resource.title,
-            subtitle: resource.url,
-            url: resource.url,
             workspaceId: workspace.id,
             workspaceName: workspace.name,
           });
@@ -134,10 +126,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           if (section.resources && Array.isArray(section.resources)) {
             section.resources.forEach((resource) => {
               results.push({
-                id: `${workspace.id}-section-${section.id}-resource-${resource.id}`,
+                id: `res-${resource.id}`,
                 type: "resource",
-                title: resource.title,
-                subtitle: `${section.title} • ${resource.url}`,
+                title: resource.title || "Untitled Resource",
+                subtitle: resource.url,
                 url: resource.url,
                 workspaceId: workspace.id,
                 workspaceName: workspace.name,
@@ -148,14 +140,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         });
       }
 
+      // Index root resources (with safety check)
+      if (workspace.resources && Array.isArray(workspace.resources)) {
+        workspace.resources.forEach((resource) => {
+          results.push({
+            id: `res-${resource.id}`,
+            type: "resource",
+            title: resource.title || "Untitled Resource",
+            subtitle: resource.url,
+            url: resource.url,
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+          });
+        });
+      }
+
       // Index notes (with safety check)
       if (workspace.notes && Array.isArray(workspace.notes)) {
         workspace.notes.forEach((note) => {
           results.push({
-            id: `${workspace.id}-note-${note.id}`,
+            id: `note-${note.id}`,
             type: "note",
-            title: note.title,
-            subtitle: note.content.slice(0, NOTE_PREVIEW_LENGTH),
+            title: note.title || "Untitled Note",
+            subtitle:
+              note.content?.slice(0, NOTE_PREVIEW_LENGTH) || "Empty note",
             workspaceId: workspace.id,
             workspaceName: workspace.name,
           });
@@ -166,10 +174,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       if (workspace.tasks && Array.isArray(workspace.tasks)) {
         workspace.tasks.forEach((task) => {
           results.push({
-            id: `${workspace.id}-task-${task.id}`,
+            id: `task-${task.id}`,
             type: "task",
             title: task.title,
-            subtitle: task.completed ? "Completed" : "Pending",
+            subtitle: task.completed ? "Completed" : "Incomplete",
             workspaceId: workspace.id,
             workspaceName: workspace.name,
           });
@@ -179,6 +187,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
     return results;
   }, [workspaces]);
+
+  // Load search history from storage
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          const result = await chrome.storage.local.get(SEARCH_HISTORY_KEY);
+          if (Array.isArray(result[SEARCH_HISTORY_KEY])) {
+            setSearchHistory(result[SEARCH_HISTORY_KEY] as string[]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load search history:", error);
+      }
+    };
+    loadHistory();
+  }, []);
 
   // Filter and rank results based on search query
   const filteredResults = useMemo(() => {
@@ -224,34 +249,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         return { result, score };
       })
-      .filter((item) => item.score > 0)
+      .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 50)
-      .map((item) => item.result);
+      .map(({ result }) => result);
 
     return scored;
-  }, [searchQuery, searchIndex, activeFilter]);
+  }, [searchIndex, searchQuery, activeFilter]);
 
-  // Load search history from localStorage
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const result = await chrome.storage.local.get(SEARCH_HISTORY_KEY);
-        const history = result[SEARCH_HISTORY_KEY] as string[] | undefined;
-        if (history) {
-          setSearchHistory(history);
-        }
-      } catch (error) {
-        console.error("Failed to load search history:", error);
-      }
-    };
-    loadHistory();
-  }, []);
-
-  // Save search query to history
+  // Save query to search history
   const saveToHistory = async (query: string) => {
-    if (!query.trim()) return;
-
     try {
       const updatedHistory = [
         query,
@@ -259,7 +265,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ].slice(0, MAX_HISTORY_ITEMS);
 
       setSearchHistory(updatedHistory);
-      await chrome.storage.local.set({ [SEARCH_HISTORY_KEY]: updatedHistory });
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        await chrome.storage.local.set({
+          [SEARCH_HISTORY_KEY]: updatedHistory,
+        });
+      }
     } catch (error) {
       console.error("Failed to save search history:", error);
     }
@@ -296,15 +306,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         break;
       case "note":
       case "task":
-        // Switch to workspace and select appropriate tab
         if (result.workspaceId) {
           await switchWorkspace(result.workspaceId);
-          // The dashboard will need to handle showing the right tab
-          // For now, just switch workspace
         }
         break;
       default:
-        // Handle unknown types gracefully
         break;
     }
     onClose();
@@ -337,7 +343,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           onClose();
           break;
         default:
-          // Let other keys pass through
           break;
       }
     };
@@ -364,7 +369,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       const selectedElement = resultsRef.current.children[
         selectedIndex
       ] as HTMLElement;
-      if (selectedElement && selectedElement.scrollIntoView) {
+      if (
+        selectedElement &&
+        typeof selectedElement.scrollIntoView === "function"
+      ) {
         selectedElement.scrollIntoView({
           block: "nearest",
           behavior: "smooth",
@@ -405,18 +413,82 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       className="command-palette-overlay"
       ref={overlayRef}
       onClick={handleOverlayClick}
+      style={
+        useDesignSystem
+          ? {
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.4)",
+              backdropFilter: "blur(2px)",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              paddingTop: "12vh",
+              zIndex: 99999,
+            }
+          : undefined
+      }
     >
-      <div className="command-palette-container">
-        <div className="command-palette-header">
+      <div
+        className="command-palette-container"
+        style={
+          useDesignSystem
+            ? {
+                width: "100%",
+                maxWidth: "600px",
+                backgroundColor: "var(--paper, #fbf7ee)",
+                border: "2px solid var(--ink, #1f1d1a)",
+                boxShadow: "6px 6px 0 0 var(--ink, #1f1d1a)",
+                borderRadius: "0",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }
+            : undefined
+        }
+      >
+        <div
+          className="command-palette-header"
+          style={
+            useDesignSystem
+              ? {
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "14px 16px",
+                  borderBottom: "1px solid var(--ink, #1f1d1a)",
+                  gap: "12px",
+                }
+              : undefined
+          }
+        >
           <Icon
             name="search"
             size="md"
             className="command-palette-search-icon"
+            style={
+              useDesignSystem ? { color: "var(--ink, #1f1d1a)" } : undefined
+            }
           />
           <input
             ref={inputRef}
             type="text"
             className="command-palette-input"
+            style={
+              useDesignSystem
+                ? {
+                    flex: 1,
+                    border: "none",
+                    background: "transparent",
+                    outline: "none",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "14px",
+                    color: "var(--ink, #1f1d1a)",
+                  }
+                : undefined
+            }
             placeholder="Search workspaces, resources, tabs, notes, and tasks..."
             value={searchQuery}
             onChange={(e) => {
@@ -424,11 +496,43 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               setSelectedIndex(0);
             }}
           />
-          <kbd className="command-palette-kbd">ESC</kbd>
+          <kbd
+            className="command-palette-kbd"
+            style={
+              useDesignSystem
+                ? {
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    padding: "2px 6px",
+                    border: "1px solid var(--ink, #1f1d1a)",
+                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.06))",
+                    color: "var(--ink, #1f1d1a)",
+                    borderRadius: "0",
+                  }
+                : undefined
+            }
+          >
+            ESC
+          </kbd>
         </div>
 
         {/* Filter buttons */}
-        <div className="command-palette-filters">
+        <div
+          className="command-palette-filters"
+          style={
+            useDesignSystem
+              ? {
+                  display: "flex",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  borderBottom:
+                    "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                  overflowX: "auto",
+                }
+              : undefined
+          }
+        >
           {(
             [
               "all",
@@ -443,6 +547,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               key={filter}
               type="button"
               className={`filter-button ${activeFilter === filter ? "active" : ""}`}
+              style={
+                useDesignSystem
+                  ? {
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "11px",
+                      textTransform: "uppercase",
+                      padding: "3px 8px",
+                      cursor: "pointer",
+                      border: "1px solid var(--ink, #1f1d1a)",
+                      backgroundColor:
+                        activeFilter === filter
+                          ? "var(--ink, #1f1d1a)"
+                          : "var(--paper, #fbf7ee)",
+                      color:
+                        activeFilter === filter
+                          ? "var(--paper, #fbf7ee)"
+                          : "var(--ink, #1f1d1a)",
+                      borderRadius: "0",
+                    }
+                  : undefined
+              }
               onClick={() => {
                 setActiveFilter(filter);
                 setSelectedIndex(0);
@@ -455,14 +580,54 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           ))}
         </div>
 
-        <div className="command-palette-results" ref={resultsRef}>
+        <div
+          className="command-palette-results"
+          style={
+            useDesignSystem
+              ? {
+                  maxHeight: "360px",
+                  overflowY: "auto",
+                  padding: "4px 0",
+                }
+              : undefined
+          }
+          ref={resultsRef}
+        >
           {!searchQuery.trim() && searchHistory.length > 0 && (
             <div className="search-history">
-              <div className="search-history-header">Recent Searches</div>
+              <div
+                className="search-history-header"
+                style={
+                  useDesignSystem
+                    ? {
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "11px",
+                        textTransform: "uppercase",
+                        color: "var(--paper-dim, #736d64)",
+                        padding: "8px 16px",
+                      }
+                    : undefined
+                }
+              >
+                Recent Searches
+              </div>
               {searchHistory.map((query, index) => (
                 <div
                   key={`${query}-${index}`}
                   className="search-history-item"
+                  style={
+                    useDesignSystem
+                      ? {
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "8px 16px",
+                          cursor: "pointer",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: "12px",
+                        }
+                      : undefined
+                  }
                   onClick={() => {
                     setSearchQuery(query);
                     setSelectedIndex(0);
@@ -476,48 +641,221 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
           {(searchQuery.trim() || !searchHistory.length) &&
             (filteredResults.length === 0 ? (
-              <div className="command-palette-empty">
+              <div
+                className="command-palette-empty"
+                style={
+                  useDesignSystem
+                    ? {
+                        padding: "32px",
+                        textAlign: "center",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "13px",
+                        color: "var(--paper-dim, #736d64)",
+                      }
+                    : undefined
+                }
+              >
                 <Icon name="search_off" size="lg" />
                 <p>No results found</p>
               </div>
             ) : (
-              filteredResults.map((result, index) => (
-                <div
-                  key={result.id}
-                  className={`command-palette-result ${index === selectedIndex ? "selected" : ""}`}
-                  onClick={() => handleSelectResult(result)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                >
-                  <Icon
-                    name={getResultIcon(result)}
-                    size="md"
-                    className="result-icon"
-                    outlined
-                  />
-                  <div className="result-content">
-                    <div className="result-title">{result.title}</div>
-                    {result.subtitle && (
-                      <div className="result-subtitle">{result.subtitle}</div>
-                    )}
-                    {result.workspaceName && result.type !== "workspace" && (
-                      <div className="result-workspace">
-                        in {result.workspaceName}
+              filteredResults.map((result, index) => {
+                const isSelected = index === selectedIndex;
+                return (
+                  <div
+                    key={result.id}
+                    className={`command-palette-result ${isSelected ? "selected" : ""}`}
+                    style={
+                      useDesignSystem
+                        ? {
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            backgroundColor: isSelected
+                              ? "var(--ink, #1f1d1a)"
+                              : "transparent",
+                            color: isSelected
+                              ? "var(--paper, #fbf7ee)"
+                              : "var(--ink, #1f1d1a)",
+                            borderBottom:
+                              "1px solid var(--border-hairline, rgba(0,0,0,0.06))",
+                          }
+                        : undefined
+                    }
+                    onClick={() => handleSelectResult(result)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  >
+                    <Icon
+                      name={getResultIcon(result)}
+                      size="md"
+                      className="result-icon"
+                      style={
+                        useDesignSystem
+                          ? {
+                              color: isSelected
+                                ? "var(--paper, #fbf7ee)"
+                                : "var(--ink, #1f1d1a)",
+                              marginRight: "12px",
+                            }
+                          : undefined
+                      }
+                      outlined
+                    />
+                    <div
+                      className="result-content"
+                      style={
+                        useDesignSystem
+                          ? { flex: 1, minWidth: 0, overflow: "hidden" }
+                          : undefined
+                      }
+                    >
+                      <div
+                        className="result-title"
+                        style={
+                          useDesignSystem
+                            ? {
+                                fontSize: "13px",
+                                fontWeight: 500,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }
+                            : undefined
+                        }
+                      >
+                        {result.title}
                       </div>
-                    )}
+                      {result.subtitle && (
+                        <div
+                          className="result-subtitle"
+                          style={
+                            useDesignSystem
+                              ? {
+                                  fontSize: "11px",
+                                  fontFamily: "var(--font-mono, monospace)",
+                                  color: isSelected
+                                    ? "var(--paper-hover, #ede5d8)"
+                                    : "var(--paper-dim, #736d64)",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }
+                              : undefined
+                          }
+                        >
+                          {result.subtitle}
+                        </div>
+                      )}
+                      {result.workspaceName && result.type !== "workspace" && (
+                        <div
+                          className="result-workspace"
+                          style={
+                            useDesignSystem
+                              ? {
+                                  fontSize: "10px",
+                                  fontFamily: "var(--font-mono, monospace)",
+                                  color: isSelected
+                                    ? "var(--paper-hover, #ede5d8)"
+                                    : "var(--paper-dim, #736d64)",
+                                }
+                              : undefined
+                          }
+                        >
+                          in {result.workspaceName}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className="result-type"
+                      style={
+                        useDesignSystem
+                          ? {
+                              fontSize: "10px",
+                              fontFamily: "var(--font-mono, monospace)",
+                              textTransform: "uppercase",
+                              padding: "2px 6px",
+                              border: `1px solid ${
+                                isSelected
+                                  ? "var(--paper, #fbf7ee)"
+                                  : "var(--ink, #1f1d1a)"
+                              }`,
+                              color: isSelected
+                                ? "var(--paper, #fbf7ee)"
+                                : "var(--ink, #1f1d1a)",
+                              marginLeft: "8px",
+                            }
+                          : undefined
+                      }
+                    >
+                      {result.type}
+                    </div>
                   </div>
-                  <div className="result-type">{result.type}</div>
-                </div>
-              ))
+                );
+              })
             ))}
         </div>
 
-        <div className="command-palette-footer">
-          <div className="command-palette-hint">
-            <kbd>↑</kbd>
-            <kbd>↓</kbd>
-            <span>to navigate</span>
-            <kbd>↵</kbd>
-            <span>to select</span>
+        <div
+          className="command-palette-footer"
+          style={
+            useDesignSystem
+              ? {
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  padding: "8px 16px",
+                  borderTop: "1px solid var(--ink, #1f1d1a)",
+                  backgroundColor: "var(--paper-hover, rgba(0,0,0,0.03))",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "11px",
+                  gap: "6px",
+                }
+              : undefined
+          }
+        >
+          <div
+            className="command-palette-hint"
+            style={
+              useDesignSystem
+                ? {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    color: "var(--paper-dim, #736d64)",
+                  }
+                : undefined
+            }
+          >
+            <kbd
+              style={{
+                padding: "1px 4px",
+                border: "1px solid var(--ink, #1f1d1a)",
+                borderRadius: 0,
+              }}
+            >
+              ↑
+            </kbd>
+            <kbd
+              style={{
+                padding: "1px 4px",
+                border: "1px solid var(--ink, #1f1d1a)",
+                borderRadius: 0,
+              }}
+            >
+              ↓
+            </kbd>
+            <span>navigate</span>
+            <kbd
+              style={{
+                padding: "1px 4px",
+                border: "1px solid var(--ink, #1f1d1a)",
+                borderRadius: 0,
+              }}
+            >
+              ↵
+            </kbd>
+            <span>select</span>
           </div>
         </div>
       </div>

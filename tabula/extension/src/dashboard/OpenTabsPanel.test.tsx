@@ -31,8 +31,13 @@
 /// <reference types="@testing-library/jest-dom" />
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { OpenTabsPanel } from "./OpenTabsPanel";
 import type { Tab } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Wrap component with DndContext for testing
 const renderWithContext = (ui: React.ReactElement) => {
@@ -62,6 +67,7 @@ describe("OpenTabsPanel", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -242,6 +248,36 @@ describe("OpenTabsPanel", () => {
         />,
       );
       expect(screen.getByText("Untitled")).toBeInTheDocument();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render active tabs and group headers with design system styling", () => {
+      const tabsWithGroup: Tab[] = [
+        { id: 1, title: "Tab 1", url: "https://a.com", groupId: "tg_001" },
+      ];
+      const tabGroups = [
+        {
+          id: "tg_001",
+          title: "Project Group",
+          color: "blue",
+          collapsed: false,
+        },
+      ];
+      renderWithContext(
+        <OpenTabsPanel
+          {...defaultProps}
+          activeTabs={tabsWithGroup}
+          tabGroups={tabGroups as any}
+        />,
+      );
+      expect(screen.getByText("Active Tabs")).toBeInTheDocument();
+      expect(screen.getByText("Project Group")).toBeInTheDocument();
+      expect(screen.getByText("Tab 1")).toBeInTheDocument();
     });
   });
 });

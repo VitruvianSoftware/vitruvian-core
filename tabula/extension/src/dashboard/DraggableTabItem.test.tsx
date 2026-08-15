@@ -33,8 +33,13 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { DraggableTabItem } from "./DraggableTabItem";
 import type { Tab } from "../types";
+
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
 
 // Wrap component with required contexts for testing
 const renderWithContexts = (
@@ -67,6 +72,7 @@ describe("DraggableTabItem", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -156,6 +162,21 @@ describe("DraggableTabItem", () => {
         "src",
         "https://www.google.com/s2/favicons?domain=https%3A%2F%2Fexample.com&sz=32",
       );
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render tab with design system structure", () => {
+      renderWithContexts(<DraggableTabItem {...defaultProps} />);
+      expect(screen.getByText("Test Tab")).toBeInTheDocument();
+      expect(screen.getByText("https://example.com")).toBeInTheDocument();
+      expect(screen.getByTitle("Focus Tab")).toBeInTheDocument();
+      expect(screen.getByTitle("Edit")).toBeInTheDocument();
+      expect(screen.getByTitle("Close Tab")).toBeInTheDocument();
     });
   });
 });
