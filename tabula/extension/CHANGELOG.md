@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.30...tabula-extension-v0.1.31) (2026-08-15)
+
+
+### Features
+
+* **tabula:** migrate account settings to vitruvian design system ([#1661](https://github.com/VitruvianSoftware/vitruvian-core/issues/1661)) ([45df63a](https://github.com/VitruvianSoftware/vitruvian-core/commit/45df63ac75968c501aadc6c53e8b808850637405))
+
 ## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.29...tabula-extension-v0.1.30) (2026-08-15)
 
 
