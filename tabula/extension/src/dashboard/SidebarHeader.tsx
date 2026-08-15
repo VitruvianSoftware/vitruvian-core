@@ -49,7 +49,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ children }) => {
       >
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ color: "var(--color-text, #1f1d1a)" }}>
+          <span style={{ color: "var(--color-text-sidebar)" }}>
             <Icon name="dashboard" size="md" />
           </span>
           <span
@@ -59,7 +59,7 @@ export const SidebarHeader: React.FC<SidebarHeaderProps> = ({ children }) => {
               fontSize: "15px",
               letterSpacing: "0.06em",
               textTransform: "uppercase",
-              color: "var(--color-text, #1f1d1a)",
+              color: "var(--color-text-sidebar)",
             }}
           >
             Tabula

@@ -117,7 +117,7 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
               fontWeight: 500,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              color: "var(--color-text-dim, #736d64)",
+              color: "var(--color-text-secondary)",
               marginBottom: "6px",
             }}
           >
@@ -132,17 +132,18 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
                 style={{
                   fontSize: "18px",
                   padding: "4px 8px",
+                  borderRadius: "0",
                   border:
                     icon === iconOption
-                      ? "1px solid var(--color-text, #1f1d1a)"
-                      : "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                      ? "1px solid var(--color-accent-primary)"
+                      : "1px solid var(--color-border)",
                   backgroundColor:
                     icon === iconOption
-                      ? "var(--color-bg-card, #ffffff)"
+                      ? "var(--color-primary-light)"
                       : "transparent",
                   boxShadow:
                     icon === iconOption
-                      ? "0 0 0 1px var(--color-text, #1f1d1a)"
+                      ? "0 0 0 1px var(--color-accent-primary)"
                       : "none",
                   cursor: "pointer",
                 }}
@@ -162,7 +163,7 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
               fontWeight: 500,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              color: "var(--color-text-dim, #736d64)",
+              color: "var(--color-text-secondary)",
               marginBottom: "6px",
             }}
           >
@@ -177,13 +178,14 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
                 style={{
                   width: "28px",
                   height: "28px",
+                  borderRadius: "0",
                   border:
                     color === colorOption
-                      ? "2px solid var(--color-text, #1f1d1a)"
-                      : "1px solid var(--border-hairline, rgba(0,0,0,0.15))",
+                      ? "2px solid var(--color-accent-primary)"
+                      : "1px solid var(--color-border)",
                   outline:
                     color === colorOption
-                      ? "2px solid var(--color-bg-card, #ffffff)"
+                      ? "2px solid var(--color-bg-card)"
                       : "none",
                   backgroundColor: colorOption,
                   cursor: "pointer",

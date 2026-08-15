@@ -55,7 +55,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
           fontSize: "11px",
           fontWeight: 600,
           color: useDesignSystem
-            ? "var(--color-text-dim, #736d64)"
+            ? "var(--color-text-sidebar-muted)"
             : "var(--color-text-muted)",
           letterSpacing: "0.05em",
         }}
@@ -74,7 +74,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
           style={{
             position: "relative",
             zIndex: 20,
-            color: useDesignSystem ? "var(--color-text, #1f1d1a)" : "#9AA0A6",
+            color: useDesignSystem ? "var(--color-text-sidebar)" : "#9AA0A6",
             padding: "2px",
           }}
         >
@@ -82,74 +82,29 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
         </button>
         {spacesMenuOpen && (
           <div
-            className={useDesignSystem ? undefined : "dropdown-menu"}
+            className="dropdown-menu glass-menu"
             style={{
               zIndex: 20,
               right: 0,
               top: "100%",
               minWidth: "150px",
               position: "absolute",
-              backgroundColor: useDesignSystem
-                ? "var(--color-bg, #fbf7ee)"
-                : undefined,
+              borderRadius: useDesignSystem ? "0" : undefined,
               border: useDesignSystem
-                ? "1px solid var(--color-text, #1f1d1a)"
+                ? "1px solid var(--glass-border)"
                 : undefined,
-              boxShadow: useDesignSystem
-                ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
+              fontFamily: useDesignSystem
+                ? "var(--font-mono, monospace)"
                 : undefined,
             }}
           >
-            <div
-              className={useDesignSystem ? undefined : "dropdown-item"}
-              style={
-                useDesignSystem
-                  ? {
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 12px",
-                      fontSize: "12px",
-                      cursor: "pointer",
-                      color: "var(--color-text, #1f1d1a)",
-                    }
-                  : undefined
-              }
-              onClick={onNewSpace}
-            >
+            <div className="dropdown-item" onClick={onNewSpace}>
               <Icon name="folder" size="sm" />
               New space
             </div>
-            <div
-              className={useDesignSystem ? undefined : "dropdown-divider"}
-              style={
-                useDesignSystem
-                  ? {
-                      borderBottom:
-                        "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
-                      margin: "4px 0",
-                    }
-                  : undefined
-              }
-            />
-            <div
-              className={useDesignSystem ? undefined : "dropdown-item"}
-              style={
-                useDesignSystem
-                  ? {
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "8px 12px",
-                      fontSize: "12px",
-                      cursor: "pointer",
-                      color: "var(--color-text, #1f1d1a)",
-                    }
-                  : undefined
-              }
-              onClick={onNewSection}
-            >
-              <Icon name="folder_open" size="sm" />
+            <div className="dropdown-divider" />
+            <div className="dropdown-item" onClick={onNewSection}>
+              <Icon name="create_new_folder" size="sm" />
               New section
             </div>
           </div>

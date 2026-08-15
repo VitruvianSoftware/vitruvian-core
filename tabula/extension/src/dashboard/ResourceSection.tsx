@@ -128,7 +128,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               style={{
                 marginRight: "8px",
                 color: useDesignSystem
-                  ? "var(--color-text, #1f1d1a)"
+                  ? "var(--color-text-secondary)"
                   : "var(--color-text-muted)",
               }}
             />
@@ -145,9 +145,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                       fontSize: "13px",
                       fontWeight: 600,
                       padding: "4px 8px",
-                      border: "1px solid var(--color-text, #1f1d1a)",
-                      backgroundColor: "var(--color-bg, #fbf7ee)",
-                      color: "var(--color-text, #1f1d1a)",
+                      border: "1px solid var(--color-border)",
+                      backgroundColor: "var(--color-bg-card)",
+                      color: "var(--color-text-primary)",
                     }
                   : { flex: 1 }
               }
@@ -197,7 +197,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                 fontSize: useDesignSystem ? "13px" : undefined,
                 fontWeight: useDesignSystem ? 600 : undefined,
                 color: useDesignSystem
-                  ? "var(--color-text, #1f1d1a)"
+                  ? "var(--color-text-primary)"
                   : undefined,
               }}
               title="Click to rename"
@@ -276,13 +276,25 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               }}
               style={
                 useDesignSystem
-                  ? { color: "var(--color-text, #1f1d1a)" }
+                  ? { color: "var(--color-text-secondary)" }
                   : undefined
               }
             >
               <Icon name="add" size="sm" />
             </button>
-
+            <span
+              style={{
+                fontSize: "11px",
+                fontFamily: useDesignSystem
+                  ? "var(--font-mono, monospace)"
+                  : undefined,
+                color: useDesignSystem
+                  ? "var(--color-text-secondary)"
+                  : "var(--color-text-muted)",
+              }}
+            >
+              {section.resources.length}
+            </span>
             {/* More Menu */}
             <div style={{ position: "relative" }} ref={menuRef}>
               {openSectionMenuId === section.id && (
@@ -290,18 +302,18 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               )}
               <button
                 className="btn-icon"
+                title="Section Options"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleSectionMenu(
                     openSectionMenuId === section.id ? null : section.id,
                   );
                 }}
-                title="More options"
                 style={{
                   position: "relative",
                   zIndex: 20,
                   color: useDesignSystem
-                    ? "var(--color-text, #1f1d1a)"
+                    ? "var(--color-text-secondary)"
                     : "#9AA0A6",
                   padding: "2px",
                 }}
@@ -310,38 +322,23 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               </button>
               {openSectionMenuId === section.id && (
                 <div
-                  className="dropdown-menu"
+                  className="dropdown-menu glass-menu"
                   style={{
                     right: 0,
                     top: "100%",
                     zIndex: 20,
                     position: "absolute",
-                    backgroundColor: useDesignSystem
-                      ? "var(--color-bg, #fbf7ee)"
-                      : undefined,
+                    borderRadius: useDesignSystem ? "0" : undefined,
                     border: useDesignSystem
-                      ? "1px solid var(--color-text, #1f1d1a)"
+                      ? "1px solid var(--glass-border)"
                       : undefined,
-                    boxShadow: useDesignSystem
-                      ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
+                    fontFamily: useDesignSystem
+                      ? "var(--font-mono, monospace)"
                       : undefined,
                   }}
                 >
                   <div
                     className="dropdown-item"
-                    style={
-                      useDesignSystem
-                        ? {
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 12px",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            color: "var(--color-text, #1f1d1a)",
-                          }
-                        : undefined
-                    }
                     onClick={() => {
                       setTargetSectionId(section.id);
                       setShowAddResource(true);
@@ -351,18 +348,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                     <Icon name="add" size="sm" />
                     Add resource
                   </div>
-                  <div
-                    className="dropdown-divider"
-                    style={
-                      useDesignSystem
-                        ? {
-                            borderBottom:
-                              "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
-                            margin: "4px 0",
-                          }
-                        : undefined
-                    }
-                  />
+                  <div className="dropdown-divider" />
                   <div
                     className="dropdown-item"
                     onClick={() => {
@@ -389,17 +375,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                       );
                     }}
                     style={{
-                      color: "var(--accent, #991b1b)",
-                      ...(useDesignSystem
-                        ? {
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 12px",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                          }
-                        : {}),
+                      color: "var(--color-accent-danger)",
                     }}
                   >
                     <Icon name="delete" size="sm" />

@@ -50,20 +50,23 @@ export interface CrossDeviceTab {
   favIconUrl?: string;
 }
 
-interface TabRowProps {
-  tab: CrossDeviceTab;
+function TabRow({
+  tab,
+  selected,
+  onToggle,
+  useDesignSystem,
+}: {
+  tab: { title?: string; url?: string; favIconUrl?: string | null };
   selected: boolean;
   onToggle: () => void;
   useDesignSystem?: boolean;
-}
-
-function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
+}) {
   return (
     <motion.div
       onClick={onToggle}
       whileHover={{
         backgroundColor: useDesignSystem
-          ? "var(--color-bg-card-hover, rgba(0, 0, 0, 0.04))"
+          ? "var(--color-btn-shaded-bg-hover)"
           : "rgba(255, 255, 255, 0.05)",
       }}
       whileTap={{ scale: 0.99 }}
@@ -76,9 +79,9 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
               padding: "8px 12px",
               cursor: "pointer",
               backgroundColor: selected
-                ? "var(--color-bg-card-hover, rgba(0, 0, 0, 0.06))"
+                ? "var(--color-primary-light)"
                 : "transparent",
-              border: "1px solid var(--border-hairline, rgba(0,0,0,0.08))",
+              border: "1px solid var(--color-border)",
               borderRadius: "0",
               margin: "4px 8px",
             }
@@ -92,8 +95,8 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
                 ? "rgba(51, 112, 255, 0.15)"
                 : "transparent",
               borderRadius: "12px",
-              margin: "2px 8px",
-              transition: "background-color 0.2s ease",
+              margin: "4px 8px",
+              transition: "background 0.2s",
             }
       }
       role="checkbox"
@@ -113,10 +116,10 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
             ? {
                 width: "16px",
                 height: "16px",
-                border: "1px solid var(--color-text, #1f1d1a)",
+                border: `1px solid ${selected ? "var(--color-accent-primary)" : "var(--color-border)"}`,
                 borderRadius: "0",
                 backgroundColor: selected
-                  ? "var(--color-text, #1f1d1a)"
+                  ? "var(--color-accent-primary)"
                   : "transparent",
                 display: "flex",
                 alignItems: "center",
@@ -144,11 +147,11 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
             width={useDesignSystem ? "10" : "12"}
             height={useDesignSystem ? "10" : "12"}
             viewBox="0 0 12 12"
-            fill={useDesignSystem ? "var(--color-bg, #fbf7ee)" : "white"}
+            fill="white"
           >
             <path
               d="M10 3L4.5 8.5L2 6"
-              stroke={useDesignSystem ? "var(--color-bg, #fbf7ee)" : "white"}
+              stroke="white"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -161,7 +164,7 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
       <img
         src={getFaviconSrc({
           favIconUrl: tab.favIconUrl ?? null,
-          url: tab.url,
+          url: tab.url ?? "",
         })}
         alt=""
         style={{
@@ -173,7 +176,7 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
         onError={(e) => {
           const img = e.currentTarget;
           img.onerror = null;
-          img.src = getFaviconSrc({ favIconUrl: null, url: tab.url });
+          img.src = getFaviconSrc({ favIconUrl: null, url: tab.url ?? "" });
         }}
       />
 
@@ -188,7 +191,8 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
                 whiteSpace: "nowrap",
                 fontSize: "13px",
                 fontWeight: 500,
-                color: "var(--color-text, #1f1d1a)",
+                fontFamily: "var(--font-mono, monospace)",
+                color: "var(--color-text-primary)",
               }
             : {
                 flex: 1,
@@ -282,12 +286,9 @@ export function CrossDeviceSessionPopover({
             useDesignSystem
               ? {
                   width: "420px",
-                  backgroundColor: "var(--color-bg, #fbf7ee)",
-                  border: "2px solid var(--color-text, #1f1d1a)",
-                  boxShadow: "6px 6px 0 0 var(--color-text, #1f1d1a)",
                   borderRadius: "0",
+                  border: "1px solid var(--glass-border)",
                   overflow: "hidden",
-                  color: "var(--color-text, #1f1d1a)",
                 }
               : {
                   width: "400px",
@@ -308,7 +309,7 @@ export function CrossDeviceSessionPopover({
                     flexDirection: "column",
                     gap: "4px",
                     padding: "16px 20px",
-                    borderBottom: "1px solid var(--color-text, #1f1d1a)",
+                    borderBottom: "1px solid var(--color-border)",
                   }
                 : {
                     display: "flex",
@@ -326,7 +327,7 @@ export function CrossDeviceSessionPopover({
                       fontWeight: 700,
                       fontSize: "15px",
                       fontFamily: "var(--font-mono, monospace)",
-                      color: "var(--color-text, #1f1d1a)",
+                      color: "var(--color-text-primary)",
                     }
                   : { fontWeight: 600, fontSize: "16px", color: "white" }
               }
@@ -339,7 +340,7 @@ export function CrossDeviceSessionPopover({
                   ? {
                       fontSize: "11px",
                       fontFamily: "var(--font-mono, monospace)",
-                      color: "var(--color-text-dim, #736d64)",
+                      color: "var(--color-text-secondary)",
                     }
                   : {
                       fontSize: "12px",
@@ -367,7 +368,7 @@ export function CrossDeviceSessionPopover({
                   padding: "32px",
                   textAlign: "center",
                   color: useDesignSystem
-                    ? "var(--color-text-dim, #736d64)"
+                    ? "var(--color-text-secondary)"
                     : "rgba(255, 255, 255, 0.5)",
                   fontFamily: useDesignSystem
                     ? "var(--font-mono, monospace)"
@@ -398,9 +399,8 @@ export function CrossDeviceSessionPopover({
                     justifyContent: "flex-end",
                     gap: "8px",
                     padding: "12px 20px",
-                    borderTop: "1px solid var(--color-text, #1f1d1a)",
-                    backgroundColor:
-                      "var(--color-bg-card-hover, rgba(0,0,0,0.02))",
+                    borderTop: "1px solid var(--color-border)",
+                    backgroundColor: "var(--color-btn-shaded-bg)",
                   }
                 : {
                     display: "flex",

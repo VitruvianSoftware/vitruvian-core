@@ -145,7 +145,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               height: "28px",
               borderRadius: useDesignSystem ? "2px" : "50%",
               border: useDesignSystem
-                ? "1px solid var(--color-text, #1f1d1a)"
+                ? "1px solid var(--color-border)"
                 : undefined,
               objectFit: "cover",
             }}
@@ -156,11 +156,9 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               width: "28px",
               height: "28px",
               borderRadius: useDesignSystem ? "2px" : "50%",
-              backgroundColor: useDesignSystem
-                ? "var(--color-text, #1f1d1a)"
-                : "#6366f1",
+              backgroundColor: "var(--color-primary)",
               border: useDesignSystem
-                ? "1px solid var(--color-text, #1f1d1a)"
+                ? "1px solid var(--color-border)"
                 : undefined,
               color: "white",
               display: "flex",
@@ -182,7 +180,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
       {showUserMenu && <MenuOverlay onClose={onCloseUserMenu} zIndex={999} />}
       {showUserMenu && (
         <div
-          className={useDesignSystem ? undefined : "dropdown-menu"}
+          className="dropdown-menu glass-menu"
           style={{
             position: "absolute",
             top: "100%",
@@ -190,14 +188,12 @@ export const UserMenu: React.FC<UserMenuProps> = ({
             marginTop: "4px",
             minWidth: "200px",
             zIndex: 1000,
-            backgroundColor: useDesignSystem
-              ? "var(--color-bg, #fbf7ee)"
-              : undefined,
+            borderRadius: useDesignSystem ? "0" : undefined,
             border: useDesignSystem
-              ? "1px solid var(--color-text, #1f1d1a)"
+              ? "1px solid var(--glass-border)"
               : undefined,
-            boxShadow: useDesignSystem
-              ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
+            fontFamily: useDesignSystem
+              ? "var(--font-mono, monospace)"
               : undefined,
           }}
         >
@@ -207,9 +203,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               style={{
                 fontWeight: 600,
                 fontSize: "14px",
-                color: useDesignSystem
-                  ? "var(--color-text, #1f1d1a)"
-                  : "var(--color-text-primary)",
+                color: "var(--color-text-primary)",
                 fontFamily: useDesignSystem
                   ? "var(--font-mono, monospace)"
                   : undefined,
@@ -224,9 +218,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
             <div
               style={{
                 fontSize: "12px",
-                color: useDesignSystem
-                  ? "var(--color-text-dim, #736d64)"
-                  : "var(--color-text-secondary)",
+                color: "var(--color-text-secondary)",
                 fontFamily: useDesignSystem
                   ? "var(--font-mono, monospace)"
                   : undefined,
@@ -239,59 +231,18 @@ export const UserMenu: React.FC<UserMenuProps> = ({
             </div>
           </div>
 
-          <div
-            className={useDesignSystem ? undefined : "dropdown-divider"}
-            style={
-              useDesignSystem
-                ? {
-                    borderBottom:
-                      "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
-                    margin: "4px 0",
-                  }
-                : undefined
-            }
-          />
+          <div className="dropdown-divider" />
 
           {/* Settings Option */}
-          <div
-            className={useDesignSystem ? undefined : "dropdown-item"}
-            style={
-              useDesignSystem
-                ? {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    color: "var(--color-text, #1f1d1a)",
-                  }
-                : undefined
-            }
-            onClick={onOpenSettings}
-          >
+          <div className="dropdown-item" onClick={onOpenSettings}>
             <Icon name="settings" size="sm" />
             Settings
           </div>
 
-          {/* Logout Option */}
-          <div
-            className={useDesignSystem ? undefined : "dropdown-item"}
-            style={
-              useDesignSystem
-                ? {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "8px 16px",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    color: "var(--accent, #991b1b)",
-                  }
-                : undefined
-            }
-            onClick={onLogout}
-          >
+          <div className="dropdown-divider" />
+
+          {/* Sign Out Option */}
+          <div className="dropdown-item" onClick={onLogout}>
             <Icon name="logout" size="sm" />
             Log out
           </div>

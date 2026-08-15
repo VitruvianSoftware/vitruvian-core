@@ -91,7 +91,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                 ? {
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "12px",
-                    color: "var(--color-text-dim, #736d64)",
+                    color: "var(--color-text-secondary)",
                   }
                 : undefined
             }
@@ -110,8 +110,9 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                 alignItems: "center",
                 padding: "8px 12px",
                 marginBottom: "4px",
-                backgroundColor: "var(--color-bg, #fbf7ee)",
-                border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                backgroundColor: "var(--color-bg-card)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "0",
               }}
             >
               <input
@@ -125,8 +126,8 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                   flex: 1,
                   textDecoration: task.completed ? "line-through" : "none",
                   color: task.completed
-                    ? "var(--color-text-dim, #736d64)"
-                    : "var(--color-text, #1f1d1a)",
+                    ? "var(--color-text-secondary)"
+                    : "var(--color-text-primary)",
                   fontSize: "13px",
                 }}
               >
@@ -137,7 +138,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                 style={{
                   background: "none",
                   border: "none",
-                  color: "var(--accent, #991b1b)",
+                  color: "var(--color-accent-danger)",
                   cursor: "pointer",
                   fontSize: "16px",
                   padding: "0 4px",

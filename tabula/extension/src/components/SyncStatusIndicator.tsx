@@ -76,21 +76,13 @@ export const SyncStatusIndicator: React.FC = () => {
   const getStatusColor = (): string => {
     switch (status) {
       case "syncing":
-        return useDesignSystem
-          ? "var(--accent-2, #1d4ed8)"
-          : "var(--color-accent-primary)";
+        return "var(--color-accent-primary)";
       case "error":
-        return useDesignSystem
-          ? "var(--accent, #991b1b)"
-          : "var(--color-accent-danger)";
+        return "var(--color-accent-danger)";
       case "offline":
-        return useDesignSystem
-          ? "var(--color-text-dim, #736d64)"
-          : "var(--color-text-secondary)";
+        return "var(--color-text-secondary)";
       default:
-        return useDesignSystem
-          ? "var(--accent-success, #166534)"
-          : "var(--color-accent-success, #22c55e)";
+        return "var(--color-accent-success)";
     }
   };
 

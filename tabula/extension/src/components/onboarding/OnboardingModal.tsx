@@ -262,12 +262,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               borderRadius: useDesignSystem ? "0" : "50%",
               background:
                 i === step
-                  ? useDesignSystem
-                    ? "var(--color-text, #1f1d1a)"
-                    : "var(--color-primary, var(--color-accent-primary))"
-                  : useDesignSystem
-                    ? "var(--border-hairline, rgba(0,0,0,0.15))"
-                    : "var(--color-border)",
+                  ? "var(--color-accent-primary)"
+                  : "var(--color-border)",
             }}
           />
         ))}

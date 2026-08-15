@@ -141,20 +141,6 @@
 }
 
 [data-design-system="true"] {
-  --color-bg-page: var(--color-ink);
-  --color-bg-sidebar: var(--color-ink-2);
-  --color-bg-card: var(--color-ink-2);
-  --color-bg-card-hover: var(--color-ink-3);
-  
-  --color-text-primary: var(--color-paper);
-  --color-text-secondary: var(--color-paper-dim);
-  --color-text-muted: var(--color-paper-dim);
-  --color-text-sidebar: var(--color-paper);
-  --color-text-sidebar-secondary: var(--color-paper-dim);
-  
-  --color-border: var(--color-hairline);
-  --color-border-sidebar: var(--color-hairline);
-  
   --radius-xs: 0;
   --radius-sm: 0;
   --radius-md: 0;
@@ -162,11 +148,16 @@
   --radius-pill: 0;
   --radius-circle: 50%;
 
-  /* Restore Frosted Glass tokens from Vitruvian */
-  --glass-bg-strong: var(--glass-bg);
-  --glass-bg-panel: var(--glass-bg);
-  --glass-border: var(--color-hairline);
-  --glass-shadow: var(--shadow-lg);
+  /* Bridge Vitruvian Design System component tokens to active extension theme */
+  --color-bg: var(--color-bg-page);
+  --color-surface: var(--color-bg-card);
+  --color-surface-2: var(--color-bg-card-hover);
+  --color-text: var(--color-text-primary);
+  --color-text-dim: var(--color-text-secondary);
+  --color-divider: var(--color-border);
+  --color-line: var(--color-border);
+  --color-hairline: var(--color-border);
+  --glass-bg: var(--glass-bg-strong);
 }
 
 /* Ambient backdrop — a whisper-subtle aurora painted on the page behind the

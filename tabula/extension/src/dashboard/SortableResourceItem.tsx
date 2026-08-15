@@ -69,8 +69,8 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
           justifyContent: "space-between",
           padding: "8px 12px",
           marginBottom: "4px",
-          backgroundColor: "var(--color-bg, #fbf7ee)",
-          border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+          backgroundColor: "var(--color-bg-card)",
+          border: "1px solid var(--color-border)",
           borderRadius: "0",
         }
       : {}),
@@ -122,7 +122,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
                 ? {
                     fontSize: "13px",
                     fontWeight: 500,
-                    color: "var(--color-text, #1f1d1a)",
+                    color: "var(--color-text-primary)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -139,7 +139,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
                 ? {
                     fontSize: "11px",
                     fontFamily: "var(--font-mono, monospace)",
-                    color: "var(--color-text-dim, #736d64)",
+                    color: "var(--color-text-secondary)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -166,7 +166,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             useDesignSystem
               ? {
                   padding: "4px",
-                  color: "var(--color-text, #1f1d1a)",
+                  color: "var(--color-text-secondary)",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
@@ -188,7 +188,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             useDesignSystem
               ? {
                   padding: "4px",
-                  color: "var(--color-text, #1f1d1a)",
+                  color: "var(--color-text-secondary)",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
@@ -210,7 +210,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             useDesignSystem
               ? {
                   padding: "4px",
-                  color: "var(--accent, #991b1b)",
+                  color: "var(--color-accent-danger)",
                   background: "none",
                   border: "none",
                   cursor: "pointer",

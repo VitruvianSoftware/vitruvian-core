@@ -439,10 +439,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ? {
                 width: "100%",
                 maxWidth: "600px",
-                backgroundColor: "var(--color-bg, #fbf7ee)",
-                border: "2px solid var(--color-text, #1f1d1a)",
-                boxShadow: "6px 6px 0 0 var(--color-text, #1f1d1a)",
                 borderRadius: "0",
+                border: "1px solid var(--glass-border)",
+                backgroundColor: "var(--color-bg-overlay)",
+                backdropFilter: "blur(12px)",
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
@@ -458,7 +458,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   display: "flex",
                   alignItems: "center",
                   padding: "14px 16px",
-                  borderBottom: "1px solid var(--color-text, #1f1d1a)",
+                  borderBottom: "1px solid var(--color-border)",
                   gap: "12px",
                 }
               : undefined
@@ -470,7 +470,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             className="command-palette-search-icon"
             style={
               useDesignSystem
-                ? { color: "var(--color-text, #1f1d1a)" }
+                ? { color: "var(--color-text-secondary)" }
                 : undefined
             }
           />
@@ -487,7 +487,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     outline: "none",
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "14px",
-                    color: "var(--color-text, #1f1d1a)",
+                    color: "var(--color-text-primary)",
                   }
                 : undefined
             }
@@ -507,10 +507,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     fontSize: "10px",
                     fontWeight: 600,
                     padding: "2px 6px",
-                    border: "1px solid var(--color-text, #1f1d1a)",
-                    backgroundColor:
-                      "var(--color-bg-card-hover, rgba(0,0,0,0.06))",
-                    color: "var(--color-text, #1f1d1a)",
+                    border: "1px solid var(--color-border)",
+                    backgroundColor: "var(--color-btn-shaded-bg)",
+                    color: "var(--color-text-secondary)",
                     borderRadius: "0",
                   }
                 : undefined
@@ -520,7 +519,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </kbd>
         </div>
 
-        {/* Filter buttons */}
         <div
           className="command-palette-filters"
           style={
@@ -529,9 +527,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   display: "flex",
                   gap: "6px",
                   padding: "8px 16px",
-                  borderBottom:
-                    "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
-                  overflowX: "auto",
+                  borderBottom: "1px solid var(--color-border)",
+                  backgroundColor: "var(--color-btn-shaded-bg)",
                 }
               : undefined
           }
@@ -558,15 +555,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       textTransform: "uppercase",
                       padding: "3px 8px",
                       cursor: "pointer",
-                      border: "1px solid var(--color-text, #1f1d1a)",
+                      border: `1px solid ${
+                        activeFilter === filter
+                          ? "var(--color-accent-primary)"
+                          : "var(--color-border)"
+                      }`,
                       backgroundColor:
                         activeFilter === filter
-                          ? "var(--color-text, #1f1d1a)"
-                          : "var(--color-bg, #fbf7ee)",
+                          ? "var(--color-accent-primary)"
+                          : "transparent",
                       color:
                         activeFilter === filter
-                          ? "var(--color-bg, #fbf7ee)"
-                          : "var(--color-text, #1f1d1a)",
+                          ? "white"
+                          : "var(--color-text-secondary)",
                       borderRadius: "0",
                     }
                   : undefined
@@ -606,7 +607,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         fontFamily: "var(--font-mono, monospace)",
                         fontSize: "11px",
                         textTransform: "uppercase",
-                        color: "var(--color-text-dim, #736d64)",
+                        color: "var(--color-text-secondary)",
                         padding: "8px 16px",
                       }
                     : undefined
@@ -628,6 +629,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                           cursor: "pointer",
                           fontFamily: "var(--font-mono, monospace)",
                           fontSize: "12px",
+                          color: "var(--color-text-primary)",
                         }
                       : undefined
                   }
@@ -653,7 +655,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         textAlign: "center",
                         fontFamily: "var(--font-mono, monospace)",
                         fontSize: "13px",
-                        color: "var(--color-text-dim, #736d64)",
+                        color: "var(--color-text-secondary)",
                       }
                     : undefined
                 }
@@ -676,13 +678,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                             padding: "8px 16px",
                             cursor: "pointer",
                             backgroundColor: isSelected
-                              ? "var(--color-text, #1f1d1a)"
+                              ? "var(--color-primary-light)"
                               : "transparent",
-                            color: isSelected
-                              ? "var(--color-bg, #fbf7ee)"
-                              : "var(--color-text, #1f1d1a)",
-                            borderBottom:
-                              "1px solid var(--border-hairline, rgba(0,0,0,0.06))",
+                            color: "var(--color-text-primary)",
+                            borderBottom: "1px solid var(--color-border)",
                           }
                         : undefined
                     }
@@ -697,8 +696,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         useDesignSystem
                           ? {
                               color: isSelected
-                                ? "var(--color-bg, #fbf7ee)"
-                                : "var(--color-text, #1f1d1a)",
+                                ? "var(--color-accent-primary)"
+                                : "var(--color-text-secondary)",
                               marginRight: "12px",
                             }
                           : undefined
@@ -720,6 +719,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                             ? {
                                 fontSize: "13px",
                                 fontWeight: 500,
+                                color: "var(--color-text-primary)",
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
@@ -737,9 +737,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                               ? {
                                   fontSize: "11px",
                                   fontFamily: "var(--font-mono, monospace)",
-                                  color: isSelected
-                                    ? "var(--color-bg-card-hover, #ede5d8)"
-                                    : "var(--color-text-dim, #736d64)",
+                                  color: "var(--color-text-secondary)",
                                   whiteSpace: "nowrap",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
@@ -758,9 +756,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                               ? {
                                   fontSize: "10px",
                                   fontFamily: "var(--font-mono, monospace)",
-                                  color: isSelected
-                                    ? "var(--color-bg-card-hover, #ede5d8)"
-                                    : "var(--color-text-dim, #736d64)",
+                                  color: "var(--color-text-secondary)",
                                 }
                               : undefined
                           }
@@ -780,12 +776,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                               padding: "2px 6px",
                               border: `1px solid ${
                                 isSelected
-                                  ? "var(--color-bg, #fbf7ee)"
-                                  : "var(--color-text, #1f1d1a)"
+                                  ? "var(--color-accent-primary)"
+                                  : "var(--color-border)"
                               }`,
                               color: isSelected
-                                ? "var(--color-bg, #fbf7ee)"
-                                : "var(--color-text, #1f1d1a)",
+                                ? "var(--color-accent-primary)"
+                                : "var(--color-text-secondary)",
                               marginLeft: "8px",
                             }
                           : undefined
@@ -808,11 +804,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   alignItems: "center",
                   justifyContent: "flex-end",
                   padding: "8px 16px",
-                  borderTop: "1px solid var(--color-text, #1f1d1a)",
-                  backgroundColor:
-                    "var(--color-bg-card-hover, rgba(0,0,0,0.03))",
+                  borderTop: "1px solid var(--color-border)",
+                  backgroundColor: "var(--color-btn-shaded-bg)",
                   fontFamily: "var(--font-mono, monospace)",
                   fontSize: "11px",
+                  color: "var(--color-text-secondary)",
                   gap: "6px",
                 }
               : undefined
@@ -826,7 +822,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    color: "var(--color-text-dim, #736d64)",
+                    color: "var(--color-text-secondary)",
                   }
                 : undefined
             }
@@ -834,7 +830,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--color-text, #1f1d1a)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-btn-shaded-bg)",
                 borderRadius: 0,
               }}
             >
@@ -843,7 +840,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--color-text, #1f1d1a)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-btn-shaded-bg)",
                 borderRadius: 0,
               }}
             >
@@ -853,7 +851,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--color-text, #1f1d1a)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-btn-shaded-bg)",
                 borderRadius: 0,
               }}
             >
