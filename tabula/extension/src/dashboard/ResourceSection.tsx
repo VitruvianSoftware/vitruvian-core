@@ -128,7 +128,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               style={{
                 marginRight: "8px",
                 color: useDesignSystem
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "var(--color-text-muted)",
               }}
             />
@@ -145,9 +145,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                       fontSize: "13px",
                       fontWeight: 600,
                       padding: "4px 8px",
-                      border: "1px solid var(--ink, #1f1d1a)",
-                      backgroundColor: "var(--paper, #fbf7ee)",
-                      color: "var(--ink, #1f1d1a)",
+                      border: "1px solid var(--color-text, #1f1d1a)",
+                      backgroundColor: "var(--color-bg, #fbf7ee)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : { flex: 1 }
               }
@@ -196,7 +196,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                   : undefined,
                 fontSize: useDesignSystem ? "13px" : undefined,
                 fontWeight: useDesignSystem ? 600 : undefined,
-                color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
+                color: useDesignSystem
+                  ? "var(--color-text, #1f1d1a)"
+                  : undefined,
               }}
               title="Click to rename"
             >
@@ -273,7 +275,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                 }
               }}
               style={
-                useDesignSystem ? { color: "var(--ink, #1f1d1a)" } : undefined
+                useDesignSystem
+                  ? { color: "var(--color-text, #1f1d1a)" }
+                  : undefined
               }
             >
               <Icon name="add" size="sm" />
@@ -296,7 +300,9 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                 style={{
                   position: "relative",
                   zIndex: 20,
-                  color: useDesignSystem ? "var(--ink, #1f1d1a)" : "#9AA0A6",
+                  color: useDesignSystem
+                    ? "var(--color-text, #1f1d1a)"
+                    : "#9AA0A6",
                   padding: "2px",
                 }}
               >
@@ -311,13 +317,13 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                     zIndex: 20,
                     position: "absolute",
                     backgroundColor: useDesignSystem
-                      ? "var(--paper, #fbf7ee)"
+                      ? "var(--color-bg, #fbf7ee)"
                       : undefined,
                     border: useDesignSystem
-                      ? "1px solid var(--ink, #1f1d1a)"
+                      ? "1px solid var(--color-text, #1f1d1a)"
                       : undefined,
                     boxShadow: useDesignSystem
-                      ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                      ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
                       : undefined,
                   }}
                 >
@@ -332,7 +338,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                             padding: "8px 12px",
                             fontSize: "12px",
                             cursor: "pointer",
-                            color: "var(--ink, #1f1d1a)",
+                            color: "var(--color-text, #1f1d1a)",
                           }
                         : undefined
                     }

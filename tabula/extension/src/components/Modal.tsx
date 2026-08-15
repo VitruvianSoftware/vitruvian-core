@@ -119,7 +119,7 @@ export const Modal: React.FC<ModalProps> = ({
           transition={{ duration: 0.2 }}
         >
           <motion.div
-            className={`modal-content ${!useDesignSystem ? "glassmorphic-modal" : ""}`}
+            className={`modal-content ${"glassmorphic-modal"}`}
             style={sizeStyles[size]}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

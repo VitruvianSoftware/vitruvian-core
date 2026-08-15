@@ -180,7 +180,7 @@ const Popup: React.FC = () => {
         marginBottom: "16px",
         paddingBottom: "16px",
         borderBottom: useDesignSystem
-          ? "1px solid var(--ink, #1f1d1a)"
+          ? "1px solid var(--color-text, #1f1d1a)"
           : "1px solid var(--color-border)",
       }}
     >
@@ -199,7 +199,7 @@ const Popup: React.FC = () => {
                     fontWeight: 700,
                     fontFamily: "var(--font-mono, monospace)",
                     letterSpacing: "-0.02em",
-                    color: "var(--ink, #1f1d1a)",
+                    color: "var(--color-text, #1f1d1a)",
                     margin: 0,
                   }
                 : {
@@ -221,8 +221,9 @@ const Popup: React.FC = () => {
                 ? {
                     padding: "3px 8px",
                     borderRadius: "0",
-                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.04))",
-                    border: "1px solid var(--ink, #1f1d1a)",
+                    backgroundColor:
+                      "var(--color-bg-card-hover, rgba(0,0,0,0.04))",
+                    border: "1px solid var(--color-text, #1f1d1a)",
                     maxWidth: "140px",
                   }
                 : {
@@ -240,7 +241,7 @@ const Popup: React.FC = () => {
                 height: "6px",
                 borderRadius: useDesignSystem ? "0" : "50%",
                 backgroundColor: useDesignSystem
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "var(--color-accent-success)",
                 flexShrink: 0,
               }}
@@ -253,7 +254,7 @@ const Popup: React.FC = () => {
                   ? "var(--font-mono, monospace)"
                   : undefined,
                 color: useDesignSystem
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "var(--color-text-secondary)",
                 fontWeight: "500",
               }}
@@ -436,7 +437,7 @@ const Popup: React.FC = () => {
             ? "var(--font-mono, monospace)"
             : undefined,
           color: useDesignSystem
-            ? "var(--paper-dim, #736d64)"
+            ? "var(--color-text-dim, #736d64)"
             : "var(--color-text-secondary)",
           textTransform: useDesignSystem ? "uppercase" : undefined,
         }}
@@ -468,9 +469,9 @@ const Popup: React.FC = () => {
               ? {
                   textAlign: "center",
                   padding: "36px 20px",
-                  color: "var(--paper-dim, #736d64)",
-                  border: "1px dashed var(--ink, #1f1d1a)",
-                  backgroundColor: "var(--paper, #fbf7ee)",
+                  color: "var(--color-text-dim, #736d64)",
+                  border: "1px dashed var(--color-text, #1f1d1a)",
+                  backgroundColor: "var(--color-bg, #fbf7ee)",
                   fontFamily: "var(--font-mono, monospace)",
                 }
               : {
@@ -540,7 +541,7 @@ const Popup: React.FC = () => {
           padding: "24px",
           width: "360px",
           backgroundColor: useDesignSystem
-            ? "var(--paper, #fbf7ee)"
+            ? "var(--color-bg, #fbf7ee)"
             : undefined,
           fontFamily: "var(--font-family)",
         }}
@@ -549,7 +550,7 @@ const Popup: React.FC = () => {
           style={{
             textAlign: "center",
             color: useDesignSystem
-              ? "var(--ink, #1f1d1a)"
+              ? "var(--color-text, #1f1d1a)"
               : "var(--color-primary)",
             fontFamily: useDesignSystem
               ? "var(--font-mono, monospace)"
@@ -574,8 +575,10 @@ const Popup: React.FC = () => {
         minHeight: "400px",
         maxHeight: "600px",
         padding: "20px",
-        backgroundColor: useDesignSystem ? "var(--paper, #fbf7ee)" : undefined,
-        color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
+        backgroundColor: useDesignSystem
+          ? "var(--color-bg, #fbf7ee)"
+          : undefined,
+        color: useDesignSystem ? "var(--color-text, #1f1d1a)" : undefined,
         fontFamily: "var(--font-family)",
       }}
     >

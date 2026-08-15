@@ -89,9 +89,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 maxWidth: "420px",
                 width: "90%",
                 padding: "24px",
-                backgroundColor: "var(--paper, #fbf7ee)",
-                border: "1px solid var(--ink, #1f1d1a)",
-                boxShadow: "4px 4px 0px 0px var(--ink, #1f1d1a)",
+                backgroundColor: "var(--color-bg, #fbf7ee)",
+                border: "1px solid var(--color-text, #1f1d1a)",
+                boxShadow: "4px 4px 0px 0px var(--color-text, #1f1d1a)",
               }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -126,7 +126,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                       margin: 0,
                       fontSize: "16px",
                       fontWeight: 600,
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }}
                   >
                     {title}
@@ -136,7 +136,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 <p
                   style={{
                     margin: "12px 0 16px 0",
-                    color: "var(--paper-dim, #736d64)",
+                    color: "var(--color-text-dim, #736d64)",
                     fontSize: "13px",
                     lineHeight: 1.5,
                   }}

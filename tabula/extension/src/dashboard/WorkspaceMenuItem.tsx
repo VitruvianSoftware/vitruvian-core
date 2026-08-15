@@ -101,14 +101,14 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
           ...(useDesignSystem
             ? {
                 borderLeft: isActive
-                  ? "3px solid var(--ink, #1f1d1a)"
+                  ? "3px solid var(--color-text, #1f1d1a)"
                   : "3px solid transparent",
                 backgroundColor: isActive
-                  ? "var(--paper-hover, rgba(0,0,0,0.04))"
+                  ? "var(--color-bg-card-hover, rgba(0,0,0,0.04))"
                   : "transparent",
                 color: isActive
-                  ? "var(--ink, #1f1d1a)"
-                  : "var(--paper-dim, #736d64)",
+                  ? "var(--color-text, #1f1d1a)"
+                  : "var(--color-text-dim, #736d64)",
                 fontWeight: isActive ? 600 : 400,
                 borderRadius: "0",
               }
@@ -162,13 +162,13 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
               zIndex: 20,
               position: "absolute",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : undefined,
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : undefined,
               boxShadow: useDesignSystem
-                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
                 : undefined,
             }}
           >
@@ -186,7 +186,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                         gap: "8px",
                         padding: "8px 12px",
                         fontSize: "12px",
-                        color: "var(--ink, #1f1d1a)",
+                        color: "var(--color-text, #1f1d1a)",
                       }
                     : {}),
                 }}
@@ -210,7 +210,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       gap: "8px",
                       padding: "8px 12px",
                       fontSize: "12px",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}
@@ -245,7 +245,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       gap: "8px",
                       padding: "8px 12px",
                       fontSize: "12px",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}
@@ -267,7 +267,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : undefined
               }
@@ -291,7 +291,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}
@@ -334,7 +334,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                           height: "12px",
                           borderRadius: useDesignSystem ? "0" : "50%",
                           border: useDesignSystem
-                            ? "1px solid var(--ink, #1f1d1a)"
+                            ? "1px solid var(--color-text, #1f1d1a)"
                             : undefined,
                           backgroundColor: color.value,
                         }}
@@ -362,7 +362,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}
@@ -419,7 +419,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                           height: "8px",
                           borderRadius: useDesignSystem ? "0" : "50%",
                           border: useDesignSystem
-                            ? "1px solid var(--ink, #1f1d1a)"
+                            ? "1px solid var(--color-text, #1f1d1a)"
                             : undefined,
                           backgroundColor: group.color,
                         }}
@@ -456,7 +456,7 @@ export const WorkspaceMenuItem: React.FC<WorkspaceMenuItemProps> = ({
                       gap: "8px",
                       padding: "8px 12px",
                       fontSize: "12px",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}

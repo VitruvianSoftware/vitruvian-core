@@ -63,7 +63,7 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
       onClick={onToggle}
       whileHover={{
         backgroundColor: useDesignSystem
-          ? "var(--paper-hover, rgba(0, 0, 0, 0.04))"
+          ? "var(--color-bg-card-hover, rgba(0, 0, 0, 0.04))"
           : "rgba(255, 255, 255, 0.05)",
       }}
       whileTap={{ scale: 0.99 }}
@@ -76,7 +76,7 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
               padding: "8px 12px",
               cursor: "pointer",
               backgroundColor: selected
-                ? "var(--paper-hover, rgba(0, 0, 0, 0.06))"
+                ? "var(--color-bg-card-hover, rgba(0, 0, 0, 0.06))"
                 : "transparent",
               border: "1px solid var(--border-hairline, rgba(0,0,0,0.08))",
               borderRadius: "0",
@@ -113,10 +113,10 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
             ? {
                 width: "16px",
                 height: "16px",
-                border: "1px solid var(--ink, #1f1d1a)",
+                border: "1px solid var(--color-text, #1f1d1a)",
                 borderRadius: "0",
                 backgroundColor: selected
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "transparent",
                 display: "flex",
                 alignItems: "center",
@@ -144,11 +144,11 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
             width={useDesignSystem ? "10" : "12"}
             height={useDesignSystem ? "10" : "12"}
             viewBox="0 0 12 12"
-            fill={useDesignSystem ? "var(--paper, #fbf7ee)" : "white"}
+            fill={useDesignSystem ? "var(--color-bg, #fbf7ee)" : "white"}
           >
             <path
               d="M10 3L4.5 8.5L2 6"
-              stroke={useDesignSystem ? "var(--paper, #fbf7ee)" : "white"}
+              stroke={useDesignSystem ? "var(--color-bg, #fbf7ee)" : "white"}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -188,7 +188,7 @@ function TabRow({ tab, selected, onToggle, useDesignSystem }: TabRowProps) {
                 whiteSpace: "nowrap",
                 fontSize: "13px",
                 fontWeight: 500,
-                color: "var(--ink, #1f1d1a)",
+                color: "var(--color-text, #1f1d1a)",
               }
             : {
                 flex: 1,
@@ -272,9 +272,7 @@ export function CrossDeviceSessionPopover({
         onClick={onKeepMine}
       >
         <motion.div
-          className={
-            useDesignSystem ? undefined : "tab-conflict-popover glass-menu"
-          }
+          className={"tab-conflict-popover glass-menu"}
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -284,12 +282,12 @@ export function CrossDeviceSessionPopover({
             useDesignSystem
               ? {
                   width: "420px",
-                  backgroundColor: "var(--paper, #fbf7ee)",
-                  border: "2px solid var(--ink, #1f1d1a)",
-                  boxShadow: "6px 6px 0 0 var(--ink, #1f1d1a)",
+                  backgroundColor: "var(--color-bg, #fbf7ee)",
+                  border: "2px solid var(--color-text, #1f1d1a)",
+                  boxShadow: "6px 6px 0 0 var(--color-text, #1f1d1a)",
                   borderRadius: "0",
                   overflow: "hidden",
-                  color: "var(--ink, #1f1d1a)",
+                  color: "var(--color-text, #1f1d1a)",
                 }
               : {
                   width: "400px",
@@ -310,7 +308,7 @@ export function CrossDeviceSessionPopover({
                     flexDirection: "column",
                     gap: "4px",
                     padding: "16px 20px",
-                    borderBottom: "1px solid var(--ink, #1f1d1a)",
+                    borderBottom: "1px solid var(--color-text, #1f1d1a)",
                   }
                 : {
                     display: "flex",
@@ -328,7 +326,7 @@ export function CrossDeviceSessionPopover({
                       fontWeight: 700,
                       fontSize: "15px",
                       fontFamily: "var(--font-mono, monospace)",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : { fontWeight: 600, fontSize: "16px", color: "white" }
               }
@@ -341,7 +339,7 @@ export function CrossDeviceSessionPopover({
                   ? {
                       fontSize: "11px",
                       fontFamily: "var(--font-mono, monospace)",
-                      color: "var(--paper-dim, #736d64)",
+                      color: "var(--color-text-dim, #736d64)",
                     }
                   : {
                       fontSize: "12px",
@@ -369,7 +367,7 @@ export function CrossDeviceSessionPopover({
                   padding: "32px",
                   textAlign: "center",
                   color: useDesignSystem
-                    ? "var(--paper-dim, #736d64)"
+                    ? "var(--color-text-dim, #736d64)"
                     : "rgba(255, 255, 255, 0.5)",
                   fontFamily: useDesignSystem
                     ? "var(--font-mono, monospace)"
@@ -400,8 +398,9 @@ export function CrossDeviceSessionPopover({
                     justifyContent: "flex-end",
                     gap: "8px",
                     padding: "12px 20px",
-                    borderTop: "1px solid var(--ink, #1f1d1a)",
-                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.02))",
+                    borderTop: "1px solid var(--color-text, #1f1d1a)",
+                    backgroundColor:
+                      "var(--color-bg-card-hover, rgba(0,0,0,0.02))",
                   }
                 : {
                     display: "flex",

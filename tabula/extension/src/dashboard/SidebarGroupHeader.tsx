@@ -80,7 +80,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        color: useDesignSystem ? "var(--paper-dim, #736d64)" : "#9AA0A6",
+        color: useDesignSystem ? "var(--color-text-dim, #736d64)" : "#9AA0A6",
         fontFamily: useDesignSystem ? "var(--font-mono, monospace)" : undefined,
         fontSize: "11px",
         fontWeight: "600",
@@ -161,13 +161,13 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
               zIndex: 20,
               position: "absolute",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : undefined,
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : undefined,
               boxShadow: useDesignSystem
-                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
                 : undefined,
             }}
             onClick={(e) => e.stopPropagation()}
@@ -199,7 +199,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : undefined
               }
@@ -223,7 +223,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : {}),
               }}
@@ -263,7 +263,7 @@ export const SidebarGroupHeader: React.FC<SidebarGroupHeaderProps> = ({
                           height: "12px",
                           borderRadius: useDesignSystem ? "0" : "50%",
                           border: useDesignSystem
-                            ? "1px solid var(--ink, #1f1d1a)"
+                            ? "1px solid var(--color-text, #1f1d1a)"
                             : undefined,
                           backgroundColor: color.value,
                         }}

@@ -85,7 +85,7 @@ export const SyncStatusIndicator: React.FC = () => {
           : "var(--color-accent-danger)";
       case "offline":
         return useDesignSystem
-          ? "var(--paper-dim, #736d64)"
+          ? "var(--color-text-dim, #736d64)"
           : "var(--color-text-secondary)";
       default:
         return useDesignSystem
@@ -130,7 +130,7 @@ export const SyncStatusIndicator: React.FC = () => {
           gap: "6px",
           padding: "3px 6px",
           border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
-          backgroundColor: "var(--ink-2, #ffffff)",
+          backgroundColor: "var(--color-bg-card, #ffffff)",
           cursor: status === "error" ? "pointer" : "default",
           fontSize: "11px",
           fontFamily: "var(--font-mono, monospace)",

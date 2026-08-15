@@ -55,7 +55,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
           fontSize: "11px",
           fontWeight: 600,
           color: useDesignSystem
-            ? "var(--paper-dim, #736d64)"
+            ? "var(--color-text-dim, #736d64)"
             : "var(--color-text-muted)",
           letterSpacing: "0.05em",
         }}
@@ -74,7 +74,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
           style={{
             position: "relative",
             zIndex: 20,
-            color: useDesignSystem ? "var(--ink, #1f1d1a)" : "#9AA0A6",
+            color: useDesignSystem ? "var(--color-text, #1f1d1a)" : "#9AA0A6",
             padding: "2px",
           }}
         >
@@ -90,13 +90,13 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
               minWidth: "150px",
               position: "absolute",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : undefined,
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : undefined,
               boxShadow: useDesignSystem
-                ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+                ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
                 : undefined,
             }}
           >
@@ -111,7 +111,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : undefined
               }
@@ -143,7 +143,7 @@ export const SpacesHeader: React.FC<SpacesHeaderProps> = ({
                       padding: "8px 12px",
                       fontSize: "12px",
                       cursor: "pointer",
-                      color: "var(--ink, #1f1d1a)",
+                      color: "var(--color-text, #1f1d1a)",
                     }
                   : undefined
               }

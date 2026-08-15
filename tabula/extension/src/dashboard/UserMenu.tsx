@@ -145,7 +145,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               height: "28px",
               borderRadius: useDesignSystem ? "2px" : "50%",
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : undefined,
               objectFit: "cover",
             }}
@@ -157,10 +157,10 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               height: "28px",
               borderRadius: useDesignSystem ? "2px" : "50%",
               backgroundColor: useDesignSystem
-                ? "var(--ink, #1f1d1a)"
+                ? "var(--color-text, #1f1d1a)"
                 : "#6366f1",
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : undefined,
               color: "white",
               display: "flex",
@@ -191,13 +191,13 @@ export const UserMenu: React.FC<UserMenuProps> = ({
             minWidth: "200px",
             zIndex: 1000,
             backgroundColor: useDesignSystem
-              ? "var(--paper, #fbf7ee)"
+              ? "var(--color-bg, #fbf7ee)"
               : undefined,
             border: useDesignSystem
-              ? "1px solid var(--ink, #1f1d1a)"
+              ? "1px solid var(--color-text, #1f1d1a)"
               : undefined,
             boxShadow: useDesignSystem
-              ? "3px 3px 0 0 var(--ink, #1f1d1a)"
+              ? "3px 3px 0 0 var(--color-text, #1f1d1a)"
               : undefined,
           }}
         >
@@ -208,7 +208,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
                 fontWeight: 600,
                 fontSize: "14px",
                 color: useDesignSystem
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "var(--color-text-primary)",
                 fontFamily: useDesignSystem
                   ? "var(--font-mono, monospace)"
@@ -225,7 +225,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               style={{
                 fontSize: "12px",
                 color: useDesignSystem
-                  ? "var(--paper-dim, #736d64)"
+                  ? "var(--color-text-dim, #736d64)"
                   : "var(--color-text-secondary)",
                 fontFamily: useDesignSystem
                   ? "var(--font-mono, monospace)"
@@ -264,7 +264,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
                     padding: "8px 16px",
                     fontSize: "13px",
                     cursor: "pointer",
-                    color: "var(--ink, #1f1d1a)",
+                    color: "var(--color-text, #1f1d1a)",
                   }
                 : undefined
             }

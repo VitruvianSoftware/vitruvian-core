@@ -98,9 +98,9 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
         (useDesignSystem ? (
           <div
             style={{
-              backgroundColor: "var(--paper, #fbf7ee)",
-              border: "1px solid var(--ink, #1f1d1a)",
-              boxShadow: "3px 3px 0 0 var(--ink, #1f1d1a)",
+              backgroundColor: "var(--color-bg, #fbf7ee)",
+              border: "1px solid var(--color-text, #1f1d1a)",
+              boxShadow: "3px 3px 0 0 var(--color-text, #1f1d1a)",
               padding: "16px",
               marginBottom: "16px",
             }}
@@ -187,7 +187,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
                 ? {
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "12px",
-                    color: "var(--paper-dim, #736d64)",
+                    color: "var(--color-text-dim, #736d64)",
                   }
                 : undefined
             }
@@ -201,7 +201,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
               key={note.id}
               className="note-card"
               style={{
-                backgroundColor: "var(--paper, #fbf7ee)",
+                backgroundColor: "var(--color-bg, #fbf7ee)",
                 border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
                 padding: "12px 16px",
                 marginBottom: "12px",
@@ -222,7 +222,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
                     fontFamily: "var(--font-mono, monospace)",
                     fontWeight: 600,
                     fontSize: "14px",
-                    color: "var(--ink, #1f1d1a)",
+                    color: "var(--color-text, #1f1d1a)",
                     border: "none",
                     background: "transparent",
                     outline: "none",

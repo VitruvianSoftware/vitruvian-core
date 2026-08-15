@@ -62,11 +62,11 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
               maxWidth: "320px",
               margin: "0 auto",
               textAlign: "center",
-              backgroundColor: "var(--paper, #fbf7ee)",
-              border: "2px solid var(--ink, #1f1d1a)",
-              boxShadow: "4px 4px 0 0 var(--ink, #1f1d1a)",
+              backgroundColor: "var(--color-bg, #fbf7ee)",
+              border: "2px solid var(--color-text, #1f1d1a)",
+              boxShadow: "4px 4px 0 0 var(--color-text, #1f1d1a)",
               padding: "24px",
-              color: "var(--ink, #1f1d1a)",
+              color: "var(--color-text, #1f1d1a)",
             }
           : { maxWidth: "320px", margin: "0 auto", textAlign: "center" }
       }
@@ -80,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 fontWeight: 700,
                 fontFamily: "var(--font-mono, monospace)",
                 letterSpacing: "-0.02em",
-                color: "var(--ink, #1f1d1a)",
+                color: "var(--color-text, #1f1d1a)",
               }
             : {
                 marginBottom: "16px",
@@ -96,7 +96,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           useDesignSystem
             ? {
                 marginBottom: "20px",
-                color: "var(--paper-dim, #736d64)",
+                color: "var(--color-text-dim, #736d64)",
                 fontSize: "13px",
                 lineHeight: "1.4",
               }
@@ -157,7 +157,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess }) => {
             ? {
                 fontSize: "11px",
                 fontFamily: "var(--font-mono, monospace)",
-                color: "var(--paper-dim, #736d64)",
+                color: "var(--color-text-dim, #736d64)",
                 margin: 0,
               }
             : { fontSize: "12px", color: "var(--color-text-secondary)" }

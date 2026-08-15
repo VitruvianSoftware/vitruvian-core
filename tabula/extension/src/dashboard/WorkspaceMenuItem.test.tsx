@@ -395,7 +395,7 @@ describe("WorkspaceMenuItem", () => {
       expect(navItem).toHaveClass("active");
       expect(navItem).toHaveStyle({
         fontWeight: "600",
-        color: "var(--ink, #1f1d1a)",
+        color: "var(--color-text, #1f1d1a)",
       });
     });
   });

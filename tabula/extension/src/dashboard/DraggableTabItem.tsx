@@ -73,7 +73,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
           justifyContent: "space-between",
           padding: "8px 12px",
           marginBottom: "4px",
-          backgroundColor: "var(--paper, #fbf7ee)",
+          backgroundColor: "var(--color-bg, #fbf7ee)",
           border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
           borderRadius: "0",
         }
@@ -130,7 +130,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
                 ? {
                     fontSize: "13px",
                     fontWeight: 500,
-                    color: "var(--ink, #1f1d1a)",
+                    color: "var(--color-text, #1f1d1a)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -147,7 +147,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
                 ? {
                     fontSize: "11px",
                     fontFamily: "var(--font-mono, monospace)",
-                    color: "var(--paper-dim, #736d64)",
+                    color: "var(--color-text-dim, #736d64)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -174,7 +174,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
             useDesignSystem
               ? {
                   padding: "4px",
-                  color: "var(--ink, #1f1d1a)",
+                  color: "var(--color-text, #1f1d1a)",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
@@ -195,7 +195,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
             useDesignSystem
               ? {
                   padding: "4px",
-                  color: "var(--ink, #1f1d1a)",
+                  color: "var(--color-text, #1f1d1a)",
                   background: "none",
                   border: "none",
                   cursor: "pointer",
