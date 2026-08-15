@@ -24,7 +24,12 @@ import React, { useRef } from "react";
 import { User } from "../services/auth";
 import { Icon } from "../components/icons";
 import { MenuOverlay } from "./MenuOverlay";
-import { Button } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  Menu,
+  MenuItem,
+  MenuDivider,
+} from "@vitruviansoftware/design-system";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 
@@ -96,26 +101,56 @@ export const UserMenu: React.FC<UserMenuProps> = ({
         style={{ display: "flex", alignItems: "center", gap: "8px" }}
         ref={menuRef}
       >
-        <button
-          className="btn btn-secondary"
-          style={{
-            padding: "4px 8px",
-            display: "flex",
-            alignItems: "center",
-          }}
-          onClick={onOpenSettings}
-          title="Settings"
-        >
-          <Icon name="settings" size="sm" />
-        </button>
-        <button
-          className="btn btn-primary"
-          style={{ padding: "4px 12px", fontSize: "12px" }}
-          onClick={onSignIn}
-          title="Sign in to sync your spaces across devices"
-        >
-          Sign in
-        </button>
+        <>
+          {useDesignSystem ? (
+            <Button
+              variant="secondary"
+              style={{
+                padding: "4px 8px",
+                display: "flex",
+                alignItems: "center",
+              }}
+              onClick={onOpenSettings}
+              title="Settings"
+            >
+              <Icon name="settings" size="sm" />
+            </Button>
+          ) : (
+            <button
+              className="btn btn-secondary"
+              style={{
+                padding: "4px 8px",
+                display: "flex",
+                alignItems: "center",
+              }}
+              onClick={onOpenSettings}
+              title="Settings"
+            >
+              <Icon name="settings" size="sm" />
+            </button>
+          )}
+        </>
+        <>
+          {useDesignSystem ? (
+            <Button
+              variant="primary"
+              style={{ padding: "4px 12px", fontSize: "12px" }}
+              onClick={onSignIn}
+              title="Sign in to sync your spaces across devices"
+            >
+              Sign in
+            </Button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              style={{ padding: "4px 12px", fontSize: "12px" }}
+              onClick={onSignIn}
+              title="Sign in to sync your spaces across devices"
+            >
+              Sign in
+            </button>
+          )}
+        </>
       </div>
     );
   }
@@ -178,76 +213,114 @@ export const UserMenu: React.FC<UserMenuProps> = ({
 
       {/* User Dropdown Menu */}
       {showUserMenu && <MenuOverlay onClose={onCloseUserMenu} zIndex={999} />}
-      {showUserMenu && (
-        <div
-          className="dropdown-menu glass-menu"
-          style={{
-            position: "absolute",
-            top: "100%",
-            right: "16px",
-            marginTop: "4px",
-            minWidth: "200px",
-            zIndex: 1000,
-            borderRadius: useDesignSystem ? "0" : undefined,
-            border: useDesignSystem
-              ? "1px solid var(--glass-border)"
-              : undefined,
-            fontFamily: useDesignSystem
-              ? "var(--font-mono, monospace)"
-              : undefined,
-          }}
-        >
-          {/* User Info Header */}
-          <div style={{ padding: "12px 16px 8px 16px" }}>
-            <div
-              style={{
-                fontWeight: 600,
-                fontSize: "14px",
-                color: "var(--color-text-primary)",
-                fontFamily: useDesignSystem
-                  ? "var(--font-mono, monospace)"
-                  : undefined,
-                marginBottom: "2px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {user?.name || "Account"}
+      {showUserMenu &&
+        (useDesignSystem ? (
+          <Menu
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: "16px",
+              marginTop: "4px",
+              minWidth: "200px",
+              zIndex: 1000,
+            }}
+          >
+            <div style={{ padding: "12px 16px 8px 16px" }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  color: "var(--color-text-primary)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  marginBottom: "2px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {user?.name || "Account"}
+              </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {user?.email}
+              </div>
             </div>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--color-text-secondary)",
-                fontFamily: useDesignSystem
-                  ? "var(--font-mono, monospace)"
-                  : undefined,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {user?.email}
+            <MenuDivider />
+            <MenuItem onClick={onOpenSettings}>
+              <Icon name="settings" size="sm" />
+              Settings
+            </MenuItem>
+            <MenuDivider />
+            <MenuItem onClick={onLogout}>
+              <Icon name="logout" size="sm" />
+              Log out
+            </MenuItem>
+          </Menu>
+        ) : (
+          <div
+            className="dropdown-menu"
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: "16px",
+              marginTop: "4px",
+              minWidth: "200px",
+              zIndex: 1000,
+            }}
+          >
+            {/* User Info Header */}
+            <div style={{ padding: "12px 16px 8px 16px" }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: "14px",
+                  color: "var(--color-text-primary)",
+                  marginBottom: "2px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {user?.name || "Account"}
+              </div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "var(--color-text-secondary)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {user?.email}
+              </div>
+            </div>
+
+            <div className="dropdown-divider" />
+
+            {/* Settings Option */}
+            <div className="dropdown-item" onClick={onOpenSettings}>
+              <Icon name="settings" size="sm" />
+              Settings
+            </div>
+
+            <div className="dropdown-divider" />
+
+            {/* Sign Out Option */}
+            <div className="dropdown-item" onClick={onLogout}>
+              <Icon name="logout" size="sm" />
+              Log out
             </div>
           </div>
-
-          <div className="dropdown-divider" />
-
-          {/* Settings Option */}
-          <div className="dropdown-item" onClick={onOpenSettings}>
-            <Icon name="settings" size="sm" />
-            Settings
-          </div>
-
-          <div className="dropdown-divider" />
-
-          {/* Sign Out Option */}
-          <div className="dropdown-item" onClick={onLogout}>
-            <Icon name="logout" size="sm" />
-            Log out
-          </div>
-        </div>
-      )}
+        ))}
     </div>
   );
 };

@@ -25,6 +25,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import { Icon } from "../components/icons";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { Kbd, Tag } from "@vitruviansoftware/design-system";
 import "../styles/command-palette.css";
 
 // Constants
@@ -498,25 +499,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               setSelectedIndex(0);
             }}
           />
-          <kbd
-            className="command-palette-kbd"
-            style={
-              useDesignSystem
-                ? {
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    padding: "2px 6px",
-                    border: "1px solid var(--color-border)",
-                    backgroundColor: "var(--color-btn-shaded-bg)",
-                    color: "var(--color-text-secondary)",
-                    borderRadius: "0",
-                  }
-                : undefined
-            }
-          >
-            ESC
-          </kbd>
+          {useDesignSystem ? (
+            <Kbd>ESC</Kbd>
+          ) : (
+            <kbd className="command-palette-kbd">ESC</kbd>
+          )}
         </div>
 
         <div
@@ -765,30 +752,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         </div>
                       )}
                     </div>
-                    <div
-                      className="result-type"
-                      style={
-                        useDesignSystem
-                          ? {
-                              fontSize: "10px",
-                              fontFamily: "var(--font-mono, monospace)",
-                              textTransform: "uppercase",
-                              padding: "2px 6px",
-                              border: `1px solid ${
-                                isSelected
-                                  ? "var(--color-accent-primary)"
-                                  : "var(--color-border)"
-                              }`,
-                              color: isSelected
-                                ? "var(--color-accent-primary)"
-                                : "var(--color-text-secondary)",
-                              marginLeft: "8px",
-                            }
-                          : undefined
-                      }
-                    >
-                      {result.type}
-                    </div>
+                    {useDesignSystem ? (
+                      <Tag
+                        tone={isSelected ? "accent" : "neutral"}
+                        style={{ marginLeft: "8px" }}
+                      >
+                        {result.type}
+                      </Tag>
+                    ) : (
+                      <div className="result-type">{result.type}</div>
+                    )}
                   </div>
                 );
               })
@@ -827,38 +800,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 : undefined
             }
           >
-            <kbd
-              style={{
-                padding: "1px 4px",
-                border: "1px solid var(--color-border)",
-                backgroundColor: "var(--color-btn-shaded-bg)",
-                borderRadius: 0,
-              }}
-            >
-              ↑
-            </kbd>
-            <kbd
-              style={{
-                padding: "1px 4px",
-                border: "1px solid var(--color-border)",
-                backgroundColor: "var(--color-btn-shaded-bg)",
-                borderRadius: 0,
-              }}
-            >
-              ↓
-            </kbd>
-            <span>navigate</span>
-            <kbd
-              style={{
-                padding: "1px 4px",
-                border: "1px solid var(--color-border)",
-                backgroundColor: "var(--color-btn-shaded-bg)",
-                borderRadius: 0,
-              }}
-            >
-              ↵
-            </kbd>
-            <span>select</span>
+            {useDesignSystem ? (
+              <>
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
+                <span>navigate</span>
+                <Kbd>↵</Kbd>
+                <span>select</span>
+              </>
+            ) : (
+              <>
+                <kbd>↑</kbd>
+                <kbd>↓</kbd>
+                <span>navigate</span>
+                <kbd>↵</kbd>
+                <span>select</span>
+              </>
+            )}
           </div>
         </div>
       </div>

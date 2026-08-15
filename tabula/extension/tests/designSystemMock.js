@@ -38,6 +38,8 @@ module.exports = {
     ),
   Status: (props) => React.createElement("span", props, props.children),
   Tag: (props) => React.createElement("span", props, props.children),
+  Label: (props) => React.createElement("span", props, props.children),
+  Kbd: (props) => React.createElement("kbd", props, props.children),
   EmptyState: (props) =>
     React.createElement(
       "div",
@@ -48,4 +50,20 @@ module.exports = {
       props.actions ? React.createElement("div", null, props.actions) : null,
     ),
   Modal: (props) => React.createElement("div", props, props.children),
+  Select: (props) => React.createElement("select", props, props.children),
+  Checkbox: (props) =>
+    React.createElement("input", { type: "checkbox", ...props }),
+  Switch: (props) =>
+    React.createElement("input", { type: "checkbox", ...props }),
+  Segmented: (props) =>
+    React.createElement(
+      "div",
+      props,
+      props.options?.map((o) =>
+        React.createElement("input", { type: "radio", key: o.value, ...o }),
+      ),
+    ),
+  Menu: (props) => React.createElement("div", props, props.children),
+  MenuItem: (props) => React.createElement("div", props, props.children),
+  MenuDivider: (props) => React.createElement("div", props, props.children),
 };

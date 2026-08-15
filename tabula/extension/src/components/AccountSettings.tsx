@@ -33,7 +33,14 @@ import { UpdateCheckService } from "../services/updateCheck";
 import type { Channel } from "../services/updateCheck";
 import { useFeatureFlag, setFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
-import { Button, Input, Tag } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  Input,
+  Tag,
+  Label,
+  Switch,
+  Segmented,
+} from "@vitruviansoftware/design-system";
 
 interface AccountSettingsProps {
   onClose: () => void;
@@ -344,12 +351,31 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               </>
             ) : (
               <>
-                <button className="btn btn-primary" onClick={handleSignIn}>
-                  Sign in again
-                </button>
-                <button className="btn btn-secondary" onClick={loadUserProfile}>
-                  Retry
-                </button>
+                <>
+                  {useDesignSystem ? (
+                    <Button variant="primary" onClick={handleSignIn}>
+                      Sign in again
+                    </Button>
+                  ) : (
+                    <button className="btn btn-primary" onClick={handleSignIn}>
+                      Sign in again
+                    </button>
+                  )}
+                </>
+                <>
+                  {useDesignSystem ? (
+                    <Button variant="secondary" onClick={loadUserProfile}>
+                      Retry
+                    </Button>
+                  ) : (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={loadUserProfile}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </>
               </>
             )}
           </div>
@@ -485,21 +511,22 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
 
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ marginBottom: "6px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    color: useDesignSystem
-                      ? "var(--color-text-secondary)"
-                      : "var(--color-text-secondary)",
-                    marginBottom: "2px",
-                    fontFamily: useDesignSystem
-                      ? "var(--font-mono, monospace)"
-                      : undefined,
-                  }}
-                >
-                  Name
-                </label>
+                {useDesignSystem ? (
+                  <Label style={{ display: "block", marginBottom: "2px" }}>
+                    Name
+                  </Label>
+                ) : (
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "11px",
+                      color: "var(--color-text-secondary)",
+                      marginBottom: "2px",
+                    }}
+                  >
+                    Name
+                  </label>
+                )}
                 {isEditing ? (
                   <div style={{ display: "flex", gap: "6px" }}>
                     {useDesignSystem ? (
@@ -546,23 +573,52 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                             minWidth: 0,
                           }}
                         />
-                        <button
-                          className="btn btn-sm btn-primary"
-                          onClick={handleSaveName}
-                          disabled={loading}
-                        >
-                          Save
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => {
-                            setIsEditing(false);
-                            setEditedName(user.name);
-                          }}
-                          disabled={loading}
-                        >
-                          Cancel
-                        </button>
+                        <>
+                          {useDesignSystem ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={handleSaveName}
+                              disabled={loading}
+                            >
+                              Save
+                            </Button>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-primary"
+                              onClick={handleSaveName}
+                              disabled={loading}
+                            >
+                              Save
+                            </button>
+                          )}
+                        </>
+                        <>
+                          {useDesignSystem ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => {
+                                setIsEditing(false);
+                                setEditedName(user.name);
+                              }}
+                              disabled={loading}
+                            >
+                              Cancel
+                            </Button>
+                          ) : (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => {
+                                setIsEditing(false);
+                                setEditedName(user.name);
+                              }}
+                              disabled={loading}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </>
                       </>
                     )}
                   </div>
@@ -587,33 +643,47 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     >
                       {user.name}
                     </span>
-                    <button
-                      className="btn-icon"
-                      onClick={() => setIsEditing(true)}
-                      title="Edit name"
-                    >
-                      <Icon name="edit" size="sm" />
-                    </button>
+                    <>
+                      {useDesignSystem ? (
+                        <Button
+                          variant="primary"
+                          onClick={() => setIsEditing(true)}
+                          title="Edit name"
+                        >
+                          {" "}
+                          <Icon name="edit" size="sm" />{" "}
+                        </Button>
+                      ) : (
+                        <button
+                          className="btn-icon"
+                          onClick={() => setIsEditing(true)}
+                          title="Edit name"
+                        >
+                          <Icon name="edit" size="sm" />
+                        </button>
+                      )}
+                    </>
                   </div>
                 )}
               </div>
 
               <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    color: useDesignSystem
-                      ? "var(--color-text-secondary)"
-                      : "var(--color-text-secondary)",
-                    marginBottom: "2px",
-                    fontFamily: useDesignSystem
-                      ? "var(--font-mono, monospace)"
-                      : undefined,
-                  }}
-                >
-                  Email
-                </label>
+                {useDesignSystem ? (
+                  <Label style={{ display: "block", marginBottom: "2px" }}>
+                    Email
+                  </Label>
+                ) : (
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "11px",
+                      color: "var(--color-text-secondary)",
+                      marginBottom: "2px",
+                    }}
+                  >
+                    Email
+                  </label>
+                )}
                 <span
                   className="text-ellipsis"
                   style={{
@@ -631,23 +701,24 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           </div>
 
           <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "11px",
-                color: useDesignSystem
-                  ? "var(--color-text-secondary)"
-                  : "var(--color-text-secondary)",
-                marginBottom: "4px",
-                fontFamily: useDesignSystem
-                  ? "var(--font-mono, monospace)"
-                  : undefined,
-              }}
-            >
-              Plan
-            </label>
             {useDesignSystem ? (
-              <Tag size="sm">
+              <Label style={{ display: "block", marginBottom: "4px" }}>
+                Plan
+              </Label>
+            ) : (
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  color: "var(--color-text-secondary)",
+                  marginBottom: "4px",
+                }}
+              >
+                Plan
+              </label>
+            )}
+            {useDesignSystem ? (
+              <Tag tone="accent">
                 <span style={{ textTransform: "capitalize" }}>{user.tier}</span>
               </Tag>
             ) : (
@@ -929,61 +1000,57 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: "4px",
-              backgroundColor: useDesignSystem
-                ? "transparent"
-                : "var(--color-btn-shaded-bg)",
-              padding: "3px",
-              borderRadius: useDesignSystem ? "0" : "6px",
-              flexShrink: 0,
-            }}
-          >
-            {(["system", "light", "dark"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTheme(t)}
-                style={{
-                  padding: "4px 10px",
-                  border: useDesignSystem
-                    ? theme === t
-                      ? "1px solid var(--color-accent-primary)"
-                      : "1px solid transparent"
-                    : "none",
-                  borderRadius: useDesignSystem ? "0" : "4px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  fontFamily: useDesignSystem
-                    ? "var(--font-mono, monospace)"
-                    : undefined,
-                  backgroundColor:
-                    theme === t
-                      ? useDesignSystem
-                        ? "var(--color-accent-primary)"
-                        : "var(--color-bg-card)"
-                      : "transparent",
-                  color:
-                    theme === t
-                      ? useDesignSystem
-                        ? "white"
-                        : "var(--color-primary)"
-                      : useDesignSystem
-                        ? "var(--color-text-secondary)"
+          {useDesignSystem ? (
+            <Segmented
+              name="theme"
+              options={[
+                { value: "system", label: "System" },
+                { value: "light", label: "Light" },
+                { value: "dark", label: "Dark" },
+              ]}
+              value={theme}
+              onValueChange={(val) =>
+                setTheme(val as "system" | "light" | "dark")
+              }
+            />
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                gap: "4px",
+                backgroundColor: "var(--color-btn-shaded-bg)",
+                padding: "3px",
+                borderRadius: "6px",
+                flexShrink: 0,
+              }}
+            >
+              {(["system", "light", "dark"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  style={{
+                    padding: "4px 10px",
+                    border: "none",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    backgroundColor:
+                      theme === t ? "var(--color-bg-card)" : "transparent",
+                    color:
+                      theme === t
+                        ? "var(--color-primary)"
                         : "var(--color-text-secondary)",
-                  boxShadow:
-                    !useDesignSystem && theme === t
-                      ? "0 1px 2px rgba(0,0,0,0.1)"
-                      : "none",
-                  fontWeight: theme === t ? 500 : 400,
-                  textTransform: "capitalize",
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+                    boxShadow:
+                      theme === t ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+                    fontWeight: theme === t ? 500 : 400,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -1053,70 +1120,70 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "4px",
-                  backgroundColor: useDesignSystem
-                    ? "transparent"
-                    : "var(--color-btn-shaded-bg)",
-                  padding: "3px",
-                  borderRadius: useDesignSystem ? "0" : "6px",
-                  flexShrink: 0,
-                }}
-              >
-                {(["alpha", "beta", "stable"] as const).map((ch) => (
-                  <button
-                    key={ch}
-                    aria-pressed={
-                      (selectedChannel ?? devIdentity.channel) === ch
-                    }
-                    onClick={() => {
-                      setSelectedChannel(ch);
-                      setCopiedCommand(false);
-                    }}
-                    style={{
-                      padding: "4px 10px",
-                      fontSize: "12px",
-                      border: useDesignSystem
-                        ? (selectedChannel ?? devIdentity.channel) === ch
-                          ? "1px solid var(--color-accent-primary)"
-                          : "1px solid transparent"
-                        : "none",
-                      borderRadius: useDesignSystem ? "0" : "4px",
-                      cursor: "pointer",
-                      fontFamily: useDesignSystem
-                        ? "var(--font-mono, monospace)"
-                        : undefined,
-                      backgroundColor:
+              {useDesignSystem ? (
+                <Segmented
+                  name="channel"
+                  options={[
+                    { value: "alpha", label: "Alpha" },
+                    { value: "beta", label: "Beta" },
+                    { value: "stable", label: "Stable" },
+                  ]}
+                  value={selectedChannel ?? devIdentity.channel}
+                  onValueChange={(val) => {
+                    setSelectedChannel(val);
+                    setCopiedCommand(false);
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "4px",
+                    backgroundColor: "var(--color-btn-shaded-bg)",
+                    padding: "3px",
+                    borderRadius: "6px",
+                    flexShrink: 0,
+                  }}
+                >
+                  {(["alpha", "beta", "stable"] as const).map((ch) => (
+                    <button
+                      key={ch}
+                      aria-pressed={
                         (selectedChannel ?? devIdentity.channel) === ch
-                          ? useDesignSystem
-                            ? "var(--color-accent-primary)"
-                            : "var(--color-bg-card)"
-                          : "transparent",
-                      color:
-                        (selectedChannel ?? devIdentity.channel) === ch
-                          ? useDesignSystem
-                            ? "white"
-                            : "var(--color-primary)"
-                          : useDesignSystem
-                            ? "var(--color-text-secondary)"
+                      }
+                      onClick={() => {
+                        setSelectedChannel(ch);
+                        setCopiedCommand(false);
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "12px",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        backgroundColor:
+                          (selectedChannel ?? devIdentity.channel) === ch
+                            ? "var(--color-bg-card)"
+                            : "transparent",
+                        color:
+                          (selectedChannel ?? devIdentity.channel) === ch
+                            ? "var(--color-primary)"
                             : "var(--color-text-secondary)",
-                      boxShadow:
-                        !useDesignSystem &&
-                        (selectedChannel ?? devIdentity.channel) === ch
-                          ? "0 1px 2px rgba(0,0,0,0.1)"
-                          : "none",
-                      fontWeight:
-                        (selectedChannel ?? devIdentity.channel) === ch
-                          ? 500
-                          : 400,
-                    }}
-                  >
-                    {ch}
-                  </button>
-                ))}
-              </div>
+                        boxShadow:
+                          (selectedChannel ?? devIdentity.channel) === ch
+                            ? "0 1px 2px rgba(0,0,0,0.1)"
+                            : "none",
+                        fontWeight:
+                          (selectedChannel ?? devIdentity.channel) === ch
+                            ? 500
+                            : 400,
+                      }}
+                    >
+                      {ch}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {selectedChannel === "stable" && (
@@ -1245,38 +1312,46 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     Replaces Workona-style UI with the new system.
                   </div>
                 </div>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
+                {useDesignSystem ? (
+                  <Switch
+                    label={useDesignSystem ? "On" : "Off"}
                     checked={useDesignSystem}
-                    onChange={(e) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                       setFeatureFlag(
                         FEATURE_FLAGS.USE_DESIGN_SYSTEM,
                         e.target.checked,
                       )
                     }
-                    style={{ marginRight: "8px" }}
                   />
-                  <span
+                ) : (
+                  <label
                     style={{
-                      fontSize: "12px",
-                      color: useDesignSystem
-                        ? "var(--color-text-primary)"
-                        : "var(--color-text-secondary)",
-                      fontFamily: useDesignSystem
-                        ? "var(--font-mono, monospace)"
-                        : undefined,
+                      display: "flex",
+                      alignItems: "center",
+                      cursor: "pointer",
                     }}
                   >
-                    {useDesignSystem ? "On" : "Off"}
-                  </span>
-                </label>
+                    <input
+                      type="checkbox"
+                      checked={useDesignSystem}
+                      onChange={(e) =>
+                        setFeatureFlag(
+                          FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+                          e.target.checked,
+                        )
+                      }
+                      style={{ marginRight: "8px" }}
+                    />
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
+                      {useDesignSystem ? "On" : "Off"}
+                    </span>
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -1568,23 +1643,52 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       </>
                     ) : (
                       <>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => handleRestoreBackup(backup.id)}
-                          disabled={backupsLoading}
-                          title="Restore this backup"
-                        >
-                          Restore
-                        </button>
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => handleDeleteBackup(backup.id)}
-                          disabled={backupsLoading}
-                          title="Delete this backup"
-                          style={{ padding: "4px 8px" }}
-                        >
-                          <Icon name="delete" size="sm" />
-                        </button>
+                        <>
+                          {useDesignSystem ? (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleRestoreBackup(backup.id)}
+                              disabled={backupsLoading}
+                              title="Restore this backup"
+                            >
+                              Restore
+                            </Button>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => handleRestoreBackup(backup.id)}
+                              disabled={backupsLoading}
+                              title="Restore this backup"
+                            >
+                              Restore
+                            </button>
+                          )}
+                        </>
+                        <>
+                          {useDesignSystem ? (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleDeleteBackup(backup.id)}
+                              disabled={backupsLoading}
+                              title="Delete this backup"
+                              style={{ padding: "4px 8px" }}
+                            >
+                              <Icon name="delete" size="sm" />
+                            </Button>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => handleDeleteBackup(backup.id)}
+                              disabled={backupsLoading}
+                              title="Delete this backup"
+                              style={{ padding: "4px 8px" }}
+                            >
+                              <Icon name="delete" size="sm" />
+                            </button>
+                          )}
+                        </>
                       </>
                     )}
                   </div>
@@ -1812,20 +1916,44 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   </>
                 ) : (
                   <>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={loading}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      onClick={handleDeleteAccount}
-                      disabled={loading}
-                    >
-                      {loading ? "Deleting..." : "Delete"}
-                    </button>
+                    <>
+                      {useDesignSystem ? (
+                        <Button
+                          variant="secondary"
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={loading}
+                        >
+                          Cancel
+                        </Button>
+                      ) : (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={loading}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </>
+                    <>
+                      {useDesignSystem ? (
+                        <Button
+                          variant="danger"
+                          onClick={handleDeleteAccount}
+                          disabled={loading}
+                        >
+                          {loading ? "Deleting..." : "Delete"}
+                        </Button>
+                      ) : (
+                        <button
+                          className="btn btn-danger"
+                          onClick={handleDeleteAccount}
+                          disabled={loading}
+                        >
+                          {loading ? "Deleting..." : "Delete"}
+                        </button>
+                      )}
+                    </>
                   </>
                 )}
               </div>
@@ -1976,20 +2104,44 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 </>
               ) : (
                 <>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    disabled={loading}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    onClick={handleDeleteAccount}
-                    disabled={loading}
-                  >
-                    {loading ? "Deleting..." : "Delete My Account"}
-                  </button>
+                  <>
+                    {useDesignSystem ? (
+                      <Button
+                        variant="secondary"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={loading}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        disabled={loading}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </>
+                  <>
+                    {useDesignSystem ? (
+                      <Button
+                        variant="danger"
+                        onClick={handleDeleteAccount}
+                        disabled={loading}
+                      >
+                        {loading ? "Deleting..." : "Delete My Account"}
+                      </Button>
+                    ) : (
+                      <button
+                        className="btn btn-danger"
+                        onClick={handleDeleteAccount}
+                        disabled={loading}
+                      >
+                        {loading ? "Deleting..." : "Delete My Account"}
+                      </button>
+                    )}
+                  </>
                 </>
               )}
             </div>

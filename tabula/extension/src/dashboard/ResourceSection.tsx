@@ -34,7 +34,12 @@ import { TabService } from "../services/tabs";
 import { MenuOverlay } from "./MenuOverlay";
 import { EmptyState } from "../components/EmptyState";
 import { EmptyResourcesIllustration } from "../components/illustrations/EmptyResources";
-import { Button } from "@vitruviansoftware/design-system";
+import {
+  Button,
+  Menu,
+  MenuItem,
+  MenuDivider,
+} from "@vitruviansoftware/design-system";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 
@@ -263,25 +268,50 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                 </button>
               ))}
             {/* Add Resource */}
-            <button
-              className="btn-icon"
-              title="Add resource"
-              onClick={() => {
-                setWorkspaceSectionPickerId(null);
-                if (openSectionMenuId === section.id) {
-                  setOpenSectionMenuId(null);
-                } else {
-                  setOpenSectionMenuId(section.id);
-                }
-              }}
-              style={
-                useDesignSystem
-                  ? { color: "var(--color-text-secondary)" }
-                  : undefined
-              }
-            >
-              <Icon name="add" size="sm" />
-            </button>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="primary"
+                  title="Add resource"
+                  onClick={() => {
+                    setWorkspaceSectionPickerId(null);
+                    if (openSectionMenuId === section.id) {
+                      setOpenSectionMenuId(null);
+                    } else {
+                      setOpenSectionMenuId(section.id);
+                    }
+                  }}
+                  style={
+                    useDesignSystem
+                      ? { color: "var(--color-text-secondary)" }
+                      : undefined
+                  }
+                >
+                  {" "}
+                  <Icon name="add" size="sm" />{" "}
+                </Button>
+              ) : (
+                <button
+                  className="btn-icon"
+                  title="Add resource"
+                  onClick={() => {
+                    setWorkspaceSectionPickerId(null);
+                    if (openSectionMenuId === section.id) {
+                      setOpenSectionMenuId(null);
+                    } else {
+                      setOpenSectionMenuId(section.id);
+                    }
+                  }}
+                  style={
+                    useDesignSystem
+                      ? { color: "var(--color-text-secondary)" }
+                      : undefined
+                  }
+                >
+                  <Icon name="add" size="sm" />
+                </button>
+              )}
+            </>
             <span
               style={{
                 fontSize: "11px",
@@ -300,89 +330,159 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               {openSectionMenuId === section.id && (
                 <MenuOverlay onClose={() => onToggleSectionMenu(null)} />
               )}
-              <button
-                className="btn-icon"
-                title="Section Options"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSectionMenu(
-                    openSectionMenuId === section.id ? null : section.id,
-                  );
-                }}
-                style={{
-                  position: "relative",
-                  zIndex: 20,
-                  color: useDesignSystem
-                    ? "var(--color-text-secondary)"
-                    : "#9AA0A6",
-                  padding: "2px",
-                }}
-              >
-                <Icon name="more_vert" size="sm" />
-              </button>
-              {openSectionMenuId === section.id && (
-                <div
-                  className="dropdown-menu glass-menu"
-                  style={{
-                    right: 0,
-                    top: "100%",
-                    zIndex: 20,
-                    position: "absolute",
-                    borderRadius: useDesignSystem ? "0" : undefined,
-                    border: useDesignSystem
-                      ? "1px solid var(--glass-border)"
-                      : undefined,
-                    fontFamily: useDesignSystem
-                      ? "var(--font-mono, monospace)"
-                      : undefined,
-                  }}
-                >
-                  <div
-                    className="dropdown-item"
-                    onClick={() => {
-                      setTargetSectionId(section.id);
-                      setShowAddResource(true);
-                      setOpenSectionMenuId(null);
-                    }}
-                  >
-                    <Icon name="add" size="sm" />
-                    Add resource
-                  </div>
-                  <div className="dropdown-divider" />
-                  <div
-                    className="dropdown-item"
-                    onClick={() => {
-                      setOpenSectionMenuId(null);
-                      showConfirm(
-                        "Delete Section",
-                        `Delete section "${section.title}" and its resources?`,
-                        async () => {
-                          const updatedSections =
-                            activeWorkspace.sections?.filter(
-                              (s) => s.id !== section.id,
-                            );
-                          setActiveWorkspaceData({
-                            ...activeWorkspace,
-                            sections: updatedSections,
-                          });
-
-                          await WorkspaceService.deleteSection(
-                            activeWorkspace.id,
-                            section.id,
-                          );
-                          closeConfirm();
-                        },
+              <>
+                {useDesignSystem ? (
+                  <Button
+                    variant="primary"
+                    title="Section Options"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      onToggleSectionMenu(
+                        openSectionMenuId === section.id ? null : section.id,
                       );
                     }}
                     style={{
-                      color: "var(--color-accent-danger)",
+                      position: "relative",
+                      zIndex: 20,
+                      color: useDesignSystem
+                        ? "var(--color-text-secondary)"
+                        : "#9AA0A6",
+                      padding: "2px",
                     }}
                   >
-                    <Icon name="delete" size="sm" />
-                    Delete section
+                    {" "}
+                    <Icon name="more_vert" size="sm" />{" "}
+                  </Button>
+                ) : (
+                  <button
+                    className="btn-icon"
+                    title="Section Options"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSectionMenu(
+                        openSectionMenuId === section.id ? null : section.id,
+                      );
+                    }}
+                    style={{
+                      position: "relative",
+                      zIndex: 20,
+                      color: useDesignSystem
+                        ? "var(--color-text-secondary)"
+                        : "#9AA0A6",
+                      padding: "2px",
+                    }}
+                  >
+                    <Icon name="more_vert" size="sm" />
+                  </button>
+                )}
+              </>
+              {openSectionMenuId === section.id &&
+                (useDesignSystem ? (
+                  <Menu
+                    style={{
+                      right: 0,
+                      top: "100%",
+                      zIndex: 20,
+                      position: "absolute",
+                    }}
+                  >
+                    <MenuItem
+                      onClick={() => {
+                        setTargetSectionId(section.id);
+                        setShowAddResource(true);
+                        setOpenSectionMenuId(null);
+                      }}
+                    >
+                      <Icon name="add" size="sm" />
+                      Add resource
+                    </MenuItem>
+                    <MenuDivider />
+                    <MenuItem
+                      destructive
+                      onClick={() => {
+                        setOpenSectionMenuId(null);
+                        showConfirm(
+                          "Delete Section",
+                          `Delete section "${section.title}" and its resources?`,
+                          async () => {
+                            const updatedSections =
+                              activeWorkspace.sections?.filter(
+                                (s) => s.id !== section.id,
+                              );
+                            setActiveWorkspaceData({
+                              ...activeWorkspace,
+                              sections: updatedSections,
+                            });
+
+                            await WorkspaceService.deleteSection(
+                              activeWorkspace.id,
+                              section.id,
+                            );
+                            closeConfirm();
+                          },
+                        );
+                      }}
+                    >
+                      <Icon name="delete" size="sm" />
+                      Delete section
+                    </MenuItem>
+                  </Menu>
+                ) : (
+                  <div
+                    className="dropdown-menu"
+                    style={{
+                      right: 0,
+                      top: "100%",
+                      zIndex: 20,
+                      position: "absolute",
+                    }}
+                  >
+                    <div
+                      className="dropdown-item"
+                      onClick={() => {
+                        setTargetSectionId(section.id);
+                        setShowAddResource(true);
+                        setOpenSectionMenuId(null);
+                      }}
+                    >
+                      <Icon name="add" size="sm" />
+                      Add resource
+                    </div>
+                    <div className="dropdown-divider" />
+                    <div
+                      className="dropdown-item"
+                      onClick={() => {
+                        setOpenSectionMenuId(null);
+                        showConfirm(
+                          "Delete Section",
+                          `Delete section "${section.title}" and its resources?`,
+                          async () => {
+                            const updatedSections =
+                              activeWorkspace.sections?.filter(
+                                (s) => s.id !== section.id,
+                              );
+                            setActiveWorkspaceData({
+                              ...activeWorkspace,
+                              sections: updatedSections,
+                            });
+
+                            await WorkspaceService.deleteSection(
+                              activeWorkspace.id,
+                              section.id,
+                            );
+                            closeConfirm();
+                          },
+                        );
+                      }}
+                      style={{
+                        color: "var(--color-accent-danger)",
+                      }}
+                    >
+                      <Icon name="delete" size="sm" />
+                      Delete section
+                    </div>
                   </div>
-                </div>
-              )}
+                ))}
             </div>
           </div>
         </div>

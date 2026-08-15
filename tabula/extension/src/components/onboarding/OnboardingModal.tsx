@@ -295,31 +295,75 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           </>
         ) : (
           <>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onSkip}
-            >
-              Skip
-            </button>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={onSkip}
+                >
+                  {" "}
+                  Skip{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={onSkip}
+                >
+                  Skip
+                </button>
+              )}
+            </>
             {step > 0 && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={back}
-                disabled={busy}
-              >
-                Back
-              </button>
+              <>
+                {useDesignSystem ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={back}
+                    disabled={busy}
+                  >
+                    {" "}
+                    Back{" "}
+                  </Button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={back}
+                    disabled={busy}
+                  >
+                    Back
+                  </button>
+                )}
+              </>
             )}
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={current.onPrimary}
-              disabled={current.primaryDisabled || busy}
-            >
-              {current.primaryLabel}
-            </button>
+            <>
+              {useDesignSystem ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  onClick={current.onPrimary}
+                  disabled={current.primaryDisabled || busy}
+                >
+                  {" "}
+                  {current.primaryLabel}{" "}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={current.onPrimary}
+                  disabled={current.primaryDisabled || busy}
+                >
+                  {current.primaryLabel}
+                </button>
+              )}
+            </>
           </>
         )}
       </div>

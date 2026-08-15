@@ -36,6 +36,7 @@ import { EmptyState } from "../components/EmptyState";
 import { EmptyTabsIllustration } from "../components/illustrations/EmptyTabs";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
+import { EmptyState as DesignEmptyState } from "@vitruviansoftware/design-system";
 
 /**
  * Chrome tab group color mapping to CSS colors
@@ -338,14 +339,22 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
       </div>
 
       {/* Empty State */}
-      {activeTabs.length === 0 && (
-        <EmptyState
-          illustration={<EmptyTabsIllustration />}
-          title="No active tabs"
-          description="Open tabs in this workspace to track your active context."
-          style={{ padding: "48px 0" }}
-        />
-      )}
+      {activeTabs.length === 0 &&
+        (useDesignSystem ? (
+          <DesignEmptyState
+            title="No active tabs"
+            mark={<EmptyTabsIllustration />}
+          >
+            Open tabs in this workspace to track your active context.
+          </DesignEmptyState>
+        ) : (
+          <EmptyState
+            illustration={<EmptyTabsIllustration />}
+            title="No active tabs"
+            description="Open tabs in this workspace to track your active context."
+            style={{ padding: "48px 0" }}
+          />
+        ))}
 
       <DroppableContainer
         id="active-tabs-root"
