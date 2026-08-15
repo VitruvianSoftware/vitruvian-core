@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.25...tabula-extension-v0.1.26) (2026-08-15)
+
+
+### Bug Fixes
+
+* **tabula-extension:** initialize feature flags on startup ([#1651](https://github.com/VitruvianSoftware/vitruvian-core/issues/1651)) ([80b588f](https://github.com/VitruvianSoftware/vitruvian-core/commit/80b588f6a04cacc47f564412c776264d8229d699))
+
 ## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.24...tabula-extension-v0.1.25) (2026-08-14)
 
 
