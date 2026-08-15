@@ -84,7 +84,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={useDesignSystem ? undefined : "list-item"}
+      className="list-item"
       data-testid="tab-item"
     >
       {/* Draggable area - only this part gets drag listeners */}
@@ -102,7 +102,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
       >
         <img
           src={getFaviconSrc(tab)}
-          className={useDesignSystem ? undefined : "item-icon"}
+          className="item-icon"
           style={
             useDesignSystem
               ? {
@@ -116,7 +116,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
           alt=""
         />
         <div
-          className={useDesignSystem ? undefined : "item-content"}
+          className="item-content"
           style={
             useDesignSystem
               ? { flex: 1, minWidth: 0, overflow: "hidden" }
@@ -124,7 +124,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
           }
         >
           <div
-            className={useDesignSystem ? undefined : "item-title"}
+            className="item-title"
             style={
               useDesignSystem
                 ? {
@@ -141,7 +141,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
             {tab.title}
           </div>
           <div
-            className={useDesignSystem ? undefined : "item-subtitle"}
+            className="item-subtitle"
             style={
               useDesignSystem
                 ? {
@@ -161,7 +161,7 @@ export const DraggableTabItem: React.FC<DraggableTabItemProps> = ({
       </div>
       {/* Action buttons - outside of drag listeners */}
       <div
-        className={useDesignSystem ? undefined : "item-actions"}
+        className="item-actions"
         style={
           useDesignSystem
             ? { display: "flex", alignItems: "center", gap: "4px" }

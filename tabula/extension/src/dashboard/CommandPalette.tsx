@@ -433,7 +433,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       }
     >
       <div
-        className={useDesignSystem ? undefined : "command-palette-container"}
+        className="command-palette-container"
         style={
           useDesignSystem
             ? {
@@ -451,7 +451,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
       >
         <div
-          className={useDesignSystem ? undefined : "command-palette-header"}
+          className="command-palette-header"
           style={
             useDesignSystem
               ? {
@@ -467,9 +467,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <Icon
             name="search"
             size="md"
-            className={
-              useDesignSystem ? undefined : "command-palette-search-icon"
-            }
+            className="command-palette-search-icon"
             style={
               useDesignSystem ? { color: "var(--ink, #1f1d1a)" } : undefined
             }
@@ -477,7 +475,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <input
             ref={inputRef}
             type="text"
-            className={useDesignSystem ? undefined : "command-palette-input"}
+            className="command-palette-input"
             style={
               useDesignSystem
                 ? {
@@ -499,7 +497,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             }}
           />
           <kbd
-            className={useDesignSystem ? undefined : "command-palette-kbd"}
+            className="command-palette-kbd"
             style={
               useDesignSystem
                 ? {
@@ -521,7 +519,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         {/* Filter buttons */}
         <div
-          className={useDesignSystem ? undefined : "command-palette-filters"}
+          className="command-palette-filters"
           style={
             useDesignSystem
               ? {
@@ -548,11 +546,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <button
               key={filter}
               type="button"
-              className={
-                useDesignSystem
-                  ? undefined
-                  : `filter-button ${activeFilter === filter ? "active" : ""}`
-              }
+              className={`filter-button ${activeFilter === filter ? "active" : ""}`}
               style={
                 useDesignSystem
                   ? {
@@ -587,7 +581,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         <div
-          className={useDesignSystem ? undefined : "command-palette-results"}
+          className="command-palette-results"
           style={
             useDesignSystem
               ? {
@@ -695,7 +689,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <Icon
                       name={getResultIcon(result)}
                       size="md"
-                      className={useDesignSystem ? undefined : "result-icon"}
+                      className="result-icon"
                       style={
                         useDesignSystem
                           ? {
@@ -709,7 +703,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       outlined
                     />
                     <div
-                      className={useDesignSystem ? undefined : "result-content"}
+                      className="result-content"
                       style={
                         useDesignSystem
                           ? { flex: 1, minWidth: 0, overflow: "hidden" }
@@ -717,7 +711,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       }
                     >
                       <div
-                        className={useDesignSystem ? undefined : "result-title"}
+                        className="result-title"
                         style={
                           useDesignSystem
                             ? {
@@ -734,9 +728,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       </div>
                       {result.subtitle && (
                         <div
-                          className={
-                            useDesignSystem ? undefined : "result-subtitle"
-                          }
+                          className="result-subtitle"
                           style={
                             useDesignSystem
                               ? {
@@ -757,9 +749,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       )}
                       {result.workspaceName && result.type !== "workspace" && (
                         <div
-                          className={
-                            useDesignSystem ? undefined : "result-workspace"
-                          }
+                          className="result-workspace"
                           style={
                             useDesignSystem
                               ? {
@@ -777,7 +767,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       )}
                     </div>
                     <div
-                      className={useDesignSystem ? undefined : "result-type"}
+                      className="result-type"
                       style={
                         useDesignSystem
                           ? {
@@ -807,7 +797,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         <div
-          className={useDesignSystem ? undefined : "command-palette-footer"}
+          className="command-palette-footer"
           style={
             useDesignSystem
               ? {
@@ -825,7 +815,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           }
         >
           <div
-            className={useDesignSystem ? undefined : "command-palette-hint"}
+            className="command-palette-hint"
             style={
               useDesignSystem
                 ? {

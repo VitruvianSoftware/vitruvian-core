@@ -80,7 +80,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
     <div
       ref={setNodeRef}
       style={{ ...style, cursor: "grab" }}
-      className={useDesignSystem ? undefined : "list-item"}
+      className="list-item"
       data-testid="resource-item"
     >
       {/* Draggable area */}
@@ -94,7 +94,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             resource.faviconUrl ||
             `https://www.google.com/s2/favicons?domain=${resource.url}`
           }
-          className={useDesignSystem ? undefined : "item-icon"}
+          className="item-icon"
           style={
             useDesignSystem
               ? {
@@ -108,7 +108,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
           alt=""
         />
         <div
-          className={useDesignSystem ? undefined : "item-content"}
+          className="item-content"
           style={
             useDesignSystem
               ? { flex: 1, minWidth: 0, overflow: "hidden" }
@@ -116,7 +116,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
           }
         >
           <div
-            className={useDesignSystem ? undefined : "item-title"}
+            className="item-title"
             style={
               useDesignSystem
                 ? {
@@ -133,7 +133,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
             {resource.title}
           </div>
           <div
-            className={useDesignSystem ? undefined : "item-subtitle"}
+            className="item-subtitle"
             style={
               useDesignSystem
                 ? {
@@ -153,7 +153,7 @@ export const SortableResourceItem: React.FC<SortableResourceItemProps> = ({
       </div>
       {/* Action buttons */}
       <div
-        className={useDesignSystem ? undefined : "item-actions"}
+        className="item-actions"
         style={
           useDesignSystem
             ? { display: "flex", alignItems: "center", gap: "4px" }

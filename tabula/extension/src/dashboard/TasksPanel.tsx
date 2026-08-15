@@ -104,6 +104,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
           useDesignSystem ? (
             <div
               key={task.id}
+              className="list-item"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -132,6 +133,7 @@ export const TasksPanel: React.FC<TasksPanelProps> = ({
                 {task.title}
               </div>
               <button
+                className="btn-icon danger"
                 style={{
                   background: "none",
                   border: "none",

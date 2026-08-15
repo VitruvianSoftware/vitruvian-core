@@ -199,6 +199,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
           useDesignSystem ? (
             <div
               key={note.id}
+              className="note-card"
               style={{
                 backgroundColor: "var(--paper, #fbf7ee)",
                 border: "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
@@ -207,6 +208,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
               }}
             >
               <div
+                className="note-header"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -215,6 +217,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
                 }}
               >
                 <input
+                  className="note-title-display"
                   style={{
                     fontFamily: "var(--font-mono, monospace)",
                     fontWeight: 600,
@@ -231,6 +234,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
                   }
                 />
                 <button
+                  className="btn-icon danger"
                   style={{
                     background: "none",
                     border: "none",

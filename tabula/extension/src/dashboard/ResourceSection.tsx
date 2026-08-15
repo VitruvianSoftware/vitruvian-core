@@ -96,9 +96,10 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
 
   return (
     <DroppableContainer
+      key={section.id}
       id={section.id}
       containerType="section"
-      className="card-section"
+      className={`section-container card-section ${collapsedSections[section.id] ? "collapsed" : ""}`}
       data-testid="resource-section"
     >
       <div
@@ -106,7 +107,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
         style={{ width: "100%", overflow: "visible" }}
       >
         <div
-          className="section-header"
+          className="section-header collapsible-header"
           style={{
             cursor: "pointer",
             userSelect: "none",
@@ -115,22 +116,27 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
           }}
           onClick={() => toggleSectionCollapse(section.id)}
         >
-          <Icon
-            name={
-              collapsedSections[section.id] ? "chevron_right" : "expand_more"
-            }
-            size="sm"
-            style={{
-              marginRight: "8px",
-              color: useDesignSystem
-                ? "var(--ink, #1f1d1a)"
-                : "var(--color-text-muted)",
-            }}
-          />
+          <div
+            className={`collapse-icon ${collapsedSections[section.id] ? "collapsed" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center" }}
+          >
+            <Icon
+              name={
+                collapsedSections[section.id] ? "chevron_right" : "expand_more"
+              }
+              size="sm"
+              style={{
+                marginRight: "8px",
+                color: useDesignSystem
+                  ? "var(--ink, #1f1d1a)"
+                  : "var(--color-text-muted)",
+              }}
+            />
+          </div>
           {editingSectionId === section.id ? (
             <input
               type="text"
-              className={useDesignSystem ? undefined : "input input-sm"}
+              className="section-title-input input input-sm"
               style={
                 useDesignSystem
                   ? {
@@ -177,7 +183,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
             />
           ) : (
             <span
-              className={useDesignSystem ? undefined : "section-title"}
+              className="section-title"
               onClick={(e) => {
                 e.stopPropagation();
                 setEditingSectionName(section.title);
@@ -298,7 +304,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
               </button>
               {openSectionMenuId === section.id && (
                 <div
-                  className={useDesignSystem ? undefined : "dropdown-menu"}
+                  className="dropdown-menu"
                   style={{
                     right: 0,
                     top: "100%",
@@ -316,7 +322,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                   }}
                 >
                   <div
-                    className={useDesignSystem ? undefined : "dropdown-item"}
+                    className="dropdown-item"
                     style={
                       useDesignSystem
                         ? {
@@ -340,7 +346,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                     Add resource
                   </div>
                   <div
-                    className={useDesignSystem ? undefined : "dropdown-divider"}
+                    className="dropdown-divider"
                     style={
                       useDesignSystem
                         ? {
@@ -352,7 +358,7 @@ export const ResourceSection: React.FC<ResourceSectionProps> = ({
                     }
                   />
                   <div
-                    className={useDesignSystem ? undefined : "dropdown-item"}
+                    className="dropdown-item"
                     onClick={() => {
                       setOpenSectionMenuId(null);
                       showConfirm(

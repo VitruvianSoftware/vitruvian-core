@@ -258,64 +258,65 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
     const items: RenderItem[] = [];
     const seenGroups = new Set<string>();
 
+    // Count tabs per group and collect tab IDs for the header
+    const groupTabCounts = new Map<string, number>();
+    const groupTabIds = new Map<string, number[]>();
     activeTabs.forEach((tab) => {
-      if (tab.groupId && groupMap.has(tab.groupId)) {
-        const group = groupMap.get(tab.groupId)!;
+      if (tab.groupId && groupMap.has(tab.groupId) && tab.id) {
+        groupTabCounts.set(
+          tab.groupId,
+          (groupTabCounts.get(tab.groupId) || 0) + 1,
+        );
+        const ids = groupTabIds.get(tab.groupId) || [];
+        ids.push(tab.id);
+        groupTabIds.set(tab.groupId, ids);
+      }
+    });
 
-        // If first time seeing this group, add the group header first
-        if (!seenGroups.has(tab.groupId)) {
-          seenGroups.add(tab.groupId);
+    activeTabs.forEach((tab) => {
+      const { groupId } = tab;
+      const group = groupId ? groupMap.get(groupId) : undefined;
 
-          // Get all tab IDs in this group
-          const groupTabs = activeTabs.filter((t) => t.groupId === tab.groupId);
-          const tabIds = groupTabs
-            .map((t) => t.id)
-            .filter((id): id is number => id !== undefined);
-
-          items.push({
-            type: "group-header",
-            group,
-            tabCount: groupTabs.length,
-            tabIds,
-            chromeGroupId: group.chromeGroupId,
-            isCollapsed: group.collapsed || false,
-          });
-        }
-
-        // Add the tab itself
+      // If this tab belongs to a group we haven't seen yet, insert the header
+      if (group && !seenGroups.has(group.id)) {
+        seenGroups.add(group.id);
         items.push({
-          type: "tab",
-          tab,
-          groupId: tab.groupId,
-          isGroupCollapsed: group.collapsed || false,
-        });
-      } else {
-        // Ungrouped tab
-        items.push({
-          type: "tab",
-          tab,
-          isGroupCollapsed: false,
+          type: "group-header",
+          group,
+          tabCount: groupTabCounts.get(group.id) || 0,
+          tabIds: groupTabIds.get(group.id) || [],
+          chromeGroupId: group.chromeGroupId,
+          isCollapsed: group.collapsed || false,
         });
       }
+
+      items.push({
+        type: "tab",
+        tab,
+        groupId: group?.id,
+        isGroupCollapsed: group?.collapsed || false,
+      });
     });
 
     return items;
   }, [activeTabs, groupMap]);
 
-  // IDs for SortableContext - only items that are visible
+  // Build sortable items list (tab IDs + group IDs)
   const sortableItems = useMemo(() => {
-    return renderItems
-      .filter((item) =>
-        item.type === "group-header"
-          ? !item.isCollapsed
-          : !item.isGroupCollapsed,
-      )
-      .map((item) =>
-        item.type === "group-header"
-          ? `group-${item.group.id}`
-          : `tab-${item.tab.id}`,
-      );
-  }, [renderItems]);
+    const items: string[] = [];
+    const seenGroups = new Set<string>();
+
+    activeTabs.forEach((tab) => {
+      const group = tab.groupId ? groupMap.get(tab.groupId) : undefined;
+      if (group && !seenGroups.has(group.id)) {
+        seenGroups.add(group.id);
+        items.push(`group-${group.id}`);
+      }
+      items.push(`tab-${tab.id}`);
+    });
+
+    return items;
+  }, [activeTabs, groupMap]);
 
   return (
     <div className="card-section">
@@ -463,22 +464,20 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
 
             return chunks.map((chunk, chunkIndex) => {
               const isLastChunk = chunkIndex === chunks.length - 1;
+              const marginBottom = isLastChunk ? 0 : "24px";
 
-              if (chunk.type === "group") {
-                const group = chunk.groupId
-                  ? groupMap.get(chunk.groupId)
-                  : undefined;
-                const isCollapsed = group?.collapsed || false;
-
+              if (chunk.type === "group" && chunk.groupId) {
                 return (
                   <DroppableContainer
-                    key={`group-chunk-${chunk.groupId}-${chunkIndex}`}
-                    id={`group-drop-${chunk.groupId}`}
+                    key={chunk.groupId}
+                    id={chunk.groupId}
                     containerType="group"
-                    className="tab-group-container"
+                    className="group-cluster tab-list tab-group-container"
                     style={{
-                      marginBottom: isLastChunk ? 0 : "8px",
-                      minHeight: isCollapsed ? "auto" : "40px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "var(--spacing-xs, 8px)",
+                      marginBottom,
                     }}
                   >
                     {chunk.items.map((item, i) => renderItem(item, i))}
@@ -488,11 +487,13 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
 
               return (
                 <div
-                  key={`ungrouped-chunk-${chunkIndex}`}
+                  key={`ungrouped-${chunkIndex}`}
+                  className="ungrouped-cluster tab-list"
                   style={{
-                    marginBottom: isLastChunk ? 0 : "8px",
                     display: "flex",
                     flexDirection: "column",
+                    gap: "var(--spacing-xs, 8px)",
+                    marginBottom,
                   }}
                 >
                   {chunk.items.map((item, i) => renderItem(item, i))}
