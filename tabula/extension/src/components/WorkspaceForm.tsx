@@ -26,6 +26,14 @@
 
 import React, { useState } from "react";
 import type { WorkspaceCreateInput, Workspace } from "../types";
+import {
+  Button,
+  Field,
+  Input,
+  Textarea,
+} from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 interface WorkspaceFormProps {
   workspace?: Workspace;
@@ -52,6 +60,10 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
   const [description, setDescription] = useState(workspace?.description || "");
   const [icon, setIcon] = useState(workspace?.icon || "📁");
   const [color, setColor] = useState(workspace?.color || "#4F46E5");
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +71,147 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
       onSubmit({ name: name.trim(), description, icon, color });
     }
   };
+
+  if (useDesignSystem) {
+    return (
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+      >
+        <Field label="Name *">
+          <Input
+            id="name"
+            aria-label="Name *"
+            type="text"
+            value={name}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setName(e.target.value)
+            }
+            placeholder="e.g., Work, Personal, Research"
+            maxLength={255}
+            required
+            autoFocus
+          />
+        </Field>
+
+        <Field label="Description">
+          <Textarea
+            id="description"
+            aria-label="Description"
+            value={description}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+              setDescription(e.target.value)
+            }
+            placeholder="Optional description..."
+            maxLength={1000}
+            rows={2}
+          />
+        </Field>
+
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: "11px",
+              fontWeight: 500,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "var(--paper-dim, #736d64)",
+              marginBottom: "6px",
+            }}
+          >
+            Icon
+          </label>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {COMMON_ICONS.map((iconOption) => (
+              <button
+                key={iconOption}
+                type="button"
+                onClick={() => setIcon(iconOption)}
+                style={{
+                  fontSize: "18px",
+                  padding: "4px 8px",
+                  border:
+                    icon === iconOption
+                      ? "1px solid var(--ink, #1f1d1a)"
+                      : "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
+                  backgroundColor:
+                    icon === iconOption
+                      ? "var(--ink-2, #ffffff)"
+                      : "transparent",
+                  boxShadow:
+                    icon === iconOption
+                      ? "0 0 0 1px var(--ink, #1f1d1a)"
+                      : "none",
+                  cursor: "pointer",
+                }}
+              >
+                {iconOption}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: "11px",
+              fontWeight: 500,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "var(--paper-dim, #736d64)",
+              marginBottom: "6px",
+            }}
+          >
+            Color
+          </label>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {COMMON_COLORS.map((colorOption) => (
+              <button
+                key={colorOption}
+                type="button"
+                onClick={() => setColor(colorOption)}
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  border:
+                    color === colorOption
+                      ? "2px solid var(--ink, #1f1d1a)"
+                      : "1px solid var(--border-hairline, rgba(0,0,0,0.15))",
+                  outline:
+                    color === colorOption
+                      ? "2px solid var(--ink-2, #ffffff)"
+                      : "none",
+                  backgroundColor: colorOption,
+                  cursor: "pointer",
+                }}
+                aria-label={`Color ${colorOption}`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            justifyContent: "flex-end",
+            marginTop: "8px",
+          }}
+        >
+          <Button variant="ghost" size="sm" type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="solid" size="sm" type="submit">
+            {workspace ? "Update" : "Create"}
+          </Button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit}>

@@ -60,6 +60,12 @@ jest.mock("framer-motion", () => ({
 }));
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+jest.mock("../lib/flags/use-feature-flag", () => ({
+  useFeatureFlag: jest.fn(() => false),
+}));
+
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+
 describe("ConfirmModal", () => {
   const defaultProps: ConfirmModalProps = {
     open: true,
@@ -71,6 +77,7 @@ describe("ConfirmModal", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFeatureFlag as unknown as jest.Mock).mockReturnValue(false);
   });
 
   describe("rendering", () => {
@@ -120,6 +127,32 @@ describe("ConfirmModal", () => {
       render(<ConfirmModal {...defaultProps} />);
       fireEvent.click(screen.getByText("Confirm Action"));
       expect(defaultProps.onCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when design system is enabled", () => {
+    beforeEach(() => {
+      (useFeatureFlag as unknown as jest.Mock).mockReturnValue(true);
+    });
+
+    it("should render with design system components", () => {
+      render(<ConfirmModal {...defaultProps} />);
+      expect(screen.getByText("Confirm Action")).toBeInTheDocument();
+      expect(
+        screen.getByText("Are you sure you want to proceed?"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("WARN")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+    });
+
+    it("should handle confirm and cancel in design system mode", () => {
+      render(<ConfirmModal {...defaultProps} />);
+      fireEvent.click(screen.getByText("Delete"));
+      expect(defaultProps.onConfirm).toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText("Cancel"));
+      expect(defaultProps.onCancel).toHaveBeenCalled();
     });
   });
 });

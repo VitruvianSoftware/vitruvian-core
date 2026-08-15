@@ -23,11 +23,14 @@
 /**
  * ConfirmModal component
  *
- * A reusable confirmation dialog for destructive actions with glassmorphic styling and animations.
+ * A reusable confirmation dialog for destructive actions.
  */
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Plate, Button } from "@vitruviansoftware/design-system";
+import { useFeatureFlag } from "../lib/flags/use-feature-flag";
+import { FEATURE_FLAGS } from "../constants/features";
 
 export interface ConfirmModalProps {
   open: boolean;
@@ -44,11 +47,20 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const useDesignSystem = useFeatureFlag(
+    FEATURE_FLAGS.USE_DESIGN_SYSTEM,
+    false,
+  );
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="modal-overlay glassmorphic-overlay"
+          className={
+            useDesignSystem
+              ? "modal-overlay"
+              : "modal-overlay glassmorphic-overlay"
+          }
           style={{
             position: "fixed",
             top: 0,
@@ -58,6 +70,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            backgroundColor: useDesignSystem
+              ? "rgba(31, 29, 26, 0.4)"
+              : undefined,
+            backdropFilter: "blur(4px)",
             zIndex: 9999,
           }}
           onClick={onCancel}
@@ -66,59 +82,149 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
         >
-          <motion.div
-            className="glassmorphic-modal"
-            style={{
-              borderRadius: "8px",
-              padding: "24px",
-              minWidth: "320px",
-              maxWidth: "400px",
-            }}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-          >
-            <h3
+          {useDesignSystem ? (
+            <motion.div
               style={{
-                margin: "0 0 12px 0",
-                fontSize: "18px",
-                fontWeight: 600,
-                color: "var(--color-text-primary)",
+                minWidth: "320px",
+                maxWidth: "420px",
+                width: "90%",
+                padding: "24px",
+                backgroundColor: "var(--paper, #fbf7ee)",
+                border: "1px solid var(--ink, #1f1d1a)",
+                boxShadow: "4px 4px 0px 0px var(--ink, #1f1d1a)",
               }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
             >
-              {title}
-            </h3>
-            <p
+              <Plate marks enter>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: "var(--accent, #991b1b)",
+                      border: "1px solid var(--accent, #991b1b)",
+                      padding: "1px 4px",
+                    }}
+                  >
+                    WARN
+                  </span>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: "16px",
+                      fontWeight: 600,
+                      color: "var(--ink, #1f1d1a)",
+                    }}
+                  >
+                    {title}
+                  </h3>
+                </div>
+
+                <p
+                  style={{
+                    margin: "12px 0 16px 0",
+                    color: "var(--paper-dim, #736d64)",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {message}
+                </p>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "8px",
+                    marginTop: "8px",
+                  }}
+                >
+                  <Button variant="ghost" size="sm" onClick={onCancel}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="solid"
+                    size="sm"
+                    style={{
+                      backgroundColor: "var(--accent, #991b1b)",
+                      borderColor: "var(--accent, #991b1b)",
+                      color: "#ffffff",
+                    }}
+                    onClick={onConfirm}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </Plate>
+            </motion.div>
+          ) : (
+            <motion.div
+              className="glassmorphic-modal"
               style={{
-                margin: "0 0 24px 0",
-                color: "var(--color-text-secondary)",
-                fontSize: "14px",
-                lineHeight: 1.5,
+                borderRadius: "8px",
+                padding: "24px",
+                minWidth: "320px",
+                maxWidth: "400px",
               }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
             >
-              {message}
-            </p>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "12px",
-              }}
-            >
-              <button className="btn btn-secondary" onClick={onCancel}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{ backgroundColor: "var(--color-accent-danger)" }}
-                onClick={onConfirm}
+              <h3
+                style={{
+                  margin: "0 0 12px 0",
+                  fontSize: "18px",
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                }}
               >
-                Delete
-              </button>
-            </div>
-          </motion.div>
+                {title}
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 24px 0",
+                  color: "var(--color-text-secondary)",
+                  fontSize: "14px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {message}
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "12px",
+                }}
+              >
+                <button className="btn btn-secondary" onClick={onCancel}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ backgroundColor: "var(--color-accent-danger)" }}
+                  onClick={onConfirm}
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
