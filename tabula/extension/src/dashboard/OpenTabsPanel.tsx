@@ -131,7 +131,7 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
         marginBottom: "4px",
         marginTop: isFirst ? 0 : "8px",
         backgroundColor: useDesignSystem
-          ? "var(--paper, #fbf7ee)"
+          ? "var(--color-bg, #fbf7ee)"
           : "var(--color-bg-tertiary)",
         border: useDesignSystem
           ? "1px solid var(--border-hairline, rgba(0,0,0,0.1))"
@@ -143,13 +143,13 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
       onMouseEnter={(e) => {
         if (!isDragging) {
           e.currentTarget.style.backgroundColor = useDesignSystem
-            ? "var(--paper-hover, rgba(0,0,0,0.04))"
+            ? "var(--color-bg-card-hover, rgba(0,0,0,0.04))"
             : "var(--color-bg-hover)";
         }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.backgroundColor = useDesignSystem
-          ? "var(--paper, #fbf7ee)"
+          ? "var(--color-bg, #fbf7ee)"
           : "var(--color-bg-tertiary)";
       }}
     >
@@ -181,7 +181,7 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
             marginRight: "6px",
             opacity: 0.7,
             color: useDesignSystem
-              ? "var(--ink, #1f1d1a)"
+              ? "var(--color-text, #1f1d1a)"
               : "var(--color-text-muted)",
           }}
         />
@@ -206,7 +206,7 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
             : undefined,
           fontSize: "12px",
           color: useDesignSystem
-            ? "var(--ink, #1f1d1a)"
+            ? "var(--color-text, #1f1d1a)"
             : "var(--color-text-primary)",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -222,7 +222,7 @@ const DraggableGroupHeader: React.FC<DraggableGroupHeaderProps> = ({
             ? "var(--font-mono, monospace)"
             : undefined,
           color: useDesignSystem
-            ? "var(--paper-dim, #736d64)"
+            ? "var(--color-text-dim, #736d64)"
             : "var(--color-text-muted)",
           marginLeft: "8px",
         }}
@@ -329,7 +329,7 @@ export const OpenTabsPanel: React.FC<OpenTabsPanelProps> = ({
                   fontSize: "12px",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
-                  color: "var(--paper-dim, #736d64)",
+                  color: "var(--color-text-dim, #736d64)",
                   margin: 0,
                 }
               : undefined

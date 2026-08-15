@@ -263,7 +263,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               background:
                 i === step
                   ? useDesignSystem
-                    ? "var(--ink, #1f1d1a)"
+                    ? "var(--color-text, #1f1d1a)"
                     : "var(--color-primary, var(--color-accent-primary))"
                   : useDesignSystem
                     ? "var(--border-hairline, rgba(0,0,0,0.15))"

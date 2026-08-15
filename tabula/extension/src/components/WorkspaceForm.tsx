@@ -117,7 +117,7 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
               fontWeight: 500,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              color: "var(--paper-dim, #736d64)",
+              color: "var(--color-text-dim, #736d64)",
               marginBottom: "6px",
             }}
           >
@@ -134,15 +134,15 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
                   padding: "4px 8px",
                   border:
                     icon === iconOption
-                      ? "1px solid var(--ink, #1f1d1a)"
+                      ? "1px solid var(--color-text, #1f1d1a)"
                       : "1px solid var(--border-hairline, rgba(0,0,0,0.1))",
                   backgroundColor:
                     icon === iconOption
-                      ? "var(--ink-2, #ffffff)"
+                      ? "var(--color-bg-card, #ffffff)"
                       : "transparent",
                   boxShadow:
                     icon === iconOption
-                      ? "0 0 0 1px var(--ink, #1f1d1a)"
+                      ? "0 0 0 1px var(--color-text, #1f1d1a)"
                       : "none",
                   cursor: "pointer",
                 }}
@@ -162,7 +162,7 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
               fontWeight: 500,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              color: "var(--paper-dim, #736d64)",
+              color: "var(--color-text-dim, #736d64)",
               marginBottom: "6px",
             }}
           >
@@ -179,11 +179,11 @@ export const WorkspaceForm: React.FC<WorkspaceFormProps> = ({
                   height: "28px",
                   border:
                     color === colorOption
-                      ? "2px solid var(--ink, #1f1d1a)"
+                      ? "2px solid var(--color-text, #1f1d1a)"
                       : "1px solid var(--border-hairline, rgba(0,0,0,0.15))",
                   outline:
                     color === colorOption
-                      ? "2px solid var(--ink-2, #ffffff)"
+                      ? "2px solid var(--color-bg-card, #ffffff)"
                       : "none",
                   backgroundColor: colorOption,
                   cursor: "pointer",

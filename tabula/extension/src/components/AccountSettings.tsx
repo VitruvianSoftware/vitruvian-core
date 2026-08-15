@@ -366,7 +366,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
       <p
         style={{
           color: useDesignSystem
-            ? "var(--paper-dim, #736d64)"
+            ? "var(--color-text-dim, #736d64)"
             : "var(--color-text-secondary)",
           marginBottom: "16px",
         }}
@@ -439,7 +439,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
@@ -465,17 +465,17 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 height: variant === "popup" ? "48px" : "64px",
                 borderRadius: useDesignSystem ? "0" : "50%",
                 backgroundColor: useDesignSystem
-                  ? "var(--ink, #1f1d1a)"
+                  ? "var(--color-text, #1f1d1a)"
                   : "var(--color-primary)",
                 border: useDesignSystem
-                  ? "1px solid var(--ink, #1f1d1a)"
+                  ? "1px solid var(--color-text, #1f1d1a)"
                   : "none",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: variant === "popup" ? "18px" : "24px",
                 fontWeight: "bold",
-                color: useDesignSystem ? "var(--paper, #fbf7ee)" : "white",
+                color: useDesignSystem ? "var(--color-bg, #fbf7ee)" : "white",
                 fontFamily: useDesignSystem
                   ? "var(--font-mono, monospace)"
                   : undefined,
@@ -492,7 +492,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     display: "block",
                     fontSize: "11px",
                     color: useDesignSystem
-                      ? "var(--paper-dim, #736d64)"
+                      ? "var(--color-text-dim, #736d64)"
                       : "var(--color-text-secondary)",
                     marginBottom: "2px",
                     fontFamily: useDesignSystem
@@ -606,7 +606,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     display: "block",
                     fontSize: "11px",
                     color: useDesignSystem
-                      ? "var(--paper-dim, #736d64)"
+                      ? "var(--color-text-dim, #736d64)"
                       : "var(--color-text-secondary)",
                     marginBottom: "2px",
                     fontFamily: useDesignSystem
@@ -638,7 +638,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 display: "block",
                 fontSize: "11px",
                 color: useDesignSystem
-                  ? "var(--paper-dim, #736d64)"
+                  ? "var(--color-text-dim, #736d64)"
                   : "var(--color-text-secondary)",
                 marginBottom: "4px",
                 fontFamily: useDesignSystem
@@ -681,7 +681,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontWeight: "600",
               marginBottom: variant === "popup" ? "8px" : "16px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
@@ -798,7 +798,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
@@ -815,11 +815,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               justifyContent: "space-between",
               padding: variant === "popup" ? "10px" : "12px",
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : "1px solid var(--color-border)",
               borderRadius: useDesignSystem ? "0" : "8px",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : undefined,
               gap: "12px",
             }}
@@ -841,7 +841,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 style={{
                   fontSize: "11px",
                   color: useDesignSystem
-                    ? "var(--paper-dim, #736d64)"
+                    ? "var(--color-text-dim, #736d64)"
                     : "var(--color-text-secondary)",
                 }}
               >
@@ -882,7 +882,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             fontWeight: "600",
             marginBottom: variant === "popup" ? "12px" : "16px",
             color: useDesignSystem
-              ? "var(--paper-dim, #736d64)"
+              ? "var(--color-text-dim, #736d64)"
               : "var(--color-text-secondary)",
             fontFamily: useDesignSystem
               ? "var(--font-mono, monospace)"
@@ -900,11 +900,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             justifyContent: "space-between",
             padding: variant === "popup" ? "10px" : "12px",
             border: useDesignSystem
-              ? "1px solid var(--ink, #1f1d1a)"
+              ? "1px solid var(--color-text, #1f1d1a)"
               : "1px solid var(--color-border)",
             borderRadius: useDesignSystem ? "0" : "8px",
             backgroundColor: useDesignSystem
-              ? "var(--paper, #fbf7ee)"
+              ? "var(--color-bg, #fbf7ee)"
               : undefined,
             gap: "12px",
           }}
@@ -926,7 +926,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               style={{
                 fontSize: "11px",
                 color: useDesignSystem
-                  ? "var(--paper-dim, #736d64)"
+                  ? "var(--color-text-dim, #736d64)"
                   : "var(--color-text-secondary)",
                 textTransform: "capitalize",
               }}
@@ -955,7 +955,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   padding: "4px 10px",
                   border: useDesignSystem
                     ? theme === t
-                      ? "1px solid var(--ink, #1f1d1a)"
+                      ? "1px solid var(--color-text, #1f1d1a)"
                       : "1px solid transparent"
                     : "none",
                   borderRadius: useDesignSystem ? "0" : "4px",
@@ -967,16 +967,16 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   backgroundColor:
                     theme === t
                       ? useDesignSystem
-                        ? "var(--ink, #1f1d1a)"
+                        ? "var(--color-text, #1f1d1a)"
                         : "var(--color-bg-card)"
                       : "transparent",
                   color:
                     theme === t
                       ? useDesignSystem
-                        ? "var(--paper, #fbf7ee)"
+                        ? "var(--color-bg, #fbf7ee)"
                         : "var(--color-primary)"
                       : useDesignSystem
-                        ? "var(--ink, #1f1d1a)"
+                        ? "var(--color-text, #1f1d1a)"
                         : "var(--color-text-secondary)",
                   boxShadow:
                     !useDesignSystem && theme === t
@@ -1001,7 +1001,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontWeight: "600",
               marginBottom: variant === "popup" ? "12px" : "16px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
@@ -1016,11 +1016,11 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             style={{
               padding: variant === "popup" ? "10px" : "12px",
               border: useDesignSystem
-                ? "1px solid var(--ink, #1f1d1a)"
+                ? "1px solid var(--color-text, #1f1d1a)"
                 : "1px solid var(--color-border)",
               borderRadius: useDesignSystem ? "0" : "8px",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : undefined,
             }}
           >
@@ -1049,7 +1049,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   style={{
                     fontSize: "11px",
                     color: useDesignSystem
-                      ? "var(--paper-dim, #736d64)"
+                      ? "var(--color-text-dim, #736d64)"
                       : "var(--color-text-secondary)",
                     fontFamily: useDesignSystem
                       ? "var(--font-mono, monospace)"
@@ -1088,7 +1088,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       fontSize: "12px",
                       border: useDesignSystem
                         ? (selectedChannel ?? devIdentity.channel) === ch
-                          ? "1px solid var(--ink, #1f1d1a)"
+                          ? "1px solid var(--color-text, #1f1d1a)"
                           : "1px solid transparent"
                         : "none",
                       borderRadius: useDesignSystem ? "0" : "4px",
@@ -1099,16 +1099,16 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       backgroundColor:
                         (selectedChannel ?? devIdentity.channel) === ch
                           ? useDesignSystem
-                            ? "var(--ink, #1f1d1a)"
+                            ? "var(--color-text, #1f1d1a)"
                             : "var(--color-bg-card)"
                           : "transparent",
                       color:
                         (selectedChannel ?? devIdentity.channel) === ch
                           ? useDesignSystem
-                            ? "var(--paper, #fbf7ee)"
+                            ? "var(--color-bg, #fbf7ee)"
                             : "var(--color-primary)"
                           : useDesignSystem
-                            ? "var(--ink, #1f1d1a)"
+                            ? "var(--color-text, #1f1d1a)"
                             : "var(--color-text-secondary)",
                       boxShadow:
                         !useDesignSystem &&
@@ -1133,7 +1133,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   marginTop: "10px",
                   fontSize: "12px",
                   color: useDesignSystem
-                    ? "var(--paper-dim, #736d64)"
+                    ? "var(--color-text-dim, #736d64)"
                     : "var(--color-text-secondary)",
                 }}
               >
@@ -1158,7 +1158,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                       fontSize: "12px",
                       padding: "6px 8px",
                       backgroundColor: useDesignSystem
-                        ? "var(--paper-hover, rgba(0,0,0,0.04))"
+                        ? "var(--color-bg-card-hover, rgba(0,0,0,0.04))"
                         : "var(--color-bg-card-hover)",
                       border: useDesignSystem
                         ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
@@ -1246,7 +1246,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     style={{
                       fontSize: "11px",
                       color: useDesignSystem
-                        ? "var(--paper-dim, #736d64)"
+                        ? "var(--color-text-dim, #736d64)"
                         : "var(--color-text-secondary)",
                     }}
                   >
@@ -1275,7 +1275,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     style={{
                       fontSize: "12px",
                       color: useDesignSystem
-                        ? "var(--ink, #1f1d1a)"
+                        ? "var(--color-text, #1f1d1a)"
                         : "var(--color-text-secondary)",
                       fontFamily: useDesignSystem
                         ? "var(--font-mono, monospace)"
@@ -1356,10 +1356,10 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 minWidth: "120px",
                 padding: "12px",
                 backgroundColor: useDesignSystem
-                  ? "var(--paper, #fbf7ee)"
+                  ? "var(--color-bg, #fbf7ee)"
                   : "var(--color-btn-shaded-bg)",
                 border: useDesignSystem
-                  ? "1px solid var(--ink, #1f1d1a)"
+                  ? "1px solid var(--color-text, #1f1d1a)"
                   : "none",
                 borderRadius: useDesignSystem ? "0" : "8px",
               }}
@@ -1380,7 +1380,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 style={{
                   fontSize: "12px",
                   color: useDesignSystem
-                    ? "var(--paper-dim, #736d64)"
+                    ? "var(--color-text-dim, #736d64)"
                     : "var(--color-text-secondary)",
                 }}
               >
@@ -1394,10 +1394,10 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 minWidth: "120px",
                 padding: "12px",
                 backgroundColor: useDesignSystem
-                  ? "var(--paper, #fbf7ee)"
+                  ? "var(--color-bg, #fbf7ee)"
                   : "var(--color-btn-shaded-bg)",
                 border: useDesignSystem
-                  ? "1px solid var(--ink, #1f1d1a)"
+                  ? "1px solid var(--color-text, #1f1d1a)"
                   : "none",
                 borderRadius: useDesignSystem ? "0" : "8px",
               }}
@@ -1420,7 +1420,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 style={{
                   fontSize: "12px",
                   color: useDesignSystem
-                    ? "var(--paper-dim, #736d64)"
+                    ? "var(--color-text-dim, #736d64)"
                     : "var(--color-text-secondary)",
                 }}
               >
@@ -1458,7 +1458,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontWeight: "600",
               marginBottom: "12px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
@@ -1477,7 +1477,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     textAlign: "center",
                     padding: "20px",
                     color: useDesignSystem
-                      ? "var(--paper-dim, #736d64)"
+                      ? "var(--color-text-dim, #736d64)"
                       : "var(--color-text-secondary)",
                     fontFamily: useDesignSystem
                       ? "var(--font-mono, monospace)"
@@ -1495,7 +1495,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                     textAlign: "center",
                     padding: "20px",
                     color: useDesignSystem
-                      ? "var(--paper-dim, #736d64)"
+                      ? "var(--color-text-dim, #736d64)"
                       : "var(--color-text-secondary)",
                     fontFamily: useDesignSystem
                       ? "var(--font-mono, monospace)"
@@ -1523,7 +1523,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                         : "1px solid var(--color-border)",
                       borderRadius: useDesignSystem ? "0" : "8px",
                       backgroundColor: useDesignSystem
-                        ? "var(--paper, #fbf7ee)"
+                        ? "var(--color-bg, #fbf7ee)"
                         : undefined,
                       gap: "12px",
                     }}
@@ -1544,7 +1544,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                         style={{
                           fontSize: "11px",
                           color: useDesignSystem
-                            ? "var(--paper-dim, #736d64)"
+                            ? "var(--color-text-dim, #736d64)"
                             : "var(--color-text-secondary)",
                         }}
                       >
@@ -1610,7 +1610,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             style={{
               padding: "12px",
               backgroundColor: useDesignSystem
-                ? "var(--paper, #fbf7ee)"
+                ? "var(--color-bg, #fbf7ee)"
                 : "var(--color-btn-shaded-bg)",
               border: useDesignSystem
                 ? "1px solid var(--border-hairline, rgba(0,0,0,0.15))"
@@ -1618,7 +1618,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               borderRadius: useDesignSystem ? "0" : "8px",
               fontSize: "12px",
               color: useDesignSystem
-                ? "var(--paper-dim, #736d64)"
+                ? "var(--color-text-dim, #736d64)"
                 : "var(--color-text-secondary)",
             }}
           >
@@ -1647,7 +1647,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
             gap: "8px",
             paddingBottom: "12px",
             borderBottom: useDesignSystem
-              ? "1px solid var(--ink, #1f1d1a)"
+              ? "1px solid var(--color-text, #1f1d1a)"
               : "1px solid var(--color-border)",
             marginBottom: "12px",
           }}
@@ -1680,7 +1680,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
               fontFamily: useDesignSystem
                 ? "var(--font-mono, monospace)"
                 : undefined,
-              color: useDesignSystem ? "var(--ink, #1f1d1a)" : undefined,
+              color: useDesignSystem ? "var(--color-text, #1f1d1a)" : undefined,
               margin: 0,
             }}
           >
@@ -1716,7 +1716,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 padding: "8px 12px",
                 border: useDesignSystem
                   ? activeTab === tab.id
-                    ? "1px solid var(--ink, #1f1d1a)"
+                    ? "1px solid var(--color-text, #1f1d1a)"
                     : "1px solid transparent"
                   : "none",
                 borderRadius: useDesignSystem ? "0" : "6px",
@@ -1730,16 +1730,16 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                 backgroundColor:
                   activeTab === tab.id
                     ? useDesignSystem
-                      ? "var(--ink, #1f1d1a)"
+                      ? "var(--color-text, #1f1d1a)"
                       : "var(--color-bg-card)"
                     : "transparent",
                 color:
                   activeTab === tab.id
                     ? useDesignSystem
-                      ? "var(--paper, #fbf7ee)"
+                      ? "var(--color-bg, #fbf7ee)"
                       : "var(--color-text-primary)"
                     : useDesignSystem
-                      ? "var(--ink, #1f1d1a)"
+                      ? "var(--color-text, #1f1d1a)"
                       : "var(--color-text-secondary)",
                 boxShadow:
                   !useDesignSystem && activeTab === tab.id
@@ -1853,7 +1853,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
           style={{
             width: "200px",
             borderRight: useDesignSystem
-              ? "1px solid var(--ink, #1f1d1a)"
+              ? "1px solid var(--color-text, #1f1d1a)"
               : "1px solid var(--color-border)",
             padding: "16px",
             backgroundColor: useDesignSystem
@@ -1881,19 +1881,19 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({
                   padding: "8px 12px",
                   border: useDesignSystem
                     ? activeTab === tab.id
-                      ? "1px solid var(--ink, #1f1d1a)"
+                      ? "1px solid var(--color-text, #1f1d1a)"
                       : "1px solid transparent"
                     : "none",
                   background:
                     activeTab === tab.id
                       ? useDesignSystem
-                        ? "var(--ink, #1f1d1a)"
+                        ? "var(--color-text, #1f1d1a)"
                         : "var(--color-primary-light)"
                       : "transparent",
                   color:
                     activeTab === tab.id
                       ? useDesignSystem
-                        ? "var(--paper, #fbf7ee)"
+                        ? "var(--color-bg, #fbf7ee)"
                         : undefined
                       : undefined,
                   borderRadius: useDesignSystem ? "0" : "4px",

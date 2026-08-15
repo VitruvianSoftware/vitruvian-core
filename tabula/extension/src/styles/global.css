@@ -141,16 +141,16 @@
 }
 
 [data-design-system="true"] {
-  --color-bg-page: var(--color-paper);
-  --color-bg-sidebar: var(--color-paper);
-  --color-bg-card: var(--color-paper);
-  --color-bg-card-hover: var(--color-paper);
+  --color-bg-page: var(--color-ink);
+  --color-bg-sidebar: var(--color-ink-2);
+  --color-bg-card: var(--color-ink-2);
+  --color-bg-card-hover: var(--color-ink-3);
   
-  --color-text-primary: var(--color-ink);
-  --color-text-secondary: var(--color-ink-2);
-  --color-text-muted: var(--color-ink-2);
-  --color-text-sidebar: var(--color-ink);
-  --color-text-sidebar-secondary: var(--color-ink-2);
+  --color-text-primary: var(--color-paper);
+  --color-text-secondary: var(--color-paper-dim);
+  --color-text-muted: var(--color-paper-dim);
+  --color-text-sidebar: var(--color-paper);
+  --color-text-sidebar-secondary: var(--color-paper-dim);
   
   --color-border: var(--color-hairline);
   --color-border-sidebar: var(--color-hairline);
@@ -161,6 +161,12 @@
   --radius-lg: 0;
   --radius-pill: 0;
   --radius-circle: 50%;
+
+  /* Restore Frosted Glass tokens from Vitruvian */
+  --glass-bg-strong: var(--glass-bg);
+  --glass-bg-panel: var(--glass-bg);
+  --glass-border: var(--color-hairline);
+  --glass-shadow: var(--shadow-lg);
 }
 
 /* Ambient backdrop — a whisper-subtle aurora painted on the page behind the

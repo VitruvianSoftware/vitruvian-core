@@ -439,9 +439,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ? {
                 width: "100%",
                 maxWidth: "600px",
-                backgroundColor: "var(--paper, #fbf7ee)",
-                border: "2px solid var(--ink, #1f1d1a)",
-                boxShadow: "6px 6px 0 0 var(--ink, #1f1d1a)",
+                backgroundColor: "var(--color-bg, #fbf7ee)",
+                border: "2px solid var(--color-text, #1f1d1a)",
+                boxShadow: "6px 6px 0 0 var(--color-text, #1f1d1a)",
                 borderRadius: "0",
                 display: "flex",
                 flexDirection: "column",
@@ -458,7 +458,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   display: "flex",
                   alignItems: "center",
                   padding: "14px 16px",
-                  borderBottom: "1px solid var(--ink, #1f1d1a)",
+                  borderBottom: "1px solid var(--color-text, #1f1d1a)",
                   gap: "12px",
                 }
               : undefined
@@ -469,7 +469,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             size="md"
             className="command-palette-search-icon"
             style={
-              useDesignSystem ? { color: "var(--ink, #1f1d1a)" } : undefined
+              useDesignSystem
+                ? { color: "var(--color-text, #1f1d1a)" }
+                : undefined
             }
           />
           <input
@@ -485,7 +487,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     outline: "none",
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "14px",
-                    color: "var(--ink, #1f1d1a)",
+                    color: "var(--color-text, #1f1d1a)",
                   }
                 : undefined
             }
@@ -505,9 +507,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     fontSize: "10px",
                     fontWeight: 600,
                     padding: "2px 6px",
-                    border: "1px solid var(--ink, #1f1d1a)",
-                    backgroundColor: "var(--paper-hover, rgba(0,0,0,0.06))",
-                    color: "var(--ink, #1f1d1a)",
+                    border: "1px solid var(--color-text, #1f1d1a)",
+                    backgroundColor:
+                      "var(--color-bg-card-hover, rgba(0,0,0,0.06))",
+                    color: "var(--color-text, #1f1d1a)",
                     borderRadius: "0",
                   }
                 : undefined
@@ -555,15 +558,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       textTransform: "uppercase",
                       padding: "3px 8px",
                       cursor: "pointer",
-                      border: "1px solid var(--ink, #1f1d1a)",
+                      border: "1px solid var(--color-text, #1f1d1a)",
                       backgroundColor:
                         activeFilter === filter
-                          ? "var(--ink, #1f1d1a)"
-                          : "var(--paper, #fbf7ee)",
+                          ? "var(--color-text, #1f1d1a)"
+                          : "var(--color-bg, #fbf7ee)",
                       color:
                         activeFilter === filter
-                          ? "var(--paper, #fbf7ee)"
-                          : "var(--ink, #1f1d1a)",
+                          ? "var(--color-bg, #fbf7ee)"
+                          : "var(--color-text, #1f1d1a)",
                       borderRadius: "0",
                     }
                   : undefined
@@ -603,7 +606,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         fontFamily: "var(--font-mono, monospace)",
                         fontSize: "11px",
                         textTransform: "uppercase",
-                        color: "var(--paper-dim, #736d64)",
+                        color: "var(--color-text-dim, #736d64)",
                         padding: "8px 16px",
                       }
                     : undefined
@@ -650,7 +653,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         textAlign: "center",
                         fontFamily: "var(--font-mono, monospace)",
                         fontSize: "13px",
-                        color: "var(--paper-dim, #736d64)",
+                        color: "var(--color-text-dim, #736d64)",
                       }
                     : undefined
                 }
@@ -673,11 +676,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                             padding: "8px 16px",
                             cursor: "pointer",
                             backgroundColor: isSelected
-                              ? "var(--ink, #1f1d1a)"
+                              ? "var(--color-text, #1f1d1a)"
                               : "transparent",
                             color: isSelected
-                              ? "var(--paper, #fbf7ee)"
-                              : "var(--ink, #1f1d1a)",
+                              ? "var(--color-bg, #fbf7ee)"
+                              : "var(--color-text, #1f1d1a)",
                             borderBottom:
                               "1px solid var(--border-hairline, rgba(0,0,0,0.06))",
                           }
@@ -694,8 +697,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         useDesignSystem
                           ? {
                               color: isSelected
-                                ? "var(--paper, #fbf7ee)"
-                                : "var(--ink, #1f1d1a)",
+                                ? "var(--color-bg, #fbf7ee)"
+                                : "var(--color-text, #1f1d1a)",
                               marginRight: "12px",
                             }
                           : undefined
@@ -735,8 +738,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                                   fontSize: "11px",
                                   fontFamily: "var(--font-mono, monospace)",
                                   color: isSelected
-                                    ? "var(--paper-hover, #ede5d8)"
-                                    : "var(--paper-dim, #736d64)",
+                                    ? "var(--color-bg-card-hover, #ede5d8)"
+                                    : "var(--color-text-dim, #736d64)",
                                   whiteSpace: "nowrap",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
@@ -756,8 +759,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                                   fontSize: "10px",
                                   fontFamily: "var(--font-mono, monospace)",
                                   color: isSelected
-                                    ? "var(--paper-hover, #ede5d8)"
-                                    : "var(--paper-dim, #736d64)",
+                                    ? "var(--color-bg-card-hover, #ede5d8)"
+                                    : "var(--color-text-dim, #736d64)",
                                 }
                               : undefined
                           }
@@ -777,12 +780,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                               padding: "2px 6px",
                               border: `1px solid ${
                                 isSelected
-                                  ? "var(--paper, #fbf7ee)"
-                                  : "var(--ink, #1f1d1a)"
+                                  ? "var(--color-bg, #fbf7ee)"
+                                  : "var(--color-text, #1f1d1a)"
                               }`,
                               color: isSelected
-                                ? "var(--paper, #fbf7ee)"
-                                : "var(--ink, #1f1d1a)",
+                                ? "var(--color-bg, #fbf7ee)"
+                                : "var(--color-text, #1f1d1a)",
                               marginLeft: "8px",
                             }
                           : undefined
@@ -805,8 +808,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   alignItems: "center",
                   justifyContent: "flex-end",
                   padding: "8px 16px",
-                  borderTop: "1px solid var(--ink, #1f1d1a)",
-                  backgroundColor: "var(--paper-hover, rgba(0,0,0,0.03))",
+                  borderTop: "1px solid var(--color-text, #1f1d1a)",
+                  backgroundColor:
+                    "var(--color-bg-card-hover, rgba(0,0,0,0.03))",
                   fontFamily: "var(--font-mono, monospace)",
                   fontSize: "11px",
                   gap: "6px",
@@ -822,7 +826,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
-                    color: "var(--paper-dim, #736d64)",
+                    color: "var(--color-text-dim, #736d64)",
                   }
                 : undefined
             }
@@ -830,7 +834,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--ink, #1f1d1a)",
+                border: "1px solid var(--color-text, #1f1d1a)",
                 borderRadius: 0,
               }}
             >
@@ -839,7 +843,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--ink, #1f1d1a)",
+                border: "1px solid var(--color-text, #1f1d1a)",
                 borderRadius: 0,
               }}
             >
@@ -849,7 +853,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <kbd
               style={{
                 padding: "1px 4px",
-                border: "1px solid var(--ink, #1f1d1a)",
+                border: "1px solid var(--color-text, #1f1d1a)",
                 borderRadius: 0,
               }}
             >
