@@ -59,20 +59,17 @@ spec:
                 size: 1Gi
             ingress:
               main:
+                enabled: false
+            route:
+              main:
                 enabled: true
-                ingressClassName: traefik
-                annotations:
-                  cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                  external-dns.alpha.kubernetes.io/sync-enabled: "true"
-                hosts:
-                  - host: headscale.lab.ipv1337.dev
-                    paths:
-                      - path: /
-                        pathType: Prefix
-                tls:
-                  - secretName: headscale-tls
-                    hosts:
-                      - headscale.lab.ipv1337.dev
+                parentRefs:
+                  - group: gateway.networking.k8s.io
+                    kind: Gateway
+                    name: platform
+                    namespace: envoy-gateway-system
+                hostnames:
+                  - headscale.lab.ipv1337.dev
       destination:
         server: '{{.server}}'
         namespace: headscale

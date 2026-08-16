@@ -17,12 +17,29 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-load("//tools/gitops:defs.bzl", "gitops_manifest")
-
-gitops_manifest(
-    name = "uptime-kuma",
-    manifests = [
-        "applicationset.yaml",
-        "httproute.yaml",
-    ],
-)
+#
+# uptime-kuma HTTPRoute — attaches to platform Gateway in envoy-gateway-system.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: uptime-kuma
+  namespace: uptime-kuma
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+  hostnames:
+    - status.lab.ipv1337.dev
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: uptime-kuma
+          port: 3001
+          weight: 1

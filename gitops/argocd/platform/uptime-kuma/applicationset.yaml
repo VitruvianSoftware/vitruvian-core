@@ -50,20 +50,7 @@ spec:
               storageClass: local-path
               size: 4Gi
             ingress:
-              enabled: true
-              className: traefik
-              annotations:
-                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                external-dns.alpha.kubernetes.io/sync-enabled: "true"
-              hosts:
-                - host: status.lab.ipv1337.dev
-                  paths:
-                    - path: /
-                      pathType: Prefix
-              tls:
-                - secretName: uptime-kuma-tls
-                  hosts:
-                    - status.lab.ipv1337.dev
+              enabled: false
       destination:
         server: '{{.server}}'
         namespace: uptime-kuma

@@ -17,12 +17,31 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-load("//tools/gitops:defs.bzl", "gitops_manifest")
-
-gitops_manifest(
-    name = "uptime-kuma",
-    manifests = [
-        "applicationset.yaml",
-        "httproute.yaml",
-    ],
-)
+#
+# uptime-kuma-resources — platform HTTPRoute and routing for Uptime Kuma.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: uptime-kuma-resources
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/uptime-kuma
+    directory:
+      recurse: true
+      include: "httproute.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: uptime-kuma
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

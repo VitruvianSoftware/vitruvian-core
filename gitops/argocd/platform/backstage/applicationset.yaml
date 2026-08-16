@@ -63,15 +63,21 @@ spec:
                     client: better-sqlite3
                     connection: ':memory:'
             ingress:
+              enabled: false
+            httpRoute:
               enabled: true
-              className: traefik
-              annotations:
-                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                external-dns.alpha.kubernetes.io/sync-enabled: "true"
-              host: backstage.lab.ipv1337.dev
-              tls:
-                enabled: true
-                secretName: backstage-tls
+              parentRefs:
+                - group: gateway.networking.k8s.io
+                  kind: Gateway
+                  name: platform
+                  namespace: envoy-gateway-system
+              hostnames:
+                - backstage.lab.ipv1337.dev
+              rules:
+                - matches:
+                    - path:
+                        type: PathPrefix
+                        value: /
       destination:
         server: '{{.server}}'
         namespace: backstage
