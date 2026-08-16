@@ -788,4 +788,47 @@ id = "GO-2026-6180"
 ignoreUntil = 2026-10-23
 reason = "Pre-existing advisory for golang.org/x/mod (0.37.0 -> 0.40.0). Accepted until next quarter dependency update."
 
+[[IgnoredVulns]]
+id = "GHSA-h5c3-5r3r-rr8q"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm @octokit/plugin-paginate-rest 6.1.2. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rmvr-2pp2-xj38"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm @octokit/request 6.2.8. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-xx4v-prfh-6cgc"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm @octokit/request-error 3.0.3. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-848j-6mx2-7j84"
+reason = "PERMANENT: no fixed version exists in any range. npm elliptic 6.6.1 in Backstage transitive graph. Not time-boxed because no future date makes it actionable; revisit only if the dependency is dropped."
+
+[[IgnoredVulns]]
+id = "GHSA-5v7r-6r5c-r473"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm file-type 16.5.4. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-x7hr-w5r2-h6wg"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm prismjs 1.27.0. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-337j-9hxr-rhxg"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm react-router 6.30.4 (v7 is a major breaking rewrite). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-wrjc-x8rr-h8h6"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm react-router 6.30.4 (v7 is a major breaking rewrite). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-jjmj-jmhj-qwj2"
+reason = "PERMANENT: no fixed version exists in 6.x range. npm react-router-dom 6.30.4 in Backstage. Not time-boxed because no 6.x fix exists; revisit on Backstage v7 migration."
+
 
