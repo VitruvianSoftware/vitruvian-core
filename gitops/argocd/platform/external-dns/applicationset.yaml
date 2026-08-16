@@ -78,6 +78,7 @@ spec:
               - --crd-source-kind=DNSEndpoint
             domainFilters:
               - ipv1337.dev
+              - vitruviansoftware.dev
             policy: sync
             interval: 1m
             triggerLoopOnEvent: true
