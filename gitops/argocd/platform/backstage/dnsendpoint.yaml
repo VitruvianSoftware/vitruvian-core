@@ -39,11 +39,3 @@ spec:
       providerSpecific:
         - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
           value: "true"
-    - dnsName: backstage.ipv1337.dev
-      recordType: CNAME
-      recordTTL: 1
-      targets:
-        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
-      providerSpecific:
-        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
-          value: "true"
