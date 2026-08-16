@@ -25,6 +25,7 @@ packages:
   - mcp-slack
   - nexus-agent
   - oauth-user-inspector
+  - backstage/packages/*
   - tabula/shared
   - tabula/api
   - tabula/extension
