@@ -17,6 +17,11 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+# backstage — developer portal for vitruvian-core services and catalog.
+# Uses upstream chart (https://backstage.github.io/charts).
+# Database defaults to in-memory better-sqlite3 for initial evaluation/standup.
+# Production cutover to a dedicated CloudNativePG cluster (backstage-db) requires
+# provisioning the CNPG Cluster CR and injecting credentials via SealedSecret.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -55,11 +60,8 @@ spec:
                   listen:
                     port: 7007
                   database:
-                    client: pg
-                    connection:
-                      host: backstage-db-cluster-rw
-                      port: 5432
-                      user: backstage
+                    client: better-sqlite3
+                    connection: ':memory:'
             ingress:
               enabled: true
               className: traefik

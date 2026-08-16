@@ -39,13 +39,13 @@ spec:
     spec:
       project: platform-project
       source:
-        repoURL: https://dirkjot.github.io/uptime-kuma-helm
+        repoURL: https://dirsigler.github.io/uptime-kuma-helm
         chart: uptime-kuma
-        targetRevision: "2.2.1"
+        targetRevision: "2.20.0"
         helm:
           version: v3
           values: |
-            volume:
+            persistence:
               enabled: true
               storageClass: local-path
               size: 4Gi
