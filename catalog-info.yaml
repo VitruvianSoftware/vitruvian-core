@@ -48,3 +48,26 @@ spec:
     - ./nexus-agent/catalog-info.yaml
     - ./oauth-user-inspector/catalog-info.yaml
     - ./tabula/catalog-info.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ipv1337
+  annotations:
+    github.com/user-login: ipv1337
+spec:
+  profile:
+    displayName: James Nguyen
+    email: james.nguyen@gmail.com
+  memberOf: [platform-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+spec:
+  type: team
+  profile:
+    displayName: Platform Team
+    email: platform@vitruviansoftware.dev
+  children: []
