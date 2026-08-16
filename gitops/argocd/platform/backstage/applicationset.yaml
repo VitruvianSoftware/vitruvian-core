@@ -103,6 +103,7 @@ spec:
                 auth:
                   environment: production
                   providers:
+                    guest: {}
                     github:
                       production:
                         clientId: ${AUTH_GITHUB_CLIENT_ID}
