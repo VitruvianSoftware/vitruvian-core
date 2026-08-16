@@ -62,14 +62,7 @@ spec:
                 enabled: false
             route:
               main:
-                enabled: true
-                parentRefs:
-                  - group: gateway.networking.k8s.io
-                    kind: Gateway
-                    name: platform
-                    namespace: envoy-gateway-system
-                hostnames:
-                  - headscale.lab.ipv1337.dev
+                enabled: false
       destination:
         server: '{{.server}}'
         namespace: headscale

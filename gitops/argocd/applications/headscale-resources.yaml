@@ -17,12 +17,31 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-load("//tools/gitops:defs.bzl", "gitops_manifest")
-
-gitops_manifest(
-    name = "headscale",
-    manifests = [
-        "applicationset.yaml",
-        "httproute.yaml",
-    ],
-)
+#
+# headscale-resources — platform HTTPRoute and routing for Headscale.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: headscale-resources
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/headscale
+    directory:
+      recurse: true
+      include: "httproute.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: headscale
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
