@@ -51,6 +51,22 @@ spec:
           version: v3
           values: |
             backstage:
+              extraEnvVars:
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backstage-secrets
+                      key: POSTGRES_PASSWORD
+                - name: BACKSTAGE_AUTH_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backstage-secrets
+                      key: BACKSTAGE_AUTH_KEY
+                - name: AUTH_SESSION_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: backstage-secrets
+                      key: AUTH_SESSION_SECRET
               appConfig:
                 app:
                   title: Vitruvian Developer Portal
@@ -60,8 +76,23 @@ spec:
                   listen:
                     port: 7007
                   database:
-                    client: better-sqlite3
-                    connection: ':memory:'
+                    client: pg
+                    connection:
+                      host: backstage-db-rw.backstage.svc.cluster.local
+                      port: 5432
+                      user: backstage
+                      password: ${POSTGRES_PASSWORD}
+                integrations:
+                  github:
+                    - host: github.com
+                catalog:
+                  rules:
+                    - allow: [Component, System, API, Resource, Location, Template, User, Group]
+                  locations:
+                    - type: url
+                      target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
+                      rules:
+                        - allow: [Component, System, API, Resource, Location, Template, User, Group]
             ingress:
               enabled: false
             httpRoute:
