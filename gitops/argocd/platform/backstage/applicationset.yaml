@@ -78,7 +78,7 @@ spec:
                   database:
                     client: pg
                     connection:
-                      host: backstage-db-rw.backstage.svc.cluster.local
+                      host: backstage-db-cluster-rw.backstage.svc.cluster.local
                       port: 5432
                       user: backstage
                       password: ${POSTGRES_PASSWORD}
