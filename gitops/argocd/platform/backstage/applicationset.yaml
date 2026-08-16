@@ -46,7 +46,7 @@ spec:
       source:
         repoURL: https://backstage.github.io/charts
         chart: backstage
-        targetRevision: "1.10.3"
+        targetRevision: "2.10.0"
         helm:
           version: v3
           values: |
