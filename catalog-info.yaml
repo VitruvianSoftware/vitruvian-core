@@ -42,6 +42,7 @@ metadata:
   description: Per-app component metadata (one catalog-info.yaml per app directory)
 spec:
   targets:
+    - ./backstage/catalog-info.yaml
     - ./devx/catalog-info.yaml
     - ./homelab/catalog-info.yaml
     - ./mcp-slack/catalog-info.yaml
