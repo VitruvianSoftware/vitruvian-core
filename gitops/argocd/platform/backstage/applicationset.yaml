@@ -81,6 +81,7 @@ spec:
                 app:
                   title: Vitruvian Developer Portal
                   baseUrl: https://backstage.vitruviansoftware.dev
+                signInPage: github
                 backend:
                   baseUrl: https://backstage.vitruviansoftware.dev
                   listen:
