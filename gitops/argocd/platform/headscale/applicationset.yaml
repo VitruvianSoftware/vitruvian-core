@@ -51,7 +51,7 @@ spec:
               HEADSCALE_METRICS_LISTEN_ADDR: 0.0.0.0:9090
               HEADSCALE_GRPC_LISTEN_ADDR: 0.0.0.0:50443
               HEADSCALE_DNS_MAGIC_DNS: "true"
-              HEADSCALE_DNS_BASE_DOMAIN: lab.ipv1337.dev
+              HEADSCALE_DNS_BASE_DOMAIN: mesh.lab.ipv1337.dev
             persistence:
               config:
                 enabled: true
