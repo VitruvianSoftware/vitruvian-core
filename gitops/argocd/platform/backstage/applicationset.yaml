@@ -54,9 +54,9 @@ spec:
               appConfig:
                 app:
                   title: Vitruvian Developer Portal
-                  baseUrl: https://backstage.lab.ipv1337.dev
+                  baseUrl: https://backstage.ipv1337.dev
                 backend:
-                  baseUrl: https://backstage.lab.ipv1337.dev
+                  baseUrl: https://backstage.ipv1337.dev
                   listen:
                     port: 7007
                   database:
@@ -72,6 +72,7 @@ spec:
                   name: platform
                   namespace: envoy-gateway-system
               hostnames:
+                - backstage.ipv1337.dev
                 - backstage.lab.ipv1337.dev
               rules:
                 - matches:

@@ -23,6 +23,7 @@ gitops_manifest(
     name = "uptime-kuma",
     manifests = [
         "applicationset.yaml",
+        "dnsendpoint.yaml",
         "httproute.yaml",
     ],
 )

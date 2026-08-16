@@ -18,29 +18,30 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# uptime-kuma HTTPRoute — attaches to platform Gateway in envoy-gateway-system.
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+# backstage-resources — platform DNSEndpoint and routing for Backstage.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: uptime-kuma
-  namespace: uptime-kuma
+  name: backstage-resources
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform
-      namespace: envoy-gateway-system
-  hostnames:
-    - status.ipv1337.dev
-    - status.lab.ipv1337.dev
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: uptime-kuma
-          port: 3001
-          weight: 1
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/backstage
+    directory:
+      recurse: true
+      exclude: "applicationset*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
