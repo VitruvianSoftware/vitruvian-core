@@ -46,12 +46,12 @@ spec:
           version: v3
           values: |
             env:
-              HEADSCALE_SERVER_URL: https://headscale.lab.ipv1337.dev
+              HEADSCALE_SERVER_URL: https://headscale.ipv1337.dev
               HEADSCALE_LISTEN_ADDR: 0.0.0.0:8080
               HEADSCALE_METRICS_LISTEN_ADDR: 0.0.0.0:9090
               HEADSCALE_GRPC_LISTEN_ADDR: 0.0.0.0:50443
               HEADSCALE_DNS_MAGIC_DNS: "true"
-              HEADSCALE_DNS_BASE_DOMAIN: mesh.lab.ipv1337.dev
+              HEADSCALE_DNS_BASE_DOMAIN: mesh.ipv1337.dev
             persistence:
               config:
                 enabled: true

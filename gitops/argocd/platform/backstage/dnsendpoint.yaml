@@ -18,29 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# uptime-kuma HTTPRoute — attaches to platform Gateway in envoy-gateway-system.
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+# backstage DNS — external endpoint published via external-dns's crd source.
+# A PROXIED CNAME backstage.ipv1337.dev -> <tunnel>.cfargotunnel.com routes traffic
+# through Cloudflare's edge into the tunnel to Envoy Gateway.
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
 metadata:
-  name: uptime-kuma
-  namespace: uptime-kuma
+  name: backstage-tunnel
+  namespace: backstage
+  annotations:
+    external-dns.alpha.kubernetes.io/sync-enabled: "true"
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 spec:
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform
-      namespace: envoy-gateway-system
-  hostnames:
-    - status.ipv1337.dev
-    - status.lab.ipv1337.dev
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: uptime-kuma
-          port: 3001
-          weight: 1
+  endpoints:
+    - dnsName: backstage.ipv1337.dev
+      recordType: CNAME
+      recordTTL: 1
+      targets:
+        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+      providerSpecific:
+        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+          value: "true"

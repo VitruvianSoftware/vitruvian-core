@@ -34,7 +34,7 @@ spec:
     path: gitops/argocd/platform/headscale
     directory:
       recurse: true
-      include: "httproute.yaml"
+      exclude: "applicationset*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: headscale
