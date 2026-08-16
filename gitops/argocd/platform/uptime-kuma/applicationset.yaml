@@ -1,0 +1,75 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: uptime-kuma
+  namespace: argocd
+  labels:
+    environment: uptime-kuma
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: uptime-kuma
+      labels:
+        app: uptime-kuma
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://dirkjot.github.io/uptime-kuma-helm
+        chart: uptime-kuma
+        targetRevision: "2.2.1"
+        helm:
+          version: v3
+          values: |
+            volume:
+              enabled: true
+              storageClass: local-path
+              size: 4Gi
+            ingress:
+              enabled: true
+              className: traefik
+              annotations:
+                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+                external-dns.alpha.kubernetes.io/sync-enabled: "true"
+              hosts:
+                - host: status.lab.ipv1337.dev
+                  paths:
+                    - path: /
+                      pathType: Prefix
+              tls:
+                - secretName: uptime-kuma-tls
+                  hosts:
+                    - status.lab.ipv1337.dev
+      destination:
+        server: '{{.server}}'
+        namespace: uptime-kuma
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
