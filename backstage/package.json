@@ -1,0 +1,12 @@
+{
+  "name": "@vitruviansoftware/backstage",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build:all": "pnpm --filter @vitruviansoftware/backstage-app build && pnpm --filter @vitruviansoftware/backstage-backend build"
+  },
+  "packageManager": "pnpm@10.20.0"
+}

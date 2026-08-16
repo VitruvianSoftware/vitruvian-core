@@ -1,0 +1,44 @@
+{
+  "name": "@vitruviansoftware/backstage-backend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.cjs",
+  "types": "dist/index.d.ts",
+  "backstage": {
+    "role": "backend"
+  },
+  "scripts": {
+    "build": "backstage-cli package build",
+    "clean": "backstage-cli package clean",
+    "start": "node dist/index.cjs"
+  },
+  "dependencies": {
+    "@vitruviansoftware/backstage-app": "workspace:*",
+    "@backstage/backend-defaults": "^0.17.6",
+    "@backstage/plugin-app-backend": "^0.5.16",
+    "@backstage/plugin-auth-backend": "^0.29.2",
+    "@backstage/plugin-auth-backend-module-github-provider": "^0.5.5",
+    "@backstage/plugin-auth-backend-module-guest-provider": "^0.2.21",
+    "@backstage/plugin-catalog-backend": "^3.8.1",
+    "@backstage/plugin-catalog-backend-module-github": "^0.13.4",
+    "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "^0.2.22",
+    "@backstage/plugin-permission-backend": "^0.7.14",
+    "@backstage/plugin-permission-backend-module-allow-all-policy": "^0.2.21",
+    "@backstage/plugin-proxy-backend": "^0.6.15",
+    "@backstage/plugin-scaffolder-backend": "^4.0.2",
+    "@backstage/plugin-search-backend": "^2.1.4",
+    "@backstage/plugin-search-backend-module-catalog": "^0.3.17",
+    "@backstage/plugin-search-backend-module-techdocs": "^0.4.16",
+    "@backstage/plugin-techdocs-backend": "^2.2.2",
+    "better-sqlite3": "^11.8.1",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@backstage/cli": "^0.36.4",
+    "@types/node": "^22",
+    "typescript": "~5.8.0"
+  },
+  "files": [
+    "dist"
+  ]
+}
