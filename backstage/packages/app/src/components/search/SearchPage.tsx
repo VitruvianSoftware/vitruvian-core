@@ -18,28 +18,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import React from 'react';
-import { makeStyles, Theme, Grid, Paper } from '@material-ui/core';
-import { CatalogSearchResultListItem } from '@backstage/plugin-catalog';
+import React from "react";
+import { makeStyles, Theme, Grid, Paper } from "@material-ui/core";
+import { CatalogSearchResultListItem } from "@backstage/plugin-catalog";
 import {
   SearchBar,
   SearchFilter,
   SearchResult,
   DefaultResultListItem,
-} from '@backstage/plugin-search-react';
-import {
-  CatalogIcon,
-  Content,
-  Header,
-  Page,
-} from '@backstage/core-components';
+} from "@backstage/plugin-search-react";
+import { CatalogIcon, Content, Header, Page } from "@backstage/core-components";
 
 const useStyles = makeStyles((theme: Theme) => ({
   bar: {
     padding: theme.spacing(1, 0),
   },
   filter: {
-    '& + &': {
+    "& + &": {
       marginTop: theme.spacing(2.5),
     },
   },
@@ -60,11 +55,11 @@ export const searchPage = (
         <Grid item xs={3}>
           <SearchFilter.Select
             name="kind"
-            values={['Component', 'Template', 'User', 'Group', 'System']}
+            values={["Component", "Template", "User", "Group", "System"]}
           />
           <SearchFilter.Checkbox
             name="lifecycle"
-            values={['experimental', 'production']}
+            values={["experimental", "production"]}
           />
         </Grid>
         <Grid item xs={9}>
@@ -73,7 +68,7 @@ export const searchPage = (
               <div>
                 {results.map(({ type, document }) => {
                   switch (type) {
-                    case 'software-catalog':
+                    case "software-catalog":
                       return (
                         <CatalogSearchResultListItem
                           key={document.location}

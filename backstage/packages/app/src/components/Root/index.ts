@@ -18,6 +18,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-export { Root } from './Root';
-export { LogoFull } from './LogoFull';
-export { LogoIcon } from './LogoIcon';
+export { Root } from "./Root";
+export { LogoFull } from "./LogoFull";
+export { LogoIcon } from "./LogoIcon";

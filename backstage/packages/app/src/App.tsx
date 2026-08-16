@@ -18,47 +18,50 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import React from 'react';
-import { Navigate, Route } from 'react-router-dom';
-import { apiDocsPlugin, ApiExplorerPage } from '@backstage/plugin-api-docs';
+import React from "react";
+import { Navigate, Route } from "react-router-dom";
+import { apiDocsPlugin, ApiExplorerPage } from "@backstage/plugin-api-docs";
 import {
   CatalogEntityPage,
   CatalogIndexPage,
   catalogPlugin,
-} from '@backstage/plugin-catalog';
+} from "@backstage/plugin-catalog";
 import {
   CatalogImportPage,
   catalogImportPlugin,
-} from '@backstage/plugin-catalog-import';
-import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
-import { orgPlugin } from '@backstage/plugin-org';
-import { SearchPage } from '@backstage/plugin-search';
+} from "@backstage/plugin-catalog-import";
+import { ScaffolderPage, scaffolderPlugin } from "@backstage/plugin-scaffolder";
+import { orgPlugin } from "@backstage/plugin-org";
+import { SearchPage } from "@backstage/plugin-search";
 import {
   TechDocsIndexPage,
   techdocsPlugin,
   TechDocsReaderPage,
-} from '@backstage/plugin-techdocs';
-import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
-import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
-import { UserSettingsPage } from '@backstage/plugin-user-settings';
-import { apis } from './apis';
-import { entityPage } from './components/catalog/EntityPage';
-import { searchPage } from './components/search/SearchPage';
-import { Root } from './components/Root';
+} from "@backstage/plugin-techdocs";
+import { TechDocsAddons } from "@backstage/plugin-techdocs-react";
+import { ReportIssue } from "@backstage/plugin-techdocs-module-addons-contrib";
+import { UserSettingsPage } from "@backstage/plugin-user-settings";
+import { apis } from "./apis";
+import { entityPage } from "./components/catalog/EntityPage";
+import { searchPage } from "./components/search/SearchPage";
+import { Root } from "./components/Root";
 import {
   AlertDisplay,
   OAuthRequestDialog,
   SignInPage,
-} from '@backstage/core-components';
-import { createApp } from '@backstage/app-defaults';
-import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
-import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
-import { RequirePermission } from '@backstage/plugin-permission-react';
-import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/permissions';
-import { githubAuthApiRef } from '@backstage/core-plugin-api';
-import { vitruvianDarkTheme, vitruvianLightTheme } from './theme/vitruvianTheme';
-import DarkModeIcon from '@material-ui/icons/Brightness4';
-import LightModeIcon from '@material-ui/icons/Brightness7';
+} from "@backstage/core-components";
+import { createApp } from "@backstage/app-defaults";
+import { AppRouter, FlatRoutes } from "@backstage/core-app-api";
+import { CatalogGraphPage } from "@backstage/plugin-catalog-graph";
+import { RequirePermission } from "@backstage/plugin-permission-react";
+import { catalogEntityCreatePermission } from "@backstage/plugin-catalog-common/permissions";
+import { githubAuthApiRef } from "@backstage/core-plugin-api";
+import {
+  vitruvianDarkTheme,
+  vitruvianLightTheme,
+} from "./theme/vitruvianTheme";
+import DarkModeIcon from "@material-ui/icons/Brightness4";
+import LightModeIcon from "@material-ui/icons/Brightness7";
 
 const app = createApp({
   apis,
@@ -80,16 +83,16 @@ const app = createApp({
     });
   },
   components: {
-    SignInPage: props => (
+    SignInPage: (props) => (
       <SignInPage
         {...props}
         auto
         providers={[
-          'guest',
+          "guest",
           {
-            id: 'github-auth-provider',
-            title: 'GitHub',
-            message: 'Sign in using GitHub',
+            id: "github-auth-provider",
+            title: "GitHub",
+            message: "Sign in using GitHub",
             apiRef: githubAuthApiRef,
           },
         ]}
@@ -98,16 +101,16 @@ const app = createApp({
   },
   themes: [
     {
-      id: 'vitruvian-dark',
-      title: 'Vitruvian Dark',
-      variant: 'dark',
+      id: "vitruvian-dark",
+      title: "Vitruvian Dark",
+      variant: "dark",
       icon: <DarkModeIcon />,
       theme: vitruvianDarkTheme,
     },
     {
-      id: 'vitruvian-light',
-      title: 'Vitruvian Light',
-      variant: 'light',
+      id: "vitruvian-light",
+      title: "Vitruvian Light",
+      variant: "light",
       icon: <LightModeIcon />,
       theme: vitruvianLightTheme,
     },

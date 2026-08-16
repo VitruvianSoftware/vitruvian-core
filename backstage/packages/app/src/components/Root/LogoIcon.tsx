@@ -18,13 +18,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import React from 'react';
+import React from "react";
 
 export const LogoIcon = () => {
   return (
-    <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      width="34"
+      height="34"
+      viewBox="0 0 34 34"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <circle cx="17" cy="17" r="13" stroke="#5980a6" strokeWidth="1.5" />
-      <rect x="8" y="8" width="18" height="18" stroke="#5980a6" strokeWidth="1.5" strokeOpacity="0.7" />
+      <rect
+        x="8"
+        y="8"
+        width="18"
+        height="18"
+        stroke="#5980a6"
+        strokeWidth="1.5"
+        strokeOpacity="0.7"
+      />
     </svg>
   );
 };

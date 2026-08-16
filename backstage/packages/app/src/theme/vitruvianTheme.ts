@@ -18,169 +18,171 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import {
-  createUnifiedTheme,
-  genPageTheme,
-  shapes,
-} from '@backstage/theme';
+import { createUnifiedTheme, genPageTheme, shapes } from "@backstage/theme";
 
 // Vitruvian Design System Tokens
 const vitruvianDarkPalette = {
-  type: 'dark' as const,
-  mode: 'dark' as const,
+  type: "dark" as const,
+  mode: "dark" as const,
   background: {
-    default: '#0e1317', // --color-bg (obsidian ink)
-    paper: '#141b20',   // --color-surface
+    default: "#0e1317", // --color-bg (obsidian ink)
+    paper: "#141b20", // --color-surface
   },
   status: {
-    ok: '#5b9c78',      // --color-ok
-    warning: '#c89a3c', // --color-warn
-    error: '#b4553c',   // --color-sanguine (Leonardo's red chalk)
-    running: '#5980a6', // --color-accent (steel)
-    pending: '#9aa3a9',
-    aborted: '#5a646c',
+    ok: "#5b9c78", // --color-ok
+    warning: "#c89a3c", // --color-warn
+    error: "#b4553c", // --color-sanguine (Leonardo's red chalk)
+    running: "#5980a6", // --color-accent (steel)
+    pending: "#9aa3a9",
+    aborted: "#5a646c",
   },
   primary: {
-    main: '#5980a6',    // --color-accent (steel)
-    light: '#93b0ca',   // --color-accent-text
-    dark: '#3e5e7d',
-    contrastText: '#0e1317',
+    main: "#5980a6", // --color-accent (steel)
+    light: "#93b0ca", // --color-accent-text
+    dark: "#3e5e7d",
+    contrastText: "#0e1317",
   },
   secondary: {
-    main: '#b4553c',    // --color-sanguine
-    light: '#d2907b',
-    dark: '#8b3d29',
-    contrastText: '#ffffff',
+    main: "#b4553c", // --color-sanguine
+    light: "#d2907b",
+    dark: "#8b3d29",
+    contrastText: "#ffffff",
   },
   text: {
-    primary: '#e7e4dd',   // --color-text (paper)
-    secondary: '#9aa3a9', // --color-text-dim
-    disabled: '#5a646c',
-    hint: '#9aa3a9',
+    primary: "#e7e4dd", // --color-text (paper)
+    secondary: "#9aa3a9", // --color-text-dim
+    disabled: "#5a646c",
+    hint: "#9aa3a9",
   },
-  divider: 'rgba(231, 228, 221, 0.12)',
+  divider: "rgba(231, 228, 221, 0.12)",
   navigation: {
-    background: '#0e1317',
-    indicator: '#5980a6',
-    color: '#9aa3a9',
-    selectedColor: '#e7e4dd',
+    background: "#0e1317",
+    indicator: "#5980a6",
+    color: "#9aa3a9",
+    selectedColor: "#e7e4dd",
     navItem: {
-      hoverBackground: 'rgba(89, 128, 166, 0.14)',
+      hoverBackground: "rgba(89, 128, 166, 0.14)",
     },
     submenu: {
-      background: '#141b20',
+      background: "#141b20",
     },
   },
   pinSidebarButton: {
-    icon: '#9aa3a9',
-    background: '#141b20',
+    icon: "#9aa3a9",
+    background: "#141b20",
   },
   tabbar: {
-    indicator: '#5980a6',
+    indicator: "#5980a6",
   },
 };
 
 const vitruvianLightPalette = {
-  type: 'light' as const,
-  mode: 'light' as const,
+  type: "light" as const,
+  mode: "light" as const,
   background: {
-    default: '#f6f4ee', // --color-bg light
-    paper: '#ffffff',   // --color-surface light
+    default: "#f6f4ee", // --color-bg light
+    paper: "#ffffff", // --color-surface light
   },
   status: {
-    ok: '#3d7857',
-    warning: '#9c6f1f',
-    error: '#9c3d26',
-    running: '#3e5e7d',
-    pending: '#6b767e',
-    aborted: '#87929a',
+    ok: "#3d7857",
+    warning: "#9c6f1f",
+    error: "#9c3d26",
+    running: "#3e5e7d",
+    pending: "#6b767e",
+    aborted: "#87929a",
   },
   primary: {
-    main: '#3e5e7d',
-    light: '#5980a6',
-    dark: '#273e55',
-    contrastText: '#ffffff',
+    main: "#3e5e7d",
+    light: "#5980a6",
+    dark: "#273e55",
+    contrastText: "#ffffff",
   },
   secondary: {
-    main: '#9c3d26',
-    light: '#b4553c',
-    dark: '#732a18',
-    contrastText: '#ffffff',
+    main: "#9c3d26",
+    light: "#b4553c",
+    dark: "#732a18",
+    contrastText: "#ffffff",
   },
   text: {
-    primary: '#1c2226',
-    secondary: '#555f66',
-    disabled: '#87929a',
-    hint: '#555f66',
+    primary: "#1c2226",
+    secondary: "#555f66",
+    disabled: "#87929a",
+    hint: "#555f66",
   },
-  divider: 'rgba(28, 34, 38, 0.12)',
+  divider: "rgba(28, 34, 38, 0.12)",
   navigation: {
-    background: '#141b20',
-    indicator: '#5980a6',
-    color: '#9aa3a9',
-    selectedColor: '#e7e4dd',
+    background: "#141b20",
+    indicator: "#5980a6",
+    color: "#9aa3a9",
+    selectedColor: "#e7e4dd",
     navItem: {
-      hoverBackground: 'rgba(89, 128, 166, 0.14)',
+      hoverBackground: "rgba(89, 128, 166, 0.14)",
     },
     submenu: {
-      background: '#1b2429',
+      background: "#1b2429",
     },
   },
   pinSidebarButton: {
-    icon: '#9aa3a9',
-    background: '#141b20',
+    icon: "#9aa3a9",
+    background: "#141b20",
   },
   tabbar: {
-    indicator: '#3e5e7d',
+    indicator: "#3e5e7d",
   },
 };
 
 const pageThemeDark = {
-  home: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  app: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  apis: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  docs: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  tool: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  service: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  website: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  library: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
-  other: genPageTheme({ colors: ['#0e1317', '#141b20'], shape: shapes.wave }),
+  home: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  app: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  apis: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  docs: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  tool: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  service: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  website: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  library: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
+  other: genPageTheme({ colors: ["#0e1317", "#141b20"], shape: shapes.wave }),
 };
 
 const pageThemeLight = {
-  home: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  app: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  apis: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  docs: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  tool: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  service: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  website: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  library: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
-  other: genPageTheme({ colors: ['#3e5e7d', '#5980a6'], shape: shapes.wave }),
+  home: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  app: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  apis: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  docs: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  tool: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  service: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  website: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  library: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
+  other: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
 };
 
 export const vitruvianDarkTheme = createUnifiedTheme({
   palette: vitruvianDarkPalette,
   typography: {
-    fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily:
+      '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     headings: {
-      fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontFamily:
+        '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     },
   },
-  fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  defaultPageTheme: 'home',
+  fontFamily:
+    '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  defaultPageTheme: "home",
   pageTheme: pageThemeDark,
 });
 
 export const vitruvianLightTheme = createUnifiedTheme({
   palette: vitruvianLightPalette,
   typography: {
-    fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily:
+      '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     headings: {
-      fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontFamily:
+        '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     },
   },
-  fontFamily: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  defaultPageTheme: 'home',
+  fontFamily:
+    '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  defaultPageTheme: "home",
   pageTheme: pageThemeLight,
 });

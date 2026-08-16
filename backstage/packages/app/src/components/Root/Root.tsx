@@ -18,19 +18,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import React, { PropsWithChildren } from 'react';
-import { makeStyles } from '@material-ui/core';
-import HomeIcon from '@material-ui/icons/Home';
-import ExtensionIcon from '@material-ui/icons/Extension';
-import LibraryBooks from '@material-ui/icons/LibraryBooks';
-import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
-import { LogoFull } from './LogoFull';
-import { LogoIcon } from './LogoIcon';
+import React, { PropsWithChildren } from "react";
+import { makeStyles } from "@material-ui/core";
+import HomeIcon from "@material-ui/icons/Home";
+import ExtensionIcon from "@material-ui/icons/Extension";
+import LibraryBooks from "@material-ui/icons/LibraryBooks";
+import CreateComponentIcon from "@material-ui/icons/AddCircleOutline";
+import { LogoFull } from "./LogoFull";
+import { LogoIcon } from "./LogoIcon";
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
-} from '@backstage/plugin-user-settings';
-import { SidebarSearchModal } from '@backstage/plugin-search';
+} from "@backstage/plugin-user-settings";
+import { SidebarSearchModal } from "@backstage/plugin-search";
 import {
   Sidebar,
   sidebarConfig,
@@ -42,17 +42,17 @@ import {
   SidebarSpace,
   useSidebarOpenState,
   Link,
-} from '@backstage/core-components';
-import MenuIcon from '@material-ui/icons/Menu';
-import SearchIcon from '@material-ui/icons/Search';
+} from "@backstage/core-components";
+import MenuIcon from "@material-ui/icons/Menu";
+import SearchIcon from "@material-ui/icons/Search";
 
 const useSidebarLogoStyles = makeStyles({
   sidebarLogo: {
     width: sidebarConfig.drawerWidthClosed,
     height: 3 * sidebarConfig.logoHeight,
-    display: 'flex',
-    flexFlow: 'row nowrap',
-    alignItems: 'center',
+    display: "flex",
+    flexFlow: "row nowrap",
+    alignItems: "center",
     marginBottom: -14,
   },
   link: {

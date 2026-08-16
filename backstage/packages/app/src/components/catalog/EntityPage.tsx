@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import React from 'react';
-import { Button, Grid } from '@material-ui/core';
+import React from "react";
+import { Button, Grid } from "@material-ui/core";
 import {
   EntityLayout,
   EntityAboutCard,
@@ -33,15 +33,15 @@ import {
   EntitySwitch,
   isComponentType,
   isKind,
-} from '@backstage/plugin-catalog';
+} from "@backstage/plugin-catalog";
 import {
   EntityUserProfileCard,
   EntityGroupProfileCard,
   EntityMembersListCard,
   EntityOwnershipCard,
-} from '@backstage/plugin-org';
-import { EntityTechdocsContent } from '@backstage/plugin-techdocs';
-import { EntityCatalogGraphCard } from '@backstage/plugin-catalog-graph';
+} from "@backstage/plugin-org";
+import { EntityTechdocsContent } from "@backstage/plugin-techdocs";
+import { EntityCatalogGraphCard } from "@backstage/plugin-catalog-graph";
 
 const defaultEntityPage = (
   <EntityLayout>
@@ -122,10 +122,10 @@ const groupPage = (
 
 export const entityPage = (
   <EntitySwitch>
-    <EntitySwitch.Case if={isKind('component')} children={componentPage} />
-    <EntitySwitch.Case if={isKind('system')} children={systemPage} />
-    <EntitySwitch.Case if={isKind('user')} children={userPage} />
-    <EntitySwitch.Case if={isKind('group')} children={groupPage} />
+    <EntitySwitch.Case if={isKind("component")} children={componentPage} />
+    <EntitySwitch.Case if={isKind("system")} children={systemPage} />
+    <EntitySwitch.Case if={isKind("user")} children={userPage} />
+    <EntitySwitch.Case if={isKind("group")} children={groupPage} />
     <EntitySwitch.Case children={defaultEntityPage} />
   </EntitySwitch>
 );
