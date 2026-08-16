@@ -100,8 +100,12 @@ spec:
                       port: 5432
                       user: backstage
                       password: ${POSTGRES_PASSWORD}
+                  auth:
+                    dangerouslyDisableDefaultAuthPolicy: true
+
                 auth:
                   environment: production
+
                   providers:
                     guest: {}
                     github:
