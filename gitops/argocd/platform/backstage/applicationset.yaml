@@ -67,6 +67,16 @@ spec:
                     secretKeyRef:
                       name: backstage-secrets
                       key: AUTH_SESSION_SECRET
+                - name: AUTH_GITHUB_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backstage-secrets
+                      key: AUTH_GITHUB_CLIENT_ID
+                - name: AUTH_GITHUB_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: backstage-secrets
+                      key: AUTH_GITHUB_CLIENT_SECRET
               appConfig:
                 app:
                   title: Vitruvian Developer Portal
@@ -83,6 +93,16 @@ spec:
                       port: 5432
                       user: backstage
                       password: ${POSTGRES_PASSWORD}
+                auth:
+                  environment: production
+                  providers:
+                    github:
+                      production:
+                        clientId: ${AUTH_GITHUB_CLIENT_ID}
+                        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+                        signIn:
+                          resolvers:
+                            - resolver: usernameMatchingUserEntityAnnotation
                 integrations:
                   github:
                     - host: github.com
