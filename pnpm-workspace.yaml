@@ -61,6 +61,11 @@ catalog:
   vitest: ^4.1.10
   "@vitest/coverage-v8": ^4.1.10
 
+catalogs:
+  backstage:
+    react-router: ~6.30.4
+    react-router-dom: ~6.30.4
+
 # The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
 # don't declare it as a peer dependency upstream). Under the strict rules_js /
 # hoist=false layout that breaks their `declare module 'fastify'` type
