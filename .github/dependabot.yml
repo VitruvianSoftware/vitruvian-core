@@ -168,6 +168,20 @@ updates:
         patterns:
           - "storybook"
           - "@storybook/*"
+      # react-router + react-router-dom must move together
+      react-router:
+        patterns:
+          - "react-router"
+          - "react-router-dom"
+          - "@types/react-router"
+          - "@types/react-router-dom"
+      react-router-security:
+        applies-to: "security-updates"
+        patterns:
+          - "react-router"
+          - "react-router-dom"
+          - "@types/react-router"
+          - "@types/react-router-dom"
       npm-minor-patch:
         update-types:
           - "minor"
@@ -178,6 +192,16 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      # Backstage 1.x requires React Router v6 (pinned in catalogs: backstage in
+      # pnpm-workspace.yaml). Major bumps to v7/v8 break Backstage frontend routing.
+      # NOTE: this ignore is repo-wide (there is one npm entry, directory: /) and has
+      # no expiry -- nothing prompts a revisit. See
+      # docs/dependency-versioning/javascript.md ("Named catalogs holding a framework
+      # back") for when and how to remove it.
+      - dependency-name: "react-router"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
       # Pinned to the Bazel-vendored browser build (MODULE.bazel documents the
       # coupling): Playwright >= 1.58 fetches chromium from Chrome-for-Testing
       # CDN paths that rules_playwright cannot mirror -- a bump here without

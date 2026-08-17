@@ -113,6 +113,31 @@ The only other real failure mode is a *singleton* that must be unique across a b
 copies of a framework whose objects are passed between projects). That's a design issue, not a
 resolver one.
 
+## Named catalogs holding a framework back (and how to unstick them)
+
+`catalogs: backstage:` pins `react-router` / `react-router-dom` to `^6.30.4`.
+Backstage 1.x is built against React Router **v6** — its plugins declare
+`react-router-dom: ^6.3.0` as a peer — so a v7/v8 bump breaks frontend routing.
+Before this pin the app resolved *two* majors at once (`react-router@7` hoisted
+as a direct dependency over `react-router-dom@6`'s own v6), which is what the
+named catalog collapsed.
+
+The range is a caret, not a tilde, deliberately: the compatibility contract is
+"v6", so 6.31+ minors (including security patches within v6) must still flow.
+Reproducibility comes from `pnpm-lock.yaml`, and either way a bump only lands as
+a reviewable lockfile change.
+
+`.github/dependabot.yml` additionally groups the two packages (they must move
+together) and ignores their semver-majors. **That ignore has no expiry, so
+nothing will prompt a revisit on its own.** It is repo-wide — there is a single
+npm entry (`directory: /`) — which costs nothing today because Backstage is the
+only workspace package that declares react-router at all, but it is not per-app
+isolation.
+
+**To unstick:** when Backstage announces React Router v7 support, bump the
+catalog entry, drop both `ignore` rules, and delete this section. Until then,
+treat a red `react-router` dependabot PR as expected rather than as drift.
+
 ## If you truly need to force convergence
 
 Sometimes you want the *opposite* — pin everyone to one version (a security fix, or to collapse a
