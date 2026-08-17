@@ -87,7 +87,6 @@ const app = createApp({
         {...props}
         auto
         providers={[
-          "guest",
           {
             id: "github-auth-provider",
             title: "GitHub",
