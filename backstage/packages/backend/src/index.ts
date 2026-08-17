@@ -20,6 +20,7 @@
 
 import { createBackend } from "@backstage/backend-defaults";
 
+import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 
 const backend = createBackend();
@@ -33,7 +34,9 @@ backend.add(import("@backstage/plugin-techdocs-backend"));
 // GitHub SSO only — the guest provider is deliberately absent because this
 // portal is internet-facing and anonymous sign-in exposed the whole catalog.
 backend.add(import("@backstage/plugin-auth-backend"));
-backend.add(import("@backstage/plugin-auth-backend-module-github-provider"));
+// Replaces the stock GitHub provider with one that also proves active
+// membership of the GitHub org, using the signing-in user's own token.
+backend.add(authModuleGithubOrgProvider);
 
 // Catalog plugin & modules
 backend.add(import("@backstage/plugin-catalog-backend"));

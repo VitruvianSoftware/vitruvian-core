@@ -832,3 +832,8 @@ id = "GHSA-jjmj-jmhj-qwj2"
 reason = "PERMANENT: no fixed version exists in 6.x range. npm react-router-dom 6.30.4 in Backstage. Not time-boxed because no 6.x fix exists; revisit on Backstage v7 migration."
 
 
+
+[[IgnoredVulns]]
+id = "GHSA-ggr8-5vv4-36mx"
+ignoreUntil = 2026-11-17
+reason = "npm deepmerge-ts 7.1.5, reached only via @prisma/config -- Prisma's build/CLI-time config loader, not a served runtime path. Pre-existing on main; surfaced here only because this PR touches pnpm-lock.yaml, which switches the gate to its stricter may-have-introduced mode. No upstream fix is available: @prisma/config@latest (7.9.1) still pins deepmerge-ts 7.1.5, so the only alternative is a pnpm override forcing 8.0.0 against Prisma's pin, which risks breaking tabula's migrations. The advisory is stack exhaustion on recursive object graphs (CVSS AV:N ... VC:N/VI:N/VA:H -- availability only) and the merged input is this repo's own Prisma config, not attacker-supplied. Revisit when @prisma/config bumps deepmerge-ts."
