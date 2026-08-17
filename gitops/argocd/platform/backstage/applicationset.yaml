@@ -86,13 +86,6 @@ spec:
                 app:
                   title: Vitruvian Developer Portal
                   baseUrl: https://backstage.vitruviansoftware.dev
-                  packages: all
-                  extensions:
-                    - page:catalog:
-                        config:
-                          path: /
-                    - plugin:notifications: false
-                signInPage: github
                 backend:
                   baseUrl: https://backstage.vitruviansoftware.dev
                   listen:
