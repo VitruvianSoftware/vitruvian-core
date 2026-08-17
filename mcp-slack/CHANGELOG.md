@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.3...mcp-slack-v1.9.0) (2026-08-17)
+
+
+### Features
+
+* **backstage:** render mermaid diagrams in TechDocs ([#1710](https://github.com/VitruvianSoftware/vitruvian-core/issues/1710)) ([00666bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/00666bd24c1a265239e1befd4a8993c392d087aa))
+
 ## [1.8.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.2...mcp-slack-v1.8.3) (2026-08-17)
 
 

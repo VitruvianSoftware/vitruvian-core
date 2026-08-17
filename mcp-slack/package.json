@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/mcp-slack",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "license": "MIT",
   "description": "Custom Slack MCP server with dual-token support for reading and responding as the authenticated user",
   "type": "module",
