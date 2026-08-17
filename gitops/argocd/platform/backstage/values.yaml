@@ -99,9 +99,11 @@ backstage:
           production:
             clientId: ${AUTH_GITHUB_CLIENT_ID}
             clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
-            signIn:
-              resolvers:
-              - resolver: usernameMatchingUserEntityName
+            # No `signIn.resolvers` here: the GitHub provider is replaced in
+            # code (packages/backend/src/auth) by a resolver that proves org
+            # membership and then resolves the catalog user. Naming a built-in
+            # resolver here made startup fail with "Sign-in resolver
+            # 'usernameMatchingUserEntityName' is not available".
     # Without `enabled: true` Backstage allows every request without
     # consulting a policy at all, so this flag is what makes the
     # Vitruvian permission policy load-bearing. Admins get
