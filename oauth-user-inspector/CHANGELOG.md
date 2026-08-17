@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.7.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.1...oauth-user-inspector-v1.7.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **backstage:** make TechDocs work for every component ([#1700](https://github.com/VitruvianSoftware/vitruvian-core/issues/1700)) ([26c6aa7](https://github.com/VitruvianSoftware/vitruvian-core/commit/26c6aa7c2953877a116bd59413b0a1d07e5f9e51))
+
 ## [1.7.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.0...oauth-user-inspector-v1.7.1) (2026-08-12)
 
 
