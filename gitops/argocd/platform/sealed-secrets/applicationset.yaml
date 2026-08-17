@@ -47,7 +47,7 @@ spec:
       source:
         repoURL: https://bitnami.github.io/sealed-secrets
         chart: sealed-secrets
-        targetRevision: "2.19.0"
+        targetRevision: "2.19.1"
         helm:
           version: v3
           values: |
