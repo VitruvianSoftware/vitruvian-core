@@ -51,6 +51,11 @@ spec:
           version: v3
           values: |
             backstage:
+              image:
+                registry: ghcr.io
+                repository: vitruviansoftware/backstage
+                tag: latest
+                pullPolicy: IfNotPresent
               extraEnvVars:
                 - name: POSTGRES_PASSWORD
                   valueFrom:
