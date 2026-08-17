@@ -78,14 +78,14 @@ backstage:
           port: 5432
           user: backstage
           password: ${POSTGRES_PASSWORD}
-      # No dangerouslyDisableDefaultAuthPolicy here on purpose. With
-      # it set, unauthenticated GET /api/catalog/entities returned
-      # 200 and the whole catalog was readable by anyone on the
-      # internet. Backstage's default policy requires user or
-      # service credentials; plugins on the new backend system are
-      # secure by default and need no backend.auth.keys, and
-      # plugin-app-backend still serves the frontend publicly via
-      # its own addAuthPolicy({allow:'unauthenticated', path:'/'}).
+          # No dangerouslyDisableDefaultAuthPolicy here on purpose. With
+          # it set, unauthenticated GET /api/catalog/entities returned
+          # 200 and the whole catalog was readable by anyone on the
+          # internet. Backstage's default policy requires user or
+          # service credentials; plugins on the new backend system are
+          # secure by default and need no backend.auth.keys, and
+          # plugin-app-backend still serves the frontend publicly via
+          # its own addAuthPolicy({allow:'unauthenticated', path:'/'}).
     auth:
       environment: production
       providers:
