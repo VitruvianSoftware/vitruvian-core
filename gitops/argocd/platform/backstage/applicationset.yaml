@@ -55,7 +55,13 @@ spec:
                 registry: ghcr.io
                 repository: vitruviansoftware/backstage
                 tag: latest
-                pullPolicy: IfNotPresent
+                pullPolicy: Always
+              command:
+                - node
+                - packages/backend/dist/index.cjs.js
+              args:
+                - --config
+                - /app/app-config-from-configmap.yaml
               extraEnvVars:
                 - name: POSTGRES_PASSWORD
                   valueFrom:
