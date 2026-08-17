@@ -64,7 +64,6 @@ import {
 
 const app = createApp({
   apis,
-  defaultTheme: "auto",
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
       createComponent: scaffolderPlugin.routes.root,
