@@ -1,0 +1,91 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# argocd-image-updater writes the resolved backstage image digest to the
+# `image-updates/backstage` branch (see
+# gitops/argocd/platform/argocd-image-updater/resources/imageupdater-backstage.yaml).
+# This opens/updates a PR from that branch into main so the bump still goes
+# through the merge queue like every other change to this repo.
+#
+# Unlike the buzz equivalent there is no upstream changelog to resolve: this
+# image is built from this repository, so the digest simply corresponds to the
+# most recent main build.
+name: Backstage image update PR
+
+on:
+  push:
+    branches:
+      - image-updates/backstage
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-updates-backstage-pr
+  cancel-in-progress: false
+
+jobs:
+  open-or-update-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A PR authored by the default GITHUB_TOKEN does not trigger workflows, so
+      # its required checks would never run and it could never leave the queue.
+      - name: Mint a short-lived App token so the PR's checks actually run
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Open or update the PR into main
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/vitruviansoftware/backstage:latest.
+
+          The image is built from this repository, so this digest is the most recent \`main\` build of \`backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
+
+          existing="$(gh pr list \
+            --head image-updates/backstage \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            echo "PR #${existing} already open for image-updates/backstage -- refreshing its description."
+            gh pr edit "$existing" --body "$body"
+            exit 0
+          fi
+
+          gh pr create \
+            --head image-updates/backstage \
+            --base main \
+            --title "chore(backstage): bump image digest (automated)" \
+            --body "$body"

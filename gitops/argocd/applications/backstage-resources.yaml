@@ -34,7 +34,10 @@ spec:
     path: gitops/argocd/platform/backstage
     directory:
       recurse: true
-      exclude: "applicationset*.yaml"
+      # values.yaml is Helm values for the backstage ApplicationSet's chart
+      # source (referenced there as $values), not a Kubernetes manifest -- it
+      # must not be applied by this directory sync.
+      exclude: "{applicationset*.yaml,values.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: backstage

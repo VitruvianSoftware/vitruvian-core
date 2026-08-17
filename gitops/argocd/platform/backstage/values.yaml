@@ -1,0 +1,160 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# Helm values for the backstage Application, split out of the ApplicationSet so
+# argocd-image-updater can write the resolved image digest back into a real file
+# (`writeBackTarget: helmvalues:...` cannot target inline values). Consumed via
+# the ApplicationSet's `$values` ref source.
+#
+# NOTE: gitops/argocd/applications/backstage-resources.yaml recurses this
+# directory, so this file is excluded there -- it is Helm values, not a manifest.
+backstage:
+  image:
+    registry: ghcr.io
+    repository: vitruviansoftware/backstage
+    tag: latest
+    pullPolicy: Always
+  command:
+    - node
+    - packages/backend/dist/index.cjs.js
+  args:
+    - --config
+    - /app/app-config-from-configmap.yaml
+  extraEnvVars:
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: POSTGRES_PASSWORD
+    - name: BACKSTAGE_AUTH_KEY
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: BACKSTAGE_AUTH_KEY
+    - name: AUTH_SESSION_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: AUTH_SESSION_SECRET
+    - name: AUTH_GITHUB_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: AUTH_GITHUB_CLIENT_ID
+    - name: AUTH_GITHUB_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: AUTH_GITHUB_CLIENT_SECRET
+  appConfig:
+    app:
+      title: Vitruvian Developer Portal
+      baseUrl: https://backstage.vitruviansoftware.dev
+    backend:
+      baseUrl: https://backstage.vitruviansoftware.dev
+      listen:
+        port: 7007
+      database:
+        client: pg
+        pluginDivisionMode: schema
+        connection:
+          host: backstage-db-cluster-rw.backstage.svc.cluster.local
+          port: 5432
+          user: backstage
+          password: ${POSTGRES_PASSWORD}
+      # No dangerouslyDisableDefaultAuthPolicy here on purpose. With
+      # it set, unauthenticated GET /api/catalog/entities returned
+      # 200 and the whole catalog was readable by anyone on the
+      # internet. Backstage's default policy requires user or
+      # service credentials; plugins on the new backend system are
+      # secure by default and need no backend.auth.keys, and
+      # plugin-app-backend still serves the frontend publicly via
+      # its own addAuthPolicy({allow:'unauthenticated', path:'/'}).
+
+    auth:
+      environment: production
+
+      providers:
+        # No guest provider: this portal is internet-facing, so
+        # anonymous sign-in would expose the whole catalog to
+        # anyone. GitHub SSO is the only way in, and the
+        # usernameMatchingUserEntityName resolver below means a
+        # GitHub account only works if a matching User entity
+        # exists in the catalog.
+        github:
+          production:
+            clientId: ${AUTH_GITHUB_CLIENT_ID}
+            clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+            signIn:
+              resolvers:
+                - resolver: usernameMatchingUserEntityName
+    # Without `enabled: true` Backstage allows every request without
+    # consulting a policy at all, so this flag is what makes the
+    # Vitruvian permission policy load-bearing. Admins get
+    # unrestricted access; other signed-in users are read-only.
+    permission:
+      enabled: true
+      adminEntityRefs:
+        - group:default/platform-team
+        # Belt and braces: the group ref only grants admin if the
+        # catalog resolved the User -> Group memberOf relation into
+        # ownershipEntityRefs. The direct user ref always matches,
+        # so a catalog hiccup cannot degrade the admin to read-only.
+        - user:default/ipv1337
+    # Without this block TechDocs defaults to generator.runIn
+    # 'docker', which cannot spawn a container from inside the pod,
+    # so every docs page failed to build. 'local' uses the
+    # mkdocs-techdocs-core installed in the runtime image. publisher
+    # 'local' keeps generated docs on the pod filesystem: rebuilt on
+    # demand after a restart, which is fine for these small doc sets
+    # and avoids introducing object-storage credentials.
+    techdocs:
+      builder: "local"
+      generator:
+        runIn: "local"
+      publisher:
+        type: "local"
+    integrations:
+      github:
+        - host: github.com
+    catalog:
+      rules:
+        - allow: [Component, System, API, Resource, Location, Template, User, Group]
+      locations:
+        - type: url
+          target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
+          rules:
+            - allow: [Component, System, API, Resource, Location, Template, User, Group]
+ingress:
+  enabled: false
+httpRoute:
+  enabled: true
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+  hostnames:
+    - backstage.vitruviansoftware.dev
+    - backstage.lab.ipv1337.dev
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
