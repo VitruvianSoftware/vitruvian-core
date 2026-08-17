@@ -56,12 +56,11 @@ import { CatalogGraphPage } from "@backstage/plugin-catalog-graph";
 import { RequirePermission } from "@backstage/plugin-permission-react";
 import { catalogEntityCreatePermission } from "@backstage/plugin-catalog-common";
 import { githubAuthApiRef } from "@backstage/core-plugin-api";
+import { UnifiedThemeProvider } from "@backstage/theme";
 import {
   vitruvianDarkTheme,
   vitruvianLightTheme,
 } from "./theme/vitruvianTheme";
-import DarkModeIcon from "@material-ui/icons/Brightness4";
-import LightModeIcon from "@material-ui/icons/Brightness7";
 
 const app = createApp({
   apis,
@@ -104,15 +103,21 @@ const app = createApp({
       id: "vitruvian-dark",
       title: "Vitruvian Dark",
       variant: "dark",
-      icon: <DarkModeIcon />,
-      theme: vitruvianDarkTheme,
+      Provider: ({ children }) => (
+        <UnifiedThemeProvider theme={vitruvianDarkTheme}>
+          {children}
+        </UnifiedThemeProvider>
+      ),
     },
     {
       id: "vitruvian-light",
       title: "Vitruvian Light",
       variant: "light",
-      icon: <LightModeIcon />,
-      theme: vitruvianLightTheme,
+      Provider: ({ children }) => (
+        <UnifiedThemeProvider theme={vitruvianLightTheme}>
+          {children}
+        </UnifiedThemeProvider>
+      ),
     },
   ],
 });
