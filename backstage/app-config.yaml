@@ -59,6 +59,9 @@ auth:
       production:
         clientId: ${AUTH_GITHUB_CLIENT_ID}
         clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        # Sign-in additionally requires ACTIVE membership of the GitHub org,
+        # proven with the user's own token via the read:org scope
+        # (see packages/backend/src/auth). No stored PAT or App credential.
         signIn:
           resolvers:
             - resolver: usernameMatchingUserEntityName
