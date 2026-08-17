@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.28...tabula-shared-v0.1.29) (2026-08-17)
+
+
+### Features
+
+* **backstage:** render mermaid diagrams in TechDocs ([#1710](https://github.com/VitruvianSoftware/vitruvian-core/issues/1710)) ([00666bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/00666bd24c1a265239e1befd4a8993c392d087aa))
+
 ## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.27...tabula-shared-v0.1.28) (2026-08-17)
 
 
