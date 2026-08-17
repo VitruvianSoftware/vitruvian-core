@@ -69,7 +69,10 @@ COPY --from=build /app/backstage/app-config.yaml ./app-config.yaml
 
 RUN cd /app/backstage/packages/backend && tar xzf dist/bundle.tar.gz && rm dist/bundle.tar.gz dist/skeleton.tar.gz
 
-RUN ln -s /app/backstage/packages /app/packages
+RUN ln -s /app/backstage/packages /app/packages && \
+    mkdir -p /app/node_modules/@vitruviansoftware && \
+    ln -s /app/backstage/packages/app /app/node_modules/@vitruviansoftware/backstage-app && \
+    ln -s /app/backstage/packages/app /app/node_modules/app
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs
 RUN chown -R nodejs:nodejs /app
