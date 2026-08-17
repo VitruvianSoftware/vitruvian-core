@@ -176,8 +176,161 @@ const pageThemeLight = {
   other: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
 };
 
+const darkComponents = {
+  MuiPaper: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+        color: "#e7e4dd",
+        backgroundImage: "none",
+      },
+    },
+  },
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+        borderColor: "rgba(231, 228, 221, 0.12)",
+      },
+    },
+  },
+  MuiTable: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+      },
+    },
+  },
+  MuiTableHead: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#1b2429",
+      },
+    },
+  },
+  MuiTableCell: {
+    styleOverrides: {
+      root: {
+        borderBottom: "1px solid rgba(231, 228, 221, 0.08)",
+        color: "#e7e4dd",
+      },
+      head: {
+        color: "#9aa3a9",
+        fontWeight: 600,
+        backgroundColor: "#1b2429",
+        letterSpacing: "0.04em",
+      },
+    },
+  },
+  MuiTableRow: {
+    styleOverrides: {
+      root: {
+        "&:nth-of-type(odd)": {
+          backgroundColor: "rgba(255, 255, 255, 0.02)",
+        },
+        "&:hover": {
+          backgroundColor: "rgba(89, 128, 166, 0.08) !important",
+        },
+      },
+    },
+  },
+  MuiButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 0,
+        textTransform: "none" as const,
+        fontWeight: 500,
+      },
+      containedPrimary: {
+        backgroundColor: "#5980a6",
+        color: "#0e1317",
+        "&:hover": {
+          backgroundColor: "#93b0ca",
+        },
+      },
+    },
+  },
+  MuiChip: {
+    styleOverrides: {
+      root: {
+        borderRadius: 2,
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: "0.75rem",
+      },
+    },
+  },
+};
+
+const lightComponents = {
+  MuiPaper: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#ffffff",
+        color: "#1c2226",
+      },
+    },
+  },
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#ffffff",
+        borderColor: "rgba(28, 34, 38, 0.12)",
+      },
+    },
+  },
+  MuiTableHead: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#edebe4",
+      },
+    },
+  },
+  MuiTableCell: {
+    styleOverrides: {
+      root: {
+        borderBottom: "1px solid rgba(28, 34, 38, 0.08)",
+        color: "#1c2226",
+      },
+      head: {
+        color: "#555f66",
+        fontWeight: 600,
+        backgroundColor: "#edebe4",
+      },
+    },
+  },
+  MuiTableRow: {
+    styleOverrides: {
+      root: {
+        "&:nth-of-type(odd)": {
+          backgroundColor: "rgba(0, 0, 0, 0.02)",
+        },
+        "&:hover": {
+          backgroundColor: "rgba(62, 94, 125, 0.06) !important",
+        },
+      },
+    },
+  },
+  MuiButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 0,
+        textTransform: "none" as const,
+        fontWeight: 500,
+      },
+      containedPrimary: {
+        backgroundColor: "#3e5e7d",
+        color: "#ffffff",
+        "&:hover": {
+          backgroundColor: "#5980a6",
+        },
+      },
+    },
+  },
+};
+
 export const vitruvianDarkTheme = createUnifiedTheme({
   palette: vitruvianDarkPalette,
+  components: darkComponents,
   typography: {
     fontFamily:
       '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -194,6 +347,7 @@ export const vitruvianDarkTheme = createUnifiedTheme({
 
 export const vitruvianLightTheme = createUnifiedTheme({
   palette: vitruvianLightPalette,
+  components: lightComponents,
   typography: {
     fontFamily:
       '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

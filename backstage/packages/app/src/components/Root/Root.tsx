@@ -46,6 +46,11 @@ import {
 import MenuIcon from "@material-ui/icons/Menu";
 import SearchIcon from "@material-ui/icons/Search";
 
+import { appThemeApiRef, useApi } from "@backstage/core-plugin-api";
+import BrightnessAutoIcon from "@material-ui/icons/BrightnessAuto";
+import Brightness4Icon from "@material-ui/icons/Brightness4";
+import Brightness7Icon from "@material-ui/icons/Brightness7";
+
 const useSidebarLogoStyles = makeStyles({
   sidebarLogo: {
     width: sidebarConfig.drawerWidthClosed,
@@ -74,6 +79,46 @@ const SidebarLogo = () => {
   );
 };
 
+export const SidebarThemeToggle = () => {
+  const appThemeApi = useApi(appThemeApiRef);
+  const [themeId, setThemeId] = React.useState<string | undefined>(
+    appThemeApi.getActiveThemeId(),
+  );
+
+  React.useEffect(() => {
+    const subscription = appThemeApi
+      .activeThemeId$()
+      .subscribe((newThemeId) => {
+        setThemeId(newThemeId);
+      });
+    return () => subscription.unsubscribe();
+  }, [appThemeApi]);
+
+  const handleToggle = () => {
+    if (themeId === "vitruvian-dark") {
+      appThemeApi.setActiveThemeId("vitruvian-light");
+    } else if (themeId === "vitruvian-light") {
+      appThemeApi.setActiveThemeId("auto");
+    } else {
+      appThemeApi.setActiveThemeId("vitruvian-dark");
+    }
+  };
+
+  const getThemeInfo = () => {
+    if (themeId === "vitruvian-dark") {
+      return { icon: Brightness4Icon, text: "Theme: Dark" };
+    }
+    if (themeId === "vitruvian-light") {
+      return { icon: Brightness7Icon, text: "Theme: Light" };
+    }
+    return { icon: BrightnessAutoIcon, text: "Theme: Auto" };
+  };
+
+  const { icon: ThemeIcon, text } = getThemeInfo();
+
+  return <SidebarItem icon={ThemeIcon} text={text} onClick={handleToggle} />;
+};
+
 export const Root = ({ children }: PropsWithChildren<{}>) => (
   <SidebarPage>
     <Sidebar>
@@ -94,6 +139,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
       </SidebarGroup>
       <SidebarSpace />
       <SidebarDivider />
+      <SidebarThemeToggle />
       <SidebarGroup
         label="Settings"
         icon={<UserSettingsSignInAvatar />}
