@@ -70,6 +70,10 @@ permission:
   enabled: true
   adminEntityRefs:
     - group:default/platform-team
+    # Belt and braces: the group ref only grants admin if the catalog resolved
+    # the User -> Group memberOf relation into ownershipEntityRefs. The direct
+    # user ref always matches, so a catalog hiccup degrades nobody to read-only.
+    - user:default/ipv1337
 
 catalog:
   rules:
