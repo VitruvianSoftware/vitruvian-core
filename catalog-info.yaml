@@ -60,7 +60,19 @@ spec:
   profile:
     displayName: James Nguyen
     email: james.nguyen@gmail.com
-  memberOf: [platform-team]
+  # Mirrors the real GitHub teams codified in infrastructure/pulumi/repo_config
+  # (manageTeams), where ipv1337 is currently the sole member of all seven. This
+  # also matters for the catalog UI: its default "Owned" filter only shows
+  # entities owned by the signed-in user's groups, so listing only platform-team
+  # here made six of the seven components invisible.
+  memberOf:
+    - platform-team
+    - devx-team
+    - homelab-team
+    - mcp-slack-team
+    - nexus-agent-team
+    - oauth-user-inspector-team
+    - tabula-team
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Group
@@ -71,4 +83,66 @@ spec:
   profile:
     displayName: Platform Team
     email: platform@vitruviansoftware.dev
+  children: []
+---
+# The per-app owner groups referenced by each app's catalog-info.yaml. Without
+# these entities the `owner` fields were dangling references.
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: devx-team
+spec:
+  type: team
+  profile:
+    displayName: DevX Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: homelab-team
+spec:
+  type: team
+  profile:
+    displayName: Homelab Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: mcp-slack-team
+spec:
+  type: team
+  profile:
+    displayName: MCP Slack Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: nexus-agent-team
+spec:
+  type: team
+  profile:
+    displayName: Nexus Agent Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: oauth-user-inspector-team
+spec:
+  type: team
+  profile:
+    displayName: OAuth User Inspector Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: tabula-team
+spec:
+  type: team
+  profile:
+    displayName: Tabula Team
   children: []

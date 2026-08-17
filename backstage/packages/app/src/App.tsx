@@ -61,6 +61,11 @@ import { RequirePermission } from "@backstage/plugin-permission-react";
 import { catalogEntityCreatePermission } from "@backstage/plugin-catalog-common/alpha";
 import { githubAuthApiRef } from "@backstage/core-plugin-api";
 import { UnifiedThemeProvider } from "@backstage/theme";
+// UnifiedThemeProvider only supplies theme context and stamps data-theme-mode on
+// <body>; it does NOT render CssBaseline, and neither does core-app-api. Without
+// it nothing sets `body { background-color }`, so the page rendered white even in
+// dark mode while themed Paper/Card surfaces were correctly dark.
+import CssBaseline from "@mui/material/CssBaseline";
 import {
   vitruvianDarkTheme,
   vitruvianLightTheme,
@@ -108,6 +113,7 @@ const app = createApp({
       variant: "dark",
       Provider: ({ children }) => (
         <UnifiedThemeProvider theme={vitruvianDarkTheme}>
+          <CssBaseline />
           {children}
         </UnifiedThemeProvider>
       ),
@@ -118,6 +124,7 @@ const app = createApp({
       variant: "light",
       Provider: ({ children }) => (
         <UnifiedThemeProvider theme={vitruvianLightTheme}>
+          <CssBaseline />
           {children}
         </UnifiedThemeProvider>
       ),
