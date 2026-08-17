@@ -18,7 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { createUnifiedTheme, genPageTheme, palettes, shapes } from "@backstage/theme";
+import {
+  createUnifiedTheme,
+  genPageTheme,
+  palettes,
+  shapes,
+} from "@backstage/theme";
 
 // Vitruvian Design System Tokens
 const vitruvianDarkPalette = {
