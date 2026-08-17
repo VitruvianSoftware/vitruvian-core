@@ -62,9 +62,9 @@ auth:
         # Sign-in additionally requires ACTIVE membership of the GitHub org,
         # proven with the user's own token via the read:org scope
         # (see packages/backend/src/auth). No stored PAT or App credential.
-        signIn:
-          resolvers:
-            - resolver: usernameMatchingUserEntityName
+        # No `signIn.resolvers`: the GitHub provider is replaced in code
+        # (packages/backend/src/auth) by a resolver that proves org membership
+        # and then resolves the catalog user.
 
 # Without `enabled: true` Backstage allows every request without consulting a
 # policy at all, so this flag is what makes the Vitruvian policy load-bearing.

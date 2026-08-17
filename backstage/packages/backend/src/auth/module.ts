@@ -26,7 +26,10 @@ import {
   authProvidersExtensionPoint,
   createOAuthProviderFactory,
 } from "@backstage/plugin-auth-node";
-import { githubAuthenticator } from "@backstage/plugin-auth-backend-module-github-provider";
+import {
+  githubAuthenticator,
+  githubSignInResolvers,
+} from "@backstage/plugin-auth-backend-module-github-provider";
 
 import { DEFAULT_ALLOWED_ORG, assertActiveOrgMember } from "./githubOrgSignIn";
 
@@ -67,6 +70,14 @@ export const authModuleGithubOrgProvider = createBackendModule({
           providerId: "github",
           factory: createOAuthProviderFactory({
             authenticator: githubAuthenticator,
+            // Keep the built-in resolvers registered even though the explicit
+            // signInResolver below is what normally runs. Without this, naming
+            // one in app-config (e.g. usernameMatchingUserEntityName) fails
+            // startup with "Sign-in resolver ... is not available" -- config and
+            // code could silently diverge and wedge the rollout.
+            signInResolverFactories: {
+              ...githubSignInResolvers,
+            },
             // Needed for /user/memberships/orgs/{org}. Existing sessions were
             // issued with read:user only, so users re-consent once on next login.
             additionalScopes: ["read:org"],
