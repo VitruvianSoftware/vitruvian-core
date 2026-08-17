@@ -51,7 +51,10 @@ integrations:
 auth:
   environment: production
   providers:
-    guest: {}
+    # No guest provider: the portal is internet-facing, so anonymous sign-in
+    # would expose the whole catalog. GitHub SSO is the only way in, and the
+    # usernameMatchingUserEntityName resolver below means a GitHub account only
+    # works if a matching User entity exists in the catalog.
     github:
       production:
         clientId: ${AUTH_GITHUB_CLIENT_ID}
@@ -59,6 +62,18 @@ auth:
         signIn:
           resolvers:
             - resolver: usernameMatchingUserEntityName
+
+# Without `enabled: true` Backstage allows every request without consulting a
+# policy at all, so this flag is what makes the Vitruvian policy load-bearing.
+# Admins get unrestricted access; every other signed-in user is read-only.
+permission:
+  enabled: true
+  adminEntityRefs:
+    - group:default/platform-team
+    # Belt and braces: the group ref only grants admin if the catalog resolved
+    # the User -> Group memberOf relation into ownershipEntityRefs. The direct
+    # user ref always matches, so a catalog hiccup degrades nobody to read-only.
+    - user:default/ipv1337
 
 catalog:
   rules:

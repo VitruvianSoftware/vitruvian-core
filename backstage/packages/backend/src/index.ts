@@ -20,6 +20,8 @@
 
 import { createBackend } from "@backstage/backend-defaults";
 
+import { permissionModuleVitruvianPolicy } from "./permissions/module";
+
 const backend = createBackend();
 
 backend.add(import("@backstage/plugin-app-backend"));
@@ -28,8 +30,9 @@ backend.add(import("@backstage/plugin-scaffolder-backend"));
 backend.add(import("@backstage/plugin-techdocs-backend"));
 
 // Auth plugin & providers
+// GitHub SSO only — the guest provider is deliberately absent because this
+// portal is internet-facing and anonymous sign-in exposed the whole catalog.
 backend.add(import("@backstage/plugin-auth-backend"));
-backend.add(import("@backstage/plugin-auth-backend-module-guest-provider"));
 backend.add(import("@backstage/plugin-auth-backend-module-github-provider"));
 
 // Catalog plugin & modules
@@ -39,11 +42,10 @@ backend.add(
 );
 backend.add(import("@backstage/plugin-catalog-backend-module-github"));
 
-// Permissions
+// Permissions — the Vitruvian policy replaces the upstream allow-all reference
+// policy. Requires `permission.enabled: true` in app-config to be consulted.
 backend.add(import("@backstage/plugin-permission-backend"));
-backend.add(
-  import("@backstage/plugin-permission-backend-module-allow-all-policy"),
-);
+backend.add(permissionModuleVitruvianPolicy);
 
 // Search
 backend.add(import("@backstage/plugin-search-backend"));

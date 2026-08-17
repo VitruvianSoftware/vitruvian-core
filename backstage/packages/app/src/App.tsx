@@ -54,7 +54,11 @@ import { createApp } from "@backstage/app-defaults";
 import { AppRouter, FlatRoutes } from "@backstage/core-app-api";
 import { CatalogGraphPage } from "@backstage/plugin-catalog-graph";
 import { RequirePermission } from "@backstage/plugin-permission-react";
-import { catalogEntityCreatePermission } from "@backstage/plugin-catalog-common";
+// `/alpha` is where this permission is actually exported; importing it from the
+// package root silently yields `undefined`, which only became load-bearing once
+// permission.enabled was turned on (RequirePermission below would then guard on
+// an undefined permission).
+import { catalogEntityCreatePermission } from "@backstage/plugin-catalog-common/alpha";
 import { githubAuthApiRef } from "@backstage/core-plugin-api";
 import { UnifiedThemeProvider } from "@backstage/theme";
 import {
@@ -87,7 +91,6 @@ const app = createApp({
         {...props}
         auto
         providers={[
-          "guest",
           {
             id: "github-auth-provider",
             title: "GitHub",

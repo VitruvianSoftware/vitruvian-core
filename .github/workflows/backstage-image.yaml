@@ -48,6 +48,28 @@ env:
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
+  # Unit tests for the backstage packages. Backstage is gazelle-excluded, so it
+  # gets no Bazel test lane — without this job the permission policy that
+  # decides who can administer the portal would ship untested.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test backstage backend
+        run: pnpm --filter @vitruviansoftware/backstage-backend test
+
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 30

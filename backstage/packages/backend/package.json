@@ -7,23 +7,27 @@
   "backstage": {
     "role": "backend"
   },
+  "configSchema": "config.d.ts",
   "scripts": {
     "build": "backstage-cli package build",
     "clean": "backstage-cli package clean",
-    "start": "node dist/index.cjs.js"
+    "start": "node dist/index.cjs.js",
+    "test": "jest",
+    "lint": "backstage-cli package lint"
   },
   "dependencies": {
     "@vitruviansoftware/backstage-app": "workspace:*",
     "@backstage/backend-defaults": "^0.17.6",
+    "@backstage/backend-plugin-api": "^1.9.3",
     "@backstage/plugin-app-backend": "^0.5.16",
     "@backstage/plugin-auth-backend": "^0.29.2",
     "@backstage/plugin-auth-backend-module-github-provider": "^0.5.5",
-    "@backstage/plugin-auth-backend-module-guest-provider": "^0.2.21",
     "@backstage/plugin-catalog-backend": "^3.8.1",
     "@backstage/plugin-catalog-backend-module-github": "^0.13.4",
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "^0.2.22",
     "@backstage/plugin-permission-backend": "^0.7.14",
-    "@backstage/plugin-permission-backend-module-allow-all-policy": "^0.2.21",
+    "@backstage/plugin-permission-common": "^0.9.9",
+    "@backstage/plugin-permission-node": "^0.11.2",
     "@backstage/plugin-proxy-backend": "^0.6.15",
     "@backstage/plugin-scaffolder-backend": "^4.0.2",
     "@backstage/plugin-search-backend": "^2.1.4",
@@ -35,10 +39,16 @@
   },
   "devDependencies": {
     "@backstage/cli": "^0.36.4",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22",
+    "jest": "catalog:",
+    "jest-cli": "^30.4.2",
+    "jest-environment-node": "^30.4.1",
+    "ts-jest": "^29.4.12",
     "typescript": "~5.8.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "config.d.ts"
   ]
 }
