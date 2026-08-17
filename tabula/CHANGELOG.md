@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.27...tabula-shared-v0.1.28) (2026-08-17)
+
+
+### Bug Fixes
+
+* **backstage:** make TechDocs work for every component ([#1700](https://github.com/VitruvianSoftware/vitruvian-core/issues/1700)) ([26c6aa7](https://github.com/VitruvianSoftware/vitruvian-core/commit/26c6aa7c2953877a116bd59413b0a1d07e5f9e51))
+
 ## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.26...tabula-shared-v0.1.27) (2026-08-14)
 
 
