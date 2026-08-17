@@ -18,17 +18,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import { createUnifiedTheme, genPageTheme, shapes } from "@backstage/theme";
+import {
+  createUnifiedTheme,
+  genPageTheme,
+  palettes,
+  shapes,
+} from "@backstage/theme";
 
 // Vitruvian Design System Tokens
 const vitruvianDarkPalette = {
-  type: "dark" as const,
-  mode: "dark" as const,
+  ...palettes.dark,
   background: {
+    ...palettes.dark.background,
     default: "#0e1317", // --color-bg (obsidian ink)
     paper: "#141b20", // --color-surface
   },
   status: {
+    ...palettes.dark.status,
     ok: "#5b9c78", // --color-ok
     warning: "#c89a3c", // --color-warn
     error: "#b4553c", // --color-sanguine (Leonardo's red chalk)
@@ -37,25 +43,32 @@ const vitruvianDarkPalette = {
     aborted: "#5a646c",
   },
   primary: {
+    ...palettes.dark.primary,
     main: "#5980a6", // --color-accent (steel)
     light: "#93b0ca", // --color-accent-text
     dark: "#3e5e7d",
     contrastText: "#0e1317",
   },
   secondary: {
+    ...palettes.dark.secondary,
     main: "#b4553c", // --color-sanguine
     light: "#d2907b",
     dark: "#8b3d29",
     contrastText: "#ffffff",
   },
   text: {
+    ...palettes.dark.text,
     primary: "#e7e4dd", // --color-text (paper)
     secondary: "#9aa3a9", // --color-text-dim
     disabled: "#5a646c",
     hint: "#9aa3a9",
   },
+  border: "rgba(231, 228, 221, 0.12)",
   divider: "rgba(231, 228, 221, 0.12)",
+  textVerySubtle: "#5a646c",
+  textSubtle: "#9aa3a9",
   navigation: {
+    ...palettes.dark.navigation,
     background: "#0e1317",
     indicator: "#5980a6",
     color: "#9aa3a9",
@@ -77,13 +90,14 @@ const vitruvianDarkPalette = {
 };
 
 const vitruvianLightPalette = {
-  type: "light" as const,
-  mode: "light" as const,
+  ...palettes.light,
   background: {
+    ...palettes.light.background,
     default: "#f6f4ee", // --color-bg light
     paper: "#ffffff", // --color-surface light
   },
   status: {
+    ...palettes.light.status,
     ok: "#3d7857",
     warning: "#9c6f1f",
     error: "#9c3d26",
@@ -92,25 +106,32 @@ const vitruvianLightPalette = {
     aborted: "#87929a",
   },
   primary: {
+    ...palettes.light.primary,
     main: "#3e5e7d",
     light: "#5980a6",
     dark: "#273e55",
     contrastText: "#ffffff",
   },
   secondary: {
+    ...palettes.light.secondary,
     main: "#9c3d26",
     light: "#b4553c",
     dark: "#732a18",
     contrastText: "#ffffff",
   },
   text: {
+    ...palettes.light.text,
     primary: "#1c2226",
     secondary: "#555f66",
     disabled: "#87929a",
     hint: "#555f66",
   },
+  border: "rgba(28, 34, 38, 0.12)",
   divider: "rgba(28, 34, 38, 0.12)",
+  textVerySubtle: "#87929a",
+  textSubtle: "#555f66",
   navigation: {
+    ...palettes.light.navigation,
     background: "#141b20",
     indicator: "#5980a6",
     color: "#9aa3a9",
@@ -155,8 +176,161 @@ const pageThemeLight = {
   other: genPageTheme({ colors: ["#3e5e7d", "#5980a6"], shape: shapes.wave }),
 };
 
+const darkComponents = {
+  MuiPaper: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+        color: "#e7e4dd",
+        backgroundImage: "none",
+      },
+    },
+  },
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+        borderColor: "rgba(231, 228, 221, 0.12)",
+      },
+    },
+  },
+  MuiTable: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#141b20",
+      },
+    },
+  },
+  MuiTableHead: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#1b2429",
+      },
+    },
+  },
+  MuiTableCell: {
+    styleOverrides: {
+      root: {
+        borderBottom: "1px solid rgba(231, 228, 221, 0.08)",
+        color: "#e7e4dd",
+      },
+      head: {
+        color: "#9aa3a9",
+        fontWeight: 600,
+        backgroundColor: "#1b2429",
+        letterSpacing: "0.04em",
+      },
+    },
+  },
+  MuiTableRow: {
+    styleOverrides: {
+      root: {
+        "&:nth-of-type(odd)": {
+          backgroundColor: "rgba(255, 255, 255, 0.02)",
+        },
+        "&:hover": {
+          backgroundColor: "rgba(89, 128, 166, 0.08) !important",
+        },
+      },
+    },
+  },
+  MuiButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 0,
+        textTransform: "none" as const,
+        fontWeight: 500,
+      },
+      containedPrimary: {
+        backgroundColor: "#5980a6",
+        color: "#0e1317",
+        "&:hover": {
+          backgroundColor: "#93b0ca",
+        },
+      },
+    },
+  },
+  MuiChip: {
+    styleOverrides: {
+      root: {
+        borderRadius: 2,
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: "0.75rem",
+      },
+    },
+  },
+};
+
+const lightComponents = {
+  MuiPaper: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#ffffff",
+        color: "#1c2226",
+      },
+    },
+  },
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#ffffff",
+        borderColor: "rgba(28, 34, 38, 0.12)",
+      },
+    },
+  },
+  MuiTableHead: {
+    styleOverrides: {
+      root: {
+        backgroundColor: "#edebe4",
+      },
+    },
+  },
+  MuiTableCell: {
+    styleOverrides: {
+      root: {
+        borderBottom: "1px solid rgba(28, 34, 38, 0.08)",
+        color: "#1c2226",
+      },
+      head: {
+        color: "#555f66",
+        fontWeight: 600,
+        backgroundColor: "#edebe4",
+      },
+    },
+  },
+  MuiTableRow: {
+    styleOverrides: {
+      root: {
+        "&:nth-of-type(odd)": {
+          backgroundColor: "rgba(0, 0, 0, 0.02)",
+        },
+        "&:hover": {
+          backgroundColor: "rgba(62, 94, 125, 0.06) !important",
+        },
+      },
+    },
+  },
+  MuiButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 0,
+        textTransform: "none" as const,
+        fontWeight: 500,
+      },
+      containedPrimary: {
+        backgroundColor: "#3e5e7d",
+        color: "#ffffff",
+        "&:hover": {
+          backgroundColor: "#5980a6",
+        },
+      },
+    },
+  },
+};
+
 export const vitruvianDarkTheme = createUnifiedTheme({
   palette: vitruvianDarkPalette,
+  components: darkComponents,
   typography: {
     fontFamily:
       '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -173,6 +347,7 @@ export const vitruvianDarkTheme = createUnifiedTheme({
 
 export const vitruvianLightTheme = createUnifiedTheme({
   palette: vitruvianLightPalette,
+  components: lightComponents,
   typography: {
     fontFamily:
       '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
