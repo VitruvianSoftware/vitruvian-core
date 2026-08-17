@@ -28,40 +28,40 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest
+    tag: latest@sha256:1ddeea3cfdf9275fb673bae4c7d5316612e6be641fa634fefe46aa3866dfa736
     pullPolicy: Always
   command:
-    - node
-    - packages/backend/dist/index.cjs.js
+  - node
+  - packages/backend/dist/index.cjs.js
   args:
-    - --config
-    - /app/app-config-from-configmap.yaml
+  - --config
+  - /app/app-config-from-configmap.yaml
   extraEnvVars:
-    - name: POSTGRES_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: POSTGRES_PASSWORD
-    - name: BACKSTAGE_AUTH_KEY
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: BACKSTAGE_AUTH_KEY
-    - name: AUTH_SESSION_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_SESSION_SECRET
-    - name: AUTH_GITHUB_CLIENT_ID
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_GITHUB_CLIENT_ID
-    - name: AUTH_GITHUB_CLIENT_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_GITHUB_CLIENT_SECRET
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: POSTGRES_PASSWORD
+  - name: BACKSTAGE_AUTH_KEY
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: BACKSTAGE_AUTH_KEY
+  - name: AUTH_SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_SESSION_SECRET
+  - name: AUTH_GITHUB_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_GITHUB_CLIENT_ID
+  - name: AUTH_GITHUB_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_GITHUB_CLIENT_SECRET
   appConfig:
     app:
       title: Vitruvian Developer Portal
@@ -86,10 +86,8 @@ backstage:
       # secure by default and need no backend.auth.keys, and
       # plugin-app-backend still serves the frontend publicly via
       # its own addAuthPolicy({allow:'unauthenticated', path:'/'}).
-
     auth:
       environment: production
-
       providers:
         # No guest provider: this portal is internet-facing, so
         # anonymous sign-in would expose the whole catalog to
@@ -103,7 +101,7 @@ backstage:
             clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
             signIn:
               resolvers:
-                - resolver: usernameMatchingUserEntityName
+              - resolver: usernameMatchingUserEntityName
     # Without `enabled: true` Backstage allows every request without
     # consulting a policy at all, so this flag is what makes the
     # Vitruvian permission policy load-bearing. Admins get
@@ -111,12 +109,12 @@ backstage:
     permission:
       enabled: true
       adminEntityRefs:
-        - group:default/platform-team
-        # Belt and braces: the group ref only grants admin if the
-        # catalog resolved the User -> Group memberOf relation into
-        # ownershipEntityRefs. The direct user ref always matches,
-        # so a catalog hiccup cannot degrade the admin to read-only.
-        - user:default/ipv1337
+      - group:default/platform-team
+      # Belt and braces: the group ref only grants admin if the
+      # catalog resolved the User -> Group memberOf relation into
+      # ownershipEntityRefs. The direct user ref always matches,
+      # so a catalog hiccup cannot degrade the admin to read-only.
+      - user:default/ipv1337
     # Without this block TechDocs defaults to generator.runIn
     # 'docker', which cannot spawn a container from inside the pod,
     # so every docs page failed to build. 'local' uses the
@@ -132,29 +130,29 @@ backstage:
         type: "local"
     integrations:
       github:
-        - host: github.com
+      - host: github.com
     catalog:
       rules:
-        - allow: [Component, System, API, Resource, Location, Template, User, Group]
+      - allow: [Component, System, API, Resource, Location, Template, User, Group]
       locations:
-        - type: url
-          target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
-          rules:
-            - allow: [Component, System, API, Resource, Location, Template, User, Group]
+      - type: url
+        target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
+        rules:
+        - allow: [Component, System, API, Resource, Location, Template, User, Group]
 ingress:
   enabled: false
 httpRoute:
   enabled: true
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform
-      namespace: envoy-gateway-system
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: platform
+    namespace: envoy-gateway-system
   hostnames:
-    - backstage.vitruviansoftware.dev
-    - backstage.lab.ipv1337.dev
+  - backstage.vitruviansoftware.dev
+  - backstage.lab.ipv1337.dev
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
