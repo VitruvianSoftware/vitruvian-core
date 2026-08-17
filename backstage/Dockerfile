@@ -44,9 +44,14 @@ RUN touch yarn.lock && npx backstage-cli package build --skip-build-dependencies
 
 FROM node:22-bookworm-slim AS runtime
 
+# mkdocs + mkdocs-techdocs-core power TechDocs' `generator.runIn: local`. Without
+# them the generator defaults to `docker`, which cannot spawn a container from
+# inside this pod, so every /docs/... page failed to build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     python3 \
+    python3-pip \
+    && pip3 install --break-system-packages --no-cache-dir mkdocs-techdocs-core==1.6.1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

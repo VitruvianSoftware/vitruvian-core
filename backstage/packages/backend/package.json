@@ -16,12 +16,12 @@
     "lint": "backstage-cli package lint"
   },
   "dependencies": {
-    "@vitruviansoftware/backstage-app": "workspace:*",
     "@backstage/backend-defaults": "^0.17.6",
     "@backstage/backend-plugin-api": "^1.9.3",
     "@backstage/plugin-app-backend": "^0.5.16",
     "@backstage/plugin-auth-backend": "^0.29.2",
     "@backstage/plugin-auth-backend-module-github-provider": "^0.5.5",
+    "@backstage/plugin-auth-node": "^0.7.3",
     "@backstage/plugin-catalog-backend": "^3.8.1",
     "@backstage/plugin-catalog-backend-module-github": "^0.13.4",
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "^0.2.22",
@@ -34,6 +34,7 @@
     "@backstage/plugin-search-backend-module-catalog": "^0.3.17",
     "@backstage/plugin-search-backend-module-techdocs": "^0.4.16",
     "@backstage/plugin-techdocs-backend": "^2.2.2",
+    "@vitruviansoftware/backstage-app": "workspace:*",
     "better-sqlite3": "^11.8.1",
     "pg": "^8.13.3"
   },

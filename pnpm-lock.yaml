@@ -201,6 +201,9 @@ importers:
       '@backstage/plugin-auth-backend-module-github-provider':
         specifier: ^0.5.5
         version: 0.5.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-auth-node':
+        specifier: ^0.7.3
+        version: 0.7.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/plugin-catalog-backend':
         specifier: ^3.8.1
         version: 3.8.1(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)
@@ -18262,7 +18265,7 @@ snapshots:
       '@backstage/module-federation-common': 0.1.4(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@8.3.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12)(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -18311,7 +18314,7 @@ snapshots:
       ts-morph: 24.0.0
       util: 0.12.5
       webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
-      webpack-dev-server: 5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      webpack-dev-server: 5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       yml-loader: 2.1.0
       yn: 4.0.0
       zod: 4.4.3
@@ -23719,20 +23722,6 @@ snapshots:
     optional: true
 
   '@pmmmwh/react-refresh-webpack-plugin@0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))':
-    dependencies:
-      anser: 2.3.5
-      core-js-pure: 3.50.0
-      error-stack-parser: 2.1.4
-      html-entities: 2.6.0
-      react-refresh: 0.18.0
-      schema-utils: 4.3.3
-      source-map: 0.7.6
-      webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
-    optionalDependencies:
-      type-fest: 5.8.0
-      webpack-dev-server: 5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
-
-  '@pmmmwh/react-refresh-webpack-plugin@0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))':
     dependencies:
       anser: 2.3.5
       core-js-pure: 3.50.0
@@ -38578,18 +38567,6 @@ snapshots:
     optionalDependencies:
       webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
 
-  webpack-dev-middleware@7.4.5(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)):
-    dependencies:
-      colorette: 2.0.20
-      memfs: 4.68.1
-      mime-types: 3.0.2
-      on-finished: 2.4.1
-      range-parser: 1.2.1
-      schema-utils: 4.3.3
-    optionalDependencies:
-      webpack: 5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
-    optional: true
-
   webpack-dev-middleware@7.4.5(webpack@5.109.2):
     dependencies:
       colorette: 2.0.20
@@ -38708,7 +38685,7 @@ snapshots:
       serve-index: 1.9.2
       sockjs: 0.3.24
       spdy: 4.0.2
-      webpack-dev-middleware: 7.4.5(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      webpack-dev-middleware: 7.4.5(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       ws: 8.21.3
     optionalDependencies:
       webpack: 5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
@@ -38717,7 +38694,6 @@ snapshots:
       - debug
       - supports-color
       - utf-8-validate
-    optional: true
 
   webpack-merge@6.0.1:
     dependencies:

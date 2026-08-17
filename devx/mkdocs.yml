@@ -17,34 +17,11 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-#
-# backstage-resources — platform DNSEndpoint and routing for Backstage.
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: backstage-resources
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  project: platform-project
-  source:
-    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
-    targetRevision: main
-    path: gitops/argocd/platform/backstage
-    directory:
-      recurse: true
-      # values.yaml is Helm values for the backstage ApplicationSet's chart
-      # source (referenced there as $values), not a Kubernetes manifest -- it
-      # must not be applied by this directory sync.
-      exclude: "{applicationset*.yaml,values.yaml}"
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: backstage
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+
+site_name: devx
+site_description: Developer-experience CLI — local dev orchestration (Lima VMs, devcontainers, k3s cluster join/apply, scaffolding)
+repo_url: https://github.com/VitruvianSoftware/vitruvian-core
+edit_uri: edit/main/devx/docs
+docs_dir: docs
+plugins:
+  - techdocs-core

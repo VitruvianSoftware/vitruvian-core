@@ -29,6 +29,7 @@ metadata:
   description: SaaS tab/workspace platform — API (Cloud Run blue-green) + Chrome extension + web companion + CLI
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
     vitruvian.dev/deploy-workflow: tabula-deploy.yaml
     vitruvian.dev/deploy-targets: //tabula/api:image_push //tabula/extension:chrome_zip
     vitruvian.dev/environments: development nonproduction production

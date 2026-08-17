@@ -63,4 +63,4 @@ version: 0.1.0
 # updater matches any line containing it and rewrites a version found there, so
 # a comment that quotes the marker becomes a second, invisible substitution site
 # — a doc string the release tooling would edit.
-appVersion: "1.8.2" # x-release-please-version
+appVersion: "1.8.3" # x-release-please-version

@@ -1,0 +1,75 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Watches backstage's floating `latest` tag (ghcr.io/vitruviansoftware/backstage)
+# for a new digest and writes the resolved `latest@sha256:...` back into
+# gitops/argocd/platform/backstage/values.yaml's `backstage.image.tag`.
+#
+# Why this exists: backstage is built from this repo on every merge and pushed to
+# the same mutable `latest` tag. A tag push never changes a committed manifest,
+# so ArgoCD sees no diff and the running pod keeps the old image -- deploys had
+# to be finished by hand with `kubectl rollout restart`. Pinning the digest in
+# git makes an image change an ordinary git change: ArgoCD rolls it out, and a
+# rollback is a revert.
+#
+# Namespace MUST be `argocd`, matching the `backstage` Application: an
+# ImageUpdater CR only lists Applications in its own namespace (same reasoning as
+# imageupdater-buzz.yaml).
+#
+# Credentials: reuses the existing argocd/buzz-image-updater-git-creds SSH deploy
+# key. It is a write key for this same repository and is namespace-bound to
+# argocd, so no new sealed secret is required. (The name is buzz-specific for
+# historical reasons; generalising it would mean re-sealing.)
+#
+# Write-back never touches `main`: it pushes to `image-updates/backstage` and
+# .github/workflows/image-updates-backstage-pr.yaml opens/updates a PR from
+# there into main, so the change still goes through the merge queue like every
+# other change to this repo.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: backstage
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd/buzz-image-updater-git-creds"
+    gitConfig:
+      # Explicit, not inferred: the `backstage` Application is multi-source (a
+      # Helm chart source with no git repoURL, plus a values-only ref source over
+      # HTTPS) -- inference would be ambiguous, and the deploy key is SSH.
+      repository: "git@github.com:VitruvianSoftware/vitruvian-core.git"
+      # Read from main (latest), write to a side branch -- never main itself.
+      branch: "main:image-updates/backstage"
+      writeBackTarget: "helmvalues:./gitops/argocd/platform/backstage/values.yaml"
+  applicationRefs:
+    - namePattern: "backstage"
+      images:
+        - alias: "backstage"
+          imageName: "ghcr.io/vitruviansoftware/backstage:latest"
+          commonUpdateSettings:
+            # Not semver/latest: `latest` is a floating tag with no version
+            # ordering to compare -- "did the digest behind `latest` change" is
+            # the only meaningful signal.
+            updateStrategy: "digest"
+            forceUpdate: true
+          manifestTargets:
+            helm:
+              name: "backstage.image.repository"
+              tag: "backstage.image.tag"
