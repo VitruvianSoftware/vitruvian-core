@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.2...oauth-user-inspector-v1.8.0) (2026-08-17)
+
+
+### Features
+
+* **backstage:** render mermaid diagrams in TechDocs ([#1710](https://github.com/VitruvianSoftware/vitruvian-core/issues/1710)) ([00666bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/00666bd24c1a265239e1befd4a8993c392d087aa))
+
 ## [1.7.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.1...oauth-user-inspector-v1.7.2) (2026-08-17)
 
 
