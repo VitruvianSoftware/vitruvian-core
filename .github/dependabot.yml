@@ -192,8 +192,12 @@ updates:
           - "minor"
           - "patch"
     ignore:
-      # Backstage 1.30+ requires React Router v6 (pinned in catalogs: backstage in pnpm-workspace.yaml).
-      # Major bumps to v7/v8 break Backstage frontend routing.
+      # Backstage 1.x requires React Router v6 (pinned in catalogs: backstage in
+      # pnpm-workspace.yaml). Major bumps to v7/v8 break Backstage frontend routing.
+      # NOTE: this ignore is repo-wide (there is one npm entry, directory: /) and has
+      # no expiry -- nothing prompts a revisit. See
+      # docs/dependency-versioning/javascript.md ("Named catalogs holding a framework
+      # back") for when and how to remove it.
       - dependency-name: "react-router"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-router-dom"

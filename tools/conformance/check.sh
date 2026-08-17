@@ -280,6 +280,11 @@ canonical_pnpm() {
 catalog_names() {
   [ -f "$WORKSPACE_YAML" ] || return 0
   awk '
+    # Comments are never entries. This must come first: the column-0 rule below
+    # excludes "#", so a comment line would otherwise fall through to the entry
+    # rule and — if a catalog block was still open — be parsed as a dependency
+    # (e.g. "# NOTE: ..." became a catalog entry named "# NOTE").
+    /^[[:space:]]*#/ { next }
     # A column-0 key line decides whether the following indented block is a
     # catalog block (default `catalog:` or named `catalogs:`); any other
     # top-level key (e.g. packageExtensions:) turns extraction back off.

@@ -61,10 +61,18 @@ catalog:
   vitest: ^4.1.10
   "@vitest/coverage-v8": ^4.1.10
 
+# Named catalog `backstage`: Backstage 1.x is built against React Router v6 (its
+# plugins declare react-router-dom ^6.3.0 as a peer). Caret, not tilde -- the
+# compatibility contract is "v6", and 6.30.x would block 6.31+ minors including
+# security patches within v6; reproducibility comes from pnpm-lock.yaml and a bump
+# still lands as a reviewable lockfile change. See
+# docs/dependency-versioning/javascript.md for how to unstick this to v7.
+# NOTE: keep comments OUT of the catalogs: block -- //tools/conformance:check
+# parses entries line-wise and reads an indented comment as a catalog entry.
 catalogs:
   backstage:
-    react-router: ~6.30.4
-    react-router-dom: ~6.30.4
+    react-router: ^6.30.4
+    react-router-dom: ^6.30.4
 
 # The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
 # don't declare it as a peer dependency upstream). Under the strict rules_js /

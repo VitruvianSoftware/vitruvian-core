@@ -7,10 +7,10 @@ settings:
 catalogs:
   backstage:
     react-router:
-      specifier: ~6.30.4
+      specifier: ^6.30.4
       version: 6.30.4
     react-router-dom:
-      specifier: ~6.30.4
+      specifier: ^6.30.4
       version: 6.30.4
   default:
     '@pulumi/command':
