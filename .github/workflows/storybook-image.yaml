@@ -91,3 +91,11 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
+          # Without a layer cache every run reinstalls the whole dependency tree
+          # from scratch -- and does it twice, because linux/arm64 is emulated
+          # under QEMU on an amd64 runner. The pnpm install layer is keyed on the
+          # lockfile + package.json, so a source-only change now reuses it.
+          # Scoped per image so the two builds cannot evict each other from the
+          # shared 10GB GitHub Actions cache.
+          cache-from: type=gha,scope=storybook-image
+          cache-to: type=gha,mode=max,scope=storybook-image
