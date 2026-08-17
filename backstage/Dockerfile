@@ -44,28 +44,34 @@ RUN touch yarn.lock && npx backstage-cli package build --skip-build-dependencies
 
 FROM node:22-bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends     curl     python3     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-ENV NODE_ENV=production     PORT=7007
+ENV NODE_ENV=production \
+    PORT=7007
 
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=build /app/backstage/package.json ./backstage/
 COPY --from=build /app/backstage/packages/backend/package.json ./backstage/packages/backend/
 COPY --from=build /app/backstage/packages/app/package.json ./backstage/packages/app/
 
 RUN pnpm install --prod --frozen-lockfile
 
-COPY --from=build /app/backstage/packages/backend/dist/bundle.tar.gz ./
-RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
-
+COPY --from=build /app/backstage/packages/app/dist ./backstage/packages/app/dist
+COPY --from=build /app/backstage/packages/backend/dist ./backstage/packages/backend/dist
 COPY --from=build /app/backstage/app-config.yaml ./app-config.yaml
+
+RUN ln -s /app/backstage/packages /app/packages
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 
 EXPOSE 7007
-CMD ["node", "packages/backend/dist/index.cjs", "--config", "app-config.yaml"]
+CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml"]

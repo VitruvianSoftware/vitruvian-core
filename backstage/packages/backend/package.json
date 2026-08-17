@@ -2,7 +2,7 @@
   "name": "@vitruviansoftware/backstage-backend",
   "version": "0.1.0",
   "private": true,
-  "main": "dist/index.cjs",
+  "main": "dist/index.cjs.js",
   "types": "dist/index.d.ts",
   "backstage": {
     "role": "backend"
@@ -10,7 +10,7 @@
   "scripts": {
     "build": "backstage-cli package build",
     "clean": "backstage-cli package clean",
-    "start": "node dist/index.cjs"
+    "start": "node dist/index.cjs.js"
   },
   "dependencies": {
     "@vitruviansoftware/backstage-app": "workspace:*",
