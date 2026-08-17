@@ -75,6 +75,20 @@ permission:
     # user ref always matches, so a catalog hiccup degrades nobody to read-only.
     - user:default/ipv1337
 
+# Without this block TechDocs defaults to generator.runIn 'docker', which cannot
+# spawn a container from inside the pod, so every docs page failed to build.
+# 'local' uses the mkdocs-techdocs-core installed in the runtime image.
+# publisher 'local' keeps generated docs on the pod filesystem: they are rebuilt
+# on demand after a restart, which is acceptable for these small doc sets and
+# avoids introducing object-storage credentials. Move to an S3/MinIO publisher
+# if rebuild latency becomes noticeable.
+techdocs:
+  builder: "local"
+  generator:
+    runIn: "local"
+  publisher:
+    type: "local"
+
 catalog:
   rules:
     - allow: [Component, System, API, Resource, Location, Template, User, Group]

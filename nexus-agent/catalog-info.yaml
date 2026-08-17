@@ -29,6 +29,7 @@ metadata:
   description: macOS menu-bar agent (Swift) + Telegram bot (Node) — DMG via GitHub Releases + npm
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
     vitruvian.dev/release-workflow: apps-release.yml
     vitruvian.dev/release-model: dmg-github-releases npm-publish
     vitruvian.dev/mirror: VitruvianSoftware/nexus-agent
