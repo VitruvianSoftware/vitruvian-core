@@ -143,6 +143,19 @@ spec:
                     # ownershipEntityRefs. The direct user ref always matches,
                     # so a catalog hiccup cannot degrade the admin to read-only.
                     - user:default/ipv1337
+                # Without this block TechDocs defaults to generator.runIn
+                # 'docker', which cannot spawn a container from inside the pod,
+                # so every docs page failed to build. 'local' uses the
+                # mkdocs-techdocs-core installed in the runtime image. publisher
+                # 'local' keeps generated docs on the pod filesystem: rebuilt on
+                # demand after a restart, which is fine for these small doc sets
+                # and avoids introducing object-storage credentials.
+                techdocs:
+                  builder: "local"
+                  generator:
+                    runIn: "local"
+                  publisher:
+                    type: "local"
                 integrations:
                   github:
                     - host: github.com

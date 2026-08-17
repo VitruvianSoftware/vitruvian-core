@@ -29,6 +29,7 @@ metadata:
   description: OAuth/OIDC token inspector web app — Vite/React frontend + Express backend on Cloud Run, Zitadel SSO
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
     vitruvian.dev/deploy-workflow: oauth-user-inspector-deploy.yaml
     vitruvian.dev/environments: development
     vitruvian.dev/release-model: continuous-deploy
