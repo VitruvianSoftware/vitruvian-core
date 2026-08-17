@@ -40,6 +40,11 @@ import {
 } from "@backstage/plugin-techdocs";
 import { TechDocsAddons } from "@backstage/plugin-techdocs-react";
 import { ReportIssue } from "@backstage/plugin-techdocs-module-addons-contrib";
+// Renders ```mermaid fences (emitted as <pre class="mermaid"> by the superfences
+// custom_fence in each mkdocs.yml). This has to happen in the frontend: TechDocs
+// strips <script> from the generated HTML, so mkdocs-side mermaid plugins that
+// inject mermaid.js cannot run.
+import { Mermaid } from "backstage-plugin-techdocs-addon-mermaid";
 import { UserSettingsPage } from "@backstage/plugin-user-settings";
 import { apis } from "./apis";
 import { entityPage } from "./components/catalog/EntityPage";
@@ -149,6 +154,7 @@ const routes = (
     >
       <TechDocsAddons>
         <ReportIssue />
+        <Mermaid />
       </TechDocsAddons>
     </Route>
     <Route path="/create" element={<ScaffolderPage />} />
