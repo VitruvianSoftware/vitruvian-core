@@ -250,6 +250,9 @@ importers:
       '@backstage/plugin-scaffolder-backend':
         specifier: ^4.0.2
         version: 4.0.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(chokidar@3.6.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)
+      '@backstage/plugin-scaffolder-backend-module-github':
+        specifier: ^0.9.12
+        version: 0.9.12(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/plugin-search-backend':
         specifier: ^2.1.4
         version: 2.1.4(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(openapi-types@12.1.3)(pg@8.22.0)
@@ -1808,11 +1811,17 @@ packages:
   '@backstage/backend-openapi-utils@0.7.0':
     resolution: {integrity: sha512-O2VihqH14U02Fs1ER+0aZGtU2hWZmYfWP3hMCHkILnF7MXKu5fnray616jYAW5+zxSTsNoEH2sEJC/XVhU6kNg==}
 
+  '@backstage/backend-plugin-api@1.10.0':
+    resolution: {integrity: sha512-3Vc/LbkCzuZ/ICH9RitMM827p7MuwSwDjD9/JMcYDgVqDOVFLwZ7pcLsLJOrOjCMLIFC8P1eu/nDuYdV028BOw==}
+
   '@backstage/backend-plugin-api@1.9.3':
     resolution: {integrity: sha512-EI8hmLPc4zDl/fo6p3ULeKnkAaF4Ba5EwJzgmMWwywxMVBkjQIZnxnCLDDoTnjJ2Vgrb3Al7aomoAJwPzHe1NQ==}
 
   '@backstage/catalog-client@1.16.1':
     resolution: {integrity: sha512-I29eE+fiow2FM6tAeuDZOf53JKzzeDmDogHnNHaQJl/9Ap/VIHdxFvrB5MpfmOJ4yYtHKjaYOecv1GhmGX7FGQ==}
+
+  '@backstage/catalog-model@1.10.0':
+    resolution: {integrity: sha512-TRXFyszDUldpiYWKsxvvBY7cUC/EabZHOYSKvdPldM53iFaPssj3cjQfIIxOqRWDVa6Afng/x1AOC0DtoWsViw==}
 
   '@backstage/catalog-model@1.9.0':
     resolution: {integrity: sha512-Q3K2IGemrEKgHVJr2X0gztr2fXMeobJrskRvNJVUtVtmGs+cIXjwYhl6K3/a2gmAXqLRk7rPh8waULLqumVyLg==}
@@ -1921,6 +1930,9 @@ packages:
   '@backstage/connections@0.2.0':
     resolution: {integrity: sha512-WiXpFzVeX5iuonedx2MwJ1wKPIHfX3BBP3svWI0J3a87D5k1ctX9D0mLDfD8aWiJvU5GHs2TIVOv49EefkUZRA==}
 
+  '@backstage/connections@0.3.0':
+    resolution: {integrity: sha512-iIUw1B94TjraH1MJFbd5qnNvUw5TbTRIfo4u+nK0KBW32lBY5cV9wemHojZ5+K6cFDNE7DLDwGpzB+J6D8ZaUQ==}
+
   '@backstage/core-app-api@1.20.3':
     resolution: {integrity: sha512-eRasPhOr8JNqYf+q7AhU5sLWcea1OCoHh4txZ11IXYo+Av+8qK+/vRUlpyfW7joy4qolzCMxIS0EbOA9hKdy9w==}
     peerDependencies:
@@ -2013,6 +2025,9 @@ packages:
   '@backstage/integration@2.0.3':
     resolution: {integrity: sha512-qYZbKilulxvpDsyd6zFAq8lUNLh47qC0xywh96jXBaNouVc1EdxoBxv3JYku33EAc2lmBDeMQVnj768FlbYaTw==}
 
+  '@backstage/integration@2.1.0':
+    resolution: {integrity: sha512-4InXCdDg+eSn3g6rR/qcp8xcYmLW9qzyV5xuxXmb9tqPKIGR15QX/I88Qc41R4SiQcYwcyGs40yD6goHoo3dRA==}
+
   '@backstage/module-federation-common@0.1.4':
     resolution: {integrity: sha512-Y194JGENDCHwvRt1fQu2TJlGuaU3PuK5FK+0TVLANTRpnfPZHk1q6jw2ySMYVo17Eu3MVhaCNhrdAFkOH917oA==}
     peerDependencies:
@@ -2066,6 +2081,9 @@ packages:
   '@backstage/plugin-auth-node@0.7.3':
     resolution: {integrity: sha512-+zHHYLtvEb66ogO8Iw5VWYCrzVzNIKd2P9iB1lSz18sFVd8id87yfphK2877v5iYi1uFcUByhQ4ubP97g8imIw==}
 
+  '@backstage/plugin-auth-node@0.7.4':
+    resolution: {integrity: sha512-9AaEQ/5RUWzuzRUUaDSN+/0UnfUXMiJ/c69npX5x9B+9U8vU2O39l1zpOdONwmQQemZaKyH39YhqGdlmX54RqA==}
+
   '@backstage/plugin-auth-react@0.1.29':
     resolution: {integrity: sha512-d3Gh4bTZ1L6x42QyLPJYe8nqjJaRS4teC63DR9zhFhCXybmgQB4jOvWIWtBCnVN7MPd+B9UrOvdB6P0y7EzYtQ==}
     peerDependencies:
@@ -2115,6 +2133,14 @@ packages:
     resolution: {integrity: sha512-I8+2kgOqfAzofs2jWV6mccj5LOpjyi2HubycohZy+SVfGYpiRzEU5pyqAXvUA/EOM5YaI51ZbkGA0BL0qMRVNg==}
     peerDependencies:
       '@backstage/backend-test-utils': ^1.11.5
+    peerDependenciesMeta:
+      '@backstage/backend-test-utils':
+        optional: true
+
+  '@backstage/plugin-catalog-node@2.2.4':
+    resolution: {integrity: sha512-viO0Qi0O9OdyAReXfiaOfNG8F7Bt14L7AbdNA9kknL/zu/YfZ0N40Z3eGKYJ71DVZ0dkiUtb60WzSS/BdRopwg==}
+    peerDependencies:
+      '@backstage/backend-test-utils': ^1.11.6
     peerDependenciesMeta:
       '@backstage/backend-test-utils':
         optional: true
@@ -2192,11 +2218,17 @@ packages:
   '@backstage/plugin-permission-backend@0.7.14':
     resolution: {integrity: sha512-PtbtpJRD+X8JJ7KnibLLRrkWcql1dmS27O8R7yd0ujdjPbkkLsyJLVWjn7w7o1cZN6t6GCfdcE+SYi0xsFgUwQ==}
 
+  '@backstage/plugin-permission-common@0.9.10':
+    resolution: {integrity: sha512-lYVUDWz2ZdASKObzbwv5yHN7EC/b2J1GEBFUTfx2MoUNP9yRIGJf314kegIc9dgsqwkOcyvW23aZY6Ry4FmKAw==}
+
   '@backstage/plugin-permission-common@0.9.9':
     resolution: {integrity: sha512-tjFBEKqscUikh3FuXka9n24/N13s9H/L8XUKD9dmzGZL2GVKBt89lLixGsHLypMWntICwqlAFiItIihrdJsq3Q==}
 
   '@backstage/plugin-permission-node@0.11.2':
     resolution: {integrity: sha512-cBlsh1VdaiR1rYRyTazUHDRkQXPrQaRawA9aG6c4sDCYiCrB93rPD69TJW0o7ta/kqmXHdZnXk0x0DEOis6fsg==}
+
+  '@backstage/plugin-permission-node@0.11.3':
+    resolution: {integrity: sha512-aTzXXS6lRvjOGF+67yyrxz3/trXG7VIugwoVaFUIWGhwQ3gloNGtffpUlGzdy71lemhdKBItZaHME6BG/mp81A==}
 
   '@backstage/plugin-permission-react@0.5.3':
     resolution: {integrity: sha512-tsLjPC3+4FH3KyJyIYDINeFgmTSAW4eLxhN5X0aNBgXiHnh1qrM80dtM5rc+7P55Lh41/oqE4jzL2Aa4gIygsQ==}
@@ -2214,16 +2246,30 @@ packages:
   '@backstage/plugin-proxy-node@0.1.17':
     resolution: {integrity: sha512-qRVEhyiBpliAf+L8BLq1X6a2zzbDotkcBq53HG9rsHLdGKR15+QSZn01CzCfZVFezctI2KCpSIFjYLlkfLiPDA==}
 
+  '@backstage/plugin-scaffolder-backend-module-github@0.9.12':
+    resolution: {integrity: sha512-g/eFffiJIeNLnHh/9dWLvErFDAvkS9K8oeEenk4/TSWaMyRhJTByt3neMIAyeTBGehr0qFHRF5Ke+HmvdoyzGQ==}
+
   '@backstage/plugin-scaffolder-backend@4.0.2':
     resolution: {integrity: sha512-ESQXu5N9Hst5O0pXxLQZ6TPikOSJ/26vBcNBgzjBJvkGCUHybSwpPctqcYF6VeGacEHb6rEyiw9TjTDtG6peSg==}
 
   '@backstage/plugin-scaffolder-common@2.2.1':
     resolution: {integrity: sha512-0RgeG6IeB1zeIL0V6m7l9OrIaBfAWXtTnqK+fnJ22OQkm3Si2B4POO9E+AZx9Am6S80JXobSgFPwbi77Eg/45g==}
 
+  '@backstage/plugin-scaffolder-common@2.2.2':
+    resolution: {integrity: sha512-u5uOzGrORim6c119l4TbDdjJn6SaJtkBYLOTOOqtFJzEd2q44kzPuRhVBpLA9BFZPVcE6InVa5+rSyiUJtqM7g==}
+
   '@backstage/plugin-scaffolder-node@0.13.5':
     resolution: {integrity: sha512-6ekqGHg5S81QMC0fucfScZm/PBt9lxbj87C2bKJSfqo3th/LHOhFM0/PrX48gz9/L7k705bR8LB5BlQ/rSEnBA==}
     peerDependencies:
       '@backstage/backend-test-utils': ^1.11.5
+    peerDependenciesMeta:
+      '@backstage/backend-test-utils':
+        optional: true
+
+  '@backstage/plugin-scaffolder-node@0.13.6':
+    resolution: {integrity: sha512-GGc7Hflx9oiX8ZUaofuEmgVihHSwrpz6R0PGvbyMaIedGlEX9KfAiDwR2rmsKcHSZ3MSDJi+PFxuCuOv0AaKBw==}
+    peerDependencies:
+      '@backstage/backend-test-utils': ^1.11.6
     peerDependenciesMeta:
       '@backstage/backend-test-utils':
         optional: true
@@ -4341,6 +4387,9 @@ packages:
     resolution: {integrity: sha512-4tuKnCRecJ6CG6gr0XcEXdZtkTDbfbnD5oaHBmLERTjTMZNi2CbfEHZxPU41xXLDG4DfKf+sonu00zvKI9NSbw==}
     engines: {node: '>= 18'}
 
+  '@octokit/openapi-types@14.0.0':
+    resolution: {integrity: sha512-HNWisMYlR8VCnNurDU6os2ikx0s0VyEjDYHNS/h4cgb8DeOxQ0n72HyinUtdDVxJhFy3FWLGl0DJhfEWk3P5Iw==}
+
   '@octokit/openapi-types@18.1.1':
     resolution: {integrity: sha512-VRaeH8nCDtF5aXWnjPuEMIYf1itK/s3JYyJcWFJT8X9pSNnBtriDf7wlEWsGuhPLl4QIH4xM8fqTXDwJ3Mu6sw==}
 
@@ -4435,15 +4484,29 @@ packages:
   '@octokit/types@13.10.0':
     resolution: {integrity: sha512-ifLaO34EbbPj0Xgro4G5lP5asESjwHracYJvVaPIyXMuiuXLlhic3S47cBdTb+jfODkTE5YtGCLt3Ay3+J97sA==}
 
+  '@octokit/types@8.2.1':
+    resolution: {integrity: sha512-8oWMUji8be66q2B9PmEIUyQm00VPDPun07umUWSaCwxmeaquFBro4Hcc3ruVoDo3zkQyZBlRvhIMEYS3pBhanw==}
+
   '@octokit/types@9.3.2':
     resolution: {integrity: sha512-D4iHGTdAnEEVsB8fl95m1hiz7D5YiRdQ9b/OEb3BYRVwbLsGHcRVPz+u+BgRLNk0Q0/4iZCBqDN96j2XNxfXrA==}
+
+  '@octokit/webhooks-methods@3.0.3':
+    resolution: {integrity: sha512-2vM+DCNTJ5vL62O5LagMru6XnYhV4fJslK+5YUkTa6rWlW2S+Tqs1lF9Wr9OGqHfVwpBj3TeztWfVON/eUoW1Q==}
+    engines: {node: '>= 14'}
 
   '@octokit/webhooks-methods@4.1.0':
     resolution: {integrity: sha512-zoQyKw8h9STNPqtm28UGOYFE7O6D4Il8VJwhAtMHFt2C4L0VQT1qGKLeefUOqHNs1mNRYSadVv7x0z8U2yyeWQ==}
     engines: {node: '>= 18'}
 
+  '@octokit/webhooks-types@6.11.0':
+    resolution: {integrity: sha512-AanzbulOHljrku1NGfafxdpTCfw2ENaWzH01N2vqQM+cUFbk868Cgh0xylz0JIM9BoKbfI++bdD6EYX0Q/UTEw==}
+
   '@octokit/webhooks-types@7.6.1':
     resolution: {integrity: sha512-S8u2cJzklBC0FgTwWVLaM8tMrDuDMVE4xiTK4EYXM9GntyvrdbSoxqDQa+Fh57CCNApyIpyeqPhhFEmHPfrXgw==}
+
+  '@octokit/webhooks@10.9.2':
+    resolution: {integrity: sha512-hFVF/szz4l/Y/GQdKxNmQjUke0XJXK986p+ucIlubTGVPVtVtup5G1jarQfvCMBs9Fvlf9dvH8K83E4lefmofQ==}
+    engines: {node: '>= 14'}
 
   '@octokit/webhooks@12.3.2':
     resolution: {integrity: sha512-exj1MzVXoP7xnAcAB3jZ97pTvVPkQF9y6GA/dvYC47HV7vLv+24XRS6b/v/XnyikpEuvMhugEXdGtAlU086WkQ==}
@@ -12246,6 +12309,12 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
+  libsodium-wrappers@0.8.4:
+    resolution: {integrity: sha512-mu8aAWucZjTB5O/BtGXtW4e1agy7uHxNYG7zPthmmD1jU43LCDmSWZLN4JhflbdPXj3yDO4lxM1O9hLDgIOXDw==}
+
+  libsodium@0.8.4:
+    resolution: {integrity: sha512-lMcYaRi0zcs7tarATsQUYC7rstliIXZuoq0c6zXSgNtSNtdvBgkSegjWhpMJAXzKX3SUSwIp7+zEsob+j3LuRw==}
+
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
 
@@ -13496,6 +13565,9 @@ packages:
   obug@2.1.3:
     resolution: {integrity: sha512-9miFgM2OFba7hB+pRgvtV84pYTBaoTHohvmIgiRt6dRIzbwEOIaNaP+dIlGs2fNFoB0SeISs0Jz5WFVRid6Xyg==}
     engines: {node: '>=12.20.0'}
+
+  octokit-plugin-create-pull-request@5.1.1:
+    resolution: {integrity: sha512-kHbo3bB9pkzQGNVJPTv6hkpFbXL/s2tbrQm+7uqtS46C6c6R/BDgFvk1nEPWBczXvftwinb33pLWXTKH10Rx1Q==}
 
   octokit@3.2.2:
     resolution: {integrity: sha512-7Abo3nADdja8l/aglU6Y3lpnHSfv0tw7gFPiqzry/yCU+2gTAX7R1roJ8hJrxIK+S1j+7iqRJXtmuHJ/UDsBhQ==}
@@ -16127,6 +16199,10 @@ packages:
     resolution: {integrity: sha512-4LeEWl96twnS2Q7Bz4MGqgazLqO+hJN63GZxXoIqh1T3VweYD997gbU1ItNsQafqqXTXd5WFyFdReLtwvRBNiw==}
     engines: {node: '>=18'}
 
+  tar@7.5.22:
+    resolution: {integrity: sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==}
+    engines: {node: '>=18'}
+
   tarn@3.1.2:
     resolution: {integrity: sha512-3RTvqKZcK/17jnJ8rMKFXbyNogywTs1z0gVPPwFsJGX46rkmUHOdIaSQ/aVO1rS7nH+soiXiWk7rvUXxndm8Dg==}
     engines: {node: '>=8.0.0'}
@@ -18541,6 +18617,34 @@ snapshots:
       - tedious
       - utf-8-validate
 
+  '@backstage/backend-plugin-api@1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/cli-common': 0.3.0
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/plugin-auth-node': 0.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/plugin-permission-node': 0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/types': 1.2.2
+      '@types/express': 4.17.25
+      '@types/json-schema': 7.0.15
+      '@types/luxon': 3.7.4
+      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.15.3)(pg@8.22.0)
+      luxon: 3.7.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - better-sqlite3
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
   '@backstage/backend-plugin-api@1.9.3(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.15.3)(pg@8.22.0)':
     dependencies:
       '@backstage/cli-common': 0.3.0
@@ -18608,6 +18712,15 @@ snapshots:
       uri-template: 2.0.0
     transitivePeerDependencies:
       - encoding
+
+  '@backstage/catalog-model@1.10.0':
+    dependencies:
+      '@backstage/errors': 1.3.1
+      '@backstage/types': 1.2.2
+      ajv: 8.20.0
+      ajv-errors: 3.0.0(ajv@8.20.0)
+      lodash: 4.18.1
+      zod: 3.25.76
 
   '@backstage/catalog-model@1.9.0':
     dependencies:
@@ -18787,7 +18900,7 @@ snapshots:
       '@backstage/module-federation-common': 0.1.4(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.4(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12)(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
-      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       '@rollup/plugin-commonjs': 26.0.3(rollup@4.62.2)
       '@rollup/plugin-json': 6.1.0(rollup@4.62.2)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.62.2)
@@ -18836,7 +18949,7 @@ snapshots:
       ts-morph: 24.0.0
       util: 0.12.5
       webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
-      webpack-dev-server: 5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      webpack-dev-server: 5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       yml-loader: 2.1.0
       yn: 4.0.0
       zod: 4.4.3
@@ -19424,6 +19537,13 @@ snapshots:
       - supports-color
       - tedious
 
+  '@backstage/connections@0.3.0':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/types': 1.2.2
+      zod: 4.4.3
+
   '@backstage/core-app-api@1.20.3(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/config': 1.3.8
@@ -19633,6 +19753,24 @@ snapshots:
       - encoding
       - supports-color
 
+  '@backstage/integration@2.1.0(encoding@0.1.13)':
+    dependencies:
+      '@azure/identity': 4.13.1
+      '@azure/storage-blob': 12.33.0
+      '@backstage/config': 1.3.8
+      '@backstage/connections': 0.3.0
+      '@backstage/errors': 1.3.1
+      '@octokit/auth-app': 4.0.13(encoding@0.1.13)
+      '@octokit/rest': 19.0.13(encoding@0.1.13)
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      git-url-parse: 15.0.0
+      lodash: 4.18.1
+      luxon: 3.7.2
+      p-throttle: 4.1.1
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
   '@backstage/module-federation-common@0.1.4(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.4(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/config': 1.3.8
@@ -19817,6 +19955,36 @@ snapshots:
       '@backstage/backend-plugin-api': 1.9.3(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.15.3)(pg@8.22.0)
       '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
       '@backstage/catalog-model': 1.9.0
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/types': 1.2.2
+      '@types/express': 4.17.25
+      '@types/passport': 1.0.17
+      express: 4.22.2
+      jose: 5.10.0
+      lodash: 4.18.1
+      passport: 0.7.0
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+      zod-validation-error: 5.0.0(zod@4.4.3)
+    transitivePeerDependencies:
+      - better-sqlite3
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
+  '@backstage/plugin-auth-node@0.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/backend-plugin-api': 1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
+      '@backstage/catalog-model': 1.10.0
       '@backstage/config': 1.3.8
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
@@ -20063,6 +20231,32 @@ snapshots:
       '@backstage/plugin-catalog-common': 1.1.10(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.9(encoding@0.1.13)
       '@backstage/plugin-permission-node': 0.11.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/types': 1.2.2
+      '@opentelemetry/api': 1.9.1
+      lodash: 4.18.1
+      yaml: 2.9.0
+    transitivePeerDependencies:
+      - better-sqlite3
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
+  '@backstage/plugin-catalog-node@2.2.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/backend-plugin-api': 1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/errors': 1.3.1
+      '@backstage/plugin-catalog-common': 1.1.10(encoding@0.1.13)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/plugin-permission-node': 0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       lodash: 4.18.1
@@ -20449,6 +20643,17 @@ snapshots:
       - supports-color
       - tedious
 
+  '@backstage/plugin-permission-common@0.9.10(encoding@0.1.13)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/types': 1.2.2
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - encoding
+
   '@backstage/plugin-permission-common@0.9.9(encoding@0.1.13)':
     dependencies:
       '@backstage/config': 1.3.8
@@ -20490,6 +20695,31 @@ snapshots:
       '@backstage/config': 1.3.8
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.9(encoding@0.1.13)
+      '@types/express': 4.17.25
+      express: 4.22.2
+      express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.2)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - better-sqlite3
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
+  '@backstage/plugin-permission-node@0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/backend-plugin-api': 1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@standard-schema/spec': 1.1.0
       '@types/express': 4.17.25
       express: 4.22.2
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.2)
@@ -20554,6 +20784,38 @@ snapshots:
       - '@types/express'
       - better-sqlite3
       - debug
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
+  '@backstage/plugin-scaffolder-backend-module-github@0.9.12(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/backend-plugin-api': 1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/integration': 2.1.0(encoding@0.1.13)
+      '@backstage/plugin-catalog-node': 2.2.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-scaffolder-node': 0.13.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/types': 1.2.2
+      '@octokit/core': 5.2.2
+      '@octokit/plugin-retry': 6.1.0(@octokit/core@5.2.2)
+      '@octokit/webhooks': 10.9.2
+      libsodium-wrappers: 0.8.4
+      octokit: 3.2.2
+      octokit-plugin-create-pull-request: 5.1.1
+      yaml: 2.9.0
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@backstage/backend-test-utils'
+      - better-sqlite3
       - encoding
       - mariadb
       - mysql
@@ -20636,6 +20898,22 @@ snapshots:
       - encoding
       - supports-color
 
+  '@backstage/plugin-scaffolder-common@2.2.2(encoding@0.1.13)':
+    dependencies:
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/errors': 1.3.1
+      '@backstage/integration': 2.1.0(encoding@0.1.13)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/types': 1.2.2
+      '@microsoft/fetch-event-source': 2.0.1
+      '@types/json-schema': 7.0.15
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      uri-template: 2.0.0
+      zen-observable: 0.10.0
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
   '@backstage/plugin-scaffolder-node@0.13.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
     dependencies:
       '@backstage/backend-plugin-api': 1.9.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
@@ -20655,6 +20933,42 @@ snapshots:
       lodash: 4.18.1
       p-limit: 3.1.0
       tar: 7.5.19
+      winston: 3.19.0
+      winston-transport: 4.9.0
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - better-sqlite3
+      - encoding
+      - mariadb
+      - mysql
+      - mysql2
+      - pg
+      - pg-native
+      - pg-query-stream
+      - sqlite3
+      - supports-color
+      - tedious
+
+  '@backstage/plugin-scaffolder-node@0.13.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
+    dependencies:
+      '@backstage/backend-plugin-api': 1.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/errors': 1.3.1
+      '@backstage/integration': 2.1.0(encoding@0.1.13)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/plugin-permission-node': 0.11.3(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)
+      '@backstage/plugin-scaffolder-common': 2.2.2(encoding@0.1.13)
+      '@backstage/types': 1.2.2
+      '@isomorphic-git/pgp-plugin': 0.0.7
+      concat-stream: 2.0.0
+      fs-extra: 11.4.0
+      globby: 11.1.0
+      isomorphic-git: 1.41.4
+      jsonschema: 1.5.0
+      lodash: 4.18.1
+      p-limit: 3.1.0
+      tar: 7.5.22
       winston: 3.19.0
       winston-transport: 4.9.0
       zod: 4.4.3
@@ -23858,6 +24172,8 @@ snapshots:
       '@octokit/types': 13.10.0
       btoa-lite: 1.0.0
 
+  '@octokit/openapi-types@14.0.0': {}
+
   '@octokit/openapi-types@18.1.1': {}
 
   '@octokit/openapi-types@20.0.0': {}
@@ -23964,13 +24280,28 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 24.2.0
 
+  '@octokit/types@8.2.1':
+    dependencies:
+      '@octokit/openapi-types': 14.0.0
+
   '@octokit/types@9.3.2':
     dependencies:
       '@octokit/openapi-types': 18.1.1
 
+  '@octokit/webhooks-methods@3.0.3': {}
+
   '@octokit/webhooks-methods@4.1.0': {}
 
+  '@octokit/webhooks-types@6.11.0': {}
+
   '@octokit/webhooks-types@7.6.1': {}
+
+  '@octokit/webhooks@10.9.2':
+    dependencies:
+      '@octokit/request-error': 3.0.3
+      '@octokit/webhooks-methods': 3.0.3
+      '@octokit/webhooks-types': 6.11.0
+      aggregate-error: 3.1.0
 
   '@octokit/webhooks@12.3.2':
     dependencies:
@@ -24493,6 +24824,20 @@ snapshots:
     optional: true
 
   '@pmmmwh/react-refresh-webpack-plugin@0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))':
+    dependencies:
+      anser: 2.3.5
+      core-js-pure: 3.50.0
+      error-stack-parser: 2.1.4
+      html-entities: 2.6.0
+      react-refresh: 0.18.0
+      schema-utils: 4.3.3
+      source-map: 0.7.6
+      webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
+    optionalDependencies:
+      type-fest: 5.8.0
+      webpack-dev-server: 5.2.6(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+
+  '@pmmmwh/react-refresh-webpack-plugin@0.6.2(react-refresh@0.18.0)(type-fest@5.8.0)(webpack-dev-server@5.2.6(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)))(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))':
     dependencies:
       anser: 2.3.5
       core-js-pure: 3.50.0
@@ -33947,6 +34292,12 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  libsodium-wrappers@0.8.4:
+    dependencies:
+      libsodium: 0.8.4
+
+  libsodium@0.8.4: {}
+
   lie@3.3.0:
     dependencies:
       immediate: 3.0.6
@@ -35429,6 +35780,10 @@ snapshots:
   obuf@1.1.2: {}
 
   obug@2.1.3: {}
+
+  octokit-plugin-create-pull-request@5.1.1:
+    dependencies:
+      '@octokit/types': 8.2.1
 
   octokit@3.2.2:
     dependencies:
@@ -38711,6 +39066,14 @@ snapshots:
       minizlib: 3.1.0
       yallist: 5.0.0
 
+  tar@7.5.22:
+    dependencies:
+      '@isaacs/fs-minipass': 4.0.1
+      chownr: 3.0.0
+      minipass: 7.1.3
+      minizlib: 3.1.0
+      yallist: 5.0.0
+
   tarn@3.1.2: {}
 
   tdigest@0.1.2:
@@ -39781,6 +40144,18 @@ snapshots:
     optionalDependencies:
       webpack: 5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
 
+  webpack-dev-middleware@7.4.5(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)):
+    dependencies:
+      colorette: 2.0.20
+      memfs: 4.68.1
+      mime-types: 3.0.2
+      on-finished: 2.4.1
+      range-parser: 1.2.1
+      schema-utils: 4.3.3
+    optionalDependencies:
+      webpack: 5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
+    optional: true
+
   webpack-dev-middleware@7.4.5(webpack@5.109.2):
     dependencies:
       colorette: 2.0.20
@@ -39899,7 +40274,7 @@ snapshots:
       serve-index: 1.9.2
       sockjs: 0.3.24
       spdy: 4.0.2
-      webpack-dev-middleware: 7.4.5(webpack@5.105.4(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
+      webpack-dev-middleware: 7.4.5(webpack@5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25))
       ws: 8.21.3
     optionalDependencies:
       webpack: 5.109.2(@swc/core@1.15.47)(esbuild@0.28.2)(postcss@8.5.25)
@@ -39908,6 +40283,7 @@ snapshots:
       - debug
       - supports-color
       - utf-8-validate
+    optional: true
 
   webpack-merge@6.0.1:
     dependencies:

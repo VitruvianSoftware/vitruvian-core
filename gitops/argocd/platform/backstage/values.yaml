@@ -37,6 +37,11 @@ backstage:
   - --config
   - /app/app-config-from-configmap.yaml
   extraEnvVars:
+  - name: GITHUB_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: backstage-github-token
+        key: GITHUB_TOKEN
   - name: GRAFANA_TOKEN
     valueFrom:
       secretKeyRef:
@@ -192,6 +197,10 @@ backstage:
     integrations:
       github:
       - host: github.com
+        # Authenticates catalog-info.yaml fetches (previously anonymous, and so
+        # capped at GitHub's 60 req/hr unauthenticated limit) and is the
+        # credential publish:github uses to create scaffolded repositories.
+        token: ${GITHUB_TOKEN}
     catalog:
       rules:
       - allow: [Component, System, API, Resource, Location, Template, User, Group]
