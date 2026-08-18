@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:a582442cb58b8da9144848311e9584395eeb5e330a30b92070c4b57b68198a31
+    tag: latest@sha256:c8a23155fea42c28eb761234d65a9cd5087c4e7f1b766c0f2746a6c1ea6b1834
     pullPolicy: Always
   command:
   - node
@@ -171,7 +171,6 @@ backstage:
 serviceAccount:
   create: false
   name: backstage
-
 ingress:
   enabled: false
 httpRoute:
