@@ -112,3 +112,39 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: bash tools/ci/gitops-values-render.sh
+  # Unit-tests the Prometheus ALERT RULES, not just their syntax. Offline and
+  # fast; no cluster, no network.
+  #
+  # Syntax validity was never the failure mode worth gating. The 2026-08-18
+  # backstage incident was invisible because no rule existed for it at all, and
+  # the trap when writing one is keying on health_status -- which stays "Healthy"
+  # through exactly the outage the rule is meant to catch. These tests assert the
+  # alert fires WHILE health is Healthy, so that mistake cannot be reintroduced
+  # quietly. The rules are extracted from the deployed applicationset at run time
+  # rather than duplicated, so the test cannot pass against a stale copy.
+  prometheus-rule-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # promtool ships only inside the full prometheus tarball, nested as
+      # prometheus-<ver>.linux-amd64/promtool -- hence the member-path argument.
+      # (prometheus/promci is NOT an installer: it has no root action.yml, only
+      # sub-actions, so `uses: prometheus/promci@...` fails outright.)
+      - name: Install promtool (pinned + checksum-verified)
+        env:
+          PROMETHEUS_VERSION: 3.6.0
+        run: |
+          bash tools/ci/install-pinned-tool.sh \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}" \
+            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+            sha256sums.txt \
+            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+            promtool --tar "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+
+      - name: Run rule unit tests
+        run: bash tools/ci/prometheus-rule-tests/run.sh
