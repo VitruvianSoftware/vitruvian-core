@@ -189,6 +189,10 @@ jobs:
     timeout-minutes: 10
     outputs:
       macos: ${{ steps.changes.outputs.macos }}
+      # Push lane only: 'false' when the whole diff is docs/gitops/markdown, so
+      # macos-build can decline to claim a macOS runner for a change that
+      # provably cannot affect it. Empty on PR/merge_group (falsy -> no effect).
+      relevant: ${{ steps.gate.outputs.relevant }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -198,6 +202,19 @@ jobs:
       # it only decides whether macos-build runs. Skipped on push (the postsubmit
       # floor always builds), so outputs.macos is empty there and macos-build's
       # own `push` branch triggers the build.
+      # Postsubmit docs/gitops-only skip. detect-macos deliberately skips its
+      # path filter on push (the postsubmit floor always built), which meant a
+      # one-line gitops digest bump claimed a macOS runner and built the app:
+      # 156s on 69436a56. Decide it HERE, on the cheap ubuntu gatekeeper, rather
+      # than after the macOS runner is already claimed. Fails safe -- see
+      # tools/ci/relevant-paths.sh; the nightly full sweep is unchanged.
+      - name: Gate on changed paths (push lane)
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - name: Detect macOS-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -238,7 +255,7 @@ jobs:
     # `skipped`, which build-macos treats as a pass. Not a required check itself.
     needs: detect-macos
     if: >-
-      github.event_name == 'push' ||
+      (github.event_name == 'push' && needs.detect-macos.outputs.relevant != 'false') ||
       (github.event_name == 'merge_group' && needs.detect-macos.outputs.macos != 'false') ||
       (github.event_name == 'pull_request' && needs.detect-macos.outputs.macos == 'true')
     runs-on: macos-latest
@@ -395,6 +412,27 @@ jobs:
       # asymmetry mirrors build-macos: a PR runs the work only when the filter
       # POSITIVELY matched, the merge queue runs it unless the filter is
       # CERTAIN nothing relevant changed (uncertainty -> run).
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
+      # `github.event_name == 'push'` clause below bypasses the path filter
+      # entirely, so a one-line gitops digest bump ran the full heavy step on
+      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
+      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
+      # min of runner time that the diff provably cannot affect. 83 of the last
+      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
+      # month.
+      #
+      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
+      # relevant=true, and the only way to get false is a fully-computed diff in
+      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
+      # floor is unchanged -- periodic-full-sweep.yaml still runs
+      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - name: Detect ${{ matrix.module }}-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -407,7 +445,7 @@ jobs:
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
@@ -419,7 +457,7 @@ jobs:
           cache-dependency-path: ${{ matrix.module }}/go.sum
       - name: golangci-lint (${{ matrix.module }})
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -451,6 +489,27 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
+      # `github.event_name == 'push'` clause below bypasses the path filter
+      # entirely, so a one-line gitops digest bump ran the full heavy step on
+      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
+      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
+      # min of runner time that the diff provably cannot affect. 83 of the last
+      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
+      # month.
+      #
+      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
+      # relevant=true, and the only way to get false is a fully-computed diff in
+      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
+      # floor is unchanged -- periodic-full-sweep.yaml still runs
+      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - name: Detect IaC-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -464,7 +523,7 @@ jobs:
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         with:
@@ -483,7 +542,7 @@ jobs:
             */infra/**/go.sum
       - name: go test (IaC modules with tests)
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.iac != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.iac == 'true')
         run: bash tools/ci/go-test-with-retry.sh
@@ -517,6 +576,27 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
+      # `github.event_name == 'push'` clause below bypasses the path filter
+      # entirely, so a one-line gitops digest bump ran the full heavy step on
+      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
+      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
+      # min of runner time that the diff provably cannot affect. 83 of the last
+      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
+      # month.
+      #
+      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
+      # relevant=true, and the only way to get false is a fully-computed diff in
+      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
+      # floor is unchanged -- periodic-full-sweep.yaml still runs
+      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - uses: ./.github/actions/setup-bazel
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
@@ -540,7 +620,7 @@ jobs:
               - '.github/workflows/ci.yaml'
       - name: Race-test all Go targets
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           steps.changes.outputs.go == 'true'
         run: |
           set -euo pipefail
@@ -584,6 +664,27 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v7.0.1
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
+      # `github.event_name == 'push'` clause below bypasses the path filter
+      # entirely, so a one-line gitops digest bump ran the full heavy step on
+      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
+      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
+      # min of runner time that the diff provably cannot affect. 83 of the last
+      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
+      # month.
+      #
+      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
+      # relevant=true, and the only way to get false is a fully-computed diff in
+      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
+      # floor is unchanged -- periodic-full-sweep.yaml still runs
+      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - name: Detect example/library changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -597,7 +698,7 @@ jobs:
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         with:
@@ -613,14 +714,14 @@ jobs:
       # -diff` never writes, so this cannot dirty the tree it is checking.
       - name: Assert example/library module pins are in sync
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         run: bash tools/gomod/tidy.sh --check
 
       - name: go build (every example module)
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.ex != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.ex == 'true')
         run: |
@@ -650,6 +751,27 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+      # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
+      # `github.event_name == 'push'` clause below bypasses the path filter
+      # entirely, so a one-line gitops digest bump ran the full heavy step on
+      # main. Measured on 69436a56 (gitops/argocd/platform/buzz/values.yaml,
+      # ONE line): example-build 452s + macos-build 156s + go-race 144s = 12.5
+      # min of runner time that the diff provably cannot affect. 83 of the last
+      # 321 commits on main were gitops-only (~5.9/day) -> ~37 runner-hours a
+      # month.
+      #
+      # relevant-paths.sh FAILS SAFE: any missing/uncomputable diff base yields
+      # relevant=true, and the only way to get false is a fully-computed diff in
+      # which EVERY changed file is docs/gitops/markdown. The whole-graph safety
+      # floor is unchanged -- periodic-full-sweep.yaml still runs
+      # `bazel build //...` + `bazel test //...` nightly at 06:00 UTC.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name == 'push'
+        env:
+          BEFORE_REV: ${{ github.event.before }}
+        run: bash tools/ci/relevant-paths.sh
+
       - name: Detect Butane-relevant changes
         id: changes
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
@@ -662,7 +784,7 @@ jobs:
               - '.github/workflows/ci.yaml'
       - name: Validate Butane template
         if: >-
-          github.event_name == 'push' ||
+          (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
         working-directory: devx
