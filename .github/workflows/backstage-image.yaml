@@ -72,7 +72,11 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 was already marginal: a cold cache rebuilds the dependency tree for
+    # BOTH arches, and linux/arm64 is QEMU-emulated on an amd64 runner. Any
+    # lockfile change evicts that layer, and the first such run after this one
+    # was cancelled mid-build at exactly 30m. The smoke steps add ~3m on top.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7.0.1
 
