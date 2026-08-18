@@ -108,3 +108,22 @@ jobs:
           # shared 10GB GitHub Actions cache.
           cache-from: type=gha,scope=backstage-image
           cache-to: type=gha,mode=max,scope=backstage-image
+
+      # buildx cannot --load a multi-arch manifest, so export an amd64-only copy
+      # the runner can actually execute. Every layer was just built by the step
+      # above and is in the shared cache, so this is an export, not a rebuild.
+      - name: Load image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backstage/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: backstage:smoke
+          cache-from: type=gha,scope=backstage-image
+
+      # Boots the image and asserts every plugin initializes and readiness
+      # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --
+      # #1709 shipped with a green suite and wedged production for hours.
+      - name: Boot smoke test
+        run: tools/ci/backstage-boot-smoke.sh backstage:smoke
