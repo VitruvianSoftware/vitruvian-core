@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:a25487a9eccdec0f6a79eedd4b1cb18f18e90f470571dc5b4b3092fbc8551da6
+    tag: latest@sha256:c7b629db3538a4fcc877b9e68c43eb1e8a5fe37748e09eb41717044e65e56347
     pullPolicy: Always
   command:
   - node
@@ -214,9 +214,9 @@ backstage:
           githubUrl: https://github.com
           orgs: [VitruvianSoftware]
           schedule:
-            initialDelay: { seconds: 30 }
-            frequency: { hours: 1 }
-            timeout: { minutes: 15 }
+            initialDelay: {seconds: 30}
+            frequency: {hours: 1}
+            timeout: {minutes: 15}
       rules:
       - allow: [Component, System, API, Resource, Location, Template, User, Group]
       locations:
