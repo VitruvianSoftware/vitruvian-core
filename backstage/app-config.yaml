@@ -63,6 +63,9 @@ grafana:
 integrations:
   github:
     - host: github.com
+      # Authenticates catalog fetches and is what publish:github uses to create
+      # scaffolded repositories. Optional locally; required in the cluster.
+      token: ${GITHUB_TOKEN}
 
 auth:
   environment: production

@@ -28,6 +28,11 @@ const backend = createBackend();
 backend.add(import("@backstage/plugin-app-backend"));
 backend.add(import("@backstage/plugin-proxy-backend"));
 backend.add(import("@backstage/plugin-scaffolder-backend"));
+// Supplies publish:github (plus github:repo:create and friends). Without it the
+// generated bazel-* templates fail mid-run: fetch:template renders the project
+// into a temp dir, then the "Create GitHub repo" step aborts with an unknown
+// action and catalog:register never happens.
+backend.add(import("@backstage/plugin-scaffolder-backend-module-github"));
 backend.add(import("@backstage/plugin-techdocs-backend"));
 
 // Auth plugin & providers
