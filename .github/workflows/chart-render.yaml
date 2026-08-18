@@ -134,7 +134,15 @@ jobs:
       # sub-actions, so `uses: prometheus/promci@...` fails outright.)
       - name: Install promtool (pinned + checksum-verified)
         env:
-          PROMETHEUS_VERSION: 3.6.0
+          # MUST track the prometheus the cluster actually runs, which is the
+          # appVersion of the chart pinned in
+          # gitops/argocd/platform/prometheus/applicationset.yaml
+          # (chart 22.6.7 -> prometheus v2.45.0). promtool validates rules for
+          # ITS own version, so a promtool a major version ahead can accept
+          # syntax the deployed server rejects -- a gate that passes while the
+          # rules fail to load is the failure mode this whole directory exists
+          # to prevent. Bump this together with the chart's targetRevision.
+          PROMETHEUS_VERSION: 2.45.0
         run: |
           bash tools/ci/install-pinned-tool.sh \
             "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}" \
