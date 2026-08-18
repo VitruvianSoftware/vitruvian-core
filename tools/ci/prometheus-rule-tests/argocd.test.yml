@@ -1,0 +1,129 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Unit tests for the `argocd` alert group in
+# gitops/argocd/platform/prometheus/applicationset.yaml.
+#
+# These exist because the 2026-08-18 backstage incident was invisible for ~45
+# minutes: ArgoCD could not render the app, it froze at its last good state, two
+# merged PRs never deployed -- and health_status stayed "Healthy" the whole time.
+# The single most important assertion here is the one that proves an alert fires
+# while health is Healthy; a rule that keyed on health would pass every other
+# check and still miss the outage it was written for.
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ---------------------------------------------------------------- Unknown --
+  - interval: 1m
+    name: ComparisonFailed fires while the app still reports Healthy
+    input_series:
+      # sync Unknown, health Healthy -- the exact shape of the backstage wedge.
+      - series: 'argocd_app_info{name="backstage",project="platform-project",dest_namespace="backstage",sync_status="Unknown",health_status="Healthy"}'
+        values: '1+0x30'
+    alert_rule_test:
+      # Below the 10m `for:` -- must NOT fire yet.
+      - eval_time: 9m
+        alertname: ArgoCDAppComparisonFailed
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: ArgoCDAppComparisonFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: backstage
+              project: platform-project
+              dest_namespace: backstage
+            exp_annotations:
+              summary: "ArgoCD cannot render backstage -- merges are NOT deploying"
+              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."
+      # A Degraded alert must NOT also fire -- health was Healthy throughout.
+      - eval_time: 20m
+        alertname: ArgoCDAppDegraded
+        exp_alerts: []
+
+  # ----------------------------------------------------------------- Synced --
+  - interval: 1m
+    name: A healthy Synced app never alerts
+    input_series:
+      - series: 'argocd_app_info{name="buzz",project="buzz-project",dest_namespace="buzz",sync_status="Synced",health_status="Healthy"}'
+        values: '1+0x60'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: ArgoCDAppComparisonFailed
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: ArgoCDAppDegraded
+        exp_alerts: []
+
+  # -------------------------------------------------------------- OutOfSync --
+  - interval: 1m
+    name: OutOfSync tolerates a normal rollout but not a stuck one
+    input_series:
+      - series: 'argocd_app_info{name="whoami",project="platform-project",dest_namespace="whoami",sync_status="OutOfSync",health_status="Healthy"}'
+        values: '1+0x60'
+    alert_rule_test:
+      # A rollout that settles inside 30m must stay quiet.
+      - eval_time: 25m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: whoami
+              project: platform-project
+              dest_namespace: whoami
+            exp_annotations:
+              summary: "ArgoCD app whoami OutOfSync >30m"
+              description: "whoami (project platform-project) has differed from git for >30m. With selfHeal on, that means sync is failing rather than merely pending -- check .status.operationState.message for the apply error."
+
+  # --------------------------------------------------------------- Degraded --
+  - interval: 1m
+    name: Degraded fires after 15m
+    input_series:
+      - series: 'argocd_app_info{name="ntfy",project="platform-project",dest_namespace="ntfy",sync_status="Synced",health_status="Degraded"}'
+        values: '1+0x40'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ArgoCDAppDegraded
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: ArgoCDAppDegraded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: ntfy
+              project: platform-project
+              dest_namespace: ntfy
+            exp_annotations:
+              summary: "ArgoCD app ntfy Degraded >15m"
+              description: "ntfy (ns ntfy) has reported Degraded for >15m -- its workload is failing its health check, not merely mid-rollout."
+
+  # ------------------------------------------------------- HA de-duplication --
+  - interval: 1m
+    name: Two application-controller replicas produce ONE alert, not two
+    input_series:
+      # Same app scraped from both controller pods (different instance labels).
+      # Without the `max by (...)` this fires twice for one problem.
+      - series: 'argocd_app_info{name="backstage",project="platform-project",dest_namespace="backstage",sync_status="Unknown",health_status="Healthy",instance="10.0.0.1:8082"}'
+        values: '1+0x30'
+      - series: 'argocd_app_info{name="backstage",project="platform-project",dest_namespace="backstage",sync_status="Unknown",health_status="Healthy",instance="10.0.0.2:8082"}'
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ArgoCDAppComparisonFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: backstage
+              project: platform-project
+              dest_namespace: backstage
+            exp_annotations:
+              summary: "ArgoCD cannot render backstage -- merges are NOT deploying"
+              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."

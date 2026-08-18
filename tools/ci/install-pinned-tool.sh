@@ -36,7 +36,7 @@
 # retry/verification fix lands once instead of drifting across N near-copies.
 #
 # Usage:
-#   install-pinned-tool.sh <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw
+#   install-pinned-tool.sh <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw [member-path]
 #
 #   <base-url>         release base URL, e.g.
 #                       https://github.com/rhysd/actionlint/releases/download/v1.7.7
@@ -57,6 +57,14 @@
 #                       the tool).
 #   --tar               <asset> is a .tar.gz; extract member <bin-name> from it.
 #   --raw               <asset> IS the binary; install it directly as <bin-name>.
+#   [member-path]       OPTIONAL, --tar only. Path of the binary INSIDE the
+#                       archive when it is not a top-level member named
+#                       <bin-name>. Prometheus ships promtool as
+#                       prometheus-<ver>.linux-amd64/promtool, so the plain
+#                       member form cannot find it. Leading directories are
+#                       stripped so the binary still lands at
+#                       ~/.local/bin/<bin-name>. Defaults to <bin-name>, which
+#                       is what every pre-existing call site relies on.
 #
 # Every fetch uses --retry 3 --retry-delay 2 --retry-all-errors --max-time 120:
 # several call sites are REQUIRED merge-queue checks, so one transient
@@ -72,8 +80,8 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 6 ]; then
-  echo "usage: install-pinned-tool.sh <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw" >&2
+if [ "$#" -lt 6 ] || [ "$#" -gt 7 ]; then
+  echo "usage: install-pinned-tool.sh <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw [member-path]" >&2
   exit 2
 fi
 
@@ -83,6 +91,8 @@ CHECKSUM_FILE="$3"
 CHECKSUM_PATTERN="$4"
 BIN_NAME="$5"
 MODE="$6"
+
+MEMBER_PATH="${7:-${BIN_NAME}}"
 
 case "${MODE}" in
   --tar | --raw) ;;
@@ -113,7 +123,11 @@ grep "${CHECKSUM_PATTERN}" "${CHECKSUM_FILE}" | sha256sum -c -
 mkdir -p "${HOME}/.local/bin"
 case "${MODE}" in
   --tar)
-    tar -xzf "${ASSET}" -C "${HOME}/.local/bin" "${BIN_NAME}"
+    # strip-components = the member's directory depth, so a nested binary still
+    # lands as ~/.local/bin/<bin-name> rather than recreating the archive tree.
+    _depth="$(printf '%s' "${MEMBER_PATH}" | awk -F/ '{print NF-1}')"
+    tar -xzf "${ASSET}" -C "${HOME}/.local/bin" \
+      --strip-components="${_depth}" "${MEMBER_PATH}"
     ;;
   --raw)
     install -m 0755 "${ASSET}" "${HOME}/.local/bin/${BIN_NAME}"

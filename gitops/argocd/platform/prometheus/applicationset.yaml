@@ -827,6 +827,61 @@ spec:
                     annotations:
                       summary: "mcp-slack repeatedly refusing a validly-signed token (sustained 403)"
                       description: "Someone holding a validly-signed token audienced for the mcp-slack project has been refused for >30m by one of this endpoint's per-request identity controls — an unlisted subject (OIDC_ALLOWED_SUBJECTS), a client that isn't the pinned OIDC client (OIDC_ALLOWED_CLIENT_ID, #1491), or a token carrying an azp claim at all. The endpoint is doing its job — this alert is the evidence that the cross-client path Zitadel documents as open is being exercised. TO ATTRIBUTE IT, grep the pod log for the literal string: mcp-slack: refused. The line names which control fired (SubjectNotAllowedError, ClientNotAllowedError or AuthorizedPartyPresentError) and the presented value, labelled sub=, client_id= or azp= to match — never assume it is a subject. Deliberately 403-only: this endpoint is scanned, so logging 401s would bury the signal in unauthenticated noise, and a 403 by construction means a validly-signed token audienced for our project. Note the presented identity is also returned to the CALLER (JSON body and WWW-Authenticate error_description), which is why keeping our own copy is the point — otherwise this is detection without attribution. The log line omits the presented value when the failing check has none to report, such as an absent client_id."
+                # -- 12. GitOps delivery (ArgoCD) -----------------------------
+                # The gap these close: on 2026-08-18 a bad key in a chart values
+                # file made ArgoCD unable to render the backstage Application at
+                # all. It froze at its last good state, so two already-merged PRs
+                # silently never deployed for ~45m. Nothing alerted, because
+                # argocd was not scraped at all -- see the argocd job in
+                # extraScrapeConfigs below, added with these rules.
+                #
+                # Health is NOT the signal. A wedged app keeps its old ReplicaSet
+                # serving, so health_status stays Healthy the entire time; only
+                # sync_status moves. Alert on sync, not health, or this whole
+                # section reports success through the exact outage it exists for.
+                - name: argocd
+                  rules:
+                  # sync_status=Unknown means ArgoCD could not even COMPARE the
+                  # app -- an unrenderable chart, unreachable repo, bad values.
+                  # Strictly worse than OutOfSync: nothing merged reaches the
+                  # cluster while it persists, and it never self-resolves. 10m is
+                  # well clear of a normal reconcile; this state is not transient.
+                  - alert: ArgoCDAppComparisonFailed
+                    expr: |
+                      max by (name, project, dest_namespace) (
+                        argocd_app_info{sync_status="Unknown"}
+                      ) == 1
+                    for: 10m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "ArgoCD cannot render {{ $labels.name }} -- merges are NOT deploying"
+                      description: "ArgoCD has been unable to compare {{ $labels.name }} (project {{ $labels.project }}, ns {{ $labels.dest_namespace }}) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application {{ $labels.name }} -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."
+                  # OutOfSync IS transient during a normal rollout, so this is
+                  # deliberately slower than the Unknown alert above. Sustained
+                  # past 30m means selfHeal is not converging.
+                  - alert: ArgoCDAppOutOfSync
+                    expr: |
+                      max by (name, project, dest_namespace) (
+                        argocd_app_info{sync_status="OutOfSync"}
+                      ) == 1
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "ArgoCD app {{ $labels.name }} OutOfSync >30m"
+                      description: "{{ $labels.name }} (project {{ $labels.project }}) has differed from git for >30m. With selfHeal on, that means sync is failing rather than merely pending -- check .status.operationState.message for the apply error."
+                  - alert: ArgoCDAppDegraded
+                    expr: |
+                      max by (name, project, dest_namespace) (
+                        argocd_app_info{health_status="Degraded"}
+                      ) == 1
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "ArgoCD app {{ $labels.name }} Degraded >15m"
+                      description: "{{ $labels.name }} (ns {{ $labels.dest_namespace }}) has reported Degraded for >15m -- its workload is failing its health check, not merely mid-rollout."
             extraScrapeConfigs: |2
 
               - job_name: 'node-exporter'
@@ -852,6 +907,31 @@ spec:
                 - source_labels: [__meta_kubernetes_service_name]
                   regex: 'traefik'
                   action: keep
+              - job_name: 'argocd'
+                # No ServiceMonitor: this cluster runs the plain prometheus
+                # chart, and ArgoCD ships no metrics Services here anyway (only
+                # argocd-image-updater-metrics exists). Pod-role SD keyed on the
+                # container port NAME picks up every component without needing
+                # either, and survives the components using five different port
+                # numbers (8080/8082/8083/8084/9001).
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      names: [argocd]
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: 'metrics'
+                  action: keep
+                # EXCLUDE argocd-image-updater. Its port is also named metrics
+                # but is TLS AND authenticated (plain HTTP returns 400, HTTPS
+                # returns 401), so an http scrape can never succeed -- it would
+                # sit permanently down and fire PrometheusTargetDown forever,
+                # which is how a wall of alerts gets learned as ignorable.
+                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  regex: 'argocd-image-updater'
+                  action: drop
+                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  target_label: component
               - job_name: 'minio'
                 metrics_path: /minio/v2/metrics/cluster
                 kubernetes_sd_configs:
