@@ -127,6 +127,21 @@ techdocs:
     type: "local"
 
 catalog:
+  providers:
+    # Ingests VitruvianSoftware members and teams as User/Group entities.
+    # Exactly one definition with exactly one org, which is what makes the
+    # module set alwaysUseDefaultNamespace -- entities land as
+    # user:default/<login> and group:default/<team-slug>, matching every
+    # `owner:` reference already in the catalog. Adding a second org would
+    # namespace them per-org and break all of those references.
+    githubOrg:
+      id: vitruvian-software
+      githubUrl: https://github.com
+      orgs: [VitruvianSoftware]
+      schedule:
+        initialDelay: { seconds: 30 }
+        frequency: { hours: 1 }
+        timeout: { minutes: 15 }
   rules:
     - allow: [Component, System, API, Resource, Location, Template, User, Group]
   locations:

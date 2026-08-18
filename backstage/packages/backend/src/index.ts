@@ -49,6 +49,16 @@ backend.add(
   import("@backstage/plugin-catalog-backend-module-scaffolder-entity-model"),
 );
 backend.add(import("@backstage/plugin-catalog-backend-module-github"));
+// Ingests VitruvianSoftware members and teams as User/Group entities, replacing
+// the hand-maintained copies in catalog-info.yaml. GitHub already mirrors them
+// exactly -- seven teams whose slugs match the declared group names, with
+// ipv1337 in all seven -- so every `owner:` reference keeps resolving.
+//
+// Lands with the hand-declared entities still in place, on purpose. The sign-in
+// resolver ends in signInWithCatalogUser, so a User entity that fails to appear
+// is not a degraded catalog, it is nobody being able to sign in. The duplicates
+// are removed in a follow-up once ingestion is observed working.
+backend.add(import("@backstage/plugin-catalog-backend-module-github-org"));
 
 // Permissions — the Vitruvian policy replaces the upstream allow-all reference
 // policy. Requires `permission.enabled: true` in app-config to be consulted.
