@@ -51,6 +51,12 @@ backend.add(import("@backstage/plugin-permission-backend"));
 backend.add(permissionModuleVitruvianPolicy);
 
 // Search
+// Kubernetes: surfaces live workload state (pods, health, images, events) on the
+// entity page. Authenticates with Backstage's OWN in-cluster ServiceAccount
+// token, so there is no credential to store or rotate -- see the read-only
+// ClusterRole in gitops/argocd/platform/backstage/rbac.yaml.
+backend.add(import("@backstage/plugin-kubernetes-backend"));
+
 backend.add(import("@backstage/plugin-search-backend"));
 backend.add(import("@backstage/plugin-search-backend-module-catalog"));
 backend.add(import("@backstage/plugin-search-backend-module-techdocs"));

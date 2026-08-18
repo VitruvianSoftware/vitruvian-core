@@ -1,0 +1,89 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# Identity the Backstage backend uses to read workload state for the Kubernetes
+# plugin. Backstage runs inside this cluster, so it authenticates with the token
+# this ServiceAccount is issued -- there is no API token to mint, store, seal or
+# rotate, and nothing to leak if the repo is cloned.
+#
+# The ClusterRole is READ-ONLY and deliberately narrow: exactly the resource
+# types the plugin renders, with get/list/watch and nothing else. No secrets, no
+# create/update/delete, no exec. Backstage surfaces information; it must never
+# become a mutation path into the cluster.
+#
+# Cluster-scoped rather than namespaced because the plugin resolves workloads by
+# label selector across namespaces -- a component's pods are not guaranteed to
+# live in the backstage namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backstage
+  namespace: backstage
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backstage-kubernetes-reader
+rules:
+  # Core workload + service objects the plugin renders.
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - limitranges
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: [jobs, cronjobs]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: [horizontalpodautoscalers]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: [ingresses]
+    verbs: ["get", "list", "watch"]
+  # Pod logs and events power the plugin's troubleshooting view -- the exact
+  # signal that made a wedged rollout invisible until someone ran kubectl.
+  - apiGroups: [""]
+    resources: [pods/log, events]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: [events]
+    verbs: ["get", "list", "watch"]
+  # Metrics are optional: the plugin degrades gracefully if metrics-server is
+  # absent, but this cluster runs it (HA, #433) so CPU/memory render.
+  - apiGroups: ["metrics.k8s.io"]
+    resources: [pods]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backstage-kubernetes-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-kubernetes-reader
+subjects:
+  - kind: ServiceAccount
+    name: backstage
+    namespace: backstage

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "permission": {
+      "type": "object",
+      "properties": {
+        "adminEntityRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Entity refs (users or groups) granted unrestricted access by the Vitruvian permission policy. Every other signed-in user is read-only.\n\nDefaults to `['group:default/platform-team']` when unset."
+        }
+      }
+    }
+  }
+}

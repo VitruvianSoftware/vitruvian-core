@@ -36,6 +36,12 @@ backstage:
   args:
   - --config
   - /app/app-config-from-configmap.yaml
+  # Identity for the Kubernetes plugin's read-only cluster access. Defined in
+  # platform/backstage/rbac.yaml; `create: false` because the chart must bind to
+  # that ServiceAccount rather than mint its own without the ClusterRole.
+  serviceAccount:
+    create: false
+    name: backstage
   extraEnvVars:
   - name: POSTGRES_PASSWORD
     valueFrom:
@@ -124,6 +130,24 @@ backstage:
     # 'local' keeps generated docs on the pod filesystem: rebuilt on
     # demand after a restart, which is fine for these small doc sets
     # and avoids introducing object-storage credentials.
+    # Live workload state on the entity page. Backstage runs inside this cluster,
+    # so it uses the in-cluster API endpoint with its own ServiceAccount token
+    # (platform/backstage/rbac.yaml) -- no API credential to mint, seal or rotate.
+    kubernetes:
+      serviceLocatorMethod:
+        type: "multiTenant"
+      clusterLocatorMethods:
+      - type: "config"
+        clusters:
+        - name: homelab
+          url: https://kubernetes.default.svc
+          authProvider: "serviceAccount"
+          skipTLSVerify: false
+          # serviceAccountToken deliberately omitted: with authProvider
+          # serviceAccount the plugin falls back to the projected token the
+          # kubelet already mounts, so there is no Secret to create or keep in
+          # sync with the ServiceAccount.
+          caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     techdocs:
       builder: "local"
       generator:

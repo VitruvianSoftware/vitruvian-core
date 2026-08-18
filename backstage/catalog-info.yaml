@@ -26,6 +26,11 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    # Binds this component to its live workloads for the Kubernetes tab. A label
+    # selector rather than backstage.io/kubernetes-id because the Helm chart sets
+    # app.kubernetes.io/name and does not carry a backstage.io/kubernetes-id
+    # label -- verified against the running pod rather than assumed.
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=backstage
 spec:
   type: service
   lifecycle: production

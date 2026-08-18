@@ -47,6 +47,10 @@ import {
   isGithubActionsAvailable,
 } from "@backstage-community/plugin-github-actions";
 import { EntityCatalogGraphCard } from "@backstage/plugin-catalog-graph";
+import {
+  EntityKubernetesContent,
+  isKubernetesAvailable,
+} from "@backstage/plugin-kubernetes";
 
 const defaultEntityPage = (
   <EntityLayout>
@@ -85,6 +89,19 @@ const defaultEntityPage = (
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       <EntityTechdocsContent />
+    </EntityLayout.Route>
+    {/*
+      Live workload state: pods, health, images, events. `if` gates the tab on
+      the entity actually declaring a kubernetes annotation, so components that
+      do not run in the cluster (CLIs, libraries, Cloud Run services) do not get
+      an empty tab promising data that will never arrive.
+    */}
+    <EntityLayout.Route
+      path="/kubernetes"
+      title="Kubernetes"
+      if={isKubernetesAvailable}
+    >
+      <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
   </EntityLayout>
 );
