@@ -30,10 +30,12 @@ on:
     paths:
       - 'backstage/**'
       - '.github/workflows/backstage-image.yaml'
+      - 'tools/ci/backstage-boot-smoke.sh'
   pull_request:
     paths:
       - 'backstage/**'
       - '.github/workflows/backstage-image.yaml'
+      - 'tools/ci/backstage-boot-smoke.sh'
 
 permissions:
   contents: read
@@ -72,7 +74,11 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 was already marginal, and #1738 proved it: the multi-arch build hit
+    # the ceiling and was CANCELLED mid-build, so no image was published. A
+    # lockfile change evicts the cached dependency layer for both arches, and
+    # linux/arm64 is QEMU-emulated on an amd64 runner. The smoke step adds ~3m.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7.0.1
 
