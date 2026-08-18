@@ -51,6 +51,10 @@ import {
   EntityKubernetesContent,
   isKubernetesAvailable,
 } from "@backstage/plugin-kubernetes";
+import {
+  EntityGrafanaDashboardsCard,
+  isDashboardSelectorAvailable,
+} from "@backstage-community/plugin-grafana";
 
 const defaultEntityPage = (
   <EntityLayout>
@@ -72,6 +76,27 @@ const defaultEntityPage = (
           <EntitySwitch.Case if={isGithubActionsAvailable}>
             <Grid item md={8} xs={12}>
               <EntityRecentGithubActionsRunsCard limit={5} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Grafana dashboards for this entity. Guarded on the
+            grafana/dashboard-selector annotation for the same reason as the CI
+            card above: unguarded it renders an empty box on every entity.
+            Note there is deliberately no EntityGrafanaAlertsCard -- that card
+            only reads Grafana-MANAGED alert rules, and this cluster's 42 rules
+            are datasource-managed (evaluated by Prometheus), so it would be
+            permanently empty. See docs/backstage-grafana.md. */}
+        <EntitySwitch>
+          {/* Wrapped in Boolean(): despite the `is` prefix, the plugin's
+              isDashboardSelectorAvailable returns `string | undefined` (the
+              annotation value), while EntitySwitch.Case expects a boolean
+              predicate. It would coerce at runtime, but the cast keeps the
+              types honest. */}
+          <EntitySwitch.Case
+            if={(entity) => Boolean(isDashboardSelectorAvailable(entity))}
+          >
+            <Grid item md={6} xs={12}>
+              <EntityGrafanaDashboardsCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>

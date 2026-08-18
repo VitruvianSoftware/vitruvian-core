@@ -44,6 +44,22 @@ backend:
       password: ${POSTGRES_PASSWORD}
     pluginDivisionMode: schema
 
+# The Grafana plugin talks to Grafana through the backend proxy, never from the
+# browser: the token stays server-side and no CORS/CSP exception is needed.
+proxy:
+  endpoints:
+    /grafana/api:
+      target: http://grafana.grafana.svc.cluster.local
+      headers:
+        Authorization: "Bearer ${GRAFANA_TOKEN}"
+      allowedMethods: ["GET"]
+      allowedHeaders: ["Accept", "Content-Type"]
+
+grafana:
+  # Only used to build the click-through links the card renders; the data
+  # itself comes through the proxy above.
+  domain: https://grafana.lab.ipv1337.dev
+
 integrations:
   github:
     - host: github.com
