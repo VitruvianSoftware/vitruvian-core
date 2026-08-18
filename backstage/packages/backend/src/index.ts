@@ -58,9 +58,7 @@ backend.add(import("@backstage/plugin-catalog-backend-module-github"));
 // resolver ends in signInWithCatalogUser, so a User entity that fails to appear
 // is not a degraded catalog, it is nobody being able to sign in. The duplicates
 // are removed in a follow-up once ingestion is observed working.
-backend.add(
-  import("@backstage/plugin-catalog-backend-module-github-org"),
-);
+backend.add(import("@backstage/plugin-catalog-backend-module-github-org"));
 
 // Permissions — the Vitruvian policy replaces the upstream allow-all reference
 // policy. Requires `permission.enabled: true` in app-config to be consulted.
