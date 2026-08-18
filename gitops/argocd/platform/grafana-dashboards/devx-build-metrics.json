@@ -27,9 +27,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -107,9 +105,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -151,9 +147,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -193,9 +187,7 @@
         "displayMode": "gradient",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         }
       },
       "targets": [
@@ -348,9 +340,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -390,9 +380,7 @@
         "displayMode": "gradient",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         }
       },
       "targets": [
@@ -596,9 +584,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -638,9 +624,7 @@
         "displayMode": "gradient",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         }
       },
       "targets": [
@@ -727,9 +711,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         },
         "textMode": "auto"
       },
@@ -805,9 +787,7 @@
         "displayMode": "gradient",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         }
       },
       "targets": [
@@ -864,11 +844,7 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": [
-    "devx",
-    "ci",
-    "build"
-  ],
+  "tags": ["devx", "ci", "build"],
   "time": {
     "from": "now-7d",
     "to": "now"
