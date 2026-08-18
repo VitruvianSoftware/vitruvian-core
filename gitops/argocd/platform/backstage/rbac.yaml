@@ -47,7 +47,14 @@ rules:
       - pods
       - services
       - configmaps
+      # limitranges AND resourcequotas: the plugin fetches both on every
+      # refresh. Omitting resourcequotas was invisible in the cluster --
+      # the tab still rendered pods and workloads -- but each refresh 403'd
+      # and the UI showed a bare "There was a problem retrieving Kubernetes
+      # objects" without naming the object. Confirmed from the pod log:
+      # `Received 403 status when fetching "/api/v1/resourcequotas"`.
       - limitranges
+      - resourcequotas
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: [deployments, replicasets, statefulsets, daemonsets]
