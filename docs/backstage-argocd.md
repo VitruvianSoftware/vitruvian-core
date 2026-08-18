@@ -36,9 +36,13 @@ Four properties of that endpoint are load-bearing, and each has a test:
 - **`allowedMethods: ["GET"]`.** The proxy holds a bearer token. If it forwarded
   `POST`/`DELETE`, any portal user could sync or delete an Application through it
   regardless of that token's own RBAC.
-- **Target is `http://argocd-server.argocd.svc.cluster.local`**, the in-cluster
-  Service — the token's traffic never leaves the cluster and does not depend on
-  ingress, DNS or TLS.
+- **Target is `http://argocd-server.argocd.svc.cluster.local/api/v1/`**, the
+  in-cluster Service — the token's traffic never leaves the cluster and does not
+  depend on ingress, DNS or TLS. **The `/api/v1/` suffix is required**: the plugin
+  requests `${proxy}/argocd/api/applications/<name>` and the proxy rewrites
+  `^/api/proxy/argocd/api/?` to `/`, so the API version can only come from the
+  target. Without it every lookup resolves to `<host>/applications/<name>` and
+  ArgoCD returns 404.
 - **`allowedHeaders` excludes `Authorization`**, so a caller cannot substitute
   their own credential.
 - **`argocd.baseUrl`** is used only to build click-through links to the UI; the
@@ -130,19 +134,23 @@ necessarily absent in the window between this shipping and the secret landing.
 
 ## Adding the card to an entity
 
-Annotate the entity. Any one of these makes the card and tab appear
-(`isArgocdAvailable`):
+Annotate the entity with the Application's name:
 
 ```yaml
 metadata:
   annotations:
-    argocd/app-name: cert-manager        # one Application
-    # or
-    argocd/app-selector: app=cnpg        # every Application matching a label
+    argocd/app-name: cert-manager
 ```
 
-Use `app-name` for a single Application and `app-selector` when one catalog
-entity maps to several. Currently annotated:
+**Use `argocd/app-name`, not `argocd/app-selector`.** `isArgocdAvailable` accepts
+the selector, so the card renders — and then fails. In pure proxy mode the plugin
+requests `/applications/selector/<sel>`, which is not an ArgoCD API path; it is
+served by `@roadiehq/backstage-plugin-argo-cd-backend`, which this portal does
+not install (ArgoCD's own API spells it `/api/v1/applications?selector=`).
+Installing that backend plugin is what would make selectors legal here. A test
+fails the build if a selector annotation reappears.
+
+Currently annotated:
 
 | Entity | Annotation | Why |
 | --- | --- | --- |
@@ -150,7 +158,7 @@ entity maps to several. Currently annotated:
 | `cert-manager` | `argocd/app-name: cert-manager` | one Application |
 | `external-dns` | `argocd/app-name: external-dns` | one Application |
 | `minio` | `argocd/app-name: minio-amd64` | the Application kept the `-amd64` suffix from pinning the StatefulSet to AMD64 nodes |
-| `cloudnative-pg` | `argocd/app-selector: app=cnpg` | `cnpg-operator` and `cnpg-cluster` share that label, and "is CloudNativePG healthy" means both |
+| `cloudnative-pg` | `argocd/app-name: cnpg-operator` | the operator is what this Resource describes; `cnpg-cluster` is a database it runs |
 
 A typo such as `argocd/app_name` is **silently inert** — `isArgocdAvailable`
 returns false, the card never renders, and nothing is logged. The annotation keys

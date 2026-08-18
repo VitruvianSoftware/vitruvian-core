@@ -96,7 +96,12 @@ metadata:
   description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters
   annotations:
     grafana/dashboard-selector: cloudnativepg
-    argocd/app-selector: app=cnpg
+    # app-name, not app-selector: in pure proxy mode the plugin requests
+    # /applications/selector/<sel>, which is NOT an ArgoCD API path (it is served
+    # by @roadiehq/backstage-plugin-argo-cd-backend, which this portal does not
+    # install) -- verified 404 against the live API. The operator is the entity
+    # this Resource describes; cnpg-cluster is a database it runs.
+    argocd/app-name: cnpg-operator
   links:
     - url: https://cloudnative-pg.io/documentation/
       title: Upstream docs
