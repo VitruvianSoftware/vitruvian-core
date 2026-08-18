@@ -171,7 +171,6 @@ backstage:
 serviceAccount:
   create: false
   name: backstage
-
 ingress:
   enabled: false
 httpRoute:
