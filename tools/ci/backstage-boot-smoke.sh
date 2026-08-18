@@ -134,6 +134,14 @@ techdocs:
   builder: local
   generator: { runIn: local }
   publisher: { type: local }
+# REQUIRED, not decorative: @backstage-community/plugin-grafana declares
+# "required": ["grafana"] at the root of its config.schema.json, and the app
+# bundle's frontend schema is validated against whatever config the backend
+# boots with. Since this file is passed as the ONLY --config, omitting this key
+# fails app-backend startup with "Invalid app bundle schema" -- which is exactly
+# how this smoke test caught the plugin landing without it.
+grafana:
+  domain: https://grafana.invalid
 YAML
 
 echo "boot-smoke: starting $IMAGE ..."

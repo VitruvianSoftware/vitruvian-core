@@ -1385,7 +1385,7 @@
   "refresh": false,
   "schemaVersion": 37,
   "style": "dark",
-  "tags": [],
+  "tags": ["traefik"],
   "templating": {
     "list": [
       {

@@ -37,6 +37,11 @@ backstage:
   - --config
   - /app/app-config-from-configmap.yaml
   extraEnvVars:
+  - name: GRAFANA_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: grafana-backstage-token
+        key: GRAFANA_TOKEN
   - name: POSTGRES_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -164,6 +169,26 @@ backstage:
         runIn: "local"
       publisher:
         type: "local"
+    # The Grafana plugin talks to Grafana through the backend proxy, never from
+    # the browser: the token stays server-side and no CORS/CSP exception is
+    # needed. Target is the in-cluster Service, not grafana.lab.ipv1337.dev --
+    # it keeps the traffic off the ingress and works regardless of external DNS.
+    proxy:
+      endpoints:
+        /grafana/api:
+          target: http://grafana.grafana.svc.cluster.local
+          headers:
+            Authorization: "Bearer ${GRAFANA_TOKEN}"
+          # The token is a Viewer-role service account, but the proxy would
+          # otherwise happily forward writes; restrict it to reads.
+          allowedMethods: ["GET"]
+          # Do not let a browser-supplied cookie/authorization ride along to
+          # Grafana -- the proxy's own bearer token is the only credential.
+          allowedHeaders: ["Accept", "Content-Type"]
+    grafana:
+      # Used to build the click-through links the card renders. This is the
+      # user-facing URL, unlike the proxy target above which is in-cluster.
+      domain: https://grafana.lab.ipv1337.dev
     integrations:
       github:
       - host: github.com

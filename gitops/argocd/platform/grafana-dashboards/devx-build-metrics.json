@@ -1,0 +1,855 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#D2A8FF",
+            "mode": "fixed"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"devx\", span_name=\"up_startup\"}[1h])) by (le))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Env Bootstrap P95",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"devx\", span_name=\"up_startup\"}[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "title": "Environment Bootstrap Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#79C0FF",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"devx_run|agent_ship_build\"})",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Builds",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#7EE787",
+            "mode": "fixed"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_latency_sum{service=\"devx\", span_name=~\"devx_run|agent_ship_build\"}) / sum(traces_spanmetrics_latency_count{service=\"devx\", span_name=~\"devx_run|agent_ship_build\"})",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Build Time",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"devx_run\"})",
+          "instant": true,
+          "legendFormat": "devx run",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"devx_action\"})",
+          "instant": true,
+          "legendFormat": "devx action",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"agent_ship_build\"})",
+          "instant": true,
+          "legendFormat": "agent ship build",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"agent_ship_preflight\"})",
+          "instant": true,
+          "legendFormat": "agent ship preflight",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"up_startup\"})",
+          "instant": true,
+          "legendFormat": "devx up startup",
+          "refId": "E"
+        }
+      ],
+      "title": "Build & Run Activity",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_latency_sum{service=\"devx\", span_name=~\"devx_run|agent_ship_build\"}[5m])) / sum by (span_name) (rate(traces_spanmetrics_latency_count{service=\"devx\", span_name=~\"devx_run|agent_ship_build\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Build Duration Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "Tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Start time"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "limit": 20,
+          "query": "{resource.service.name=\"devx\" && name=\"devx_run\"}",
+          "queryType": "traceql",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Recent Commands (devx run)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#FFA657",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 24
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\"})",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Tests",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 4,
+        "y": 24
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\"})",
+          "instant": true,
+          "legendFormat": "total tests",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\", status_code=\"STATUS_CODE_UNSET\"})",
+          "instant": true,
+          "legendFormat": "passed",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\", status_code=\"STATUS_CODE_ERROR\"})",
+          "instant": true,
+          "legendFormat": "failed",
+          "refId": "C"
+        }
+      ],
+      "title": "Test Activity",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "cps"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Test Execution Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_spanmetrics_calls_total{service=\"devx\", span_name=~\"go_test:.*\"}[5m])) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Test Failure Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "Tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Start time"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "limit": 50,
+          "query": "{resource.service.name=\"devx\" && name=~\"go_test:.*\"} | select(span.devx.test.name, span.devx.test.package, span.devx.test.status)",
+          "queryType": "traceql",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Top Slowest Tests",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "Tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Start time"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "limit": 50,
+          "query": "{resource.service.name=\"devx\" && name=~\"go_test:.*\"} | select(span.devx.test.name, span.devx.test.status, span.devx.test.package)",
+          "queryType": "traceql",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Test Details",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#A5D6FF",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 40
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"agent_ship_preflight\"})",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Preflights",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 4,
+        "y": 40
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"agent_ship_preflight\", status_code!=\"STATUS_CODE_ERROR\"})",
+          "instant": true,
+          "legendFormat": "passed",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", span_name=\"agent_ship_preflight\", status_code=\"STATUS_CODE_ERROR\"})",
+          "instant": true,
+          "legendFormat": "failed",
+          "refId": "B"
+        }
+      ],
+      "title": "Preflight Success Rate",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "Tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Start time"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "limit": 20,
+          "query": "{resource.service.name=\"devx\" && name=\"agent_ship_preflight\"}",
+          "queryType": "traceql",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Recent Agent Ship Preflights",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#F85149",
+            "mode": "fixed"
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 48
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(traces_spanmetrics_calls_total{service=\"devx\", status_code=\"STATUS_CODE_ERROR\"}) / sum(traces_spanmetrics_calls_total{service=\"devx\"}) * 100",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CLI Error Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 4,
+        "y": 48
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"devx\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_spanmetrics_calls_total{service=\"devx\"}[5m])) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Error Rate Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 12,
+        "y": 48
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (service_version) (traces_spanmetrics_calls_total{service=\"devx\"})",
+          "instant": true,
+          "legendFormat": "{{service_version}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Version Distribution",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus-Data"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "cps"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 48
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus-Data"
+          },
+          "expr": "sum by (service_version) (rate(traces_spanmetrics_calls_total{service=\"devx\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Activity by Version",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["devx", "ci", "build"],
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "devx Build Metrics",
+  "uid": "devx-build-metrics"
+}

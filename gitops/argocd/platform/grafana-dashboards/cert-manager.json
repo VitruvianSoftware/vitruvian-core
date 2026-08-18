@@ -1193,7 +1193,7 @@
   "refresh": false,
   "schemaVersion": 19,
   "style": "dark",
-  "tags": ["k8s"],
+  "tags": ["cert-manager", "k8s"],
   "templating": {
     "list": [
       {

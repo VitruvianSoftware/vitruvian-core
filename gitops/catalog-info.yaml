@@ -1,0 +1,120 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Backstage catalog entities for the platform we operate.
+#
+# These are not things we build -- they are upstream components the homelab
+# cluster runs, and that our applications depend on. Modelling them as
+# Resources is what lets their Grafana dashboards, and later their runbooks and
+# alerts, hang off a page someone can actually find.
+#
+# Each carries a grafana/dashboard-selector matching a TAG on the dashboard in
+# ./argocd/platform/grafana-dashboards. Tag matching is case-sensitive, and a
+# single-word selector is always treated as a tag (never a title search) -- so
+# the dashboard must carry a tag equal to the selector, which is why
+# cert-manager.json and traefik.json gained one.
+#
+# Deliberately absent: Longhorn and Elasticsearch have dashboards in Grafana but
+# are NOT deployed, and ArgoCD/Zitadel/Envoy Gateway are deployed but have no
+# dashboard yet. Neither gets an entity until it is both real and observable.
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cert-manager
+  title: cert-manager
+  description: Issues and renews the cluster's TLS certificates via Let's Encrypt (DNS-01 through Cloudflare)
+  annotations:
+    grafana/dashboard-selector: cert-manager
+  links:
+    - url: https://cert-manager.io/docs/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: certificate-manager
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: external-dns
+  title: ExternalDNS
+  description: Reconciles Cloudflare DNS records from Ingress and Gateway resources
+  annotations:
+    grafana/dashboard-selector: external-dns
+  links:
+    - url: https://kubernetes-sigs.github.io/external-dns/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: dns
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: minio
+  title: MinIO
+  description: S3-compatible object storage backing CNPG base backups, WAL archiving and Thanos
+  annotations:
+    grafana/dashboard-selector: minio
+  links:
+    - url: https://min.io/docs/minio/kubernetes/upstream/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: object-storage
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cloudnative-pg
+  title: CloudNativePG
+  description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters
+  annotations:
+    grafana/dashboard-selector: cloudnativepg
+  links:
+    - url: https://cloudnative-pg.io/documentation/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: database-operator
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: traefik
+  title: Traefik
+  description: Ingress controller fronting the cluster's HTTP routes
+  annotations:
+    grafana/dashboard-selector: traefik
+  links:
+    - url: https://doc.traefik.io/traefik/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: ingress-controller
+  owner: platform-team
+  system: vitruvian-core
