@@ -36,12 +36,6 @@ backstage:
   args:
   - --config
   - /app/app-config-from-configmap.yaml
-  # Identity for the Kubernetes plugin's read-only cluster access. Defined in
-  # platform/backstage/rbac.yaml; `create: false` because the chart must bind to
-  # that ServiceAccount rather than mint its own without the ClusterRole.
-  serviceAccount:
-    create: false
-    name: backstage
   extraEnvVars:
   - name: POSTGRES_PASSWORD
     valueFrom:
@@ -165,6 +159,19 @@ backstage:
         target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
         rules:
         - allow: [Component, System, API, Resource, Location, Template, User, Group]
+# Identity for the Kubernetes plugin's read-only cluster access. Defined in
+# platform/backstage/rbac.yaml; `create: false` because the chart must bind to
+# that ServiceAccount rather than mint its own without the ClusterRole.
+#
+# Top-level, NOT nested under `backstage:`. The chart declares serviceAccount as
+# a top-level value and sets `additionalProperties: false` on `backstage`, so
+# nesting it there fails values.schema.json and blocks rendering of the ENTIRE
+# Application -- ArgoCD reports ComparisonError and every other change to this
+# app (image digests included) silently stops deploying behind it.
+serviceAccount:
+  create: false
+  name: backstage
+
 ingress:
   enabled: false
 httpRoute:
