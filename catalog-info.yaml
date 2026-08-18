@@ -146,3 +146,47 @@ spec:
   profile:
     displayName: Tabula Team
   children: []
+
+---
+# External VitruvianSoftware repositories. Each already ships its own
+# catalog-info.yaml, so these are Locations pointing at the source of truth in
+# that repo rather than copies maintained here -- the same pattern as the
+# per-app Location above.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: vitruvian-external-repos
+  description: Repositories outside the monorepo that publish their own catalog metadata
+spec:
+  type: url
+  targets:
+    - https://github.com/VitruvianSoftware/aspect-workflows-template/blob/platform-v2.0/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-kitchen-sink/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-cpp/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-go/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-java/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-js/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-kotlin/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-minimal/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-py/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-ruby/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-rust/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-scala/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-shell/blob/main/catalog-info.yaml
+    - https://github.com/VitruvianSoftware/backstage-swift/blob/main/catalog-info.yaml
+---
+# site-vitruviansoftware-dev is the one repo here with no catalog-info.yaml of
+# its own, so its Component is declared inline. Move it into that repo if it
+# ever grows its own metadata.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: site-vitruviansoftware-dev
+  description: Vitruvian Software open source site
+  annotations:
+    github.com/project-slug: VitruvianSoftware/site-vitruviansoftware-dev
+spec:
+  type: website
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
