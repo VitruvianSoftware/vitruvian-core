@@ -124,14 +124,46 @@ opt-in and a missing dashboard never leaves an empty box on the page.
 
 Currently annotated:
 
-| Entity    | Selector  | Resolves to        |
-| --------- | --------- | ------------------ |
-| `devx`    | `devx`    | devx Build Metrics |
-| `homelab` | `homelab` | Node Power         |
+| Entity           | Kind      | Selector        | Resolves to        |
+| ---------------- | --------- | --------------- | ------------------ |
+| `devx`           | Component | `devx`          | devx Build Metrics |
+| `homelab`        | Component | `homelab`       | Node Power         |
+| `cert-manager`   | Resource  | `cert-manager`  | cert-manager       |
+| `external-dns`   | Resource  | `external-dns`  | External-dns       |
+| `minio`          | Resource  | `minio`         | MinIO Dashboard    |
+| `cloudnative-pg` | Resource  | `cloudnativepg` | CloudNativePG      |
+| `traefik`        | Resource  | `traefik`       | Traefik            |
 
-The other components have no dashboard of their own yet. Tag a dashboard with
-the component's name and add the annotation, and the card appears — no code
-change needed.
+The five `Resource` entities live in `gitops/catalog-info.yaml`. They model
+things we _operate_ rather than things we build — which is what makes their
+dashboards reachable from a page someone can find.
+
+Two of those dashboards had to gain a tag to be selectable at all:
+`cert-manager` was tagged only `k8s`, and `traefik` had no tags. Because a
+single-word selector is always a tag match and never falls back to a title
+search, the dashboard must carry a tag equal to the selector. Both are
+git-managed, so the tag was added in
+`gitops/argocd/platform/grafana-dashboards/`.
+
+### What is deliberately not wired
+
+Six catalog components have no dashboard card, and none of it is an oversight:
+
+- **`tabula`, `nexus-agent`, `mcp-slack`, `oauth-user-inspector`** run on Cloud
+  Run, not in the homelab cluster. This Grafana has no data for them at all, so
+  there is nothing to point a selector at.
+- **`backstage`** runs here but is not scraped, and exposes no metrics endpoint —
+  `/metrics` returns the frontend's `index.html`, because the SPA catch-all
+  handles any unrouted path. Giving it a dashboard means enabling a metrics
+  endpoint and adding a scrape target first.
+- **`site-vitruviansoftware-dev`** is a static GitHub Pages site; there is
+  nothing to scrape.
+
+On the Grafana side, **Longhorn** and **Elasticsearch** dashboards exist for
+components that are _not deployed_ — they are UI-created leftovers, and are the
+only two dashboards not in git. **ArgoCD**, **Zitadel** and **Envoy Gateway** are
+the reverse: deployed and worth watching, but with no dashboard yet. Nothing
+gets an entity until it is both real and observable.
 
 ## Why there is no alerts card
 

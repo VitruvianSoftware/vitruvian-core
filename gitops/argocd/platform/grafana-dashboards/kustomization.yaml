@@ -31,6 +31,9 @@ configMapGenerator:
   - name: grafana-dashboard-cnpg
     files:
       - cnpg.json
+  - name: grafana-dashboard-devx-build-metrics
+    files:
+      - devx-build-metrics.json
   - name: grafana-dashboard-external-dns
     files:
       - external-dns.json

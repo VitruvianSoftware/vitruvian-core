@@ -49,6 +49,8 @@ spec:
     - ./nexus-agent/catalog-info.yaml
     - ./oauth-user-inspector/catalog-info.yaml
     - ./tabula/catalog-info.yaml
+    # Platform infrastructure we operate (not applications we build)
+    - ./gitops/catalog-info.yaml
 ---
 apiVersion: backstage.io/v1alpha1
 kind: User
