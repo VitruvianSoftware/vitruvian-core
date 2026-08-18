@@ -664,6 +664,13 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # The push-lane gate below diffs against github.event.before; the
+          # default depth-1 checkout has no such commit, so relevant-paths.sh
+          # fails safe to relevant=true and the 474s example build ran anyway on
+          # a one-line gitops digest bump (measured on d86305bc, #1762). Every
+          # other gated job already fetches full history for exactly this reason.
+          fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
       # entirely, so a one-line gitops digest bump ran the full heavy step on
