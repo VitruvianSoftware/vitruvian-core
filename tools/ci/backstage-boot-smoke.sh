@@ -69,12 +69,20 @@ echo "boot-smoke: starting postgres ..."
 docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_PASSWORD=smoke -e POSTGRES_USER=postgres \
   postgres:16-alpine >/dev/null
-for _ in $(seq 1 30); do
-  docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1 && break
+# Success is decided INSIDE the loop. The previous form broke on the first
+# successful probe and then re-verified with a separate one-shot check, so a
+# transient ready could pass the loop and fail the check -- which is exactly
+# what CI hit (the step failed 1.3s in, far too fast to have exhausted its
+# attempts). -h 127.0.0.1 for the same reason: initdb runs a temporary server
+# on the unix socket before restarting for real, and it never listens on TCP.
+PG_READY=""
+for _ in $(seq 1 60); do
+  if docker exec "$PG" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then
+    PG_READY=yes; break
+  fi
   sleep 1
 done
-docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1 || {
-  echo "boot-smoke: ✗ postgres never became ready" >&2; exit 1; }
+[ -n "$PG_READY" ] || { echo "boot-smoke: ✗ postgres never became ready" >&2; exit 1; }
 
 # Generated, never committed: backend.auth.keys[].secret must be valid base64,
 # and a literal base64 blob in the repo is indistinguishable from a real leaked
