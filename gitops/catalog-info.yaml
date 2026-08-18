@@ -42,6 +42,7 @@ metadata:
   description: Issues and renews the cluster's TLS certificates via Let's Encrypt (DNS-01 through Cloudflare)
   annotations:
     grafana/dashboard-selector: cert-manager
+    argocd/app-name: cert-manager
   links:
     - url: https://cert-manager.io/docs/
       title: Upstream docs
@@ -59,6 +60,7 @@ metadata:
   description: Reconciles Cloudflare DNS records from Ingress and Gateway resources
   annotations:
     grafana/dashboard-selector: external-dns
+    argocd/app-name: external-dns
   links:
     - url: https://kubernetes-sigs.github.io/external-dns/
       title: Upstream docs
@@ -76,6 +78,7 @@ metadata:
   description: S3-compatible object storage backing CNPG base backups, WAL archiving and Thanos
   annotations:
     grafana/dashboard-selector: minio
+    argocd/app-name: minio-amd64
   links:
     - url: https://min.io/docs/minio/kubernetes/upstream/
       title: Upstream docs
@@ -93,6 +96,7 @@ metadata:
   description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters
   annotations:
     grafana/dashboard-selector: cloudnativepg
+    argocd/app-selector: app=cnpg
   links:
     - url: https://cloudnative-pg.io/documentation/
       title: Upstream docs

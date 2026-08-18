@@ -55,6 +55,11 @@ import {
   EntityGrafanaDashboardsCard,
   isDashboardSelectorAvailable,
 } from "@backstage-community/plugin-grafana";
+import {
+  EntityArgoCDContent,
+  EntityArgoCDOverviewCard,
+  isArgocdAvailable,
+} from "@roadiehq/backstage-plugin-argo-cd";
 
 const defaultEntityPage = (
   <EntityLayout>
@@ -100,6 +105,19 @@ const defaultEntityPage = (
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
+        {/* Deployment state at a glance: sync + health per ArgoCD Application.
+            Unlike isDashboardSelectorAvailable, isArgocdAvailable already
+            returns a boolean, so it needs no Boolean() wrapper. It is true when
+            the entity carries argocd/app-name, argocd/app-selector, or
+            argocd/project-name -- entities deployed some other way (Cloud Run,
+            GitHub Pages) simply never render this. */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isArgocdAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityArgoCDOverviewCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
       </Grid>
     </EntityLayout.Route>
     {/* `if` is what keeps this honest: without it the tab renders for every
@@ -114,6 +132,19 @@ const defaultEntityPage = (
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       <EntityTechdocsContent />
+    </EntityLayout.Route>
+    {/*
+      Sync history and revision detail -- what git commit is actually live, and
+      whether the last sync succeeded. Same `if` discipline as the CI/CD and
+      Kubernetes tabs: gate the tab on the annotation so entities ArgoCD does
+      not deploy are never offered a tab that can only fail.
+    */}
+    <EntityLayout.Route
+      path="/argocd"
+      title="Deployments"
+      if={isArgocdAvailable}
+    >
+      <EntityArgoCDContent />
     </EntityLayout.Route>
     {/*
       Live workload state: pods, health, images, events. `if` gates the tab on

@@ -168,6 +168,9 @@ importers:
       '@mui/material':
         specifier: ^5.16.7
         version: 5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@roadiehq/backstage-plugin-argo-cd':
+        specifier: ^2.12.5
+        version: 2.12.5(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.4(react@18.3.1))(react@18.3.1)
       backstage-plugin-techdocs-addon-mermaid:
         specifier: ^0.26.0
         version: 0.26.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -1953,6 +1956,17 @@ packages:
       '@types/react':
         optional: true
 
+  '@backstage/core-app-api@1.20.4':
+    resolution: {integrity: sha512-VGFYMp//8FS1jovXGrS0Bj8lOORQv1FPz6rqrW+3UBLeh5uycgwUciJjkFSQop95MCrrgSp5EfVThUfbVW/XUQ==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@backstage/core-compat-api@0.5.13':
     resolution: {integrity: sha512-eVLmLdA3XNt1MR2EkWwStWunKb+fEXUm25lc1mVtZ04zgenUHOZ95hDAwkY6yhHqhH6YZmSuWvrBcLeCWKHcIg==}
     peerDependencies:
@@ -1986,6 +2000,17 @@ packages:
       '@types/react':
         optional: true
 
+  '@backstage/core-plugin-api@1.12.9':
+    resolution: {integrity: sha512-BAsXLI+cAZvJvAc3oYitVZCMye/M6xJatiUaSMjhbPSAED94lqMSXZIIE0zECjziPma9L7mpvAAnDYwF+Ipo5g==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@backstage/errors@1.3.1':
     resolution: {integrity: sha512-EsBo684l3rEcKrGYSBw26LsRdLAAxU6u6GWaOPLt4MYAvK28fCs5arsg2He2Q6cIYJRiD8PiLEAH8o+C1xUWLA==}
 
@@ -1994,6 +2019,39 @@ packages:
 
   '@backstage/filter-predicates@0.1.4':
     resolution: {integrity: sha512-B93JmexfzIDalHFG3SsWHssNUOIr24vraGrWVAjDflBq6m4vNUwPLqRIEM7DA8HG+0j12wy8YbmgWyOgJ6Nu5g==}
+
+  '@backstage/frontend-app-api@0.14.1':
+    resolution: {integrity: sha512-d01J9XfhTq1yBWPcUmlr6BfNPv4Ykb9zJFGTfDn3OtnCb06J3o3miENL8+V/CpW7COHa1trfWYvDDCI/7RJYbg==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/frontend-defaults@0.3.6':
+    resolution: {integrity: sha512-oZjBc/9J2IGuS2smsXvRqR/zzkseUH/zJG9oUK53PW+Oy5fgj0YJbAVRQRnTGlLjNUSO1zwKa1ASwSi+Bnpwmg==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/frontend-plugin-api@0.12.1':
+    resolution: {integrity: sha512-BhnQrsr28OsG3sXOWdXFiMpU7IYXPpCqtnxb/d7uCdMzegCLURXPScVcJLE1oVUcIXvId+ODzGjG6Eic5uqtvQ==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   '@backstage/frontend-plugin-api@0.13.4':
     resolution: {integrity: sha512-IkzS5ltuxj5cl4OG/6FWZmkr7lcA9rZ4j1LaACA8W9//Av7lYVagvyqK2kuQfQmo2burzVTQMj25YV08h+QX7A==}
@@ -2013,6 +2071,29 @@ packages:
       react: ^17.0.0 || ^18.0.0
       react-dom: ^17.0.0 || ^18.0.0
       react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/frontend-plugin-api@0.18.0':
+    resolution: {integrity: sha512-fg4/cJlHUtBTP0os5igktoiqI+VC/m+4HGbqeI4XwscF6MO9iehtokE2xWWa7IKBj9Ic1+s1o8sbyQywUq5iCA==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/frontend-test-utils@0.4.5':
+    resolution: {integrity: sha512-5B9zvB5IiRUr5UaP3To/JQC+AcgLGFiZzaIoy7+sMSvgKWVrlwK7EtVOLB9B4/4peJIPCOMzuXWkUJaP3jSK9A==}
+    peerDependencies:
+      '@testing-library/react': ^16.0.0
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -2070,6 +2151,17 @@ packages:
   '@backstage/plugin-app-node@0.1.47':
     resolution: {integrity: sha512-ezZ3unQnkE4p04Ep43bH5o3IRzLcENHONR5smkxRASV/5R7k4Rbt+QaYmPcVy2Vqdoni66JgXKp4wVUfL5ZoPw==}
 
+  '@backstage/plugin-app-react@0.1.0':
+    resolution: {integrity: sha512-9lVx7Gon5uRmIAkdSTNH0TrRdE1qx4UB7KH4uHWt07ARDNWUyXIHe94wcnu5NSlkqqt6VriomYju5cLCG8cKdw==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@backstage/plugin-app-react@0.2.5':
     resolution: {integrity: sha512-bXbWS6KXnOH4Ym61w2tHBBzv8xtuvaGvaBCeROwV8RjYle9qcOE9DRY9sj39HiRxYWCclCfcNThtYvX4nTcnGg==}
     peerDependencies:
@@ -2077,6 +2169,17 @@ packages:
       react: ^17.0.0 || ^18.0.0
       react-dom: ^17.0.0 || ^18.0.0
       react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/plugin-app@0.3.5':
+    resolution: {integrity: sha512-CYrCS1/9u463qU/Nk9TuIc+9mnAb6hcuVQZWqlpwITkm6uh5+oe3h16+KRGrC7JUgsPUtFYtDxNhSNI5taSfXQ==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -2158,6 +2261,17 @@ packages:
       '@backstage/backend-test-utils': ^1.11.6
     peerDependenciesMeta:
       '@backstage/backend-test-utils':
+        optional: true
+
+  '@backstage/plugin-catalog-react@1.21.6':
+    resolution: {integrity: sha512-miWlG4f+7PUiSB3FDL66ss3k92VAMIBlxbGjXziSVdqcf4bYuG+9hqOkXvetFkrInMe65gX7tNb9YL5dThTw3A==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.3.0
+    peerDependenciesMeta:
+      '@types/react':
         optional: true
 
   '@backstage/plugin-catalog-react@3.2.0':
@@ -2248,8 +2362,29 @@ packages:
   '@backstage/plugin-permission-node@0.11.3':
     resolution: {integrity: sha512-aTzXXS6lRvjOGF+67yyrxz3/trXG7VIugwoVaFUIWGhwQ3gloNGtffpUlGzdy71lemhdKBItZaHME6BG/mp81A==}
 
+  '@backstage/plugin-permission-react@0.4.41':
+    resolution: {integrity: sha512-XGJPNBd8pY5b8dya+twIr0Zznuq/wX2guUKdfnYmQyjw2Li9Ik6Q4sWPyshFfG7tCxe/eaEz9FNFJzgiGG3dIg==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@backstage/plugin-permission-react@0.5.3':
     resolution: {integrity: sha512-tsLjPC3+4FH3KyJyIYDINeFgmTSAW4eLxhN5X0aNBgXiHnh1qrM80dtM5rc+7P55Lh41/oqE4jzL2Aa4gIygsQ==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/plugin-permission-react@0.5.4':
+    resolution: {integrity: sha512-CS4NtLNGcfn+C/EwPSqm08dmMdcbBMxXQVIjVe0+QDTpv5FMOHctqq6O81u63+q7kwjmfR+5EwHLk5hGRWUMfA==}
     peerDependencies:
       '@types/react': ^17.0.0 || ^18.0.0
       react: ^17.0.0 || ^18.0.0
@@ -2425,6 +2560,21 @@ packages:
   '@backstage/release-manifests@0.0.13':
     resolution: {integrity: sha512-NF+Fl1b746A9b39dQqvzC237k5/QUWcfGVMp8ZYjoQ48hrY1UdH7xiwrLB7WmhvYIMRzdjhY3uR1FM67EQFPQw==}
 
+  '@backstage/test-utils@1.7.21':
+    resolution: {integrity: sha512-iEj11zWEqasfIBhSZaMc4KjqEEuy6ve4CSK0QYdSm6ZsLeJLLp7kUPIhrzNNJxPezPFQdzW7GMDOOH543NZVNw==}
+    peerDependencies:
+      '@testing-library/react': ^16.0.0
+      '@types/jest': '*'
+      '@types/react': ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0
+      react-dom: ^17.0.0 || ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/jest':
+        optional: true
+      '@types/react':
+        optional: true
+
   '@backstage/theme@0.7.3':
     resolution: {integrity: sha512-EE9Mm6GjEMDwr/+iXmJfMq2jIJDCnjPbaua5YCtUN/E1Q/FOBcFmijJeTLn8gF0xeEiYxrZhQf0NBRlxfapR/g==}
     peerDependencies:
@@ -2442,6 +2592,17 @@ packages:
 
   '@backstage/ui@0.17.0':
     resolution: {integrity: sha512-KhWC9G4dOhaY79v+Ev/SWxNB38bKCdayPKsZLZnX7gAfyTQ+OQTlyQCEUUXFQQA8nO3k+o2HBwcs76BnfDMiRw==}
+    peerDependencies:
+      '@types/react': ^18.0.0
+      react: ^18.0.0
+      react-dom: ^18.0.0
+      react-router-dom: ^6.30.2
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@backstage/ui@0.17.1':
+    resolution: {integrity: sha512-MnA6dMfETmbOhPnjOtbgnnTVpoE9MVcq+BxpC3WatGi8NtUpZBuDsFHpcEU6xl3oU2FTAwajbcXvgEPKUION2A==}
     peerDependencies:
       '@types/react': ^18.0.0
       react: ^18.0.0
@@ -5662,6 +5823,14 @@ packages:
     engines: {node: '>=14'}
     peerDependencies:
       '@rjsf/utils': ^5.24.x
+
+  '@roadiehq/backstage-plugin-argo-cd@2.12.5':
+    resolution: {integrity: sha512-sTYZQcvDlmfz+XerhThDjprqT2UEzgc3NCVHry0HzxeX6UzAWaydCpGP4cchBtFexuQKlGyjPP53/XTVCcJDPg==}
+    peerDependencies:
+      react: ^16.13.1 || ^17.0.0 || ^18.0.0
+      react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
+      react-router: 6.0.0-beta.0  || ^6.3.0
+      react-router-dom: 6.0.0-beta.0  || ^6.3.0
 
   '@rolldown/binding-android-arm64@1.2.2':
     resolution: {integrity: sha512-l7x215OGvo1s52JWmR8U/DAVzEDWBCIbTm28aeJV/WDTSHgcKXaZTuBT0hJMs5NggilfJTW3clZVvd24yfKJxA==}
@@ -9486,6 +9655,10 @@ packages:
     resolution: {integrity: sha512-h5k/5U50IJJFpzfL6nO9jaaumfjO/f2NjK/oYB2Djzm4p9L+3T9qWpZqZ2hAbLPuuYq9wrU08WQyBTL5GbPk5Q==}
     engines: {node: '>=6'}
 
+  deep-equal@1.1.2:
+    resolution: {integrity: sha512-5tdhKF6DbU7iIzrIOa1AOUt39ZRm13cmL1cGEh//aqR8x9+tNfbywRf0n5FD/18OKMdo7DNEtrX2t22ZAkI+eg==}
+    engines: {node: '>= 0.4'}
+
   deep-extend@0.6.0:
     resolution: {integrity: sha512-LOHxIOaPYdHlJRtCQfDIVZtfw/ufM8+rVj649RIHzcm/vGwQRXFt6OPqIFWsm2XEMrNIEtWR64sY1LEKD2vAOA==}
     engines: {node: '>=4.0.0'}
@@ -10559,6 +10732,9 @@ packages:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
 
+  fp-ts@2.16.11:
+    resolution: {integrity: sha512-LaI+KaX2NFkfn1ZGHoKCmcfv7yrZsC3b8NtWsTVQeHkq4F27vI5igUuO53sxqDEa2gNQMHFPmpojDw/1zmUK7w==}
+
   fraction.js@5.3.4:
     resolution: {integrity: sha512-1X1NTtiJphryn/uLQz3whtY6jK3fTqoE3ohKs0tT+Ujr1W59oopxmoEh7Lu5p6vBaPbgoM0bzveAW4Qi5RyWDQ==}
 
@@ -11417,6 +11593,23 @@ packages:
 
   invariant@2.2.4:
     resolution: {integrity: sha512-phJfQVBuaJM5raOpJjSfkiD6BpbCE4Ns//LaXl6wGYtUBY83nWS6Rf9tXm2e8VaK60JEjYldbPif/A2B1C2gNA==}
+
+  io-ts-promise@2.0.3:
+    resolution: {integrity: sha512-Adc4lHRKGtNFeuY5deru+oDjIz8obG3HnwjFb58yb7qSJK+uSXELQt5Q6kVJZPKmahNTVxV9patiWGX4xumOMg==}
+    peerDependencies:
+      fp-ts: 2.x
+      io-ts: 2.x
+
+  io-ts-reporters@1.2.2:
+    resolution: {integrity: sha512-igASwWWkDY757OutNcM6zTtdJf/eTZYkoe2ymsX2qpm5bKZLo74FJYjsCtMQOEdY7dRHLLEulCyFQwdN69GBCg==}
+    peerDependencies:
+      fp-ts: ^2.0.2
+      io-ts: ^2.0.0
+
+  io-ts@2.2.22:
+    resolution: {integrity: sha512-FHCCztTkHoV9mdBsHpocLpdTAfh956ZQcIkWQxxS0U5HT53vtrcuYdQneEJKH6xILaLNzXVl2Cvwtoy8XNN0AA==}
+    peerDependencies:
+      fp-ts: ^2.5.0
 
   ioredis@6.0.0:
     resolution: {integrity: sha512-f+Dtubxfpf6KYFq7WVXJoOLn0bk4TJrMrN9SzeE+jrWrCWj7XX3fA6vkryafhADX+GMymRxgDJDOI33COkJc0w==}
@@ -19583,6 +19776,27 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
+  '@backstage/core-app-api@1.20.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-plugin-api': 1.12.9(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/ui': 0.17.1(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@types/prop-types': 15.7.15
+      history: 5.3.0
+      i18next: 22.5.1
+      lodash: 4.18.1
+      prop-types: 15.8.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-use: 17.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zen-observable: 0.10.0
+      zod: 4.4.3
+    optionalDependencies:
+      '@types/react': 18.3.31
+
   '@backstage/core-compat-api@0.5.13(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -19681,6 +19895,21 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
+  '@backstage/core-plugin-api@1.12.9(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/frontend-plugin-api': 0.18.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      history: 5.3.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 4.4.3
+    optionalDependencies:
+      '@types/react': 18.3.31
+
   '@backstage/errors@1.3.1':
     dependencies:
       '@backstage/types': 1.2.2
@@ -19698,6 +19927,75 @@ snapshots:
       '@backstage/types': 1.2.2
       zod: 4.4.3
       zod-validation-error: 5.0.0(zod@4.4.3)
+
+  '@backstage/frontend-app-api@0.14.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-app-api': 1.20.3(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/errors': 1.3.1
+      '@backstage/frontend-defaults': 0.3.6(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      lodash: 4.18.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 3.25.76
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
+
+  '@backstage/frontend-defaults@0.3.6(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-components': 0.18.12(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/errors': 1.3.1
+      '@backstage/frontend-app-api': 0.14.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-app': 0.3.5(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@react-hookz/web': 24.0.4(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
+
+  '@backstage/frontend-plugin-api@0.12.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/core-components': 0.18.12(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      lodash: 4.18.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - '@types/react-dom'
+      - js-cookie
+      - react-native
+      - supports-color
 
   '@backstage/frontend-plugin-api@0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -19727,6 +20025,46 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.4.3)
     optionalDependencies:
       '@types/react': 18.3.31
+
+  '@backstage/frontend-plugin-api@0.18.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/errors': 1.3.1
+      '@backstage/filter-predicates': 0.1.4
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@standard-schema/spec': 1.1.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+
+  '@backstage/frontend-test-utils@0.4.5(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/frontend-app-api': 0.14.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-app': 0.3.5(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-app-react': 0.1.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/test-utils': 1.7.21(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@testing-library/react': 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 3.25.76
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - '@types/jest'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
 
   '@backstage/integration-aws-node@0.2.0':
     dependencies:
@@ -19898,6 +20236,17 @@ snapshots:
       - supports-color
       - tedious
 
+  '@backstage/plugin-app-react@0.1.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+
   '@backstage/plugin-app-react@0.2.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -19908,6 +20257,36 @@ snapshots:
       react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
+
+  '@backstage/plugin-app@0.3.5(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/core-components': 0.18.12(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/integration-react': 1.2.20(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-app-react': 0.1.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-permission-react': 0.4.41(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/theme': 0.7.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/icons': 4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/lab': 4.0.0-alpha.61(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@react-hookz/web': 24.0.4(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-use: 17.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod: 3.25.76
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@testing-library/dom'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
 
   '@backstage/plugin-auth-backend-module-github-provider@0.5.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.22.0)':
     dependencies:
@@ -20348,6 +20727,49 @@ snapshots:
       - sqlite3
       - supports-color
       - tedious
+
+  '@backstage/plugin-catalog-react@1.21.6(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/catalog-client': 1.16.1(encoding@0.1.13)
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/core-compat-api': 0.5.13(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-components': 0.18.12(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/errors': 1.3.1
+      '@backstage/frontend-plugin-api': 0.13.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-test-utils': 0.4.5(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/integration-react': 1.2.20(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-catalog-common': 1.1.10(encoding@0.1.13)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/plugin-permission-react': 0.4.41(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/icons': 4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/lab': 4.0.0-alpha.61(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@react-hookz/web': 24.0.4(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      classnames: 2.5.1
+      lodash: 4.18.1
+      material-ui-popup-state: 5.3.7(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
+      qs: 6.15.3
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-use: 17.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      yaml: 2.9.0
+      zen-observable: 0.10.0
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - '@mui/material'
+      - '@testing-library/dom'
+      - '@testing-library/react'
+      - '@types/jest'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
 
   '@backstage/plugin-catalog-react@3.2.0(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -20837,11 +21259,41 @@ snapshots:
       - supports-color
       - tedious
 
+  '@backstage/plugin-permission-react@0.4.41(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      dataloader: 2.2.3
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      swr: 2.5.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - encoding
+
   '@backstage/plugin-permission-react@0.5.3(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/config': 1.3.8
       '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@backstage/plugin-permission-common': 0.9.9(encoding@0.1.13)
+      dataloader: 2.2.3
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      swr: 2.5.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - encoding
+      - react-router-dom
+
+  '@backstage/plugin-permission-react@0.5.4(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-plugin-api': 1.12.9(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
       dataloader: 2.2.3
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -21623,6 +22075,31 @@ snapshots:
 
   '@backstage/release-manifests@0.0.13': {}
 
+  '@backstage/test-utils@1.7.21(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/config': 1.3.8
+      '@backstage/core-app-api': 1.20.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.9(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-permission-common': 0.9.10(encoding@0.1.13)
+      '@backstage/plugin-permission-react': 0.5.4(@types/react@18.3.31)(encoding@0.1.13)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/theme': 0.7.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/types': 1.2.2
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/icons': 4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@testing-library/react': 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      i18next: 22.5.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zen-observable: 0.10.0
+    optionalDependencies:
+      '@types/jest': 30.0.0
+      '@types/react': 18.3.31
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
+
   '@backstage/theme@0.7.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
@@ -21640,6 +22117,25 @@ snapshots:
   '@backstage/types@1.2.2': {}
 
   '@backstage/ui@0.17.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@braintree/sanitize-url': 7.1.2
+      '@internationalized/date': 3.12.3
+      '@remixicon/react': 4.8.0(react@18.3.1)
+      '@tanstack/react-table': 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      clsx: 2.1.1
+      marked: 15.0.12
+      react: 18.3.1
+      react-aria: 3.48.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-aria-components: 1.17.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-stately: 3.46.0(react@18.3.1)
+      use-sync-external-store: 1.6.0(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+
+  '@backstage/ui@0.17.1(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@braintree/sanitize-url': 7.1.2
@@ -25699,6 +26195,39 @@ snapshots:
       ajv-formats: 2.1.1(ajv@8.20.0)
       lodash: 4.18.1
       lodash-es: 4.18.1
+
+  '@roadiehq/backstage-plugin-argo-cd@2.12.5(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.4(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@backstage/catalog-model': 1.10.0
+      '@backstage/core-compat-api': 0.5.13(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-components': 0.18.12(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/core-plugin-api': 1.12.8(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.12.1(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/plugin-catalog-react': 1.21.6(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/jest@30.0.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@material-ui/icons': 4.11.3(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      cross-fetch: 3.2.0(encoding@0.1.13)
+      fp-ts: 2.16.11
+      io-ts: 2.2.22(fp-ts@2.16.11)
+      io-ts-promise: 2.0.3(fp-ts@2.16.11)(io-ts@2.2.22(fp-ts@2.16.11))
+      io-ts-reporters: 1.2.2(fp-ts@2.16.11)(io-ts@2.2.22(fp-ts@2.16.11))
+      luxon: 3.7.2
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router: 6.30.4(react@18.3.1)
+      react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react-use: 17.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    transitivePeerDependencies:
+      - '@mui/material'
+      - '@testing-library/dom'
+      - '@testing-library/react'
+      - '@types/jest'
+      - '@types/react'
+      - '@types/react-dom'
+      - encoding
+      - js-cookie
+      - react-native
+      - supports-color
 
   '@rolldown/binding-android-arm64@1.2.2':
     optional: true
@@ -30324,6 +30853,15 @@ snapshots:
 
   deep-eql@5.0.2: {}
 
+  deep-equal@1.1.2:
+    dependencies:
+      is-arguments: 1.2.0
+      is-date-object: 1.1.0
+      is-regex: 1.2.1
+      object-is: 1.1.6
+      object-keys: 1.1.1
+      regexp.prototype.flags: 1.5.4
+
   deep-extend@0.6.0: {}
 
   deep-is@0.1.4: {}
@@ -31841,6 +32379,8 @@ snapshots:
 
   forwarded@0.2.0: {}
 
+  fp-ts@2.16.11: {}
+
   fraction.js@5.3.4: {}
 
   framer-motion@13.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
@@ -32896,6 +33436,21 @@ snapshots:
   invariant@2.2.4:
     dependencies:
       loose-envify: 1.4.0
+
+  io-ts-promise@2.0.3(fp-ts@2.16.11)(io-ts@2.2.22(fp-ts@2.16.11)):
+    dependencies:
+      deep-equal: 1.1.2
+      fp-ts: 2.16.11
+      io-ts: 2.2.22(fp-ts@2.16.11)
+
+  io-ts-reporters@1.2.2(fp-ts@2.16.11)(io-ts@2.2.22(fp-ts@2.16.11)):
+    dependencies:
+      fp-ts: 2.16.11
+      io-ts: 2.2.22(fp-ts@2.16.11)
+
+  io-ts@2.2.22(fp-ts@2.16.11):
+    dependencies:
+      fp-ts: 2.16.11
 
   ioredis@6.0.0:
     dependencies:

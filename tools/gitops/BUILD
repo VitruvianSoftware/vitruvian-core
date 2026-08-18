@@ -76,6 +76,18 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# Mint AND seal the read-only ArgoCD token the Backstage ArgoCD cards use. Unlike
+# seal-alert-ntfy this creates the credential itself, so it never passes through
+# a clipboard. Requires the `backstage` role on platform-project to be merged and
+# synced first (the script says so explicitly if it is not).
+#   bazel run //tools/gitops:seal-argocd-backstage-token
+#   bazel run //tools/gitops:seal-argocd-backstage-token -- --apply
+sh_binary(
+    name = "seal-argocd-backstage-token",
+    srcs = ["seal_argocd_backstage_token.sh"],
+    visibility = ["//visibility:public"],
+)
+
 # Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
 # Unlock is automatic (prompts for the master password if locked); `bw login` once first.
 sh_binary(
