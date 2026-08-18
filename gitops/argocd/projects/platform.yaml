@@ -73,6 +73,38 @@ spec:
       kind: CiliumLoadBalancerIPPool
     - group: cilium.io
       kind: CiliumL2AnnouncementPolicy
+  # Read-only identity for the Backstage ArgoCD cards (docs/backstage-argocd.md).
+  #
+  # A PROJECT ROLE, not a local account: `accounts.<name>` lives in argocd-cm,
+  # which is Helm-managed by the Pulumi dev-local stack (no CI applies that
+  # stack), so an account cannot be added through GitOps. A project role is
+  # declarative here and reaches the cluster the same way everything else does.
+  #
+  # Two behaviours were verified against the live server (v3.4.4) rather than
+  # assumed, because both are load-bearing:
+  #
+  #  1. TOKENS SURVIVE selfHeal. `argocd proj role create-token` writes the token
+  #     id to BOTH .spec.roles[].jwtTokens and .status.jwtTokensByRole. app-of-
+  #     projects runs selfHeal:true, so the spec copy IS stripped back to what
+  #     git says (this file, which lists no tokens) -- but validation reads
+  #     .status, which is not part of the desired state. A minted token keeps
+  #     working after the strip. Do NOT "fix" this by committing jwtTokens.
+  #
+  #  2. THE READ SCOPE IS CLUSTER-WIDE, and does not come from the policy below.
+  #     argocd-rbac-cm sets `policy.default: role:readonly`, so any authenticated
+  #     subject can already read every Application. The token therefore sees all
+  #     51 Applications across all 5 projects -- which is what makes ONE token
+  #     enough for a card that must also show buzz, storybook and whoami. The
+  #     explicit policy below is the floor that survives someone tightening
+  #     policy.default; it is not what grants today's visibility.
+  #
+  # Writes are denied: syncing an app with this token returns 403 "permission
+  # denied: applications, sync, ... sub: proj:platform-project:backstage".
+  roles:
+    - name: backstage
+      description: Read-only Application access for the Backstage portal's ArgoCD cards
+      policies:
+        - p, proj:platform-project:backstage, applications, get, platform-project/*, allow
   sourceRepos:
     - '*'
   destinations:

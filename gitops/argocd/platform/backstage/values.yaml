@@ -42,6 +42,17 @@ backstage:
       secretKeyRef:
         name: backstage-github-token
         key: GITHUB_TOKEN
+  - name: ARGOCD_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: argocd-backstage-token
+        key: ARGOCD_TOKEN
+        # optional: a missing secret must degrade the ArgoCD cards, never block
+        # startup. Without this the pod sits in CreateContainerConfigError and
+        # the whole portal is down until the SealedSecret lands -- the token is
+        # minted against a role that only exists AFTER this merges, so there is
+        # necessarily a window where it is absent.
+        optional: true
   - name: GRAFANA_TOKEN
     valueFrom:
       secretKeyRef:
@@ -190,6 +201,24 @@ backstage:
           # Do not let a browser-supplied cookie/authorization ride along to
           # Grafana -- the proxy's own bearer token is the only credential.
           allowedHeaders: ["Accept", "Content-Type"]
+        # ArgoCD read-only API. Same shape and reasoning as /grafana/api above:
+        # in-cluster Service target, GET-only, and no browser-supplied
+        # credential forwarded -- the proxy's bearer token is the only one.
+        #
+        # That token belongs to a PROJECT-scoped ArgoCD role (platform-project,
+        # `get` on applications only), not a global admin account. See
+        # gitops/argocd/projects/platform.yaml and docs/backstage-argocd.md.
+        /argocd/api:
+          target: http://argocd-server.argocd.svc.cluster.local
+          headers:
+            Authorization: "Bearer ${ARGOCD_TOKEN}"
+          allowedMethods: ["GET"]
+          allowedHeaders: ["Accept", "Content-Type"]
+    # Only used to build the card's click-through links into the ArgoCD UI;
+    # the data itself comes through the proxy above.
+    argocd:
+      baseUrl: https://argocd.lab.ipv1337.dev
+
     grafana:
       # Used to build the click-through links the card renders. This is the
       # user-facing URL, unlike the proxy target above which is in-cluster.

@@ -31,6 +31,12 @@ metadata:
     # app.kubernetes.io/name and does not carry a backstage.io/kubernetes-id
     # label -- verified against the running pod rather than assumed.
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=backstage
+    # Deployment state (sync/health, revision history) for the Deployments tab.
+    # app-name, not app-selector: the `backstage` Application carries app=backstage
+    # but backstage-db is labelled app=backstage-db, so a selector would either
+    # miss the database or lump an independently-synced Postgres cluster into
+    # this component's deploy history.
+    argocd/app-name: backstage
 spec:
   type: service
   lifecycle: production

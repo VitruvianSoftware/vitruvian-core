@@ -54,6 +54,25 @@ proxy:
         Authorization: "Bearer ${GRAFANA_TOKEN}"
       allowedMethods: ["GET"]
       allowedHeaders: ["Accept", "Content-Type"]
+    # ArgoCD read-only API. Same shape and reasoning as /grafana/api above:
+    # in-cluster Service target (keeps traffic off the ingress), GET-only, and
+    # no browser-supplied credential forwarded -- the proxy's bearer token is
+    # the only credential.
+    #
+    # That token belongs to a PROJECT-scoped ArgoCD role, not a global account:
+    # it can `get` applications in platform-project and nothing else. See
+    # gitops/argocd/projects/platform.yaml and docs/backstage-argocd.md.
+    /argocd/api:
+      target: http://argocd-server.argocd.svc.cluster.local
+      headers:
+        Authorization: "Bearer ${ARGOCD_TOKEN}"
+      allowedMethods: ["GET"]
+      allowedHeaders: ["Accept", "Content-Type"]
+
+# Only used to build the card's click-through links into the ArgoCD UI; the data
+# itself comes through the proxy above.
+argocd:
+  baseUrl: https://argocd.lab.ipv1337.dev
 
 grafana:
   # Only used to build the click-through links the card renders; the data
