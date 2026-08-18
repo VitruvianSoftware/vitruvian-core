@@ -62,8 +62,13 @@ proxy:
     # That token belongs to a PROJECT-scoped ArgoCD role, not a global account:
     # it can `get` applications in platform-project and nothing else. See
     # gitops/argocd/projects/platform.yaml and docs/backstage-argocd.md.
+    # The /api/v1/ suffix is REQUIRED, not cosmetic: the plugin builds
+    # `${proxy}/argocd/api/applications/<name>` and the proxy rewrites
+    # `^/api/proxy/argocd/api/?` to `/`, so the API version can only come from
+    # the target. Without it every lookup resolves to <host>/applications/<name>
+    # and returns 404 -- which is exactly how this shipped in #1770.
     /argocd/api:
-      target: http://argocd-server.argocd.svc.cluster.local
+      target: http://argocd-server.argocd.svc.cluster.local/api/v1/
       headers:
         Authorization: "Bearer ${ARGOCD_TOKEN}"
       allowedMethods: ["GET"]

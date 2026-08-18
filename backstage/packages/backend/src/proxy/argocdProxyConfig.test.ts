@@ -109,9 +109,23 @@ describe("proxy endpoint /argocd/api", () => {
   it.each(configs)(
     "targets the in-cluster Service in the %s, not the public ingress",
     (_label, path) => {
-      expect(argocdEndpointOf(path).target).toBe(
-        "http://argocd-server.argocd.svc.cluster.local",
+      expect(argocdEndpointOf(path).target).toMatch(
+        /^http:\/\/argocd-server\.argocd\.svc\.cluster\.local\b/,
       );
+    },
+  );
+
+  it.each(configs)(
+    "includes the /api/v1/ prefix in the %s target",
+    (_label, path) => {
+      // Not cosmetic. The plugin requests
+      // `${proxy}/argocd/api/applications/<name>` and the proxy rewrites
+      // `^/api/proxy/argocd/api/?` to `/`, so the API version can ONLY come from
+      // the target. Without it every lookup resolves to <host>/applications/<name>
+      // and ArgoCD returns 404 -- which is exactly how #1770 shipped, and the
+      // original version of this test pinned the broken value instead of
+      // catching it.
+      expect(argocdEndpointOf(path).target).toMatch(/\/api\/v1\/?$/);
     },
   );
 
@@ -199,10 +213,14 @@ describe("catalog argocd/* annotations", () => {
     expect(value.trim()).not.toBe("");
   });
 
-  it.each(annotated.filter(([, k]) => k === "argocd/app-selector"))(
-    "%s declares %s as a k=v label selector",
-    (_name, _key, value) => {
-      expect(value).toMatch(/^[^=,\s]+=[^=,\s]+$/);
-    },
-  );
+  it("uses no argocd/app-selector annotation", () => {
+    // app-selector is unusable in pure proxy mode: the plugin requests
+    // /applications/selector/<sel>, which is not an ArgoCD API path -- it is
+    // served by @roadiehq/backstage-plugin-argo-cd-backend, which this portal
+    // does not install. Verified 404 against the live API. Installing that
+    // backend plugin is what would make this annotation legal again.
+    expect(annotated.filter(([, k]) => k === "argocd/app-selector")).toEqual(
+      [],
+    );
+  });
 });
