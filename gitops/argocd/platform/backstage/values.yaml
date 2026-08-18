@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:c7b629db3538a4fcc877b9e68c43eb1e8a5fe37748e09eb41717044e65e56347
+    tag: latest@sha256:cd6708d6f2458f35ba854df3fd28cb82b915f76f647204681422d757bf260c60
     pullPolicy: Always
   command:
   - node
@@ -218,7 +218,6 @@ backstage:
     # the data itself comes through the proxy above.
     argocd:
       baseUrl: https://argocd.lab.ipv1337.dev
-
     grafana:
       # Used to build the click-through links the card renders. This is the
       # user-facing URL, unlike the proxy target above which is in-cluster.
