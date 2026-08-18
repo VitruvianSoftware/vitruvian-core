@@ -70,6 +70,22 @@ backstage:
       baseUrl: https://backstage.vitruviansoftware.dev
       listen:
         port: 7007
+      # Without this, connect-src falls back to `default-src 'self'` and the
+      # BROWSER blocks every frontend call to a third-party API before it is
+      # sent -- surfacing as "Error: Failed to fetch" with no request in the
+      # network tab and nothing in the backend logs. It is not an auth failure;
+      # a scope or token problem returns 401/403 instead.
+      #
+      # Hit by the GitHub Actions plugin (#1739), the first frontend plugin here
+      # that calls an external API (api.github.com) directly from the page. Any
+      # future one needs this too.
+      #
+      # backstage/app-config.yaml has carried this since it was scaffolded --
+      # upstream ships it by default. It was never mirrored here, and THIS file
+      # is the config the container actually runs, so the repo looked correct
+      # while production shipped the restrictive helmet default.
+      csp:
+        connect-src: ["'self'", 'http:', 'https:']
       database:
         client: pg
         pluginDivisionMode: schema
