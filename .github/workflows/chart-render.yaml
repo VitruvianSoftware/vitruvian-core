@@ -78,3 +78,37 @@ jobs:
 
       - name: Render charts and assert their guards refuse
         run: bash tools/ci/chart-render.sh
+
+  # Separate job, not another step on chart-render: this one needs the network
+  # and a GHCR credential, and chart-render.sh is deliberately offline. Keeping
+  # them apart means a registry outage cannot redden the offline template checks,
+  # and the two contexts can be promoted to required independently.
+  #
+  # Job name = the check context, same convention as chart-render above.
+  gitops-values-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Read-only pull of public OCI charts from ghcr.io. helm 4's ANONYMOUS
+      # token request to ghcr is refused with 403 even for public packages, so a
+      # credential is required to render buzz's chart at all.
+      packages: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      # Explicit, not assumed. The discovery step parses the gitops tree with
+      # PyYAML; if it were merely present-by-default on the runner image, an
+      # image change would make this gate find zero pairs. The script also
+      # refuses to run without it, so the two cannot disagree silently.
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+
+      - name: Render each Application's values against its chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: bash tools/ci/gitops-values-render.sh
