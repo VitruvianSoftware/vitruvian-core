@@ -91,7 +91,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push container image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: backstage/Dockerfile
@@ -113,7 +113,7 @@ jobs:
       # the runner can actually execute. Every layer was just built by the step
       # above and is in the shared cache, so this is an export, not a rebuild.
       - name: Load image for smoke test
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: backstage/Dockerfile
