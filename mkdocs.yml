@@ -49,6 +49,9 @@ nav:
       - Version-pin exceptions: engineering/version-pin-exceptions.md
       - App launch status: engineering/app-launch-status.md
       - Domain zones: engineering/domain-zone-conventions.md
+  - Developer portal:
+      - Grafana dashboards: backstage-grafana.md
+      - ArgoCD deployments: backstage-argocd.md
   - Infrastructure:
       - Overview: infrastructure/index.md
       - Architecture: infrastructure/architecture.md

@@ -32,8 +32,20 @@
 # cert-manager.json and traefik.json gained one.
 #
 # Deliberately absent: Longhorn and Elasticsearch have dashboards in Grafana but
-# are NOT deployed, and ArgoCD/Zitadel/Envoy Gateway are deployed but have no
-# dashboard yet. Neither gets an entity until it is both real and observable.
+# are NOT deployed. Nothing gets an entity until it is real.
+#
+# The old rule here was "real AND observable" -- no Grafana dashboard, no entity.
+# That is obsolete now that ArgoCD deployment state is a second signal: an entity
+# is worth having if you can answer "what version is live and is it healthy?",
+# even with no dashboard yet. The entities below carry argocd/app-name only, and
+# gain a grafana/dashboard-selector if and when a dashboard exists -- adding a
+# selector that matches no dashboard renders a permanently empty card.
+#
+# Not modelled, deliberately: the ArgoCD Applications that are plumbing rather
+# than components -- app-of-*, *-resources, platform-crds, sealed-secrets-manifests,
+# grafana-dashboards, and the per-service *-db clusters. They are how things are
+# deployed, not things anyone looks up. ArgoCD itself has no entity because it is
+# not an ArgoCD Application: it is the Pulumi bootstrap that manages everything else.
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
@@ -125,5 +137,211 @@ metadata:
       icon: docs
 spec:
   type: ingress-controller
+  owner: platform-team
+  system: vitruvian-core
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: zitadel
+  title: Zitadel
+  description: Self-hosted OIDC identity provider — the login behind auth.ipv1337.dev, backed by its own CloudNativePG cluster
+  annotations:
+    argocd/app-name: zitadel
+  links:
+    - url: https://auth.ipv1337.dev
+      title: Console
+      icon: dashboard
+    - url: https://zitadel.com/docs
+      title: Upstream docs
+      icon: docs
+spec:
+  type: identity-provider
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: grafana
+  title: Grafana
+  description: Dashboards and alerting UI for the homelab, backed by its own CloudNativePG cluster
+  annotations:
+    argocd/app-name: grafana
+  links:
+    - url: https://grafana.lab.ipv1337.dev
+      title: Grafana
+      icon: dashboard
+    - url: https://grafana.com/docs/grafana/latest/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: observability
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: prometheus
+  title: Prometheus
+  description: Scrapes and stores cluster metrics, and evaluates the alerting rules Alertmanager delivers through ntfy
+  annotations:
+    argocd/app-name: prometheus
+  links:
+    - url: https://prometheus.io/docs/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: monitoring
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: thanos
+  title: Thanos
+  description: Long-term metric retention on top of Prometheus, with blocks stored in MinIO
+  annotations:
+    argocd/app-name: thanos
+  links:
+    - url: https://thanos.io/tip/thanos/getting-started.md/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: metrics-storage
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: tempo
+  title: Tempo
+  description: Distributed tracing backend, storing traces in MinIO and queried from Grafana
+  annotations:
+    argocd/app-name: tempo
+  links:
+    - url: https://grafana.com/docs/tempo/latest/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: tracing
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ntfy
+  title: ntfy
+  description: Self-hosted push notifications — the delivery target Alertmanager posts alerts to
+  annotations:
+    argocd/app-name: ntfy
+  links:
+    - url: https://ntfy.ipv1337.dev
+      title: ntfy
+      icon: web
+    - url: https://docs.ntfy.sh/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: notifications
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: headscale
+  title: Headscale
+  description: Self-hosted Tailscale control server for the tailnet the cluster nodes join
+  annotations:
+    argocd/app-name: headscale
+  links:
+    - url: https://headscale.ipv1337.dev
+      title: Headscale
+      icon: web
+    - url: https://headscale.net/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: vpn-control-plane
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: uptime-kuma
+  title: Uptime Kuma
+  description: External uptime and status monitoring, published at status.ipv1337.dev
+  annotations:
+    argocd/app-name: uptime-kuma
+  links:
+    - url: https://status.ipv1337.dev
+      title: Status page
+      icon: web
+    - url: https://github.com/louislam/uptime-kuma
+      title: Upstream
+      icon: docs
+spec:
+  type: uptime-monitoring
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: buzz
+  title: Buzz
+  description: Self-hosted Buzz relay coordinating a local agent pool, with its own CloudNativePG cluster and Valkey
+  annotations:
+    argocd/app-name: buzz
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/gitops/argocd/platform/buzz/ARCHITECTURE.md
+      title: Architecture
+      icon: docs
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: storybook
+  title: Storybook
+  description: Static Storybook component library built from this repo and served by Nginx at storybook.ipv1337.dev
+  annotations:
+    argocd/app-name: storybook
+  links:
+    - url: https://storybook.ipv1337.dev
+      title: Storybook
+      icon: web
+spec:
+  type: website
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: whoami
+  title: whoami
+  description: First-party echo service that doubles as the Argo Rollouts canary reference workload (AnalysisTemplate + canary/stable services)
+  annotations:
+    argocd/app-name: whoami
+  links:
+    - url: https://whoami.ipv1337.dev
+      title: whoami
+      icon: web
+spec:
+  type: service
+  lifecycle: production
   owner: platform-team
   system: vitruvian-core
