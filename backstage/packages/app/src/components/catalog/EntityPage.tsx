@@ -41,6 +41,11 @@ import {
   EntityOwnershipCard,
 } from "@backstage/plugin-org";
 import { EntityTechdocsContent } from "@backstage/plugin-techdocs";
+import {
+  EntityGithubActionsContent,
+  EntityRecentGithubActionsRunsCard,
+  isGithubActionsAvailable,
+} from "@backstage-community/plugin-github-actions";
 import { EntityCatalogGraphCard } from "@backstage/plugin-catalog-graph";
 
 const defaultEntityPage = (
@@ -56,7 +61,27 @@ const defaultEntityPage = (
         <Grid item md={4} xs={12}>
           <EntityLinksCard />
         </Grid>
+        {/* Recent CI runs, but only for entities that actually declare a
+            github.com/project-slug -- rendering it unconditionally would show a
+            permanently-empty card on every entity that has no repository. */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isGithubActionsAvailable}>
+            <Grid item md={8} xs={12}>
+              <EntityRecentGithubActionsRunsCard limit={5} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
       </Grid>
+    </EntityLayout.Route>
+    {/* `if` is what keeps this honest: without it the tab renders for every
+        entity -- including Users and Groups -- and fails at the API call
+        instead of simply not being offered. */}
+    <EntityLayout.Route
+      path="/ci-cd"
+      title="CI/CD"
+      if={isGithubActionsAvailable}
+    >
+      <EntityGithubActionsContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       <EntityTechdocsContent />

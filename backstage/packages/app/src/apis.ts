@@ -35,5 +35,21 @@ export const apis: AnyApiFactory[] = [
     deps: { configApi: configApiRef },
     factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
   }),
+  // Backs scmAuthApiRef, which the GitHub Actions plugin uses to call the
+  // GitHub API as the signed-in user.
+  //
+  // NOTE ON SCOPE: ScmAuth.forGithub requests `repo read:org read:user`. `repo`
+  // is broad -- read/write on every repository the user can reach, private
+  // included -- so users see that on the consent screen the first time they
+  // open a CI/CD tab. It is kept at the upstream default deliberately: this org
+  // has private repositories, and narrowing to `public_repo` would work today
+  // and then fail silently the first time a private repo is added to the
+  // catalog, which is a far worse failure mode than a broad-but-visible scope.
+  //
+  // To narrow it anyway (only safe while every catalogued repo is public):
+  //   ScmAuth.forAuthApi(githubAuthApi, {
+  //     host: "github.com",
+  //     scopeMapping: { default: ["public_repo", "read:org", "read:user"] },
+  //   })
   ScmAuth.createDefaultApiFactory(),
 ];
