@@ -107,6 +107,22 @@ No expiry by default, matching `grafana-backstage-token`: an expiring token
 breaks the cards months later with no failing gate to catch it. Pass
 `--expires-in 8760h` to opt into rotation.
 
+**The pod does not restart when the secret changes.** The deployment's
+`checksum/app-config` annotation covers the ConfigMap, not the Secret, so a newly
+applied or rotated token is not picked up by the running container — the cards
+keep failing against the old value (or, on first install, against no value at
+all) with nothing in the logs to explain it. Roll the pod after the SealedSecret
+lands:
+
+```bash
+kubectl delete pod -n backstage -l app.kubernetes.io/name=backstage
+```
+
+Delete rather than `kubectl rollout restart`: the latter stamps
+`kubectl.kubernetes.io/restartedAt` onto the pod template, which ArgoCD's
+`selfHeal` then reverts — costing a second, pointless rollout. Deleting the pod
+introduces no manifest drift; the ReplicaSet recreates it immediately.
+
 `ARGOCD_TOKEN` is deliberately mounted with `optional: true`. A missing secret
 must degrade the cards, not block startup — without it the pod sits in
 `CreateContainerConfigError` and the **whole portal** is down, and the token is
