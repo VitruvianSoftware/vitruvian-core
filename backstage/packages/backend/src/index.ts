@@ -22,6 +22,7 @@ import { createBackend } from "@backstage/backend-defaults";
 
 import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
+import { cloudRunPlugin } from "./cloudRun/plugin";
 
 const backend = createBackend();
 
@@ -71,6 +72,10 @@ backend.add(permissionModuleVitruvianPolicy);
 // token, so there is no credential to store or rotate -- see the read-only
 // ClusterRole in gitops/argocd/platform/backstage/rbac.yaml.
 backend.add(import("@backstage/plugin-kubernetes-backend"));
+
+// Cloud Run status for the apps that do NOT run in this cluster (tabula,
+// oauth-user-inspector). The Kubernetes plugin above covers the ones that do.
+backend.add(cloudRunPlugin);
 
 backend.add(import("@backstage/plugin-search-backend"));
 backend.add(import("@backstage/plugin-search-backend-module-catalog"));

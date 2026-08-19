@@ -30,6 +30,17 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    # Cloud Run services this component actually runs as. Explicit rather
+    # than derived: the projects are random-suffixed and some components
+    # have more than one service per environment, so nothing here is
+    # guessable from the entity name.
+    vitruvian.dev/cloud-run-services: |
+      development/api=prj-d-bu2-oss-floating-c3d1/us-central1/tabula-api-development
+      development/web=prj-d-bu2-oss-floating-c3d1/us-central1/tabula-web-development
+      nonproduction/api=prj-n-bu2-oss-floating-a943/us-central1/tabula-api-nonproduction
+      nonproduction/web=prj-n-bu2-oss-floating-a943/us-central1/tabula-web-nonproduction
+      production/api=prj-p-bu2-oss-floating-8663/us-central1/tabula-api-production
+      production/web=prj-p-bu2-oss-floating-8663/us-central1/tabula-web-production
     vitruvian.dev/deploy-workflow: tabula-deploy.yaml
     vitruvian.dev/deploy-targets: //tabula/api:image_push //tabula/extension:chrome_zip
     vitruvian.dev/environments: development nonproduction production
