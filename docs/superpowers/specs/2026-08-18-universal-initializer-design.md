@@ -97,33 +97,87 @@ deployed Backstage (`plugin-scaffolder-backend@4.0.2`, `plugin-scaffolder-node@0
   quick-start still describe the **removed** `hay-kot/scaffold` engine. Trust
   `render.axl` / `dev.axl` / the workflows.
 
-## 4. Architecture: one foundation, three frontends
+## 4. Architecture: one foundation, three frontends, three planes
 
 Spring Initializr is one core library and one metadata contract behind several frontends
-(web UI, `curl` API, `spring init` CLI, IDE wizards). We adopt that shape (ADR-001).
+(web UI, `curl` API, `spring init` CLI, IDE wizards). We adopt that shape (ADR-001) — with
+one deliberate divergence (ADR-026): the engine is not a central service but is **embedded
+in every repo it serves**, delivered the way `tools/` and `bazel/` already are.
+
+### 4.1 The three planes and what flows between them
 
 ```mermaid
-flowchart TD
-    MC["Metadata contract - app section in template-config.json"]
-    RA["render-app AXL task - validate, render app subtree"]
-    MC --> RA
-    MC --> A["Frontend A: Backstage Create page"]
-    MC --> B["Frontend B: initializer HTTP service"]
-    MC --> C["Frontend C: local CLI, stamps into the monorepo you are in"]
-    RA --> A
-    RA --> B
-    RA --> C
-    A --> PR["publish:github:pull-request into the target monorepo"]
-    B --> ZIP["app subtree as zip or patch"]
-    C --> FS["files written into the working tree"]
-    PR --> MQ["merge queue - auto-merge - ArgoCD"]
+flowchart TB
+    subgraph AWT["Repo: aspect-workflows-template  (engine SOURCE - develop and prove here)"]
+        ENG["Engine source: app.axl + template/app/(lang)/ + metadata contract"]
+        GATES["CI gates on every PR: check-metadata, check-renders, app-contract two-host gazelle fixed point"]
+        DELIVER["deliver.yaml - triggered by push to platform-v2.0"]
+        ENG --> GATES --> DELIVER
+    end
 
-    RS["Repo stamping - 13 templates, 26 starter repos - adjacent tier, unchanged"]
-    MC -.shares metadata and renderer.- RS
+    subgraph STARTERS["26 published starter repos  (refreshed by every deliver run)"]
+        SNAP1["Embedded engine snapshot + repo scaffolding"]
+    end
+
+    subgraph USER["User monorepo, e.g. vitruvian-core  (engine RUNS here - the developer's journey)"]
+        SNAP2["Embedded engine: MODULE.aspect tasks + app templates, same vintage as the repo"]
+        RAPP["aspect render-app - executes IN this repo"]
+        APPS["apps/(name)/ ... stamped applications + gitops manifests"]
+        SNAP2 --> RAPP --> APPS
+    end
+
+    subgraph PLATFORM["Platform plane in vitruvian-core  (frontends + delivery)"]
+        BS["Frontend A: Backstage Create page - custom action clones the target repo, runs ITS engine"]
+        SVC["Frontend B: initializer HTTP service (P4)"]
+        CLI["Frontend C: devx app new / aspect render-app (P5)"]
+        MQ["merge queue - gates - auto-merge"]
+        ARGO["ArgoCD - reconciles - service live"]
+    end
+
+    DELIVER -- "force-push rendered starters" --> STARTERS
+    STARTERS -- "developer: aspect init / clone a starter" --> USER
+    BS -- "invoke embedded engine" --> RAPP
+    SVC -- "invoke embedded engine" --> RAPP
+    CLI -- "runs in the checkout" --> RAPP
+    APPS -- "publish:github:pull-request" --> MQ --> ARGO
 ```
 
-The foundation lives in `aspect-workflows-template`: the generator repo stays the single
-source of truth for what can be composed, and frontends are transports.
+### 4.2 What gets triggered where
+
+| Event | Repo | What runs | Effect |
+|---|---|---|---|
+| PR to `platform-v2.0` | aspect-workflows-template | `check-metadata`, `check-renders`, `app-contract` (two-host gazelle fixed point), preset matrix | engine change is proven before it can ship |
+| Merge to `platform-v2.0` | aspect-workflows-template | `deliver.yaml` | all 26 starter repos force-pushed with fresh renders, embedded engine included (P0.5+) |
+| Developer creates a repo | starter repo → their repo | repo stamping (13 Backstage templates / `aspect init`) | new monorepo carrying its own engine snapshot |
+| Create page submit / `devx app new` / service call | **target monorepo** | that repo's embedded `render-app` | app rendered; PR opened into the same repo |
+| Stamping PR opened | target monorepo (vitruvian-core) | the repo's own merge-queue gates (incl. stale-BUILD) | gazelle fixed point means the PR arrives green |
+| Stamping PR auto-merges | vitruvian-core | ArgoCD reconciles the gitops manifests in the same PR | service live, no human gate (ADR-007) |
+| Engine bug fixed centrally | aspect-workflows-template → starters | deliver refresh | future repos and refreshed starters healed; existing user repos keep their snapshot (ADR-026 trade) |
+
+### 4.3 The stamp-to-deploy journey (Frontend A, the P1 flow)
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant BS as Backstage Create page
+    participant ACT as Custom action (backstage pod)
+    participant REPO as Target monorepo checkout
+    participant GH as GitHub merge queue
+    participant CD as ArgoCD
+
+    Dev->>BS: pick language + concerns (form from metadata contract)
+    BS->>ACT: submit (validated client-side, never trusted)
+    ACT->>REPO: clone target repo
+    ACT->>REPO: run ITS embedded render-app (validates again, renders app + manifests)
+    ACT->>GH: publish github pull-request, auto-merge enabled
+    GH->>GH: full gate set runs (stale-BUILD gate passes by fixed-point construction)
+    GH->>CD: merged - gitops manifests land on main
+    CD->>Dev: service live in the cluster, minutes after submit
+```
+
+The engine executes **in the target repo's context** in every flow; the frontends are
+transports plus credentials. `aspect-workflows-template` never participates at stamp time
+— it is upstream of the journey, not part of it (ADR-026).
 
 ## 5. Foundation: the composition core
 
