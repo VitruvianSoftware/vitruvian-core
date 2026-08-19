@@ -246,7 +246,30 @@ jobs:
   # the deploy. Each env's deploy tolerates its zitadel job being SKIPPED
   # (gated off) but not FAILED.
   zitadel-dev:
-    if: ${{ vars.ZITADEL_APPS_AUTO_APPLY == 'true' && (github.event_name == 'push' || inputs.environment == 'development') }}
+    # Gated on the SAME affected verdict as `build` (#1351's gate job), because
+    # this is the EXPAND half of expand-before-serve: it registers the env's
+    # OIDC client so hosted login works when the new revision arrives. If no
+    # revision is arriving -- `build` skipped because the gate found this app
+    # unaffected -- there is nothing to expand for, and `deploy-dev` skips too.
+    #
+    # It was running on EVERY push to main: 315s a time (217s of tailnet tunnel
+    # setup + 81s of Pulumi apply), ~11 runs/day, while only ~7% of commits
+    # touch oauth-user-inspector at all (5 of ~69 over three days; 0 of the last
+    # 30 commits). Measured on 9fe12ae3, a one-line buzz gitops digest bump:
+    # gate said not-affected, build/deploy-dev/deploy-nonprod/deploy-prod all
+    # skipped, and this still applied the Zitadel stack.
+    #
+    # Fewer applies is also the safer direction on this particular stack: a
+    # force-replace of an ApplicationOidc DELETES the live OIDC client (guarded
+    # by //tools/conformance:check's zitadel-import check), so every unnecessary
+    # apply is an unnecessary chance to drift.
+    #
+    # Mirrors `build`'s shape exactly, including FAIL-OPEN on a gate failure --
+    # if the gate could not decide, expand anyway so it can never be the reason
+    # a real deploy serves without its OIDC client. workflow_dispatch keeps its
+    # unconditional path for manual re-apply / redirect self-heal.
+    needs: [gate]
+    if: ${{ always() && !cancelled() && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && ((github.event_name == 'push' && (needs.gate.result == 'failure' || needs.gate.outputs.affected == 'true')) || inputs.environment == 'development') }}
     uses: ./.github/workflows/_zitadel-apps-apply.yaml
     with:
       environment: development
