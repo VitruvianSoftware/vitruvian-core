@@ -241,8 +241,46 @@ worst case is a redundant (idempotent) apply, never a missed one.
 - **Phase 4 (optional, separate decision):** evaluate folding the foundation
   ladder in.
 
-Rollback at any phase = revert the generated file + re-add the legacy workflow
-(both are single commits; state is never migrated, only triggers).
+### 6.1 Rollback plan
+
+**Why rollback is structurally cheap here:** the orchestrator migrates
+**triggers, never state**. Pulumi stacks, GitHub Environments, WIF bindings,
+secrets and release-please are untouched at every phase, so there is no
+migration to unwind — only "which YAML fires the same underlying targets".
+
+**Three-level response ladder** (fastest first):
+
+| level | action | latency | when |
+|---|---|---|---|
+| 0 — deliver *now*, decide later | `workflow_dispatch` the affected unit, or the break-glass `bazel run` target (identical target, per runbook) | minutes | any suspected miss — mitigation never waits on diagnosis |
+| 1 — kill switch, no commit | flip the `DELIVERY_ORCHESTRATOR_ENABLED` repo variable (a `pipelineGates` var in `repo_config`, the existing `ZITADEL_APPS_AUTO_APPLY` idiom). Generated fan-out jobs no-op; the not-yet-deleted legacy workflows (still present through Phase 2) resume as the delivery path | ~1 min | orchestrator misbehaving; buys unhurried diagnosis |
+| 2 — phase revert | `git revert` of the phase's single PR | one merge | design defect confirmed |
+
+**Atomicity rule that makes level 2 real:** each phase ships as **one PR**
+containing its declarations, the regenerated `delivery.yaml`, and (Phase 3)
+the legacy deletion — because tidy-check asserts the YAML matches the
+generator, a partial revert would fail regen. Each phase's checklist includes a
+`git revert --no-commit` dry-run proving the PR reverts cleanly before it
+merges.
+
+**Per-phase exposure:**
+
+| phase | worst uncaught failure | rollback |
+|---|---|---|
+| 0 | none (no behaviour change; fan-out is empty) | revert PR |
+| 1–2 | a missed deploy for a migrated unit — bounded by fail-open + level 0 | level 1 (legacy still present), then level 2 |
+| 3 | legacy is gone, so level 1 loses its fallback path: kill switch stops the orchestrator but nothing else delivers automatically until reverted | level 0 for urgency; level 2 restores legacy verbatim (revert of the deletion commit) — accepted because Phases 1–2 must each survive a full release cycle first |
+| 2→1 detection rollback | digest detection reverts to graph/paths by clearing the `preflight` attr — detection sharpness only; fan-out untouched |
+
+**Rollback triggers (decided in advance, not under fire):** an observed
+under-delivery (unit changed, manifest said unaffected — the one failure class
+fail-open should make impossible; any single instance is a phase-revert),
+`orchestrate` red on >2 consecutive pushes, or a fail-open storm (>1 day of
+every-unit delivery, i.e. worse than today's baseline).
+
+**Rollback is tested, not assumed:** Phase 0 ships a conformance/negative test
+asserting the kill-switch var actually no-ops the generated jobs, and the
+per-phase revert dry-run above — the test-the-guard discipline.
 
 ## 7. Alternatives considered
 
@@ -277,5 +315,9 @@ Rollback at any phase = revert the generated file + re-add the legacy workflow
    `tools/copybara`, testable, no new toolchain.
 3. **Per-unit path regexes** move into `delivery()` attrs; `deploy-affected.sh`
    stays the engine and gains no new modes.
+5. **Kill switch:** `DELIVERY_ORCHESTRATOR_ENABLED` ships in Phase 0 as a
+   `repo_config` pipeline-gate variable (§6.1), on the existing
+   `ZITADEL_APPS_AUTO_APPLY` pattern — rollback level 1 is a variable flip,
+   not a commit.
 4. **`site-verification-test.yaml` / other self-tests** are not delivery units
    (no side effects on shared state) — out of scope.
