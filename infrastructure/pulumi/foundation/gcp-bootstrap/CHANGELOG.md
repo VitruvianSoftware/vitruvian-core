@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.12.0...foundation-gcp-bootstrap-v0.13.0) (2026-08-19)
+
+
+### Features
+
+* **foundation:** federate the homelab cluster with GCP, keylessly ([#1781](https://github.com/VitruvianSoftware/vitruvian-core/issues/1781)) ([5d56276](https://github.com/VitruvianSoftware/vitruvian-core/commit/5d56276b4a92e6eca25589d1df6acf9f9b0bc223))
+
 ## [0.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.11.1...foundation-gcp-bootstrap-v0.12.0) (2026-08-04)
 
 
