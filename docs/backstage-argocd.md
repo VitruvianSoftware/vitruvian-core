@@ -159,6 +159,8 @@ Currently annotated:
 | `external-dns` | `argocd/app-name: external-dns` | one Application |
 | `minio` | `argocd/app-name: minio-amd64` | the Application kept the `-amd64` suffix from pinning the StatefulSet to AMD64 nodes |
 | `cloudnative-pg` | `argocd/app-name: cnpg-operator` | the operator is what this Resource describes; `cnpg-cluster` is a database it runs |
+| `zitadel`, `grafana`, `prometheus`, `thanos`, `tempo`, `ntfy`, `headscale`, `uptime-kuma` | `argocd/app-name: <same name>` | platform services whose Application name matches the entity name |
+| `buzz`, `storybook`, `whoami` | `argocd/app-name: <same name>` | deployed services that previously had no catalog entity at all |
 
 A typo such as `argocd/app_name` is **silently inert** — `isArgocdAvailable`
 returns false, the card never renders, and nothing is logged. The annotation keys
@@ -173,8 +175,28 @@ are therefore checked by a test.
   GET-only and the token cannot write. Deployment is driven from git through the
   merge queue; a sync button in a portal is a second, unreviewed path to
   production.
-- **`buzz`, `storybook`, `whoami`** have ArgoCD Applications but no catalog
-  entity yet. The token can already read them, so annotating costs nothing once
-  the entities exist.
+- **Plumbing Applications get no entity**: `app-of-*`, `*-resources`,
+  `platform-crds`, `sealed-secrets-manifests`, `grafana-dashboards` and the
+  per-service `*-db` clusters are how things are deployed, not things anyone
+  looks up. ArgoCD itself has none either — it is not an ArgoCD Application, it
+  is the Pulumi bootstrap that manages everything else.
+- **`tabula` and `oauth-user-inspector`** deploy to Cloud Run, and `devx`,
+  `homelab`, `nexus-agent` and `site-vitruviansoftware-dev` are CLIs and a static
+  site. None are ArgoCD Applications, so none are annotated.
+
+## Verifying the annotations
+
+An `argocd/app-name` that does not match a real Application renders a card that
+only ever says "not found". CI cannot catch this — the check needs the live
+cluster — so it is a manual step when adding entities:
+
+```bash
+kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+```
+
+Resist "covering" this with a test that greps the gitops tree for the name: every
+current value already matches something there incidentally (a README, a PDB, an
+unrelated project file), so such a test passes on almost any plausible string and
+reads as validation without being any.
 
 [plugin]: https://github.com/RoadieHQ/backstage-plugin-argo-cd
