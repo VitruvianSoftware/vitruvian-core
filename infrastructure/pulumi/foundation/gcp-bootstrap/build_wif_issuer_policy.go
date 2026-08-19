@@ -84,6 +84,12 @@ func deployWIFIssuerPolicy(ctx *pulumi.Context, cfg *Config, policyAdminGate pul
 	if cfg.PulumiESCOrg != "" {
 		allowed = append(allowed, pulumi.String(pulumiESCIssuerURI))
 	}
+	// The homelab cluster's own issuer. Unlike the two above it is not a vendor
+	// URL but this cluster's in-cluster address, so it comes from config rather
+	// than a constant -- see build_homelab_cluster_wif.go.
+	if cfg.ClusterIssuerURI != "" {
+		allowed = append(allowed, pulumi.String(cfg.ClusterIssuerURI))
+	}
 	if len(allowed) == 0 {
 		return nil, nil
 	}

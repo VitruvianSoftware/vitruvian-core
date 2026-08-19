@@ -120,6 +120,18 @@ func main() {
 			return err
 		}
 
+		// 5d. Homelab cluster federation: the same keyless idea applied to
+		// workloads running IN the cluster (Backstage, Grafana) that need to read
+		// GCP APIs. Gated on cluster_issuer_uri; unset, this is a no-op.
+		// See build_homelab_cluster_wif.go.
+		clusterSA, err := deployHomelabClusterWIF(ctx, cfg, cicd, issuerPolicy)
+		if err != nil {
+			return err
+		}
+		if clusterSA != nil {
+			ctx.Export("homelabClusterServiceAccountEmail", clusterSA.Email)
+		}
+
 		// 5d. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by default,
 		// see build_github.go)
 		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, issuerPolicy)

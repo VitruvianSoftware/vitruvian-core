@@ -112,7 +112,18 @@ type Config struct {
 	// A credential too narrow to do the work is not safer in practice -- it just
 	// means an agent stops on a permission error and a human finishes the job by
 	// hand with broader rights.
-	PulumiESCOrgRoles         []string
+	PulumiESCOrgRoles []string
+
+	// ClusterIssuerURI gates the homelab cluster federation: unset, nothing is
+	// provisioned. See build_homelab_cluster_wif.go for why the JWKS is supplied
+	// statically rather than discovered.
+	ClusterIssuerURI          string
+	ClusterJWKSJSON           string
+	ClusterAudience           string
+	ClusterSubjects           []string
+	ClusterPoolID             string
+	ClusterProviderID         string
+	ClusterServiceAccountID   string
 	PulumiESCPoolID           string
 	PulumiESCProviderID       string
 	PulumiESCServiceAccountID string
@@ -173,10 +184,18 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		// GitHub Actions CI/CD
 		GitHubOwner: conf.Get("github_owner"),
 
-		PulumiESCOrg:              conf.Get("pulumi_esc_org"),
-		PulumiESCEnvironments:     csvConfig(conf.Get("pulumi_esc_environments")),
-		PulumiESCRoles:            csvConfig(conf.Get("pulumi_esc_roles")),
-		PulumiESCOrgRoles:         csvConfig(conf.Get("pulumi_esc_org_roles")),
+		PulumiESCOrg:          conf.Get("pulumi_esc_org"),
+		PulumiESCEnvironments: csvConfig(conf.Get("pulumi_esc_environments")),
+		PulumiESCRoles:        csvConfig(conf.Get("pulumi_esc_roles")),
+		PulumiESCOrgRoles:     csvConfig(conf.Get("pulumi_esc_org_roles")),
+
+		ClusterIssuerURI:          conf.Get("cluster_issuer_uri"),
+		ClusterJWKSJSON:           conf.Get("cluster_jwks_json"),
+		ClusterAudience:           defaultString(conf.Get("cluster_audience"), "gcp-workload-identity"),
+		ClusterSubjects:           csvConfig(conf.Get("cluster_subjects")),
+		ClusterPoolID:             defaultString(conf.Get("cluster_pool_id"), "homelab-cluster-pool"),
+		ClusterProviderID:         defaultString(conf.Get("cluster_provider_id"), "homelab-cluster-provider"),
+		ClusterServiceAccountID:   defaultString(conf.Get("cluster_sa_id"), "sa-homelab-cluster"),
 		PulumiESCPoolID:           defaultString(conf.Get("pulumi_esc_pool_id"), "pulumi-esc-pool"),
 		PulumiESCProviderID:       defaultString(conf.Get("pulumi_esc_provider_id"), "pulumi-esc-provider"),
 		PulumiESCServiceAccountID: defaultString(conf.Get("pulumi_esc_sa_id"), "sa-pulumi-esc"),
