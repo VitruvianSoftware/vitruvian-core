@@ -1,6 +1,6 @@
 # Application Initializer — Design
 
-**Date:** 2026-08-18 (revised twice same day, see §14)
+**Date:** 2026-08-18 (revised three times same day, see §14)
 **Status:** Approved in conversation; awaiting written-spec review
 **Branch:** `docs/universal-initializer-spec`
 **Requested by:** James Nguyen
@@ -194,15 +194,16 @@ An application is **one language** (ADR-008), so concerns compose within a singl
 
 | Concern | Wires | Go | TS/JS | Python | JVM |
 |---|---|---|---|---|---|
-| `svc_http` | server, routing, graceful shutdown, `/healthz` `/readyz` | chi (OQ-6) | Fastify | FastAPI | **Spring Boot** |
+| `svc_http` | server, routing, graceful shutdown, `/healthz` `/readyz` | chi, or gin / stdlib `net/http` (ADR-022) | Fastify | FastAPI | **Spring Boot** |
 | `svc_config` | typed env/file config | koanf | zod-config | pydantic-settings | Spring config |
 | `svc_logging` | structured JSON logs | slog | pino | structlog | logback-json |
 | `svc_otel` | OTel SDK traces + metrics → OTLP → platform Prometheus/Grafana | OTel-Go | OTel-JS auto-instr | OTel-Py | Spring Boot OTel starter |
-| `svc_db_postgres` | Postgres client + migrations (provisioning scope: OQ-3) | pgx + goose | drizzle | SQLAlchemy + alembic | Spring Data + Flyway |
+| `svc_db_postgres` | Postgres client + migrations **and provisioning** (ADR-020) | pgx + goose | drizzle | SQLAlchemy + alembic | Spring Data + Flyway |
 | `svc_deploy` | rules_oci image, image-build CI, k8s manifests, ArgoCD Application, image-updater CR (the buzz pattern) | — language-agnostic — | | | |
 
 Requires-chains: `svc_http → svc_config`; `svc_otel → svc_logging → svc_config`;
-`svc_deploy → svc_http + oci`. The JVM track uses **actual Spring Boot** — it *is* the open
+`svc_deploy → svc_http + oci`; `svc_db_postgres → svc_config`. For v1, provisioning is
+constrained to the homelab target (ADR-020/021, OQ-13). The JVM track uses **actual Spring Boot** — it *is* the open
 framework there (ADR-009); the other tracks replicate its concerns with consensus open
 libraries. All four emit the same operational surface (identical endpoint names, OTLP
 wiring, log shape) so the deploy bundle and dashboards stay language-agnostic.
@@ -227,8 +228,14 @@ hand-maintained file the initializer does not own.
 (`rules_go`, `rules_python`, `rules_rust`, `rules_jvm_external`, `rules_kotlin`,
 `rules_scala`, `rules_swift`, `rules_ruby`, `rules_cc`, `rules_nodejs`, `rules_oci`, …
 verified 2026-08-18). It arises only for narrow starter-derived monorepos, i.e. only once
-ADR-015's "choose another repo" is pointed at one. OQ-9 decides the behaviour then; it does
-not block P1.
+ADR-015's "choose another repo" is pointed at one.
+
+The initializer **discloses the gap and includes the onboarding edits in the same
+reviewable PR** (ADR-019): the frontend states, before submission, which toolchain the
+target lacks and that the stamp will add it; the `MODULE.bazel` edit, lockfile and gazelle
+configuration land as clearly-separated commits in the same PR the application arrives in.
+Nothing is mutated silently, and the target repository's own merge-queue gates are what
+verify the onboarding — the same gates that verify any other change to that file.
 
 ## 7. Frontend A — Backstage (built first)
 
@@ -335,8 +342,7 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   Multi-language monorepos are composed by stamping several applications.
 - **ADR-009 (Part-Accepted) — Framework choices.** Accepted: OpenTelemetry everywhere
   (explicit requirement); Spring Boot for JVM; FastAPI for Python; Fastify for TS.
-  Proposed: chi for Go (OQ-6 — stdlib `net/http` is the leaner alternative since 1.22's
-  mux).
+  Go framework settled separately in ADR-022.
 - **ADR-010 (Accepted) — Warranty model.** App presets are the fully-built combinations;
   arbitrary combinations get constraint validation plus pairwise render-smoke.
   *Consequence:* an exotic combination can render and still fail its first build — surfaced
@@ -345,9 +351,41 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   templates, the 26 starter repos, the `backstage` flag, `skeleton/`,
   `_populate_skeleton()` and the 83 Nunjucks escapes all serve a different product (§1) and
   are not superseded by this initiative. *Resolves OQ-5.*
-- **ADR-012 (Superseded by OQ-9) — Toolchain-gap behaviour.** The first draft proposed
-  refusing outright. OQ-9 now weighs that against disclosing the gap and including the
-  onboarding edits in the same reviewable PR. Undecided; does not block P1 (§6.3).
+- **ADR-012 (Superseded by ADR-019) — Toolchain-gap behaviour.** The first draft proposed
+  refusing outright. Superseded: the initializer discloses and includes instead.
+- **ADR-019 (Accepted) — On a toolchain gap: disclose, then include the onboarding in the
+  same PR.** Chosen by James 2026-08-18, option (c) of the reworded OQ-9. The frontend
+  states before submission which toolchain the target repository lacks and that stamping
+  will add it; the `MODULE.bazel` edit, lockfile and gazelle configuration land as separate
+  commits in the same PR. Rejected: refusing outright (a dead end the user must resolve
+  elsewhere) and onboarding silently (a bad edit to a shared file breaks the build for
+  everyone in that repository, not just the new application). *Consequence:* the
+  initializer does write to a file it does not own — mitigated by disclosure, commit
+  separation, and the target repository's merge-queue gates, which are the same gates any
+  hand-written `MODULE.bazel` change passes through.
+- **ADR-020 (Accepted) — `svc_db_postgres` provisions the database, not just the client.**
+  Chosen by James 2026-08-18: client plus migrations **plus** provisioning. On the homelab
+  target that means CNPG `Cluster` manifests in the deploy bundle. *Consequences worth
+  naming:* a stamped application then owns a database's lifecycle, so the bundle must carry
+  backup and storage settings rather than defaults, and provisioning is meaningless on the
+  Cloud Run target where CNPG does not exist (ADR-021) — so for v1 `svc_db_postgres` with
+  provisioning is constrained to the homelab target, and OQ-13 decides the managed
+  equivalent for the GCP path.
+- **ADR-021 (Accepted) — Deploy target defaults to homelab ArgoCD, with Cloud Run
+  offered.** Chosen by James 2026-08-18. *Consequence:* two deploy bundles to template and
+  keep working — the buzz pattern (image, manifests, ArgoCD Application, image-updater CR)
+  and the stage-5 Cloud Run pattern (oauth-user-inspector / tabula lineage, deploy identity
+  issued by stage-4 `gcp-projects`). They differ in more than YAML: identity, image
+  registry, and the database story all change with the target, which is what OQ-13 exists
+  to settle.
+- **ADR-022 (Accepted) — Go HTTP: chi by default, gin and stdlib `net/http` offered.**
+  Chosen by James 2026-08-18. *Consequence:* the Go track carries three server
+  implementations, so every HTTP-touching concern (`svc_http` routing and health endpoints,
+  `svc_otel` middleware, `svc_db_postgres` handler wiring) is written and tested three
+  times. The mitigation is a hard rule: all three must expose an identical operational
+  surface — same endpoint paths, same log shape, same OTLP wiring — so nothing downstream
+  of the application can tell which was chosen. Tier-3 warranty (§10) therefore builds all
+  three Go variants, not one.
 - **ADR-014 (Accepted) — Applications default to `apps/<name>/`, and the path is
   overridable.** Chosen by James 2026-08-18. *Consequence, stated plainly:* `vitruvian-core`
   currently keeps applications as top-level directories (`backstage/`, `devx/`, `tabula/`
@@ -384,38 +422,24 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
 
 ## 12. Open questions — decisions needed from James
 
-Resolved 2026-08-18: **OQ-5** → ADR-011, **OQ-7** → ADR-014, **OQ-8** → ADR-015,
-**OQ-10** → ADR-016, **OQ-11** → ADR-017, **OQ-12** → ADR-018. **OQ-1** was dissolved by the
-repo→app correction (application and gitops manifests share a repository, so one same-repo
-PR replaces the cross-repo write).
+**All twelve original questions are resolved.** 2026-08-18: OQ-5 → ADR-011, OQ-7 → ADR-014,
+OQ-8 → ADR-015, OQ-10 → ADR-016, OQ-11 → ADR-017, OQ-12 → ADR-018, OQ-9 → ADR-019,
+OQ-3 → ADR-020, OQ-4 → ADR-021, OQ-6 → ADR-022. OQ-1 was dissolved by the repo→app
+correction (application and gitops manifests share a repository, so one same-repo PR
+replaces the cross-repo write). OQ-2 was dropped with the Frontend B rescope.
 
-**OQ-9 — what should happen when the target monorepo cannot build the app's language?**
-*(Reworded; the original was unclear.)* A monorepo builds only what its `MODULE.bazel` sets
-up. Stamping a Rust application into a Go-only starter repo needs `rules_rust`, a crate
-lockfile, toolchain registration and gazelle configuration — none of which are there, so
-the application cannot build until someone adds them. This never arises for
-`vitruvian-core`, which already declares every toolchain (§6.3), so it is reachable only
-once ADR-015's repo selection is pointed at a narrow monorepo. Three options:
+One question **falls out of two answers combining** and is recorded rather than assumed:
 
-  a. **Refuse** — detect the gap, stop, and name the change needed. Safest; the initializer
-     never edits a hand-maintained file it does not own. Cost: a dead end the user must
-     resolve elsewhere before retrying.
-  b. **Onboard silently** — edit `MODULE.bazel`, add the lockfile, wire gazelle. Most
-     convenient, most dangerous: a bad edit breaks the build for everyone in that repo, not
-     just the new application.
-  c. **Disclose and include** *(recommended)* — surface "this repo has no Rust toolchain;
-     the initializer will add it" before submission, and put those edits in the same
-     reviewable PR as the application. Neither a dead end nor a silent mutation, and the
-     merge queue's gates are what verify it.
-
-  Option (c) matches the pattern of every other answer here — a sensible default, visible,
-  with the user in control. Needed by: the first non-`vitruvian-core` target, i.e. after P1.
-
-| # | Question | Needed by | Recommendation |
-|---|---|---|---|
-| **OQ-3** | `svc_db_postgres` scope: client + migrations only, or also CNPG Cluster manifests (vs external Neon per the app-infra boundary)? | P2 (Go DB slice) | Client + migrations first; provisioning as a later `svc_db_provision` flag |
-| **OQ-4** | Deploy target: homelab ArgoCD (buzz pattern — this design's assumption) only, or also the Cloud Run path as a form choice? | P3 | Homelab-only for v1 |
-| **OQ-6** | Go HTTP framework: chi, or stdlib `net/http` (1.22+ mux)? (ADR-009) | P2 (Go) | chi; stdlib acceptable |
+**OQ-13 — what provisions the database on the Cloud Run target?** ADR-020 says
+`svc_db_postgres` provisions, and ADR-021 says Cloud Run is an offered target. CNPG is a
+Kubernetes operator and does not exist there, so the GCP path needs a different answer:
+Cloud SQL (native, IAM-integrated, another Pulumi surface to own) or Neon (already in the
+stack — `tabula` and `oauth-user-inspector` use it, and it sits outside the app-infra
+boundary by design). Recommendation: **Neon**, because it is already proven in this
+platform and keeps the data layer external, matching the boundary those applications
+already respect. Until it is decided, the metadata contract constrains provisioning to the
+homelab target, and selecting Cloud Run offers client + migrations only. *Needed by:* P3,
+and only for the Cloud Run half of it.
 
 ## 13. Rollout
 
@@ -423,8 +447,8 @@ once ADR-015's repo selection is pointed at a narrow monorepo. Three options:
 |---|---|---|
 | **P0** | App metadata contract, `render-app` + validation, tiers 1–2 tests | — |
 | **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0 |
-| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build | P0; OQ-3, OQ-6 |
-| **P3** | `svc_deploy` and the fully-automatic single-PR deploy | P2 (Go); OQ-4 |
+| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build (three Go HTTP variants, ADR-022) | P0 |
+| **P3** | `svc_deploy` (homelab bundle, then Cloud Run) and the fully-automatic single-PR deploy | P2 (Go); OQ-13 for the Cloud Run half |
 | **P4** | Frontend B, itself stamped by A (dogfood) | P2 (Go), P3 |
 | **P5** | Frontend C, the local CLI on both `aspect` and `devx` | P0 |
 
@@ -442,6 +466,19 @@ tracks are independent, so they can run in parallel across sessions.
    this spec, the coordination point, lives in `vitruvian-core`.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
+
+**Revision 2026-08-18d — the last four questions answered; the design is decided.** James
+chose disclose-and-include on a toolchain gap (ADR-019), database provisioning alongside
+client and migrations (ADR-020), homelab ArgoCD by default with Cloud Run offered
+(ADR-021), and chi by default with gin and stdlib `net/http` offered (ADR-022). Two of
+these widen the build materially and the spec says so rather than letting it surface during
+implementation: three Go server implementations means every HTTP-touching concern is
+written and tested three times, held together by a rule that all three expose an identical
+operational surface; and provisioning means a stamped application owns a database's
+lifecycle, so its bundle carries backup and storage settings rather than defaults. Those
+two answers also collide — CNPG cannot provision on Cloud Run — which is recorded as OQ-13
+rather than quietly assumed, with provisioning constrained to the homelab target until it
+is settled. No open question now blocks P0, P1 or P2.
 
 **Revision 2026-08-18c — five open questions answered.** James decided: applications
 default to `apps/<name>/` with an overridable path (ADR-014); the target repository defaults
