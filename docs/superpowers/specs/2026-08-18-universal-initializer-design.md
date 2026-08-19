@@ -1,6 +1,6 @@
 # Application Initializer — Design
 
-**Date:** 2026-08-18 (revised four times same day, see §14)
+**Date:** 2026-08-18 (revised five times same day, see §14)
 **Status:** Approved in conversation; awaiting written-spec review
 **Branch:** `docs/universal-initializer-spec`
 **Requested by:** James Nguyen
@@ -183,10 +183,23 @@ Behavior:
 ### 6.1 A new tree, not the monorepo tree
 
 `template/` is monorepo-shaped (MODULE.bazel, tools/, .github/). Application stamping needs
-app-shaped templates: a new `app-template/<language>/` tree in the same repo, rendered by
-the same engine with the same conditional machinery. ADR-013 proposes deriving
-`hello/<lang>` from it so the two cannot drift and every app template is proven inside a
-real monorepo on every CI run.
+app-shaped templates, which live at **`template/app/<language>/`** (ADR-024), rendered by
+the same engine with the same conditional machinery. `render()` accepts an arbitrary
+`template_dir`, so `render-app` points it at one language's subtree.
+
+Two mechanics this depends on, both verified against `render.axl` on 2026-08-18:
+
+- **An exclusion rule is required, not optional.** `is_included` includes any path matched
+  by no rule, so without a gate `template/app/**` would be emitted into every stamped
+  monorepo. One entry, `{"flag": "app_template", "globs": ["app/**"]}`, excludes it: an
+  undeclared flag reads as false (`flags.get(name, False)`), so no preset needs editing.
+- **App templates need their own `rules`/`no_render`/`executable`.** Globs are relative to
+  whichever `template_dir` is passed — `cmd/**` for `render-app`, `app/go/cmd/**` for repo
+  stamping — so one shared array cannot serve both. The `app` section carries its own,
+  which also keeps two products' inclusion logic from entangling.
+
+ADR-013's unification now costs little: `hello/<lang>` and the app templates sit in one
+tree, so deriving one from the other is a path question rather than a cross-tree sync.
 
 ### 6.2 Application concerns (Spring-Boot-parity layer)
 
@@ -428,6 +441,20 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   than 403), so it can open the stamping PR with no new credential. *Consequence:* PRs are
   authored by the token's identity rather than a named app, so the audit line is thinner;
   minting a GitHub App later is a drop-in swap behind the same action.
+- **ADR-024 (Accepted) — App templates live at `template/app/<language>/`.** Proposed by
+  James 2026-08-18, in preference to a sibling `app-template/` tree. Keeps one tree and one
+  renderer, and makes ADR-013 cheap. *Consequence:* the exclusion rule in §6.1 is
+  load-bearing — omit it and every stamped monorepo silently gains an `app/` directory,
+  which would surface as mysterious files in 26 starter repos rather than as an error.
+- **ADR-025 (Accepted) — Tiers 1 and 2 run as AXL check-tasks in the template repo.**
+  `aspect check-metadata` and `aspect check-renders`, invoked by CI. Rationale: the repo has
+  **no test harness at all** today — CI verifies the renderer only indirectly by rendering
+  each preset and building the result — and no root build system to host one (`docs/`,
+  `infrastructure/`, `template/`, `user_stories/`). `aspect test` is the task for testing a
+  rendered Bazel workspace, not a unit-test harness. AXL already has the JSON and fs
+  primitives these checks need, so this adds no toolchain. *Consequence:* the checks are
+  written in Starlark, which has no recursion and no `while` — the same constraint
+  `render.axl` already works around with worklists.
 - **ADR-013 (Proposed) — Derive `hello/<lang>` from the app templates.** Repo stamping would
   render its example apps from the same source the initializer uses, so the two cannot
   drift and every app template is exercised inside a real monorepo on every CI run.
@@ -450,9 +477,9 @@ times.
 
 | Phase | Delivers | Depends on |
 |---|---|---|
-| **P0** | App metadata contract, `render-app` + validation, tiers 1–2 tests | — |
+| **P0** | App metadata contract, `render-app` + validation, **the base Go app template**, tiers 1–2 as AXL check-tasks | — |
 | **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0 |
-| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build (three Go HTTP variants, ADR-022) | P0 |
+| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its base app template (Go's arrives in P0), app preset, CI leg, and tier-3 build (three Go HTTP variants, ADR-022) | P0 |
 | **P3** | `svc_deploy` (homelab bundle, then Cloud Run) and the fully-automatic single-PR deploy | P2 (Go) |
 | **P4** | Frontend B, itself stamped by A (dogfood) | P2 (Go), P3 |
 | **P5** | Frontend C, the local CLI on both `aspect` and `devx` | P0 |
@@ -472,7 +499,19 @@ tracks are independent, so they can run in parallel across sessions.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
 
-**Revision 2026-08-18e — the database provider, and the design closes.** James settled
+**Revision 2026-08-18f — two gaps found while preparing the P0 plan.** Writing an
+implementation plan surfaced what the design had left implicit. First, **P0 had nothing to
+render**: no app-template tree exists, and the rollout assigned the *base* app template to
+no phase at all — P1 assumed one, P2 covered only concerns. The base Go template moves into
+P0, which also makes the phase demonstrable end to end, including the gazelle fixed-point
+assertion that is the highest-value test in the program. Second, **the test tiers had no
+runner**: the repo has no test harness and no root build system, and CI exercises the
+renderer only indirectly by rendering each preset and building it. Resolved as ADR-025.
+James also placed the app templates at `template/app/<language>/` (ADR-024) rather than a
+sibling tree — better, and it makes ADR-013 nearly free, at the cost of one exclusion rule
+that is load-bearing: without it every stamped monorepo silently gains an `app/` directory.
+
+ James settled
 OQ-13: on the Cloud Run target, Cloud SQL for Postgres by default with Neon offered, and
 further providers added later (ADR-023). "Added later" is the load-bearing half of that
 answer — it makes the provider an enumeration keyed by deploy target rather than a boolean,
