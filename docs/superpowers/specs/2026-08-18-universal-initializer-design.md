@@ -1,6 +1,6 @@
 # Application Initializer — Design
 
-**Date:** 2026-08-18 (revised three times same day, see §14)
+**Date:** 2026-08-18 (revised four times same day, see §14)
 **Status:** Approved in conversation; awaiting written-spec review
 **Branch:** `docs/universal-initializer-spec`
 **Requested by:** James Nguyen
@@ -198,12 +198,12 @@ An application is **one language** (ADR-008), so concerns compose within a singl
 | `svc_config` | typed env/file config | koanf | zod-config | pydantic-settings | Spring config |
 | `svc_logging` | structured JSON logs | slog | pino | structlog | logback-json |
 | `svc_otel` | OTel SDK traces + metrics → OTLP → platform Prometheus/Grafana | OTel-Go | OTel-JS auto-instr | OTel-Py | Spring Boot OTel starter |
-| `svc_db_postgres` | Postgres client + migrations **and provisioning** (ADR-020) | pgx + goose | drizzle | SQLAlchemy + alembic | Spring Data + Flyway |
+| `svc_db_postgres` | Postgres client + migrations **and provisioning**, provider chosen per deploy target (ADR-020, ADR-023) | pgx + goose | drizzle | SQLAlchemy + alembic | Spring Data + Flyway |
 | `svc_deploy` | rules_oci image, image-build CI, k8s manifests, ArgoCD Application, image-updater CR (the buzz pattern) | — language-agnostic — | | | |
 
 Requires-chains: `svc_http → svc_config`; `svc_otel → svc_logging → svc_config`;
-`svc_deploy → svc_http + oci`; `svc_db_postgres → svc_config`. For v1, provisioning is
-constrained to the homelab target (ADR-020/021, OQ-13). The JVM track uses **actual Spring Boot** — it *is* the open
+`svc_deploy → svc_http + oci`; `svc_db_postgres → svc_config`. The database *provider* is
+a selectable dimension keyed by deploy target, not a boolean (ADR-023). The JVM track uses **actual Spring Boot** — it *is* the open
 framework there (ADR-009); the other tracks replicate its concerns with consensus open
 libraries. All four emit the same operational surface (identical endpoint names, OTLP
 wiring, log shape) so the deploy bundle and dashboards stay language-agnostic.
@@ -367,10 +367,22 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   Chosen by James 2026-08-18: client plus migrations **plus** provisioning. On the homelab
   target that means CNPG `Cluster` manifests in the deploy bundle. *Consequences worth
   naming:* a stamped application then owns a database's lifecycle, so the bundle must carry
-  backup and storage settings rather than defaults, and provisioning is meaningless on the
-  Cloud Run target where CNPG does not exist (ADR-021) — so for v1 `svc_db_postgres` with
-  provisioning is constrained to the homelab target, and OQ-13 decides the managed
-  equivalent for the GCP path.
+  backup and storage settings rather than defaults; and CNPG does not exist on the Cloud Run
+  target (ADR-021), so the provider varies with the target — settled in ADR-023.
+- **ADR-023 (Accepted) — The database provider is a selectable dimension keyed by deploy
+  target.** Chosen by James 2026-08-18: homelab → CNPG; Cloud Run → **Cloud SQL for
+  Postgres by default, Neon offered**; further cloud and SaaS providers added later.
+  *Consequence for the model:* provider is therefore not a boolean but an enumeration whose
+  valid values depend on the chosen target, and the metadata contract must express that
+  from the start — retrofitting a dimension into a boolean is the expensive version of this
+  change. *Consequences worth naming:* Cloud SQL is provisioned Pulumi-side in the
+  application's own `infrastructure/` stack, which matches the platform's boundary rule
+  that each application owns its Cloud Run workload and infrastructure while the foundation
+  stage stays scaffolding-only, and it needs the deploy identity that stage-4
+  `gcp-projects` issues; it also costs real money per instance, so a stamped application
+  provisioning one is a spend decision the form should surface rather than bury. Neon, by
+  contrast, is external — no Pulumi surface, a connection string as a sealed secret, and
+  the lineage `tabula` and `oauth-user-inspector` already prove.
 - **ADR-021 (Accepted) — Deploy target defaults to homelab ArgoCD, with Cloud Run
   offered.** Chosen by James 2026-08-18. *Consequence:* two deploy bundles to template and
   keep working — the buzz pattern (image, manifests, ArgoCD Application, image-updater CR)
@@ -420,26 +432,19 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   render its example apps from the same source the initializer uses, so the two cannot
   drift and every app template is exercised inside a real monorepo on every CI run.
 
-## 12. Open questions — decisions needed from James
+## 12. Open questions
 
-**All twelve original questions are resolved.** 2026-08-18: OQ-5 → ADR-011, OQ-7 → ADR-014,
-OQ-8 → ADR-015, OQ-10 → ADR-016, OQ-11 → ADR-017, OQ-12 → ADR-018, OQ-9 → ADR-019,
-OQ-3 → ADR-020, OQ-4 → ADR-021, OQ-6 → ADR-022. OQ-1 was dissolved by the repo→app
-correction (application and gitops manifests share a repository, so one same-repo PR
-replaces the cross-repo write). OQ-2 was dropped with the Frontend B rescope.
+**None. Every question raised during design is resolved.**
 
-One question **falls out of two answers combining** and is recorded rather than assumed:
+2026-08-18: OQ-5 → ADR-011, OQ-7 → ADR-014, OQ-8 → ADR-015, OQ-10 → ADR-016,
+OQ-11 → ADR-017, OQ-12 → ADR-018, OQ-9 → ADR-019, OQ-3 → ADR-020, OQ-4 → ADR-021,
+OQ-6 → ADR-022, OQ-13 → ADR-023. OQ-1 was dissolved by the repo→app correction
+(application and gitops manifests share a repository, so one same-repo PR replaces the
+cross-repo write); OQ-2 was dropped with the Frontend B rescope.
 
-**OQ-13 — what provisions the database on the Cloud Run target?** ADR-020 says
-`svc_db_postgres` provisions, and ADR-021 says Cloud Run is an offered target. CNPG is a
-Kubernetes operator and does not exist there, so the GCP path needs a different answer:
-Cloud SQL (native, IAM-integrated, another Pulumi surface to own) or Neon (already in the
-stack — `tabula` and `oauth-user-inspector` use it, and it sits outside the app-infra
-boundary by design). Recommendation: **Neon**, because it is already proven in this
-platform and keeps the data layer external, matching the boundary those applications
-already respect. Until it is decided, the metadata contract constrains provisioning to the
-homelab target, and selecting Cloud Run offers client + migrations only. *Needed by:* P3,
-and only for the Cloud Run half of it.
+New questions are expected to surface during implementation. They belong here first, then
+convert to ADRs in §11 once decided — the same loop this section has already run five
+times.
 
 ## 13. Rollout
 
@@ -448,7 +453,7 @@ and only for the Cloud Run half of it.
 | **P0** | App metadata contract, `render-app` + validation, tiers 1–2 tests | — |
 | **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0 |
 | **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build (three Go HTTP variants, ADR-022) | P0 |
-| **P3** | `svc_deploy` (homelab bundle, then Cloud Run) and the fully-automatic single-PR deploy | P2 (Go); OQ-13 for the Cloud Run half |
+| **P3** | `svc_deploy` (homelab bundle, then Cloud Run) and the fully-automatic single-PR deploy | P2 (Go) |
 | **P4** | Frontend B, itself stamped by A (dogfood) | P2 (Go), P3 |
 | **P5** | Frontend C, the local CLI on both `aspect` and `devx` | P0 |
 
@@ -466,6 +471,18 @@ tracks are independent, so they can run in parallel across sessions.
    this spec, the coordination point, lives in `vitruvian-core`.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
+
+**Revision 2026-08-18e — the database provider, and the design closes.** James settled
+OQ-13: on the Cloud Run target, Cloud SQL for Postgres by default with Neon offered, and
+further providers added later (ADR-023). "Added later" is the load-bearing half of that
+answer — it makes the provider an enumeration keyed by deploy target rather than a boolean,
+and the metadata contract has to express that from P0, because retrofitting a dimension
+into a boolean is the expensive version of this change. Two consequences are named rather
+than discovered later: Cloud SQL is provisioned in the application's own `infrastructure/`
+Pulumi stack, matching the platform rule that an application owns its Cloud Run workload
+and infrastructure while the foundation stage stays scaffolding-only; and it costs real
+money per instance, so the form should surface that rather than bury it. No open questions
+remain, and no phase is blocked.
 
 **Revision 2026-08-18d — the last four questions answered; the design is decided.** James
 chose disclose-and-include on a toolchain gap (ADR-019), database provisioning alongside
