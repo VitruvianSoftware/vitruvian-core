@@ -29,6 +29,7 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumiverse/pulumi-time/sdk/go/time"
 )
 
 // deployHomelabClusterWIF federates the homelab Kubernetes cluster into this
@@ -128,9 +129,42 @@ func deployHomelabClusterWIF(
 		return nil, fmt.Errorf("creating the homelab cluster workload identity pool: %w", err)
 	}
 
+	// DependsOn alone is NOT enough here, and this is not theoretical: the
+	// first apply of this federation failed with exactly the error the issuer
+	// policy exists to prevent --
+	//
+	//	Error 400: Precondition check failed
+	//	"Org Policy violated for value:
+	//	 'https://kubernetes.default.svc.cluster.local'."
+	//
+	// -- with the policy already updated in the SAME apply. DependsOn orders the
+	// API CALLS; it cannot wait for the org policy to PROPAGATE, and provider
+	// creation is validated against the propagated value. The pool, service
+	// account and bindings all created fine; only the provider, the one resource
+	// that names an issuer, was refused. That is the identical shape recorded in
+	// build_wif_issuer_policy.go for the Pulumi ESC issuer, so this is the
+	// second time the same race has bitten.
+	//
+	// Triggers on the policy's etag rather than a constant: the wait then
+	// re-arms whenever the policy actually changes -- including when a FOURTH
+	// issuer is added later -- instead of sleeping once on first create and
+	// never again, which would leave the next federation to rediscover this the
+	// hard way.
 	var providerDeps []pulumi.Resource
 	if issuerPolicy != nil {
-		providerDeps = append(providerDeps, issuerPolicy)
+		wait, err := time.NewSleep(ctx, "homelab-cluster-wait-issuer-policy", &time.SleepArgs{
+			// Org policy propagation is documented as up to ~2 minutes; the
+			// analogous WIP-propagation wait in the confidential_space module
+			// uses 60s for a narrower change.
+			CreateDuration: pulumi.String("120s"),
+			Triggers: pulumi.StringMap{
+				"issuer_policy_etag": issuerPolicy.Etag,
+			},
+		}, pulumi.DependsOn([]pulumi.Resource{issuerPolicy}))
+		if err != nil {
+			return nil, fmt.Errorf("waiting for the issuer allowlist policy to propagate: %w", err)
+		}
+		providerDeps = append(providerDeps, wait)
 	}
 
 	provider, err := iam.NewWorkloadIdentityPoolProvider(ctx, "homelab-cluster-provider", &iam.WorkloadIdentityPoolProviderArgs{
