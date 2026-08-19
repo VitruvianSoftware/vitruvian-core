@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"foundation-projects/modules/app_deploy_identity"
 	"foundation-projects/modules/base_env"
+	"foundation-projects/modules/cluster_reader"
 
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/artifactregistry"
 
@@ -190,6 +191,18 @@ func main() {
 				return err
 			}
 			ctx.Export("app_infra_pipeline_service_account", pipeline.ServiceAccountEmail)
+
+			// Read-only access for homelab-cluster workloads federated in by
+			// gcp-bootstrap. The identity is created there and granted HERE:
+			// roles on a project belong to the stage that owns the project, so
+			// stage 0 never accumulates authority over what it does not manage.
+			if err := cluster_reader.Deploy(ctx, "cluster-reader-"+cfg.Env, &cluster_reader.Args{
+				ProjectID: projects.OSSFloatingProjectID,
+				Members:   cfg.ClusterReaderMembers,
+				Roles:     cfg.ClusterReaderRoles,
+			}); err != nil {
+				return err
+			}
 
 			// The BU pipeline SA must be able to PULL the images it deploys.
 			// A cross-project Artifact Registry pull needs reader for BOTH the
