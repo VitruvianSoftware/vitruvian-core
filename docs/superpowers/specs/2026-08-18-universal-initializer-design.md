@@ -1,6 +1,6 @@
 # Application Initializer — Design
 
-**Date:** 2026-08-18 (revised same day, see §14)
+**Date:** 2026-08-18 (revised twice same day, see §14)
 **Status:** Approved in conversation; awaiting written-spec review
 **Branch:** `docs/universal-initializer-spec`
 **Requested by:** James Nguyen
@@ -217,18 +217,26 @@ BUILD files that are **already what gazelle would generate**. This is testable: 
 check renders an app into a real monorepo and asserts `gazelle` is a no-op (fixed point).
 Without this the first PR fails the repo's stale-BUILD gate, which already exists.
 
-**Toolchain gaps.** Stamping a Python app into a Go-only monorepo requires editing
-`MODULE.bazel` and repinning lockfiles — a surgical edit to an existing file, not a render.
-For v1 the initializer **detects the gap and refuses with a clear message** naming the
-change needed, rather than attempting a merge into a file it does not own (ADR-012, OQ-9).
-Automatic toolchain onboarding is a later phase.
+**Toolchain gaps.** A monorepo can only build languages its `MODULE.bazel` sets up.
+Stamping a Rust app into a Go-only starter repo needs `rules_rust`, a crate lockfile,
+toolchain registration and gazelle configuration — none of which exist there, so the
+stamped app cannot build until someone adds them. Adding them is a surgical edit to a
+hand-maintained file the initializer does not own.
+
+**This does not arise for `vitruvian-core`**, which already declares every toolchain
+(`rules_go`, `rules_python`, `rules_rust`, `rules_jvm_external`, `rules_kotlin`,
+`rules_scala`, `rules_swift`, `rules_ruby`, `rules_cc`, `rules_nodejs`, `rules_oci`, …
+verified 2026-08-18). It arises only for narrow starter-derived monorepos, i.e. only once
+ADR-015's "choose another repo" is pointed at one. OQ-9 decides the behaviour then; it does
+not block P1.
 
 ## 7. Frontend A — Backstage (built first)
 
 - **One template**, `stamp-application`, alongside the 13 repo-stamping templates. Its form
   is a custom field extension, `AppInitializerPicker`, rendering language + concerns from
   the metadata contract with live `requires`/`conflicts` enforcement (ADR-005).
-- **Form parameters**: target monorepo (OQ-8), application name, owner, language, concerns.
+- **Form parameters**: target monorepo (ADR-015, defaulting to `vitruvian-core`),
+  application name, owner, language, concerns, and an optional path override (ADR-014).
 - **Custom action `vitruvian:app:render`** (new backend module, same pattern as our
   auth/permission modules): invokes the `aspect` binary vendored into the backstage image
   (ADR-004) via `executeShellCommand`, streaming output to the task log, wrapped in
@@ -259,9 +267,9 @@ In-cluster service, the start.spring.io analog:
   experience.
 
 Unlike A it can carry a full bazel toolchain, so it can validate the rendered app builds
-before returning. Output shape for a *subtree* (zip vs git patch vs PR-on-request) is
-OQ-10. Once it exists, A may switch from embedded binary to calling B — same contracts,
-swappable transport.
+before returning. It offers all three output shapes for a subtree, defaulting to
+**PR-on-request** (ADR-016). Once it exists, A may switch from embedded binary to calling
+B — same contracts, swappable transport.
 
 **Dogfood milestone:** B is itself stamped by A into `vitruvian-core`
 (`go + svc_http + svc_otel + svc_deploy`) — the initializer creating the initializer service
@@ -273,9 +281,11 @@ A developer standing in a monorepo runs one command and the application appears 
 working tree, correctly wired, with no Backstage and no network round-trip. This is
 Initializr's `spring init`, and it is the frontend most likely to get daily use.
 
-Surface: `aspect init-app --language go --concerns svc_http,svc_otel --name payments`, or a
-`devx` subcommand (OQ-11). Because it runs on a developer machine with bazel available, it
-can run gazelle and repin immediately.
+Shipped on **both** hosts (ADR-017): `aspect init-app` as a task in the template repo, and
+`devx app new` as a subcommand of the platform CLI. Both are thin wrappers over the same
+`render-app` core, so neither owns composition logic. Because the CLI runs on a developer
+machine with bazel available, it can run gazelle and repin immediately — the one frontend
+with no fixed-point caveat.
 
 ## 10. Testing: what "green" warrants
 
@@ -335,42 +345,88 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   templates, the 26 starter repos, the `backstage` flag, `skeleton/`,
   `_populate_skeleton()` and the 83 Nunjucks escapes all serve a different product (§1) and
   are not superseded by this initiative. *Resolves OQ-5.*
-- **ADR-012 (Proposed) — Refuse, do not merge, on a toolchain gap.** If the target monorepo
-  lacks the language's toolchain, fail with a clear message rather than editing
-  `MODULE.bazel`. *Consequence:* some stamps need a preparatory change first; automatic
-  onboarding is a later phase (OQ-9).
+- **ADR-012 (Superseded by OQ-9) — Toolchain-gap behaviour.** The first draft proposed
+  refusing outright. OQ-9 now weighs that against disclosing the gap and including the
+  onboarding edits in the same reviewable PR. Undecided; does not block P1 (§6.3).
+- **ADR-014 (Accepted) — Applications default to `apps/<name>/`, and the path is
+  overridable.** Chosen by James 2026-08-18. *Consequence, stated plainly:* `vitruvian-core`
+  currently keeps applications as top-level directories (`backstage/`, `devx/`, `tabula/`
+  …), so its first stamped application introduces an `apps/` directory and the repo will
+  carry two layouts. That is accepted — existing applications are not migrated — and the
+  override exists precisely so a repo can pin whichever convention it prefers. A per-repo
+  default is the natural later refinement.
+- **ADR-015 (Accepted) — Target repository defaults to the one in hand, and is
+  selectable.** Chosen by James 2026-08-18. For Frontend C "the one in hand" is the
+  monorepo the CLI is run inside; for Frontends A and B there is no ambient repo, so the
+  default is `vitruvian-core` and the field offers the other valid targets. *Consequence:*
+  "valid target" needs a definition — a repo with a `MODULE.bazel` and our tooling markers
+  — and the toolchain-gap question (OQ-9) becomes reachable as soon as a narrow repo is
+  selected.
+- **ADR-016 (Accepted) — Frontend B offers zip, git patch and PR-on-request, defaulting to
+  PR-on-request.** Chosen by James 2026-08-18. *Consequence:* B needs the same repository
+  write credential as A for its default path (ADR-018); the zip and patch modes stay
+  credential-free, which keeps a pure `curl` experience available.
+- **ADR-017 (Accepted) — The CLI ships on both `aspect` and `devx`.** Chosen by James
+  2026-08-18. `aspect init-app` serves anyone holding a starter monorepo without the
+  platform CLI; `devx app new` serves platform engineers where the rest of the workflow
+  already lives. Both are thin wrappers over `render-app` (ADR-003), so the duplication is
+  surface, not logic. *Consequence:* `devx` shells out to the `aspect` binary exactly as
+  Frontend A does, and the copybara export of `devx` carries the subcommand to the mirror.
+- **ADR-018 (Accepted) — Reuse `backstage-github-token` by default; a GitHub App is an
+  option.** Chosen by James 2026-08-18. The sealed token already holds repository
+  Administration write (verified 2026-08-18 by a non-mutating probe returning 422 rather
+  than 403), so it can open the stamping PR with no new credential. *Consequence:* PRs are
+  authored by the token's identity rather than a named app, so the audit line is thinner;
+  minting a GitHub App later is a drop-in swap behind the same action.
 - **ADR-013 (Proposed) — Derive `hello/<lang>` from the app templates.** Repo stamping would
   render its example apps from the same source the initializer uses, so the two cannot
   drift and every app template is exercised inside a real monorepo on every CI run.
 
 ## 12. Open questions — decisions needed from James
 
-`OQ-5` is resolved (ADR-011). `OQ-1` was largely dissolved by the repo→app correction: for
-`vitruvian-core` the application and its gitops manifests are in the same repository, so a
-single same-repo PR replaces the cross-repo write.
+Resolved 2026-08-18: **OQ-5** → ADR-011, **OQ-7** → ADR-014, **OQ-8** → ADR-015,
+**OQ-10** → ADR-016, **OQ-11** → ADR-017, **OQ-12** → ADR-018. **OQ-1** was dissolved by the
+repo→app correction (application and gitops manifests share a repository, so one same-repo
+PR replaces the cross-repo write).
+
+**OQ-9 — what should happen when the target monorepo cannot build the app's language?**
+*(Reworded; the original was unclear.)* A monorepo builds only what its `MODULE.bazel` sets
+up. Stamping a Rust application into a Go-only starter repo needs `rules_rust`, a crate
+lockfile, toolchain registration and gazelle configuration — none of which are there, so
+the application cannot build until someone adds them. This never arises for
+`vitruvian-core`, which already declares every toolchain (§6.3), so it is reachable only
+once ADR-015's repo selection is pointed at a narrow monorepo. Three options:
+
+  a. **Refuse** — detect the gap, stop, and name the change needed. Safest; the initializer
+     never edits a hand-maintained file it does not own. Cost: a dead end the user must
+     resolve elsewhere before retrying.
+  b. **Onboard silently** — edit `MODULE.bazel`, add the lockfile, wire gazelle. Most
+     convenient, most dangerous: a bad edit breaks the build for everyone in that repo, not
+     just the new application.
+  c. **Disclose and include** *(recommended)* — surface "this repo has no Rust toolchain;
+     the initializer will add it" before submission, and put those edits in the same
+     reviewable PR as the application. Neither a dead end nor a silent mutation, and the
+     merge queue's gates are what verify it.
+
+  Option (c) matches the pattern of every other answer here — a sensible default, visible,
+  with the user in control. Needed by: the first non-`vitruvian-core` target, i.e. after P1.
 
 | # | Question | Needed by | Recommendation |
 |---|---|---|---|
-| **OQ-7** | Application layout in a target monorepo: assume top-level directories (the `vitruvian-core` convention), or also support `apps/<name>/`? | P1 | Top-level for v1; make it a metadata-driven per-repo setting later |
-| **OQ-8** | Valid target monorepos: `vitruvian-core` only for v1, or any repo descended from a starter (detected by `MODULE.bazel` plus our tooling markers)? | P1 | `vitruvian-core` only for v1 |
-| **OQ-9** | Toolchain gap (ADR-012): refuse-with-message, or attempt surgical `MODULE.bazel` onboarding? | P2 | Refuse for v1 |
-| **OQ-10** | Frontend B output for an app *subtree*: zip, git patch, or open a PR on request? | P4 | Zip plus optional PR |
-| **OQ-11** | Frontend C home: `aspect init-app` task in the template repo, or a `devx` subcommand? | P5 | `devx` — it is already the platform CLI |
 | **OQ-3** | `svc_db_postgres` scope: client + migrations only, or also CNPG Cluster manifests (vs external Neon per the app-infra boundary)? | P2 (Go DB slice) | Client + migrations first; provisioning as a later `svc_db_provision` flag |
 | **OQ-4** | Deploy target: homelab ArgoCD (buzz pattern — this design's assumption) only, or also the Cloud Run path as a form choice? | P3 | Homelab-only for v1 |
 | **OQ-6** | Go HTTP framework: chi, or stdlib `net/http` (1.22+ mux)? (ADR-009) | P2 (Go) | chi; stdlib acceptable |
-| **OQ-12** | Credential for the stamping PR: reuse the existing `backstage-github-token` (already has repository Administration write) or mint a dedicated GitHub App for a cleaner audit line? | P1 | GitHub App |
 
 ## 13. Rollout
 
 | Phase | Delivers | Depends on |
 |---|---|---|
 | **P0** | App metadata contract, `render-app` + validation, tiers 1–2 tests | — |
-| **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0; OQ-7, OQ-8, OQ-12 |
-| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build | P0; OQ-3, OQ-6, OQ-9 |
+| **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0 |
+| **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its app preset, CI leg, and tier-3 build | P0; OQ-3, OQ-6 |
 | **P3** | `svc_deploy` and the fully-automatic single-PR deploy | P2 (Go); OQ-4 |
-| **P4** | Frontend B, itself stamped by A (dogfood) | P2 (Go), P3; OQ-10 |
-| **P5** | Frontend C, the local CLI | P0; OQ-11 |
+| **P4** | Frontend B, itself stamped by A (dogfood) | P2 (Go), P3 |
+| **P5** | Frontend C, the local CLI on both `aspect` and `devx` | P0 |
 
 Each phase gets its own implementation plan. P2 is the bulk of the program and its four
 tracks are independent, so they can run in parallel across sessions.
@@ -386,6 +442,20 @@ tracks are independent, so they can run in parallel across sessions.
    this spec, the coordination point, lives in `vitruvian-core`.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
+
+**Revision 2026-08-18c — five open questions answered.** James decided: applications
+default to `apps/<name>/` with an overridable path (ADR-014); the target repository defaults
+to the one in hand and is selectable (ADR-015); Frontend B offers zip, patch and
+PR-on-request, defaulting to PR-on-request (ADR-016); the CLI ships on both `aspect` and
+`devx` (ADR-017); the stamping PR reuses `backstage-github-token` with a GitHub App as an
+option (ADR-018). A consistent principle runs through all five — a sensible default, every
+alternative still reachable — and it is now also the recommendation for the one question
+left open. OQ-9 was rewritten because James could not tell what it was asking; the reworded
+version names the concrete failure (a Rust app stamped into a Go-only repo cannot build),
+records that it never arises for `vitruvian-core` since that repo already declares every
+toolchain, and adds a third option — disclose the gap and include the onboarding edits in
+the same reviewable PR — which fits the same principle. P1 is no longer gated on any open
+question.
 
 **Revision 2026-08-18b — repo stamping vs application stamping.** The first draft designed
 the initializer to create new repositories via `publish:github`. That is repo stamping,
