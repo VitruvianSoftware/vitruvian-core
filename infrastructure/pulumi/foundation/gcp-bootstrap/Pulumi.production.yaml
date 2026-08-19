@@ -54,6 +54,28 @@ config:
   # exchange; per-SA scoping still uses attribute.environment.
   foundation-bootstrap:wif_attribute_condition: "assertion.repository=='VitruvianSoftware/vitruvian-core'"
   foundation-bootstrap:github_owner: "VitruvianSoftware"
+  # --- Homelab cluster federation (build_homelab_cluster_wif.go) -------------
+  # Lets in-cluster workloads read GCP APIs with NO service account key, which
+  # is the only option available: iam.disableServiceAccountKeyCreation is
+  # enforced org-wide and neither workload runs on GCE.
+  #
+  # The issuer is the cluster's INTERNAL address -- GCP cannot resolve it, so
+  # the JWKS below is supplied statically rather than discovered. That avoids
+  # exposing the Kubernetes API server to the internet purely to satisfy OIDC
+  # discovery. It is public key material (verified: no d/p/q fields), so it
+  # belongs in config rather than a secret -- but it MUST be re-synced if the
+  # cluster's signing keys are ever rotated:
+  #
+  #   kubectl get --raw /openid/v1/jwks
+  #
+  # See docs/gcp-cluster-federation.md.
+  foundation-bootstrap:cluster_issuer_uri: "https://kubernetes.default.svc.cluster.local"
+  foundation-bootstrap:cluster_jwks_json: '{"keys":[{"use":"sig","kty":"RSA","kid":"ZaN2D22WI69ldTzSWfdpW-H2cRgYkGwbNN-oBAy0aNw","alg":"RS256","n":"vgtJs43KiDxFvFeyqrtL42DGYNTzRwI8bqE--pUdhSjBeeMOqjpudCDxi4GiSaEkxpaSRa-xm6eygZZAKIhVSeOXbtp-eQHqpQgs6LdajSWSSwvpQe0UC82FgjEkH-FWAd6fldh_SUh0it5pjgYznxSgybOhNOa1Gqr9RvzqfhV8T9d7QkRo8MsriV_aZD--wzOwE-tGKO3Hulcc09q-WRBxiyBvbRyoTiHG3jtF9DvEVGolzpoIQ8_GCWVNyLUy4WUrC02Roy4XLgJml4hGsmgsR4KKwJq8WUPlCg5ZqUGFFkchHndzG439mtXFbJoLcF11auUHPedcLfaF3TJwGw","e":"AQAB"}]}'
+  foundation-bootstrap:cluster_audience: "gcp-workload-identity"
+  # Exactly the two workloads that need GCP reads today. Anything else in the
+  # cluster is rejected at the provider, before any IAM binding is consulted.
+  foundation-bootstrap:cluster_subjects: "system:serviceaccount:backstage:backstage,system:serviceaccount:grafana:grafana"
+
   foundation-bootstrap:github_repo_bootstrap: "vitruvian-core"
   foundation-bootstrap:github_repo_org: "vitruvian-core"
   foundation-bootstrap:github_repo_env: "vitruvian-core"
