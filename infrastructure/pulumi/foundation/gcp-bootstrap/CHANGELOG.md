@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.13.0...foundation-gcp-bootstrap-v0.14.0) (2026-08-19)
+
+
+### Features
+
+* **foundation:** activate the homelab cluster federation ([#1788](https://github.com/VitruvianSoftware/vitruvian-core/issues/1788)) ([27887aa](https://github.com/VitruvianSoftware/vitruvian-core/commit/27887aaf5dad8989414b5e88de81f78149102551))
+
 ## [0.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.12.0...foundation-gcp-bootstrap-v0.13.0) (2026-08-19)
 
 
