@@ -30,6 +30,14 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    # Cloud Run services this component actually runs as. Explicit rather
+    # than derived: the projects are random-suffixed and some components
+    # have more than one service per environment, so nothing here is
+    # guessable from the entity name.
+    vitruvian.dev/cloud-run-services: |
+      development=prj-d-bu1-oss-floating-648a/us-central1/oauth-user-inspector-development
+      nonproduction=prj-n-bu1-oss-floating-630b/us-central1/oauth-user-inspector-nonproduction
+      production=prj-p-bu1-oss-floating-16e0/us-central1/oauth-user-inspector-production
     vitruvian.dev/deploy-workflow: oauth-user-inspector-deploy.yaml
     vitruvian.dev/environments: development
     vitruvian.dev/release-model: continuous-deploy

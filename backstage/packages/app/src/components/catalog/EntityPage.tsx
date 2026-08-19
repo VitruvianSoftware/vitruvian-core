@@ -57,6 +57,8 @@ import {
 } from "@backstage-community/plugin-grafana";
 import { DeployWorkflowRunsCard } from "./DeployWorkflowRunsCard";
 import { isDeployWorkflowAvailable } from "./deployWorkflowRuns";
+import { CloudRunCard } from "./CloudRunCard";
+import { isCloudRunAvailable } from "./cloudRun";
 import {
   EntityArgoCDContent,
   EntityArgoCDOverviewCard,
@@ -94,6 +96,16 @@ const defaultEntityPage = (
           <EntitySwitch.Case if={isDeployWorkflowAvailable}>
             <Grid item md={8} xs={12}>
               <DeployWorkflowRunsCard limit={5} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Cloud Run state for the apps that do NOT run in this cluster. The
+            ArgoCD card answers the same question for the ones that do; an
+            entity has one or the other, never both. */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isCloudRunAvailable}>
+            <Grid item md={8} xs={12}>
+              <CloudRunCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
