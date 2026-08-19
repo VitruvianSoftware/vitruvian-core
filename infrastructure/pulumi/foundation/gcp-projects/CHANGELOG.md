@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.14.1...foundation-gcp-projects-v1.15.0) (2026-08-19)
+
+
+### Features
+
+* **foundation:** grant the cluster identity read-only access to the apps ([#1790](https://github.com/VitruvianSoftware/vitruvian-core/issues/1790)) ([0d57232](https://github.com/VitruvianSoftware/vitruvian-core/commit/0d5723294c597698a222dddebf7dbe94078406f1))
+
 ## [1.14.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.14.0...foundation-gcp-projects-v1.14.1) (2026-07-27)
 
 
