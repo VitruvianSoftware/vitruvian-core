@@ -109,7 +109,7 @@ in every repo it serves**, delivered the way `tools/` and `bazel/` already are.
 ```mermaid
 flowchart TB
     subgraph AWT["Repo: aspect-workflows-template  (engine SOURCE - develop and prove here)"]
-        ENG["Engine source: app.axl + template/app/(lang)/ + metadata contract"]
+        ENG["Engine source: template/tools/initializer/ - engine axl, config.json, app/(lang) .tmpl templates"]
         GATES["CI gates on every PR: check-metadata, check-renders, app-contract two-host gazelle fixed point"]
         DELIVER["deliver.yaml - triggered by push to platform-v2.0"]
         ENG --> GATES --> DELIVER
@@ -183,8 +183,10 @@ transports plus credentials. `aspect-workflows-template` never participates at s
 
 ### 5.1 Application metadata contract
 
-Extend `template-config.json` with an `app` section (schema-checked in CI; drift fails the
-build):
+The contract lives at **`template/tools/initializer/config.json`** — inside the engine
+tree, so it embeds into every starter and a repo can extend its own copy (ADR-026). It was
+originally an `app` section of `template-config.json`; P0.5 moved it out entirely
+(schema-checked in CI; drift fails the build):
 
 ```jsonc
 "app": {
@@ -237,16 +239,18 @@ Behavior:
 ### 6.1 A new tree, not the monorepo tree
 
 `template/` is monorepo-shaped (MODULE.bazel, tools/, .github/). Application stamping needs
-app-shaped templates, which live at **`template/app/<language>/`** (ADR-024), rendered by
-the same engine with the same conditional machinery. `render()` accepts an arbitrary
+app-shaped templates, which live inside the embedded engine tree at
+**`template/tools/initializer/app/<language>/`** (ADR-024 as amended by ADR-026/027; the
+files carry a `.tmpl` suffix, ADR-027), rendered by the same engine with the same
+conditional machinery. `render()` accepts an arbitrary
 `template_dir`, so `render-app` points it at one language's subtree.
 
 Two mechanics this depends on, both verified against `render.axl` on 2026-08-18:
 
-- **An exclusion rule is required, not optional.** `is_included` includes any path matched
-  by no rule, so without a gate `template/app/**` would be emitted into every stamped
-  monorepo. One entry, `{"flag": "app_template", "globs": ["app/**"]}`, excludes it: an
-  undeclared flag reads as false (`flags.get(name, False)`), so no preset needs editing.
+- **The delivery story inverted between P0 and P0.5.** P0 *excluded* the app templates
+  from repo stamping (`app_template` flag rule); ADR-026 made shipping them the point, so
+  the rule is deleted and the engine tree instead rides one `no_render` entry
+  (`tools/initializer/**`) — copied verbatim, jinja intact, into all 28 presets.
 - **App templates need their own `rules`/`no_render`/`executable`.** Globs are relative to
   whichever `template_dir` is passed — `cmd/**` for `render-app`, `app/go/cmd/**` for repo
   stamping — so one shared array cannot serve both. The `app` section carries its own,
@@ -533,6 +537,22 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   the `aspect` binary, but fetches no template repo); ADR-015's "valid target" gains its
   real definition — a repository carrying an embedded initializer; the two-host
   fixed-point CI gate stays in `aspect-workflows-template` as the pre-ship proof.
+- **ADR-027 (Accepted, 2026-08-19) — A template tree shipped inside a live repo must carry
+  names no host tool claims.** The branch's most consequential empirical discovery.
+  `no_render` gets the template bytes into the starter intact, but a template living in a
+  live repository is walked by every tool that discovers files by NAME: bazel treated the
+  jinja `BUILD.bazel` as an unparseable package (query exit 7 in all 28 starters), and
+  buildifier ignores `.bazelignore` outright — the starter's own CI reaches it through
+  scope degradation, AWT's matrix through `--scope=all`, and `deliver.yaml` runs an
+  unconditional whole-tree buildifier before publishing. `.bazelignore` alone was
+  necessary but insufficient. Resolution: app templates carry a **`.tmpl` suffix**,
+  declared as `template_suffix` in the contract (validated; a typo'd key fails
+  check-metadata, suffixed output fails check-renders — both falsified), stripped by the
+  renderer **before** glob matching, so contract globs match output names.
+  *Consequences:* every wave-2 language template must follow the naming rule; ADR-013's
+  unification must cope with suffix stripping; prettier-class formatters that claim
+  `config.json` by extension are handled by keeping the file formatter-canonical at
+  source, with the license tool's exclusion made explicit rather than incidental.
 - **ADR-013 (Proposed) — Derive `hello/<lang>` from the app templates.** Repo stamping would
   render its example apps from the same source the initializer uses, so the two cannot
   drift and every app template is exercised inside a real monorepo on every CI run.
@@ -576,6 +596,23 @@ tracks are independent, so they can run in parallel across sessions.
    this spec, the coordination point, lives in `vitruvian-core`.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
+
+**Revision 2026-08-19h — P0.5 landed; what implementation taught the spec.** The embedding
+shipped (aspect-workflows-template #46: engine at `template/tools/initializer/`, delivered
+verbatim into all 28 presets, both mounts CI-gated, the app-contract job now proving the
+EMBEDDED path). Three spec statements became false and are corrected in place: the
+contract moved out of `template-config.json` into the engine tree's `config.json`; the app
+templates moved inside the engine tree; and P0's exclusion rule inverted into a
+`no_render` delivery entry. ADR-027 records the branch's key discovery — verbatim bytes
+are not enough when a template tree lives inside a live repo; host tools claim files by
+name, so templates carry a `.tmpl` suffix stripped at render time. The delivered starter
+surface also grew: `.bazelignore` now ships unconditionally (was backstage-gated) and
+`MODULE.aspect` ships with the three `use_task` lines. Two P1-facing interface facts are
+now load-bearing: frontends must invoke the engine from the target repo's ROOT (the mount
+probe reads the working directory), and ADR-015's "valid target" predicate is concrete —
+`tools/initializer/config.json` exists and `MODULE.aspect` names the tasks. Merging the
+embedding PR force-pushes the engine to all 26 published starters via deliver — that is
+the intent, and it is not reversible.
 
 **Revision 2026-08-19g — the engine embeds in the starter repos (ADR-026).** During P0
 James redirected the delivery model: the initializer lives in each generated repo,
