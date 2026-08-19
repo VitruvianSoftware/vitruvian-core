@@ -31,6 +31,12 @@ config:
   foundation-projects-bu1-development:floating_project_enabled: "true"
   # OSS apps home (e.g. oauth-user-inspector): second floating project prj-{env}-bu1-oss-floating
   foundation-projects-bu1-development:oss_floating_project_enabled: "true"
+  # Read-only access for homelab-cluster workloads federated in by
+  # gcp-bootstrap (docs/gcp-cluster-federation.md). The identity is
+  # created there and granted here, because roles on a project belong to
+  # the stage that owns the project. Roles default to run.viewer +
+  # monitoring.viewer and are validated against a read-only allowlist.
+  foundation-projects-bu1-development:cluster_reader_members: "serviceAccount:sa-homelab-cluster@prj-b-cicd-e096.iam.gserviceaccount.com"
   foundation-projects-bu1-development:svpc_project_enabled: "false"
   foundation-projects-bu1-development:peering_project_enabled: "false"
   foundation-projects-bu1-development:confidential_space_enabled: "false"

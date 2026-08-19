@@ -71,6 +71,11 @@ type ProjectsConfig struct {
 	SVPCProjectEnabled        bool
 	FloatingProjectEnabled    bool
 	OSSFloatingProjectEnabled bool
+	// ClusterReaderMembers are identities OUTSIDE this foundation -- homelab
+	// cluster workloads federated in by gcp-bootstrap -- that get READ-ONLY
+	// access to this env's oss-floating project. Empty, nothing is granted.
+	ClusterReaderMembers []string
+	ClusterReaderRoles   []string
 
 	// Apps whose PLATFORM-ISSUED deploy identity this leaf mints on the env's
 	// oss-floating project. Upstream seeds its app-infra pipeline SAs here too
@@ -214,6 +219,11 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	// (a home for open-source apps like oauth-user-inspector), not part of the
 	// upstream reference set, so the example stays unchanged unless opted in.
 	c.OSSFloatingProjectEnabled = conf.Get("oss_floating_project_enabled") == "true"
+	c.ClusterReaderMembers = splitAppList(conf.Get("cluster_reader_members"))
+	c.ClusterReaderRoles = splitAppList(conf.Get("cluster_reader_roles"))
+	if len(c.ClusterReaderRoles) == 0 {
+		c.ClusterReaderRoles = defaultClusterReaderRoles
+	}
 
 	c.BootstrapStackName = conf.Get("bootstrap_stack_name")
 
@@ -496,4 +506,12 @@ func parseConditionalRoles(raw string) ([]app_deploy_identity.ConditionalRole, e
 		out = append(out, app_deploy_identity.ConditionalRole{Role: role, Title: title, Expression: expr})
 	}
 	return out, nil
+}
+
+// defaultClusterReaderRoles is what a "what is live and is it healthy" card
+// needs and nothing more. The module validates against its own allowlist too,
+// so widening this alone cannot grant write access.
+var defaultClusterReaderRoles = []string{
+	"roles/run.viewer",
+	"roles/monitoring.viewer",
 }
