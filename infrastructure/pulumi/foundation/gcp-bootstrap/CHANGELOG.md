@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.14.0...foundation-gcp-bootstrap-v0.14.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **foundation:** wait for issuer-policy propagation before creating the provider ([#1792](https://github.com/VitruvianSoftware/vitruvian-core/issues/1792)) ([e222ea1](https://github.com/VitruvianSoftware/vitruvian-core/commit/e222ea1c9724a7ab0769413375aa1c710e7b9c84))
+
 ## [0.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.13.0...foundation-gcp-bootstrap-v0.14.0) (2026-08-19)
 
 
