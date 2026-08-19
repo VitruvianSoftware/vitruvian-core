@@ -36,7 +36,37 @@ backstage:
   args:
   - --config
   - /app/app-config-from-configmap.yaml
+  # Projected ServiceAccount token + the external_account recipe that turns it
+  # into GCP credentials. Keyless: the kubelet mints and rotates the token, and
+  # the ConfigMap holds no key material (see gcp-adc-configmap.yaml).
+  #
+  # The audience must match the WIF provider's allowedAudiences EXACTLY; a
+  # mismatch fails at exchange time with an opaque 400.
+  extraVolumes:
+  - name: gcp-workload-identity-token
+    projected:
+      sources:
+      - serviceAccountToken:
+          path: token
+          audience: gcp-workload-identity
+          # Short-lived on purpose: google-auth re-reads the file on refresh, so
+          # a long-lived projected token buys nothing and only widens the window
+          # if the pod filesystem is ever read.
+          expirationSeconds: 3600
+  - name: gcp-workload-identity-config
+    configMap:
+      name: gcp-workload-identity
+  extraVolumeMounts:
+  - name: gcp-workload-identity-token
+    mountPath: /var/run/secrets/gcp-workload-identity
+    readOnly: true
+  - name: gcp-workload-identity-config
+    mountPath: /etc/gcp
+    readOnly: true
   extraEnvVars:
+  # Picked up by GoogleAuth's ADC chain in the cloud-run backend plugin.
+  - name: GOOGLE_APPLICATION_CREDENTIALS
+    value: /etc/gcp/credentials.json
   - name: GITHUB_TOKEN
     valueFrom:
       secretKeyRef:
