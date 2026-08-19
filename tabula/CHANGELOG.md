@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.29...tabula-shared-v0.1.30) (2026-08-19)
+
+
+### Features
+
+* **backstage:** surface Cloud Run state for the apps outside this cluster ([#1791](https://github.com/VitruvianSoftware/vitruvian-core/issues/1791)) ([77465af](https://github.com/VitruvianSoftware/vitruvian-core/commit/77465afaa54d5b36bce771522c42f2e875d13488))
+
 ## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.28...tabula-shared-v0.1.29) (2026-08-17)
 
 
