@@ -59,6 +59,15 @@ const githubIssuerURI = "https://token.actions.githubusercontent.com"
 // pulumi.DependsOn. Returning it (rather than creating providers here) keeps
 // that dependency explicit at each call site.
 //
+// DependsOn IS NOT SUFFICIENT ON ITS OWN. It orders the API calls, but the
+// value is validated against the PROPAGATED policy, and org policy propagation
+// is eventually consistent. Adding a third issuer reproduced the failure above
+// verbatim -- policy updated in the same apply, provider still refused. A
+// caller adding a new federation must also wait for propagation between the
+// policy and its provider; see the time.Sleep in build_homelab_cluster_wif.go,
+// which triggers on this policy's etag so the wait re-arms whenever the
+// allowlist changes.
+//
 // SECURITY NOTE: allowing an issuer here means any workload identity provider
 // under this folder MAY be configured to trust it. It does not by itself grant
 // anything -- the provider's audience condition and the service account's IAM
