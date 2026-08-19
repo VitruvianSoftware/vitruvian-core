@@ -1,0 +1,52 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Application Default Credentials for the federated cluster identity.
+#
+# NOT A SECRET, deliberately: an external_account credential contains no key
+# material. It is a recipe -- "read the token at this path, exchange it at STS
+# for this audience, then impersonate this service account". The only thing that
+# actually authenticates is the projected ServiceAccount token, which the
+# kubelet mints per-pod, rotates, and scopes to the audience below. That is the
+# whole point of the keyless design (docs/gcp-cluster-federation.md); a
+# SealedSecret here would imply there is something to protect and invite someone
+# to rotate a value that never expires.
+#
+# The audience MUST match the provider's allowedAudiences and the projected
+# volume's audience exactly. A mismatch fails at exchange time with an opaque
+# 400, which is why all three are written down together here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gcp-workload-identity
+  namespace: backstage
+data:
+  credentials.json: |
+    {
+      "type": "external_account",
+      "audience": "//iam.googleapis.com/projects/1064807322707/locations/global/workloadIdentityPools/homelab-cluster-pool/providers/homelab-cluster-provider",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/sa-homelab-cluster@prj-b-cicd-e096.iam.gserviceaccount.com:generateAccessToken",
+      "credential_source": {
+        "file": "/var/run/secrets/gcp-workload-identity/token",
+        "format": { "type": "text" }
+      }
+    }
