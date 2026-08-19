@@ -52,6 +52,7 @@ nav:
   - Developer portal:
       - Grafana dashboards: backstage-grafana.md
       - ArgoCD deployments: backstage-argocd.md
+      - GCP cluster federation: gcp-cluster-federation.md
   - Infrastructure:
       - Overview: infrastructure/index.md
       - Architecture: infrastructure/architecture.md
