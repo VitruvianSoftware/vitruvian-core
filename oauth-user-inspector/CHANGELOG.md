@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.8.0...oauth-user-inspector-v1.9.0) (2026-08-19)
+
+
+### Features
+
+* **backstage:** surface Cloud Run state for the apps outside this cluster ([#1791](https://github.com/VitruvianSoftware/vitruvian-core/issues/1791)) ([77465af](https://github.com/VitruvianSoftware/vitruvian-core/commit/77465afaa54d5b36bce771522c42f2e875d13488))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.7.2...oauth-user-inspector-v1.8.0) (2026-08-17)
 
 
