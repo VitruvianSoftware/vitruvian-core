@@ -72,6 +72,15 @@ jobs:
       - name: Test backstage backend
         run: pnpm --filter @vitruviansoftware/backstage-backend test
 
+      # The app package had no runnable test lane at all: its `test` script was
+      # `backstage-cli package test`, whose jest runner resolves
+      # jest-environment-node from the CLI's own store dir and breaks under this
+      # repo's deliberate hoist=false. Anything added under packages/app/src
+      # therefore ran NOWHERE. It now has the same plain-jest config the backend
+      # uses, and this step is what makes that config load-bearing.
+      - name: Test backstage app
+        run: pnpm --filter @vitruviansoftware/backstage-app test
+
   image:
     runs-on: ubuntu-latest
     # 30 was already marginal, and #1738 proved it: the multi-arch build hit

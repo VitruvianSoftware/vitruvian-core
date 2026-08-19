@@ -55,6 +55,8 @@ import {
   EntityGrafanaDashboardsCard,
   isDashboardSelectorAvailable,
 } from "@backstage-community/plugin-grafana";
+import { DeployWorkflowRunsCard } from "./DeployWorkflowRunsCard";
+import { isDeployWorkflowAvailable } from "./deployWorkflowRuns";
 import {
   EntityArgoCDContent,
   EntityArgoCDOverviewCard,
@@ -81,6 +83,17 @@ const defaultEntityPage = (
           <EntitySwitch.Case if={isGithubActionsAvailable}>
             <Grid item md={8} xs={12}>
               <EntityRecentGithubActionsRunsCard limit={5} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Runs of the ONE workflow that deploys this component, for entities
+            that name it. The upstream card above cannot narrow: it takes only
+            `limit` and keys off github.com/project-slug, so in this monorepo it
+            shows every component the same unrelated runs. */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isDeployWorkflowAvailable}>
+            <Grid item md={8} xs={12}>
+              <DeployWorkflowRunsCard limit={5} />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
