@@ -46,6 +46,17 @@
 # grafana-dashboards, and the per-service *-db clusters. They are how things are
 # deployed, not things anyone looks up. ArgoCD itself has no entity because it is
 # not an ArgoCD Application: it is the Pulumi bootstrap that manages everything else.
+#
+# Coverage invariant: every non-plumbing ArgoCD Application has an entity here.
+# That is not enforced by a test -- the check needs the live cluster, and the
+# tempting offline substitute (grepping the gitops tree for the app name) passes
+# on almost any plausible string, so it would read as validation without being
+# any. Re-check it by hand after adding or removing an Application:
+#
+#   kubectl get app -n argocd -o name | sed 's|.*/||' | sort > /tmp/apps
+#   grep -rho 'argocd/app-name: .*' --include=catalog-info.yaml . \
+#     | sed 's/.*: //' | tr ',' '\n' | tr -d ' ' | sort -u > /tmp/annotated
+#   comm -23 /tmp/apps /tmp/annotated   # anything here is plumbing, or a gap
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
@@ -343,5 +354,265 @@ metadata:
 spec:
   type: service
   lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cilium
+  title: Cilium
+  description: eBPF CNI providing pod networking, network policy and LB-IPAM; runs in tunnel (Geneve) mode over the tailnet
+  annotations:
+    argocd/app-name: cilium
+  links:
+    - url: https://docs.cilium.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: networking
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: envoy-gateway
+  title: Envoy Gateway
+  description: Gateway API implementation terminating the cluster's external HTTP routes on the edge VIP
+  annotations:
+    argocd/app-name: envoy-gateway
+  links:
+    - url: https://gateway.envoyproxy.io/docs/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: ingress-controller
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cloudflared
+  title: Cloudflare Tunnel
+  description: HA (2 replicas, anti-affinity) Cloudflare Tunnel connector; both replicas register the same tunnel and forward to the Gateway
+  annotations:
+    argocd/app-name: cloudflared
+  links:
+    - url: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: networking
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: sealed-secrets
+  title: Sealed Secrets
+  description: Decrypts SealedSecret manifests into Secrets in-cluster, so encrypted secrets can live in git
+  annotations:
+    argocd/app-name: sealed-secrets
+  links:
+    - url: https://github.com/bitnami-labs/sealed-secrets
+      title: Upstream docs
+      icon: docs
+spec:
+  type: secret-management
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: external-secrets
+  title: External Secrets Operator
+  description: Syncs secrets from external providers into Kubernetes Secrets
+  annotations:
+    argocd/app-name: external-secrets
+  links:
+    - url: https://external-secrets.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: secret-management
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: csi-driver-nfs
+  title: CSI NFS Driver
+  description: Provides the nfs-backup StorageClass backing volumes on springwood-nas
+  annotations:
+    argocd/app-name: csi-driver-nfs
+  links:
+    - url: https://github.com/kubernetes-csi/csi-driver-nfs
+      title: Upstream docs
+      icon: docs
+spec:
+  type: storage
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: metrics-server
+  title: Metrics Server
+  description: Serves the resource metrics API that kubectl top and HPA read
+  annotations:
+    argocd/app-name: metrics-server
+  links:
+    - url: https://github.com/kubernetes-sigs/metrics-server
+      title: Upstream docs
+      icon: docs
+spec:
+  type: observability
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: argo-rollouts
+  title: Argo Rollouts
+  description: Progressive delivery controller; drives the whoami canary reference workload
+  annotations:
+    argocd/app-name: argo-rollouts
+  links:
+    - url: https://argo-rollouts.readthedocs.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: deployment
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: argocd-image-updater
+  title: ArgoCD Image Updater
+  description: Watches floating image tags for new digests and opens a PR pinning them, so a mutable-tag push still lands through the merge queue
+  annotations:
+    argocd/app-name: argocd-image-updater
+  links:
+    - url: https://argocd-image-updater.readthedocs.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: deployment
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: opentelemetry-operator
+  title: OpenTelemetry Operator
+  description: Manages OpenTelemetry Collector instances and auto-instrumentation
+  annotations:
+    argocd/app-name: opentelemetry-operator
+  links:
+    - url: https://opentelemetry.io/docs/kubernetes/operator/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: observability
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: opentelemetry-collector
+  title: OpenTelemetry Collector
+  description: Receives traces and forwards them to Tempo
+  annotations:
+    argocd/app-name: opentelemetry-collector
+  links:
+    - url: https://opentelemetry.io/docs/collector/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: observability
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: alertmanager-ntfy-bridge
+  title: Alertmanager ntfy Bridge
+  description: Single stateless replica transforming Alertmanager webhooks into ntfy notifications; a miss during a restart is re-delivered by Alertmanager's own retry
+  annotations:
+    argocd/app-name: alertmanager-ntfy-bridge
+spec:
+  type: observability
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: redis
+  title: Redis
+  description: Shared in-cluster Redis
+  annotations:
+    argocd/app-name: redis
+  links:
+    - url: https://redis.io/docs/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: cache
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: valkey-operator
+  title: Valkey Operator
+  description: Manages the Valkey instances backing buzz
+  annotations:
+    argocd/app-name: valkey-operator
+  links:
+    - url: https://valkey.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: cache
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: nas-backup
+  title: Prometheus NAS Backup
+  description: File-level backup of the Prometheus TSDB to springwood-nas over NFS; backs up replica-0's node-pinned PVC, which is a complete snapshot since both replicas scrape the same targets
+  annotations:
+    argocd/app-name: nas-backup
+spec:
+  type: backup
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: db-nfs-backup
+  title: Database NAS Backup
+  description: Off-cluster daily pg_dump of the CNPG app databases to springwood-nas (30-day retention), complementing the in-cluster barman PITR — this copy survives loss of the whole cluster
+  annotations:
+    argocd/app-name: db-nfs-backup
+spec:
+  type: backup
   owner: platform-team
   system: vitruvian-core
