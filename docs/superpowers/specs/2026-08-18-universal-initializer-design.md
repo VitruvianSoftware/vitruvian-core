@@ -1,6 +1,6 @@
 # Application Initializer — Design
 
-**Date:** 2026-08-18 (revised five times same day, see §14)
+**Date:** 2026-08-18 (revised through 2026-08-19, see §14)
 **Status:** Approved in conversation; awaiting written-spec review
 **Branch:** `docs/universal-initializer-spec`
 **Requested by:** James Nguyen
@@ -259,9 +259,12 @@ verify the onboarding — the same gates that verify any other change to that fi
   application name, owner, language, concerns, and an optional path override (ADR-014).
 - **Custom action `vitruvian:app:render`** (new backend module, same pattern as our
   auth/permission modules): invokes the `aspect` binary vendored into the backstage image
-  (ADR-004) via `executeShellCommand`, streaming output to the task log, wrapped in
-  `ctx.checkpoint` for idempotent retries.
-- **Steps**: clone/fetch target repo → `vitruvian:app:render` → *(if `svc_deploy`)* add
+  (ADR-004, delivery half revised by ADR-026) via `executeShellCommand`, streaming output
+  to the task log, wrapped in `ctx.checkpoint` for idempotent retries. The engine it runs
+  is **the target repository's own embedded initializer** (ADR-026) — the action clones the
+  target (needed for the PR anyway) and runs `aspect render-app` from that checkout, so
+  engine and repo are the same vintage by construction.
+- **Steps**: clone/fetch target repo → its embedded `render-app` → *(if `svc_deploy`)* add
   gitops manifests → `publish:github:pull-request` → `catalog:register` for the new
   `catalog-info.yaml`.
 - **Preview**: "Explore before create" via the scaffolder dry-run endpoint — see the file
@@ -337,7 +340,7 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   the existing engine, and validation becomes the shared enforcement point. *Consequence:*
   every frontend needs the `aspect` binary — accepted; porting minijinja and the glob
   semantics would invite drift.
-- **ADR-004 (Accepted) — Frontend A embeds the renderer binary in the backstage image.**
+- **ADR-004 (Accepted; delivery half superseded by ADR-026) — Frontend A embeds the renderer binary in the backstage image.**
   Rendering is pure templating; ~50MB buys zero new runtime infrastructure.
   *Consequence:* renderer version pins to image releases; later extraction to B is a
   transport swap.
@@ -455,6 +458,27 @@ Lightweight ADRs (context → decision → consequences). **Accepted** = decided
   primitives these checks need, so this adds no toolchain. *Consequence:* the checks are
   written in Starlark, which has no recursion and no `while` — the same constraint
   `render.axl` already works around with worklists.
+- **ADR-026 (Accepted, 2026-08-19) — The engine embeds in every starter repo; runtime is
+  fully decoupled from `aspect-workflows-template`.** Proposed by James: the developer's
+  journey starts in their own repo, so the initializer must live there, like `tools/` and
+  `bazel/` already do. Mechanics verified before accepting: descendants already carry their
+  own `MODULE.aspect` with `use_task` (vitruvian-core does today) and `.aspect/*.axl`, so
+  embedding tasks is the existing extension surface. The engine (`app.axl`, app templates,
+  check tasks) moves into `template/` and renders into every starter; embedded app
+  templates ride the repo-level `no_render` list so their `{{ }}` placeholders survive repo
+  stamping verbatim — no return of the escaping idiom. *What this dissolves:* the
+  pinned-vs-floating template-repo ref question for the frontends (there is no ref — the
+  engine is local); much of the `--host-oci` runtime probe (templates can be specialized at
+  repo-stamp time to the host's actual features); and it makes the initializer
+  **user-extensible per repo** — teams add their own concerns to their own templates, which
+  a central engine could never safely allow. *The trade, stated:* engine development stays
+  in `aspect-workflows-template` (fix once), delivery is embedding — the 26 published
+  starters refresh on every `deliver.yaml` push, but user-created repos own their snapshot
+  and do not heal, the same ownership trade already accepted for stamped applications.
+  *Consequences:* ADR-004's delivery half is superseded (the backstage image still vendors
+  the `aspect` binary, but fetches no template repo); ADR-015's "valid target" gains its
+  real definition — a repository carrying an embedded initializer; the two-host
+  fixed-point CI gate stays in `aspect-workflows-template` as the pre-ship proof.
 - **ADR-013 (Proposed) — Derive `hello/<lang>` from the app templates.** Repo stamping would
   render its example apps from the same source the initializer uses, so the two cannot
   drift and every app template is exercised inside a real monorepo on every CI run.
@@ -477,7 +501,7 @@ times.
 
 | Phase | Delivers | Depends on |
 |---|---|---|
-| **P0** | App metadata contract, `render-app` + validation, **the base Go app template**, tiers 1–2 as AXL check-tasks | — |
+| **P0** | App metadata contract, `render-app` + validation, **the base Go app template**, tiers 1–2 as AXL check-tasks; **P0.5**: embed the engine into `template/` so every starter ships it (ADR-026) | — |
 | **P1** | Frontend A: stamp an application into `vitruvian-core` (no concerns yet) — the mechanism, end to end | P0 |
 | **P2** | Concern stack per track: **Go → TS → Python → JVM**; each ships its base app template (Go's arrives in P0), app preset, CI leg, and tier-3 build (three Go HTTP variants, ADR-022) | P0 |
 | **P3** | `svc_deploy` (homelab bundle, then Cloud Run) and the fully-automatic single-PR deploy | P2 (Go) |
@@ -498,6 +522,16 @@ tracks are independent, so they can run in parallel across sessions.
    this spec, the coordination point, lives in `vitruvian-core`.
 5. **Verification discipline:** each plan defines falsifiable checks up front (§10),
    matching the repo's test-the-real-path norms.
+
+**Revision 2026-08-19g — the engine embeds in the starter repos (ADR-026).** During P0
+James redirected the delivery model: the initializer lives in each generated repo,
+decoupled at runtime from the template repo, because that is where the developer's journey
+is. Accepted after verifying the extension mechanics already exist. This dissolves the
+frontend version-pinning question, most of the `--host-oci` probe, and makes the
+initializer user-extensible per repo; the cost is that user-created repos own their
+snapshot of the engine and do not heal — the ownership trade this design already accepts
+for stamped applications. P0's engine logic (merged as aspect-workflows-template #44) is
+unchanged; the embedding is P0.5, a packaging move.
 
 **Revision 2026-08-18f — two gaps found while preparing the P0 plan.** Writing an
 implementation plan surfaced what the design had left implicit. First, **P0 had nothing to
