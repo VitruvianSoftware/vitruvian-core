@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.14.1...foundation-gcp-bootstrap-v0.14.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **foundation:** enable Cloud Monitoring on the credential's own project ([#1812](https://github.com/VitruvianSoftware/vitruvian-core/issues/1812)) ([a2c7796](https://github.com/VitruvianSoftware/vitruvian-core/commit/a2c77965bad4c3b04ce86b3f4f6ce180d0fd9cd3))
+
 ## [0.14.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.14.0...foundation-gcp-bootstrap-v0.14.1) (2026-08-19)
 
 
