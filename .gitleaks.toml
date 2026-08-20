@@ -72,10 +72,16 @@ paths = ['''^tabula/extension/src/manifest\.json$''']
 # project that HOLDS the token in Secret Manager. It is a project id, not a
 # credential. regexTarget = "line" because the value itself looks like an
 # ordinary identifier -- it is the KEY that proves it is not a secret.
+#
+# The pattern admits both spellings of the pair -- YAML (`…-project: "prj-…"`)
+# and JSON/BUILD (`…-project": "prj-…"`, quote before the colon), which
+# delivery() declarations and their frozen testdata introduced in #1811 --
+# and, unlike the original key-name-only regex, it also requires the VALUE to
+# be a project id, so a real token pasted next to this key still trips.
 [[allowlists]]
 description = "cloudflare-token-secret-project names a GCP project, not a token"
 regexTarget = "line"
-regexes = ['''cloudflare-token-secret-project:''']
+regexes = ['''cloudflare-token-secret-project.{0,4}prj-[a-z0-9-]{4,40}''']
 
 # The `generic-api-key` heuristic fires on ordinary English in markdown -- e.g.
 # the words "Gateway API migration, Prometheus" in a docs table read as a
