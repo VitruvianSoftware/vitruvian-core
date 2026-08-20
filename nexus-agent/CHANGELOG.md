@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.12.0...nexus-agent-v1.12.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **nexus-agent:** declare NexusAgentCore in Package.swift so the mirror builds ([#1855](https://github.com/VitruvianSoftware/vitruvian-core/issues/1855)) ([3848d7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/3848d7b94a159b46d5d7f2aea2a685875c10054c))
+
 ## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.11.1...nexus-agent-v1.12.0) (2026-08-17)
 
 
