@@ -654,6 +654,21 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 		return err
 	}
 
+	// Kill switch for the delivery orchestrator (spec §6.1 rollback level 1:
+	// a variable flip, not a commit). Phase 0 ships the orchestrator in SHADOW
+	// mode -- the orchestrate job only computes and uploads a delivery
+	// manifest, no fan-out exists -- so "true" is side-effect-free and starts
+	// collecting real detection data immediately. Repo-scoped for the same
+	// reason as ZITADEL_APPS_AUTO_APPLY: a job-level `if:` cannot see an
+	// environment-scoped variable.
+	if _, err := github.NewActionsVariable(ctx, "delivery-orchestrator-enabled", &github.ActionsVariableArgs{
+		Repository:   repo.Name,
+		VariableName: pulumi.String("DELIVERY_ORCHESTRATOR_ENABLED"),
+		Value:        pulumi.String("true"),
+	}); err != nil {
+		return err
+	}
+
 	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 

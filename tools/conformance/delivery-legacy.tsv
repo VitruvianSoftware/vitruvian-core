@@ -1,0 +1,35 @@
+# Pre-orchestrator delivery surface: workflows that perform a state-mutating
+# invocation without being generated from a delivery() declaration (#1794 is
+# what happens when one of these drifts out of the gate everything around it
+# honours).
+#
+# Consumed by tools/conformance/check.sh (check_delivery, arm c -- the
+# side-effect firewall): every workflow under .github/workflows/ matching
+#   pulumi up | bazel run ...:(deploy|up|apply) | helm push | gh release upload
+#   | docker push | oci_push
+# must be EITHER the generated .github/workflows/delivery.yaml OR listed here
+# with a justification. A NEW unlisted match fails the check; a row whose
+# workflow no longer matches also fails (stale exception), the same policy
+# public-targets.tsv and version-pins.tsv apply -- so this file can only ever
+# shrink, and the delivery surface can never silently grow.
+#
+# Columns (TAB-separated): workflow path <TAB> justification
+.github/workflows/_deploy-cloud-run.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/_oauth-identity-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/_repo-config-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/_tabula-identity-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/_zitadel-apps-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/charts-publish.yml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/copybara-sync-auth-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/foundation-app-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/foundation-env-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/foundation-net-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/foundation-proj-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/foundation-release.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/oauth-user-inspector-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/tabula-build-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/tabula-data-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/tabula-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/tabula-dev-latest.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/tabula-release.yml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/zitadel-apps-mcp-slack-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)

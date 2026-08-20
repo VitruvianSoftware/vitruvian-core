@@ -408,6 +408,7 @@ ROWS_DURABLE=""
 ROWS_PULUMI=""
 ROWS_RENOVATE=""
 ROWS_STANDALONE_DEPS=""
+ROWS_DELIVERY=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -434,6 +435,7 @@ emit() {
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
+    delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -1772,6 +1774,276 @@ check_deploy_durable_base() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Delivery-orchestrator guard (delivery-orchestrator design spec §4.4/§6.1).
+#
+# The orchestrator's premise is that ONE generated workflow
+# (.github/workflows/delivery.yaml, rendered by //tools/ci:gen from the
+# delivery() declarations in the Bazel graph) becomes the single delivery path.
+# That premise is only true while three things hold, and NONE of them is
+# self-evident from a green CI run:
+#
+#   a. UNIT NAMES ARE UNIQUE. Two units with the same name render one job id;
+#      YAML resolves the collision by silently keeping the last, so one of them
+#      simply stops being delivered with nothing red anywhere.
+#   b. EVERY `run` LABEL RESOLVES. A moved or mistyped run target makes the
+#      generated job fail at `bazel run` time — in Phase 1 that is a failed
+#      deploy discovered in production, not at review.
+#   c. THE SIDE-EFFECT SURFACE ONLY SHRINKS. A new hand-written workflow that
+#      mutates state (a `pulumi up`, a `bazel run ...:deploy`, an image or chart
+#      push) is a delivery path outside the orchestrator, and therefore outside
+#      its gating, its ladder and its kill switch. #1794 is the cost of exactly
+#      that shape: a state-mutating apply sitting beside jobs that were all
+#      correctly gated, running ~9 needless times a day against the OIDC stack
+#      whose force-replace deletes the live client. Every workflow that mutates
+#      must be the GENERATED one or carry a justified row in
+#      tools/conformance/delivery-legacy.tsv — and a row whose workflow no
+#      longer mutates is itself a ✗, so the legacy list can only shrink (the
+#      same stale-exception policy public-targets.tsv and version-pins.tsv use).
+#
+# Plus (d) the §6.1 level-1 rollback guarantee: the generated workflow's
+# orchestrate job must carry the DELIVERY_ORCHESTRATOR_ENABLED kill switch, so
+# the whole orchestrator can be disabled by flipping a repo variable — no
+# commit, no revert, no deploy. A rollback control that is merely believed to
+# be present is not a rollback control.
+#
+# DELIBERATELY STATIC AND OFFLINE. Conformance runs on every PR and must stay
+# seconds-fast with no network and no Bazel analysis, so declarations are parsed
+# out of BUILD files with awk (the way check_merge_queue parses repo_config's
+# main.go) rather than queried. That makes arm (b) a HEURISTIC: it proves the
+# run target's package exists and that its BUILD either declares that target
+# literally or invokes a macro known to generate it. Full label resolution is
+# the orchestrator's job (it runs under Bazel and can query). The heuristic
+# still catches the failure that actually happens — a package that moved or a
+# label that was typed wrong.
+# ---------------------------------------------------------------------------
+DELIVERY_LEGACY="$ROOT/tools/conformance/delivery-legacy.tsv"
+DELIVERY_WORKFLOW_REL=".github/workflows/delivery.yaml"
+# One definition of "state-mutating", shared by the sweep, the seeded TSV and
+# the fix text, so they cannot drift apart.
+DELIVERY_SIDE_EFFECT_RE='pulumi up|bazel run .*:(deploy|up|apply)|helm push|gh release upload|docker push|oci_push'
+
+# Target names a macro generates in its CALLING package, read LIVE from
+# tools/pulumi/defs.bzl (never hardcoded here) so arm (b) cannot drift from the
+# macro the way a copied list would. Yields the _SUBCOMMANDS ladder
+# (preview/up/destroy/refresh/config/stack/state/import) plus the literal
+# sh_binary names the macro declares (setup, ...).
+delivery_macro_targets() {
+  _pd="$ROOT/tools/pulumi/defs.bzl"
+  [ -f "$_pd" ] || return 0
+  awk '
+    /^_SUBCOMMANDS = \[/ { on = 1; next }
+    on && /^\]/          { on = 0 }
+    on {
+      l = $0
+      sub(/#.*/, "", l)
+      gsub(/[",]/, "", l)
+      gsub(/[ \t]/, "", l)
+      if (l != "") print l
+      next
+    }
+    /name = "/ { v = $0; sub(/.*name = "/, "", v); sub(/".*/, "", v); print v }
+  ' "$_pd"
+}
+
+# BUILD files that actually contain a delivery() block.
+#
+# One batched `grep -l` over the whole list rather than a `grep -q` per file:
+# this repo has ~293 BUILD files, and a process per file cost ~1.2s of the
+# conformance run for a check that finds two declarations. Conformance runs on
+# every PR; spending a second to look at nothing is the wasted-compute failure
+# this repo treats as a real defect.
+delivery_declaring_files() {
+  _bf="$(
+    find "$ROOT" \
+      \( -name node_modules -o -name .git -o -name 'bazel-*' \) -prune -o \
+      \( -name BUILD -o -name BUILD.bazel \) -print 2>/dev/null
+  )"
+  [ -n "$_bf" ] || return 0
+  printf '%s\n' "$_bf" | tr '\n' '\0' | xargs -0 grep -l '^delivery(' 2>/dev/null | LC_ALL=C sort
+}
+
+check_delivery() {
+  # --- declarations: `delivery(` blocks in BUILD files, parsed statically. ----
+  # buildifier formats macro calls at column 0, so `^delivery(` is an exact
+  # anchor and cannot be satisfied by a load() line, a comment, or a rule whose
+  # name merely ends in "delivery".
+  _decls="$(
+    delivery_declaring_files | while IFS= read -r bf; do
+      [ -n "$bf" ] || continue
+      rel="${bf#"$ROOT"/}"
+      awk -v f="$rel" '
+        /^delivery\(/ { in_d = 1; nm = ""; rn = ""; next }
+        in_d && /^\)/ { print f "\t" nm "\t" rn; in_d = 0; next }
+        in_d && /^[ \t]*name[ \t]*=[ \t]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); nm = v }
+        in_d && /^[ \t]*run[ \t]*=[ \t]*"/  { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); rn = v }
+      ' "$bf"
+    done
+  )"
+
+  if [ -z "$_decls" ]; then
+    # Zero declarations means the macro, the formatting convention or this
+    # parser moved -- not that the repo has no delivery units. A guard that
+    # silently checks nothing is the failure mode this whole file exists to
+    # prevent, so say so loudly.
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" "tools/delivery/defs.bzl" "0 declarations" ">=1" \
+      "no delivery() block found in any BUILD file -- the macro, the buildifier formatting, or this parser drifted, and arms (a)+(b) are checking nothing" \
+      "confirm a delivery() call still starts at column 0 in a BUILD file (e.g. oauth-user-inspector/infra/app/BUILD)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    _seen_units=""
+    _macro_targets="$(delivery_macro_targets)"
+    while IFS="$(printf '\t')" read -r dfile dname drun; do
+      [ -n "$dfile" ] || continue
+
+      if [ -z "$dname" ]; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "(no name)" "name = \"...\"" \
+          "a delivery() block declares no name -- it can never be addressed, gated or rolled back" \
+          "add name = \"<unit>\" to the delivery() call in $dfile"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        continue
+      fi
+
+      # --- (a) unit names unique repo-wide. ---------------------------------
+      if printf '%s' "$_seen_units" | grep -qxF "$dname"; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "$dname" "unique" \
+          "duplicate delivery unit name -- both render the same job id, and YAML keeps only the last, so one unit silently stops being delivered" \
+          "rename one of the units; delivery() names are the repo-wide handle for gating, promotion and rollback"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        continue
+      fi
+      _seen_units="$_seen_units$dname
+"
+
+      # --- (b) the run label resolves (static heuristic; see header). --------
+      case "$drun" in
+        //*:*) : ;;
+        *)
+          emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "$dname" "//pkg:target" \
+            "run = \"$drun\" is not an absolute Bazel label -- the generated job would fail at 'bazel run' time, i.e. mid-deploy" \
+            "set run = \"//<package>:<target>\" on the $dname delivery() block"
+          OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+          continue ;;
+      esac
+      _dpkg="${drun#//}"; _dpkg="${_dpkg%%:*}"
+      _dtgt="${drun##*:}"
+      _dbuild=""
+      for _cand in "$ROOT/$_dpkg/BUILD" "$ROOT/$_dpkg/BUILD.bazel"; do
+        if [ -f "$_cand" ]; then _dbuild="$_cand"; break; fi
+      done
+
+      if [ ! -d "$ROOT/$_dpkg" ]; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "$dname" "$drun" \
+          "the run target's package directory ($_dpkg) does not exist -- the unit points at a package that moved or was never there" \
+          "fix run = on the $dname delivery() block, or move the target back to //$_dpkg"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      elif [ -z "$_dbuild" ]; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "$dname" "$drun" \
+          "$_dpkg has no BUILD file, so //$_dpkg:$_dtgt is not a Bazel package at all" \
+          "add a BUILD file declaring $_dtgt in $_dpkg, or repoint run = on the $dname delivery() block"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      elif grep -q "name = \"$_dtgt\"" "$_dbuild" 2>/dev/null; then
+        emit "delivery" "$GLYPH_OK" "$C_GREEN" "$dfile" "$dname" "$drun" \
+          "run target declared literally in ${_dbuild#"$ROOT"/}" ""
+        OK_COUNT=$((OK_COUNT + 1))
+      elif printf '%s\n' "$_macro_targets" | grep -qxF "$_dtgt" \
+           && grep -q 'pulumi_project(' "$_dbuild" 2>/dev/null; then
+        emit "delivery" "$GLYPH_OK" "$C_GREEN" "$dfile" "$dname" "$drun" \
+          "run target generated by pulumi_project() in ${_dbuild#"$ROOT"/}" ""
+        OK_COUNT=$((OK_COUNT + 1))
+      else
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$dfile" "$dname" "$drun" \
+          "${_dbuild#"$ROOT"/} declares no target named '$_dtgt' (and no macro in it is known to generate one) -- the generated job would fail at 'bazel run' time" \
+          "fix run = on the $dname delivery() block, or declare $_dtgt in ${_dbuild#"$ROOT"/}"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    done <<EOF
+$_decls
+EOF
+  fi
+
+  # --- (c) side-effect firewall. ---------------------------------------------
+  _sidefx_seen=""
+  _sidefx_count=0
+  if [ -d "$WORKFLOWS_DIR" ]; then
+    for _wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
+      [ -f "$_wf" ] || continue
+      _wfrel=".github/workflows/${_wf##*/}"
+      grep -qE "$DELIVERY_SIDE_EFFECT_RE" "$_wf" 2>/dev/null || continue
+      _sidefx_count=$((_sidefx_count + 1))
+      _sidefx_seen="$_sidefx_seen$_wfrel
+"
+      if [ "$_wfrel" = "$DELIVERY_WORKFLOW_REL" ]; then
+        emit "delivery" "$GLYPH_OK" "$C_GREEN" "$_wfrel" "generated" "generated" \
+          "the generated delivery workflow is the sanctioned side-effect path" ""
+        OK_COUNT=$((OK_COUNT + 1))
+        continue
+      fi
+      _just=""
+      if [ -f "$DELIVERY_LEGACY" ]; then
+        _just="$(awk -F'\t' -v f="$_wfrel" '!/^[[:space:]]*#/ && $1 == f { print $2; exit }' "$DELIVERY_LEGACY")"
+      fi
+      if [ -n "$_just" ]; then
+        emit "delivery" "$GLYPH_PIN" "$C_YELLOW" "$_wfrel" "legacy" "orchestrated" "$_just" ""
+        PIN_COUNT=$((PIN_COUNT + 1))
+      else
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$_wfrel" "unlisted" "orchestrated" \
+          "this workflow mutates state (matches: $DELIVERY_SIDE_EFFECT_RE) but is neither the generated delivery workflow nor a declared legacy exception -- it is a delivery path outside the orchestrator's gating, ladder and kill switch (#1794)" \
+          "declare a delivery() unit and regenerate, or add to delivery-legacy.tsv with justification"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    done
+  fi
+
+  # A zero-match sweep means the regex (or the workflow layout) drifted, not
+  # that the repo stopped deploying anything. Fail loudly rather than pass
+  # vacuously -- the whole firewall would otherwise be silently off.
+  if [ "$_sidefx_count" -eq 0 ]; then
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 matched" ">=1" \
+      "no workflow matched the state-mutation regex -- the pattern or the workflow layout changed, so the side-effect firewall is checking nothing" \
+      "confirm the deploy/apply/publish lanes still exist and update DELIVERY_SIDE_EFFECT_RE in tools/conformance/check.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+
+  # Stale legacy rows: an exception whose workflow no longer mutates (or no
+  # longer exists) must be removed, so the list can only ever shrink toward
+  # zero. Same policy as public-targets.tsv / version-pins.tsv.
+  if [ -f "$DELIVERY_LEGACY" ]; then
+    while IFS="$(printf '\t')" read -r lfile ljust; do
+      case "$lfile" in ''|'#'*) continue ;; esac
+      if ! printf '%s' "$_sidefx_seen" | grep -qxF "$lfile"; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$lfile" "legacy row" "live match" \
+          "listed as a pre-orchestrator legacy exception but the workflow no longer performs a state-mutating invocation (or no longer exists) -- stale exception" \
+          "remove the row from tools/conformance/delivery-legacy.tsv"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      fi
+    done < "$DELIVERY_LEGACY"
+  fi
+
+  # --- (d) §6.1 level-1 rollback guarantee: the kill switch is present. ------
+  _genwf="$ROOT/$DELIVERY_WORKFLOW_REL"
+  if [ ! -f "$_genwf" ]; then
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "missing" "generated" \
+      "the generated delivery workflow is gone -- nothing renders the delivery() declarations, and the orchestrator has no entry point" \
+      "run 'bazel run //tools/ci:gen' and commit .github/workflows/delivery.yaml"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  elif ! grep -q "GENERATED by 'bazel run //tools/ci:gen'" "$_genwf" 2>/dev/null; then
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "hand-written" "generated" \
+      "the delivery workflow has lost its GENERATED banner -- it is being maintained by hand, which the next 'bazel run //tools/ci:gen' silently reverts" \
+      "regenerate with 'bazel run //tools/ci:gen'; put real changes in the delivery() declarations or //tools/delivery/gen"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  elif ! grep -q "DELIVERY_ORCHESTRATOR_ENABLED == 'true'" "$_genwf" 2>/dev/null; then
+    emit "delivery" "$GLYPH_FAIL" "$C_RED" "$DELIVERY_WORKFLOW_REL" "no kill switch" "vars gate" \
+      "the orchestrate job does not carry the DELIVERY_ORCHESTRATOR_ENABLED condition -- spec §6.1 rollback level 1 (disable by flipping a repo variable, no commit) does not exist" \
+      "restore the job-level if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' in //tools/delivery/gen and regenerate"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "delivery" "$GLYPH_OK" "$C_GREEN" "$DELIVERY_WORKFLOW_REL" "kill switch" "vars gate" \
+      "generated, and disableable by flipping DELIVERY_ORCHESTRATOR_ENABLED (spec §6.1 rollback level 1)" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
 check_no_local_paths() {
   # Scope: committed text likely to be machine-generated. Docs legitimately
   # quote example paths, and this file names the pattern it greps for.
@@ -2143,6 +2415,7 @@ check_no_local_paths
 check_ci_gate_lists_match
 check_deploy_sequencer_gate
 check_deploy_durable_base
+check_delivery
 check_renovate_schedule
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -2166,6 +2439,7 @@ print_group "Release-unit guard (co-located <app>/infra/ must not bump the app v
 print_group "Leaked local-path guard (no committed file may embed a machine path)" "$ROWS_LOCALPATH"
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
+print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"

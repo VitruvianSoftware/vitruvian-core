@@ -34,7 +34,10 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 sh_binary(
     name = "check",
     srcs = ["check.sh"],
-    data = ["version-pins.tsv"],
+    data = [
+        "delivery-legacy.tsv",
+        "version-pins.tsv",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -49,5 +52,26 @@ sh_test(
     name = "check_test",
     size = "small",
     srcs = ["check_test.sh"],
+    data = ["check.sh"],
+)
+
+# Test-the-guard for check_delivery (the delivery-orchestrator arms). Kept as
+# its own sh_test rather than folded into check_test.sh because it is a
+# different subject with its own fixture shape (BUILD files carrying delivery()
+# blocks, a legacy TSV, a generated workflow) — and because the two files are
+# owned by different changes and would otherwise collide on every edit.
+#
+# Same hermetic contract as check_test: check.sh is a data dep, executed as a
+# subprocess against a throwaway BUILD_WORKSPACE_DIRECTORY the test builds
+# itself, so no file in the real tree can flip these assertions.
+# size = "small" (60s) with ~12s of headroom measured on macOS, which is the
+# PESSIMISTIC platform here: this test's cost is ~13 check.sh subprocesses and
+# a few hundred forks each, and macOS process spawn is several times slower
+# than the Linux runner's. Kept deliberately cheap -- the mutation-verb arm
+# seeds all six verbs into one root rather than paying a check.sh run per verb.
+sh_test(
+    name = "conformance-delivery_test",
+    size = "small",
+    srcs = ["conformance-delivery_test.sh"],
     data = ["check.sh"],
 )

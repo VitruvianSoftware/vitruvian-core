@@ -1,0 +1,18 @@
+{
+  "build": "",
+  "companions": [],
+  "environments": ["development", "nonproduction", "production"],
+  "exclude_paths": [],
+  "extra_paths": [
+    "infrastructure/pulumi/platform/zitadel-apps/",
+    "\\.github/workflows/_zitadel-apps-apply\\.yaml"
+  ],
+  "github_environment": "oauth-user-inspector-{env}",
+  "kind": "pulumi",
+  "name": "zitadel-apps",
+  "package": "infrastructure/pulumi/platform/zitadel-apps",
+  "preflight": "",
+  "promotion": "release:oauth-user-inspector-v",
+  "run": "//infrastructure/pulumi/platform/zitadel-apps:up",
+  "schema": 1
+}

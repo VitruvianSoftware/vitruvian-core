@@ -18,29 +18,36 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("//tools/delivery:defs.bzl", "delivery")
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+# The delivery workflow generator (spec §4.3). Run it as //tools/ci:gen (the
+# alias the spec and tidy-check name); this is the implementation.
+#
+#   bazel run //tools/ci:gen
+#
+# Public visibility is required by the //tools/ci:gen alias, which lives in a
+# different package.
 
-pulumi_project(
-    name = "zitadel-apps",
-    dir = "infrastructure/pulumi/platform/zitadel-apps",
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "gen_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/delivery/gen",
+    visibility = ["//visibility:private"],
 )
 
-# Delivery unit (Phase 0: SHADOW; _zitadel-apps-apply.yaml remains the acting
-# path until Phase 1). The expand half of oauth's expand-before-serve pair.
-delivery(
-    name = "zitadel-apps",
-    environments = [
-        "development",
-        "nonproduction",
-        "production",
-    ],
-    extra_paths = [
-        "infrastructure/pulumi/platform/zitadel-apps/",
-        "\\.github/workflows/_zitadel-apps-apply\\.yaml",
-    ],
-    github_environment = "oauth-user-inspector-{env}",
-    kind = "pulumi",
-    promotion = "release:oauth-user-inspector-v",
-    run = "//infrastructure/pulumi/platform/zitadel-apps:up",
+go_binary(
+    name = "gen",
+    embed = [":gen_lib"],
+    visibility = ["//visibility:public"],
+)
+
+# Golden-file + determinism + kill-switch tests. `data` carries the fixture
+# declarations and the golden; the test never reads the live tree, so a BUILD
+# change elsewhere in the repo cannot flip it.
+go_test(
+    name = "gen_test",
+    size = "small",
+    srcs = ["main_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":gen_lib"],
 )
