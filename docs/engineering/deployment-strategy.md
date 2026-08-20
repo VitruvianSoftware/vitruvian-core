@@ -92,3 +92,8 @@ artifact nonprod smoke-tested.
 - **Hotfixes** cut a release like anything else (release-please will open a
   patch PR immediately). For a genuine emergency that cannot wait, `delivery.yaml`'s
   `workflow_dispatch` redeploys a single unit + environment directly.
+- **Two Pulumi deploys cannot overlap.** Our Pulumi Cloud individual account
+  allows one update account-wide, so an unrelated stack's deploy can reject
+  this one with a 409. `tools/pulumi/pulumi_cmd.sh` retries that specific error;
+  see [Pulumi concurrent updates](pulumi-concurrent-updates.md) for why it cost
+  a production promotion and what the root fix is.
