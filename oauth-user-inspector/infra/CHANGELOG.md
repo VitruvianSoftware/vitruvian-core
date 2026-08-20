@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.3.0...oauth-user-inspector-infra-v1.4.0) (2026-08-20)
+
+
+### Features
+
+* **delivery:** Phase 3 — legacy deleted, allowlist frozen, preflight wired, release runs isolated ([#1831](https://github.com/VitruvianSoftware/vitruvian-core/issues/1831)) ([b1757f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/b1757f827630f4e2b6e9b4731551820c5478aa08))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.2.0...oauth-user-inspector-infra-v1.3.0) (2026-08-20)
 
 
