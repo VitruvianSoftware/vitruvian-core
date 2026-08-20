@@ -46,6 +46,17 @@ exports_files([
 # the detector can never disagree with the decider about "affected". Its test
 # therefore needs both scripts as runfiles and drives the real engine (only gh
 # and bazel are stubbed).
+# Safety tests for the cache pruner. It DELETES, so the suite is mostly
+# negative: an open PR's cache, a branch cache, and an undeterminable PR state
+# must all survive.
+sh_test(
+    name = "prune_pr_caches_test",
+    size = "small",
+    srcs = ["prune-pr-caches_test.sh"],
+    args = ["$(location prune-pr-caches.sh)"],
+    data = ["prune-pr-caches.sh"],
+)
+
 sh_test(
     name = "delivery_drift_test",
     size = "small",

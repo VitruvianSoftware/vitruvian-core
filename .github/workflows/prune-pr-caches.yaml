@@ -1,0 +1,93 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Reclaim a closed PR's Actions caches (#1450).
+#
+# The repo shares ONE 10 GiB Actions cache budget and GitHub evicts by LRU once
+# it is exceeded -- so orphaned entries do not merely waste space, they evict
+# the caches other lanes depend on. A PR-scoped cache is readable only from its
+# own ref, so once the PR closes it can never be read again, yet GitHub keeps it
+# for up to 7 days. An image-building PR leaves ~1.5 GiB behind.
+#
+# Measured 2026-08-20: 222 entries / 11.10 GiB against a 10 GiB cap -- already
+# over, already evicting -- of which 94 entries (3.11 GiB) belonged to two PRs
+# merged hours earlier.
+name: prune-pr-caches
+
+on:
+  pull_request:
+    types: [closed]
+  # Sweep every closed PR, for the fork case below and as a backstop if the
+  # on-close run was missed.
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: prune-pr-caches
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A fork PR's GITHUB_TOKEN is read-only, so the delete would 403. Skipping
+    # is deliberate rather than letting it fail loudly on every fork merge; the
+    # nightly sweep (which runs in this repo's own context) collects those.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Delete caches belonging to closed pull requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          bash tools/ci/prune-pr-caches.sh ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
+
+      - name: Report remaining cache budget
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        # The usage AGGREGATE lags deletions by minutes, so the enumerable list
+        # is the honest number; report both rather than a figure that looks
+        # wrong to anyone who checks it against the API.
+        run: |
+          set -euo pipefail
+          listed=$(gh api --paginate "repos/${REPO}/actions/caches?per_page=100" \
+            --jq '[.actions_caches[].size_in_bytes] | add // 0')
+          count=$(gh api --paginate "repos/${REPO}/actions/caches?per_page=100" \
+            --jq '[.actions_caches[]] | length')
+          {
+            echo "### Actions cache budget"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| entries | ${count} |"
+            echo "| size (enumerated) | $((listed / 1048576)) MiB |"
+            echo "| repo limit | 10240 MiB |"
+          } >> "$GITHUB_STEP_SUMMARY"
