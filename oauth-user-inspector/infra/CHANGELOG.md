@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.1.0...oauth-user-inspector-infra-v1.2.0) (2026-08-20)
+
+
+### Features
+
+* **delivery:** Phase 1 — oauth-user-inspector's dev lane moves to the orchestrator ([#1811](https://github.com/VitruvianSoftware/vitruvian-core/issues/1811)) ([826fe71](https://github.com/VitruvianSoftware/vitruvian-core/commit/826fe71a698d4ff96d280044e6a54fd33897a1e5))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.0.0...oauth-user-inspector-infra-v1.1.0) (2026-08-20)
 
 
