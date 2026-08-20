@@ -54,8 +54,6 @@ delivery(
         "tabula/infra/web/",
         "tabula/web/",
         "tools/deploy/",
-        "\\.github/workflows/tabula-deploy\\.yaml",
-        "\\.github/workflows/tabula-dev-latest\\.yaml",
         "\\.github/workflows/_deploy-cloud-run\\.yaml",
     ],
     github_environment = "tabula-{env}",
@@ -83,8 +81,11 @@ delivery(
         "pulumi-refresh": True,
         "run-migrations": False,
         "secret-prefix": "TABULA_",
+        # No preflight: tabula/infra/web ships no cmd/revname, so there is no
+        # desired-revision name to compare and the reusable workflow's default
+        # (skip-if-unchanged: false) is the honest setting. Declaring it would
+        # make every deploy run a preflight that can only ever fail open.
         "service-name": "tabula-web",
-        "skip-if-unchanged": False,
         "smoke-url-path": "/",
         "workload-migrated": False,
     },

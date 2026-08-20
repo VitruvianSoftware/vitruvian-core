@@ -31,6 +31,11 @@ alias(
 # deploy-affected.sh is shelled, never rewritten), so the scripts must be
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
 exports_files([
+    # Read by //tools/delivery/gen: every script the generated workflow shells
+    # out to must exist -- the promotion interlock, and the durable-base
+    # resolver the orchestrate job feeds BEFORE_REV from.
+    "require-dev-soak.sh",
+    "resolve-deploy-base.sh",
     "deploy-affected.sh",
     "td-lib.sh",
 ])

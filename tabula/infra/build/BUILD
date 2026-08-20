@@ -21,7 +21,6 @@ delivery(
     environments = ["shared"],
     extra_paths = [
         "tabula/infra/build/",
-        "\\.github/workflows/tabula-build-stack\\.yaml",
     ],
     github_environment = "foundation-proj-{env}",
     kind = "pulumi",

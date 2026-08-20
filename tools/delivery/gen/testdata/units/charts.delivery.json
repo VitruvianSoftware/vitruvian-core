@@ -5,11 +5,7 @@
   "companions": [],
   "environments": ["publish"],
   "exclude_paths": [],
-  "extra_paths": [
-    ".*/deploy/chart/",
-    "tools/charts/",
-    "\\.github/workflows/charts-publish\\.yml"
-  ],
+  "extra_paths": [".*/deploy/chart/", "tools/charts/"],
   "gate_var": "",
   "github_environment": "",
   "graph_targets": [],

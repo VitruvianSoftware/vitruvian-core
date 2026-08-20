@@ -31,7 +31,7 @@
 # they are exactly the decisions the placeholders exist to force.
 #
 # It lives in tools/ci/ rather than in the chart's own `ci/` directory on
-# purpose: `charts-publish.yml` triggers on `**/deploy/chart/**` and packages
+# purpose: the generated `charts-publish` job triggers on `**/deploy/chart/**` and packages
 # that tree, so a values file inside the chart would both republish the chart on
 # every edit to it and ship these fake values inside the published artifact.
 #

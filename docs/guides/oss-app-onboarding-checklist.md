@@ -106,8 +106,11 @@ workflow (**never** a local `pulumi up`).
       > — Cloud Run validates image access as the deploying principal at create
       > time. Missing the deployer grant is a 403 that looks like a runtime
       > problem.
-- [ ] Apply via a `myapp-build-stack.yaml` workflow as `sa-terraform-proj` under
-      the reviewer-gated `foundation-proj-shared` environment.
+- [ ] Apply via a `delivery()` unit in the stack's BUILD file (`kind = "pulumi"`,
+      `github_environment = "foundation-proj-{env}"`, `environments = ["shared"]`)
+      — the generated `delivery.yaml` then applies it as `sa-terraform-proj`
+      under the reviewer-gated `foundation-proj-shared` environment. Do NOT add
+      a per-app workflow; there is one delivery workflow and it is generated.
 
 ---
 

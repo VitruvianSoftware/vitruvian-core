@@ -75,8 +75,8 @@ pulumi config set --path statusCheckContexts[1] "test"
 
 ### Tabula deploy environments
 
-This program also manages the GitHub Environments used by
-`.github/workflows/tabula-deploy.yaml`: `tabula-development`,
+This program also manages the GitHub Environments the generated
+`.github/workflows/delivery.yaml` binds for tabula: `tabula-development`,
 `tabula-nonproduction`, and `tabula-production`. The environment name carries
 the component namespace, so variables inside use bare names and
 `tabula-production`'s protection rules (required reviewer, deployments only

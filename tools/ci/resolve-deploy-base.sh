@@ -73,7 +73,7 @@
 #                   GITHUB_TOKEN is sufficient).
 #   REPO            owner/repo (defaults to GITHUB_REPOSITORY).
 #   WORKFLOW_FILE   the calling workflow's own filename, e.g.
-#                   tabula-deploy.yaml (required).
+#                   delivery.yaml (required).
 #   BRANCH          defaults to main.
 #   GH_BIN          test hook (default: gh).
 #

@@ -24,7 +24,9 @@
 #
 # ONE stack for all three environments — Neon and Upstash live in a single
 # external account each, not per GCP project (see tabula/infra/data/main.go).
-# Mirrors tabula-build-stack.yaml, the other cross-environment singleton.
+# Mirrors the tabula-build-stack delivery unit (tabula/infra/build/BUILD), the
+# other cross-environment singleton — that one is orchestrated, this one stays
+# dispatch-only manual ops.
 #
 # ⚠️ This stack owns the DATABASES. A `pulumi destroy` here deletes real data,
 # which is why it is apply-only, gated, and never cancelled mid-flight.

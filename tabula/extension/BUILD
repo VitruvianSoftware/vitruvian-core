@@ -25,6 +25,7 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tabula/extension:@playwright/test/package_json.bzl", playwright = "bin")
 load("@npm//tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 load("@rules_itest//:itest.bzl", "service_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 
 # @tabula/extension: Chrome MV3 extension (React), bundled by the package's
@@ -345,6 +346,23 @@ genrule(
     cmd = "cd $(location :dist_release) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
 )
 
+# Break-glass publisher for the rolling dev-latest bundle. CI runs the SAME
+# script directly (`bash tabula/extension/publish-dev-latest.sh`); this target
+# is what the runbook points at when Actions is unavailable, and what the
+# delivery() declaration below names as its `run`.
+# Read by //tools/delivery/gen's guard that every `run:` in the generated
+# workflow points at a script that exists and is executable.
+exports_files(["publish-dev-latest.sh"])
+
+sh_binary(
+    name = "publish-dev-latest",
+    srcs = ["publish-dev-latest.sh"],
+    # No visibility widening: `bazel run //tabula/extension:publish-dev-latest`
+    # is a COMMAND-LINE target, which visibility does not gate -- it gates
+    # dependencies, and nothing depends on this. Making it public would punch a
+    # hole in the inter-app firewall (#82) for nothing.
+)
+
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2): the rolling
 # "dev-latest" prerelease that `tabcli ext update` and the in-extension update
 # banner consume. Declared HERE, in the package that owns the artifact
@@ -357,20 +375,22 @@ genrule(
 # is the same pair tabula-deploy.yaml's gate uses; two independent path unions
 # could drift, one shared graph universe cannot.
 #
-# `run` NAMES A BUILD LABEL, NOT A `bazel run` TARGET -- the one place in the
-# delivery surface where those differ. :chrome_zip is a genrule, and the
-# publish is `bazel build` + `gh release upload` rather than a single runnable
-# target; the transcription below invokes exactly this label. A real
-# break-glass runner for it would have to own the stamping and the release
-# upload too, which is a change of shape rather than of trigger, so it is
-# deliberately NOT bundled into this migration.
+# PHASE 3 CLOSED THE BREAK-GLASS GAP: `run` used to name :chrome_zip, a genrule
+# that `bazel run` cannot execute -- the one unit where the delivery target and
+# the break-glass target were not the same thing. The publish now lives in
+# publish-dev-latest.sh, which the generated workflow runs and
+# //tabula/extension:publish-dev-latest wraps, so both triggers execute one
+# script (spec §4.1).
 delivery(
     name = "tabula-dev-latest",
     environments = ["publish"],
     extra_paths = [
         "tabula/infra/app/",
-        "\\.github/workflows/tabula-deploy\\.yaml",
-        "\\.github/workflows/tabula-dev-latest\\.yaml",
+        # The publisher itself: the same coupling //tools/conformance:check
+        # enforces for tools/deploy/ on the Cloud Run lanes -- the code that
+        # performs the delivery must trigger the delivery. :chrome_zip does not
+        # depend on this script, so the graph cannot see it.
+        "tabula/extension/publish-dev-latest\\.sh",
     ],
     # No GitHub Environment: the legacy publish job binds none; it uploads with
     # the run's own GITHUB_TOKEN under a job-level contents: write.
@@ -383,5 +403,5 @@ delivery(
     legacy_job = "publish",
     legacy_workflow = ".github/workflows/tabula-dev-latest.yaml",
     render = "transcribed",
-    run = "//tabula/extension:chrome_zip",
+    run = "//tabula/extension:publish-dev-latest",
 )

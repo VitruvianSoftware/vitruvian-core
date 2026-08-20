@@ -61,7 +61,6 @@ delivery(
         "infrastructure/pulumi/main\\.go",
         "infrastructure/pulumi/pkg/copybara_sync/",
         "infrastructure/pulumi/BUILD",
-        "\\.github/workflows/copybara-sync-auth-apply\\.yaml",
     ],
     gate_var = "SYNC_AUTH_AUTO_APPLY",
     github_environment = "",

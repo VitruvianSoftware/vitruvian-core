@@ -2,9 +2,9 @@
 
 > **This is the escape hatch, not the normal path.** The authoritative deploy path is push → GitHub Actions (apps + foundation) and git → ArgoCD (cluster). A stack that can *only* be applied by hand is unfinished (`docs/engineering/application-development-principles.md` §2.2/§2.14). Use this **only** when Actions is down (confirm at <https://www.githubstatus.com>), then **reconcile back to the pipeline** (last section).
 
-> **Two tiers of fallback.** `docs/engineering/deployment-strategy.md` covers the lighter one — when Actions is *up* but the release path didn't fire, promote a single environment with the deploy workflow's `workflow_dispatch`. **This runbook is the deeper tier:** Actions itself is unavailable, so you deploy entirely from a workstation.
+> **Two tiers of fallback.** `docs/engineering/deployment-strategy.md` covers the lighter one — when Actions is *up* but the release path didn't fire, promote a single environment with `.github/workflows/delivery.yaml`'s `workflow_dispatch` (`unit` + `environment` inputs). **This runbook is the deeper tier:** Actions itself is unavailable, so you deploy entirely from a workstation.
 
-> **Drafted from the CI workflows; not yet battle-tested.** These steps mirror `_deploy-cloud-run.yaml`, the `<app>-deploy.yaml` callers, and `foundation-*-deploy.yaml` **as of `main` @ f8279d09**. The deploy workflows change often — **re-derive from the current workflow if it has moved**, and treat anything tagged **VERIFY** as check-live, not copy-blind. Before trusting this in an incident, rehearse Step 1 on `development` and stop at `pulumi preview`.
+> **Drafted from the CI workflows; not yet battle-tested.** These steps mirror `_deploy-cloud-run.yaml`, the GENERATED `delivery.yaml` (which replaced the per-app `<app>-deploy.yaml` callers — delivery-orchestrator Phase 3), and `foundation-*-deploy.yaml`. The deploy workflows change often — **re-derive from the current workflow if it has moved**, and treat anything tagged **VERIFY** as check-live, not copy-blind. Before trusting this in an incident, rehearse Step 1 on `development` and stop at `pulumi preview`.
 
 ## Scope
 

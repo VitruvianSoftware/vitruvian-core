@@ -24,10 +24,11 @@
 # controls WHEN this runs via its own job-level `if:` on the `uses:` call --
 # this workflow has no opinion on that, it only renders.
 #
-# oauth-user-inspector-deploy.yaml's changelog job is NOT migrated here: it
-# renders a `git log <before>..<sha>` push-range digest via --range/--path,
-# a genuinely different shape (fetch-depth: 0 for history, no working-directory
-# home for a single CHANGELOG.md). foundation-release.yaml's changelog job is
+# The oauth-user-inspector app deliberately declares NO changelog job: its
+# hand-written one rendered a `git log <before>..<sha>` push-range digest via
+# --range/--path, a genuinely different shape from this one (fetch-depth: 0 for
+# history, no working-directory home for a single CHANGELOG.md), and that
+# workflow was deleted with the rest of the per-app lanes in Phase 3. foundation-release.yaml's changelog job is
 # also NOT migrated here: it fans in over 6 sibling release jobs' outputs with
 # a bespoke `cl()` helper, not a single directory's changelog.
 

@@ -190,7 +190,7 @@ fi
 # two dependent `:deploy` targets -- same class as the already-allowlisted
 # gitops/defs.bzl and lint/linters.bzl. The DEPLOY half of this pair does not
 # graph-track cloud-run.sh (its universe is DEPLOY_TARGETS, which holds the
-# image/zip artifacts, not `:deploy`), so tabula-deploy.yaml carries
+# image/zip artifacts, not `:deploy`), so the tabula delivery() units carry
 # `tools/deploy/` in EXTRA_PATH_REGEX to keep that gate firing -- narrowing the
 # TEST sweep here must never silently narrow the fail-open deploy gate.
 if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \

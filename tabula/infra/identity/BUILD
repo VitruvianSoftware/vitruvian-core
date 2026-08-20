@@ -51,7 +51,6 @@ delivery(
     ],
     extra_paths = [
         "tabula/infra/identity/",
-        "\\.github/workflows/tabula-identity-stack\\.yaml",
         "\\.github/workflows/_tabula-identity-apply\\.yaml",
     ],
     github_environment = "foundation-proj-{env}",

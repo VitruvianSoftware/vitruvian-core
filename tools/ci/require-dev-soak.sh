@@ -105,8 +105,8 @@ fi
 # inside the REUSABLE deploy workflow, but a reusable workflow's jobs execute
 # as part of the CALLER's run -- so GITHUB_RUN_ID is the caller's run, and
 # asking the API which workflow owns that run is exact for every caller
-# (tabula-deploy.yaml, oauth-user-inspector-deploy.yaml, ...) with no
-# per-caller wiring.
+# (the generated delivery.yaml, and any future caller) with no per-caller
+# wiring.
 #
 # Deliberately NOT derived from GITHUB_WORKFLOW_REF: whether that resolves to
 # the caller or the callee is a subtlety to depend on, and getting it wrong

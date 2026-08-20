@@ -590,8 +590,13 @@ func TestPhase1RendersOnlyTheFirstRung(t *testing.T) {
 	if strings.Contains(got, "inputs.unit") || strings.Contains(got, "inputs.environment") {
 		t.Error("phase 1 references a workflow_dispatch input, but renders `workflow_dispatch: {}` — the arms and the trigger must be rendered by the same phase")
 	}
-	if strings.Contains(got, "github.event.release") {
-		t.Error("phase 1 renders a release arm without a `release:` trigger — the arm is unreachable and the trigger it implies is not there")
+	// Scoped to job CONDITIONS: the workflow-level concurrency group mentions
+	// the release event at every phase (it is what keeps two release runs from
+	// evicting each other), and that is not a job arm.
+	for _, job := range jobIDs(got) {
+		if cond := jobKeyOrEmpty(parseWorkflow(t, got), job, "if"); strings.Contains(cond, "github.event.release") {
+			t.Errorf("phase 1 job %q carries a release arm without a `release:` trigger — the arm is unreachable and the trigger it implies is not there: %s", job, cond)
+		}
 	}
 }
 
@@ -788,8 +793,54 @@ func TestNoCallerJobDeclaresConcurrency(t *testing.T) {
 		}
 	}
 	// ...and the workflow-level group must therefore actually be there.
-	if !strings.Contains(body, "\nconcurrency:\n  group: delivery-orchestrate\n  cancel-in-progress: false\n") {
+	if !strings.Contains(body, "\nconcurrency:\n  group: "+concurrencyGroupExpr+"\n  cancel-in-progress: false\n") {
 		t.Error("the workflow-level coalescing group is gone — nothing serializes two delivery runs against one live environment")
+	}
+}
+
+// TestReleaseRunsAreIsolatedPerTag is the Phase-3 fix for a defect the Phase-2
+// rollout produced live.
+//
+// PROVES: two releases published at the same moment land in DIFFERENT
+// concurrency lanes. GitHub EVICTS a still-PENDING run when a newer one joins
+// its group, and for a PUSH that is recoverable — the next run's durable base
+// re-diffs the evicted range (tools/ci/resolve-deploy-base.sh). For a RELEASE
+// it is not: nothing ever re-derives "promote what tag X names", so an evicted
+// release run is a promotion that silently never happens. Observed on the
+// Phase-2 merge burst (runs 32345258539 / 32344982262 evicted each other);
+// harmless only because both tags were infra ones. A tabula-api-v +
+// tabula-web-v pair published together would have dropped one service.
+//
+// ALSO PROVES the half that must NOT change: `cancel-in-progress: false`. A
+// cancelling group would kill an in-flight rollout mid-traffic-shift, which is
+// strictly worse than either failure above.
+func TestReleaseRunsAreIsolatedPerTag(t *testing.T) {
+	body := mustRender(t, loadFixtures(t), 2)
+
+	group := ""
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "  group: ") {
+			group = strings.TrimPrefix(line, "  group: ")
+			break
+		}
+	}
+	if group == "" {
+		t.Fatal("no workflow-level concurrency group is rendered")
+	}
+	if !strings.Contains(group, "github.event.release.tag_name") {
+		t.Errorf("concurrency group %q does not key release runs on their tag — two releases in the same minute evict each other, and an evicted release run is a promotion nobody re-derives", group)
+	}
+	if !strings.Contains(group, "github.event_name == 'release'") {
+		t.Errorf("concurrency group %q does not distinguish the release event — a push run keyed on a (null) tag name would land in the same lane as every other push, or worse, in its own", group)
+	}
+	// Pushes must still COALESCE with each other: that is what stops two
+	// commits deploying one environment concurrently, and eviction there is
+	// recovered by the durable base.
+	if strings.Contains(group, "github.sha") || strings.Contains(group, "github.run_id") {
+		t.Errorf("concurrency group %q keys pushes per-commit — two commits would then deploy the same live environment at once (#1335's fix applied to the wrong lane shape)", group)
+	}
+	if !strings.Contains(body, "\n  cancel-in-progress: false\n") {
+		t.Error("cancel-in-progress is no longer false — a queued run may now cancel an in-flight rollout mid-traffic-shift")
 	}
 }
 

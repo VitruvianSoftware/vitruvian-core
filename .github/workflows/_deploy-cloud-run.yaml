@@ -202,11 +202,11 @@ jobs:
     # dispatch failed instantly (no runner ever assigned), reproducibly,
     # confirmed both ways with fully static, expression-free group strings.
     # The only placement that actually works is workflow-level on the
-    # CALLER (tabula-deploy.yaml / oauth-user-inspector-deploy.yaml), scoped
-    # by lane rather than the whole workflow -- see the comment above
-    # tabula-deploy.yaml's `concurrency:` block for the scheme and its
-    # accepted residual race (Pulumi's own per-stack locking is the
-    # backstop, since job-level scoping isn't available to lean on here).
+    # CALLER, which is now the GENERATED .github/workflows/delivery.yaml --
+    # one workflow-level group keyed so that pushes coalesce and each release
+    # tag gets its own lane. Its accepted residual race is unchanged (Pulumi's
+    # own per-stack locking is the backstop, since job-level scoping isn't
+    # available to lean on here).
     #
     # Explicit least-privilege floor for this reusable workflow. A called
     # workflow's permissions can only narrow the caller's grant, never widen it,

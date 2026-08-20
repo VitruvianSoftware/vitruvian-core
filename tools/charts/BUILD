@@ -68,7 +68,6 @@ delivery(
         # list had neither this nor its own workflow file, so a change to the
         # publish logic never republished anything.
         "tools/charts/",
-        "\\.github/workflows/charts-publish\\.yml",
     ],
     # No GitHub Environment: the legacy publish job binds none (GHCR is reached
     # with the run's own GITHUB_TOKEN, and packages: write is a job permission,

@@ -23,6 +23,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -52,7 +53,6 @@ import (
 // those ways, instead of diffing two YAML files by eye.
 
 const (
-	legacyWorkflowRel   = "../../../.github/workflows/oauth-user-inspector-deploy.yaml"
 	deliveryWorkflowRel = "../../../.github/workflows/delivery.yaml"
 
 	// The legacy jobs whose behaviour the generated development lane assumes.
@@ -102,128 +102,6 @@ var expectedInputDiff = struct {
 			why:  "same build-once digest, produced by the generated build job instead of the hand-written one",
 		},
 	},
-}
-
-// TestGeneratedDevLaneMatchesLegacy is the guard itself.
-//
-// PROVES: the generated development deploy passes _deploy-cloud-run.yaml
-// exactly what the hand-written one passed, apart from the three-entry
-// allowlist above — so the migration cannot silently change WHICH project,
-// stack, region, service, smoke script or Cloudflare token the deploy uses.
-func TestGeneratedDevLaneMatchesLegacy(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyWorkflowRel))
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	legacyWith := jobWith(t, legacy, legacyDeployJob)
-	genWith := jobWith(t, generated, genDeployJob)
-
-	// `environment` is not a transcribed input: the ladder supplies it. Assert
-	// it explicitly instead of allowlisting it away — a generated job pointed
-	// at the wrong rung would deploy production from a push.
-	if got := genWith["environment"]; got != "development" {
-		t.Errorf("%s passes environment=%q, want %q (environments[0] of the declaration)", genDeployJob, got, "development")
-	}
-	if got := legacyWith["environment"]; got != "development" {
-		t.Fatalf("legacy %s passes environment=%q — this test is comparing the wrong job", legacyDeployJob, got)
-	}
-
-	assertMapsMatch(t, legacyDeployJob, legacyWith, genDeployJob, genWith, expectedInputDiff.rewrites)
-}
-
-// TestGeneratedCompanionMatchesLegacy does the same for the expand half, on
-// EVERY rung.
-//
-// PROVES: each generated companion calls _zitadel-apps-apply.yaml with exactly
-// the legacy zitadel-{dev,nonprod,prod} inputs — no allowlist at all, because
-// nothing about a companion is supposed to change — and keeps the two clauses
-// that make it safe: the ZITADEL_APPS_AUTO_APPLY variable gate (without it the
-// apply FAILS the deploy instead of cleanly no-opping while the machine key is
-// unseeded) and, for the production rung, the chain behind nonproduction's
-// deploy. Expanding a rung that is not about to be served is #1794's shape
-// against a stack whose force-replace deletes the live OIDC client.
-func TestGeneratedCompanionMatchesLegacy(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyWorkflowRel))
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	for _, tc := range []struct {
-		legacyJob, genJob, env, chainedBehind string
-	}{
-		{"zitadel-dev", "zitadel-apps-development", "development", ""},
-		{"zitadel-nonprod", "zitadel-apps-nonproduction", "nonproduction", ""},
-		{"zitadel-prod", "zitadel-apps-production", "production", "oauth-user-inspector-nonproduction"},
-	} {
-		t.Run(tc.genJob, func(t *testing.T) {
-			legacyWith := jobWith(t, legacy, tc.legacyJob)
-			if got := legacyWith["environment"]; got != tc.env {
-				t.Fatalf("legacy %s applies environment=%q, want %q — comparing the wrong job", tc.legacyJob, got, tc.env)
-			}
-			genWith := jobWith(t, generated, tc.genJob)
-			if got := genWith["environment"]; got != tc.env {
-				t.Errorf("%s applies environment=%q, want %q", tc.genJob, got, tc.env)
-			}
-			want := jobScalar(t, legacy, tc.legacyJob, "uses")
-			if got := jobScalar(t, generated, tc.genJob, "uses"); got != want {
-				t.Errorf("%s calls %q but legacy %s calls %q", tc.genJob, got, tc.legacyJob, want)
-			}
-			assertMapsMatch(t, tc.legacyJob, legacyWith, tc.genJob, genWith, nil)
-
-			cond := jobScalar(t, generated, tc.genJob, "if")
-			if !strings.Contains(cond, "vars.ZITADEL_APPS_AUTO_APPLY == 'true'") {
-				t.Errorf("%s lost the ZITADEL_APPS_AUTO_APPLY gate — the apply would FAIL the deploy instead of cleanly no-opping: %s", tc.genJob, cond)
-			}
-			if tc.chainedBehind != "" {
-				if !strings.Contains(cond, "needs."+tc.chainedBehind+".result == 'success'") {
-					t.Errorf("%s does not chain behind %s (legacy zitadel-prod needs deploy-nonprod): %s", tc.genJob, tc.chainedBehind, cond)
-				}
-				if needs := jobScalar(t, generated, tc.genJob, "needs"); !strings.Contains(needs, tc.chainedBehind) {
-					t.Errorf("%s needs = %q, which does not include %q — the condition reads a job it never waited for", tc.genJob, needs, tc.chainedBehind)
-				}
-			}
-		})
-	}
-}
-
-// TestGeneratedLaneCallsTheSameReusableWorkflows keeps the comparison honest:
-// two `with:` maps agreeing means nothing if they are fed to different files.
-func TestGeneratedLaneCallsTheSameReusableWorkflows(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyWorkflowRel))
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	for _, pair := range []struct{ legacyJob, genJob string }{
-		{legacyDeployJob, genDeployJob},
-		{legacyCompanionJob, genCompanionJob},
-	} {
-		want := jobScalar(t, legacy, pair.legacyJob, "uses")
-		got := jobScalar(t, generated, pair.genJob, "uses")
-		if got != want {
-			t.Errorf("%s calls %q but legacy %s calls %q", pair.genJob, got, pair.legacyJob, want)
-		}
-	}
-}
-
-// TestLegacyWorkflowsAreDispatchOnlyShells is the Phase-2 legacy-surgery
-// assertion, for BOTH migrated apps.
-//
-// PROVES: neither legacy workflow can still deliver by itself. `push:` and
-// `release:` are gone — with either in place both files would deliver the same
-// environment from the same event, racing two `pulumi up`s on one stack and
-// one shared Artifact Registry — while `workflow_dispatch:` survives as the
-// break-glass escape hatch until Phase 3 deletes the files (spec §6).
-func TestLegacyWorkflowsAreDispatchOnlyShells(t *testing.T) {
-	for _, rel := range []string{legacyWorkflowRel, legacyTabulaWorkflowRel} {
-		triggers := topLevelChildKeys(t, parseWorkflow(t, mustRead(t, rel)), "on")
-		for _, gone := range []string{"push", "release"} {
-			if contains(triggers, gone) {
-				t.Errorf("%s still triggers on %q — the generated delivery.yaml owns that lane now, so BOTH would deliver the same environment from one event (triggers: %v)", rel, gone, triggers)
-			}
-		}
-		if !contains(triggers, "workflow_dispatch") {
-			t.Errorf("%s lost its workflow_dispatch trigger — that is the break-glass escape hatch Phase 2 keeps until Phase 3 deletes the file (triggers: %v)", rel, triggers)
-		}
-		if len(triggers) != 1 {
-			t.Errorf("%s declares triggers %v — a dispatch-only shell has exactly one", rel, triggers)
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -537,68 +415,6 @@ var buildJobDiffAllowlist = map[string]string{
 	"if":    "legacy carries the release/dispatch arms of the promotion ladder, which stays legacy in Phase 1; the generated one carries the kill switch and the orchestrator's verdict",
 }
 
-// TestGeneratedBuildJobMatchesLegacy is the transcription guard for the half of
-// Phase 1 that is NOT a thin caller layer.
-//
-// PROVES: the generated build job is the hand-written one — same checkout, same
-// WIF auth composite with the same inputs, the same SHA-pinned Cloud SDK
-// action, the same docker configure, and a byte-identical buildx + digest-
-// capture script — rather than a re-derivation of it. The steps are compared as
-// TEXT because that is the only comparison that catches a changed flag, a
-// dropped `--push`, a different tag, or a digest capture that stops writing
-// $GITHUB_OUTPUT. A build job that merely "looks right" is how an app ships an
-// image nobody deploys.
-func TestGeneratedBuildJobMatchesLegacy(t *testing.T) {
-	legacySrc := mustRead(t, legacyWorkflowRel)
-	genSrc := mustRead(t, deliveryWorkflowRel)
-
-	wantSteps := normalizedSteps(t, legacySrc, legacyBuildJob)
-	gotSteps := normalizedSteps(t, genSrc, genBuildJob)
-
-	if len(gotSteps) != len(wantSteps) {
-		t.Fatalf("%s renders %d steps, legacy %s has %d:\n--- generated ---\n%s\n--- legacy ---\n%s",
-			genBuildJob, len(gotSteps), legacyBuildJob, len(wantSteps),
-			strings.Join(gotSteps, "\n"), strings.Join(wantSteps, "\n"))
-	}
-	for i := range wantSteps {
-		if gotSteps[i] != wantSteps[i] {
-			t.Errorf("build step %d differs from legacy %s:\n--- generated ---\n%s\n--- legacy ---\n%s",
-				i+1, legacyBuildJob, gotSteps[i], wantSteps[i])
-		}
-	}
-
-	legacy := parseWorkflow(t, legacySrc)
-	generated := parseWorkflow(t, genSrc)
-
-	for _, key := range []string{"runs-on", "timeout-minutes", "environment"} {
-		want := jobScalar(t, legacy, legacyBuildJob, key)
-		got := jobScalar(t, generated, genBuildJob, key)
-		if got != want {
-			t.Errorf("%s %s = %q, legacy %s = %q", genBuildJob, key, got, legacyBuildJob, want)
-		}
-	}
-	for _, key := range []string{"permissions", "env", "outputs"} {
-		want := jobSubMap(t, legacy, legacyBuildJob, key)
-		got := jobSubMap(t, generated, genBuildJob, key)
-		if len(got) != len(want) {
-			t.Errorf("%s %s has keys %v, legacy %s has %v", genBuildJob, key, sortedKeys(got), legacyBuildJob, sortedKeys(want))
-		}
-		for _, k := range sortedKeys(want) {
-			if got[k] != want[k] {
-				t.Errorf("%s %s.%s = %q, legacy %s = %q", genBuildJob, key, k, got[k], legacyBuildJob, want[k])
-			}
-		}
-	}
-
-	// The two keys that ARE allowed to differ must still both exist — a build
-	// job with no `if:` would run on every push, which is #1794's shape.
-	for key, why := range buildJobDiffAllowlist {
-		if got := jobScalar(t, generated, genBuildJob, key); got == "" {
-			t.Errorf("%s has no %q (allowlisted as different from legacy: %s) — different is not absent", genBuildJob, key, why)
-		}
-	}
-}
-
 // TestGeneratedDeployConsumesTheGeneratedBuild closes the loop between them.
 //
 // PROVES: the deploy reads the digest from the job that produced it, waits for
@@ -628,36 +444,6 @@ func TestGeneratedDeployConsumesTheGeneratedBuild(t *testing.T) {
 	outs := jobSubMap(t, generated, genBuildJob, "outputs")
 	if outs["image-digest"] == "" {
 		t.Errorf("%s declares no image-digest output (declares %v)", genBuildJob, sortedKeys(outs))
-	}
-}
-
-// TestPromotionSoakGateScansTheGeneratedDevLane is the follow-up the trigger
-// removal created.
-//
-// PROVES: the legacy workflow's promotion interlock still watches a real
-// development deploy. It scans a workflow's push-run history for a named job;
-// with `push:` removed from the legacy workflow, that history is now empty, and
-// require-dev-soak.sh treats "no run found" as INDETERMINATE and fail-opens —
-// so the gate would look present and enforce nothing, which its own header
-// calls worse than no gate. The expected job name is DERIVED here (caller job
-// id + the callee's job id, which is how GitHub names a reusable-workflow
-// check) rather than hardcoded, so renaming either end fails this test instead
-// of silently disarming the interlock.
-func TestPromotionSoakGateScansTheGeneratedDevLane(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyWorkflowRel))
-	env := jobEnvMap(t, legacy, "require-dev-soak")
-
-	if got, want := env["WORKFLOW_FILE"], "delivery.yaml"; got != want {
-		t.Errorf("require-dev-soak scans WORKFLOW_FILE=%q, want %q — the development deploy now lives in the generated workflow, and scanning the legacy one finds no push runs at all (the script then fail-opens with a warning)", got, want)
-	}
-
-	callees := jobIDsOf(t, parseWorkflow(t, mustRead(t, deployCloudRunRel)))
-	if len(callees) != 1 {
-		t.Fatalf("_deploy-cloud-run.yaml declares %v jobs; the check-run name is \"<caller> / <callee>\" and this test assumes exactly one callee", callees)
-	}
-	want := genDeployJob + " / " + callees[0]
-	if got := env["DEV_JOB_NAME"]; got != want {
-		t.Errorf("require-dev-soak looks for DEV_JOB_NAME=%q, want %q (the generated caller job id + the reusable workflow's job id, which is how GitHub names the check) — a name that matches nothing makes the gate fail-open forever", got, want)
 	}
 }
 
@@ -826,70 +612,6 @@ func jobIDsOf(t *testing.T, lines []wfLine) []string {
 // PHASE 2 — the shared build, the promotion ladder, the interlocks
 // ---------------------------------------------------------------------------
 
-// TestGeneratedSharedBuildJobMatchesLegacy is the transcription guard for the
-// one job Phase 2 could not express as a thin caller layer.
-//
-// PROVES: `tabula-build` IS tabula-deploy.yaml's `build` job — the same
-// checkout, the same Bazel setup, the same WIF composite, the same SHA-pinned
-// Cloud SDK, the same `bazel run //tabula/api:image_push` with its remote-cache
-// header, the same buildx setup and the same `docker build`/`docker push`/
-// `docker inspect` digest capture — rather than a re-derivation of it. Compared
-// as TEXT, because that is the only comparison that catches a dropped `--push`,
-// a changed tag, a digest read back from the mutable `:latest` (the race that
-// can hand one run another run's digest), or a capture that stops writing
-// $GITHUB_OUTPUT. Two images, two digest idioms: a build job that merely "looks
-// right" here ships an image nobody deploys, or deploys an image nobody built.
-func TestGeneratedSharedBuildJobMatchesLegacy(t *testing.T) {
-	legacySrc := mustRead(t, legacyTabulaWorkflowRel)
-	genSrc := mustRead(t, deliveryWorkflowRel)
-
-	wantSteps := normalizedSteps(t, legacySrc, legacyTabulaBuildJob)
-	gotSteps := normalizedSteps(t, genSrc, genTabulaBuildJob)
-
-	if len(wantSteps) != 8 {
-		t.Fatalf("legacy %s has %d steps; this guard was written against its 8 (checkout, setup-bazel, gcp-auth, gcloud, docker login, api image, buildx, web image) — re-read the job before relaxing it", legacyTabulaBuildJob, len(wantSteps))
-	}
-	if len(gotSteps) != len(wantSteps) {
-		t.Fatalf("%s renders %d steps, legacy %s has %d:\n--- generated ---\n%s\n--- legacy ---\n%s",
-			genTabulaBuildJob, len(gotSteps), legacyTabulaBuildJob, len(wantSteps),
-			strings.Join(gotSteps, "\n"), strings.Join(wantSteps, "\n"))
-	}
-	for i := range wantSteps {
-		if gotSteps[i] != wantSteps[i] {
-			t.Errorf("shared build step %d differs from legacy %s:\n--- generated ---\n%s\n--- legacy ---\n%s",
-				i+1, legacyTabulaBuildJob, gotSteps[i], wantSteps[i])
-		}
-	}
-
-	legacy := parseWorkflow(t, legacySrc)
-	generated := parseWorkflow(t, genSrc)
-
-	for _, key := range []string{"runs-on", "timeout-minutes", "environment"} {
-		want := jobScalar(t, legacy, legacyTabulaBuildJob, key)
-		got := jobScalar(t, generated, genTabulaBuildJob, key)
-		if got != want {
-			t.Errorf("%s %s = %q, legacy %s = %q", genTabulaBuildJob, key, got, legacyTabulaBuildJob, want)
-		}
-	}
-	for _, key := range []string{"permissions", "env", "outputs"} {
-		want := jobSubMap(t, legacy, legacyTabulaBuildJob, key)
-		got := jobSubMap(t, generated, genTabulaBuildJob, key)
-		if len(got) != len(want) {
-			t.Errorf("%s %s has keys %v, legacy %s has %v", genTabulaBuildJob, key, sortedKeys(got), legacyTabulaBuildJob, sortedKeys(want))
-		}
-		for _, k := range sortedKeys(want) {
-			if got[k] != want[k] {
-				t.Errorf("%s %s.%s = %q, legacy %s = %q", genTabulaBuildJob, key, k, got[k], legacyTabulaBuildJob, want[k])
-			}
-		}
-	}
-	for key, why := range buildJobDiffAllowlist {
-		if got := jobScalar(t, generated, genTabulaBuildJob, key); got == "" {
-			t.Errorf("%s has no %q (allowlisted as different from legacy: %s) — different is not absent", genTabulaBuildJob, key, why)
-		}
-	}
-}
-
 // rungParity is one legacy job and the generated job that replaced it.
 type rungParity struct {
 	legacyJob string
@@ -899,67 +621,6 @@ type rungParity struct {
 	// rewrites — the ONE sanctioned value difference, exactly as Phase 1's.
 	digestFrom string
 	digestTo   string
-}
-
-// TestGeneratedLadderMatchesLegacy walks EVERY rung of both migrated apps.
-//
-// PROVES: no rung's `with:` map drifted in transcription — not the project, the
-// stack dir, the region, the service, the secret prefix, the refresh flag, the
-// migration flag, the smoke path or the Cloudflare token project — in either
-// direction, on any of the eight jobs Phase 2 moved. The only sanctioned
-// difference per job is where the image digest comes from (the generated build
-// job instead of the hand-written one) plus `environment`, which the ladder
-// supplies and which is asserted explicitly below: a rung pointed at the wrong
-// environment would promote production from a nonproduction trigger.
-func TestGeneratedLadderMatchesLegacy(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	for _, tc := range []struct {
-		legacyFile string
-		rungs      []rungParity
-	}{
-		{
-			legacyFile: legacyWorkflowRel,
-			rungs: []rungParity{
-				{"deploy-nonprod", "oauth-user-inspector-nonproduction", "nonproduction", "needs.build.", "needs.oauth-user-inspector-build."},
-				{"deploy-prod", "oauth-user-inspector-production", "production", "needs.build.", "needs.oauth-user-inspector-build."},
-			},
-		},
-		{
-			legacyFile: legacyTabulaWorkflowRel,
-			rungs: []rungParity{
-				{"deploy-dev-api", "tabula-api-development", "development", "needs.build.", "needs.tabula-build."},
-				{"deploy-dev-web", "tabula-web-development", "development", "needs.build.", "needs.tabula-build."},
-				{"deploy-nonprod-api", "tabula-api-nonproduction", "nonproduction", "needs.build.", "needs.tabula-build."},
-				{"deploy-nonprod-web", "tabula-web-nonproduction", "nonproduction", "needs.build.", "needs.tabula-build."},
-				{"deploy-prod-api", "tabula-api-production", "production", "needs.build.", "needs.tabula-build."},
-				{"deploy-prod-web", "tabula-web-production", "production", "needs.build.", "needs.tabula-build."},
-			},
-		},
-	} {
-		legacy := parseWorkflow(t, mustRead(t, tc.legacyFile))
-		for _, r := range tc.rungs {
-			t.Run(r.genJob, func(t *testing.T) {
-				legacyWith := jobWith(t, legacy, r.legacyJob)
-				genWith := jobWith(t, generated, r.genJob)
-
-				if got := legacyWith["environment"]; got != r.env {
-					t.Fatalf("legacy %s deploys environment=%q, want %q — this test is comparing the wrong job", r.legacyJob, got, r.env)
-				}
-				if got := genWith["environment"]; got != r.env {
-					t.Errorf("%s deploys environment=%q, want %q", r.genJob, got, r.env)
-				}
-				// Same reusable workflow, or the maps agreeing proves nothing.
-				want := jobScalar(t, legacy, r.legacyJob, "uses")
-				if got := jobScalar(t, generated, r.genJob, "uses"); got != want {
-					t.Errorf("%s calls %q but legacy %s calls %q", r.genJob, got, r.legacyJob, want)
-				}
-				assertMapsMatch(t, r.legacyJob, legacyWith, r.genJob, genWith, map[string]inputRewrite{
-					"image-digest": {from: r.digestFrom, to: r.digestTo, why: "same build-once digest, produced by the generated build job instead of the hand-written one"},
-				})
-			})
-		}
-	}
 }
 
 // TestSharedBuildFeedsEachUnitItsOwnDigest closes the loop the shared build
@@ -1003,7 +664,7 @@ func TestSharedBuildFeedsEachUnitItsOwnDigest(t *testing.T) {
 	}
 }
 
-// TestGeneratedSoakJobsMatchLegacy is the interlock's transcription guard.
+// TestGeneratedSoakJobsAreWired is the promotion interlock's wiring guard.
 //
 // PROVES: every generated `<unit>-require-dev-soak` runs the same script with
 // the same token, the same override variable and a DERIVED job name — and
@@ -1014,7 +675,7 @@ func TestSharedBuildFeedsEachUnitItsOwnDigest(t *testing.T) {
 // workflow's own job id, which is how GitHub names the check — so renaming
 // either end fails this test instead of silently disarming the gate, which
 // fail-opens on a name that matches nothing.
-func TestGeneratedSoakJobsMatchLegacy(t *testing.T) {
+func TestGeneratedSoakJobsAreWired(t *testing.T) {
 	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
 
 	callees := jobIDsOf(t, parseWorkflow(t, mustRead(t, deployCloudRunRel)))
@@ -1058,72 +719,28 @@ func TestGeneratedSoakJobsMatchLegacy(t *testing.T) {
 		})
 	}
 
-	// Legacy's soak jobs are the source; assert the generated ones run the
-	// SAME script, so a future rewrite of one is not silently a fork.
-	for _, tc := range []struct{ file, job string }{
-		{legacyWorkflowRel, "require-dev-soak"},
-		{legacyTabulaWorkflowRel, "require-dev-soak-api"},
-		{legacyTabulaWorkflowRel, "require-dev-soak-web"},
-	} {
-		block, ok := jobText(mustRead(t, tc.file), tc.job)
-		if !ok {
-			t.Fatalf("cannot isolate legacy %s in %s", tc.job, tc.file)
-		}
-		if !strings.Contains(block, "run: ./tools/ci/require-dev-soak.sh") {
-			t.Errorf("legacy %s no longer runs require-dev-soak.sh — the generated jobs were transcribed from it", tc.job)
-		}
+	// ...and the script the jobs run must exist. It is the interlock: a
+	// `run:` naming a missing file fails the job, which (because the rung
+	// requires `result == 'success'`) blocks every promotion — loudly, at
+	// least, but the guard is cheap and the deletion is easy to make.
+	if _, err := os.Stat("../../../tools/ci/require-dev-soak.sh"); err != nil {
+		t.Errorf("tools/ci/require-dev-soak.sh is missing (%v) — every soak job would fail and no promotion could run", err)
 	}
 }
 
-// TestTabulaSoakGatesScanTheGeneratedDevLanes is the follow-up tabula's trigger
-// removal created — the same repoint Phase 1 made for oauth.
+// TestGeneratedChangelogJobPassesDeclaredInputs closes the Phase-1 deferred flag.
 //
-// PROVES: the LEGACY workflow's interlocks still watch a real development
-// deploy. They scan a workflow's push-run history for a named job; with `push:`
-// removed from tabula-deploy.yaml that history is now empty, and
-// require-dev-soak.sh treats "no run found" as INDETERMINATE and fail-opens —
-// so the gate would look present and enforce nothing on the dispatch path that
-// is still reachable until Phase 3 deletes the file.
-func TestTabulaSoakGatesScanTheGeneratedDevLanes(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyTabulaWorkflowRel))
-	callees := jobIDsOf(t, parseWorkflow(t, mustRead(t, deployCloudRunRel)))
-	if len(callees) != 1 {
-		t.Fatalf("_deploy-cloud-run.yaml declares %v jobs; this test assumes exactly one callee", callees)
-	}
-
-	for _, tc := range []struct{ job, devJob string }{
-		{"require-dev-soak-api", "tabula-api-development"},
-		{"require-dev-soak-web", "tabula-web-development"},
-	} {
-		env := jobEnvMap(t, legacy, tc.job)
-		if got, want := env["WORKFLOW_FILE"], "delivery.yaml"; got != want {
-			t.Errorf("legacy %s scans WORKFLOW_FILE=%q, want %q — the development deploy now lives in the generated workflow, and scanning this one finds no push runs at all (the script then fail-opens with a warning)", tc.job, got, want)
-		}
-		if got, want := env["DEV_JOB_NAME"], tc.devJob+" / "+callees[0]; got != want {
-			t.Errorf("legacy %s looks for DEV_JOB_NAME=%q, want %q", tc.job, got, want)
-		}
-	}
-}
-
-// TestGeneratedChangelogJobMatchesLegacy closes the Phase-1 deferred flag.
-//
-// PROVES: the generated changelog job calls the same reusable workflow with the
-// same inputs as tabula-deploy.yaml's, and passes no secrets it was not passed
-// before. The one sanctioned difference is the added `if:` — legacy carried
-// none, which was harmless in a per-app workflow and is not here: with a
-// repo-wide `release:` trigger an unconditional job runs on EVERY published
-// release of every unrelated component.
-func TestGeneratedChangelogJobMatchesLegacy(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyTabulaWorkflowRel))
+// PROVES: the generated changelog job calls _changelog-summary.yaml with inputs
+// that workflow actually declares, and is keyed on `push`. The key matters:
+// with a repo-wide `release:` trigger an unconditional job would run on EVERY
+// published release of every unrelated component (the per-app workflow it came
+// from carried no `if:` because it could not see other components' releases).
+func TestGeneratedChangelogJobPassesDeclaredInputs(t *testing.T) {
 	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
 
-	want := jobScalar(t, legacy, "changelog", "uses")
-	if got := jobScalar(t, generated, "tabula-api-changelog", "uses"); got != want {
-		t.Errorf("tabula-api-changelog calls %q, legacy changelog calls %q", got, want)
+	if got, want := jobScalar(t, generated, "tabula-api-changelog", "uses"), changelogWorkflow; got != want {
+		t.Errorf("tabula-api-changelog calls %q, want %q", got, want)
 	}
-	assertMapsMatch(t, "changelog", jobWith(t, legacy, "changelog"),
-		"tabula-api-changelog", jobWith(t, generated, "tabula-api-changelog"), nil)
-
 	// The callee must actually declare the inputs being passed, or the run
 	// fails at startup with "invalid input".
 	declared := workflowCallInputs(t, parseWorkflow(t, mustRead(t, changelogWorkflowRel)))
@@ -1264,308 +881,9 @@ func firstEnvironmentOf(t *testing.T, src, unit string) string {
 	return ""
 }
 
-// TestTabulaTagScopingIsNarrowerThanLegacy states the ONE sanctioned behaviour
-// divergence Phase 2 introduces, as a test rather than as prose.
-//
-// LEGACY: tabula-deploy.yaml's promotion jobs fire on EITHER tabula tag for
-// BOTH services — `startsWith(tag, 'tabula-api-v') || startsWith(tag,
-// 'tabula-web-v')` — so cutting a tabula-web release also promoted the API to
-// production, shipping whatever was on main without an API release PR ever
-// being reviewed.
-//
-// GENERATED: each unit promotes on its OWN tag. Strictly NARROWER, never
-// wider, which is the only direction a promotion gate may move without a
-// separate decision.
-//
-// PROVES BOTH HALVES: that legacy really does OR the two prefixes (so this is
-// a real, understood divergence and not a misreading), and that the generated
-// rungs really are scoped to one prefix each. When Phase 3 deletes the legacy
-// file this test goes with it, and the divergence stops existing.
-func TestTabulaTagScopingIsNarrowerThanLegacy(t *testing.T) {
-	legacy := parseWorkflow(t, mustRead(t, legacyTabulaWorkflowRel))
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	for _, job := range []string{"deploy-nonprod-api", "deploy-prod-api", "deploy-nonprod-web", "deploy-prod-web"} {
-		cond := jobScalar(t, legacy, job, "if")
-		for _, prefix := range []string{"tabula-api-v", "tabula-web-v"} {
-			if !strings.Contains(cond, "startsWith(github.event.release.tag_name, '"+prefix+"')") {
-				t.Errorf("legacy %s no longer ORs %q — the divergence this test sanctions has changed shape; re-read both files before trusting the generated scoping", job, prefix)
-			}
-		}
-	}
-
-	for _, tc := range []struct{ job, own, foreign string }{
-		{"tabula-api-nonproduction", "tabula-api-v", "tabula-web-v"},
-		{"tabula-api-production", "tabula-api-v", "tabula-web-v"},
-		{"tabula-web-nonproduction", "tabula-web-v", "tabula-api-v"},
-		{"tabula-web-production", "tabula-web-v", "tabula-api-v"},
-	} {
-		cond := jobScalar(t, generated, tc.job, "if")
-		if !strings.Contains(cond, "startsWith(github.event.release.tag_name, '"+tc.own+"')") {
-			t.Errorf("%s does not promote on its own tag %q: %s", tc.job, tc.own, cond)
-		}
-		if strings.Contains(cond, tc.foreign) {
-			t.Errorf("%s promotes on %q, the OTHER unit's release tag — that is legacy's wider behaviour, which this migration deliberately narrows: %s", tc.job, tc.foreign, cond)
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
 // WAVE B2 — the publishes and the Pulumi applies
 // ---------------------------------------------------------------------------
-
-// b2Rel maps a fixture's legacy_workflow (a repo-root path) to the path this
-// test reads it by. The declarations state the repo-root path because that is
-// what a human checks; the test runs from its own package directory, in the
-// checkout and in the runfiles tree alike.
-func b2Rel(legacyWorkflow string) string { return "../../../" + legacyWorkflow }
-
-// b2Units are the Wave-B2 declarations, read from the SAME frozen fixtures the
-// golden is rendered from — so the parity baseline (legacy_workflow +
-// legacy_job) is declaration DATA, not a table maintained beside it. A
-// declaration that stops naming its legacy job fails to be checked here, which
-// is why delivery() refuses render = "transcribed" without both.
-func b2Units(t *testing.T, render string) []unit {
-	t.Helper()
-	units, err := loadUnits(fixtureUnits)
-	if err != nil {
-		t.Fatalf("loadUnits: %v", err)
-	}
-	var out []unit
-	for _, u := range units {
-		if u.Render == render {
-			out = append(out, u)
-		}
-	}
-	if len(out) == 0 {
-		t.Fatalf("no fixture declares render = %q — the fixtures or the attribute drifted", render)
-	}
-	return out
-}
-
-// TestTranscribedJobsMatchLegacy is the Wave-B2 transcription guard.
-//
-// PROVES: every job the generator TRANSCRIBED is the legacy job it came from —
-// same steps, same order, same action pins, same script bodies, same env,
-// same permissions, same timeout — rather than a re-derivation of it. Compared
-// as TEXT, because that is the only comparison that catches a dropped flag, a
-// changed tag, a `--clobber` that went missing, or a digest capture that stops
-// writing $GITHUB_OUTPUT.
-//
-// The comparison is driven by the DECLARATIONS (legacy_workflow/legacy_job), so
-// adding a transcribed unit without a baseline is impossible: delivery() will
-// not accept it, and this test would not know to check it.
-func TestTranscribedJobsMatchLegacy(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-	genSrc := mustRead(t, deliveryWorkflowRel)
-
-	for _, u := range b2Units(t, renderTranscribed) {
-		t.Run(u.Name, func(t *testing.T) {
-			legacySrc := mustRead(t, b2Rel(u.LegacyWorkflow))
-			legacy := parseWorkflow(t, legacySrc)
-			genJob := u.Name + "-" + u.Environments[0]
-
-			want := canonicalSteps(t, legacySrc, u.LegacyJob)
-			got := canonicalSteps(t, genSrc, genJob)
-			if len(got) != len(want) {
-				t.Fatalf("%s renders %d steps, legacy %s job %q has %d:\n--- generated ---\n%s\n--- legacy ---\n%s",
-					genJob, len(got), u.LegacyWorkflow, u.LegacyJob, len(want),
-					strings.Join(got, "\n"), strings.Join(want, "\n"))
-			}
-			for i := range want {
-				if got[i] != want[i] {
-					t.Errorf("%s step %d differs from legacy %s job %q:\n--- generated ---\n%s\n--- legacy ---\n%s",
-						genJob, i+1, u.LegacyWorkflow, u.LegacyJob, got[i], want[i])
-				}
-			}
-
-			for _, key := range []string{"runs-on", "timeout-minutes"} {
-				w := jobScalar(t, legacy, u.LegacyJob, key)
-				if g := jobScalar(t, generated, genJob, key); g != w {
-					t.Errorf("%s %s = %q, legacy = %q", genJob, key, g, w)
-				}
-			}
-			// The GitHub Environment is a LADDER fact here (the declaration's
-			// github_environment resolved for this rung), so assert it against
-			// the declaration AND against legacy — a rung bound to the wrong
-			// Environment runs as the wrong service account.
-			wantEnv := strings.ReplaceAll(u.GitHubEnvironment, "{env}", u.Environments[0])
-			gotEnv := jobKeyOrEmpty(generated, genJob, "environment")
-			if gotEnv != wantEnv {
-				t.Errorf("%s binds environment %q, declaration resolves %q", genJob, gotEnv, wantEnv)
-			}
-			if legacyEnv := jobKeyOrEmpty(legacy, u.LegacyJob, "environment"); legacyEnv != wantEnv {
-				t.Errorf("%s binds environment %q but legacy %s job %q binds %q — the declaration's github_environment pattern does not reproduce the legacy Environment", genJob, wantEnv, u.LegacyWorkflow, u.LegacyJob, legacyEnv)
-			}
-
-			for _, key := range []string{"permissions", "env"} {
-				w := jobSubMapOrEmpty(legacy, u.LegacyJob, key)
-				g := jobSubMapOrEmpty(generated, genJob, key)
-				// permissions: legacy several of these declare it at the
-				// WORKFLOW level, which the generated file cannot do without
-				// handing it to every other unit. Fall back to the legacy
-				// workflow-level block in that case, so the comparison is
-				// against the grant the job actually HAD.
-				if key == "permissions" && len(w) == 0 {
-					w = topLevelSubMap(t, legacy, "permissions")
-				}
-				if len(g) != len(w) {
-					t.Errorf("%s %s has %v, legacy %s job %q has %v", genJob, key, sortedKeys(g), u.LegacyWorkflow, u.LegacyJob, sortedKeys(w))
-				}
-				for _, k := range sortedKeys(w) {
-					if g[k] != w[k] {
-						t.Errorf("%s %s.%s = %q, legacy = %q", genJob, key, k, g[k], w[k])
-					}
-				}
-			}
-
-			// Intended difference, asserted rather than assumed: the legacy
-			// job may serialize itself with a job-level `concurrency:`; the
-			// generated one never does, because this file serializes EVERY
-			// delivery run at the workflow level (strictly stronger, and the
-			// only placement that works for `uses:` jobs — #1607).
-			block, ok := jobText(genSrc, genJob)
-			if !ok {
-				t.Fatalf("cannot isolate %s", genJob)
-			}
-			if strings.Contains(block, "\n    concurrency:") {
-				t.Errorf("%s declares its own concurrency group; the workflow-level group already serializes every delivery run", genJob)
-			}
-		})
-	}
-}
-
-// TestReusableRungsMatchLegacy is the same guard for the units rendered as
-// callers of a reusable workflow.
-//
-// PROVES: every rung of the identity ladders calls the SAME reusable workflow
-// with the SAME inputs as the legacy job of that rung — in particular that
-// `gh-environment` still resolves to foundation-proj-<env>. That input is the
-// only thing selecting WHICH service account applies the stack: the app deploy
-// SA is what these stacks CREATE, so it cannot be what applies them, and a rung
-// pointed at the app pattern would fail (or, worse, apply as the wrong
-// identity).
-func TestReusableRungsMatchLegacy(t *testing.T) {
-	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
-
-	for _, u := range b2Units(t, renderReusable) {
-		t.Run(u.Name, func(t *testing.T) {
-			legacy := parseWorkflow(t, mustRead(t, b2Rel(u.LegacyWorkflow)))
-			for i, env := range u.Environments {
-				genJob := u.Name + "-" + env
-				// The legacy job ids ARE the rung names.
-				legacyJob := env
-
-				want := jobScalar(t, legacy, legacyJob, "uses")
-				if got := jobScalar(t, generated, genJob, "uses"); got != want {
-					t.Errorf("%s calls %q, legacy %s calls %q", genJob, got, legacyJob, want)
-				}
-				assertMapsMatch(t, legacyJob, jobWith(t, legacy, legacyJob), genJob, jobWith(t, generated, genJob), nil)
-
-				gotWith := jobWith(t, generated, genJob)
-				if gotWith["stack"] != env {
-					t.Errorf("%s applies stack %q, want %q", genJob, gotWith["stack"], env)
-				}
-				if wantEnv := strings.ReplaceAll(u.GitHubEnvironment, "{env}", env); gotWith["gh-environment"] != wantEnv {
-					t.Errorf("%s passes gh-environment %q, want %q (the declaration's github_environment for this rung)", genJob, gotWith["gh-environment"], wantEnv)
-				}
-				if gotWith["environment"] != "" {
-					t.Errorf("%s passes an `environment` input; this reusable takes stack + gh-environment, and a stray key fails the run at startup with \"invalid input\"", genJob)
-				}
-
-				// The chain: rung N starts only after rung N-1 succeeded, both
-				// in `needs:` and in the condition. A ladder that lost its
-				// chain applies production concurrently with development.
-				needs := jobScalar(t, generated, genJob, "needs")
-				cond := jobScalar(t, generated, genJob, "if")
-				if i == 0 {
-					if strings.Contains(cond, ".result == 'success'") {
-						t.Errorf("%s (first rung) waits on a predecessor: %s", genJob, cond)
-					}
-					continue
-				}
-				prev := u.Name + "-" + u.Environments[i-1]
-				if !strings.Contains(needs, prev) {
-					t.Errorf("%s needs = %q, which does not include %q", genJob, needs, prev)
-				}
-				if !strings.Contains(cond, "needs."+prev+".result == 'success'") {
-					t.Errorf("%s does not require %s to have succeeded — the ladder would apply every rung at once: %s", genJob, prev, cond)
-				}
-			}
-		})
-	}
-}
-
-// TestWaveB2LegacyWorkflowsAreDispatchOnlyShells is the legacy-surgery
-// assertion for every file Wave B2 migrated.
-//
-// PROVES: none of them can still deliver by itself. With `push:` still present
-// both files would do the same work on every merge — two `helm push`es onto one
-// OCI repo, two uploads onto one rolling prerelease tag, two Pulumi applies on
-// one stack. `workflow_dispatch` survives as the escape hatch until Phase 3.
-func TestWaveB2LegacyWorkflowsAreDispatchOnlyShells(t *testing.T) {
-	units, err := loadUnits(fixtureUnits)
-	if err != nil {
-		t.Fatalf("loadUnits: %v", err)
-	}
-	seen := map[string]bool{}
-	for _, u := range units {
-		if u.LegacyWorkflow == "" || seen[u.LegacyWorkflow] {
-			continue
-		}
-		seen[u.LegacyWorkflow] = true
-		triggers := topLevelChildKeys(t, parseWorkflow(t, mustRead(t, b2Rel(u.LegacyWorkflow))), "on")
-		for _, gone := range []string{"push", "release"} {
-			if contains(triggers, gone) {
-				t.Errorf("%s still triggers on %q — the generated delivery.yaml owns that lane now, so BOTH would deliver from one event (triggers: %v)", u.LegacyWorkflow, gone, triggers)
-			}
-		}
-		if !contains(triggers, "workflow_dispatch") {
-			t.Errorf("%s lost its workflow_dispatch trigger — that is the break-glass escape hatch Phase 2 keeps until Phase 3 deletes the file", u.LegacyWorkflow)
-		}
-	}
-	if len(seen) == 0 {
-		t.Fatal("no fixture names a legacy_workflow — the parity baseline is gone")
-	}
-}
-
-// TestChartsPublishRunsOneScript closes the loop the extraction opened.
-//
-// PROVES: the legacy workflow and the generated job run the SAME
-// tools/charts/publish.sh — one copy, so they cannot drift while both exist —
-// and that the declaration's `run` target names it. Before the extraction the
-// publish was 45 inline lines with no Bazel target of any kind, so the spec's
-// "CI and break-glass execute the same target" (§4.1) had nothing to point at.
-func TestChartsPublishRunsOneScript(t *testing.T) {
-	const script = "bash tools/charts/publish.sh"
-	legacy := mustRead(t, "../../../.github/workflows/charts-publish.yml")
-	generated := mustRead(t, deliveryWorkflowRel)
-
-	if !strings.Contains(legacy, "run: "+script) {
-		t.Errorf("charts-publish.yml no longer runs %q — the two copies have diverged again", script)
-	}
-	if !strings.Contains(generated, "run: "+script) {
-		t.Errorf("the generated charts job no longer runs %q", script)
-	}
-	if strings.Contains(legacy, "helm package ") || strings.Contains(generated, "helm package ") {
-		t.Error("a `helm package` line is back inside a workflow — the packaging logic belongs to tools/charts/publish.sh alone")
-	}
-
-	units, err := loadUnits(fixtureUnits)
-	if err != nil {
-		t.Fatalf("loadUnits: %v", err)
-	}
-	for _, u := range units {
-		if u.Name != "charts" {
-			continue
-		}
-		if want := "//tools/charts:publish"; u.Run != want {
-			t.Errorf("charts declares run = %q, want %q (the sh_binary wrapping the one script)", u.Run, want)
-		}
-		return
-	}
-	t.Fatal("no `charts` unit in the fixtures")
-}
 
 // ---------------------------------------------------------------------------
 // reader extensions for Wave B2
@@ -1730,4 +1048,481 @@ func canonicalizeIndent(step string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// b2Units are the Wave-B2 declarations, read from the SAME frozen fixtures the
+// golden is rendered from — so which units a guard covers is declaration DATA
+// (render = ...), not a list maintained beside it. A new unit of that shape is
+// covered the moment it is declared.
+func b2Units(t *testing.T, render string) []unit {
+	t.Helper()
+	units, err := loadUnits(fixtureUnits)
+	if err != nil {
+		t.Fatalf("loadUnits: %v", err)
+	}
+	var out []unit
+	for _, u := range units {
+		if u.Render == render {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("no fixture declares render = %q — the fixtures or the attribute drifted", render)
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 3 — the guards that replace the deleted parity baselines
+// ---------------------------------------------------------------------------
+//
+// Phases 1 and 2 proved every generated job against the hand-written job it
+// replaced, mechanically, on every test run. Phase 3 deletes those workflows —
+// that is the point of the migration — so those comparisons are gone with them.
+// What replaces them is not "nothing": it is the set of properties that were
+// only ever IMPLIED by matching the legacy file, now asserted directly against
+// the things that still exist.
+//
+//	every `uses:` resolves to a file that exists          (a deleted callee = a
+//	                                                       run that fails at
+//	                                                       startup, no jobs)
+//	every `with:` key is an input the callee declares      ("invalid input")
+//	every `run:` script exists and is executable           (a job that fails)
+//	the 8 deleted workflows are gone AND unreferenced      (no dangling links)
+//
+// Plus the golden, which pins every byte of the rendered file, so a change to
+// any transcribed step is still a diff a human reads in review.
+
+// localUse is one `uses: ./…` in the generated workflow and the `with:` keys
+// passed to it.
+type localUse struct {
+	path string
+	keys []string
+	line int
+}
+
+// localUses scans the generated workflow for local `uses:` references. Text
+// scanning rather than the wfLine reader because these appear at two different
+// nestings (a job-level `uses:` and a step-level `- uses:`), and both matter.
+func localUses(t *testing.T, src string) []localUse {
+	t.Helper()
+	var out []localUse
+	lines := strings.Split(src, "\n")
+	for i, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		trimmed = strings.TrimPrefix(trimmed, "- ")
+		val, ok := strings.CutPrefix(trimmed, "uses: ")
+		if !ok || !strings.HasPrefix(val, "./") {
+			continue
+		}
+		u := localUse{path: strings.TrimSpace(val), line: i + 1}
+		// `with:` is a sibling of this `uses:`, i.e. at the same indent.
+		indent := len(raw) - len(strings.TrimLeft(raw, " "))
+		if strings.HasPrefix(strings.TrimLeft(raw, " "), "- ") {
+			indent += 2
+		}
+		for j := i + 1; j < len(lines); j++ {
+			l := lines[j]
+			if strings.TrimSpace(l) == "" || strings.HasPrefix(strings.TrimSpace(l), "#") {
+				continue
+			}
+			ind := len(l) - len(strings.TrimLeft(l, " "))
+			if ind < indent {
+				break
+			}
+			if ind == indent && strings.TrimSpace(l) != "with:" {
+				continue
+			}
+			if ind == indent && strings.TrimSpace(l) == "with:" {
+				for k := j + 1; k < len(lines); k++ {
+					wl := lines[k]
+					if strings.TrimSpace(wl) == "" || strings.HasPrefix(strings.TrimSpace(wl), "#") {
+						continue
+					}
+					wind := len(wl) - len(strings.TrimLeft(wl, " "))
+					if wind <= indent {
+						break
+					}
+					if key, _, ok := strings.Cut(strings.TrimSpace(wl), ":"); ok {
+						u.keys = append(u.keys, key)
+					}
+				}
+				break
+			}
+		}
+		out = append(out, u)
+	}
+	if len(out) == 0 {
+		t.Fatal("the generated workflow references no local `uses:` at all — the scanner or the file layout drifted")
+	}
+	return out
+}
+
+// declaredInputs reads the input names a local workflow or composite action
+// declares.
+func declaredInputs(t *testing.T, rel string) []string {
+	t.Helper()
+	lines := parseWorkflow(t, mustRead(t, rel))
+	for i, l := range lines {
+		if l.key != "inputs" {
+			continue
+		}
+		return childKeys(lines, i)
+	}
+	t.Fatalf("%s declares no `inputs:` mapping", rel)
+	return nil
+}
+
+// TestEveryLocalUseResolvesAndPassesDeclaredInputs is the guard that replaces
+// "the generated job matches the hand-written one it came from".
+//
+// PROVES: every reusable workflow and composite action the generated file calls
+// EXISTS, and every input it passes is one that callee declares. Both failures
+// are startup failures with no jobs instantiated — a missing callee takes the
+// whole run down (orchestrate included), and an undeclared input is rejected
+// as "invalid input" — so neither is caught by anything downstream. This is
+// exactly what deleting the legacy workflows could have broken silently: a
+// `uses:` pointing at a file that no longer exists.
+func TestEveryLocalUseResolvesAndPassesDeclaredInputs(t *testing.T) {
+	src := mustRead(t, deliveryWorkflowRel)
+
+	for _, u := range localUses(t, src) {
+		rel := "../../../" + strings.TrimPrefix(u.path, "./")
+		target := rel
+		if strings.Contains(u.path, "/actions/") {
+			target = rel + "/action.yml"
+			if _, err := os.Stat(target); err != nil {
+				target = rel + "/action.yaml"
+			}
+		}
+		if _, err := os.Stat(target); err != nil {
+			t.Errorf("line %d: `uses: %s` resolves to %s, which does not exist (%v) — GitHub fails the WHOLE workflow at startup for that, taking orchestrate down with it", u.line, u.path, target, err)
+			continue
+		}
+		if len(u.keys) == 0 {
+			continue
+		}
+		declared := declaredInputs(t, target)
+		for _, k := range u.keys {
+			if !contains(declared, k) {
+				t.Errorf("line %d: `uses: %s` is passed %q, which %s does not declare as an input (declares %v) — the run fails at startup with \"invalid input\"", u.line, u.path, k, u.path, declared)
+			}
+		}
+	}
+}
+
+// TestEveryRunScriptExists is the same property for the `run:` half.
+//
+// PROVES: every script the generated workflow shells out to is present and
+// executable. A `run: bash <missing>` is a failed job — for a promotion rung's
+// soak gate that is a blocked promotion, and for a publish it is a delivery
+// that silently stopped happening the day someone moved a file.
+func TestEveryRunScriptExists(t *testing.T) {
+	src := mustRead(t, deliveryWorkflowRel)
+	re := regexp.MustCompile(`(?m)^\s*run: (?:bash |\./)([A-Za-z0-9_./-]+\.sh)\s*$`)
+
+	found := re.FindAllStringSubmatch(src, -1)
+	if len(found) == 0 {
+		t.Fatal("the generated workflow runs no scripts at all — the pattern or the file drifted")
+	}
+	seen := map[string]bool{}
+	for _, m := range found {
+		if seen[m[1]] {
+			continue
+		}
+		seen[m[1]] = true
+		info, err := os.Stat("../../../" + m[1])
+		if err != nil {
+			t.Errorf("the generated workflow runs %q, which does not exist (%v)", m[1], err)
+			continue
+		}
+		if info.Mode()&0o111 == 0 {
+			t.Errorf("%s is not executable — `bash <file>` still works, but `bazel run` on its sh_binary wrapper does not, and those are supposed to be the same path", m[1])
+		}
+	}
+}
+
+// TestDeletedLegacyWorkflowsAreGoneAndUnreferenced is the Phase-3 deletion
+// assertion.
+//
+// PROVES: the eight hand-written delivery workflows are actually gone, and
+// nothing under .github/ still points at one. A dangling `uses:` or
+// `workflow_run: workflows: [<deleted>]` is not an error GitHub reports — the
+// trigger simply never fires again, which is how the release-hold interlock
+// was found silently dead after Phase 1 moved a lane out from under it.
+func TestDeletedLegacyWorkflowsAreGoneAndUnreferenced(t *testing.T) {
+	deleted := []string{
+		"oauth-user-inspector-deploy.yaml",
+		"tabula-deploy.yaml",
+		"tabula-dev-latest.yaml",
+		"charts-publish.yml",
+		"tabula-build-stack.yaml",
+		"copybara-sync-auth-apply.yaml",
+		"tabula-identity-stack.yaml",
+		"oauth-user-inspector-identity-stack.yaml",
+	}
+	dir := "../../../.github/workflows"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("cannot read %s: %v", dir, err)
+	}
+	present := map[string]bool{}
+	for _, e := range entries {
+		present[e.Name()] = true
+	}
+
+	for _, name := range deleted {
+		if present[name] {
+			t.Errorf(".github/workflows/%s still exists — Phase 3 deletes every workflow whose lane the orchestrator took over; two workflows on one lane race each other", name)
+		}
+	}
+
+	// ...and nothing left under .github/workflows/ ACTIVELY references one.
+	//
+	// "Actively" = outside a comment. A `uses:`, a `workflow_run: workflows:`
+	// entry or a WORKFLOW_FILE value naming a deleted file is not an error
+	// GitHub reports: the callee is missing (the run dies at startup) or the
+	// trigger simply never fires again — which is how the release-hold
+	// interlock was found silently dead after Phase 1 moved a lane out from
+	// under it. A COMMENT naming one is allowed and deliberate: the generated
+	// file records where each transcribed job came from, since git history is
+	// the only place the original now exists.
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		body, err := os.ReadFile(dir + "/" + e.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		for i, line := range strings.Split(string(body), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue
+			}
+			for _, name := range deleted {
+				if strings.Contains(line, name) {
+					t.Errorf(".github/workflows/%s:%d actively references the deleted workflow %q — that trigger never fires, or that call fails the run at startup:\n  %s", e.Name(), i+1, name, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
+
+// TestGeneratedCompanionsCallTheirWorkhorse replaces the companion parity test.
+//
+// PROVES what matching zitadel-dev/-nonprod/-prod used to prove, asserted
+// directly: each companion rung calls _zitadel-apps-apply.yaml with the rung it
+// serves, keeps the ZITADEL_APPS_AUTO_APPLY gate (without it the apply FAILS
+// the deploy instead of cleanly no-opping while the machine key is unseeded),
+// and the production companion chains behind the nonproduction DEPLOY —
+// expanding a rung that is not about to be served is #1794's shape against a
+// stack whose force-replace deletes the live OIDC client.
+func TestGeneratedCompanionsCallTheirWorkhorse(t *testing.T) {
+	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+	spec, ok := companionWorkflows["zitadel-apps"]
+	if !ok {
+		t.Fatal("no zitadel-apps companion is registered — this guard is checking nothing")
+	}
+
+	for _, tc := range []struct {
+		job, env, chainedBehind string
+	}{
+		{"zitadel-apps-development", "development", ""},
+		{"zitadel-apps-nonproduction", "nonproduction", ""},
+		{"zitadel-apps-production", "production", "oauth-user-inspector-nonproduction"},
+	} {
+		t.Run(tc.job, func(t *testing.T) {
+			if got := jobScalar(t, generated, tc.job, "uses"); got != spec.workflow {
+				t.Errorf("%s calls %q, want %q", tc.job, got, spec.workflow)
+			}
+			with := jobWith(t, generated, tc.job)
+			if with["environment"] != tc.env {
+				t.Errorf("%s applies environment=%q, want %q", tc.job, with["environment"], tc.env)
+			}
+			if len(with) != 1 {
+				t.Errorf("%s passes %v; the companion takes only `environment`", tc.job, sortedKeys(with))
+			}
+			cond := jobScalar(t, generated, tc.job, "if")
+			if !strings.Contains(cond, spec.gateVar) {
+				t.Errorf("%s lost the %q gate — the apply would FAIL the deploy instead of cleanly no-opping: %s", tc.job, spec.gateVar, cond)
+			}
+			if tc.chainedBehind == "" {
+				return
+			}
+			if !strings.Contains(cond, "needs."+tc.chainedBehind+".result == 'success'") {
+				t.Errorf("%s does not chain behind %s: %s", tc.job, tc.chainedBehind, cond)
+			}
+			if needs := jobScalar(t, generated, tc.job, "needs"); !strings.Contains(needs, tc.chainedBehind) {
+				t.Errorf("%s needs = %q, which does not include %q — the condition reads a job it never waited for", tc.job, needs, tc.chainedBehind)
+			}
+		})
+	}
+}
+
+// TestReusableRungsPassWhatTheCalleeDeclares replaces the identity-ladder
+// parity test.
+//
+// PROVES: every rung passes the reusable applier the two inputs it declares —
+// `stack` (the Pulumi stack) and `gh-environment` — with gh-environment
+// resolving to foundation-proj-<env>. That input is the only thing selecting
+// WHICH service account applies the stack: the app deploy SA is what these
+// stacks CREATE, so it cannot be what applies them, and a rung pointed at the
+// app pattern would apply as the wrong identity (or fail at startup on a
+// non-existent Environment).
+func TestReusableRungsPassWhatTheCalleeDeclares(t *testing.T) {
+	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+
+	for _, u := range b2Units(t, renderReusable) {
+		t.Run(u.Name, func(t *testing.T) {
+			spec, ok := reusableWorkflows[u.Name]
+			if !ok {
+				t.Fatalf("unit %q declares render=reusable but no workflow is registered", u.Name)
+			}
+			calleeRel := "../../../" + strings.TrimPrefix(spec.workflow, "./")
+			declared := declaredInputs(t, calleeRel)
+
+			for i, env := range u.Environments {
+				job := u.Name + "-" + env
+				if got := jobScalar(t, generated, job, "uses"); got != spec.workflow {
+					t.Errorf("%s calls %q, want %q", job, got, spec.workflow)
+				}
+				with := jobWith(t, generated, job)
+				for k := range with {
+					if !contains(declared, k) {
+						t.Errorf("%s passes %q, which %s does not declare (declares %v)", job, k, spec.workflow, declared)
+					}
+				}
+				if with["stack"] != env {
+					t.Errorf("%s applies stack %q, want %q", job, with["stack"], env)
+				}
+				if want := strings.ReplaceAll(u.GitHubEnvironment, "{env}", env); with["gh-environment"] != want {
+					t.Errorf("%s passes gh-environment %q, want %q — that input selects the applying service account", job, with["gh-environment"], want)
+				}
+				if i == 0 {
+					continue
+				}
+				prev := u.Name + "-" + u.Environments[i-1]
+				if !strings.Contains(jobScalar(t, generated, job, "if"), "needs."+prev+".result == 'success'") {
+					t.Errorf("%s does not require %s to have succeeded — the ladder would apply every rung at once", job, prev)
+				}
+			}
+		})
+	}
+}
+
+// TestPublishersAreOneScriptEach is the "CI and break-glass run the same
+// thing" assertion (spec §4.1), now true of every unit.
+//
+// PROVES: the two publish units run a SCRIPT, that script is what their
+// delivery() `run` target wraps, and no packaging logic leaked back into the
+// workflow. Before Phase 3 the extension publisher was three inline steps and
+// its `run` named a genrule that `bazel run` cannot execute — the last unit
+// where the delivered thing and the break-glass thing were different code.
+func TestPublishersAreOneScriptEach(t *testing.T) {
+	generated := mustRead(t, deliveryWorkflowRel)
+	units, err := loadUnits(fixtureUnits)
+	if err != nil {
+		t.Fatalf("loadUnits: %v", err)
+	}
+
+	for _, tc := range []struct{ unit, script, runTarget string }{
+		{"charts", "tools/charts/publish.sh", "//tools/charts:publish"},
+		{"tabula-dev-latest", "tabula/extension/publish-dev-latest.sh", "//tabula/extension:publish-dev-latest"},
+	} {
+		t.Run(tc.unit, func(t *testing.T) {
+			if !strings.Contains(generated, "run: bash "+tc.script) {
+				t.Errorf("the generated workflow does not run %q", tc.script)
+			}
+			if _, err := os.Stat("../../../" + tc.script); err != nil {
+				t.Errorf("%s is missing: %v", tc.script, err)
+			}
+			var found bool
+			for _, u := range units {
+				if u.Name != tc.unit {
+					continue
+				}
+				found = true
+				if u.Run != tc.runTarget {
+					t.Errorf("unit %q declares run = %q, want %q (the sh_binary wrapping the one script)", tc.unit, u.Run, tc.runTarget)
+				}
+			}
+			if !found {
+				t.Fatalf("no %q unit in the fixtures", tc.unit)
+			}
+		})
+	}
+	// The packaging/publishing logic must not exist in two places again.
+	for _, leaked := range []string{"helm package ", "gh release upload "} {
+		if strings.Contains(generated, leaked) {
+			t.Errorf("%q is back inside the generated workflow — that logic belongs to the extracted script alone, or CI and break-glass drift apart", leaked)
+		}
+	}
+}
+
+// TestPreflightRendersSkipIfUnchanged is the Phase-3 detection-sharpening
+// guard (spec §4.5).
+//
+// PROVES the whole chain the `preflight` attr stands for:
+//
+//  1. a unit declaring it passes `skip-if-unchanged: true` on EVERY rung, so
+//     _deploy-cloud-run.yaml runs tools/ci/tabula-deploy-preflight.sh and skips
+//     the migrate + blue-green + smoke when the live service already serves the
+//     desired revision;
+//  2. a unit NOT declaring it passes the key at all — the reusable workflow's
+//     default is false, and an explicit `false` in a declaration would be a
+//     second place saying the same thing;
+//  3. the declaring unit's Pulumi program actually SHIPS cmd/revname. Without
+//     it the preflight's desired-name computation fails, and the script's
+//     fail-open turns that into `unchanged=false` FOREVER: a preflight that
+//     runs on every deploy, costs a `go run`, and can never skip anything.
+//     That is the failure this test exists for — it is invisible in the run
+//     log, which just says "deploying".
+//
+// WHY THE PREFLIGHT IS NOT AN ORCHESTRATOR VETO, recorded here because the
+// alternative is the obvious-looking one: its input is IMAGE_DIGEST (the
+// script requires it), and `orchestrate` runs BEFORE every build job — there is
+// no digest at decide time. Producing one would mean building every unit's
+// image inside the DECIDE job, which is the cost graph/path detection exists to
+// avoid, and for a Dockerfile-built app the pre-built digest would never equal
+// the pushed one anyway, so the veto could never fire.
+func TestPreflightRendersSkipIfUnchanged(t *testing.T) {
+	units := loadFixtures(t)
+	generated := parseWorkflow(t, mustRead(t, deliveryWorkflowRel))
+
+	declared := 0
+	for _, u := range units {
+		if u.Kind != kindCloudRun {
+			continue
+		}
+		for _, env := range u.Environments {
+			with := jobWith(t, generated, u.Name+"-"+env)
+			got, present := with["skip-if-unchanged"]
+			if u.Preflight == "" {
+				if present {
+					t.Errorf("%s-%s passes skip-if-unchanged=%q but its declaration has no preflight — the reusable workflow's default is false, and a second source for the same fact is how the two drift", u.Name, env, got)
+				}
+				continue
+			}
+			if got != "true" {
+				t.Errorf("%s-%s declares preflight=%q but passes skip-if-unchanged=%q (present=%v) — the deploy would run the full rollout even when the live service already serves the desired revision", u.Name, env, u.Preflight, got, present)
+			}
+		}
+		if u.Preflight == "" {
+			continue
+		}
+		declared++
+		// The mechanism has to exist for THIS unit's stack.
+		dir, ok := u.WorkflowInputs["pulumi-dir"].(string)
+		if !ok || dir == "" {
+			t.Errorf("unit %q declares preflight but passes no pulumi-dir — the preflight runs inside that directory", u.Name)
+			continue
+		}
+		revname := "../../../" + dir + "/cmd/revname"
+		if _, err := os.Stat(revname); err != nil {
+			t.Errorf("unit %q declares preflight=%q but %s/cmd/revname does not exist (%v) — tools/ci/tabula-deploy-preflight.sh defaults REVNAME to `go run ./cmd/revname` inside pulumi-dir, so the desired-name computation would fail and the gate would fail open on every single deploy", u.Name, u.Preflight, dir, err)
+		}
+	}
+	if declared == 0 {
+		t.Fatal("no fixture declares a preflight — this guard is checking nothing")
+	}
 }
