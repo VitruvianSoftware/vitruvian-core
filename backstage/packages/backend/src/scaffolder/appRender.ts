@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import { accessSync, constants } from "fs";
-import { readFile, readdir, stat, writeFile } from "fs/promises";
+import { readFile, readdir, realpath, stat, writeFile } from "fs/promises";
 import * as path from "path";
 
 import type { LoggerService } from "@backstage/backend-plugin-api";
@@ -243,6 +243,53 @@ export async function assertStampingTarget(
 }
 
 /**
+ * Resolve where the render will REALLY write, and refuse anything outside the
+ * workspace.
+ *
+ * A lexical check (path.resolve + startsWith) is not enough. `targetPath` is
+ * joined onto a repository this action just fetched, and a repository can commit
+ * a symlink: with `link -> /tmp/outside` in the tree, `link/order_service`
+ * resolves lexically to `<workspace>/link/order_service` — inside the workspace
+ * by every string test — while the engine's unconditional
+ * `remove_dir_all(--out)` lands in /tmp/outside. So both sides are realpath'd
+ * before they are compared.
+ *
+ * The intermediate directories usually do not exist yet, and realpath fails on a
+ * path that is not there, so this walks up to the deepest EXISTING ancestor,
+ * realpaths that, and re-joins the segments below it. Those segments cannot
+ * themselves be symlinks — they do not exist.
+ *
+ * Returns the real absolute output path, which is what the engine is then given.
+ */
+export async function resolveContainedOutput(
+  workspacePath: string,
+  targetPath: string,
+): Promise<string> {
+  const realWs = await realpath(workspacePath);
+
+  let existing = path.resolve(workspacePath, targetPath);
+  const below: string[] = [];
+  while (!(await exists(existing))) {
+    const parent = path.dirname(existing);
+    if (parent === existing) break; // filesystem root; nothing more to walk
+    below.unshift(path.basename(existing));
+    existing = parent;
+  }
+
+  const realOut = path.join(await realpath(existing), ...below);
+  if (realOut !== realWs && !realOut.startsWith(realWs + path.sep)) {
+    throw new Error(
+      `targetPath ${targetPath} escapes the target repository: it really ` +
+        `resolves to ${realOut}, which is outside ${realWs} — a symlink in the ` +
+        "fetched repository points out of it. Refusing: the initializer engine " +
+        "clears --out before rendering, so this would delete files outside the " +
+        "repository.",
+    );
+  }
+  return realOut;
+}
+
+/**
  * Locate the `aspect` binary on PATH without spawning anything.
  *
  * Spawning to find out would conflate "not installed" with "installed but the
@@ -265,24 +312,15 @@ export function findAspectBinary(
 }
 
 /**
- * Insert `targetPath`'s catalog file into the root catalog's per-app Location.
+ * Locate the per-app Location's `targets:` list, or explain what is missing.
  *
- * ADR-019 disclose-and-include: the stamping PR has to be catalog-complete, or
- * the new component simply never appears in Backstage and someone has to notice
- * and open a second PR. Idempotent by construction — the exact line is matched
- * first, so re-running the action (a retried task, a template that renders twice)
- * cannot duplicate it.
+ * Shared by the early shape check and the append itself so the two can never
+ * disagree about what "a usable root catalog" means.
  */
-export function appendCatalogTarget(
-  content: string,
-  targetPath: string,
-): { content: string; changed: boolean } {
-  const entry = `    - ./${targetPath}/catalog-info.yaml`;
-  const lines = content.split("\n");
-  if (lines.includes(entry)) {
-    return { content, changed: false };
-  }
-
+export function locateAppTargets(lines: string[]): {
+  targetsIdx: number;
+  end: number;
+} {
   const nameIdx = lines.findIndex(
     (line) => line.trim() === `name: ${CATALOG_LOCATION_NAME}`,
   );
@@ -310,15 +348,72 @@ export function appendCatalogTarget(
   }
 
   // The list ends at the first line that is neither an item nor an indented
-  // comment. Keep the leading (uncommented) run sorted, which is how the file
-  // is maintained by hand; a trailing commented group — "Platform
-  // infrastructure we operate" — is deliberately left alone.
+  // comment.
   let end = targetsIdx + 1;
-  while (end < lines.length && /^ {4}(- |#)/.test(lines[end])) end++;
+  while (end < lines.length && /^ {2,}(- |#)/.test(lines[end])) end++;
 
+  return { targetsIdx, end };
+}
+
+/**
+ * The target a list line refers to, indentation and a leading `./` removed, or
+ * undefined if the line is not a list item.
+ *
+ * Idempotency must not key on the exact bytes this action emits: a target
+ * already written by hand as `  - apps/x/catalog-info.yaml` (two-space indent,
+ * no `./`) is the SAME entry, and matching only the canonical spelling would
+ * append a duplicate. The canonical spelling is still what gets written.
+ */
+export function catalogTargetOf(line: string): string | undefined {
+  const match = /^\s+-\s+(\S.*?)\s*$/.exec(line);
+  if (!match) return undefined;
+  return match[1].replace(/^\.\//, "");
+}
+
+/**
+ * Insert `targetPath`'s catalog file into the root catalog's per-app Location.
+ *
+ * ADR-019 disclose-and-include: the stamping PR has to be catalog-complete, or
+ * the new component simply never appears in Backstage and someone has to notice
+ * and open a second PR. Idempotent across spellings — see {@link catalogTargetOf}.
+ */
+export function appendCatalogTarget(
+  content: string,
+  targetPath: string,
+): { content: string; changed: boolean } {
+  const wanted = `${targetPath}/catalog-info.yaml`;
+  const lines = content.split("\n");
+
+  const { targetsIdx, end } = locateAppTargets(lines);
+
+  // Scoped to this Location's own list: an identically-named path under a
+  // different Location is a different statement, and is none of our business.
+  for (let i = targetsIdx + 1; i < end; i++) {
+    if (catalogTargetOf(lines[i]) === wanted) {
+      return { content, changed: false };
+    }
+  }
+
+  // Match the list's OWN indentation rather than assuming four spaces: a
+  // two-space list would read a four-space item as a nested sequence, which is
+  // valid YAML meaning something else entirely.
+  const dash = /^(\s+)- /;
+  let indent = "    ";
+  for (let i = targetsIdx + 1; i < end; i++) {
+    const match = dash.exec(lines[i]);
+    if (match) {
+      indent = match[1];
+      break;
+    }
+  }
+  const entry = `${indent}- ./${targetPath}/catalog-info.yaml`;
+
+  // Keep the leading (uncommented) run sorted, which is how the file is
+  // maintained by hand; a trailing commented group — "Platform infrastructure
+  // we operate" — is deliberately left alone.
   let insertAt = targetsIdx + 1;
   for (let i = targetsIdx + 1; i < end; i++) {
-    if (!lines[i].startsWith("    - ")) break;
+    if (!lines[i].startsWith(`${indent}- `)) break;
     if (lines[i] > entry) {
       insertAt = i;
       break;
@@ -328,6 +423,24 @@ export function appendCatalogTarget(
 
   lines.splice(insertAt, 0, entry);
   return { content: lines.join("\n"), changed: true };
+}
+
+/**
+ * Fail-early counterpart to {@link appendCatalogTarget}: prove the root catalog
+ * has somewhere to record the app BEFORE the engine runs.
+ *
+ * Without this, a malformed catalog is only discovered after a full render, so
+ * the operator waits out a clone and a render to be told about a YAML shape
+ * problem. The append itself stays authoritative; this only front-runs it.
+ * A repository with no root catalog at all is not an error — that is warned
+ * about after the render, as before.
+ */
+export async function assertCatalogAppendable(
+  workspacePath: string,
+): Promise<void> {
+  const catalogPath = path.join(workspacePath, ROOT_CATALOG_REL);
+  if (!(await exists(catalogPath))) return;
+  locateAppTargets((await readFile(catalogPath, "utf8")).split("\n"));
 }
 
 /** Every file under `dir`, as paths relative to `root`, sorted. */
@@ -364,17 +477,30 @@ export async function renderApplication(
   assertValidAppName(name);
   assertPathMatchesName(name, targetPath);
 
-  const outAbs = path.resolve(workspacePath, targetPath);
-  // Belt-and-braces containment: normaliseTargetPath already rejects `..`, but
-  // this is the check that actually protects the filesystem, so it is made
-  // against the resolved path rather than against the string it came from.
-  if (!outAbs.startsWith(path.resolve(workspacePath) + path.sep)) {
+  // Lexical containment first: it needs no filesystem and gives the clearest
+  // message for the `..` case. It is NOT sufficient on its own — see
+  // resolveContainedOutput below, which is the check that actually protects the
+  // filesystem and needs the workspace to be on disk.
+  if (
+    !path
+      .resolve(workspacePath, targetPath)
+      .startsWith(path.resolve(workspacePath) + path.sep)
+  ) {
     throw new Error(
-      `targetPath must stay inside the repository; ${targetPath} resolves to ${outAbs}`,
+      `targetPath must stay inside the repository; ${targetPath} resolves to ` +
+        path.resolve(workspacePath, targetPath),
     );
   }
 
   await assertStampingTarget(workspacePath);
+  // Fail early on a root catalog with nowhere to record the app, rather than
+  // after a full render.
+  await assertCatalogAppendable(workspacePath);
+
+  // Now that the workspace is known to exist and to be a stamping target,
+  // resolve where the render will REALLY land — this is what defeats a symlink
+  // committed in the fetched repository, which every lexical check passes.
+  const outAbs = await resolveContainedOutput(workspacePath, targetPath);
 
   // REFUSE rather than overwrite. `render_app` clears `--out` before rendering
   // (tasks.axl: remove_dir_all(out_abs)), so stamping onto an existing app
@@ -424,13 +550,51 @@ export async function renderApplication(
   // "succeed" into an empty directory. The render is cheap and idempotent; the
   // refusal above is what makes re-running safe.
   await exec({
-    command: "aspect",
+    // The RESOLVED path, so the command that runs is the one the log named.
+    command: aspectBin,
     args,
     logger,
     options: { cwd: workspacePath },
   });
 
-  const renderedFiles = await listFiles(workspacePath, outAbs);
+  // A zero exit with nothing on disk is not success. It happens when the image's
+  // engine and the repo's engine disagree — a task that parses, runs, and writes
+  // somewhere else. Surfacing readdir's raw ENOENT would send the operator
+  // looking for a filesystem problem instead.
+  // Listed relative to `outAbs` and re-prefixed with `targetPath`, NOT relative
+  // to `workspacePath`: `outAbs` has been realpath'd and the workspace may not
+  // be (macOS hands out /var/... for /private/var/...), so relativising one
+  // against the other would emit `../../..` paths.
+  let renderedFiles: string[] = [];
+  try {
+    renderedFiles = (await listFiles(outAbs, outAbs)).map((file) =>
+      path.posix.join(targetPath, file.split(path.sep).join("/")),
+    );
+  } catch {
+    renderedFiles = [];
+  }
+  if (renderedFiles.length === 0) {
+    throw new Error(
+      `the initializer engine reported success but produced no files at ` +
+        `${targetPath}. The repository's engine (${INITIALIZER_TASKS_REL}) and ` +
+        `the vendored CLI (aspect ${REQUIRED_ASPECT_VINTAGE}) may not be ` +
+        "compatible — check that `aspect render-app` works in that repository.",
+    );
+  }
+
+  // catalogInfoPath is a promise this action makes to the template's later
+  // catalog:register step; if the starter did not render one, that step fails
+  // far from the cause.
+  const catalogInfoPath = path.posix.join(targetPath, "catalog-info.yaml");
+  if (!renderedFiles.includes(catalogInfoPath)) {
+    throw new Error(
+      `the ${language} starter rendered ${renderedFiles.length} file(s) into ` +
+        `${targetPath} but no catalog-info.yaml, so the new component cannot be ` +
+        "registered with the catalog. The starter's template directory in the " +
+        "target repository needs one.",
+    );
+  }
+
   logger.info(
     `${APP_RENDER_ACTION_ID}: rendered ${renderedFiles.length} file(s) into ${targetPath}:\n` +
       renderedFiles.map((f) => `  ${f}`).join("\n"),
@@ -467,7 +631,7 @@ export async function renderApplication(
 
   return {
     appPath: targetPath,
-    catalogInfoPath: path.posix.join(targetPath, "catalog-info.yaml"),
+    catalogInfoPath,
     renderedFiles,
     catalogUpdated,
   };

@@ -31,7 +31,9 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
@@ -45,11 +47,13 @@ import {
   assertPathMatchesName,
   assertStampingTarget,
   assertValidAppName,
+  catalogTargetOf,
   createAppRenderAction,
   findAspectBinary,
   normaliseTargetPath,
   registersRenderApp,
   renderApplication,
+  resolveContainedOutput,
   type ShellRunner,
 } from "./appRender";
 
@@ -221,6 +225,72 @@ describe("input validation", () => {
   });
 });
 
+describe("containment against a symlink committed in the fetched repo", () => {
+  // The lexical guards all pass for `link/order_service` when the repo ships
+  // `link -> /somewhere/else`: nothing in the STRING escapes the workspace.
+  // The engine's unconditional remove_dir_all(--out) would then run outside the
+  // repository, in the pod's filesystem.
+
+  it("resolves a plain path to a real path inside the workspace", async () => {
+    const ws = makeWorkspace();
+    await expect(
+      resolveContainedOutput(ws, "apps/order_service"),
+    ).resolves.toBe(path.join(realpathSync(ws), "apps/order_service"));
+  });
+
+  it("refuses a path that leaves the workspace through a symlink", async () => {
+    const ws = makeWorkspace();
+    const outside = mkdtempSync(path.join(tmpdir(), "app-render-outside-"));
+    workspaces.push(outside);
+    symlinkSync(outside, path.join(ws, "link"));
+
+    await expect(
+      resolveContainedOutput(ws, "link/order_service"),
+    ).rejects.toThrow(
+      /escapes the target repository[\s\S]*really resolves to[\s\S]*would delete files outside the repository/,
+    );
+  });
+
+  it("refuses the render, without running the engine", async () => {
+    const ws = makeWorkspace();
+    const outside = mkdtempSync(path.join(tmpdir(), "app-render-outside-"));
+    workspaces.push(outside);
+    writeFileSync(path.join(outside, "precious.txt"), "not yours\n");
+    symlinkSync(outside, path.join(ws, "link"));
+    const exec = fakeEngine();
+
+    await expect(
+      renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        targetPath: "link/order_service",
+        logger: logger().service,
+        exec,
+      }),
+    ).rejects.toThrow(/escapes the target repository/);
+
+    expect(exec).not.toHaveBeenCalled();
+    expect(readFileSync(path.join(outside, "precious.txt"), "utf8")).toBe(
+      "not yours\n",
+    );
+  });
+
+  it("refuses even when the symlinked destination does not exist yet", async () => {
+    // The deepest EXISTING ancestor is the symlink itself, so walking up still
+    // finds the escape before anything is created.
+    const ws = makeWorkspace();
+    const outside = mkdtempSync(path.join(tmpdir(), "app-render-outside-"));
+    workspaces.push(outside);
+    symlinkSync(path.join(outside, "nested"), path.join(ws, "link"));
+    mkdirSync(path.join(outside, "nested"));
+
+    await expect(
+      resolveContainedOutput(ws, "link/order_service"),
+    ).rejects.toThrow(/escapes the target repository/);
+  });
+});
+
 describe("the stamping-target predicate", () => {
   it("names the onboarding pattern when tools/initializer is absent", async () => {
     const ws = makeWorkspace({ config: false });
@@ -300,6 +370,55 @@ describe("the root catalog Location", () => {
     expect(second.content).toBe(first.content);
   });
 
+  it.each([
+    ["hand-written without ./", "    - apps/order_service/catalog-info.yaml"],
+    ["two-space indent", "  - ./apps/order_service/catalog-info.yaml"],
+    ["two-space and no ./", "  - apps/order_service/catalog-info.yaml"],
+    [
+      "extra spacing after the dash",
+      "    -   ./apps/order_service/catalog-info.yaml",
+    ],
+  ])(
+    "treats a %s entry as already present rather than duplicating it",
+    (_label, variant) => {
+      const existing = CATALOG.replace(
+        "    - ./backstage/catalog-info.yaml",
+        `${variant}\n    - ./backstage/catalog-info.yaml`,
+      );
+      const result = appendCatalogTarget(existing, "apps/order_service");
+      expect(result.changed).toBe(false);
+      expect(result.content).toBe(existing);
+      expect(
+        result.content.split("\n").filter((l) => l.includes("order_service"))
+          .length,
+      ).toBe(1);
+    },
+  );
+
+  it("normalises a list line to its target", () => {
+    expect(catalogTargetOf("    - ./apps/x/catalog-info.yaml")).toBe(
+      "apps/x/catalog-info.yaml",
+    );
+    expect(catalogTargetOf("  -   apps/x/catalog-info.yaml  ")).toBe(
+      "apps/x/catalog-info.yaml",
+    );
+    expect(catalogTargetOf("  targets:")).toBeUndefined();
+    expect(catalogTargetOf("    # a comment")).toBeUndefined();
+  });
+
+  it("matches the list's own indentation when it is not four spaces", () => {
+    const twoSpace = CATALOG.replace(/^ {4}- /gm, "  - ");
+    const { content, changed } = appendCatalogTarget(
+      twoSpace,
+      "apps/order_service",
+    );
+    expect(changed).toBe(true);
+    // A four-space item inside a two-space list would parse as a NESTED
+    // sequence — valid YAML meaning something else entirely.
+    expect(content).toContain("\n  - ./apps/order_service/catalog-info.yaml\n");
+    expect(content).not.toContain("    - ./apps/order_service");
+  });
+
   it("does not touch the external-repos Location", () => {
     const { content } = appendCatalogTarget(CATALOG, "apps/order_service");
     expect(content).toContain(
@@ -336,7 +455,12 @@ describe("renderApplication", () => {
 
     expect(exec).toHaveBeenCalledTimes(1);
     const call = exec.mock.calls[0][0];
-    expect(call.command).toBe("aspect");
+    // The RESOLVED binary, so what runs is what the log line named.
+    expect(call.command).toBe(findAspectBinary());
+    expect(path.basename(call.command)).toBe("aspect");
+    expect(log.lines.join("\n")).toContain(
+      `engine: ${call.command} render-app`,
+    );
     expect(call.args).toEqual([
       "render-app",
       "--language",
@@ -344,7 +468,9 @@ describe("renderApplication", () => {
       "--name",
       "order_service",
       "--out",
-      path.join(ws, "apps/order_service"),
+      // The REAL path — resolveContainedOutput hands the engine the destination
+      // it actually verified, not the one the string implied.
+      path.join(realpathSync(ws), "apps/order_service"),
     ]);
     // cwd is load-bearing: the engine probes current_dir() for its own mount
     // point and would render the wrong tree (or none) from anywhere else.
@@ -497,6 +623,69 @@ describe("renderApplication", () => {
     expect(result.renderedFiles).toHaveLength(5);
     expect(result.catalogUpdated).toBe(true);
     expect(log.lines.join("\n")).toContain("[dry run]");
+  });
+
+  it("rejects a malformed root catalog BEFORE running the engine", async () => {
+    const ws = makeWorkspace({
+      catalog: "kind: System\nmetadata:\n  name: vitruvian-core\n",
+    });
+    const exec = fakeEngine();
+
+    await expect(
+      renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        logger: logger().service,
+        exec,
+      }),
+    ).rejects.toThrow(/no Location named vitruvian-core-apps/);
+
+    // Fail-early is the point: a shape problem must not cost a whole render.
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("is actionable when the engine exits 0 but writes nothing", async () => {
+    const ws = makeWorkspace();
+    // A zero exit with no output — the shape of an engine/image mismatch.
+    const exec = jest.fn(async () => {}) as unknown as jest.MockedFunction<
+      typeof renderStub
+    >;
+
+    await expect(
+      renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        logger: logger().service,
+        exec: exec as unknown as ShellRunner,
+      }),
+    ).rejects.toThrow(
+      /reported success but produced no files at apps\/order_service[\s\S]*may not be compatible/,
+    );
+  });
+
+  it("is actionable when the starter renders no catalog-info.yaml", async () => {
+    const ws = makeWorkspace();
+    const exec = jest.fn(async ({ args }: { args: string[] }) => {
+      const out = args[args.indexOf("--out") + 1];
+      mkdirSync(out, { recursive: true });
+      writeFileSync(path.join(out, "main.go"), "package main\n");
+    }) as unknown as ShellRunner;
+
+    await expect(
+      renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        logger: logger().service,
+        exec,
+      }),
+    ).rejects.toThrow(
+      // catalogInfoPath is a promise made to the template's catalog:register
+      // step; without the file that step fails far from the cause.
+      /rendered 1 file\(s\) into apps\/order_service but no catalog-info\.yaml/,
+    );
   });
 
   it("warns rather than fails when the repo has no root catalog", async () => {
