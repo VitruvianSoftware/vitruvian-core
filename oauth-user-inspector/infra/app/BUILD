@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
@@ -43,4 +44,32 @@ cloud_run_deploy(
     region = "us-central1",
     service = "oauth-user-inspector",
     smoke_path = "/",
+)
+
+# Delivery unit (Phase 0: SHADOW — discovered and decided by the orchestrator,
+# not yet acted on; oauth-user-inspector-deploy.yaml remains the delivery path
+# until Phase 1). extra/exclude paths mirror that workflow's gate regexes
+# verbatim so shadow verdicts are comparable against the live gate.
+delivery(
+    name = "oauth-user-inspector",
+    build = "",  # standalone Docker Buildx build; no bazel image target
+    companions = ["zitadel-apps"],
+    environments = [
+        "development",
+        "nonproduction",
+        "production",
+    ],
+    exclude_paths = ["oauth-user-inspector/infra/identity/"],
+    extra_paths = [
+        "oauth-user-inspector/",
+        "infrastructure/pulumi/platform/zitadel-apps/",
+        "tools/deploy/",
+        "\\.github/workflows/oauth-user-inspector-deploy\\.yaml",
+        "\\.github/workflows/_deploy-cloud-run\\.yaml",
+        "\\.github/workflows/_zitadel-apps-apply\\.yaml",
+    ],
+    github_environment = "oauth-user-inspector-{env}",
+    kind = "cloud-run",
+    promotion = "release:oauth-user-inspector-v",
+    run = "//oauth-user-inspector/infra/app:deploy",
 )

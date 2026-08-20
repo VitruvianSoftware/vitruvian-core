@@ -1,0 +1,22 @@
+{
+  "build": "",
+  "companions": ["zitadel-apps"],
+  "environments": ["development", "nonproduction", "production"],
+  "exclude_paths": ["oauth-user-inspector/infra/identity/"],
+  "extra_paths": [
+    "oauth-user-inspector/",
+    "infrastructure/pulumi/platform/zitadel-apps/",
+    "tools/deploy/",
+    "\\.github/workflows/oauth-user-inspector-deploy\\.yaml",
+    "\\.github/workflows/_deploy-cloud-run\\.yaml",
+    "\\.github/workflows/_zitadel-apps-apply\\.yaml"
+  ],
+  "github_environment": "oauth-user-inspector-{env}",
+  "kind": "cloud-run",
+  "name": "oauth-user-inspector",
+  "package": "oauth-user-inspector/infra/app",
+  "preflight": "",
+  "promotion": "release:oauth-user-inspector-v",
+  "run": "//oauth-user-inspector/infra/app:deploy",
+  "schema": 1
+}

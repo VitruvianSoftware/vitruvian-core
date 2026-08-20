@@ -1,3 +1,5 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 # Copyright (c) 2026 VitruvianSoftware
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,29 +20,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("//tools/delivery:defs.bzl", "delivery")
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+# The delivery() declaration macro (spec §4.1). Consumed by every delivery
+# unit's BUILD file; the orchestrator and generator discover units via the
+# "delivery" tag, so this package is deliberately public.
+exports_files(["defs.bzl"])
 
-pulumi_project(
-    name = "zitadel-apps",
-    dir = "infrastructure/pulumi/platform/zitadel-apps",
-)
-
-# Delivery unit (Phase 0: SHADOW; _zitadel-apps-apply.yaml remains the acting
-# path until Phase 1). The expand half of oauth's expand-before-serve pair.
-delivery(
-    name = "zitadel-apps",
-    environments = [
-        "development",
-        "nonproduction",
-        "production",
-    ],
-    extra_paths = [
-        "infrastructure/pulumi/platform/zitadel-apps/",
-        "\\.github/workflows/_zitadel-apps-apply\\.yaml",
-    ],
-    github_environment = "oauth-user-inspector-{env}",
-    kind = "pulumi",
-    promotion = "release:oauth-user-inspector-v",
-    run = "//infrastructure/pulumi/platform/zitadel-apps:up",
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["@bazel_skylib//rules:write_file"],
 )

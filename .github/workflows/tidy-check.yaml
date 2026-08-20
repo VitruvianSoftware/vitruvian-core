@@ -150,6 +150,32 @@ jobs:
             exit 1
           fi
 
+      # Generated delivery workflow freshness (delivery-orchestrator spec §4.3).
+      # .github/workflows/delivery.yaml is a BUILD ARTIFACT of the delivery()
+      # declarations in the Bazel graph, not a hand-written file. Nothing else
+      # in CI would notice it going stale: a new or edited delivery() would
+      # simply not be reflected in the workflow, and the symptom would be a unit
+      # the orchestrator silently does not govern -- the same shape as #1794
+      # (a state-mutating job that everything assumed was gated and was not).
+      #
+      # Gated on the SAME `steps.gate.outputs.relevant` condition as //:tidy, so
+      # the docs/gitops-only fast path (#1759) still skips it, and so this step
+      # can never be the reason a required check stops reporting. It is cheap:
+      # a `bazel query` on one tag plus two tiny file builds, no analysis of the
+      # 64k-target graph beyond loading, which //:tidy has already paid for.
+      #
+      # The assertion is deliberately `git diff --exit-code` on the ONE generated
+      # path rather than a whole-tree check: the //:tidy step above already owns
+      # the whole tree, and scoping this one keeps its error message actionable.
+      - name: Assert generated delivery workflow is current
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          bazel run //tools/ci:gen
+          if ! git diff --exit-code -- .github/workflows/delivery.yaml; then
+            echo "::error::.github/workflows/delivery.yaml is stale. It is GENERATED from the delivery() declarations in the Bazel graph -- run 'bazel run //tools/ci:gen' and commit the result. Do not hand-edit the workflow; the next regeneration reverts it."
+            exit 1
+          fi
+
       # MODULE.bazel.lock freshness (#1267). The step above deliberately
       # EXCLUDES MODULE.bazel.lock from its clean-tree assertion (`bazel run
       # //:tidy` does not regenerate it), so until now nothing gated Bazel

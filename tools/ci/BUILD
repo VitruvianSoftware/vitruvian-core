@@ -18,29 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("//tools/delivery:defs.bzl", "delivery")
-load("//tools/pulumi:defs.bzl", "pulumi_project")
-
-pulumi_project(
-    name = "zitadel-apps",
-    dir = "infrastructure/pulumi/platform/zitadel-apps",
+# `bazel run //tools/ci:gen` — regenerate the generated delivery workflow
+# (.github/workflows/delivery.yaml). Alias kept at the spec's name; the
+# implementation lives in //tools/delivery/gen.
+alias(
+    name = "gen",
+    actual = "//tools/delivery/gen",
+    visibility = ["//visibility:public"],
 )
 
-# Delivery unit (Phase 0: SHADOW; _zitadel-apps-apply.yaml remains the acting
-# path until Phase 1). The expand half of oauth's expand-before-serve pair.
-delivery(
-    name = "zitadel-apps",
-    environments = [
-        "development",
-        "nonproduction",
-        "production",
-    ],
-    extra_paths = [
-        "infrastructure/pulumi/platform/zitadel-apps/",
-        "\\.github/workflows/_zitadel-apps-apply\\.yaml",
-    ],
-    github_environment = "oauth-user-inspector-{env}",
-    kind = "pulumi",
-    promotion = "release:oauth-user-inspector-v",
-    run = "//infrastructure/pulumi/platform/zitadel-apps:up",
-)
+# The orchestrator's hermetic tests drive the REAL decision engine (spec §4.2:
+# deploy-affected.sh is shelled, never rewritten), so the scripts must be
+# visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
+exports_files([
+    "deploy-affected.sh",
+    "td-lib.sh",
+])
