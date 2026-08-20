@@ -20,10 +20,13 @@
 
 import { accessSync, constants } from "fs";
 import {
+  copyFile,
   lstat,
+  mkdir,
   readFile,
   readdir,
   realpath,
+  rm,
   stat,
   writeFile,
 } from "fs/promises";
@@ -84,6 +87,27 @@ export const ROOT_CATALOG_REL = "catalog-info.yaml";
 export const CATALOG_LOCATION_NAME = "vitruvian-core-apps";
 
 /**
+ * Workspace-relative directory holding ONLY the files this action changed.
+ *
+ * WHY THIS EXISTS -- it is not a tidiness thing, it is a hard API limit.
+ * `publish:github:pull-request` serialises `sourcePath` (defaulting to the
+ * WHOLE workspace) and then creates one blob per file, sequentially, over the
+ * GitHub REST API. The workspace here is a full vitruvian-core checkout: ~4,150
+ * files. GitHub's content-creation limit is 500 requests/hour, so the publish
+ * would 403 partway through, every time, leaving a half-pushed branch.
+ *
+ * So the action stages a subtree containing exactly the rendered application
+ * plus the edited root catalog-info.yaml, at their repo-relative paths, and the
+ * template points `sourcePath` at it: identical PR content, ~6 blobs.
+ *
+ * The render still happens IN PLACE first and is not moved -- the engine probes
+ * the host from `--out` (go.mod, `# gazelle:prefix`, bazel/oci) and rendering
+ * into a detached directory would resolve a different import path, or fail. The
+ * stage is a copy taken afterwards.
+ */
+export const STAGE_DIR = ".stage";
+
+/**
  * snake_case, as the engine defines it: lowercase alphanumeric words joined by
  * single underscores. gazelle names Go targets after the directory, so a name
  * outside this shape produces a BUILD file gazelle immediately rewrites.
@@ -111,6 +135,11 @@ export type AppRenderResult = {
   renderedFiles: string[];
   /** Whether the root catalog-info.yaml gained a Location target. */
   catalogUpdated: boolean;
+  /**
+   * Workspace-relative directory holding just the changed files, for the
+   * publish step's `sourcePath`. See {@link STAGE_DIR}.
+   */
+  stagePath: string;
 };
 
 /** Injection seam so tests can drive the real binary or a stub. */
@@ -600,9 +629,11 @@ export async function renderApplication(
   // to `workspacePath`: `outAbs` has been realpath'd and the workspace may not
   // be (macOS hands out /var/... for /private/var/...), so relativising one
   // against the other would emit `../../..` paths.
+  let filesUnderOut: string[] = [];
   let renderedFiles: string[] = [];
   try {
-    renderedFiles = (await listFiles(outAbs, outAbs)).map((file) =>
+    filesUnderOut = await listFiles(outAbs, outAbs);
+    renderedFiles = filesUnderOut.map((file) =>
       path.posix.join(targetPath, file.split(path.sep).join("/")),
     );
   } catch (cause) {
@@ -668,11 +699,30 @@ export async function renderApplication(
     );
   }
 
+  // Staged LAST, so it captures the catalog edit above. See STAGE_DIR for why
+  // the publish step cannot simply point at the workspace.
+  const stageRoot = path.join(workspacePath, STAGE_DIR);
+  await rm(stageRoot, { recursive: true, force: true });
+  for (const rel of filesUnderOut) {
+    const dest = path.join(stageRoot, targetPath, rel);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await copyFile(path.join(outAbs, rel), dest);
+  }
+  if (catalogUpdated) {
+    await copyFile(catalogPath, path.join(stageRoot, ROOT_CATALOG_REL));
+  }
+  logger.info(
+    `${APP_RENDER_ACTION_ID}: staged ${renderedFiles.length + (catalogUpdated ? 1 : 0)} ` +
+      `changed file(s) under ${STAGE_DIR}/ for publishing — the pull request ` +
+      "carries exactly these, not the whole checkout.",
+  );
+
   return {
     appPath: targetPath,
     catalogInfoPath,
     renderedFiles,
     catalogUpdated,
+    stagePath: STAGE_DIR,
   };
 }
 
@@ -714,6 +764,14 @@ export const createAppRenderAction = () =>
       output: {
         appPath: (z) => z.string(),
         catalogInfoPath: (z) => z.string(),
+        stagePath: (z) =>
+          z
+            .string()
+            .describe(
+              "Directory holding only the changed files. Pass as the publish " +
+                "step's sourcePath — publishing the whole workspace would be " +
+                "one API call per file across a 4,000-file checkout.",
+            ),
       },
     },
     async handler(ctx) {
@@ -727,5 +785,6 @@ export const createAppRenderAction = () =>
       });
       ctx.output("appPath", result.appPath);
       ctx.output("catalogInfoPath", result.catalogInfoPath);
+      ctx.output("stagePath", result.stagePath);
     },
   });

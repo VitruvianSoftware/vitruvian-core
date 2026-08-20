@@ -35,7 +35,14 @@
  * whatever is there.
  */
 
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
 
@@ -158,6 +165,23 @@ describeE2e("vitruvian:app:render against the real engine", () => {
     expect(result.catalogUpdated).toBe(true);
     expect(readFileSync(path.join(host, "catalog-info.yaml"), "utf8")).toBe(
       appendCatalogTarget(CATALOG, "apps/order_service").content,
+    );
+
+    // The staged subtree, against REAL engine output: exactly the six changed
+    // files, at repo-relative paths. This is what the publish step uploads;
+    // pointing it at the workspace would be one API call per file across a
+    // whole checkout.
+    expect(result.stagePath).toBe(".stage");
+    const staged = (dir: string, prefix = ""): string[] =>
+      readdirSync(dir, { withFileTypes: true })
+        .flatMap((e) =>
+          e.isDirectory()
+            ? staged(path.join(dir, e.name), `${prefix}${e.name}/`)
+            : [`${prefix}${e.name}`],
+        )
+        .sort();
+    expect(staged(path.join(host, ".stage"))).toEqual(
+      [...result.renderedFiles, "catalog-info.yaml"].sort(),
     );
   }, 120_000);
 

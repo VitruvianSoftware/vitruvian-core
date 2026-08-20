@@ -54,12 +54,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip3 install --break-system-packages --no-cache-dir mkdocs-techdocs-core==1.6.1 \
     && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /app
+
+# NODE_OPTIONS is NOT optional. @backstage/plugin-scaffolder-backend's
+# SecureTemplater.loadRenderer throws UNCONDITIONALLY on Node >= 20 without
+# --no-node-snapshot (isolated-vm cannot start against a snapshotted heap):
+#
+#   if (nodeVersion >= 20 && !isNoNodeSnapshotOptionProvided()) throw ...
+#
+# and NunjucksWorkflowRunner.execute calls it for EVERY task. This base image is
+# node:22, so without this line every single scaffolder run dies before step 1
+# -- and nothing catches it: the boot smoke never executes a task, and no
+# Template had ever actually been run in this deployment. The drift-guard test
+# asserts this line still exists.
+ENV NODE_ENV=production \
+    PORT=7007 \
+    NODE_OPTIONS=--no-node-snapshot
+
+RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+
+COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=build /app/backstage/package.json ./backstage/
+COPY --from=build /app/backstage/packages/backend/package.json ./backstage/packages/backend/
+COPY --from=build /app/backstage/packages/app/package.json ./backstage/packages/app/
+
+RUN pnpm install --prod --frozen-lockfile
+
 # aspect CLI, statically-linked (musl) so it needs no libc/dynamic deps beyond
 # what's already here. Pinned to 2026.26.25 -- the exact version the app
 # initializer engine (tools/initializer, ADR-026) was developed and proven
 # against in P0/P0.5/P1.1. The scaffolder action (Task 3) shells out to this
 # binary as `aspect render-app`; a version drift here would let the stamped
 # output silently diverge from what was validated upstream.
+#
+# PLACEMENT: after the dependency install, before the dist COPYs. The common
+# case by far is a source change, which busts only the dist layers below and
+# leaves this download cached; an aspect version bump busts only this layer and
+# the dist copies, never the apt/pip or pnpm install above. Putting it at the
+# top of the stage (where it started) meant a version bump also re-ran the
+# dependency install; putting it after the COPYs would re-download aspect on
+# every source change, which is the common case and therefore worse.
 #
 # TARGETARCH is populated by buildx for the multi-arch build (linux/amd64 +
 # linux/arm64, see .github/workflows/backstage-image.yaml); sha256 is pinned
@@ -80,20 +114,6 @@ RUN set -eu; \
     echo "${ASPECT_SHA256}  /usr/local/bin/aspect" | sha256sum -c -; \
     chmod +x /usr/local/bin/aspect
 RUN aspect --version
-
-WORKDIR /app
-
-ENV NODE_ENV=production \
-    PORT=7007
-
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
-
-COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=build /app/backstage/package.json ./backstage/
-COPY --from=build /app/backstage/packages/backend/package.json ./backstage/packages/backend/
-COPY --from=build /app/backstage/packages/app/package.json ./backstage/packages/app/
-
-RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=build /app/backstage/packages/app/dist ./backstage/packages/app/dist
 COPY --from=build /app/backstage/packages/backend/dist ./backstage/packages/backend/dist
