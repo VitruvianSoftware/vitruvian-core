@@ -155,21 +155,52 @@ for label in $LABELS; do
     fi
 
     # The SAME engine the orchestrator uses, with the same per-unit inputs.
-    verdict="$(
-        EXTRA_PATH_REGEX="$(python3 -c 'import json,sys; print("|".join(json.load(open(sys.argv[1])).get("extra_paths") or []))' "$meta")" \
-            EXCLUDE_PATH_REGEX="$(python3 -c 'import json,sys; print("|".join(json.load(open(sys.argv[1])).get("exclude_paths") or []))' "$meta")" \
-            DEPLOY_TARGETS="$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("graph_targets") or []))' "$meta")" \
-            BEFORE_REV="$last_sha" \
-            GITHUB_OUTPUT=/dev/null \
+    _extra="$(python3 -c 'import json,sys; print("|".join(json.load(open(sys.argv[1])).get("extra_paths") or []))' "$meta")"
+    _exclude="$(python3 -c 'import json,sys; print("|".join(json.load(open(sys.argv[1])).get("exclude_paths") or []))' "$meta")"
+    _targets="$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("graph_targets") or []))' "$meta")"
+
+    ask_engine() { # <before> <after> ; echoes the engine's stdout+stderr
+        EXTRA_PATH_REGEX="$_extra" EXCLUDE_PATH_REGEX="$_exclude" DEPLOY_TARGETS="$_targets" \
+            BEFORE_REV="$1" AFTER_REV="$2" GITHUB_OUTPUT=/dev/null \
             bash tools/ci/deploy-affected.sh 2>&1 || true
-    )"
-    if echo "$verdict" | grep -q 'affected=true'; then
-        reason="$(echo "$verdict" | grep -o 'affected=true (.*' | head -1)"
-        log "DRIFT ${name}: last delivered ${last_sha:0:8}, but main ${HEAD_SHA:0:8} still affects it -- ${reason}"
-        drift_found=1
-    else
+    }
+
+    # PHASE 1 -- cheap range pre-filter. Clean here means genuinely nothing to
+    # deliver, and for graph-mode units it is the only target-determinator run
+    # we pay for in the common case.
+    if ! ask_engine "$last_sha" "$HEAD_SHA" | grep -q 'affected=true'; then
         log "${name}: delivered ${last_sha:0:8}; nothing since affects it"
+        continue
     fi
+
+    # PHASE 2 -- confirm per commit before crying drift.
+    #
+    # A RANGE verdict over-reports. The release-please guard only fires when
+    # EVERY commit in the range is a version bump, so in a mixed range (the
+    # normal state of main) a release commit's own artifacts -- a bumped
+    # package.json, a .release-please-manifest.json -- match the unit's paths
+    # and read as work that should have shipped. Nothing needs shipping: the
+    # code is byte-identical to what already soaked, and the release promotes by
+    # TAG, not by push. Observed on the first live run: oauth-user-inspector
+    # reported drift whose only matching files were release artifacts.
+    #
+    # Judging each commit as its own single-commit range makes the engine's own
+    # guard fire for release commits, so no rule is duplicated here. We stop at
+    # the first commit that genuinely would have delivered.
+    culprit=
+    for c in $(git rev-list --reverse "${last_sha}..${HEAD_SHA}"); do
+        if ask_engine "${c}^" "$c" | grep -q 'affected=true'; then
+            culprit="$c"
+            break
+        fi
+    done
+
+    if [ -z "$culprit" ]; then
+        log "${name}: delivered ${last_sha:0:8}; only version-bump commits since (promote by tag, nothing to deploy)"
+        continue
+    fi
+    log "DRIFT ${name}: last delivered ${last_sha:0:8}, but ${culprit:0:8} ('$(git log -1 --pretty=%s "$culprit" | cut -c1-60)') should have delivered and did not"
+    drift_found=1
 done
 
 log "checked ${checked} unit(s)"

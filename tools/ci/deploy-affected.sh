@@ -100,6 +100,13 @@ DEPLOY_TARGETS="${DEPLOY_TARGETS:-}"
 EXTRA_PATH_REGEX="${EXTRA_PATH_REGEX:-}"
 EXCLUDE_PATH_REGEX="${EXCLUDE_PATH_REGEX:-}"
 BEFORE_REV="${BEFORE_REV:-}"
+# The end of the range. Defaults to HEAD, which is what every CI caller wants.
+# tools/ci/delivery-drift.sh sets it to evaluate ONE historical commit at a time
+# (BEFORE_REV=C^, AFTER_REV=C) so each commit is judged on its own merits -- in
+# particular so the release-please guard, which only fires when EVERY commit in
+# the range is a version bump, fires for a release commit even when it sits in a
+# range alongside real ones.
+AFTER_REV="${AFTER_REV:-HEAD}"
 FORCED_PUSH="${FORCED_PUSH:-false}"
 # Path-only mode has no graph universe to attribute against, so it needs a
 # real trigger set -- an empty EXTRA_PATH_REGEX would make step 2 a permanent
@@ -117,7 +124,7 @@ if [ -z "${BEFORE_REV}" ] || ! git rev-parse --verify --quiet "${BEFORE_REV}^{co
   emit true "BEFORE_REV '${BEFORE_REV}' unset or does not resolve to a commit"
 fi
 
-CHANGED_FILES="$(git diff --name-only "${BEFORE_REV}" HEAD -- || true)"
+CHANGED_FILES="$(git diff --name-only "${BEFORE_REV}" "${AFTER_REV}" -- || true)"
 if [ -z "${CHANGED_FILES}" ]; then
   emit false "no changed files vs ${BEFORE_REV}"
 fi
@@ -139,10 +146,10 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # prevent. Observed live: run 32363502989 dismissed afc7e5c1..c0639105 (9
 # commits, including Phase 3 and a delivery fix that touched
 # tools/ci/affected-targets.sh) because HEAD happened to be a version bump.
-RANGE_MSGS="$(git log --pretty=%s "${BEFORE_REV}..HEAD" 2>/dev/null || true)"
+RANGE_MSGS="$(git log --pretty=%s "${BEFORE_REV}..${AFTER_REV}" 2>/dev/null || true)"
 NON_RELEASE_MSGS="$(grep -Ev '^chore\((main|release)\): release' <<<"${RANGE_MSGS}" || true)"
 if [ -n "${RANGE_MSGS}" ] && [ -z "${NON_RELEASE_MSGS}" ]; then
-  emit false "every commit in ${BEFORE_REV}..HEAD is a release-please version bump ('$(head -1 <<<"${RANGE_MSGS}")') -- skipping dev deploy (promotes via release tag)"
+  emit false "every commit in ${BEFORE_REV}..${AFTER_REV} is a release-please version bump ('$(head -1 <<<"${RANGE_MSGS}")') -- skipping dev deploy (promotes via release tag)"
 fi
 
 # --- 2. non-graph inputs (Pulumi program, workflow files), or the SOLE signal
