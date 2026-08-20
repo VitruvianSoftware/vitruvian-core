@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.30...tabula-shared-v0.1.31) (2026-08-20)
+
+
+### Features
+
+* **grafana:** Cloud Run dashboard, and surface it on the entity pages ([#1820](https://github.com/VitruvianSoftware/vitruvian-core/issues/1820)) ([d176308](https://github.com/VitruvianSoftware/vitruvian-core/commit/d176308f1b08c0295658707dd1f30f3ed056e841))
+
 ## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.29...tabula-shared-v0.1.30) (2026-08-19)
 
 
