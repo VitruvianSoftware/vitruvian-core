@@ -38,6 +38,7 @@ exports_files([
     # resolver the orchestrate job feeds BEFORE_REV from.
     "require-dev-soak.sh",
     "resolve-deploy-base.sh",
+    "resolve-unit-bases.sh",
     "deploy-affected.sh",
     "td-lib.sh",
     # Shared transport-failure classifier: sourced by go-test-with-retry.sh and,
@@ -52,6 +53,15 @@ exports_files([
 # Safety tests for the cache pruner. It DELETES, so the suite is mostly
 # negative: an open PR's cache, a branch cache, and an undeterminable PR state
 # must all survive.
+# Per-unit durable bases (#1842). Hermetic: stubs only `gh`, and drives the real
+# script against a fixture workflow, so it needs no network and no credentials.
+sh_test(
+    name = "resolve_unit_bases_test",
+    size = "small",
+    srcs = ["resolve-unit-bases_test.sh"],
+    data = ["resolve-unit-bases.sh"],
+)
+
 sh_test(
     name = "prune_pr_caches_test",
     size = "small",

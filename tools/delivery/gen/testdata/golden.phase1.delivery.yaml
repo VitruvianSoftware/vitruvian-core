@@ -206,6 +206,19 @@ jobs:
         # grave. Always exits 0: an empty base_sha means "could not
         # determine", and the step below falls back.
         run: bash tools/ci/resolve-deploy-base.sh
+      - name: Resolve per-unit durable bases (#1842)
+        id: unit-bases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_FILE: delivery.yaml
+        # Refines the single base above, which is a RUN-level verdict: a run
+        # whose delivery jobs were all skipped still concludes success and
+        # still becomes the base, so a wrongly-skipped unit's commits fall
+        # outside every future diff and its delivery is lost, not deferred.
+        # This resolves each unit's own laggiest last delivery instead.
+        # Always exits 0; an empty object means every unit keeps the single
+        # base, which is exactly the previous behaviour.
+        run: bash tools/ci/resolve-unit-bases.sh
       - name: Compute the delivery manifest
         id: manifest
         env:
@@ -213,6 +226,9 @@ jobs:
           # (empty is falsy in a GitHub Actions expression). The engine
           # itself fails open if BOTH are unusable.
           BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
+          # Per-unit bases (#1842). Only ever OLDER than BEFORE_REV, so the
+          # worst case is a redundant deploy, never a lost one.
+          UNIT_BASES_JSON: ${{ steps.unit-bases.outputs.unit_bases }}
           # A force-push makes any base untrustworthy; the orchestrator
           # turns this into a whole-manifest fail-open with a loud reason.
           FORCED_PUSH: ${{ github.event.forced }}

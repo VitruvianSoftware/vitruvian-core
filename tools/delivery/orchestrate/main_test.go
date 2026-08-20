@@ -895,3 +895,92 @@ func TestEngineEnv_DoesNotInheritDeployTargets(t *testing.T) {
 		}
 	}
 }
+
+// --- per-unit durable bases (#1842) ------------------------------------------
+//
+// Run-level `success` is not a faithful proxy for "everything in this range was
+// delivered": a run whose delivery jobs were all SKIPPED still concludes success
+// and still becomes the base, so a wrongly-skipped unit's commits fall outside
+// every future diff. UNIT_BASES_JSON lets tools/ci/resolve-unit-bases.sh hand the
+// engine a per-unit base instead. These prove the plumbing is real and that every
+// failure of it degrades to today's single-base behaviour.
+
+func headOf(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestOrchestrate_PerUnitBase_OverridesTheSingleBase(t *testing.T) {
+	head := headOf(t, repoDeclared.dir)
+	// repoDeclared is affected against its own base. Pinning the unit at HEAD
+	// empties its diff, so the verdict must flip — which it can only do if the
+	// per-unit base actually reached the engine.
+	r := harness{
+		repo: repoDeclared,
+		fake: oneUnit(t, nil),
+		env:  map[string]string{"UNIT_BASES_JSON": `{"oauth-user-inspector":"` + head + `"}`},
+	}.run(t)
+
+	if r.code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", r.code, r.stdout)
+	}
+	u := requireUnit(t, r.man, "oauth-user-inspector")
+	if u.Affected {
+		t.Errorf("unit affected = true, want false: the per-unit base did not reach the engine (reason %q)", u.Reason)
+	}
+	if u.Base != head {
+		t.Errorf("unit base = %q, want the per-unit base %q", u.Base, head)
+	}
+	// The manifest-level base still reports the single base it was given.
+	if r.man.Before != repoDeclared.base {
+		t.Errorf("manifest before = %q, want the single base %q", r.man.Before, repoDeclared.base)
+	}
+}
+
+func TestOrchestrate_PerUnitBase_UnresolvableFallsBackToTheSingleBase(t *testing.T) {
+	r := harness{
+		repo: repoDeclared,
+		fake: oneUnit(t, nil),
+		env: map[string]string{
+			"UNIT_BASES_JSON": `{"oauth-user-inspector":"0000000000000000000000000000000000000000"}`,
+		},
+	}.run(t)
+
+	if r.code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", r.code, r.stdout)
+	}
+	u := requireUnit(t, r.man, "oauth-user-inspector")
+	// A base that does not resolve must NOT fail the unit open and must NOT be
+	// used: it degrades to exactly today's behaviour.
+	if !u.Affected {
+		t.Errorf("unit affected = false, want true after falling back to the single base (reason %q)", u.Reason)
+	}
+	if u.Base != repoDeclared.base {
+		t.Errorf("unit base = %q, want the single base %q", u.Base, repoDeclared.base)
+	}
+}
+
+func TestOrchestrate_PerUnitBase_MalformedJSONIsIgnored(t *testing.T) {
+	r := harness{
+		repo: repoDeclared,
+		fake: oneUnit(t, nil),
+		env:  map[string]string{"UNIT_BASES_JSON": "{not json"},
+	}.run(t)
+
+	if r.code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", r.code, r.stdout)
+	}
+	u := requireUnit(t, r.man, "oauth-user-inspector")
+	if !u.Affected {
+		t.Errorf("unit affected = false, want true: malformed input must cost nothing (reason %q)", u.Reason)
+	}
+	if u.Base != repoDeclared.base {
+		t.Errorf("unit base = %q, want the single base %q", u.Base, repoDeclared.base)
+	}
+}
